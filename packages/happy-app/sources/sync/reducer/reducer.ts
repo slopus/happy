@@ -166,6 +166,7 @@ export type ReducerState = {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindowSize?: number;
         timestamp: number;
     };
 };
@@ -199,6 +200,7 @@ export type ReducerResult = {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindowSize?: number;
     };
     hasReadyEvent?: boolean;
 };
@@ -635,7 +637,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
             // Process usage data if present
             if (msg.usage) {
-                processUsageData(state, msg.usage, msg.createdAt);
+                processUsageData(state, msg.usage, msg.createdAt, msg.contextWindowSize);
             }
 
             // Process text and thinking content (tool calls handled in Phase 2)
@@ -1082,7 +1084,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             outputTokens: state.latestUsage.outputTokens,
             cacheCreation: state.latestUsage.cacheCreation,
             cacheRead: state.latestUsage.cacheRead,
-            contextSize: state.latestUsage.contextSize
+            contextSize: state.latestUsage.contextSize,
+            ...(state.latestUsage.contextWindowSize ? { contextWindowSize: state.latestUsage.contextWindowSize } : {}),
         } : undefined,
         hasReadyEvent: hasReadyEvent || undefined
     };
@@ -1096,7 +1099,7 @@ function allocateId() {
     return Math.random().toString(36).substring(2, 15);
 }
 
-function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {
+function processUsageData(state: ReducerState, usage: UsageData, timestamp: number, contextWindowSize?: number) {
     // Only update if this is newer than the current latest usage
     if (!state.latestUsage || timestamp > state.latestUsage.timestamp) {
         state.latestUsage = {
@@ -1105,6 +1108,7 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
             cacheCreation: usage.cache_creation_input_tokens || 0,
             cacheRead: usage.cache_read_input_tokens || 0,
             contextSize: (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0) + usage.input_tokens,
+            ...(contextWindowSize ? { contextWindowSize } : {}),
             timestamp: timestamp
         };
     }

@@ -755,13 +755,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 outputTokens: sessionUsage.outputTokens,
                 cacheCreation: sessionUsage.cacheCreation,
                 cacheRead: sessionUsage.cacheRead,
-                contextSize: sessionUsage.contextSize
+                contextSize: sessionUsage.contextSize,
+                contextWindowSize: sessionUsage.contextWindowSize,
             } : session.latestUsage ? {
                 inputTokens: session.latestUsage.inputTokens,
                 outputTokens: session.latestUsage.outputTokens,
                 cacheCreation: session.latestUsage.cacheCreation,
                 cacheRead: session.latestUsage.cacheRead,
-                contextSize: session.latestUsage.contextSize
+                contextSize: session.latestUsage.contextSize,
+                contextWindowSize: session.latestUsage.contextWindowSize,
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
             images={images}

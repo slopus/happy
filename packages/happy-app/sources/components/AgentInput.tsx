@@ -74,6 +74,7 @@ interface AgentInputProps {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindowSize?: number;
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
@@ -388,8 +389,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [profiles, props.profileId]);
 
     // Calculate context warning
+    // Prefer dynamic contextWindowSize from CLI (e.g. Codex reports model_context_window),
+    // fall back to static lookup by model/agent flavor
     const agentFlavor = props.metadata?.flavor || props.agentType || null;
-    const maxContextSize = getMaxContextSize(props.modelMode, agentFlavor);
+    const maxContextSize = props.usageData?.contextWindowSize || getMaxContextSize(props.modelMode, agentFlavor);
     const contextWarning = props.usageData?.contextSize
         ? getContextWarning(props.usageData.contextSize, maxContextSize, props.alwaysShowContextSize ?? false, theme)
         : null;

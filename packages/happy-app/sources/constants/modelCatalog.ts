@@ -271,7 +271,7 @@ const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 const AGENT_DEFAULT_CONTEXT_WINDOWS: Record<AgentFlavor, number> = {
     claude: 200_000,
-    codex: 192_000,
+    codex: 258_400,
     gemini: 1_000_000,
 };
 
@@ -281,12 +281,12 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
     'claude-opus-4-5': 200_000,
     'claude-sonnet-4-5': 200_000,
     'claude-haiku-4-5': 200_000,
-    // Codex models
-    'gpt-5.3-codex': 192_000,
-    'gpt-5.2-codex': 192_000,
-    'gpt-5.2': 192_000,
-    'gpt-5.1-codex-max': 192_000,
-    'gpt-5.1-codex-mini': 192_000,
+    // Codex models (fallback; actual value comes from CLI via context_window_size)
+    'gpt-5.3-codex': 258_400,
+    'gpt-5.2-codex': 258_400,
+    'gpt-5.2': 258_400,
+    'gpt-5.1-codex-max': 258_400,
+    'gpt-5.1-codex-mini': 258_400,
     // Gemini models
     'gemini-3-pro-preview': 1_000_000,
     'gemini-3-flash-preview': 1_000_000,

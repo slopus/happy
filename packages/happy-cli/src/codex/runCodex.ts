@@ -660,11 +660,17 @@ export async function runCodex(opts: {
             }
 
             case 'token-count': {
-                const { type: _type, ...tokenData } = msg;
+                const { type: _type, ...tokenData } = msg as any;
+                const lastUsage = tokenData.last_token_usage;
                 session.sendAgentMessage('codex', {
                     type: 'token_count',
                     ...tokenData,
                     ...(currentSessionModel ? { model: currentSessionModel } : {}),
+                    // Unified context fields for app consumption
+                    ...(lastUsage ? {
+                        context_used_tokens: lastUsage.input_tokens,
+                        context_window_size: tokenData.model_context_window,
+                    } : {}),
                 });
                 break;
             }

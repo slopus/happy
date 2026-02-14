@@ -431,6 +431,7 @@ export type NormalizedMessage = ({
     isSidechain: boolean,
     meta?: MessageMeta,
     usage?: UsageData,
+    contextWindowSize?: number,
 };
 
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
@@ -871,7 +872,31 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     meta: raw.meta
                 } satisfies NormalizedMessage;
             }
-            // Task lifecycle events (task_started, task_complete, turn_aborted) and token_count
+            // ACP token_count: extract usage data for context window display
+            if (raw.content.data.type === 'token_count') {
+                const data = raw.content.data as any;
+                const contextUsed = data.context_used_tokens;
+                if (typeof contextUsed === 'number' && contextUsed > 0) {
+                    const msg: NormalizedMessage = {
+                        id,
+                        localId,
+                        createdAt,
+                        role: 'agent',
+                        isSidechain: false,
+                        content: [],
+                        meta: raw.meta,
+                        usage: {
+                            input_tokens: contextUsed,
+                            output_tokens: data.last_token_usage?.output_tokens ?? 0,
+                        },
+                    };
+                    if (typeof data.context_window_size === 'number') {
+                        msg.contextWindowSize = data.context_window_size;
+                    }
+                    return msg;
+                }
+            }
+            // Task lifecycle events (task_started, task_complete, turn_aborted)
             // are status/metrics - skip normalization, they don't need UI rendering
         }
     }
