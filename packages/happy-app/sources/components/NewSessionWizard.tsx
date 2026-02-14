@@ -16,6 +16,10 @@ import { sync } from '@/sync/sync';
 import { profileSyncService } from '@/sync/profileSync';
 import { CLAUDE_MODEL_OPTIONS, GEMINI_MODEL_OPTIONS, CODEX_MODEL_OPTIONS, MODEL_MODE_DEFAULT, isModelModeForAgent } from '@/constants/modelCatalog';
 
+/**
+ * @deprecated Legacy wizard implementation.
+ * Active new-session flow is in `sources/app/(app)/new/index.tsx`.
+ */
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,

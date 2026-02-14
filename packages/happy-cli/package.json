@@ -1,7 +1,7 @@
 {
   "name": "happy-code-cli",
   "version": "0.14.0-dev.18",
-  "description": "Mobile and Web client for Claude Code and Codex",
+  "description": "Mobile and Web client for Claude Code, Codex, and Gemini",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
   "type": "module",

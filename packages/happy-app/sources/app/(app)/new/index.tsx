@@ -857,12 +857,20 @@ function NewSessionWizard() {
         }
 
         // Add CLI type second (before warnings/availability)
-        if (profile.compatibility.claude && profile.compatibility.codex) {
-            parts.push('Claude & Codex CLI');
-        } else if (profile.compatibility.claude) {
-            parts.push('Claude CLI');
-        } else if (profile.compatibility.codex) {
-            parts.push('Codex CLI');
+        const supportedCliLabels = ([
+            ['claude', 'Claude'],
+            ['codex', 'Codex'],
+            ['gemini', 'Gemini'],
+        ] as const)
+            .filter(([agent]) => profile.compatibility[agent])
+            .map(([, label]) => label);
+
+        if (supportedCliLabels.length === 3) {
+            parts.push('Claude, Codex & Gemini CLI');
+        } else if (supportedCliLabels.length === 2) {
+            parts.push(`${supportedCliLabels[0]} & ${supportedCliLabels[1]} CLI`);
+        } else if (supportedCliLabels.length === 1) {
+            parts.push(`${supportedCliLabels[0]} CLI`);
         }
 
         // Add warning only if CLI not detected

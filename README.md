@@ -1,11 +1,11 @@
 <div align="center"><img src="/.github/logotype-dark.png" width="400" title="Happy Coder" alt="Happy Coder"/></div>
 
 <h1 align="center">
-  Mobile and Web Client for Claude Code & Codex
+  Mobile and Web Client for Claude Code, Codex & Gemini
 </h1>
 
 <h4 align="center">
-Use Claude Code or Codex from anywhere with end-to-end encryption.
+Use Claude Code, Codex, or Gemini from anywhere with end-to-end encryption.
 </h4>
 
 <div align="center">
@@ -34,7 +34,7 @@ npm install -g happy-code-cli
 ```
 
 <h3 align="center">
-Step 3: Start using `happy` instead of `claude` or `codex`
+Step 3: Start using `happy` instead of `claude`, `codex`, or `gemini`
 </h3>
 
 ```bash
@@ -49,18 +49,23 @@ happy
 
 happy codex
 
+# Instead of: gemini
+# Use: happy gemini
+
+happy gemini
+
 ```
 
 <div align="center"><img src="/.github/mascot.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
 
 ## How does it work?
 
-On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
+On your computer, run `happy` instead of `claude`, `happy codex` instead of `codex`, or `happy gemini` instead of `gemini` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
 
 ## 🔥 Why Happy Coder?
 
-- 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk
-- 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors  
+- 📱 **Mobile access to Claude Code, Codex, and Gemini** - Check what your AI is building while away from your desk
+- 🔔 **Push notifications** - Get alerted when Claude Code, Codex, and Gemini need permission or encounter errors  
 - ⚡ **Switch devices instantly** - Take control from phone or desktop with one keypress
 - 🔐 **End-to-end encrypted** - Your code never leaves your devices unencrypted
 - 🛠️ **Open source** - Audit the code yourself. No telemetry, no tracking
@@ -68,7 +73,7 @@ On your computer, run `happy` instead of `claude` or `happy codex` instead of `c
 ## 📦 Project Components
 
 - **[Happy App](https://github.com/slopus/happy/tree/main/packages/happy-app)** - Web UI + mobile client (Expo)
-- **[Happy CLI](https://github.com/slopus/happy/tree/main/packages/happy-cli)** - Command-line interface for Claude Code and Codex
+- **[Happy CLI](https://github.com/slopus/happy/tree/main/packages/happy-cli)** - Command-line interface for Claude Code, Codex, and Gemini
 - **[Happy Server](https://github.com/slopus/happy/tree/main/packages/happy-server)** - Backend server for encrypted sync
 
 ## 🏠 Who We Are
