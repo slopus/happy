@@ -5,7 +5,7 @@
         "cli": "yarn workspace happy-coder cli",
         "release": "node ./scripts/release.cjs",
         "web": "yarn workspace happy-app web",
-        "postinstall": "yarn workspace @slopus/happy-wire build"
+        "postinstall": "node ./scripts/postinstall.cjs"
     },
     "workspaces": {
         "packages": [
