@@ -448,7 +448,8 @@ export class TmuxUtilities {
             const fullCmd = [...baseCmd, ...cmd];
 
             // Add target specification for commands that support it
-            if (cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0])) {
+            // Skip if -t is already present in the command args
+            if (cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0]) && !cmd.includes('-t')) {
                 let target = targetSession;
                 if (window) target += `:${window}`;
                 if (pane) target += `.${pane}`;
@@ -782,7 +783,8 @@ export class TmuxUtilities {
             await this.ensureSessionExists(sessionName);
 
             // Build command to execute in the new window
-            const fullCommand = args.join(' ');
+            // Use exec to replace the shell process so pane_pid matches the actual process PID
+            const fullCommand = 'exec ' + args.join(' ');
 
             // Create new window in session with command and environment variables
             // IMPORTANT: Don't manually add -t here - executeTmuxCommand handles it via parameters
@@ -811,28 +813,26 @@ export class TmuxUtilities {
                         continue;
                     }
 
-                    // Escape value for shell safety
-                    // Must escape: backslashes, double quotes, dollar signs, backticks
-                    const escapedValue = value
-                        .replace(/\\/g, '\\\\')   // Backslash first!
-                        .replace(/"/g, '\\"')     // Double quotes
-                        .replace(/\$/g, '\\$')    // Dollar signs
-                        .replace(/`/g, '\\`');    // Backticks
-
-                    createWindowArgs.push('-e', `${key}="${escapedValue}"`);
+                    // No shell escaping needed - spawn passes args directly to exec
+                    createWindowArgs.push('-e', `${key}=${value}`);
                 }
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
-            // Add the command to run in the window (runs immediately when window is created)
-            createWindowArgs.push(fullCommand);
-
-            // Add -P flag to print the pane PID immediately
+            // Add -P flag to print the pane PID immediately (must come before the command)
             createWindowArgs.push('-P');
             createWindowArgs.push('-F', '#{pane_pid}');
 
+            // Add -t flag BEFORE the shell command (tmux requires all flags before the command arg)
+            createWindowArgs.push('-t', sessionName);
+
+            // Add the command to run in the window (MUST be last argument)
+            createWindowArgs.push(fullCommand);
+
             // Create window with command and get PID immediately
-            const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
+            logger.debug(`[TMUX] Full command args count: ${createWindowArgs.length}, session: ${sessionName}`);
+            // Pass NO session to executeTmuxCommand so it won't append -t again
+            const createResult = await this.executeTmuxCommand(createWindowArgs);
 
             if (!createResult || createResult.returncode !== 0) {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);
