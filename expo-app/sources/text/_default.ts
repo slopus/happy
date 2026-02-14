@@ -700,6 +700,8 @@ export const en = {
         createAccount: 'Create account',
         linkOrRestoreAccount: 'Link or restore account',
         loginWithMobileApp: 'Login with mobile app',
+        linkYourRunners: 'Link your Runners',
+        withYourMobile: 'with your mobile',
     },
 
     review: {

@@ -702,6 +702,8 @@ export const zhHant: TranslationStructure = {
         createAccount: '建立帳戶',
         linkOrRestoreAccount: '連結或恢復帳戶',
         loginWithMobileApp: '使用行動應用程式登入',
+        linkYourRunners: '連接你的 Runner',
+        withYourMobile: '透過手機',
     },
 
     review: {

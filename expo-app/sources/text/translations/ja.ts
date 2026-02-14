@@ -733,6 +733,8 @@ export const ja: TranslationStructure = {
         createAccount: 'アカウントを作成',
         linkOrRestoreAccount: 'アカウントをリンクまたは復元',
         loginWithMobileApp: 'モバイルアプリでログイン',
+        linkYourRunners: 'ランナーをリンク',
+        withYourMobile: 'モバイルで',
     },
 
     review: {

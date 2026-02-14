@@ -701,6 +701,8 @@ export const ca: TranslationStructure = {
         createAccount: 'Crea un compte',
         linkOrRestoreAccount: 'Enllaça o restaura un compte',
         loginWithMobileApp: 'Inicia sessió amb l\'aplicació mòbil',
+        linkYourRunners: 'Enllaça els teus Runners',
+        withYourMobile: 'amb el teu dispositiu mòbil',
     },
 
     review: {

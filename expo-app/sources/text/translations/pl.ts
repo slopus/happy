@@ -711,6 +711,8 @@ export const pl: TranslationStructure = {
         createAccount: 'Utwórz konto',
         linkOrRestoreAccount: 'Połącz lub przywróć konto',
         loginWithMobileApp: 'Zaloguj się przez aplikację mobilną',
+        linkYourRunners: 'Połącz swoje Runners',
+        withYourMobile: 'z urządzeniami mobilnymi',
     },
 
     review: {

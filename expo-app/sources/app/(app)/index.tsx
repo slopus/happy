@@ -62,7 +62,7 @@ function NotAuthenticated() {
                 <>
                     <View style={styles.buttonContainer}>
                         <RoundButton
-                            title={t('welcome.loginWithMobileApp')}
+                            title={t('welcome.linkYourRunners')}
                             onPress={() => {
                                 trackAccountRestored();
                                 router.push('/restore');
@@ -89,7 +89,7 @@ function NotAuthenticated() {
                     <View style={styles.buttonContainerSecondary}>
                         <RoundButton
                             size="normal"
-                            title={t('welcome.linkOrRestoreAccount')}
+                            title={t('welcome.linkYourRunners')}
                             onPress={() => {
                                 trackAccountRestored();
                                 router.push('/restore');
@@ -119,7 +119,7 @@ function NotAuthenticated() {
                         ? (<>
                             <View style={styles.landscapeButtonContainer}>
                                 <RoundButton
-                                    title={t('welcome.loginWithMobileApp')}
+                                    title={t('welcome.linkYourRunners')}
                                     onPress={() => {
                                         trackAccountRestored();
                                         router.push('/restore');
@@ -145,7 +145,7 @@ function NotAuthenticated() {
                             <View style={styles.landscapeButtonContainerSecondary}>
                                 <RoundButton
                                     size="normal"
-                                    title={t('welcome.linkOrRestoreAccount')}
+                                    title={t('welcome.linkYourRunners')}
                                     onPress={() => {
                                         trackAccountRestored();
                                         router.push('/restore');

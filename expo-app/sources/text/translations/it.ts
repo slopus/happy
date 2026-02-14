@@ -730,6 +730,8 @@ export const it: TranslationStructure = {
         createAccount: 'Crea account',
         linkOrRestoreAccount: 'Collega o ripristina account',
         loginWithMobileApp: 'Accedi con l\'app mobile',
+        linkYourRunners: 'Collega i tuoi Runner',
+        withYourMobile: 'con il tuo dispositivo mobile',
     },
 
     review: {

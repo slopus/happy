@@ -699,6 +699,8 @@ export const ru: TranslationStructure = {
         createAccount: 'Создать аккаунт',
         linkOrRestoreAccount: 'Связать или восстановить аккаунт',
         loginWithMobileApp: 'Войти через мобильное приложение',
+        linkYourRunners: 'Свяжите ваши Runners',
+        withYourMobile: 'с мобильным устройством',
     },
 
     review: {
