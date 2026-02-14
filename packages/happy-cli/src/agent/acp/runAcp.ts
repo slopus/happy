@@ -9,6 +9,7 @@ import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { hashObject } from '@/utils/deterministicJson';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -26,6 +27,7 @@ import {
   extractModelStateFromPayload,
   mergeAcpSessionConfigIntoMetadata,
 } from './sessionConfigMetadata';
+import type { SessionConfigOption, SessionModeState, SessionModelState } from '@agentclientprotocol/sdk';
 
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 const ACP_EVENT_PREVIEW_CHARS = 240;
@@ -108,6 +110,131 @@ function formatAcpMessageForFrontend(msg: AgentMessage): string | null {
     default:
       return null;
   }
+}
+
+type AcpSwitchMode = {
+  permissionMode?: string;
+  model?: string | null;
+};
+
+type AcpSelectableOption = {
+  code: string;
+  value: string;
+};
+
+type AcpConfigSelector = {
+  configId: string;
+  currentCode: string;
+  options: AcpSelectableOption[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object';
+}
+
+function isSelectValue(value: unknown): value is { value: string; name: string } {
+  return isRecord(value) && typeof value.value === 'string' && typeof value.name === 'string';
+}
+
+function isSelectGroup(value: unknown): value is { options: unknown[] } {
+  return isRecord(value) && Array.isArray(value.options);
+}
+
+function flattenSelectOptions(options: unknown): AcpSelectableOption[] {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+
+  const flattened: AcpSelectableOption[] = [];
+
+  for (const entry of options) {
+    if (isSelectValue(entry)) {
+      flattened.push({ code: entry.value, value: entry.name });
+      continue;
+    }
+    if (isSelectGroup(entry)) {
+      for (const grouped of entry.options) {
+        if (!isSelectValue(grouped)) {
+          continue;
+        }
+        flattened.push({ code: grouped.value, value: grouped.name });
+      }
+    }
+  }
+
+  return flattened;
+}
+
+function extractConfigSelector(
+  configOptions: SessionConfigOption[],
+  category: 'mode' | 'model',
+): AcpConfigSelector | null {
+  for (const option of configOptions) {
+    if (option.type !== 'select' || option.category !== category) {
+      continue;
+    }
+    return {
+      configId: option.id,
+      currentCode: option.currentValue,
+      options: flattenSelectOptions(option.options),
+    };
+  }
+  return null;
+}
+
+function normalizeComparable(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function resolveRequestedCode(options: AcpSelectableOption[], requested: string): string | null {
+  for (const option of options) {
+    if (option.code === requested || option.value === requested) {
+      return option.code;
+    }
+  }
+
+  const normalizedRequested = normalizeComparable(requested);
+  for (const option of options) {
+    if (normalizeComparable(option.code) === normalizedRequested || normalizeComparable(option.value) === normalizedRequested) {
+      return option.code;
+    }
+  }
+
+  return null;
+}
+
+function resolveRequestedLegacyModeCode(modes: SessionModeState, requested: string): string | null {
+  for (const mode of modes.availableModes) {
+    if (mode.id === requested || mode.name === requested) {
+      return mode.id;
+    }
+  }
+
+  const normalizedRequested = normalizeComparable(requested);
+  for (const mode of modes.availableModes) {
+    if (normalizeComparable(mode.id) === normalizedRequested || normalizeComparable(mode.name) === normalizedRequested) {
+      return mode.id;
+    }
+  }
+
+  return null;
+}
+
+function resolveRequestedLegacyModelCode(models: SessionModelState, requested: string): string | null {
+  for (const model of models.availableModels) {
+    if (model.modelId === requested || model.name === requested) {
+      return model.modelId;
+    }
+  }
+
+  const normalizedRequested = normalizeComparable(requested);
+  for (const model of models.availableModels) {
+    if (normalizeComparable(model.modelId) === normalizedRequested || normalizeComparable(model.name) === normalizedRequested) {
+      return model.modelId;
+    }
+  }
+
+  return null;
 }
 
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
@@ -213,7 +340,13 @@ export async function runAcp(opts: {
 
   permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
   const sessionManager = new AcpSessionManager();
-  const messageQueue = new MessageQueue2<string>((mode) => mode);
+  const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
+  let currentPermissionMode: string | undefined;
+  let currentModel: string | null | undefined;
+  let modeSelector: AcpConfigSelector | null = null;
+  let modelSelector: AcpConfigSelector | null = null;
+  let legacyModes: SessionModeState | null = null;
+  let legacyModels: SessionModelState | null = null;
 
   const happyServer = await startHappyServer(session);
   const mcpServers = {
@@ -284,6 +417,92 @@ export async function runAcp(opts: {
     }
   };
 
+  const switchPermissionModeIfRequested = async (requestedMode: string): Promise<void> => {
+    if (!requestedMode) {
+      return;
+    }
+
+    if (modeSelector) {
+      const resolved = resolveRequestedCode(modeSelector.options, requestedMode);
+      if (!resolved) {
+        logger.debug(`[${opts.agentName}] Ignoring unknown ACP permission mode request: ${requestedMode}`);
+        return;
+      }
+      if (resolved === modeSelector.currentCode) {
+        return;
+      }
+      const switched = await backend.setSessionConfigOption(modeSelector.configId, resolved);
+      if (switched) {
+        modeSelector.currentCode = resolved;
+        return;
+      }
+    }
+
+    if (!legacyModes) {
+      return;
+    }
+
+    const resolvedLegacyMode = resolveRequestedLegacyModeCode(legacyModes, requestedMode);
+    if (!resolvedLegacyMode) {
+      logger.debug(`[${opts.agentName}] Ignoring unknown ACP legacy mode request: ${requestedMode}`);
+      return;
+    }
+    if (resolvedLegacyMode === legacyModes.currentModeId) {
+      return;
+    }
+
+    const switched = await backend.setSessionMode(resolvedLegacyMode);
+    if (switched) {
+      legacyModes = {
+        ...legacyModes,
+        currentModeId: resolvedLegacyMode,
+      };
+    }
+  };
+
+  const switchModelIfRequested = async (requestedModel: string): Promise<void> => {
+    if (!requestedModel) {
+      return;
+    }
+
+    if (modelSelector) {
+      const resolved = resolveRequestedCode(modelSelector.options, requestedModel);
+      if (!resolved) {
+        logger.debug(`[${opts.agentName}] Ignoring unknown ACP model request: ${requestedModel}`);
+        return;
+      }
+      if (resolved === modelSelector.currentCode) {
+        return;
+      }
+      const switched = await backend.setSessionConfigOption(modelSelector.configId, resolved);
+      if (switched) {
+        modelSelector.currentCode = resolved;
+        return;
+      }
+    }
+
+    if (!legacyModels) {
+      return;
+    }
+
+    const resolvedLegacyModel = resolveRequestedLegacyModelCode(legacyModels, requestedModel);
+    if (!resolvedLegacyModel) {
+      logger.debug(`[${opts.agentName}] Ignoring unknown ACP legacy model request: ${requestedModel}`);
+      return;
+    }
+    if (resolvedLegacyModel === legacyModels.currentModelId) {
+      return;
+    }
+
+    const switched = await backend.setSessionModel(resolvedLegacyModel);
+    if (switched) {
+      legacyModels = {
+        ...legacyModels,
+        currentModelId: resolvedLegacyModel,
+      };
+    }
+  };
+
   const onBackendMessage = (msg: AgentMessage) => {
     if (verbose) {
       console.log(`[${opts.agentName}] raw:backend ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
@@ -302,6 +521,8 @@ export async function runAcp(opts: {
     if (msg.type === 'event' && msg.name === 'config_options_update') {
       const configOptions = extractConfigOptionsFromPayload(msg.payload);
       if (configOptions) {
+        modeSelector = extractConfigSelector(configOptions, 'mode');
+        modelSelector = extractConfigSelector(configOptions, 'model');
         session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { configOptions }),
         );
@@ -311,6 +532,7 @@ export async function runAcp(opts: {
     if (msg.type === 'event' && msg.name === 'modes_update') {
       const modes = extractModeStateFromPayload(msg.payload);
       if (modes) {
+        legacyModes = modes;
         session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { modes }),
         );
@@ -320,6 +542,7 @@ export async function runAcp(opts: {
     if (msg.type === 'event' && msg.name === 'models_update') {
       const models = extractModelStateFromPayload(msg.payload);
       if (models) {
+        legacyModels = models;
         session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { models }),
         );
@@ -329,6 +552,18 @@ export async function runAcp(opts: {
     if (msg.type === 'event' && msg.name === 'current_mode_update') {
       const currentModeId = extractCurrentModeIdFromPayload(msg.payload);
       if (currentModeId) {
+        if (modeSelector) {
+          modeSelector = {
+            ...modeSelector,
+            currentCode: currentModeId,
+          };
+        }
+        if (legacyModes) {
+          legacyModes = {
+            ...legacyModes,
+            currentModeId,
+          };
+        }
         session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { currentModeId }),
         );
@@ -365,7 +600,21 @@ export async function runAcp(opts: {
     if (!message.content.text) {
       return;
     }
-    messageQueue.push(message.content.text, 'default');
+
+    if (typeof message.meta?.permissionMode === 'string') {
+      currentPermissionMode = message.meta.permissionMode;
+      logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
+    }
+
+    if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
+      currentModel = message.meta.model ?? null;
+      logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
+    }
+
+    messageQueue.push(message.content.text, {
+      permissionMode: currentPermissionMode,
+      model: currentModel,
+    });
   });
   session.keepAlive(thinking, 'remote');
 
@@ -420,6 +669,12 @@ export async function runAcp(opts: {
       sendEnvelopes(sessionManager.startTurn());
       const turnEnded = waitForTurnEnd();
       try {
+        if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
+          await switchPermissionModeIfRequested(batch.mode.permissionMode);
+        }
+        if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
+          await switchModelIfRequested(batch.mode.model);
+        }
         await backend.sendPrompt(acpSessionId, batch.message);
         await turnEnded;
         sendEnvelopes(sessionManager.endTurn('completed'));

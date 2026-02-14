@@ -1059,6 +1059,94 @@ export class AcpBackend implements AgentBackend {
   }
 
   /**
+   * Set a session config option value.
+   * Returns false when unsupported or when the update fails.
+   */
+  async setSessionConfigOption(configId: string, value: string): Promise<boolean> {
+    if (this.disposed || !this.connection || !this.acpSessionId) {
+      return false;
+    }
+
+    try {
+      const response = await this.connection.setSessionConfigOption({
+        sessionId: this.acpSessionId,
+        configId,
+        value,
+      });
+
+      if (Array.isArray(response.configOptions)) {
+        this.emit({
+          type: 'event',
+          name: 'config_options_update',
+          payload: { configOptions: response.configOptions },
+        });
+      }
+
+      return true;
+    } catch (error) {
+      logger.debug('[AcpBackend] Failed to set session config option:', {
+        configId,
+        value,
+        error,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Set the current ACP session mode.
+   * Returns false when unsupported or when the update fails.
+   */
+  async setSessionMode(modeId: string): Promise<boolean> {
+    if (this.disposed || !this.connection || !this.acpSessionId) {
+      return false;
+    }
+
+    try {
+      await this.connection.setSessionMode({
+        sessionId: this.acpSessionId,
+        modeId,
+      });
+
+      this.emit({
+        type: 'event',
+        name: 'current_mode_update',
+        payload: { currentModeId: modeId },
+      });
+
+      return true;
+    } catch (error) {
+      logger.debug('[AcpBackend] Failed to set session mode:', { modeId, error });
+      return false;
+    }
+  }
+
+  /**
+   * Set the current ACP session model (UNSTABLE ACP capability).
+   * Returns false when unsupported or when the update fails.
+   */
+  async setSessionModel(modelId: string): Promise<boolean> {
+    if (this.disposed || !this.connection || !this.acpSessionId) {
+      return false;
+    }
+
+    if (typeof this.connection.unstable_setSessionModel !== 'function') {
+      return false;
+    }
+
+    try {
+      await this.connection.unstable_setSessionModel({
+        sessionId: this.acpSessionId,
+        modelId,
+      });
+      return true;
+    } catch (error) {
+      logger.debug('[AcpBackend] Failed to set session model:', { modelId, error });
+      return false;
+    }
+  }
+
+  /**
    * Wait for the response to complete (idle status after all chunks received)
    * Call this after sendPrompt to wait for Gemini to finish responding
    */
