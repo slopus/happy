@@ -19,6 +19,13 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
 import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
+import {
+  extractConfigOptionsFromPayload,
+  extractCurrentModeIdFromPayload,
+  extractModeStateFromPayload,
+  extractModelStateFromPayload,
+  mergeAcpSessionConfigIntoMetadata,
+} from './sessionConfigMetadata';
 
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 const ACP_EVENT_PREVIEW_CHARS = 240;
@@ -290,6 +297,42 @@ export async function runAcp(opts: {
         ...currentMetadata,
         slashCommands: commandNames,
       }));
+    }
+
+    if (msg.type === 'event' && msg.name === 'config_options_update') {
+      const configOptions = extractConfigOptionsFromPayload(msg.payload);
+      if (configOptions) {
+        session.updateMetadata((currentMetadata) =>
+          mergeAcpSessionConfigIntoMetadata(currentMetadata, { configOptions }),
+        );
+      }
+    }
+
+    if (msg.type === 'event' && msg.name === 'modes_update') {
+      const modes = extractModeStateFromPayload(msg.payload);
+      if (modes) {
+        session.updateMetadata((currentMetadata) =>
+          mergeAcpSessionConfigIntoMetadata(currentMetadata, { modes }),
+        );
+      }
+    }
+
+    if (msg.type === 'event' && msg.name === 'models_update') {
+      const models = extractModelStateFromPayload(msg.payload);
+      if (models) {
+        session.updateMetadata((currentMetadata) =>
+          mergeAcpSessionConfigIntoMetadata(currentMetadata, { models }),
+        );
+      }
+    }
+
+    if (msg.type === 'event' && msg.name === 'current_mode_update') {
+      const currentModeId = extractCurrentModeIdFromPayload(msg.payload);
+      if (currentModeId) {
+        session.updateMetadata((currentMetadata) =>
+          mergeAcpSessionConfigIntoMetadata(currentMetadata, { currentModeId }),
+        );
+      }
     }
 
     if (msg.type === 'status') {

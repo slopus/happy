@@ -18,6 +18,7 @@ import {
   type RequestPermissionResponse,
   type InitializeRequest,
   type NewSessionRequest,
+  type NewSessionResponse,
   type PromptRequest,
   type ContentBlock,
 } from '@agentclientprotocol/sdk';
@@ -784,6 +785,7 @@ export class AcpBackend implements AgentBackend {
       );
       this.acpSessionId = sessionResponse.sessionId;
       logger.debug(`[AcpBackend] Session created: ${this.acpSessionId}`);
+      this.emitInitialSessionMetadata(sessionResponse);
 
       this.emitIdleStatus();
 
@@ -841,6 +843,37 @@ export class AcpBackend implements AgentBackend {
     };
   }
 
+  private emitInitialSessionMetadata(sessionResponse: NewSessionResponse): void {
+    if (Array.isArray(sessionResponse.configOptions)) {
+      this.emit({
+        type: 'event',
+        name: 'config_options_update',
+        payload: { configOptions: sessionResponse.configOptions },
+      });
+    }
+
+    if (sessionResponse.modes) {
+      this.emit({
+        type: 'event',
+        name: 'modes_update',
+        payload: sessionResponse.modes,
+      });
+      this.emit({
+        type: 'event',
+        name: 'current_mode_update',
+        payload: { currentModeId: sessionResponse.modes.currentModeId },
+      });
+    }
+
+    if (sessionResponse.models) {
+      this.emit({
+        type: 'event',
+        name: 'models_update',
+        payload: sessionResponse.models,
+      });
+    }
+  }
+
   private handleSessionUpdate(params: SessionNotification): void {
     const notification = params as ExtendedSessionNotification;
     const update = notification.update;
@@ -851,6 +884,7 @@ export class AcpBackend implements AgentBackend {
     }
 
     const sessionUpdateType = update.sessionUpdate;
+    const updateType = sessionUpdateType as string | undefined;
 
     logger.debug(`[AcpBackend] sessionUpdate: ${sessionUpdateType}`, JSON.stringify(update));
     if (this.options.verbose) {
@@ -895,6 +929,30 @@ export class AcpBackend implements AgentBackend {
       return;
     }
 
+    if (updateType === 'config_option_update' || updateType === 'config_options_update') {
+      const configOptions = (update as { configOptions?: unknown }).configOptions;
+      if (Array.isArray(configOptions)) {
+        this.emit({
+          type: 'event',
+          name: 'config_options_update',
+          payload: { configOptions },
+        });
+      }
+      return;
+    }
+
+    if (updateType === 'current_mode_update') {
+      const currentModeId = (update as { currentModeId?: unknown }).currentModeId;
+      if (typeof currentModeId === 'string' && currentModeId.length > 0) {
+        this.emit({
+          type: 'event',
+          name: 'current_mode_update',
+          payload: { currentModeId },
+        });
+      }
+      return;
+    }
+
     // Handle legacy and auxiliary update types
     handleLegacyMessageChunk(update as SessionUpdate, ctx);
     handlePlanUpdate(update as SessionUpdate, ctx);
@@ -902,14 +960,22 @@ export class AcpBackend implements AgentBackend {
 
     // Log unhandled session update types for debugging
     // Cast to string to avoid TypeScript errors (SDK types don't include all Gemini-specific update types)
-    const updateTypeStr = sessionUpdateType as string;
-    const handledTypes = ['agent_message_chunk', 'tool_call_update', 'agent_thought_chunk', 'tool_call'];
-    if (updateTypeStr &&
-        !handledTypes.includes(updateTypeStr) &&
+    const handledTypes = [
+      'agent_message_chunk',
+      'tool_call_update',
+      'agent_thought_chunk',
+      'tool_call',
+      'available_commands_update',
+      'config_option_update',
+      'config_options_update',
+      'current_mode_update',
+    ];
+    if (updateType &&
+        !handledTypes.includes(updateType) &&
         !update.messageChunk &&
         !update.plan &&
         !update.thinking) {
-      logger.debug(`[AcpBackend] Unhandled session update type: ${updateTypeStr}`, JSON.stringify(update, null, 2));
+      logger.debug(`[AcpBackend] Unhandled session update type: ${updateType}`, JSON.stringify(update, null, 2));
     }
   }
 
