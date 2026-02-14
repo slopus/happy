@@ -26,7 +26,7 @@ const actions = [
   {
     id: "developer-build",
     label: "Developer build",
-    description: "Run non-store development and preview builds",
+    description: "Run development/preview builds plus TestFlight store submissions",
     scripts: ["release:build:developer"],
   },
   {
