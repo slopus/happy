@@ -136,7 +136,7 @@ const ChatListInternal = React.memo((props: {
                 keyExtractor={keyExtractor}
                 maintainVisibleContentPosition={{
                     minIndexForVisible: 0,
-                    autoscrollToTopThreshold: 10,
+                    autoscrollToTopThreshold: 100,
                 }}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
