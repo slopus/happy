@@ -5,6 +5,24 @@ import { z } from "zod";
 //
 
 export const MetadataSchema = z.object({
+    models: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string().nullish(),
+    })).optional(),
+    currentModelCode: z.string().optional(),
+    operatingModes: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string().nullish(),
+    })).optional(),
+    currentOperatingModeCode: z.string().optional(),
+    thoughtLevels: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string().nullish(),
+    })).optional(),
+    currentThoughtLevelCode: z.string().optional(),
     path: z.string(),
     host: z.string(),
     version: z.string().optional(),

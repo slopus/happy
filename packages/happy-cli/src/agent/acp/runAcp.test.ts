@@ -314,4 +314,81 @@ describe('runAcp', () => {
     expect(mocks.mockSession.close).toHaveBeenCalled();
     expect(mocks.backendState.disposeCalls).toBe(1);
   });
+
+  it('updates session metadata with ACP config options (models and operating modes)', async () => {
+    mocks.backendState.startSessionMessages = [
+      {
+        type: 'event',
+        name: 'config_options_update',
+        payload: {
+          configOptions: [
+            {
+              type: 'select',
+              id: 'mode',
+              name: 'Mode',
+              category: 'mode',
+              currentValue: 'code',
+              options: [
+                { value: 'ask', name: 'Ask', description: 'Q&A mode' },
+                { value: 'code', name: 'Code', description: 'Implementation mode' },
+              ],
+            },
+            {
+              type: 'select',
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              currentValue: 'claude-sonnet',
+              options: [
+                { value: 'claude-sonnet', name: 'Claude Sonnet', description: 'Balanced model' },
+                { value: 'claude-opus', name: 'Claude Opus', description: 'Deep reasoning model' },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'opencode',
+      command: 'opencode',
+      args: ['acp'],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    const metadataHandlers = mocks.mockSession.updateMetadata.mock.calls.map((call) => call[0]);
+    const baseMetadata = {
+      path: '/repo',
+      host: 'host',
+      homeDir: '/home/user',
+      happyHomeDir: '/home/user/.happy',
+      happyLibDir: '/repo/.happy/lib',
+      happyToolsDir: '/repo/.happy/tools',
+    };
+    const appliedMetadata = metadataHandlers.map((handler) => handler(baseMetadata));
+
+    expect(appliedMetadata).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          currentModelCode: 'claude-sonnet',
+          currentOperatingModeCode: 'code',
+          models: [
+            { code: 'claude-sonnet', value: 'Claude Sonnet', description: 'Balanced model' },
+            { code: 'claude-opus', value: 'Claude Opus', description: 'Deep reasoning model' },
+          ],
+          operatingModes: [
+            { code: 'ask', value: 'Ask', description: 'Q&A mode' },
+            { code: 'code', value: 'Code', description: 'Implementation mode' },
+          ],
+        }),
+      ]),
+    );
+  });
 });

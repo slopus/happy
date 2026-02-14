@@ -232,6 +232,16 @@ export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSche
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
+  /**
+   * ACP session config option value (normalized for UI metadata consumers).
+   */
+  // `code` = protocol value ID, `value` = human label
+  models?: Array<{ code: string; value: string; description?: string | null }>,
+  currentModelCode?: string,
+  operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
+  currentOperatingModeCode?: string,
+  thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>,
+  currentThoughtLevelCode?: string,
   path: string,
   host: string,
   version?: string,
