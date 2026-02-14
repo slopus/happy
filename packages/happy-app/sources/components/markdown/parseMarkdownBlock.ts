@@ -91,12 +91,40 @@ export function parseMarkdownBlock(markdown: string) {
         // Code block
         if (trimmed.startsWith('```')) {
             const language = trimmed.slice(3).trim() || null;
+            const supportsNestedFences = language === 'md' || language === 'markdown';
+            let nestedFenceDepth = 0;
             let content = [];
             while (index < lines.length) {
                 const nextLine = lines[index];
-                if (nextLine.trim() === '```') {
-                    index++;
-                    break;
+                const nextTrimmed = nextLine.trim();
+                if (nextTrimmed.startsWith('```')) {
+                    // For markdown code fences, allow nested fenced blocks like:
+                    // ```md
+                    // ```js
+                    // ...
+                    // ```
+                    // ```
+                    if (supportsNestedFences) {
+                        if (nextTrimmed === '```') {
+                            if (nestedFenceDepth === 0) {
+                                index++;
+                                break;
+                            }
+                            nestedFenceDepth--;
+                            content.push(nextLine);
+                            index++;
+                            continue;
+                        }
+                        nestedFenceDepth++;
+                        content.push(nextLine);
+                        index++;
+                        continue;
+                    }
+
+                    if (nextTrimmed === '```') {
+                        index++;
+                        break;
+                    }
                 }
                 content.push(nextLine);
                 index++;
