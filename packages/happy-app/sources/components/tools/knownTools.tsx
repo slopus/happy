@@ -416,7 +416,7 @@ export const knownTools = {
     },
     'WebSearch': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.query === 'string') {
+            if (typeof opts.tool.input?.query === 'string') {
                 return opts.tool.input.query;
             }
             return t('tools.names.webSearch');
@@ -429,7 +429,7 @@ export const knownTools = {
             blocked_domains: z.array(z.string()).optional().describe('Never include results from these domains')
         }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.query === 'string') {
+            if (typeof opts.tool.input?.query === 'string') {
                 const query = opts.tool.input.query.length > 30
                     ? opts.tool.input.query.substring(0, 30) + '...'
                     : opts.tool.input.query;
@@ -437,6 +437,19 @@ export const knownTools = {
             }
             return t('tools.names.webSearch');
         }
+    },
+    'web_search': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input?.query === 'string') {
+                return opts.tool.input.query;
+            }
+            if (typeof opts.tool.result?.query === 'string') {
+                return opts.tool.result.query;
+            }
+            return t('tools.names.webSearch');
+        },
+        icon: ICON_WEB,
+        minimal: true
     },
     'CodexBash': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
