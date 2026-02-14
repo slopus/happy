@@ -6,6 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { useAllMachines, useSessions } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { useCLIDetectionBatch } from '@/hooks/useCLIDetection';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { layout } from '@/components/layout';
@@ -51,6 +52,13 @@ export default function MachinePickerScreen() {
     const sessions = useSessions();
 
     const selectedMachine = machines.find(m => m.id === params.selectedId) || null;
+
+    // Detect CLI availability for all online machines
+    const onlineMachineIds = React.useMemo(
+        () => machines.filter(m => isMachineOnline(m)).map(m => m.id),
+        [machines]
+    );
+    const cliAvailabilityMap = useCLIDetectionBatch(onlineMachineIds);
 
     const handleSelectMachine = (machine: typeof machines[0]) => {
         // Support both callback pattern (feature branch wizard) and navigation params (main)
@@ -135,7 +143,20 @@ export default function MachinePickerScreen() {
                             config={{
                                 getItemId: (machine) => machine.id,
                                 getItemTitle: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                                getItemSubtitle: undefined,
+                                getItemSubtitle: (machine) => {
+                                    if (!isMachineOnline(machine)) return undefined;
+                                    const avail = cliAvailabilityMap[machine.id];
+                                    if (!avail) return undefined;
+                                    if (avail.isDetecting) return 'Detecting CLIs...';
+                                    if (avail.timestamp === 0) return undefined; // detection failed
+                                    const installed = [
+                                        avail.claude && 'claude',
+                                        avail.codex && 'codex',
+                                        avail.gemini && 'gemini',
+                                    ].filter(Boolean);
+                                    if (installed.length === 0) return 'No CLIs detected';
+                                    return installed.join(', ');
+                                },
                                 getItemIcon: (machine) => (
                                     <Ionicons
                                         name="desktop-outline"

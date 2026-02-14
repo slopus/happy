@@ -10,6 +10,31 @@ interface CLIAvailability {
     error?: string; // Detection error message (for debugging)
 }
 
+const CLI_DETECTION_COMMAND =
+    '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
+    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false") && ' +
+    '(command -v gemini >/dev/null 2>&1 && echo "gemini:true" || echo "gemini:false")';
+
+function parseCLIOutput(stdout: string): CLIAvailability {
+    const lines = stdout.trim().split('\n');
+    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = {};
+
+    lines.forEach(line => {
+        const [cli, status] = line.split(':');
+        if (cli && status) {
+            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini'] = status.trim() === 'true';
+        }
+    });
+
+    return {
+        claude: cliStatus.claude ?? null,
+        codex: cliStatus.codex ?? null,
+        gemini: cliStatus.gemini ?? null,
+        isDetecting: false,
+        timestamp: Date.now(),
+    };
+}
+
 /**
  * Detects which CLI tools (claude, codex, gemini) are installed on a remote machine.
  *
@@ -55,62 +80,27 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
             console.log('[useCLIDetection] Starting detection for machineId:', machineId);
 
             try {
-                // Use single bash command to check both CLIs efficiently
-                // command -v is POSIX compliant and more reliable than which
-                const result = await machineBash(
-                    machineId,
-                    '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
-                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false") && ' +
-                    '(command -v gemini >/dev/null 2>&1 && echo "gemini:true" || echo "gemini:false")',
-                    '/'
-                );
+                const result = await machineBash(machineId, CLI_DETECTION_COMMAND, '/');
 
                 if (cancelled) return;
                 console.log('[useCLIDetection] Result:', { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
 
                 if (result.success && result.exitCode === 0) {
-                    // Parse output: "claude:true\ncodex:false\ngemini:false"
-                    const lines = result.stdout.trim().split('\n');
-                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = {};
-
-                    lines.forEach(line => {
-                        const [cli, status] = line.split(':');
-                        if (cli && status) {
-                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini'] = status.trim() === 'true';
-                        }
-                    });
-
-                    console.log('[useCLIDetection] Parsed CLI status:', cliStatus);
-                    setAvailability({
-                        claude: cliStatus.claude ?? null,
-                        codex: cliStatus.codex ?? null,
-                        gemini: cliStatus.gemini ?? null,
-                        isDetecting: false,
-                        timestamp: Date.now(),
-                    });
+                    setAvailability(parseCLIOutput(result.stdout));
                 } else {
-                    // Detection command failed - CONSERVATIVE fallback (don't assume availability)
                     console.log('[useCLIDetection] Detection failed (success=false or exitCode!=0):', result);
                     setAvailability({
-                        claude: null,
-                        codex: null,
-                        gemini: null,
-                        isDetecting: false,
-                        timestamp: 0,
+                        claude: null, codex: null, gemini: null,
+                        isDetecting: false, timestamp: 0,
                         error: `Detection failed: ${result.stderr || 'Unknown error'}`,
                     });
                 }
             } catch (error) {
                 if (cancelled) return;
-
-                // Network/RPC error - CONSERVATIVE fallback (don't assume availability)
                 console.log('[useCLIDetection] Network/RPC error:', error);
                 setAvailability({
-                    claude: null,
-                    codex: null,
-                    gemini: null,
-                    isDetecting: false,
-                    timestamp: 0,
+                    claude: null, codex: null, gemini: null,
+                    isDetecting: false, timestamp: 0,
                     error: error instanceof Error ? error.message : 'Detection error',
                 });
             }
@@ -125,4 +115,60 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
     }, [machineId]);
 
     return availability;
+}
+
+/**
+ * Detects CLI availability for multiple machines in parallel.
+ * Only runs detection on online machines. Results are keyed by machineId.
+ *
+ * @param machineIds - Array of machine IDs to detect CLIs on (only online ones)
+ * @returns Map of machineId → CLIAvailability
+ */
+export function useCLIDetectionBatch(machineIds: string[]): Record<string, CLIAvailability> {
+    const [availabilityMap, setAvailabilityMap] = useState<Record<string, CLIAvailability>>({});
+
+    // Stabilize the dependency — machineIds is a new array ref each render
+    const machineIdsKey = machineIds.slice().sort().join(',');
+
+    useEffect(() => {
+        const ids = machineIdsKey ? machineIdsKey.split(',') : [];
+        if (ids.length === 0) {
+            setAvailabilityMap({});
+            return;
+        }
+
+        let cancelled = false;
+
+        // Mark all as detecting synchronously
+        const detecting: Record<string, CLIAvailability> = {};
+        for (const id of ids) {
+            detecting[id] = { claude: null, codex: null, gemini: null, isDetecting: true, timestamp: 0 };
+        }
+        setAvailabilityMap(detecting);
+
+        // Detect each machine independently (not awaiting Promise.all)
+        for (const machineId of ids) {
+            machineBash(machineId, CLI_DETECTION_COMMAND, '/').then(result => {
+                if (cancelled) return;
+                if (result.success && result.exitCode === 0) {
+                    setAvailabilityMap(prev => ({ ...prev, [machineId]: parseCLIOutput(result.stdout) }));
+                } else {
+                    setAvailabilityMap(prev => ({
+                        ...prev,
+                        [machineId]: { claude: null, codex: null, gemini: null, isDetecting: false, timestamp: 0 },
+                    }));
+                }
+            }).catch(() => {
+                if (cancelled) return;
+                setAvailabilityMap(prev => ({
+                    ...prev,
+                    [machineId]: { claude: null, codex: null, gemini: null, isDetecting: false, timestamp: 0 },
+                }));
+            });
+        }
+
+        return () => { cancelled = true; };
+    }, [machineIdsKey]);
+
+    return availabilityMap;
 }

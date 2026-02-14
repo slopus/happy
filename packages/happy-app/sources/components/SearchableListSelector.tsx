@@ -161,11 +161,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingVertical: COMPACT_ITEM_PADDING,
         minHeight: 0, // Override Item's default minHeight (44-56px) for compact mode
     },
-    itemBackground: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: ITEM_BORDER_RADIUS,
-        marginBottom: ITEM_SPACING_GAP,
-    },
     showMoreTitle: {
         textAlign: 'center',
         color: theme.colors.button.primary.background,
@@ -438,7 +433,6 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 hideSelectedCheckmark={true}
                 showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
                 style={[
-                    styles.itemBackground,
                     config.compactItems ? styles.compactItemStyle : undefined,
                     isSelected ? styles.selectedItemStyle : undefined
                 ]}
@@ -615,7 +609,6 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         hideSelectedCheckmark={true}
                                         showDivider={!isLast}
                                         style={[
-                                            styles.itemBackground,
                                             config.compactItems ? styles.compactItemStyle : undefined,
                                             isSelected ? styles.selectedItemStyle : undefined
                                         ]}
