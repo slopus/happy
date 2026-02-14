@@ -6,7 +6,6 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
-import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
@@ -57,7 +56,7 @@ export function ProfileEditForm({
     const [useStartupScript, setUseStartupScript] = React.useState(!!profile.startupBashScript);
     const [startupScript, setStartupScript] = React.useState(profile.startupBashScript || '');
     const [defaultSessionType, setDefaultSessionType] = React.useState<'simple' | 'worktree'>(profile.defaultSessionType || 'simple');
-    const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>((profile.defaultPermissionMode as PermissionMode) || 'default');
+    const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<NonNullable<AIBackendProfile['defaultPermissionMode']>>(profile.defaultPermissionMode || 'default');
     const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
         if (profile.compatibility.claude && !profile.compatibility.codex) return 'claude';
         if (profile.compatibility.codex && !profile.compatibility.claude) return 'codex';
@@ -231,10 +230,10 @@ export function ProfileEditForm({
                     </Text>
                     <ItemGroup title="">
                         {[
-                            { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                            { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                            { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                            { value: 'bypassPermissions' as PermissionMode, label: 'Yolo', description: 'Skip all permissions', icon: 'flash-outline' },
+                            { value: 'default', label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
+                            { value: 'acceptEdits', label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
+                            { value: 'plan', label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
+                            { value: 'bypassPermissions', label: 'Yolo', description: 'Skip all permissions', icon: 'flash-outline' },
                         ].map((option, index, array) => (
                             <Item
                                 key={option.value}
@@ -254,7 +253,7 @@ export function ProfileEditForm({
                                         color={theme.colors.button.primary.tint}
                                     />
                                 ) : null}
-                                onPress={() => setDefaultPermissionMode(option.value)}
+                                onPress={() => setDefaultPermissionMode(option.value as NonNullable<AIBackendProfile['defaultPermissionMode']>)}
                                 showChevron={false}
                                 selected={defaultPermissionMode === option.value}
                                 showDivider={index < array.length - 1}
