@@ -374,6 +374,10 @@ function NewSessionWizard() {
 
     // Session details state
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
+        // First try the persisted draft (saved immediately on selection)
+        if (persistedDraft?.selectedMachineId && machines.find(m => m.id === persistedDraft.selectedMachineId)) {
+            return persistedDraft.selectedMachineId;
+        }
         if (machines.length > 0) {
             if (recentMachinePaths.length > 0) {
                 for (const recent of recentMachinePaths) {
@@ -406,6 +410,10 @@ function NewSessionWizard() {
     //
 
     const [selectedPath, setSelectedPath] = React.useState<string>(() => {
+        // First try the persisted draft (saved immediately on selection)
+        if (persistedDraft?.selectedPath) {
+            return persistedDraft.selectedPath;
+        }
         return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
     });
     const [sessionPrompt, setSessionPrompt] = React.useState(() => {
