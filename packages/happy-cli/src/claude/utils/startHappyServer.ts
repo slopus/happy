@@ -31,66 +31,101 @@ export async function startHappyServer(client: ApiSessionClient) {
     };
 
     //
-    // Create the MCP server
+    // Build a fresh MCP server per HTTP request.
     //
+    // We intentionally run in stateless mode (no session IDs) because some
+    // clients re-send initialize and do not keep MCP session headers.
+    // In recent MCP SDK versions, stateless transports are single-use; reusing
+    // one transport across requests now throws and surfaces as
+    // "Error POSTing to endpoint" on clients.
+    //
+    const createMcpServer = () => {
+        const mcp = new McpServer({
+            name: "Happy MCP",
+            version: "1.0.0",
+        });
 
-    const mcp = new McpServer({
-        name: "Happy MCP",
-        version: "1.0.0",
-    });
+        mcp.registerTool('change_title', {
+            description: 'Change the title of the current chat session',
+            title: 'Change Chat Title',
+            inputSchema: {
+                title: z.string().describe('The new title for the chat session'),
+            },
+        }, async (args) => {
+            const response = await handler(args.title);
+            logger.debug('[happyMCP] Response:', response);
+            
+            if (response.success) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: `Successfully changed chat title to: "${args.title}"`,
+                        },
+                    ],
+                    isError: false,
+                };
+            } else {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: `Failed to change chat title: ${response.error || 'Unknown error'}`,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        });
 
-    mcp.registerTool('change_title', {
-        description: 'Change the title of the current chat session',
-        title: 'Change Chat Title',
-        inputSchema: {
-            title: z.string().describe('The new title for the chat session'),
-        },
-    }, async (args) => {
-        const response = await handler(args.title);
-        logger.debug('[happyMCP] Response:', response);
-        
-        if (response.success) {
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: `Successfully changed chat title to: "${args.title}"`,
-                    },
-                ],
-                isError: false,
-            };
-        } else {
-            return {
-                content: [
-                    {
-                        type: 'text',
-                        text: `Failed to change chat title: ${response.error || 'Unknown error'}`,
-                    },
-                ],
-                isError: true,
-            };
-        }
-    });
-
-    const transport = new StreamableHTTPServerTransport({
-        // NOTE: Returning session id here will result in claude
-        // sdk spawn to fail with `Invalid Request: Server already initialized`
-        sessionIdGenerator: undefined
-    });
-    await mcp.connect(transport);
+        return mcp;
+    };
 
     //
     // Create the HTTP server
     //
 
     const server = createServer(async (req, res) => {
+        const mcp = createMcpServer();
+        const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined
+        });
+
+        let cleanedUp = false;
+        const cleanup = async () => {
+            if (cleanedUp) {
+                return;
+            }
+            cleanedUp = true;
+
+            try {
+                await transport.close();
+            } catch (error) {
+                logger.debug('[happyMCP] Error closing transport:', error);
+            }
+
+            try {
+                await mcp.close();
+            } catch (error) {
+                logger.debug('[happyMCP] Error closing server:', error);
+            }
+        };
+
+        res.once('close', () => {
+            cleanup().catch((error) => {
+                logger.debug('[happyMCP] Error during request cleanup:', error);
+            });
+        });
+
         try {
+            await mcp.connect(transport);
             await transport.handleRequest(req, res);
         } catch (error) {
-            logger.debug("Error handling request:", error);
+            logger.debug('[happyMCP] Error handling request:', error);
             if (!res.headersSent) {
                 res.writeHead(500).end();
             }
+            await cleanup();
         }
     });
 
@@ -106,7 +141,6 @@ export async function startHappyServer(client: ApiSessionClient) {
         toolNames: ['change_title'],
         stop: () => {
             logger.debug('[happyMCP] Stopping server');
-            mcp.close();
             server.close();
         }
     }
