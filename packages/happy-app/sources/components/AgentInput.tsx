@@ -324,9 +324,9 @@ const getContextWarning = (contextSize: number, maxContextSize: number, alwaysSh
     const percentageUsed = (contextSize / maxContextSize) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 
-    if (percentageRemaining <= 5) {
+    if (percentageRemaining <= 10) {
         return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
-    } else if (percentageRemaining <= 10) {
+    } else if (percentageRemaining <= 30) {
         return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
     } else if (alwaysShow) {
         // Show context remaining in neutral color when not near limit
