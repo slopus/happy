@@ -358,8 +358,71 @@ describe('runAcp', () => {
     expect(lines.some((line) => line.startsWith('Outgoing raw backend message from opencode: '))).toBe(true);
     expect(lines.some((line) => line.startsWith('Incoming raw envelope for opencode: '))).toBe(true);
     expect(lines).toEqual(expect.arrayContaining([
-      'Outgoing model output from opencode: chars=5 text="hello"',
+      'Outgoing message: "hello"',
       'Tool: ReadFile started (callId=tool-1)',
+    ]));
+  });
+
+  it('logs slash commands, modes, and models line by line when verbose is enabled', async () => {
+    mocks.backendState.startSessionMessages = [
+      {
+        type: 'event',
+        name: 'available_commands',
+        payload: [
+          { name: 'init', description: 'create/update AGENTS.md' },
+          { name: 'review', description: 'review uncommitted changes' },
+        ],
+      },
+      {
+        type: 'event',
+        name: 'modes_update',
+        payload: {
+          availableModes: [
+            { id: 'build', name: 'build', description: 'Executes tools' },
+            { id: 'plan', name: 'plan', description: 'Disallows edit tools' },
+          ],
+          currentModeId: 'build',
+        },
+      },
+      {
+        type: 'event',
+        name: 'models_update',
+        payload: {
+          currentModelId: 'gemini-2.5-pro',
+          availableModels: [
+            { modelId: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+            { modelId: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+          ],
+        },
+      },
+    ];
+
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'gemini',
+      command: 'gemini',
+      args: ['--experimental-acp'],
+      verbose: true,
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    const lines = consoleLines();
+    expect(lines).toEqual(expect.arrayContaining([
+      'Outgoing slash commands from gemini (2):',
+      '  /init - create/update AGENTS.md',
+      '  /review - review uncommitted changes',
+      'Outgoing modes from gemini (2), current=build:',
+      '  mode=build name=build - Executes tools',
+      '  mode=plan name=plan - Disallows edit tools',
+      'Outgoing models from gemini (2), current=gemini-2.5-pro:',
+      '  model=gemini-2.5-pro name=Gemini 2.5 Pro',
+      '  model=gemini-2.5-flash name=Gemini 2.5 Flash',
     ]));
   });
 
