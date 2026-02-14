@@ -390,6 +390,12 @@ function NewSessionWizard() {
         sync.applySettings({ lastUsedPermissionMode: mode });
     }, []);
 
+    const handleModelModeChange = React.useCallback((mode: ModelMode) => {
+        setModelMode(mode);
+        // Save the new selection immediately
+        sync.applySettings({ lastUsedModelMode: mode });
+    }, []);
+
     //
     // Path selection
     //
@@ -750,7 +756,7 @@ function NewSessionWizard() {
     // Reset model mode when agent type changes to appropriate default
     React.useEffect(() => {
         if (!isModelModeForAgent(agentType, modelMode)) {
-            setModelMode('default');
+            handleModelModeChange('default');
         }
     }, [agentType, modelMode]);
 
@@ -1040,7 +1046,6 @@ function NewSessionWizard() {
                 lastUsedAgent: agentType,
                 lastUsedProfile: selectedProfileId,
                 lastUsedPermissionMode: permissionMode,
-                lastUsedModelMode: modelMode,
             });
 
             // Get environment variables from selected profile
@@ -1193,7 +1198,7 @@ function NewSessionWizard() {
                                 permissionMode={permissionMode}
                                 onPermissionModeChange={handlePermissionModeChange}
                                 modelMode={modelMode}
-                                onModelModeChange={setModelMode}
+                                onModelModeChange={handleModelModeChange}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
@@ -1951,7 +1956,7 @@ function NewSessionWizard() {
                             permissionMode={permissionMode}
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
-                            onModelModeChange={setModelMode}
+                            onModelModeChange={handleModelModeChange}
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}

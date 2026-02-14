@@ -550,6 +550,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     });
     const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
     const [modelMode, setModelMode] = useState<ModelMode>('default');
+    const handleModelModeChange = React.useCallback((mode: ModelMode) => {
+        setModelMode(mode);
+        sync.applySettings({ lastUsedModelMode: mode });
+    }, []);
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
         return lastUsedProfile;
     });
@@ -1663,7 +1667,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                             color={theme.colors.button.primary.background}
                                         />
                                     ) : null}
-                                    onPress={() => setModelMode(option.value as ModelMode)}
+                                    onPress={() => handleModelModeChange(option.value as ModelMode)}
                                     showChevron={false}
                                     selected={modelMode === option.value}
                                     showDivider={index < array.length - 1}
