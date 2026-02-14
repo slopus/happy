@@ -32,6 +32,42 @@ import type { SessionConfigOption, SessionModeState, SessionModelState } from '@
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 const ACP_EVENT_PREVIEW_CHARS = 240;
 const ACP_RAW_PREVIEW_CHARS = 2000;
+const ACP_COLOR_RESET = '\u001b[0m';
+const ACP_LOG_COLORS = {
+  muted: '\u001b[90m',
+  error: '\u001b[31m',
+  incoming: '\u001b[32m',
+  outgoing: '\u001b[34m',
+  tool: '\u001b[38;5;208m',
+} as const;
+
+type AcpLogKind = keyof typeof ACP_LOG_COLORS;
+type AcpFormattedLog = {
+  kind: AcpLogKind;
+  text: string;
+};
+
+function shouldUseColoredAcpLogs(): boolean {
+  return process.stdout.isTTY === true && process.env.NO_COLOR === undefined;
+}
+
+function formatAcpTime(date: Date = new Date()): string {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function colorizeAcpLine(kind: AcpLogKind, line: string): string {
+  if (!shouldUseColoredAcpLogs()) {
+    return line;
+  }
+  return `${ACP_LOG_COLORS[kind]}${line}${ACP_COLOR_RESET}`;
+}
+
+function logAcp(kind: AcpLogKind, message: string): void {
+  const line = `[${formatAcpTime()}] ${message}`;
+  console.log(colorizeAcpLine(kind, line));
+}
 
 function toSingleLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -72,44 +108,160 @@ function extractThinkingText(payload: unknown): string {
   return '';
 }
 
-function formatAcpMessageForFrontend(msg: AgentMessage): string | null {
+function formatAcpMessageForFrontend(agentName: string, msg: AgentMessage, detailed: boolean): AcpFormattedLog | null {
   switch (msg.type) {
     case 'status':
       return null;
     case 'model-output': {
       const text = msg.textDelta ?? msg.fullText ?? '';
-      return `event:model-output chars=${text.length} text=${formatTextForConsole(text)}`;
+      if (!detailed) {
+        return {
+          kind: 'outgoing',
+          text: `Outgoing message: ${formatTextForConsole(text)}`,
+        };
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing model output from ${agentName}: chars=${text.length} text=${formatTextForConsole(text)}`,
+      };
     }
     case 'tool-call':
-      return `event:tool-call callId=${msg.callId} tool=${msg.toolName} args=${formatUnknownForConsole(msg.args, ACP_EVENT_PREVIEW_CHARS)}`;
+      return {
+        kind: 'tool',
+        text: `Tool: ${msg.toolName} started (callId=${msg.callId})`,
+      };
     case 'tool-result':
-      return `event:tool-result callId=${msg.callId} tool=${msg.toolName} result=${formatUnknownForConsole(msg.result, ACP_EVENT_PREVIEW_CHARS)}`;
+      return {
+        kind: 'tool',
+        text: `Tool: ${msg.toolName} completed (callId=${msg.callId})`,
+      };
     case 'permission-request':
-      return `event:permission-request id=${msg.id} reason=${msg.reason}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing permission request from ${agentName}: id=${msg.id} reason=${msg.reason}`,
+      };
     case 'permission-response':
-      return `event:permission-response id=${msg.id} approved=${msg.approved}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing permission response from ${agentName}: id=${msg.id} approved=${msg.approved}`,
+      };
     case 'fs-edit':
-      return `event:fs-edit description=${formatTextForConsole(msg.description)}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing fs edit from ${agentName}: description=${formatTextForConsole(msg.description)}`,
+      };
     case 'terminal-output':
-      return `event:terminal-output text=${formatTextForConsole(msg.data)}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing terminal output from ${agentName}: text=${formatTextForConsole(msg.data)}`,
+      };
     case 'event': {
       if (msg.name === 'thinking') {
         const thinkingText = extractThinkingText(msg.payload);
-        return `event:thinking chars=${thinkingText.length} text=${formatTextForConsole(thinkingText)}`;
+        if (!detailed) {
+          return {
+            kind: 'muted',
+            text: `Thinking: ${formatTextForConsole(thinkingText)}`,
+          };
+        }
+        return {
+          kind: 'muted',
+          text: `Outgoing thinking from ${agentName}: chars=${thinkingText.length} text=${formatTextForConsole(thinkingText)}`,
+        };
       }
-      return `event:custom name=${msg.name} payload=${formatUnknownForConsole(msg.payload, ACP_EVENT_PREVIEW_CHARS)}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing event from ${agentName}: name=${msg.name} payload=${formatUnknownForConsole(msg.payload, ACP_EVENT_PREVIEW_CHARS)}`,
+      };
     }
     case 'token-count':
-      return `event:token-count data=${formatUnknownForConsole(msg, ACP_EVENT_PREVIEW_CHARS)}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing token count from ${agentName}: data=${formatUnknownForConsole(msg, ACP_EVENT_PREVIEW_CHARS)}`,
+      };
     case 'exec-approval-request':
-      return `event:exec-approval-request callId=${msg.call_id}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing exec approval request from ${agentName}: callId=${msg.call_id}`,
+      };
     case 'patch-apply-begin':
-      return `event:patch-apply-begin callId=${msg.call_id} autoApproved=${msg.auto_approved === true}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing patch apply begin from ${agentName}: callId=${msg.call_id} autoApproved=${msg.auto_approved === true}`,
+      };
     case 'patch-apply-end':
-      return `event:patch-apply-end callId=${msg.call_id} success=${msg.success}`;
+      if (!detailed) {
+        return null;
+      }
+      return {
+        kind: 'muted',
+        text: `Outgoing patch apply end from ${agentName}: callId=${msg.call_id} success=${msg.success}`,
+      };
     default:
       return null;
   }
+}
+
+function formatEnvelopeForServerLog(agentName: string, envelope: SessionEnvelope): AcpFormattedLog {
+  if (envelope.ev.t === 'text') {
+    const thinkingPrefix = envelope.ev.thinking ? 'thinking' : 'text';
+    return {
+      kind: 'incoming',
+      text: `Incoming ${thinkingPrefix} prompt for ${agentName}: ${formatUnknownForConsole(envelope.ev.text, ACP_EVENT_PREVIEW_CHARS)}`,
+    };
+  }
+  if (envelope.ev.t === 'tool-call-start') {
+    return {
+      kind: 'tool',
+      text: `Tool start sent to server from ${agentName}: tool=${envelope.ev.name} callId=${envelope.ev.call} args=${formatUnknownForConsole(envelope.ev.args, ACP_EVENT_PREVIEW_CHARS)}`,
+    };
+  }
+  if (envelope.ev.t === 'tool-call-end') {
+    return {
+      kind: 'tool',
+      text: `Tool end sent to server from ${agentName}: callId=${envelope.ev.call}`,
+    };
+  }
+  if (envelope.ev.t === 'turn-start') {
+    return {
+      kind: 'incoming',
+      text: `Incoming turn start for ${agentName}`,
+    };
+  }
+  if (envelope.ev.t === 'turn-end') {
+    return {
+      kind: 'incoming',
+      text: `Incoming turn end for ${agentName}: status=${envelope.ev.status}`,
+    };
+  }
+  return {
+    kind: 'incoming',
+    text: `Incoming ${envelope.ev.t} for ${agentName}: ${formatUnknownForConsole(envelope.ev, ACP_EVENT_PREVIEW_CHARS)}`,
+  };
 }
 
 type AcpSwitchMode = {
@@ -310,7 +462,7 @@ export async function runAcp(opts: {
   });
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
-    console.log(`[${opts.agentName}] session: ${response.id}`);
+    logAcp('muted', `Happy Session ID: ${response.id}`);
   }
 
   let session: ApiSessionClient;
@@ -407,12 +559,13 @@ export async function runAcp(opts: {
 
   const sendEnvelopes = (envelopes: SessionEnvelope[]) => {
     for (const envelope of envelopes) {
-      const evType = envelope.ev.t === 'text' && (envelope.ev as { thinking?: boolean }).thinking ? 'thinking' : envelope.ev.t;
-      const evPreview = envelope.ev.t === 'text' ? ` ${formatUnknownForConsole((envelope.ev as { text?: string }).text ?? '', ACP_EVENT_PREVIEW_CHARS)}` : '';
-      console.log(`[${opts.agentName}] >> ${evType}${evPreview}`);
+      if (verbose) {
+        const formatted = formatEnvelopeForServerLog(opts.agentName, envelope);
+        logAcp('muted', formatted.text);
+      }
       session.sendSessionProtocolMessage(envelope);
       if (verbose) {
-        console.log(`[${opts.agentName}] raw:envelope ${formatUnknownForConsole(envelope, ACP_RAW_PREVIEW_CHARS)}`);
+        logAcp('muted', `Incoming raw envelope for ${opts.agentName}: ${formatUnknownForConsole(envelope, ACP_RAW_PREVIEW_CHARS)}`);
       }
     }
   };
@@ -505,13 +658,15 @@ export async function runAcp(opts: {
 
   const onBackendMessage = (msg: AgentMessage) => {
     if (verbose) {
-      console.log(`[${opts.agentName}] raw:backend ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
+      logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
     }
 
     if (msg.type === 'event' && msg.name === 'available_commands') {
       const commands = msg.payload as { name: string; description?: string }[];
       const commandNames = commands.map((c) => c.name);
-      console.log(`[${opts.agentName}] slashCommands: ${commandNames.join(', ')}`);
+      if (verbose) {
+        logAcp('muted', `Outgoing slash commands from ${opts.agentName}: ${commandNames.join(', ')}`);
+      }
       session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
         slashCommands: commandNames,
@@ -572,7 +727,8 @@ export async function runAcp(opts: {
 
     if (msg.type === 'status') {
       const suffix = msg.detail ? `: ${msg.detail}` : '';
-      console.log(`[${opts.agentName}] ${msg.status}${suffix}`);
+      const statusLine = `Status: ${msg.status}${suffix}`;
+      logAcp('muted', statusLine);
       const nextThinking = msg.status === 'running';
       if (thinking !== nextThinking) {
         thinking = nextThinking;
@@ -586,9 +742,9 @@ export async function runAcp(opts: {
       }
     }
 
-    const frontendMessage = formatAcpMessageForFrontend(msg);
+    const frontendMessage = formatAcpMessageForFrontend(opts.agentName, msg, verbose);
     if (frontendMessage) {
-      console.log(`[${opts.agentName}] ${frontendMessage}`);
+      logAcp(frontendMessage.kind, frontendMessage.text);
     }
 
     sendEnvelopes(sessionManager.mapMessage(msg));
@@ -665,7 +821,7 @@ export async function runAcp(opts: {
         throw new Error('ACP session is not started');
       }
 
-      console.log(`[${opts.agentName}] prompt:start ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
+      logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
       const turnEnded = waitForTurnEnd();
       try {
@@ -679,11 +835,13 @@ export async function runAcp(opts: {
         await turnEnded;
         sendEnvelopes(sessionManager.endTurn('completed'));
         session.sendSessionEvent({ type: 'ready' });
-        console.log(`[${opts.agentName}] prompt:done`);
+        if (verbose) {
+          logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
+        }
       } catch (error) {
         sendEnvelopes(sessionManager.endTurn('failed'));
         session.sendSessionEvent({ type: 'ready' });
-        console.log(`[${opts.agentName}] prompt:error ${error instanceof Error ? error.message : String(error)}`);
+        logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
         throw error;
       }
