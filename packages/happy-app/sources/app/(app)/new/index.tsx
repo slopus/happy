@@ -10,7 +10,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { machineSpawnNewSession } from '@/sync/ops';
@@ -261,6 +262,10 @@ function NewSessionWizard() {
     const { theme, rt } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
+    const { height: kbHeight, progress: kbProgress } = useReanimatedKeyboardAnimation();
+    const animatedInputStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: kbHeight.value + safeArea.bottom * kbProgress.value }],
+    }), [safeArea.bottom]);
     const { prompt, dataId, machineId: machineIdParam, path: pathParam } = useLocalSearchParams<{
         prompt?: string;
         dataId?: string;
@@ -1183,12 +1188,9 @@ function NewSessionWizard() {
     // ========================================================================
     if (!useEnhancedSessionWizard) {
         return (
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
-                style={[styles.container, Platform.OS !== 'web' && { paddingTop: 40 }]}
-            >
+            <View style={[styles.container, Platform.OS !== 'web' && { paddingTop: 40 }]}>
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                    <Animated.View style={animatedInputStyle}>
                     {/* Session type selector */}
                     <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', paddingHorizontal: screenWidth > 700 ? 16 : 0, alignSelf: 'center' }}>
@@ -1200,7 +1202,7 @@ function NewSessionWizard() {
                     </View>
 
                     {/* AgentInput with inline chips - sticky at bottom */}
-                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
+                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: safeArea.bottom }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
                             <AgentInput
                                 value={sessionPrompt}
@@ -1237,6 +1239,7 @@ function NewSessionWizard() {
                             />
                         </View>
                     </View>
+                    </Animated.View>
                 </View>
 
                 {/* Hidden file input for web image upload */}
@@ -1258,7 +1261,7 @@ function NewSessionWizard() {
                     onClose={() => setImagePickerSheetVisible(false)}
                     deferItemPress
                 />
-            </KeyboardAvoidingView>
+            </View>
         );
     }
 
@@ -1267,12 +1270,8 @@ function NewSessionWizard() {
     // Full wizard with numbered sections, profile management, CLI detection
     // ========================================================================
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
-            style={styles.container}
-        >
-            <View style={{ flex: 1 }}>
+        <View style={styles.container}>
+            <Animated.View style={[{ flex: 1 }, animatedInputStyle]}>
                 <ScrollView
                     ref={scrollViewRef}
                     style={styles.scrollContainer}
@@ -1934,7 +1933,7 @@ function NewSessionWizard() {
                 </ScrollView>
 
                 {/* Section 5: AgentInput - Sticky at bottom */}
-                <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
+                <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: safeArea.bottom }}>
                     <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
                         <AgentInput
                             value={sessionPrompt}
@@ -1993,8 +1992,8 @@ function NewSessionWizard() {
                     onClose={() => setImagePickerSheetVisible(false)}
                     deferItemPress
                 />
-            </View>
-        </KeyboardAvoidingView>
+            </Animated.View>
+        </View>
     );
 }
 
