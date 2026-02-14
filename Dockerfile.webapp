@@ -4,6 +4,7 @@ FROM node:20-alpine AS deps
 WORKDIR /repo
 
 COPY package.json yarn.lock ./
+COPY scripts ./scripts
 
 RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
 
