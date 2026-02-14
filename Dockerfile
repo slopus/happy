@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y python3 make g++ build-essential && rm 
 WORKDIR /repo
 
 COPY package.json yarn.lock ./
+COPY scripts ./scripts
 
 RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-agent packages/happy-wire
 

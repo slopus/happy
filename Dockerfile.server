@@ -6,11 +6,8 @@ RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential
 
 WORKDIR /repo/packages/happy-server
 
-# Copy only happy-server package.json and prisma schema
-# prisma schema is needed for postinstall script (prisma generate)
-COPY packages/happy-server/package.json ./
-COPY packages/happy-server/prisma ./prisma
-COPY yarn.lock ./
+COPY package.json yarn.lock ./
+COPY scripts ./scripts
 
 RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
 
