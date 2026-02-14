@@ -373,7 +373,7 @@ describe('settings', () => {
                 recentMachinePaths: [],
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
-                lastUsedModelMode: null,
+                lastUsedModelMode: {},
                 profiles: [],
                 lastUsedProfile: null,
                 favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],

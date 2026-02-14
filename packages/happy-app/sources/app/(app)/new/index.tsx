@@ -361,10 +361,13 @@ function NewSessionWizard() {
     // A duplicate unconditional reset here was removed to prevent race conditions.
 
     const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-        if (lastUsedModelMode) {
-            if (isModelModeForAgent(agentType, lastUsedModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            }
+        // Support per-agent object format and legacy string format
+        const saved = lastUsedModelMode;
+        const mode = typeof saved === 'object' && saved !== null
+            ? (saved as Record<string, string>)[agentType]
+            : typeof saved === 'string' ? saved : undefined;
+        if (mode && isModelModeForAgent(agentType, mode)) {
+            return mode as ModelMode;
         }
         return 'default';
     });
@@ -392,9 +395,11 @@ function NewSessionWizard() {
 
     const handleModelModeChange = React.useCallback((mode: ModelMode) => {
         setModelMode(mode);
-        // Save the new selection immediately
-        sync.applySettings({ lastUsedModelMode: mode });
-    }, []);
+        // Save the new selection immediately, per agent type
+        const prev = storage.getState().settings.lastUsedModelMode;
+        const prevObj = typeof prev === 'object' && prev !== null ? prev as Record<string, string> : {};
+        sync.applySettings({ lastUsedModelMode: { ...prevObj, [agentType]: mode } });
+    }, [agentType]);
 
     //
     // Path selection
@@ -753,12 +758,17 @@ function NewSessionWizard() {
         }
     }, [agentType, permissionMode]);
 
-    // Reset model mode when agent type changes to appropriate default
+    // Restore saved model mode when agent type changes
     React.useEffect(() => {
-        if (!isModelModeForAgent(agentType, modelMode)) {
-            handleModelModeChange('default');
+        const saved = storage.getState().settings.lastUsedModelMode;
+        const savedObj = typeof saved === 'object' && saved !== null ? saved as Record<string, string> : {};
+        const savedMode = savedObj[agentType];
+        if (savedMode && isModelModeForAgent(agentType, savedMode)) {
+            setModelMode(savedMode as ModelMode);
+        } else if (!isModelModeForAgent(agentType, modelMode)) {
+            setModelMode('default');
         }
-    }, [agentType, modelMode]);
+    }, [agentType]);
 
     // Scroll to section helpers - for AgentInput button clicks
     const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {

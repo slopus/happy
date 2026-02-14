@@ -14,7 +14,7 @@ import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariabl
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { profileSyncService } from '@/sync/profileSync';
-import { CLAUDE_MODEL_OPTIONS, GEMINI_MODEL_OPTIONS, CODEX_MODEL_OPTIONS, MODEL_MODE_DEFAULT } from '@/constants/modelCatalog';
+import { CLAUDE_MODEL_OPTIONS, GEMINI_MODEL_OPTIONS, CODEX_MODEL_OPTIONS, MODEL_MODE_DEFAULT, isModelModeForAgent } from '@/constants/modelCatalog';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -549,11 +549,22 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         return 'claude';
     });
     const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
-    const [modelMode, setModelMode] = useState<ModelMode>('default');
+    const [modelMode, setModelMode] = useState<ModelMode>(() => {
+        const saved = lastUsedModelMode;
+        const mode = typeof saved === 'object' && saved !== null
+            ? (saved as Record<string, string>)[agentType]
+            : typeof saved === 'string' ? saved : undefined;
+        if (mode && isModelModeForAgent(agentType, mode)) {
+            return mode as ModelMode;
+        }
+        return 'default';
+    });
     const handleModelModeChange = React.useCallback((mode: ModelMode) => {
         setModelMode(mode);
-        sync.applySettings({ lastUsedModelMode: mode });
-    }, []);
+        const prev = storage.getState().settings.lastUsedModelMode;
+        const prevObj = typeof prev === 'object' && prev !== null ? prev as Record<string, string> : {};
+        sync.applySettings({ lastUsedModelMode: { ...prevObj, [agentType]: mode } });
+    }, [agentType]);
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
         return lastUsedProfile;
     });
