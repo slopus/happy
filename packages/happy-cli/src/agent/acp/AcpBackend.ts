@@ -46,6 +46,23 @@ const RETRY_CONFIG = {
   /** Maximum delay between retries in ms */
   maxDelayMs: 5000,
 } as const;
+const ACP_MUTED_COLOR = '\u001b[90m';
+const ACP_COLOR_RESET = '\u001b[0m';
+
+function formatAcpTime(date: Date = new Date()): string {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function logAcpBackendMuted(message: string): void {
+  const line = `[${formatAcpTime()}] ${message}`;
+  if (process.stdout.isTTY === true && process.env.NO_COLOR === undefined) {
+    console.log(`${ACP_MUTED_COLOR}${line}${ACP_COLOR_RESET}`);
+    return;
+  }
+  console.log(line);
+}
 import {
   type TransportHandler,
   type StderrContext,
@@ -888,7 +905,9 @@ export class AcpBackend implements AgentBackend {
 
     logger.debug(`[AcpBackend] sessionUpdate: ${sessionUpdateType}`, JSON.stringify(update));
     if (this.options.verbose) {
-      console.log(`[${this.options.agentName}] raw:sessionUpdate ${JSON.stringify(update)}`);
+      logAcpBackendMuted(
+        `Incoming raw session update from ${this.options.agentName}: ${JSON.stringify(update)}`,
+      );
     }
 
     const ctx = this.createHandlerContext();

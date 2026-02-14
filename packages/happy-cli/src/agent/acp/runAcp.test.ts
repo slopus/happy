@@ -184,7 +184,11 @@ vi.mock('./AcpBackend', () => ({
 import { runAcp } from './runAcp';
 
 describe('runAcp', () => {
-  const consoleLines = () => mocks.mockConsoleLog.mock.calls.map((args) => args.map((arg) => String(arg)).join(' '));
+  const stripAnsi = (line: string) => line.replace(/\u001b\[[0-9;]*m/g, '');
+  const stripLogPrefix = (line: string) => stripAnsi(line).replace(/^\[\d{2}:\d{2}\]\s*/, '');
+  const consoleLines = () => mocks.mockConsoleLog.mock.calls
+    .map((args) => args.map((arg) => String(arg)).join(' '))
+    .map(stripLogPrefix);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -253,11 +257,13 @@ describe('runAcp', () => {
     expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'ready' });
     expect(mocks.mockSession.close).toHaveBeenCalled();
     expect(consoleLines()).toEqual(expect.arrayContaining([
-      '[opencode] running',
-      '[opencode] event:model-output chars=5 text="hello"',
-      '[opencode] event:tool-call callId=tool-1 tool=ReadFile args={"path":"README.md"}',
-      '[opencode] event:tool-result callId=tool-1 tool=ReadFile result={"ok":true}',
-      '[opencode] idle',
+      'Happy Session ID: session-1',
+      'Incoming prompt: Build a test plan',
+      'Status: running',
+      'Outgoing message: "hello"',
+      'Tool: ReadFile started (callId=tool-1)',
+      'Tool: ReadFile completed (callId=tool-1)',
+      'Status: idle',
     ]));
   });
 
@@ -283,6 +289,44 @@ describe('runAcp', () => {
 
     await mocks.getKillHandler()!();
     await runPromise;
+  });
+
+  it('emits thinking messages in default mode', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'opencode',
+      command: 'opencode',
+      args: ['--acp'],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+
+    const listener = mocks.backendState.listeners[0];
+    const prompts = mocks.backendState.prompts;
+    if (!listener) {
+      throw new Error('Expected backend listener to be registered');
+    }
+
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Think first' },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toHaveLength(1);
+    });
+
+    listener({ type: 'event', name: 'thinking', payload: { text: 'Analyzing request' } });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    expect(prompts).toHaveLength(1);
+    expect(consoleLines()).toEqual(expect.arrayContaining([
+      'Thinking: "Analyzing request"',
+    ]));
   });
 
   it('emits raw backend and envelope logs when verbose is enabled', async () => {
@@ -311,11 +355,11 @@ describe('runAcp', () => {
     await runPromise;
 
     const lines = consoleLines();
-    expect(lines.some((line) => line.startsWith('[opencode] raw:backend '))).toBe(true);
-    expect(lines.some((line) => line.startsWith('[opencode] raw:envelope '))).toBe(true);
+    expect(lines.some((line) => line.startsWith('Outgoing raw backend message from opencode: '))).toBe(true);
+    expect(lines.some((line) => line.startsWith('Incoming raw envelope for opencode: '))).toBe(true);
     expect(lines).toEqual(expect.arrayContaining([
-      '[opencode] event:model-output chars=5 text="hello"',
-      '[opencode] event:tool-call callId=tool-1 tool=ReadFile args={"path":"README.md"}',
+      'Outgoing model output from opencode: chars=5 text="hello"',
+      'Tool: ReadFile started (callId=tool-1)',
     ]));
   });
 
@@ -331,7 +375,7 @@ describe('runAcp', () => {
       args: ['acp'],
     });
 
-    expect(mocks.mockConsoleLog).toHaveBeenCalledWith('[opencode] error: spawn opencode ENOENT');
+    expect(consoleLines()).toContain('Status: error: spawn opencode ENOENT');
     expect(mocks.mockSession.close).toHaveBeenCalled();
     expect(mocks.backendState.disposeCalls).toBe(1);
   });
