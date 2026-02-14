@@ -214,7 +214,7 @@ const REASONING_EFFORT_LABELS: Record<string, string> = {
     low: 'Low',
     medium: 'Medium',
     high: 'High',
-    xhigh: 'Very High',
+    xhigh: 'XHigh',
 };
 
 export function resolveModelSelectionForFlavor(flavor: string | null | undefined, modelMode: string): ModelSelection {

@@ -359,7 +359,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return options.map((value) => ({
             value,
             label: value === 'xhigh'
-                ? 'Very High'
+                ? 'XHigh'
                 : value.charAt(0).toUpperCase() + value.slice(1),
         }));
     }, [codexSelection.family]);
