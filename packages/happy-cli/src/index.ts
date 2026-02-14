@@ -94,6 +94,9 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'bye') {
+    console.log('Bye!');
+    process.exit(0);
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
@@ -331,6 +334,60 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       }
 
       await runGemini({credentials, startedBy});
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'acp') {
+    try {
+      const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      const acpArgs: string[] = [];
+      let customCommandMode = false;
+      for (let i = 1; i < args.length; i++) {
+        if (!customCommandMode && args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+          continue;
+        }
+        if (!customCommandMode && args[i] === '--verbose') {
+          verbose = true;
+          continue;
+        }
+        if (args[i] === '--') {
+          customCommandMode = true;
+        }
+        acpArgs.push(args[i]);
+      }
+
+      const resolved = resolveAcpAgentConfig(acpArgs);
+      const { credentials } = await authAndSetupMachineIfNeeded();
+
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      await runAcp({
+        credentials,
+        startedBy,
+        verbose,
+        agentName: resolved.agentName,
+        command: resolved.command,
+        args: resolved.args,
+      });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -577,6 +634,7 @@ ${chalk.bold('Usage:')}
   happy auth              Manage authentication
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
+  happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
   happy notify            Send push notification
@@ -594,6 +652,11 @@ ${chalk.bold('Examples:')}
   happy --js-runtime bun   Use bun instead of node to spawn Claude Code
   happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
+  happy acp gemini         Start Gemini via generic ACP runner
+  happy acp -- opencode --acp
+                           Start a custom ACP command
+  happy acp opencode --verbose
+                           Print raw ACP backend/envelope events
   happy auth login --force Authenticate
   happy doctor             Run diagnostics
 

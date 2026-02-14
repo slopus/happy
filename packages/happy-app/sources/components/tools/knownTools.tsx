@@ -671,6 +671,24 @@ export const knownTools = {
         },
         icon: ICON_TERMINAL,
         isMutable: true,
+        minimal: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const input = opts.tool.input;
+            const title = input?.toolCall?.title;
+            if (typeof title === 'string' && title.trim().length > 0) {
+                return false;
+            }
+
+            const command = input?.command;
+            if (typeof command === 'string' && command.trim().length > 0) {
+                return false;
+            }
+            if (Array.isArray(command) && command.some((part) => typeof part === 'string' && part.trim().length > 0)) {
+                return false;
+            }
+
+            // No command arguments available: keep terminal tool in compact form.
+            return true;
+        },
         input: z.object({}).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Extract description from parentheses at the end

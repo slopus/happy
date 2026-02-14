@@ -160,6 +160,9 @@ export interface AcpBackendOptions {
 
   /** Optional callback to check if prompt has change_title instruction */
   hasChangeTitleInstruction?: (prompt: string) => boolean;
+
+  /** Log raw session updates to console */
+  verbose?: boolean;
 }
 
 /**
@@ -232,6 +235,7 @@ async function withRetry<T>(
     maxAttempts: number;
     baseDelayMs: number;
     maxDelayMs: number;
+    shouldRetry?: (error: Error) => boolean;
     onRetry?: (attempt: number, error: Error) => void;
   }
 ): Promise<T> {
@@ -243,7 +247,8 @@ async function withRetry<T>(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
-      if (attempt < options.maxAttempts) {
+      const shouldRetry = options.shouldRetry ? options.shouldRetry(lastError) : true;
+      if (attempt < options.maxAttempts && shouldRetry) {
         // Calculate delay with exponential backoff
         const delayMs = Math.min(
           options.baseDelayMs * Math.pow(2, attempt - 1),
@@ -254,6 +259,8 @@ async function withRetry<T>(
         options.onRetry?.(attempt, lastError);
 
         await delay(delayMs);
+      } else {
+        break;
       }
     }
   }
@@ -328,6 +335,7 @@ export class AcpBackend implements AgentBackend {
 
     const sessionId = randomUUID();
     this.emit({ type: 'status', status: 'starting' });
+    let startupStatusErrorEmitted = false;
 
     try {
       logger.debug(`[AcpBackend] Starting session: ${sessionId}`);
@@ -365,6 +373,23 @@ export class AcpBackend implements AgentBackend {
         throw new Error('Failed to create stdio pipes');
       }
 
+      let startupFailure: Error | null = null;
+      let startupFailureSettled = false;
+      let rejectStartupFailure: ((error: Error) => void) | null = null;
+      const startupFailurePromise = new Promise<never>((_, reject) => {
+        rejectStartupFailure = (error: Error) => {
+          if (startupFailureSettled) {
+            return;
+          }
+          startupFailureSettled = true;
+          startupFailure = error;
+          reject(error);
+        };
+      });
+      const signalStartupFailure = (error: Error) => {
+        rejectStartupFailure?.(error);
+      };
+
       // Handle stderr output via transport handler
       this.process.stderr.on('data', (data: Buffer) => {
         const text = data.toString();
@@ -397,13 +422,16 @@ export class AcpBackend implements AgentBackend {
       });
 
       this.process.on('error', (err) => {
+        signalStartupFailure(err);
         // Log to file only, not console
         logger.debug(`[AcpBackend] Process error:`, err);
+        startupStatusErrorEmitted = true;
         this.emit({ type: 'status', status: 'error', detail: err.message });
       });
 
       this.process.on('exit', (code, signal) => {
         if (!this.disposed && code !== 0 && code !== null) {
+          signalStartupFailure(new Error(`Exit code: ${code}`));
           logger.debug(`[AcpBackend] Process exited with code ${code}, signal ${signal}`);
           this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
         }
@@ -657,12 +685,20 @@ export class AcpBackend implements AgentBackend {
 
       const initTimeout = this.transport.getInitTimeout();
       logger.debug(`[AcpBackend] Initializing connection (timeout: ${initTimeout}ms)...`);
+      const isNonRetryableStartupError = (error: Error): boolean => {
+        const maybeErr = error as NodeJS.ErrnoException;
+        if (startupFailure && error === startupFailure) {
+          return true;
+        }
+        return maybeErr.code === 'ENOENT' || maybeErr.code === 'EACCES' || maybeErr.code === 'EPIPE';
+      };
 
       await withRetry(
         async () => {
           let timeoutHandle: NodeJS.Timeout | null = null;
           try {
             const result = await Promise.race([
+              startupFailurePromise,
               this.connection!.initialize(initRequest).then((res) => {
                 if (timeoutHandle) {
                   clearTimeout(timeoutHandle);
@@ -688,6 +724,7 @@ export class AcpBackend implements AgentBackend {
           maxAttempts: RETRY_CONFIG.maxAttempts,
           baseDelayMs: RETRY_CONFIG.baseDelayMs,
           maxDelayMs: RETRY_CONFIG.maxDelayMs,
+          shouldRetry: (error) => !isNonRetryableStartupError(error),
         }
       );
       logger.debug(`[AcpBackend] Initialize completed`);
@@ -716,6 +753,7 @@ export class AcpBackend implements AgentBackend {
           let timeoutHandle: NodeJS.Timeout | null = null;
           try {
             const result = await Promise.race([
+              startupFailurePromise,
               this.connection!.newSession(newSessionRequest).then((res) => {
                 if (timeoutHandle) {
                   clearTimeout(timeoutHandle);
@@ -741,6 +779,7 @@ export class AcpBackend implements AgentBackend {
           maxAttempts: RETRY_CONFIG.maxAttempts,
           baseDelayMs: RETRY_CONFIG.baseDelayMs,
           maxDelayMs: RETRY_CONFIG.maxDelayMs,
+          shouldRetry: (error) => !isNonRetryableStartupError(error),
         }
       );
       this.acpSessionId = sessionResponse.sessionId;
@@ -762,11 +801,13 @@ export class AcpBackend implements AgentBackend {
     } catch (error) {
       // Log to file only, not console
       logger.debug('[AcpBackend] Error starting session:', error);
-      this.emit({ 
-        type: 'status', 
-        status: 'error', 
-        detail: error instanceof Error ? error.message : String(error) 
-      });
+      if (!startupStatusErrorEmitted) {
+        this.emit({ 
+          type: 'status', 
+          status: 'error', 
+          detail: error instanceof Error ? error.message : String(error) 
+        });
+      }
       throw error;
     }
   }
@@ -811,16 +852,9 @@ export class AcpBackend implements AgentBackend {
 
     const sessionUpdateType = update.sessionUpdate;
 
-    // Log session updates for debugging (but not every chunk to avoid log spam)
-    if (sessionUpdateType !== 'agent_message_chunk') {
-      logger.debug(`[AcpBackend] Received session update: ${sessionUpdateType}`, JSON.stringify({
-        sessionUpdate: sessionUpdateType,
-        toolCallId: update.toolCallId,
-        status: update.status,
-        kind: update.kind,
-        hasContent: !!update.content,
-        hasLocations: !!update.locations,
-      }, null, 2));
+    logger.debug(`[AcpBackend] sessionUpdate: ${sessionUpdateType}`, JSON.stringify(update));
+    if (this.options.verbose) {
+      console.log(`[${this.options.agentName}] raw:sessionUpdate ${JSON.stringify(update)}`);
     }
 
     const ctx = this.createHandlerContext();
@@ -846,6 +880,18 @@ export class AcpBackend implements AgentBackend {
 
     if (sessionUpdateType === 'tool_call') {
       handleToolCall(update as SessionUpdate, ctx);
+      return;
+    }
+
+    if (sessionUpdateType === 'available_commands_update') {
+      const commands = (update as { availableCommands?: { name: string; description?: string }[] }).availableCommands;
+      if (Array.isArray(commands)) {
+        this.emit({
+          type: 'event',
+          name: 'available_commands',
+          payload: commands,
+        });
+      }
       return;
     }
 

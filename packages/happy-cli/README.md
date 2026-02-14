@@ -56,6 +56,7 @@ happy connect gemini
 - `happy` – Start Claude Code session (default)
 - `happy gemini` – Start Gemini CLI session
 - `happy codex` – Start Codex mode
+- `happy acp` – Start a generic ACP-compatible agent
 
 ### Utility Commands
 
@@ -86,6 +87,15 @@ happy gemini project get          # Show current Google Cloud Project ID
 ```
 
 **Available models:** `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+
+### Generic ACP Commands
+
+```bash
+happy acp gemini                     # Run built-in Gemini ACP command
+happy acp opencode                   # Run built-in OpenCode ACP command
+happy acp opencode --verbose         # Include raw backend/envelope logs
+happy acp -- custom-agent --flag     # Run any ACP-compatible command directly
+```
 
 ### Sandbox Subcommands
 

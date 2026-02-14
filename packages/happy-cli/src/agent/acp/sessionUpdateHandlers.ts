@@ -172,7 +172,7 @@ export function handleAgentMessageChunk(
     ctx.emit({
       type: 'event',
       name: 'thinking',
-      payload: { text },
+      payload: { text, streaming: true },
     });
   } else {
     logger.debug(`[AcpBackend] Received message chunk (length: ${text.length}): ${text.substring(0, 50)}...`);
@@ -226,7 +226,7 @@ export function handleAgentThoughtChunk(
   ctx.emit({
     type: 'event',
     name: 'thinking',
-    payload: { text },
+    payload: { text, streaming: true },
   });
 
   return { handled: true };

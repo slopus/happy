@@ -13,6 +13,8 @@ import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
 
 export async function startHappyServer(client: ApiSessionClient) {
+    logger.debug(`[happyMCP] server:start sessionId=${client.sessionId}`);
+
     // Handler that sends title updates via the client
     const handler = async (title: string) => {
         logger.debug('[happyMCP] Changing title to:', title);
@@ -101,11 +103,13 @@ export async function startHappyServer(client: ApiSessionClient) {
         });
     });
 
+    logger.debug(`[happyMCP] server:ready sessionId=${client.sessionId} url=${baseUrl.toString()}`);
+
     return {
         url: baseUrl.toString(),
         toolNames: ['change_title'],
         stop: () => {
-            logger.debug('[happyMCP] Stopping server');
+            logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
             mcp.close();
             server.close();
         }
