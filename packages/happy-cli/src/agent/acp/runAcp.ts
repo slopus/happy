@@ -48,7 +48,13 @@ type AcpFormattedLog = {
 };
 
 function shouldUseColoredAcpLogs(): boolean {
-  return process.stdout.isTTY === true && process.env.NO_COLOR === undefined;
+  if (process.env.FORCE_COLOR === '0') {
+    return false;
+  }
+  if (process.env.FORCE_COLOR !== undefined) {
+    return true;
+  }
+  return process.stdout.isTTY === true || process.stderr.isTTY === true;
 }
 
 function formatAcpTime(date: Date = new Date()): string {
@@ -98,6 +104,13 @@ function formatTextForConsole(text: string): string {
   return JSON.stringify(truncateForConsole(toSingleLine(text), ACP_EVENT_PREVIEW_CHARS));
 }
 
+function formatOptionalDetail(text: string | undefined, limit = ACP_EVENT_PREVIEW_CHARS): string {
+  if (!text) {
+    return '';
+  }
+  return ` - ${truncateForConsole(toSingleLine(text), limit)}`;
+}
+
 function extractThinkingText(payload: unknown): string {
   if (typeof payload === 'string') {
     return payload;
@@ -114,15 +127,9 @@ function formatAcpMessageForFrontend(agentName: string, msg: AgentMessage, detai
       return null;
     case 'model-output': {
       const text = msg.textDelta ?? msg.fullText ?? '';
-      if (!detailed) {
-        return {
-          kind: 'outgoing',
-          text: `Outgoing message: ${formatTextForConsole(text)}`,
-        };
-      }
       return {
-        kind: 'muted',
-        text: `Outgoing model output from ${agentName}: chars=${text.length} text=${formatTextForConsole(text)}`,
+        kind: 'outgoing',
+        text: `Outgoing message: ${formatTextForConsole(text)}`,
       };
     }
     case 'tool-call':
@@ -170,15 +177,9 @@ function formatAcpMessageForFrontend(agentName: string, msg: AgentMessage, detai
     case 'event': {
       if (msg.name === 'thinking') {
         const thinkingText = extractThinkingText(msg.payload);
-        if (!detailed) {
-          return {
-            kind: 'muted',
-            text: `Thinking: ${formatTextForConsole(thinkingText)}`,
-          };
-        }
         return {
           kind: 'muted',
-          text: `Outgoing thinking from ${agentName}: chars=${thinkingText.length} text=${formatTextForConsole(thinkingText)}`,
+          text: `Thinking: ${formatTextForConsole(thinkingText)}`,
         };
       }
       if (!detailed) {
@@ -321,8 +322,21 @@ function extractConfigSelector(
   configOptions: SessionConfigOption[],
   category: 'mode' | 'model',
 ): AcpConfigSelector | null {
+  const optionMatchesCategory = (option: SessionConfigOption): boolean => {
+    if (option.category === category) {
+      return true;
+    }
+    // Some ACP providers omit category; fallback to id/name heuristics.
+    const id = normalizeComparable(option.id);
+    const name = normalizeComparable(option.name);
+    if (category === 'model') {
+      return id.includes('model') || name.includes('model');
+    }
+    return id.includes('mode') || id.includes('permission') || name.includes('mode') || name.includes('permission');
+  };
+
   for (const option of configOptions) {
-    if (option.type !== 'select' || option.category !== category) {
+    if (option.type !== 'select' || !optionMatchesCategory(option)) {
       continue;
     }
     return {
@@ -499,6 +513,9 @@ export async function runAcp(opts: {
   let modelSelector: AcpConfigSelector | null = null;
   let legacyModes: SessionModeState | null = null;
   let legacyModels: SessionModelState | null = null;
+  let sawSlashCommands = false;
+  let sawModes = false;
+  let sawModels = false;
 
   const happyServer = await startHappyServer(session);
   const mcpServers = {
@@ -664,8 +681,12 @@ export async function runAcp(opts: {
     if (msg.type === 'event' && msg.name === 'available_commands') {
       const commands = msg.payload as { name: string; description?: string }[];
       const commandNames = commands.map((c) => c.name);
+      sawSlashCommands = commands.length > 0;
       if (verbose) {
-        logAcp('muted', `Outgoing slash commands from ${opts.agentName}: ${commandNames.join(', ')}`);
+        logAcp('muted', `Outgoing slash commands from ${opts.agentName} (${commands.length}):`);
+        for (const command of commands) {
+          logAcp('muted', `  /${command.name}${formatOptionalDetail(command.description, 160)}`);
+        }
       }
       session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
@@ -676,8 +697,40 @@ export async function runAcp(opts: {
     if (msg.type === 'event' && msg.name === 'config_options_update') {
       const configOptions = extractConfigOptionsFromPayload(msg.payload);
       if (configOptions) {
+        if (verbose) {
+          logAcp('muted', `Outgoing config options from ${opts.agentName} (${configOptions.length}):`);
+          for (const option of configOptions) {
+            if (option.type === 'select') {
+              const optionValues = flattenSelectOptions(option.options);
+              logAcp('muted', `  config=${option.id} category=${option.category ?? 'unknown'} current=${option.currentValue} options=${optionValues.length}`);
+            } else {
+              logAcp('muted', `  config=${option.id} type=${option.type} category=${option.category ?? 'unknown'}`);
+            }
+          }
+        }
+
         modeSelector = extractConfigSelector(configOptions, 'mode');
         modelSelector = extractConfigSelector(configOptions, 'model');
+        if (verbose) {
+          if (modeSelector) {
+            sawModes = true;
+            logAcp('muted', `Outgoing mode options from ${opts.agentName} (${modeSelector.options.length}), current=${modeSelector.currentCode}:`);
+            for (const option of modeSelector.options) {
+              logAcp('muted', `  mode=${option.code} label=${option.value}`);
+            }
+          } else {
+            logAcp('muted', `Outgoing mode options from ${opts.agentName}: not reported in config options`);
+          }
+          if (modelSelector) {
+            sawModels = true;
+            logAcp('muted', `Outgoing model options from ${opts.agentName} (${modelSelector.options.length}), current=${modelSelector.currentCode}:`);
+            for (const option of modelSelector.options) {
+              logAcp('muted', `  model=${option.code} label=${option.value}`);
+            }
+          } else {
+            logAcp('muted', `Outgoing model options from ${opts.agentName}: not reported in config options`);
+          }
+        }
         session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { configOptions }),
         );
@@ -688,6 +741,13 @@ export async function runAcp(opts: {
       const modes = extractModeStateFromPayload(msg.payload);
       if (modes) {
         legacyModes = modes;
+        sawModes = true;
+        if (verbose) {
+          logAcp('muted', `Outgoing modes from ${opts.agentName} (${modes.availableModes.length}), current=${modes.currentModeId}:`);
+          for (const mode of modes.availableModes) {
+            logAcp('muted', `  mode=${mode.id} name=${mode.name}${formatOptionalDetail(mode.description, 160)}`);
+          }
+        }
         session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { modes }),
         );
@@ -698,6 +758,13 @@ export async function runAcp(opts: {
       const models = extractModelStateFromPayload(msg.payload);
       if (models) {
         legacyModels = models;
+        sawModels = true;
+        if (verbose) {
+          logAcp('muted', `Outgoing models from ${opts.agentName} (${models.availableModels.length}), current=${models.currentModelId}:`);
+          for (const model of models.availableModels) {
+            logAcp('muted', `  model=${model.modelId} name=${model.name}`);
+          }
+        }
         session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { models }),
         );
@@ -803,6 +870,17 @@ export async function runAcp(opts: {
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    if (verbose) {
+      if (!sawSlashCommands) {
+        logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
+      }
+      if (!sawModes) {
+        logAcp('muted', `Outgoing modes from ${opts.agentName}: not reported yet`);
+      }
+      if (!sawModels) {
+        logAcp('muted', `Outgoing models from ${opts.agentName}: not reported yet`);
+      }
+    }
 
     while (!shouldExit) {
       const waitSignal = abortController.signal;

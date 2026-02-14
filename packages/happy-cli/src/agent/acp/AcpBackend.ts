@@ -57,11 +57,36 @@ function formatAcpTime(date: Date = new Date()): string {
 
 function logAcpBackendMuted(message: string): void {
   const line = `[${formatAcpTime()}] ${message}`;
-  if (process.stdout.isTTY === true && process.env.NO_COLOR === undefined) {
+  const forceColor = process.env.FORCE_COLOR;
+  if (forceColor === '0') {
+    console.log(line);
+    return;
+  }
+  const useColor = forceColor !== undefined || process.stdout.isTTY === true || process.stderr.isTTY === true;
+  if (useColor) {
     console.log(`${ACP_MUTED_COLOR}${line}${ACP_COLOR_RESET}`);
     return;
   }
   console.log(line);
+}
+
+function summarizeSessionMetadataPayload(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') {
+    return 'invalid payload';
+  }
+  const asRecord = payload as Record<string, unknown>;
+  const configOptions = Array.isArray(asRecord.configOptions) ? asRecord.configOptions.length : 0;
+  const modes = asRecord.modes && typeof asRecord.modes === 'object'
+    ? (Array.isArray((asRecord.modes as { availableModes?: unknown }).availableModes)
+        ? ((asRecord.modes as { availableModes: unknown[] }).availableModes.length)
+        : 0)
+    : 0;
+  const models = asRecord.models && typeof asRecord.models === 'object'
+    ? (Array.isArray((asRecord.models as { availableModels?: unknown }).availableModels)
+        ? ((asRecord.models as { availableModels: unknown[] }).availableModels.length)
+        : 0)
+    : 0;
+  return `configOptions=${configOptions} modes=${modes} models=${models}`;
 }
 import {
   type TransportHandler,
@@ -711,7 +736,7 @@ export class AcpBackend implements AgentBackend {
         return maybeErr.code === 'ENOENT' || maybeErr.code === 'EACCES' || maybeErr.code === 'EPIPE';
       };
 
-      await withRetry(
+      const initializeResponse = await withRetry(
         async () => {
           let timeoutHandle: NodeJS.Timeout | null = null;
           try {
@@ -746,6 +771,11 @@ export class AcpBackend implements AgentBackend {
         }
       );
       logger.debug(`[AcpBackend] Initialize completed`);
+      if (this.options.verbose) {
+        logAcpBackendMuted(
+          `Incoming initialize response from ${this.options.agentName}: ${summarizeSessionMetadataPayload(initializeResponse)}`,
+        );
+      }
 
       // Create a new session with retry
       const mcpServers = this.options.mcpServers
@@ -802,6 +832,11 @@ export class AcpBackend implements AgentBackend {
       );
       this.acpSessionId = sessionResponse.sessionId;
       logger.debug(`[AcpBackend] Session created: ${this.acpSessionId}`);
+      if (this.options.verbose) {
+        logAcpBackendMuted(
+          `Incoming newSession response from ${this.options.agentName}: ${summarizeSessionMetadataPayload(sessionResponse)}`,
+        );
+      }
       this.emitInitialSessionMetadata(sessionResponse);
 
       this.emitIdleStatus();
