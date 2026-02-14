@@ -277,13 +277,21 @@ export class CodexAppServerBackend implements AgentBackend {
     };
 
     if (this.options.model) params.model = this.options.model;
-    if (this.options.reasoningEffort) params.reasoningEffort = this.options.reasoningEffort;
     if (this.options.approvalPolicy) params.approvalPolicy = this.options.approvalPolicy;
     if (this.options.sandbox) params.sandbox = this.options.sandbox;
 
-    // MCP servers config
+    // Build config overrides (MCP servers + reasoning effort)
+    const config: Record<string, unknown> = {};
     if (this.options.mcpServers && Object.keys(this.options.mcpServers).length > 0) {
-      params.config = { mcp_servers: this.options.mcpServers };
+      config.mcp_servers = this.options.mcpServers;
+    }
+    // Reasoning effort must be passed via config (model_reasoning_effort)
+    // because NewConversationParams doesn't have a dedicated field for it.
+    if (this.options.reasoningEffort) {
+      config.model_reasoning_effort = this.options.reasoningEffort;
+    }
+    if (Object.keys(config).length > 0) {
+      params.config = config;
     }
 
     return params;

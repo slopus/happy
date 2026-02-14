@@ -68,7 +68,6 @@ export interface InitializeResponse {
 
 export interface NewConversationParams {
   model?: string | null;
-  reasoningEffort?: string | null;
   modelProvider?: string | null;
   profile?: string | null;
   cwd?: string | null;
