@@ -161,6 +161,16 @@ export const knownTools = {
             return t('tools.names.search');
         }
     },
+    'EnterPlanMode': {
+        title: 'Enter Plan Mode',
+        icon: ICON_SKILL,
+        minimal: true
+    },
+    'enter_plan_mode': {
+        title: 'Enter Plan Mode',
+        icon: ICON_SKILL,
+        minimal: true
+    },
     'ExitPlanMode': {
         title: t('tools.names.planProposal'),
         icon: ICON_EXIT,
