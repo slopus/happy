@@ -15,6 +15,7 @@ interface ChatHeaderViewProps {
     onBackPress?: () => void;
     onAvatarPress?: () => void;
     avatarId?: string;
+    imageUrl?: string | null;
     backgroundColor?: string;
     tintColor?: string;
     isConnected?: boolean;
@@ -27,6 +28,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     onBackPress,
     onAvatarPress,
     avatarId,
+    imageUrl,
     isConnected = true,
     flavor,
 }) => {
@@ -98,6 +100,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             size={32}
                             monochrome={!isConnected}
                             flavor={flavor}
+                            imageUrl={imageUrl}
                         />
                     </Pressable>
                 )}

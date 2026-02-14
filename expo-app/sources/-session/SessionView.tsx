@@ -29,6 +29,7 @@ import { useMemo } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
+import { useAgentConfigContext } from '@/arc/agent';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -42,6 +43,14 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+    const agentConfig = useAgentConfigContext();
+
+    // Load Runner config when session is connected
+    React.useEffect(() => {
+        if (session?.presence === 'online') {
+            agentConfig.loadConfig(sessionId);
+        }
+    }, [sessionId, session?.presence === 'online']);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -51,6 +60,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                 title: '',
                 subtitle: undefined,
                 avatarId: undefined,
+                imageUrl: null,
                 onAvatarPress: undefined,
                 isConnected: false,
                 flavor: null
@@ -63,6 +73,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                 title: t('errors.sessionDeleted'),
                 subtitle: undefined,
                 avatarId: undefined,
+                imageUrl: null,
                 onAvatarPress: undefined,
                 isConnected: false,
                 flavor: null
@@ -75,12 +86,13 @@ export const SessionView = React.memo((props: { id: string }) => {
             title: getSessionName(session),
             subtitle: session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined,
             avatarId: getSessionAvatarId(session),
+            imageUrl: agentConfig.getAvatarUrl(sessionId),
             onAvatarPress: () => router.push(`/session/${sessionId}/info`),
             isConnected: isConnected,
             flavor: session.metadata?.flavor || null,
             tintColor: isConnected ? '#000' : '#8E8E93'
         };
-    }, [session, isDataReady, sessionId, router]);
+    }, [session, isDataReady, sessionId, router, agentConfig]);
 
     return (
         <>

@@ -29,6 +29,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { sessionDelete } from '@/sync/ops';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
+import { useAgentConfigContext } from '@/arc/agent';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -338,6 +339,18 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
+    const agentConfig = useAgentConfigContext();
+
+    // Load Runner config when session is online
+    React.useEffect(() => {
+        if (session.presence === 'online') {
+            agentConfig.loadConfig(session.id);
+        }
+    }, [session.id, session.presence === 'online']);
+
+    const customAvatarUrl = agentConfig.getAvatarUrl(session.id);
+    const runnerName = agentConfig.getDisplayName(session.id, '');
+    const agentLabel = runnerName || null;
 
     const [deletingSession, performDelete] = useHappyAction(async () => {
         const result = await sessionDelete(session.id);
@@ -387,7 +400,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             }}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} imageUrl={customAvatarUrl} />
                 {session.draft && (
                     <View style={styles.draftIconContainer}>
                         <Ionicons
@@ -404,7 +417,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     <Text style={[
                         styles.sessionTitle,
                         sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                    ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
+                    ]} numberOfLines={1}>
                         {sessionName}
                     </Text>
                 </View>
@@ -414,17 +427,24 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     {sessionSubtitle}
                 </Text>
 
-                {/* Status line with dot */}
-                <View style={styles.statusRow}>
-                    <View style={styles.statusDotContainer}>
-                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                {/* Status line with dot + agent name */}
+                <View style={[styles.statusRow, { justifyContent: 'space-between' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={styles.statusDotContainer}>
+                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                        </View>
+                        <Text style={[
+                            styles.statusText,
+                            { color: sessionStatus.statusColor }
+                        ]}>
+                            {sessionStatus.statusText}
+                        </Text>
                     </View>
-                    <Text style={[
-                        styles.statusText,
-                        { color: sessionStatus.statusColor }
-                    ]}>
-                        {sessionStatus.statusText}
-                    </Text>
+                    {agentLabel && (
+                        <Text style={[styles.statusText, { color: '#999' }]} numberOfLines={1}>
+                            {agentLabel}
+                        </Text>
+                    )}
                 </View>
             </View>
         </Pressable>

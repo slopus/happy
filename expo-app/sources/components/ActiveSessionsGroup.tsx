@@ -2,26 +2,31 @@ import React from 'react';
 import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
-import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSetting } from '@/sync/storage';
+import { Image } from 'expo-image';
+import { useAllMachines } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
+import { sessionKill } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
-import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useIsTablet } from '@/utils/responsive';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { useAgentConfigContext } from '@/arc/agent';
+
+const flavorIcons = {
+    claude: require('@/assets/images/icon-claude.png'),
+    codex: require('@/assets/images/icon-gpt.png'),
+    gemini: require('@/assets/images/icon-gemini.png'),
+};
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -45,14 +50,26 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingBottom: Platform.select({ ios: 6, default: 8 }),
         paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
     },
-    sectionHeaderLeft: {
+    sectionHeaderAvatar: {
+        marginRight: 12,
+    },
+    sectionHeaderInfo: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    sectionHeaderTopRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        flex: 1,
-        marginRight: 8,
+        justifyContent: 'space-between',
+        marginBottom: 2,
+    },
+    sectionHeaderAgentName: {
+        ...Typography.default('semiBold'),
+        color: theme.colors.text,
+        fontSize: 15,
+        fontWeight: '600',
     },
     sectionHeaderPath: {
         ...Typography.default('regular'),
@@ -62,18 +79,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
     },
-    sectionHeaderMachine: {
-        ...Typography.default('regular'),
-        color: theme.colors.groupped.sectionTitle,
-        fontSize: Platform.select({ ios: 13, default: 14 }),
-        lineHeight: Platform.select({ ios: 18, default: 20 }),
-        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
-        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
-        maxWidth: 150,
-        textAlign: 'right',
-    },
     sessionRow: {
-        height: 88,
+        height: 52,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
@@ -88,16 +95,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     sessionContent: {
         flex: 1,
-        marginLeft: 16,
         justifyContent: 'center',
     },
     sessionTitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 4,
     },
     sessionTitle: {
         fontSize: 15,
+        flex: 1,
         fontWeight: '500',
         ...Typography.default('semiBold'),
     },
@@ -107,28 +113,27 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sessionTitleDisconnected: {
         color: theme.colors.textSecondary,
     },
-    statusRow: {
+    sessionStatusRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        paddingLeft: 24,
+    },
+    sessionStatusDot: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 12,
+        height: 12,
+        marginRight: 4,
+    },
+    sessionStatusText: {
+        fontSize: 12,
+        ...Typography.default(),
     },
     statusDotContainer: {
         alignItems: 'center',
         justifyContent: 'center',
+        width: 16,
         height: 16,
-        marginTop: 2,
-        marginRight: 4,
-    },
-    statusText: {
-        fontSize: 12,
-        fontWeight: '500',
-        lineHeight: 16,
-        ...Typography.default(),
-    },
-    avatarContainer: {
-        position: 'relative',
-        width: 48,
-        height: 48,
     },
     newSessionButton: {
         flexDirection: 'row',
@@ -202,6 +207,7 @@ interface ActiveSessionsGroupProps {
 export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
     const machines = useAllMachines();
+    const agentConfig = useAgentConfigContext();
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
         machines.forEach(machine => {
@@ -279,34 +285,17 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     return (
         <View style={styles.container}>
             {sortedProjectGroups.map(([projectPath, projectGroup]) => {
-                // Get the first machine name from this project's machines
-                const firstMachine = Array.from(projectGroup.machines.values())[0];
-                const machineName = projectGroup.machines.size === 1
-                    ? firstMachine?.machineName
-                    : `${projectGroup.machines.size} machines`;
+                const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
+                const avatarId = firstSession ? getSessionAvatarId(firstSession) : undefined;
 
                 return (
                     <View key={projectPath}>
-                        {/* Section header on grouped background */}
-                        <View style={styles.sectionHeader}>
-                            <View style={styles.sectionHeaderLeft}>
-                                <Text style={styles.sectionHeaderPath}>
-                                    {projectGroup.displayPath}
-                                </Text>
-                            </View>
-                            {/* Show git status instead of machine name */}
-                            {(() => {
-                                // Get the first session from any machine in this project
-                                const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
-                                return firstSession ? (
-                                    <ProjectGitStatus sessionId={firstSession.id} />
-                                ) : (
-                                    <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
-                                        {machineName}
-                                    </Text>
-                                );
-                            })()}
-                        </View>
+                        {/* Section header: avatar + 2-row info */}
+                        <ProjectHeader
+                            avatarId={avatarId}
+                            firstSession={firstSession}
+                            displayPath={projectGroup.displayPath}
+                        />
 
                         {/* Card with just the sessions */}
                         <View style={styles.projectCard}>
@@ -333,6 +322,53 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         </View>
     );
 }
+
+// Project header with avatar + agent name + path + git status
+const ProjectHeader = React.memo(({ avatarId, firstSession, displayPath }: {
+    avatarId: string | undefined;
+    firstSession: Session | undefined;
+    displayPath: string;
+}) => {
+    const styles = stylesheet;
+    const agentConfig = useAgentConfigContext();
+    const sessionId = firstSession?.id;
+
+    React.useEffect(() => {
+        if (sessionId) {
+            agentConfig.loadConfig(sessionId);
+        }
+    }, [sessionId]);
+
+    const agentName = sessionId ? agentConfig.getDisplayName(sessionId, '') : '';
+    const customAvatarUrl = sessionId ? agentConfig.getAvatarUrl(sessionId) : null;
+
+    return (
+        <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderAvatar}>
+                <Avatar
+                    id={avatarId || ''}
+                    size={48}
+                    imageUrl={customAvatarUrl}
+                />
+            </View>
+            <View style={styles.sectionHeaderInfo}>
+                <View style={styles.sectionHeaderTopRow}>
+                    <Text style={styles.sectionHeaderAgentName} numberOfLines={1}>
+                        {agentName || displayPath}
+                    </Text>
+                    {firstSession ? (
+                        <ProjectGitStatus sessionId={firstSession.id} />
+                    ) : null}
+                </View>
+                {agentName ? (
+                    <Text style={styles.sectionHeaderPath} numberOfLines={1}>
+                        {displayPath}
+                    </Text>
+                ) : null}
+            </View>
+        </View>
+    );
+});
 
 // Compact session row component with status line
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
@@ -367,10 +403,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         );
     }, [performArchive]);
 
-    const avatarId = React.useMemo(() => {
-        return getSessionAvatarId(session);
-    }, [session]);
-
     const itemContent = (
         <Pressable
             style={[
@@ -389,77 +421,31 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 }
             }}
         >
-            <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-            </View>
             <View style={styles.sessionContent}>
-                {/* Title line */}
+                {/* Row 1: Flavor icon + session title */}
                 <View style={styles.sessionTitleRow}>
+                    <Image
+                        source={flavorIcons[(session.metadata?.flavor as keyof typeof flavorIcons) || 'claude'] || flavorIcons.claude}
+                        style={{ width: 16, height: 16, marginRight: 8, opacity: sessionStatus.isConnected ? 1 : 0.4 }}
+                    />
                     <Text
                         style={[
                             styles.sessionTitle,
-                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
                         ]}
-                        numberOfLines={2}
+                        numberOfLines={1}
                     >
                         {sessionName}
                     </Text>
                 </View>
-
-                {/* Status line with dot */}
-                <View style={styles.statusRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={styles.statusDotContainer}>
-                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
-                        </View>
-                        <Text style={[
-                            styles.statusText,
-                            { color: sessionStatus.statusColor }
-                        ]}>
-                            {sessionStatus.statusText}
-                        </Text>
+                {/* Row 2: Status dot + status text */}
+                <View style={styles.sessionStatusRow}>
+                    <View style={styles.sessionStatusDot}>
+                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
                     </View>
-
-                    {/* Status indicators on the right side */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
-                        {/* Draft status indicator */}
-                        {session.draft && (
-                            <View style={styles.taskStatusContainer}>
-                                <Ionicons
-                                    name="create-outline"
-                                    size={10}
-                                    color={styles.taskStatusText.color}
-                                />
-                            </View>
-                        )}
-
-                        {/* No longer showing git status per item - it's in the header */}
-
-                        {/* Task status indicator */}
-                        {session.todos && session.todos.length > 0 && (() => {
-                            const totalTasks = session.todos.length;
-                            const completedTasks = session.todos.filter(t => t.status === 'completed').length;
-
-                            // Don't show if all tasks are completed
-                            if (completedTasks === totalTasks) {
-                                return null;
-                            }
-
-                            return (
-                                <View style={styles.taskStatusContainer}>
-                                    <Ionicons
-                                        name="bulb-outline"
-                                        size={10}
-                                        color={styles.taskStatusText.color}
-                                        style={{ marginRight: 2 }}
-                                    />
-                                    <Text style={styles.taskStatusText}>
-                                        {completedTasks}/{totalTasks}
-                                    </Text>
-                                </View>
-                            );
-                        })()}
-                    </View>
+                    <Text style={[styles.sessionStatusText, { color: sessionStatus.statusColor }]}>
+                        {sessionStatus.statusText}
+                    </Text>
                 </View>
             </View>
         </Pressable>
