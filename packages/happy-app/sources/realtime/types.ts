@@ -8,6 +8,7 @@ export interface VoiceSessionConfig {
 export interface VoiceSession {
     startSession(config: VoiceSessionConfig): Promise<void>;
     endSession(): Promise<void>;
+    setMicrophoneMuted(muted: boolean): Promise<void>;
     sendTextMessage(message: string): void;
     sendContextualUpdate(update: string): void;
 }
