@@ -52,6 +52,13 @@ import { resolveModelSelectionForFlavor } from '@/constants/modelCatalog';
 
 type PermissionMode = NonNullable<Session['permissionMode']>;
 
+/**
+ * Tracks when the user last viewed each session (in-memory only).
+ * Used by useSessionStatus to decide if taskCompleted should show a blue dot:
+ * blue dot shows only when taskCompleted > lastViewedAt.
+ */
+export const sessionLastViewedAt = new Map<string, number>();
+
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
     private static readonly SESSION_READY_TIMEOUT_MS = 10000;
@@ -231,77 +238,17 @@ class Sync {
             if (userInitiated) {
                 voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
             }
+        }
 
-            // Clear task completed indicator when user opens the session
-            if (userInitiated && session.agentState?.taskCompleted) {
-                this.clearTaskCompleted(sessionId, session);
-            }
+        // Record view time for blue dot (taskCompleted) comparison
+        if (userInitiated) {
+            sessionLastViewedAt.set(sessionId, Date.now());
         }
     }
 
     onSessionHidden = () => {
         this.viewingSessionId = null;
         voiceHooks.onSessionBlur();
-    }
-
-    private clearTaskCompleted = async (sessionId: string, session: Session) => {
-        const updatedState = { ...session.agentState, taskCompleted: null };
-
-        // Update local state first so the blue dot disappears immediately
-        this.applySessions([{
-            ...session,
-            agentState: updatedState,
-        }]);
-
-        // Then sync to server
-        try {
-            const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
-            if (!sessionEncryption) return;
-
-            const encrypted = await sessionEncryption.encryptAgentState(updatedState);
-
-            const result = await apiSocket.emitWithAck<{
-                result: 'success' | 'version-mismatch' | 'error';
-                version?: number;
-                agentState?: string;
-            }>('update-state', {
-                sid: sessionId,
-                agentState: encrypted,
-                expectedVersion: session.agentStateVersion
-            });
-
-            if (result.result === 'success') {
-                // Sync version number so future update-state calls use correct expectedVersion
-                const freshSession = storage.getState().sessions[sessionId];
-                if (freshSession) {
-                    this.applySessions([{ ...freshSession, agentStateVersion: result.version! }]);
-                }
-            } else if (result.result === 'version-mismatch' && result.version && result.agentState) {
-                // Retry once with the server's current version
-                const serverState = await sessionEncryption.decryptAgentState(result.version, result.agentState);
-                const mergedState = { ...serverState, taskCompleted: null };
-                const reEncrypted = await sessionEncryption.encryptAgentState(mergedState);
-
-                const retry = await apiSocket.emitWithAck<{
-                    result: 'success' | 'version-mismatch' | 'error';
-                    version?: number;
-                }>('update-state', {
-                    sid: sessionId,
-                    agentState: reEncrypted,
-                    expectedVersion: result.version
-                });
-
-                if (retry.result === 'success') {
-                    const freshSession = storage.getState().sessions[sessionId];
-                    if (freshSession) {
-                        this.applySessions([{ ...freshSession, agentState: mergedState, agentStateVersion: retry.version! }]);
-                    }
-                }
-                // If retry also fails, give up - next session view will try again
-            }
-        } catch (e) {
-            console.error('Failed to clear taskCompleted on server:', e);
-        }
     }
 
     private invalidateMessagesSync = (sessionId: string) => {
@@ -809,16 +756,6 @@ class Sync {
                 agentState
             };
             decryptedSessions.push(processedSession);
-        }
-
-        // Strip taskCompleted for the session user is currently viewing (same as update-session handler)
-        if (this.viewingSessionId) {
-            for (let i = 0; i < decryptedSessions.length; i++) {
-                const s = decryptedSessions[i];
-                if (s.id === this.viewingSessionId && s.agentState?.taskCompleted) {
-                    decryptedSessions[i] = { ...s, agentState: { ...s.agentState, taskCompleted: null } };
-                }
-            }
         }
 
         // Apply to storage
@@ -2234,15 +2171,9 @@ class Sync {
                     ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
                     : session.metadata;
 
-                // If user is viewing this session, strip taskCompleted before applying to avoid flash
-                const shouldStripTaskCompleted = agentState?.taskCompleted && this.viewingSessionId === updateData.body.id;
-                const effectiveAgentState = shouldStripTaskCompleted
-                    ? { ...agentState, taskCompleted: null }
-                    : agentState;
-
                 this.applySessions([{
                     ...session,
-                    agentState: effectiveAgentState,
+                    agentState,
                     agentStateVersion: updateData.body.agentState
                         ? updateData.body.agentState.version
                         : session.agentStateVersion,
@@ -2253,14 +2184,6 @@ class Sync {
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
                 }]);
-
-                // Clear taskCompleted on server if we stripped it locally
-                if (shouldStripTaskCompleted) {
-                    const freshSession = storage.getState().sessions[updateData.body.id];
-                    if (freshSession) {
-                        this.clearTaskCompleted(updateData.body.id, freshSession);
-                    }
-                }
 
                 // Invalidate git status when agent state changes (files may have been modified)
                 if (updateData.body.agentState) {

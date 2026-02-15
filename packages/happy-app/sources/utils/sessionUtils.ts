@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { storage } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
+import { sessionLastViewedAt } from '@/sync/sync';
 import { t } from '@/text';
 
 export type SessionState = 'disconnected' | 'syncing' | 'thinking' | 'waiting' | 'permission_required';
@@ -14,6 +15,13 @@ export interface SessionStatus {
     statusDotColor: string;
     isPulsing?: boolean;
     hasUnreadCompletion?: boolean;
+}
+
+function hasUnreadCompletion(session: Session): boolean {
+    const taskCompleted = session.agentState?.taskCompleted;
+    if (!taskCompleted) return false;
+    const lastViewed = sessionLastViewedAt.get(session.id) ?? 0;
+    return taskCompleted > lastViewed;
 }
 
 /**
@@ -37,7 +45,7 @@ export function useSessionStatus(session: Session): SessionStatus {
             shouldShowStatus: true,
             statusColor: '#999',
             statusDotColor: '#999',
-            hasUnreadCompletion: !!session.agentState?.taskCompleted
+            hasUnreadCompletion: hasUnreadCompletion(session)
         };
     }
 
@@ -85,7 +93,7 @@ export function useSessionStatus(session: Session): SessionStatus {
         shouldShowStatus: false,
         statusColor: '#34C759',
         statusDotColor: '#34C759',
-        hasUnreadCompletion: !!session.agentState?.taskCompleted
+        hasUnreadCompletion: hasUnreadCompletion(session)
     };
 }
 
