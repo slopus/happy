@@ -41,6 +41,7 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
   - `GITHUB_REDIRECT_URL` is used by the OAuth callback handler.
   - `GITHUB_REDIRECT_URI` is used by the GitHub App initializer.
 - Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/token` in production).
+- Log format: `LOG_FORMAT` — set to `json` for machine-readable single-line JSON output (for log aggregation systems like Loki, Datadog). Defaults to pretty-printed console output.
 - Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` (enables file logging + dev log endpoint).
 
 ## Docker image

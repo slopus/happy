@@ -61,6 +61,7 @@ Data persists in the `happy-data` Docker volume across container restarts.
 | `PORT` | No | `3005` | Server port |
 | `DATA_DIR` | No | `/data` | Base data directory |
 | `PGLITE_DIR` | No | `/data/pglite` | PGlite database directory |
+| `LOG_FORMAT` | No | - | Set to `json` for single-line JSON logs (for log aggregation systems like Loki, Datadog, etc.) |
 
 ### Optional: External Services
 

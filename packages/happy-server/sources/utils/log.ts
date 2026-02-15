@@ -35,22 +35,32 @@ function formatLocalTime(timestamp?: number) {
 
 const transports: any[] = [];
 
-// Resolve pino-pretty target - use absolute path for bundled binaries
-let pinoPrettyTarget: string = 'pino-pretty';
-try {
-    pinoPrettyTarget = require.resolve('pino-pretty');
-} catch {}
+const useJsonLogs = process.env.LOG_FORMAT === 'json';
 
-transports.push({
-    target: pinoPrettyTarget,
-    options: {
-        colorize: true,
-        translateTime: 'HH:MM:ss.l',
-        ignore: 'pid,hostname',
-        messageFormat: '{levelLabel} {msg} | [{time}]',
-        errorLikeObjectKeys: ['err', 'error'],
-    },
-});
+if (!useJsonLogs) {
+    // Pretty-printed logs for local development
+    let pinoPrettyTarget: string = 'pino-pretty';
+    try {
+        pinoPrettyTarget = require.resolve('pino-pretty');
+    } catch {}
+
+    transports.push({
+        target: pinoPrettyTarget,
+        options: {
+            colorize: true,
+            translateTime: 'HH:MM:ss.l',
+            ignore: 'pid,hostname',
+            messageFormat: '{levelLabel} {msg} | [{time}]',
+            errorLikeObjectKeys: ['err', 'error'],
+        },
+    });
+} else {
+    // Machine-readable single-line JSON for production/log aggregation (e.g. Loki)
+    transports.push({
+        target: 'pino/file',
+        options: { destination: 1 },
+    });
+}
 
 if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && consolidatedLogFile) {
     transports.push({
