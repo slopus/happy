@@ -128,6 +128,18 @@ class HappyVoiceSessionImpl implements VoiceSession {
         storage.getState().clearRealtimeModeDebounce();
     }
 
+    async setMicrophoneMuted(muted: boolean): Promise<void> {
+        if (!roomInstance) {
+            console.warn('[HappyVoice] No active room for mute toggle');
+            return;
+        }
+        try {
+            await roomInstance.localParticipant.setMicrophoneEnabled(!muted);
+        } catch (error) {
+            console.error('[HappyVoice] Failed to set mic muted state:', error);
+        }
+    }
+
     sendTextMessage(message: string): void {
         const gatewaySessionId = activeGatewaySessionId;
         if (!gatewaySessionId) {
