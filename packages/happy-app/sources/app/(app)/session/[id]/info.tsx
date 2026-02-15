@@ -497,96 +497,104 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, [worktreeMachineId, worktreeBranch, worktreeBasePath]);
 
-    const [cleaningUp, handleCleanupWorktree] = useHappyAction(async () => {
-        if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
-        const deleteBranch = await new Promise<boolean | null>((resolve) => {
-            Modal.alert(
-                t('sessionInfo.worktree.cleanup'),
-                t('sessionInfo.worktree.cleanupConfirm'),
-                [
-                    { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
-                    { text: t('sessionInfo.worktree.cleanupKeepBranch'), onPress: () => resolve(false) },
-                    { text: t('sessionInfo.worktree.cleanupDeleteBranch'), style: 'destructive', onPress: () => resolve(true) },
-                ]
-            );
-        });
-        if (deleteBranch === null) return;
-        const result = await cleanupWorktree(worktreeMachineId, worktreeBasePath, worktreeBranch, deleteBranch);
-        if (!result.success) {
-            throw new HappyError(result.error || t('sessionInfo.worktree.cleanupFailed'), false);
-        }
-        if (result.error) {
-            // Partial success (worktree removed but branch deletion failed)
-            Modal.alert(t('common.success'), result.error);
-        } else {
-            Modal.alert(t('common.success'), t('sessionInfo.worktree.cleanupSuccess'));
-        }
-    });
+    // Cleanup worktree menu
+    const [cleanupMenuVisible, setCleanupMenuVisible] = React.useState(false);
+    const [cleaningUp, setCleaningUp] = React.useState(false);
 
-    const [requestingReview, handleRequestReview] = useHappyAction(async () => {
+    const doCleanupWorktree = React.useCallback(async (deleteBranch: boolean) => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
+        setCleaningUp(true);
+        try {
+            const result = await cleanupWorktree(worktreeMachineId, worktreeBasePath, worktreeBranch, deleteBranch);
+            if (!result.success) {
+                Modal.alert(t('common.error'), result.error || t('sessionInfo.worktree.cleanupFailed'));
+                return;
+            }
+            if (result.error) {
+                // Partial success (worktree removed but branch deletion failed)
+                Modal.alert(t('common.success'), result.error);
+            } else {
+                Modal.alert(t('common.success'), t('sessionInfo.worktree.cleanupSuccess'));
+            }
+        } catch (e) {
+            Modal.alert(t('common.error'), t('sessionInfo.worktree.cleanupFailed'));
+        } finally {
+            setCleaningUp(false);
+        }
+    }, [worktreeMachineId, worktreeBranch, worktreeBasePath]);
+
+    const handleCleanupWorktree = React.useCallback(() => {
+        setCleanupMenuVisible(true);
+    }, []);
+
+    // Review agent selection menu
+    const [reviewMenuVisible, setReviewMenuVisible] = React.useState(false);
+    const [requestingReview, setRequestingReview] = React.useState(false);
+
+    const doRequestReview = React.useCallback(async (agentChoice: 'claude' | 'codex' | 'gemini') => {
         if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
         const prUrl = session.metadata?.worktreePrUrl;
-        if (!prUrl) {
-            throw new HappyError(t('sessionInfo.worktree.reviewNoPR'), false);
-        }
+        if (!prUrl) return;
 
-        // Agent selection dialog
-        const agentChoice = await new Promise<'claude' | 'codex' | 'gemini' | null>((resolve) => {
-            Modal.alert(
-                t('sessionInfo.worktree.reviewSelectAgent'),
-                t('sessionInfo.worktree.reviewSelectAgentMessage'),
-                [
-                    { text: 'Claude', onPress: () => resolve('claude') },
-                    { text: 'Codex', onPress: () => resolve('codex') },
-                    { text: 'Gemini', onPress: () => resolve('gemini') },
-                    { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
-                ]
-            );
-        });
-        if (!agentChoice) return;
-
-        // Spawn review session in same worktree
-        const originalTitle = session.metadata?.summary?.text || getSessionName(session);
-        const result = await machineSpawnNewSession({
-            machineId: worktreeMachineId,
-            directory: worktreePath,
-            approvedNewDirectoryCreation: false,
-            agent: agentChoice,
-            sessionTitle: `Review: ${originalTitle}`,
-            worktreeBasePath,
-            worktreeBranchName: worktreeBranch,
-        });
-        if (result.type === 'error') {
-            throw new HappyError(result.errorMessage || t('sessionInfo.worktree.reviewSpawnFailed'), false);
-        }
-        if (result.type !== 'success') {
-            throw new HappyError(t('sessionInfo.worktree.reviewSpawnFailed'), false);
-        }
-
-        await sync.refreshSessions();
-
-        // Link review session back to the original session
-        const reviewSession = storage.getState().sessions[result.sessionId];
-        if (reviewSession?.metadata) {
-            try {
-                await sessionUpdateMetadataFields(
-                    result.sessionId,
-                    reviewSession.metadata,
-                    { reviewOfSessionId: session.id, worktreePrUrl: prUrl },
-                    reviewSession.metadataVersion
-                );
-            } catch (e) {
-                console.warn('Failed to set reviewOfSessionId on review session:', e);
+        setRequestingReview(true);
+        try {
+            // Spawn review session in same worktree
+            const originalTitle = session.metadata?.summary?.text || getSessionName(session);
+            const result = await machineSpawnNewSession({
+                machineId: worktreeMachineId,
+                directory: worktreePath,
+                approvedNewDirectoryCreation: false,
+                agent: agentChoice,
+                sessionTitle: `Review: ${originalTitle}`,
+                worktreeBasePath,
+                worktreeBranchName: worktreeBranch,
+            });
+            if (result.type === 'error') {
+                Modal.alert(t('common.error'), result.errorMessage || t('sessionInfo.worktree.reviewSpawnFailed'));
+                return;
             }
+            if (result.type !== 'success') {
+                Modal.alert(t('common.error'), t('sessionInfo.worktree.reviewSpawnFailed'));
+                return;
+            }
+
+            await sync.refreshSessions();
+
+            // Link review session back to the original session
+            const reviewSession = storage.getState().sessions[result.sessionId];
+            if (reviewSession?.metadata) {
+                try {
+                    await sessionUpdateMetadataFields(
+                        result.sessionId,
+                        reviewSession.metadata,
+                        { reviewOfSessionId: session.id, worktreePrUrl: prUrl },
+                        reviewSession.metadataVersion
+                    );
+                } catch (e) {
+                    console.warn('Failed to set reviewOfSessionId on review session:', e);
+                }
+            }
+
+            // Send review prompt as first message
+            const reviewPrompt = buildReviewPrompt(prUrl, worktreeBranch, agentChoice);
+            await sync.sendMessage(result.sessionId, reviewPrompt);
+
+            // Navigate to the review session
+            router.push(`/session/${result.sessionId}`);
+        } catch (e) {
+            Modal.alert(t('common.error'), t('sessionInfo.worktree.reviewSpawnFailed'));
+        } finally {
+            setRequestingReview(false);
         }
+    }, [worktreeMachineId, worktreeBranch, worktreePath, worktreeBasePath, session, router]);
 
-        // Send review prompt as first message
-        const reviewPrompt = buildReviewPrompt(prUrl, worktreeBranch, agentChoice);
-        await sync.sendMessage(result.sessionId, reviewPrompt);
-
-        // Navigate to the review session
-        router.push(`/session/${result.sessionId}`);
-    });
+    const handleRequestReview = React.useCallback(() => {
+        if (!session.metadata?.worktreePrUrl) {
+            Modal.alert(t('common.error'), t('sessionInfo.worktree.reviewNoPR'));
+            return;
+        }
+        setReviewMenuVisible(true);
+    }, [session.metadata?.worktreePrUrl]);
 
     return (
         <>
@@ -1015,6 +1023,41 @@ function SessionInfoContent({ session }: { session: Session }) {
                 title={t('sessionInfo.worktree.archiveWorktreeConfirm')}
                 items={archiveMenuItems}
                 onClose={() => setArchiveMenuVisible(false)}
+            />
+            <ActionMenuModal
+                visible={cleanupMenuVisible}
+                title={t('sessionInfo.worktree.cleanupConfirm')}
+                items={[
+                    {
+                        label: t('sessionInfo.worktree.cleanupKeepBranch'),
+                        onPress: () => { setCleanupMenuVisible(false); doCleanupWorktree(false); },
+                    },
+                    {
+                        label: t('sessionInfo.worktree.cleanupDeleteBranch'),
+                        destructive: true,
+                        onPress: () => { setCleanupMenuVisible(false); doCleanupWorktree(true); },
+                    },
+                ]}
+                onClose={() => setCleanupMenuVisible(false)}
+            />
+            <ActionMenuModal
+                visible={reviewMenuVisible}
+                title={t('sessionInfo.worktree.reviewSelectAgentMessage')}
+                items={[
+                    {
+                        label: 'Claude',
+                        onPress: () => { setReviewMenuVisible(false); doRequestReview('claude'); },
+                    },
+                    {
+                        label: 'Codex',
+                        onPress: () => { setReviewMenuVisible(false); doRequestReview('codex'); },
+                    },
+                    {
+                        label: 'Gemini',
+                        onPress: () => { setReviewMenuVisible(false); doRequestReview('gemini'); },
+                    },
+                ]}
+                onClose={() => setReviewMenuVisible(false)}
             />
         </>
     );

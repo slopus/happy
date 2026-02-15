@@ -166,46 +166,6 @@ export async function createWorktreePR(
     return { success: true, prUrl };
 }
 
-/** Get the PR diff for a worktree branch using gh CLI */
-export async function getWorktreePRDiff(
-    machineId: string,
-    worktreePath: string,
-    branchName: string
-): Promise<{ success: boolean; diff?: string; error?: string }> {
-    if (!isValidGitRef(branchName)) {
-        return { success: false, error: 'Invalid branch name' };
-    }
-    const result = await machineBash(
-        machineId,
-        `gh pr diff '${shellEscape(branchName)}'`,
-        worktreePath
-    );
-    if (!result.success || result.exitCode !== 0) {
-        return { success: false, error: result.stderr || 'Failed to get PR diff' };
-    }
-    return { success: true, diff: result.stdout };
-}
-
-/** Post a comment on the PR using gh CLI (uses user's gh auth on the machine) */
-export async function postPRComment(
-    machineId: string,
-    worktreePath: string,
-    branchName: string,
-    comment: string
-): Promise<{ success: boolean; error?: string }> {
-    if (!isValidGitRef(branchName)) {
-        return { success: false, error: 'Invalid branch name' };
-    }
-    const result = await machineBash(
-        machineId,
-        `gh pr comment '${shellEscape(branchName)}' --body '${shellEscape(comment)}'`,
-        worktreePath
-    );
-    if (!result.success || result.exitCode !== 0) {
-        return { success: false, error: result.stderr || 'Failed to post comment' };
-    }
-    return { success: true };
-}
 
 /** Clean up the worktree (remove worktree directory, optionally delete the local branch) */
 export async function cleanupWorktree(
