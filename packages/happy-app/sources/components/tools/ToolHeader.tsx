@@ -11,16 +11,9 @@ interface ToolHeaderProps {
 
 export function ToolHeader({ tool }: ToolHeaderProps) {
     const { theme } = useUnistyles();
-    const knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
-
-    // Extract status first for Bash tool to potentially use as title
-    let status: string | null = null;
-    if (knownTool && typeof knownTool.extractStatus === 'function') {
-        const extractedStatus = knownTool.extractStatus({ tool, metadata: null });
-        if (typeof extractedStatus === 'string' && extractedStatus) {
-            status = extractedStatus;
-        }
-    }
+    const knownTool = tool.name in knownTools
+        ? knownTools[tool.name as keyof typeof knownTools]
+        : undefined;
 
     // Handle optional title and function type
     let toolTitle = tool.name;
@@ -36,7 +29,7 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
 
     // Extract subtitle using the same logic as ToolView
     let subtitle = null;
-    if (knownTool && typeof knownTool.extractSubtitle === 'function') {
+    if (knownTool && 'extractSubtitle' in knownTool && typeof knownTool.extractSubtitle === 'function') {
         const extractedSubtitle = knownTool.extractSubtitle({ tool, metadata: null });
         if (typeof extractedSubtitle === 'string' && extractedSubtitle) {
             subtitle = extractedSubtitle;
@@ -63,26 +56,27 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
-        flexGrow: 1,
-        flexBasis: 0,
+        flexShrink: 1,
         paddingHorizontal: 4,
+        overflow: 'hidden',
     },
     titleContainer: {
         flexDirection: 'column',
         alignItems: 'center',
-        flexGrow: 1,
-        flexBasis: 0
+        flexShrink: 1,
     },
     titleRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
+        flexShrink: 1,
     },
     title: {
         fontSize: 14,
         fontWeight: '500',
         color: theme.colors.text,
         textAlign: 'center',
+        flexShrink: 1,
     },
     subtitle: {
         fontSize: 11,

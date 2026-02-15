@@ -167,6 +167,7 @@ export type ReducerState = {
         contextSize: number;
         timestamp: number;
     };
+    latestAgentTextTime: number;
 };
 
 export function createReducer(): ReducerState {
@@ -178,7 +179,8 @@ export function createReducer(): ReducerState {
         localIds: new Map(),
         messageIds: new Map(),
         sidechains: new Map(),
-        tracerState: createTracer()
+        tracerState: createTracer(),
+        latestAgentTextTime: 0
     }
 };
 
@@ -651,6 +653,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         meta: msg.meta,
                     });
                     changed.add(mid);
+                    // Track latest agent text time incrementally for Phase 6
+                    if (c.type === 'text' && msg.createdAt > state.latestAgentTextTime) {
+                        state.latestAgentTextTime = msg.createdAt;
+                    }
                 }
             }
         }
@@ -1044,6 +1050,34 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 meta: msg.meta,
             });
             changed.add(mid);
+        }
+    }
+
+    //
+    // Phase 6: Force-complete stale running tools
+    // If the agent sent a text response AFTER a tool_use, the tool must have completed
+    // (the API requires tool_result before the assistant can produce text).
+    // The SDK may handle tool execution internally without emitting tool_result events
+    // to the stream, leaving tool states stuck at 'running'.
+    //
+
+    if (state.latestAgentTextTime > 0) {
+        for (const messageId of state.toolIdToMessageId.values()) {
+            const msg = state.messages.get(messageId);
+            if (!msg || !msg.tool) continue;
+            if (msg.tool.state === 'running' && msg.createdAt < state.latestAgentTextTime) {
+                // Skip tools with pending permissions — they're waiting for user input, not stale
+                if (msg.tool.permission?.status === 'pending') {
+                    continue;
+                }
+                // Skip sidechain tools — they may still be running in nested conversations
+                if (msg.tool.name === 'Task') {
+                    continue;
+                }
+                msg.tool.state = 'completed';
+                msg.tool.completedAt = state.latestAgentTextTime;
+                changed.add(messageId);
+            }
         }
     }
 

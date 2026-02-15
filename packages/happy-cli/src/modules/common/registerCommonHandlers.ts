@@ -1,15 +1,22 @@
 import { logger } from '@/ui/logger';
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
-import { readFile, writeFile, readdir, stat } from 'fs/promises';
+import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { createHash } from 'crypto';
-import { join } from 'path';
+import { dirname, join, resolve } from 'path';
+import { tmpdir } from 'os';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
 
 const execAsync = promisify(exec);
+
+/** Scoped temp directory for uploads from the mobile app. Allowed in addition to workingDirectory. */
+const UPLOAD_TEMP_DIR = join(tmpdir(), 'happy', 'uploads');
+
+/** Maximum file size for writeFile RPC (10 MB base64 ≈ 7.5 MB decoded). */
+const MAX_WRITE_SIZE = 10 * 1024 * 1024;
 
 interface BashRequest {
     command: string;
@@ -110,6 +117,12 @@ interface DifftasticResponse {
     error?: string;
 }
 
+interface GetUploadDirResponse {
+    success: boolean;
+    path?: string;
+    error?: string;
+}
+
 /*
  * Spawn Session Options and Result
  * This rpc type is used by the daemon, all other RPCs here are for sessions
@@ -145,7 +158,9 @@ export type SpawnSessionResult =
 /**
  * Register all RPC handlers with the session
  */
-export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string) {
+export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string, sessionId: string) {
+    // Sanitize sessionId to prevent path traversal when used in filesystem paths
+    const safeSessionId = sessionId.replace(/[^a-zA-Z0-9-]/g, '');
 
     // Shell command handler - executes commands in the default shell
     rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
@@ -235,14 +250,16 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
         logger.debug('Read file request:', data.path);
 
-        // Validate path is within working directory
-        const validation = validatePath(data.path, workingDirectory);
+        // Validate path — scoped to this session's upload subdirectory (not the global upload dir)
+        const sessionUploadDir = join(UPLOAD_TEMP_DIR, safeSessionId);
+        const validation = validatePath(data.path, workingDirectory, [sessionUploadDir]);
         if (!validation.valid) {
             return { success: false, error: validation.error };
         }
 
         try {
-            const buffer = await readFile(data.path);
+            const resolvedPath = resolve(workingDirectory, data.path);
+            const buffer = await readFile(resolvedPath);
             const content = buffer.toString('base64');
             return { success: true, content };
         } catch (error) {
@@ -255,17 +272,26 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
         logger.debug('Write file request:', data.path);
 
-        // Validate path is within working directory
-        const validation = validatePath(data.path, workingDirectory);
+        // Enforce file size limit to prevent abuse
+        if (data.content && data.content.length > MAX_WRITE_SIZE) {
+            return { success: false, error: `File content exceeds maximum allowed size (${MAX_WRITE_SIZE} bytes)` };
+        }
+
+        // Validate path — scoped to this session's upload subdirectory
+        const sessionUploadDir = join(UPLOAD_TEMP_DIR, safeSessionId);
+        const validation = validatePath(data.path, workingDirectory, [sessionUploadDir]);
         if (!validation.valid) {
             return { success: false, error: validation.error };
         }
 
         try {
+            // Resolve path relative to working directory
+            const resolvedPath = resolve(workingDirectory, data.path);
+
             // If expectedHash is provided (not null), verify existing file
             if (data.expectedHash !== null && data.expectedHash !== undefined) {
                 try {
-                    const existingBuffer = await readFile(data.path);
+                    const existingBuffer = await readFile(resolvedPath);
                     const existingHash = createHash('sha256').update(existingBuffer).digest('hex');
 
                     if (existingHash !== data.expectedHash) {
@@ -288,7 +314,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             } else {
                 // expectedHash is null - expecting new file
                 try {
-                    await stat(data.path);
+                    await stat(resolvedPath);
                     // File exists but we expected it to be new
                     return {
                         success: false,
@@ -303,9 +329,12 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
                 }
             }
 
+            // Create parent directories if needed
+            await mkdir(dirname(resolvedPath), { recursive: true });
+
             // Write the file
             const buffer = Buffer.from(data.content, 'base64');
-            await writeFile(data.path, buffer);
+            await writeFile(resolvedPath, buffer);
 
             // Calculate and return hash of written file
             const hash = createHash('sha256').update(buffer).digest('hex');
@@ -315,6 +344,11 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             logger.debug('Failed to write file:', error);
             return { success: false, error: error instanceof Error ? error.message : 'Failed to write file' };
         }
+    });
+
+    // Returns the OS temp upload directory scoped to this session
+    rpcHandlerManager.registerHandler<Record<string, never>, GetUploadDirResponse>('getUploadDir', async () => {
+        return { success: true, path: join(UPLOAD_TEMP_DIR, safeSessionId) };
     });
 
     // List directory handler
