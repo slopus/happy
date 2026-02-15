@@ -19,7 +19,7 @@ import { uploadChatImage } from './uploadChatImage';
 import { LocalImage } from '@/components/ImagePreview';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
-import { loadPendingSettings, savePendingSettings } from './persistence';
+import { loadPendingSettings, savePendingSettings, loadSessionLastViewedAt, saveSessionLastViewedAt } from './persistence';
 import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
@@ -57,7 +57,12 @@ type PermissionMode = NonNullable<Session['permissionMode']>;
  * Used by useSessionStatus to decide if taskCompleted should show a blue dot:
  * blue dot shows only when taskCompleted > lastViewedAt.
  */
-export const sessionLastViewedAt = new Map<string, number>();
+export const sessionLastViewedAt = loadSessionLastViewedAt();
+
+function markSessionViewed(sessionId: string) {
+    sessionLastViewedAt.set(sessionId, Date.now());
+    saveSessionLastViewedAt(sessionLastViewedAt);
+}
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -128,7 +133,7 @@ class Sync {
                 log.log('📱 App became active');
                 // Refresh lastViewedAt so blue dot won't flash for the session user is viewing
                 if (this.viewingSessionId) {
-                    sessionLastViewedAt.set(this.viewingSessionId, Date.now());
+                    markSessionViewed(this.viewingSessionId);
                 }
                 this.purchasesSync.invalidate();
                 this.profileSync.invalidate();
@@ -246,7 +251,7 @@ class Sync {
 
         // Record view time for blue dot (taskCompleted) comparison
         if (userInitiated) {
-            sessionLastViewedAt.set(sessionId, Date.now());
+            markSessionViewed(sessionId);
             // Trigger re-render so blue dot disappears on tablet sidebar
             const s = storage.getState().sessions[sessionId];
             if (s) {
@@ -2197,7 +2202,7 @@ class Sync {
                 // If user is viewing this session, keep lastViewedAt fresh
                 // so incoming taskCompleted doesn't show a blue dot
                 if (this.viewingSessionId === updateData.body.id) {
-                    sessionLastViewedAt.set(updateData.body.id, Date.now());
+                    markSessionViewed(updateData.body.id);
                 }
 
                 // Invalidate git status when agent state changes (files may have been modified)

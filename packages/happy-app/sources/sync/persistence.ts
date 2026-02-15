@@ -240,6 +240,25 @@ export function retrieveTempText(id: string): string | null {
     return null;
 }
 
+const SESSION_LAST_VIEWED_KEY = 'session-last-viewed-at';
+
+export function loadSessionLastViewedAt(): Map<string, number> {
+    const raw = mmkv.getString(SESSION_LAST_VIEWED_KEY);
+    if (raw) {
+        try {
+            const obj = JSON.parse(raw);
+            return new Map(Object.entries(obj));
+        } catch (e) {
+            return new Map();
+        }
+    }
+    return new Map();
+}
+
+export function saveSessionLastViewedAt(map: Map<string, number>) {
+    mmkv.set(SESSION_LAST_VIEWED_KEY, JSON.stringify(Object.fromEntries(map)));
+}
+
 export function clearPersistence() {
     mmkv.clearAll();
 }
