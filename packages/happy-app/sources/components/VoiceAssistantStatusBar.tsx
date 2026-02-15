@@ -110,7 +110,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
         collapseTimerRef.current = setTimeout(() => {
             setIsExpanded(false);
             collapseTimerRef.current = null;
-        }, 4000);
+        }, 8000);
     };
 
     const handleFullBarPress = () => {
