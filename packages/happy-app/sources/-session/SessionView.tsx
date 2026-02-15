@@ -555,11 +555,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 tracking?.capture('voice_session_error', { error: error instanceof Error ? error.message : 'Unknown error' });
             }
         } else if (realtimeStatus === 'connected') {
-            await stopRealtimeSession();
-            tracking?.capture('voice_session_stopped');
-
-            // Notify voice assistant about voice session stop
-            voiceHooks.onVoiceStopped();
+            // On web/desktop, stop session from mic button; on mobile, use the status bar
+            if (Platform.OS === 'web') {
+                await stopRealtimeSession();
+                tracking?.capture('voice_session_stopped');
+                voiceHooks.onVoiceStopped();
+            }
         }
     }, [realtimeStatus, sessionId]);
 
