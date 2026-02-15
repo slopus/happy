@@ -97,6 +97,12 @@ interface AgentInputProps {
     onImageDrop?: (files: File[]) => void;
 }
 
+const agentFlavorIcons = {
+    claude: require('@/assets/images/icon-claude.png'),
+    codex: require('@/assets/images/icon-gpt.png'),
+    gemini: require('@/assets/images/icon-gemini.png'),
+};
+
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
@@ -1384,11 +1390,24 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             gap: 6,
                                         })}
                                     >
-                                        <Octicons
-                                            name="cpu"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
+                                        {(() => {
+                                            const isCodex = props.agentType === 'codex';
+                                            const iconSize = isCodex ? 15 : 18;
+                                            const iconStyle = {
+                                                width: iconSize,
+                                                height: iconSize,
+                                                marginLeft: isCodex ? 2 : 0,
+                                                marginRight: isCodex ? 1 : 0,
+                                            };
+                                            return (
+                                                <Image
+                                                    source={agentFlavorIcons[props.agentType as keyof typeof agentFlavorIcons] || agentFlavorIcons.claude}
+                                                    style={iconStyle}
+                                                    contentFit="contain"
+                                                    tintColor={isCodex ? theme.colors.button.secondary.tint : undefined}
+                                                />
+                                            );
+                                        })()}
                                         <Text style={{
                                             fontSize: 13,
                                             color: theme.colors.button.secondary.tint,
