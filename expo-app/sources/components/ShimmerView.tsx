@@ -18,6 +18,7 @@ const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 interface ShimmerViewProps {
     children: React.ReactNode;
     shimmerColors?: readonly [string, string, ...string[]];
+    baseColor?: string;
     shimmerWidthPercent?: number;
     duration?: number;
     style?: ViewStyle;
@@ -26,6 +27,7 @@ interface ShimmerViewProps {
 export const ShimmerView = React.memo<ShimmerViewProps>(({
     children,
     shimmerColors = ['#E0E0E0', '#F0F0F0', '#F8F8F8', '#F0F0F0', '#E0E0E0'],
+    baseColor,
     shimmerWidthPercent = 80,
     duration = 1500,
     style,
@@ -75,7 +77,7 @@ export const ShimmerView = React.memo<ShimmerViewProps>(({
                 }
             >
                 {/* Base background */}
-                <View style={[StyleSheet.absoluteFillObject, styles.background]} />
+                <View style={[StyleSheet.absoluteFillObject, baseColor ? { backgroundColor: baseColor } : styles.background]} />
 
                 {/* Animated shimmer */}
                 <AnimatedLinearGradient

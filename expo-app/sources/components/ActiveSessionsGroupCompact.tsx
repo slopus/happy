@@ -21,6 +21,7 @@ import { ProjectGitStatus } from './ProjectGitStatus';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { useAgentConfigContext } from '@/arc/agent';
+import { ShimmerView } from './ShimmerView';
 
 const flavorIcons = {
     claude: require('@/assets/images/icon-claude.png'),
@@ -177,6 +178,19 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         textAlign: 'center',
         ...Typography.default('semiBold'),
     },
+    shimmerName: {
+        height: 14,
+        width: 120,
+        borderRadius: 4,
+        backgroundColor: theme.colors.divider,
+        marginBottom: 6,
+    },
+    shimmerPath: {
+        height: 12,
+        width: 180,
+        borderRadius: 4,
+        backgroundColor: theme.colors.divider,
+    },
 }));
 
 interface ActiveSessionsGroupProps {
@@ -315,6 +329,7 @@ const ProjectHeaderCompact = React.memo(({ avatarId, firstSession, displayPath }
     displayPath: string;
 }) => {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const agentConfig = useAgentConfigContext();
     const sessionId = firstSession?.id;
 
@@ -327,6 +342,13 @@ const ProjectHeaderCompact = React.memo(({ avatarId, firstSession, displayPath }
 
     const agentName = sessionId ? agentConfig.getDisplayName(sessionId, '') : '';
     const customAvatarUrl = sessionId ? agentConfig.getAvatarUrl(sessionId) : null;
+    const loading = sessionId ? agentConfig.isLoading(sessionId) : false;
+
+    const shimmerColors = React.useMemo(() => {
+        const base = theme.colors.divider;
+        const highlight = theme.colors.surfaceHigh;
+        return [base, highlight, base] as const;
+    }, [theme]);
 
     return (
         <View style={styles.sectionHeader}>
@@ -338,19 +360,28 @@ const ProjectHeaderCompact = React.memo(({ avatarId, firstSession, displayPath }
                 />
             </View>
             <View style={styles.sectionHeaderInfo}>
-                <View style={styles.sectionHeaderTopRow}>
-                    <Text style={styles.sectionHeaderAgentName} numberOfLines={1}>
-                        {agentName || displayPath}
-                    </Text>
-                    {firstSession ? (
-                        <ProjectGitStatus sessionId={firstSession.id} />
-                    ) : null}
-                </View>
-                {agentName ? (
-                    <Text style={styles.sectionHeaderPath} numberOfLines={1}>
-                        {displayPath}
-                    </Text>
-                ) : null}
+                {loading ? (
+                    <ShimmerView shimmerColors={shimmerColors} baseColor={theme.colors.divider}>
+                        <View style={styles.shimmerName} />
+                        <View style={styles.shimmerPath} />
+                    </ShimmerView>
+                ) : (
+                    <>
+                        <View style={styles.sectionHeaderTopRow}>
+                            <Text style={styles.sectionHeaderAgentName} numberOfLines={1}>
+                                {agentName || displayPath}
+                            </Text>
+                            {firstSession ? (
+                                <ProjectGitStatus sessionId={firstSession.id} />
+                            ) : null}
+                        </View>
+                        {agentName ? (
+                            <Text style={styles.sectionHeaderPath} numberOfLines={1}>
+                                {displayPath}
+                            </Text>
+                        ) : null}
+                    </>
+                )}
             </View>
         </View>
     );
