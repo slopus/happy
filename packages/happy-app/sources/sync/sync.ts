@@ -126,6 +126,10 @@ class Sync {
         AppState.addEventListener('change', (nextAppState) => {
             if (nextAppState === 'active') {
                 log.log('📱 App became active');
+                // Refresh lastViewedAt so blue dot won't flash for the session user is viewing
+                if (this.viewingSessionId) {
+                    sessionLastViewedAt.set(this.viewingSessionId, Date.now());
+                }
                 this.purchasesSync.invalidate();
                 this.profileSync.invalidate();
                 this.machinesSync.invalidate();
