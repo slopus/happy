@@ -22,6 +22,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { useAgentConfigContext } from '@/arc/agent';
 import { ShimmerView } from './ShimmerView';
+import { useActivityTimer } from '@/hooks/useActivityTimer';
 
 const flavorIcons = {
     claude: require('@/assets/images/icon-claude.png'),
@@ -128,6 +129,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     sessionStatusText: {
         fontSize: 12,
+        ...Typography.default(),
+    },
+    elapsedText: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
         ...Typography.default(),
     },
     statusDotContainer: {
@@ -406,6 +412,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
+    const elapsedText = useActivityTimer(sessionStatus.state);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -477,6 +484,11 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     <Text style={[styles.sessionStatusText, { color: sessionStatus.statusColor }]}>
                         {sessionStatus.statusText}
                     </Text>
+                    {elapsedText && (
+                        <Text style={styles.elapsedText}>
+                            {' '}{elapsedText}
+                        </Text>
+                    )}
                 </View>
             </View>
         </Pressable>
