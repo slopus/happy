@@ -388,6 +388,7 @@ graph TB
 - Metrics server exposes `/metrics` for Prometheus.
 - HTTP request counters and duration histograms are captured via Fastify hooks.
 - WebSocket event counters and connection gauges are in `metrics2.ts`.
+- Structured logging via Pino. Set `LOG_FORMAT=json` for single-line JSON output suitable for log aggregation (Loki, Datadog, etc.). Defaults to pretty-printed console output via `pino-pretty`.
 
 ## Key implementation references
 - Entrypoint: `packages/happy-server/sources/main.ts`
