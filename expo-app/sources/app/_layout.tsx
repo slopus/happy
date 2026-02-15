@@ -21,6 +21,7 @@ import { syncRestore } from '@/sync/sync';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { AgentConfigProvider } from '@/arc/agent';
+import { MockDataProvider, getFixture } from '@/arc/mock';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
@@ -173,6 +174,14 @@ export default function RootLayout() {
         };
     }, [theme.dark]);
 
+    // Check for mock mode via URL param (web only)
+    const mockFixtureName = React.useMemo(() => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            return new URLSearchParams(window.location.search).get('mock');
+        }
+        return null;
+    }, []);
+
     //
     // Init sequence
     //
@@ -223,17 +232,25 @@ export default function RootLayout() {
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <KeyboardProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
-                    <AuthProvider initialCredentials={initState.credentials}>
+                    <AuthProvider initialCredentials={mockFixtureName ? { token: 'mock-token', secret: 'mock-secret' } : initState.credentials}>
                         <ThemeProvider value={navigationTheme}>
                             <StatusBarProvider />
                             <ModalProvider>
                                 <CommandPaletteProvider>
                                     <RealtimeProvider>
-                                        <AgentConfigProvider>
-                                            <HorizontalSafeAreaWrapper>
-                                                <SidebarNavigator />
-                                            </HorizontalSafeAreaWrapper>
-                                        </AgentConfigProvider>
+                                        {mockFixtureName ? (
+                                            <MockDataProvider fixture={getFixture(mockFixtureName)}>
+                                                <HorizontalSafeAreaWrapper>
+                                                    <SidebarNavigator />
+                                                </HorizontalSafeAreaWrapper>
+                                            </MockDataProvider>
+                                        ) : (
+                                            <AgentConfigProvider>
+                                                <HorizontalSafeAreaWrapper>
+                                                    <SidebarNavigator />
+                                                </HorizontalSafeAreaWrapper>
+                                            </AgentConfigProvider>
+                                        )}
                                     </RealtimeProvider>
                                 </CommandPaletteProvider>
                             </ModalProvider>

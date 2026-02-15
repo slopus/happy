@@ -94,7 +94,7 @@ interface AgentConfigContextValue {
 // Context
 // =============================================================================
 
-const AgentConfigContext = createContext<AgentConfigContextValue | null>(null);
+export const AgentConfigContext = createContext<AgentConfigContextValue | null>(null);
 
 // =============================================================================
 // Provider
