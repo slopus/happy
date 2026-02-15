@@ -201,7 +201,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                             }}
                             style={[
                                 styles.actionButton,
-                                microphoneMuted && { backgroundColor: theme.colors.text + '14' },
+                                { backgroundColor: microphoneMuted ? theme.colors.text + '1A' : theme.colors.text + '0D' },
                             ]}
                             hitSlop={8}
                         >
@@ -220,7 +220,10 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                                 e.stopPropagation();
                                 handlePress();
                             }}
-                            style={styles.actionButton}
+                            style={[
+                                styles.actionButton,
+                                { backgroundColor: theme.colors.text + '0D' },
+                            ]}
                             hitSlop={8}
                         >
                             <Ionicons
@@ -384,9 +387,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         width: '100%',
+        maxWidth: 360,
+        alignSelf: 'center',
         paddingHorizontal: 12,
         paddingTop: 8,
         paddingBottom: 12,
+        gap: 8,
     },
     actionButton: {
         flex: 1,
