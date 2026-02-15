@@ -136,58 +136,67 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
 
     if (variant === 'full') {
         // Mobile full-width version
-        if (isExpanded) {
-            // Expanded state: taller bar with action buttons
-            return (
-                <Pressable
-                    onPress={handleFullBarPress}
-                    style={{
-                        backgroundColor: statusInfo.backgroundColor,
-                        height: 64,
-                        width: '100%',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        paddingHorizontal: 16,
-                    }}
-                >
-                    <View style={styles.content}>
-                        <View style={styles.leftSection}>
-                            <StatusDot
-                                color={statusInfo.color}
-                                isPulsing={statusInfo.isPulsing}
-                                size={8}
-                                style={styles.statusDot}
-                            />
-                            <Ionicons
-                                name={microphoneMuted ? 'mic-off' : 'mic'}
-                                size={16}
-                                color={statusInfo.textColor}
-                                style={styles.micIcon}
-                            />
-                            <Text style={[
-                                styles.statusText,
-                                { color: statusInfo.textColor }
-                            ]}>
-                                {statusInfo.text}
-                            </Text>
-                        </View>
+        // Shared top row for both collapsed and expanded — keeps layout stable
+        const topRow = (
+            <View style={styles.content}>
+                <View style={styles.leftSection}>
+                    <StatusDot
+                        color={statusInfo.color}
+                        isPulsing={statusInfo.isPulsing}
+                        size={8}
+                        style={styles.statusDot}
+                    />
+                    <Ionicons
+                        name={microphoneMuted ? 'mic-off' : 'mic'}
+                        size={16}
+                        color={statusInfo.textColor}
+                        style={styles.micIcon}
+                    />
+                    <Text style={[
+                        styles.statusText,
+                        { color: statusInfo.textColor }
+                    ]}>
+                        {statusInfo.text}
+                    </Text>
+                </View>
 
-                        {(isVoiceSpeaking || isVoiceThinking) && (
-                            <VoiceBars
-                                isActive
-                                color={statusInfo.textColor}
-                                size="small"
-                                mode={isVoiceThinking ? 'thinking' : 'speaking'}
-                            />
-                        )}
-                    </View>
+                <View style={styles.rightSection}>
+                    {(isVoiceSpeaking || isVoiceThinking) && (
+                        <VoiceBars
+                            isActive
+                            color={statusInfo.textColor}
+                            size="small"
+                            mode={isVoiceThinking ? 'thinking' : 'speaking'}
+                        />
+                    )}
+                    <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: (isVoiceSpeaking || isVoiceThinking) ? 8 : 0 }]}>
+                        {realtimeStatus === 'connected' ? 'Tap for options' : 'Tap to end'}
+                    </Text>
+                </View>
+            </View>
+        );
 
+        return (
+            <Pressable
+                onPress={handleFullBarPress}
+                style={{
+                    backgroundColor: statusInfo.backgroundColor,
+                    width: '100%',
+                    paddingHorizontal: 16,
+                }}
+            >
+                {/* Top row — always 32px, identical in collapsed & expanded */}
+                <View style={{ height: 32, justifyContent: 'center' }}>
+                    {topRow}
+                </View>
+
+                {/* Action buttons — only visible when expanded */}
+                {isExpanded && (
                     <View style={styles.expandedActions}>
                         <Pressable
                             onPress={(e) => {
                                 e.stopPropagation();
                                 handleMuteToggle();
-                                // Reset auto-collapse timer on interaction
                                 startCollapseTimer();
                             }}
                             style={[
@@ -224,68 +233,8 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                             </Text>
                         </Pressable>
                     </View>
-                </Pressable>
-            );
-        }
-
-        // Collapsed state
-        return (
-            <View style={{
-                backgroundColor: statusInfo.backgroundColor,
-                height: 32,
-                width: '100%',
-                justifyContent: 'center',
-                alignItems: 'center',
-                paddingHorizontal: 16,
-            }}>
-                <Pressable
-                    onPress={handleFullBarPress}
-                    style={{
-                        height: 32,
-                        width: '100%',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                    }}
-                    hitSlop={10}
-                >
-                    <View style={styles.content}>
-                        <View style={styles.leftSection}>
-                            <StatusDot
-                                color={statusInfo.color}
-                                isPulsing={statusInfo.isPulsing}
-                                size={8}
-                                style={styles.statusDot}
-                            />
-                            <Ionicons
-                                name={microphoneMuted ? 'mic-off' : 'mic'}
-                                size={16}
-                                color={statusInfo.textColor}
-                                style={styles.micIcon}
-                            />
-                            <Text style={[
-                                styles.statusText,
-                                { color: statusInfo.textColor }
-                            ]}>
-                                {statusInfo.text}
-                            </Text>
-                        </View>
-
-                        <View style={styles.rightSection}>
-                            {(isVoiceSpeaking || isVoiceThinking) && (
-                                <VoiceBars
-                                    isActive
-                                    color={statusInfo.textColor}
-                                    size="small"
-                                    mode={isVoiceThinking ? 'thinking' : 'speaking'}
-                                />
-                            )}
-                            <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: (isVoiceSpeaking || isVoiceThinking) ? 8 : 0 }]}>
-                                {realtimeStatus === 'connected' ? 'Tap for options' : 'Tap to end'}
-                            </Text>
-                        </View>
-                    </View>
-                </Pressable>
-            </View>
+                )}
+            </Pressable>
         );
     }
 
@@ -437,6 +386,8 @@ const styles = StyleSheet.create({
         gap: 24,
         width: '100%',
         paddingHorizontal: 12,
+        paddingTop: 4,
+        paddingBottom: 10,
     },
     actionButton: {
         flexDirection: 'row',
