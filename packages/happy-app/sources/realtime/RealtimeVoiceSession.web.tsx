@@ -75,6 +75,18 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
         }
     }
 
+    async setMicrophoneMuted(muted: boolean): Promise<void> {
+        if (!conversationInstance) {
+            console.warn('Realtime voice session not initialized');
+            return;
+        }
+        try {
+            await conversationInstance.setMicMuted(muted);
+        } catch (error) {
+            console.error('Failed to set mic muted state:', error);
+        }
+    }
+
     sendTextMessage(message: string): void {
         if (!conversationInstance) {
             console.warn('Realtime voice session not initialized');
