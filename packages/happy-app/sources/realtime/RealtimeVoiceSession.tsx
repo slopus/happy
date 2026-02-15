@@ -68,7 +68,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             return;
         }
         try {
-            await conversationInstance.setMicMuted(muted);
+            conversationInstance.setMicMuted(muted);
         } catch (error) {
             console.error('Failed to set mic muted state:', error);
         }

@@ -9,6 +9,9 @@ import type { VoiceSession, VoiceSessionConfig } from './types';
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
 
+// Module-level mic mute state setter (provided by React component)
+let setMicMutedState: ((muted: boolean) => void) | null = null;
+
 // Global voice session implementation
 class RealtimeVoiceSessionImpl implements VoiceSession {
 
@@ -76,12 +79,12 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
     }
 
     async setMicrophoneMuted(muted: boolean): Promise<void> {
-        if (!conversationInstance) {
+        if (!setMicMutedState) {
             console.warn('Realtime voice session not initialized');
             return;
         }
         try {
-            await conversationInstance.setMicMuted(muted);
+            setMicMutedState(muted);
         } catch (error) {
             console.error('Failed to set mic muted state:', error);
         }
@@ -107,7 +110,10 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 }
 
 export const RealtimeVoiceSession: React.FC = () => {
+    const [micMuted, setMicMuted] = React.useState(false);
+
     const conversation = useConversation({
+        micMuted,
         clientTools: realtimeClientTools,
         onConnect: () => {
             console.log('Realtime session connected');
@@ -156,6 +162,7 @@ export const RealtimeVoiceSession: React.FC = () => {
         // Store the conversation instance globally
         console.log('[RealtimeVoiceSession] Setting conversationInstance:', conversation);
         conversationInstance = conversation;
+        setMicMutedState = setMicMuted;
 
         // Register the voice session once
         if (!hasRegistered.current) {
@@ -172,8 +179,9 @@ export const RealtimeVoiceSession: React.FC = () => {
         return () => {
             // Clean up on unmount
             conversationInstance = null;
+            setMicMutedState = null;
         };
-    }, [conversation]);
+    }, [conversation, setMicMuted]);
 
     // This component doesn't render anything visible
     return null;
