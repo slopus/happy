@@ -23,6 +23,8 @@ import { ProjectGitStatus } from './ProjectGitStatus';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { getWorktreeInfo, cleanupWorktree } from '@/utils/worktreeOps';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import { ActionMenuItem } from '@/components/ActionMenu';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -325,35 +327,39 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         }
     });
 
+    const [archiveMenuVisible, setArchiveMenuVisible] = React.useState(false);
+    const [archiveMenuItems, setArchiveMenuItems] = React.useState<ActionMenuItem[]>([]);
+
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
         const worktreeInfo = getWorktreeInfo(session.metadata);
         if (worktreeInfo && session.metadata?.machineId) {
             const machineId = session.metadata.machineId;
             const { basePath, branchName } = worktreeInfo;
-            Modal.alert(
-                t('sessionInfo.archiveSession'),
-                t('sessionInfo.worktree.archiveWorktreeConfirm'),
-                [
-                    { text: t('common.cancel'), style: 'cancel' },
-                    {
-                        text: t('sessionInfo.worktree.archiveAndCleanup'),
-                        style: 'destructive',
-                        onPress: async () => {
-                            try {
-                                await cleanupWorktree(machineId, basePath, branchName);
-                            } catch (e) {
-                                console.warn('Worktree cleanup failed:', e);
-                            }
-                            await performArchive();
-                        }
+            setArchiveMenuItems([
+                {
+                    label: t('sessionInfo.worktree.archiveKeepWorktree'),
+                    onPress: () => { setArchiveMenuVisible(false); performArchive(); },
+                },
+                {
+                    label: t('sessionInfo.worktree.archiveCleanupKeepBranch'),
+                    onPress: async () => {
+                        setArchiveMenuVisible(false);
+                        try { await cleanupWorktree(machineId, basePath, branchName, false); } catch (e) { console.warn('Worktree cleanup failed:', e); }
+                        await performArchive();
                     },
-                    {
-                        text: t('sessionInfo.worktree.archiveKeepWorktree'),
-                        onPress: performArchive
-                    }
-                ]
-            );
+                },
+                {
+                    label: t('sessionInfo.worktree.archiveCleanupDeleteBranch'),
+                    destructive: true,
+                    onPress: async () => {
+                        setArchiveMenuVisible(false);
+                        try { await cleanupWorktree(machineId, basePath, branchName, true); } catch (e) { console.warn('Worktree cleanup failed:', e); }
+                        await performArchive();
+                    },
+                },
+            ]);
+            setArchiveMenuVisible(true);
         } else {
             Modal.alert(
                 t('sessionInfo.archiveSession'),
@@ -453,8 +459,17 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         </Pressable>
     );
 
+    const archiveModal = (
+        <ActionMenuModal
+            visible={archiveMenuVisible}
+            title={t('sessionInfo.worktree.archiveWorktreeConfirm')}
+            items={archiveMenuItems}
+            onClose={() => setArchiveMenuVisible(false)}
+        />
+    );
+
     if (!swipeEnabled) {
-        return itemContent;
+        return <>{itemContent}{archiveModal}</>;
     }
 
     const renderRightActions = () => (
@@ -471,13 +486,16 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     );
 
     return (
-        <Swipeable
-            ref={swipeableRef}
-            renderRightActions={renderRightActions}
-            overshootRight={false}
-            enabled={!archivingSession}
-        >
-            {itemContent}
-        </Swipeable>
+        <>
+            <Swipeable
+                ref={swipeableRef}
+                renderRightActions={renderRightActions}
+                overshootRight={false}
+                enabled={!archivingSession}
+            >
+                {itemContent}
+            </Swipeable>
+            {archiveModal}
+        </>
     );
 });

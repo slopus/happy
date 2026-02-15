@@ -207,11 +207,12 @@ export async function postPRComment(
     return { success: true };
 }
 
-/** Clean up the worktree (remove worktree directory, preserve branch) */
+/** Clean up the worktree (remove worktree directory, optionally delete the local branch) */
 export async function cleanupWorktree(
     machineId: string,
     basePath: string,
-    branchName: string
+    branchName: string,
+    deleteBranch?: boolean
 ): Promise<{ success: boolean; error?: string }> {
     if (!isValidGitRef(branchName)) {
         return { success: false, error: 'Invalid branch name' };
@@ -227,9 +228,24 @@ export async function cleanupWorktree(
 
     if (!result.success) {
         if (result.stderr.includes('is not a working tree') || result.stderr.includes('No such file')) {
-            return { success: true };
+            // Worktree already gone — continue to branch deletion if requested
+        } else {
+            return { success: false, error: result.stderr || 'Failed to remove worktree' };
         }
-        return { success: false, error: result.stderr || 'Failed to remove worktree' };
+    }
+
+    if (deleteBranch) {
+        const branchResult = await machineBash(
+            machineId,
+            `git branch -D '${shellEscape(branchName)}'`,
+            basePath
+        );
+        if (!branchResult.success) {
+            // Non-fatal: worktree was already cleaned up
+            if (!branchResult.stderr.includes('not found')) {
+                return { success: true, error: branchResult.stderr || 'Worktree removed but failed to delete branch' };
+            }
+        }
     }
 
     return { success: true };

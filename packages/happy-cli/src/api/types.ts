@@ -361,6 +361,8 @@ export type Metadata = {
   isWorktree?: boolean,
   worktreeBasePath?: string,
   worktreeBranchName?: string,
+  worktreePrUrl?: string,
+  reviewOfSessionId?: string,
 };
 
 export type AgentState = {

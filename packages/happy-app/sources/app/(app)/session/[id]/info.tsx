@@ -160,36 +160,39 @@ function SessionInfoContent({ session }: { session: Session }) {
         router.back();
     });
 
+    // Archive menu for worktree sessions
+    const [archiveMenuVisible, setArchiveMenuVisible] = React.useState(false);
+    const [archiveMenuItems, setArchiveMenuItems] = React.useState<ActionMenuItem[]>([]);
+
     const handleArchiveSession = useCallback(() => {
         const worktreeInfo = getWorktreeInfo(session.metadata);
         if (worktreeInfo && session.metadata?.machineId) {
             const machineId = session.metadata.machineId;
             const { basePath, branchName } = worktreeInfo;
-            Modal.alert(
-                t('sessionInfo.archiveSession'),
-                t('sessionInfo.worktree.archiveWorktreeConfirm'),
-                [
-                    { text: t('common.cancel'), style: 'cancel' },
-                    {
-                        text: t('sessionInfo.worktree.archiveAndCleanup'),
-                        style: 'destructive',
-                        onPress: async () => {
-                            // Clean up worktree first (while component is still mounted),
-                            // then archive (which navigates away)
-                            try {
-                                await cleanupWorktree(machineId, basePath, branchName);
-                            } catch (e) {
-                                console.warn('Worktree cleanup failed:', e);
-                            }
-                            await performArchive();
-                        }
+            setArchiveMenuItems([
+                {
+                    label: t('sessionInfo.worktree.archiveKeepWorktree'),
+                    onPress: () => { setArchiveMenuVisible(false); performArchive(); },
+                },
+                {
+                    label: t('sessionInfo.worktree.archiveCleanupKeepBranch'),
+                    onPress: async () => {
+                        setArchiveMenuVisible(false);
+                        try { await cleanupWorktree(machineId, basePath, branchName, false); } catch (e) { console.warn('Worktree cleanup failed:', e); }
+                        await performArchive();
                     },
-                    {
-                        text: t('sessionInfo.worktree.archiveKeepWorktree'),
-                        onPress: performArchive
-                    }
-                ]
-            );
+                },
+                {
+                    label: t('sessionInfo.worktree.archiveCleanupDeleteBranch'),
+                    destructive: true,
+                    onPress: async () => {
+                        setArchiveMenuVisible(false);
+                        try { await cleanupWorktree(machineId, basePath, branchName, true); } catch (e) { console.warn('Worktree cleanup failed:', e); }
+                        await performArchive();
+                    },
+                },
+            ]);
+            setArchiveMenuVisible(true);
         } else {
             Modal.alert(
                 t('sessionInfo.archiveSession'),
@@ -496,16 +499,28 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     const [cleaningUp, handleCleanupWorktree] = useHappyAction(async () => {
         if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
-        const confirmed = await Modal.confirm(
-            t('sessionInfo.worktree.cleanup'),
-            t('sessionInfo.worktree.cleanupConfirm')
-        );
-        if (!confirmed) return;
-        const result = await cleanupWorktree(worktreeMachineId, worktreeBasePath, worktreeBranch);
+        const deleteBranch = await new Promise<boolean | null>((resolve) => {
+            Modal.alert(
+                t('sessionInfo.worktree.cleanup'),
+                t('sessionInfo.worktree.cleanupConfirm'),
+                [
+                    { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
+                    { text: t('sessionInfo.worktree.cleanupKeepBranch'), onPress: () => resolve(false) },
+                    { text: t('sessionInfo.worktree.cleanupDeleteBranch'), style: 'destructive', onPress: () => resolve(true) },
+                ]
+            );
+        });
+        if (deleteBranch === null) return;
+        const result = await cleanupWorktree(worktreeMachineId, worktreeBasePath, worktreeBranch, deleteBranch);
         if (!result.success) {
             throw new HappyError(result.error || t('sessionInfo.worktree.cleanupFailed'), false);
         }
-        Modal.alert(t('common.success'), t('sessionInfo.worktree.cleanupSuccess'));
+        if (result.error) {
+            // Partial success (worktree removed but branch deletion failed)
+            Modal.alert(t('common.success'), result.error);
+        } else {
+            Modal.alert(t('common.success'), t('sessionInfo.worktree.cleanupSuccess'));
+        }
     });
 
     const [requestingReview, handleRequestReview] = useHappyAction(async () => {
@@ -994,6 +1009,12 @@ function SessionInfoContent({ session }: { session: Session }) {
                 title={branchPickerTitle}
                 items={branchPickerItems}
                 onClose={() => setBranchPickerVisible(false)}
+            />
+            <ActionMenuModal
+                visible={archiveMenuVisible}
+                title={t('sessionInfo.worktree.archiveWorktreeConfirm')}
+                items={archiveMenuItems}
+                onClose={() => setArchiveMenuVisible(false)}
             />
         </>
     );

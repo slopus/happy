@@ -5,6 +5,11 @@
 import { machineBash } from '@/sync/ops';
 import { generateWorktreeName } from './generateWorktreeName';
 
+/** Shell-escape a string for use in single quotes */
+function shellEscape(s: string): string {
+    return s.replace(/'/g, "'\\''");
+}
+
 export async function createWorktree(
     machineId: string,
     basePath: string
@@ -15,14 +20,14 @@ export async function createWorktree(
     error?: string;
 }> {
     const name = generateWorktreeName();
-    
+
     // Check if it's a git repository
     const gitCheck = await machineBash(
         machineId,
         'git rev-parse --git-dir',
         basePath
     );
-    
+
     if (!gitCheck.success) {
         return {
             success: false,
@@ -31,15 +36,15 @@ export async function createWorktree(
             error: 'Not a Git repository'
         };
     }
-    
+
     // Create the worktree with new branch
     const worktreePath = `.dev/worktree/${name}`;
     let result = await machineBash(
         machineId,
-        `git worktree add -b ${name} ${worktreePath}`,
+        `git worktree add -b '${shellEscape(name)}' '${shellEscape(worktreePath)}'`,
         basePath
     );
-    
+
     // If worktree exists, try with a different name
     if (!result.success && result.stderr.includes('already exists')) {
         // Try up to 3 times with numbered suffixes
@@ -48,10 +53,10 @@ export async function createWorktree(
             const newWorktreePath = `.dev/worktree/${newName}`;
             result = await machineBash(
                 machineId,
-                `git worktree add -b ${newName} ${newWorktreePath}`,
+                `git worktree add -b '${shellEscape(newName)}' '${shellEscape(newWorktreePath)}'`,
                 basePath
             );
-            
+
             if (result.success) {
                 return {
                     success: true,
@@ -62,7 +67,7 @@ export async function createWorktree(
             }
         }
     }
-    
+
     if (result.success) {
         return {
             success: true,
@@ -71,7 +76,7 @@ export async function createWorktree(
             error: undefined
         };
     }
-    
+
     return {
         success: false,
         worktreePath: '',

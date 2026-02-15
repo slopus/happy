@@ -12,7 +12,7 @@ Branch: ${branchName}
 
 ## Instructions
 
-1. First, run \`gh pr diff '${branchName}'\` to get the full diff of this PR. If that fails, use \`git diff origin/main...HEAD\` (adjusting the base branch as needed).
+1. First, run \`gh pr diff '${branchName}'\` to get the full diff of this PR. If that fails, determine the base branch by running \`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'\`, then use \`git diff origin/<base>...HEAD\`.
 
 2. Read through the diff carefully. For any non-trivial changes, use your tools to read the full file context around the changed code — don't review the diff in isolation.
 
