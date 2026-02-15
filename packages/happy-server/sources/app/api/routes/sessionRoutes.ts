@@ -7,6 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
+import { sessionRename } from "@/app/session/sessionRename";
 
 export function sessionRoutes(app: Fastify) {
 
@@ -25,6 +26,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 createdAt: true,
                 updatedAt: true,
+                customName: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -59,6 +61,7 @@ export function sessionRoutes(app: Fastify) {
                     updatedAt: sessionUpdatedAt,
                     active: v.active,
                     activeAt: v.lastActiveAt.getTime(),
+                    customName: v.customName,
                     metadata: v.metadata,
                     metadataVersion: v.metadataVersion,
                     agentState: v.agentState,
@@ -95,6 +98,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 createdAt: true,
                 updatedAt: true,
+                customName: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -113,6 +117,7 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: v.updatedAt.getTime(),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
+                customName: v.customName,
                 metadata: v.metadata,
                 metadataVersion: v.metadataVersion,
                 agentState: v.agentState,
@@ -175,6 +180,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 createdAt: true,
                 updatedAt: true,
+                customName: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -204,6 +210,7 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: v.updatedAt.getTime(),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
+                customName: v.customName,
                 metadata: v.metadata,
                 metadataVersion: v.metadataVersion,
                 agentState: v.agentState,
@@ -242,6 +249,7 @@ export function sessionRoutes(app: Fastify) {
                 session: {
                     id: session.id,
                     seq: session.seq,
+                    customName: session.customName,
                     metadata: session.metadata,
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
@@ -290,6 +298,7 @@ export function sessionRoutes(app: Fastify) {
                 session: {
                     id: session.id,
                     seq: session.seq,
+                    customName: session.customName,
                     metadata: session.metadata,
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
@@ -352,6 +361,31 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: v.updatedAt.getTime()
             }))
         });
+    });
+
+    // Rename session
+    app.patch('/v1/sessions/:sessionId', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                customName: z.string().nullable()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const { customName } = request.body;
+
+        const renamed = await sessionRename({ uid: userId }, sessionId, customName);
+
+        if (!renamed) {
+            return reply.code(404).send({ error: 'Session not found or not owned by user' });
+        }
+
+        return reply.send({ success: true });
     });
 
     // Delete session

@@ -51,20 +51,43 @@ async function main() {
     log('Shutting down...');
 }
 
-// Process-level error handling
+// Process-level error handling with recovery
+let uncaughtExceptionCount = 0;
+let unhandledRejectionCount = 0;
+const MAX_ERRORS_BEFORE_EXIT = 5;
+const ERROR_RESET_INTERVAL = 60000; // Reset counter after 1 minute
+
+// Reset error counters periodically
+setInterval(() => {
+    uncaughtExceptionCount = 0;
+    unhandledRejectionCount = 0;
+}, ERROR_RESET_INTERVAL);
+
 process.on('uncaughtException', (error) => {
+    uncaughtExceptionCount++;
+
     log({
         module: 'process-error',
         level: 'error',
         stack: error.stack,
-        name: error.name
-    }, `Uncaught Exception: ${error.message}`);
+        name: error.name,
+        errorCount: uncaughtExceptionCount
+    }, `Uncaught Exception (${uncaughtExceptionCount}/${MAX_ERRORS_BEFORE_EXIT}): ${error.message}`);
 
     console.error('Uncaught Exception:', error);
-    process.exit(1);
+
+    // Only exit if we've hit too many errors
+    if (uncaughtExceptionCount >= MAX_ERRORS_BEFORE_EXIT) {
+        console.error(`Too many uncaught exceptions (${uncaughtExceptionCount}). Exiting...`);
+        process.exit(1);
+    } else {
+        console.warn(`Error recovered. Server continues running. (${uncaughtExceptionCount}/${MAX_ERRORS_BEFORE_EXIT})`);
+    }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
+    unhandledRejectionCount++;
+
     const errorMsg = reason instanceof Error ? reason.message : String(reason);
     const errorStack = reason instanceof Error ? reason.stack : undefined;
 
@@ -72,11 +95,19 @@ process.on('unhandledRejection', (reason, promise) => {
         module: 'process-error',
         level: 'error',
         stack: errorStack,
-        reason: String(reason)
-    }, `Unhandled Rejection: ${errorMsg}`);
+        reason: String(reason),
+        errorCount: unhandledRejectionCount
+    }, `Unhandled Rejection (${unhandledRejectionCount}/${MAX_ERRORS_BEFORE_EXIT}): ${errorMsg}`);
 
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    process.exit(1);
+
+    // Only exit if we've hit too many errors
+    if (unhandledRejectionCount >= MAX_ERRORS_BEFORE_EXIT) {
+        console.error(`Too many unhandled rejections (${unhandledRejectionCount}). Exiting...`);
+        process.exit(1);
+    } else {
+        console.warn(`Promise rejection recovered. Server continues running. (${unhandledRejectionCount}/${MAX_ERRORS_BEFORE_EXIT})`);
+    }
 });
 
 process.on('warning', (warning) => {

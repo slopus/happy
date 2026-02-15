@@ -95,6 +95,7 @@ model Session {
     tag               String
     accountId         String
     account           Account          @relation(fields: [accountId], references: [id])
+    customName        String?          // Custom name for the session (allows rename)
     metadata          String
     metadataVersion   Int              @default(0)
     agentState        String?
