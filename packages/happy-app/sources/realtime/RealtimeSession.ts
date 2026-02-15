@@ -113,8 +113,25 @@ export async function stopRealtimeSession() {
         await voiceSession.endSession();
         currentSessionId = null;
         voiceSessionStarted = false;
+        storage.getState().setMicrophoneMuted(false);
     } catch (error) {
         console.error('Failed to stop realtime session:', error);
+    }
+}
+
+export async function toggleMicrophoneMute() {
+    if (!voiceSession || !voiceSessionStarted) {
+        return;
+    }
+
+    const currentMuted = storage.getState().microphoneMuted;
+    const newMuted = !currentMuted;
+
+    try {
+        await voiceSession.setMicrophoneMuted(newMuted);
+        storage.getState().setMicrophoneMuted(newMuted);
+    } catch (error) {
+        console.error('Failed to toggle microphone mute:', error);
     }
 }
 
