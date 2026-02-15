@@ -105,14 +105,19 @@ function stripLargeImageContent(body: RawJSONLines): RawJSONLines {
         const block = item as ContentBlock;
         // Handle tool_result blocks containing image content
         if (block.type === 'tool_result' && Array.isArray(block.content)) {
+            let innerModified = false;
             const strippedInner = block.content.map((inner: ContentBlock) => {
                 if (inner.type === 'image' && inner.source?.data) {
-                    modified = true;
+                    innerModified = true;
                     return { type: 'text', text: '[image]' };
                 }
                 return inner;
             });
-            return modified ? { ...block, content: strippedInner } : block;
+            if (innerModified) {
+                modified = true;
+                return { ...block, content: strippedInner };
+            }
+            return block;
         }
         // Handle direct image blocks
         if (block.type === 'image' && block.source?.data) {

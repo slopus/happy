@@ -33,8 +33,17 @@ export function validatePath(targetPath: string, workingDirectory: string, addit
         }
     }
 
-    // Collect all directories the path is allowed to live under
-    const allowedDirs = [resolve(workingDirectory), ...(additionalAllowedDirs ?? []).map(d => resolve(d))];
+    // Collect all directories the path is allowed to live under.
+    // Resolve symlinks on allowed dirs so comparisons are consistent with the symlink-resolved realTarget.
+    const allowedDirs = [workingDirectory, ...(additionalAllowedDirs ?? [])].map(d => {
+        const resolved = resolve(d);
+        try {
+            return realpathSync(resolved);
+        } catch {
+            // Directory may not exist yet (e.g., upload dir before first upload) — fall back to resolve()
+            return resolved;
+        }
+    });
 
     for (const dir of allowedDirs) {
         if (realTarget.startsWith(dir + '/') || realTarget === dir) {
