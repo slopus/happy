@@ -12,7 +12,9 @@ import { generateCopyTitle, getSessionName, useSessionStatus, formatOSPlatform, 
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete, machineForkClaudeSession, machineForkGeminiSession, machineForkCodexSession, machineSpawnNewSession, sessionUpdateSummary, sessionUpdateMetadataFields } from '@/sync/ops';
-import { isWorktreeSession, getWorktreeInfo, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree } from '@/utils/worktreeOps';
+import { isWorktreeSession, getWorktreeInfo, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree, getLocalBranches, getCurrentBranch } from '@/utils/worktreeOps';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import { ActionMenuItem } from '@/components/ActionMenu';
 import { buildReviewPrompt } from '@/utils/reviewPrompt';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
@@ -391,53 +393,106 @@ function SessionInfoContent({ session }: { session: Session }) {
         Modal.alert(t('common.success'), t('sessionInfo.worktree.pushSuccess', { branch: worktreeBranch }));
     });
 
+    // Shared branch picker state for merge & PR
+    const [branchPickerVisible, setBranchPickerVisible] = React.useState(false);
+    const [branchPickerTitle, setBranchPickerTitle] = React.useState('');
+    const [branchPickerItems, setBranchPickerItems] = React.useState<ActionMenuItem[]>([]);
+
+    const showBranchPicker = React.useCallback(async (
+        title: string,
+        onSelect: (branch: string) => void,
+    ) => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
+        const [branches, current] = await Promise.all([
+            getLocalBranches(worktreeMachineId, worktreeBasePath),
+            getCurrentBranch(worktreeMachineId, worktreeBasePath),
+        ]);
+        const candidates = branches.filter(b => b !== worktreeBranch);
+        if (candidates.length === 0) {
+            throw new HappyError(t('sessionInfo.worktree.mergeFailed'), false);
+        }
+        setBranchPickerTitle(title);
+        setBranchPickerItems(candidates.map(branch => ({
+            label: branch === current ? `${branch} ✓` : branch,
+            onPress: () => {
+                setBranchPickerVisible(false);
+                onSelect(branch);
+            },
+        })));
+        setBranchPickerVisible(true);
+    }, [worktreeMachineId, worktreeBranch, worktreeBasePath]);
+
+    // Create PR with branch selection
     const [creatingPR, handleCreatePR] = useHappyAction(async () => {
         if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
-        const sessionTitle = session.metadata?.summary?.text || getSessionName(session);
-        const confirmed = await Modal.confirm(
-            t('sessionInfo.worktree.createPR'),
-            t('sessionInfo.worktree.createPRConfirm', { branch: worktreeBranch })
-        );
-        if (!confirmed) return;
-        const result = await createWorktreePR(worktreeMachineId, worktreePath, worktreeBranch, sessionTitle);
-        if (!result.success) {
-            if (result.error === 'gh_not_installed') {
-                throw new HappyError(t('sessionInfo.worktree.ghNotInstalled'), false);
-            }
-            throw new HappyError(result.error || t('sessionInfo.worktree.createPRFailed'), false);
-        }
-        // Persist PR URL in session metadata
-        if (result.prUrl && session.metadata) {
-            try {
-                await sessionUpdateMetadataFields(
-                    session.id,
-                    session.metadata,
-                    { worktreePrUrl: result.prUrl },
-                    session.metadataVersion
-                );
-            } catch (e) {
-                console.warn('Failed to save PR URL to metadata:', e);
-            }
-        }
-        Modal.alert(t('common.success'), t('sessionInfo.worktree.createPRSuccess', { url: result.prUrl || '' }));
+        await showBranchPicker(t('sessionInfo.worktree.selectPRBase'), doCreatePR);
     });
 
+    const doCreatePR = React.useCallback(async (baseBranch: string) => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
+        try {
+            const sessionTitle = session.metadata?.summary?.text || getSessionName(session);
+            const confirmed = await Modal.confirm(
+                t('sessionInfo.worktree.createPR'),
+                t('sessionInfo.worktree.createPRConfirmTarget', { branch: worktreeBranch, target: baseBranch })
+            );
+            if (!confirmed) return;
+            const result = await createWorktreePR(worktreeMachineId, worktreePath, worktreeBranch, sessionTitle, baseBranch);
+            if (!result.success) {
+                if (result.error === 'gh_not_installed') {
+                    Modal.alert(t('common.error'), t('sessionInfo.worktree.ghNotInstalled'));
+                    return;
+                }
+                Modal.alert(t('common.error'), result.error || t('sessionInfo.worktree.createPRFailed'));
+                return;
+            }
+            // Persist PR URL in session metadata
+            if (result.prUrl && session.metadata) {
+                try {
+                    await sessionUpdateMetadataFields(
+                        session.id,
+                        session.metadata,
+                        { worktreePrUrl: result.prUrl },
+                        session.metadataVersion
+                    );
+                } catch (e) {
+                    console.warn('Failed to save PR URL to metadata:', e);
+                }
+            }
+            Modal.alert(t('common.success'), t('sessionInfo.worktree.createPRSuccess', { url: result.prUrl || '' }));
+        } catch (e) {
+            Modal.alert(t('common.error'), t('sessionInfo.worktree.createPRFailed'));
+        }
+    }, [worktreeMachineId, worktreeBranch, worktreePath, session]);
+
+    // Merge branch with branch selection
     const [mergingBranch, handleMergeBranch] = useHappyAction(async () => {
         if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
-        const confirmed = await Modal.confirm(
-            t('sessionInfo.worktree.mergeBranch'),
-            t('sessionInfo.worktree.mergeConfirm', { branch: worktreeBranch })
-        );
-        if (!confirmed) return;
-        const result = await mergeWorktreeBranch(worktreeMachineId, worktreeBasePath, worktreeBranch);
-        if (!result.success) {
-            if (result.hasConflicts) {
-                throw new HappyError(t('sessionInfo.worktree.mergeConflicts'), false);
-            }
-            throw new HappyError(result.error || t('sessionInfo.worktree.mergeFailed'), false);
-        }
-        Modal.alert(t('common.success'), t('sessionInfo.worktree.mergeSuccess'));
+        await showBranchPicker(t('sessionInfo.worktree.selectMergeTarget'), doMergeBranch);
     });
+
+    const doMergeBranch = React.useCallback(async (targetBranch: string) => {
+        if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
+        try {
+            const confirmed = await Modal.confirm(
+                t('sessionInfo.worktree.mergeBranch'),
+                t('sessionInfo.worktree.mergeConfirmTarget', { branch: worktreeBranch, target: targetBranch })
+            );
+            if (!confirmed) return;
+            const result = await mergeWorktreeBranch(worktreeMachineId, worktreeBasePath, worktreeBranch, targetBranch);
+            if (!result.success) {
+                if (result.hasConflicts) {
+                    Modal.alert(t('common.error'), t('sessionInfo.worktree.mergeConflicts'));
+                    return;
+                }
+                Modal.alert(t('common.error'), result.error || t('sessionInfo.worktree.mergeFailed'));
+                return;
+            }
+            Modal.alert(t('common.success'), t('sessionInfo.worktree.mergeSuccess'));
+        } catch (e) {
+            Modal.alert(t('common.error'), t('sessionInfo.worktree.mergeFailed'));
+        }
+    }, [worktreeMachineId, worktreeBranch, worktreeBasePath]);
 
     const [cleaningUp, handleCleanupWorktree] = useHappyAction(async () => {
         if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
@@ -934,6 +989,12 @@ function SessionInfoContent({ session }: { session: Session }) {
                     </ItemGroup>
                 )}
             </ItemList>
+            <ActionMenuModal
+                visible={branchPickerVisible}
+                title={branchPickerTitle}
+                items={branchPickerItems}
+                onClose={() => setBranchPickerVisible(false)}
+            />
         </>
     );
 }
