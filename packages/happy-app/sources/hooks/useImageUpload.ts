@@ -61,28 +61,33 @@ export function useImageUpload(sessionId: string): UseImageUploadResult {
 
     // Handle clipboard image paste (web only)
     const handleImagePaste = React.useCallback(async (blob: Blob) => {
-        if (pendingImagePathsRef.current.length >= MAX_IMAGES) return;
-        await uploadLockRef.current.inLock(async () => {
-            // Re-check under lock — a concurrent pick may have filled it
+        try {
             if (pendingImagePathsRef.current.length >= MAX_IMAGES) return;
-            if (!mountedRef.current) return;
-            setIsProcessingImage(true);
-            try {
-                const base64 = await blobToResizedBase64(blob);
+            await uploadLockRef.current.inLock(async () => {
+                // Re-check under lock — a concurrent pick may have filled it
                 if (pendingImagePathsRef.current.length >= MAX_IMAGES) return;
-                const path = await uploadBase64Image(sessionId, base64);
                 if (!mountedRef.current) return;
-                setPendingImagePaths(prev => prev.length >= MAX_IMAGES ? prev : [...prev, path]);
-            } catch (err) {
-                if (!mountedRef.current) return;
-                const errorMessage = err instanceof Error ? err.message : t('session.couldNotAttachFile');
-                Modal.alert(t('common.error'), errorMessage);
-            } finally {
-                if (mountedRef.current) {
-                    setIsProcessingImage(false);
+                setIsProcessingImage(true);
+                try {
+                    const base64 = await blobToResizedBase64(blob);
+                    if (pendingImagePathsRef.current.length >= MAX_IMAGES) return;
+                    const path = await uploadBase64Image(sessionId, base64);
+                    if (!mountedRef.current) return;
+                    setPendingImagePaths(prev => prev.length >= MAX_IMAGES ? prev : [...prev, path]);
+                } catch (err) {
+                    if (!mountedRef.current) return;
+                    const errorMessage = err instanceof Error ? err.message : t('session.couldNotAttachFile');
+                    Modal.alert(t('common.error'), errorMessage);
+                } finally {
+                    if (mountedRef.current) {
+                        setIsProcessingImage(false);
+                    }
                 }
-            }
-        });
+            });
+        } catch (e) {
+            // Swallow lock-acquisition or unexpected errors — paste failures should not crash the UI
+            console.error('handleImagePaste failed:', e);
+        }
     }, [sessionId]);
 
     return {

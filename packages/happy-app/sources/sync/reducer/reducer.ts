@@ -167,6 +167,7 @@ export type ReducerState = {
         contextSize: number;
         timestamp: number;
     };
+    latestAgentTextTime: number;
 };
 
 export function createReducer(): ReducerState {
@@ -178,7 +179,8 @@ export function createReducer(): ReducerState {
         localIds: new Map(),
         messageIds: new Map(),
         sidechains: new Map(),
-        tracerState: createTracer()
+        tracerState: createTracer(),
+        latestAgentTextTime: 0
     }
 };
 
@@ -651,6 +653,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         meta: msg.meta,
                     });
                     changed.add(mid);
+                    // Track latest agent text time incrementally for Phase 6
+                    if (c.type === 'text' && msg.createdAt > state.latestAgentTextTime) {
+                        state.latestAgentTextTime = msg.createdAt;
+                    }
                 }
             }
         }
@@ -1055,15 +1061,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // to the stream, leaving tool states stuck at 'running'.
     //
 
-    let latestAgentTextTime = 0;
-    for (const msg of state.messages.values()) {
-        if (msg.role === 'agent' && msg.text && !msg.tool && msg.createdAt > latestAgentTextTime) {
-            latestAgentTextTime = msg.createdAt;
-        }
-    }
-    if (latestAgentTextTime > 0) {
-        for (const [id, msg] of state.messages) {
-            if (msg.tool && msg.tool.state === 'running' && msg.createdAt < latestAgentTextTime) {
+    if (state.latestAgentTextTime > 0) {
+        for (const messageId of state.toolIdToMessageId.values()) {
+            const msg = state.messages.get(messageId);
+            if (!msg || !msg.tool) continue;
+            if (msg.tool.state === 'running' && msg.createdAt < state.latestAgentTextTime) {
                 // Skip tools with pending permissions — they're waiting for user input, not stale
                 if (msg.tool.permission?.status === 'pending') {
                     continue;
@@ -1073,8 +1075,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     continue;
                 }
                 msg.tool.state = 'completed';
-                msg.tool.completedAt = latestAgentTextTime;
-                changed.add(id);
+                msg.tool.completedAt = state.latestAgentTextTime;
+                changed.add(messageId);
             }
         }
     }

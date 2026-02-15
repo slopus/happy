@@ -151,7 +151,7 @@ export type RawToolUseContent = z.infer<typeof rawToolUseContentSchema>;
 const rawToolResultContentSchema = z.object({
     type: z.literal('tool_result'),
     tool_use_id: z.string(),
-    content: z.union([z.array(z.object({ type: z.enum(['text', 'image']) }).passthrough()), z.string()]),
+    content: z.union([z.array(z.discriminatedUnion('type', [z.object({ type: z.literal('text'), text: z.string() }).passthrough(), z.object({ type: z.literal('image') }).passthrough()])), z.string()]),
     is_error: z.boolean().optional(),
     permissions: z.object({
         date: z.number(),

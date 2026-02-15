@@ -159,6 +159,8 @@ export type SpawnSessionResult =
  * Register all RPC handlers with the session
  */
 export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string, sessionId: string) {
+    // Sanitize sessionId to prevent path traversal when used in filesystem paths
+    const safeSessionId = sessionId.replace(/[^a-zA-Z0-9-]/g, '');
 
     // Shell command handler - executes commands in the default shell
     rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
@@ -249,7 +251,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         logger.debug('Read file request:', data.path);
 
         // Validate path — scoped to this session's upload subdirectory (not the global upload dir)
-        const sessionUploadDir = join(UPLOAD_TEMP_DIR, sessionId);
+        const sessionUploadDir = join(UPLOAD_TEMP_DIR, safeSessionId);
         const validation = validatePath(data.path, workingDirectory, [sessionUploadDir]);
         if (!validation.valid) {
             return { success: false, error: validation.error };
@@ -276,7 +278,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         }
 
         // Validate path — scoped to this session's upload subdirectory
-        const sessionUploadDir = join(UPLOAD_TEMP_DIR, sessionId);
+        const sessionUploadDir = join(UPLOAD_TEMP_DIR, safeSessionId);
         const validation = validatePath(data.path, workingDirectory, [sessionUploadDir]);
         if (!validation.valid) {
             return { success: false, error: validation.error };
@@ -346,7 +348,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
 
     // Returns the OS temp upload directory scoped to this session
     rpcHandlerManager.registerHandler<Record<string, never>, GetUploadDirResponse>('getUploadDir', async () => {
-        return { success: true, path: join(UPLOAD_TEMP_DIR, sessionId) };
+        return { success: true, path: join(UPLOAD_TEMP_DIR, safeSessionId) };
     });
 
     // List directory handler
