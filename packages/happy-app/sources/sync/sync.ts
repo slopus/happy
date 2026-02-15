@@ -243,6 +243,11 @@ class Sync {
         // Record view time for blue dot (taskCompleted) comparison
         if (userInitiated) {
             sessionLastViewedAt.set(sessionId, Date.now());
+            // Trigger re-render so blue dot disappears on tablet sidebar
+            const s = storage.getState().sessions[sessionId];
+            if (s) {
+                this.applySessions([{ ...s }]);
+            }
         }
     }
 
