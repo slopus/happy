@@ -2190,6 +2190,12 @@ class Sync {
                     seq: updateData.seq
                 }]);
 
+                // If user is viewing this session, keep lastViewedAt fresh
+                // so incoming taskCompleted doesn't show a blue dot
+                if (this.viewingSessionId === updateData.body.id) {
+                    sessionLastViewedAt.set(updateData.body.id, Date.now());
+                }
+
                 // Invalidate git status when agent state changes (files may have been modified)
                 if (updateData.body.agentState) {
                     gitStatusSync.invalidate(updateData.body.id);
