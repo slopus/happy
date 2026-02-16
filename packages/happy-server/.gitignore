@@ -10,3 +10,8 @@ dist
 .logs/
 
 .claude/
+
+.env.volcrtc.test
+.env.volcrtc.local
+
+scripts/
