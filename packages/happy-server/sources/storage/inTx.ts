@@ -7,6 +7,14 @@ export type Tx = Prisma.TransactionClient;
 const symbol = Symbol();
 
 export function afterTx(tx: Tx, callback: () => void) {
+    // NOTE(logical): `afterTx` assumes the transaction client has already been prepared by `inTx()`,
+    // which initializes `(tx as any)[symbol] = []`. If `afterTx` is called with a `tx` that did not
+    // go through `inTx`'s wrapper (or called before initialization), `callbacks` will be undefined
+    // and `.push()` will throw.
+    // Suggested hardening: defensively initialize the array here (or scope `afterTx` so it can only
+    // be used inside the `inTx` callback).
+    // Related: a real-world crash "undefined reading push" was fixed by updating a call site to use
+    // the `inTx` wrapper: https://github.com/slopus/happy/commit/0a69c81f
     let callbacks = (tx as any)[symbol] as (() => void)[];
     callbacks.push(callback);
 }
