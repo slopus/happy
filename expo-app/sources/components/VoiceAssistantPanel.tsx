@@ -5,8 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useRealtimeStatus, useRealtimeMode, useVoiceTranscript } from '@/sync/storage';
-import { stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { useRealtimeStatus, useRealtimeMode, useVoiceTranscript, useRealtimeMuted } from '@/sync/storage';
+import { stopRealtimeSession, toggleRealtimeMuted } from '@/realtime/RealtimeSession';
 import { Typography } from '@/constants/Typography';
 import { VoiceBars } from './VoiceBars';
 import { t } from '@/text';
@@ -27,6 +27,7 @@ export const VoiceAssistantPanel = memo(function VoiceAssistantPanel() {
     const insets = useSafeAreaInsets();
     const realtimeStatus = useRealtimeStatus();
     const realtimeMode = useRealtimeMode();
+    const realtimeMuted = useRealtimeMuted();
     const { text: transcript, role: transcriptRole } = useVoiceTranscript();
 
     // Animation values
@@ -40,7 +41,7 @@ export const VoiceAssistantPanel = memo(function VoiceAssistantPanel() {
     const isConnecting = realtimeStatus === 'connecting';
     const isConnected = realtimeStatus === 'connected';
     const isSpeaking = realtimeMode === 'speaking';
-    const isListening = isConnected && !isSpeaking;
+    const isListening = isConnected && !isSpeaking && !realtimeMuted;
 
     // Slide in/out animation
     useEffect(() => {
@@ -76,7 +77,7 @@ export const VoiceAssistantPanel = memo(function VoiceAssistantPanel() {
 
     // Pulse animation for listening state
     useEffect(() => {
-        if (isListening) {
+        if (isListening && !realtimeMuted) {
             const pulse = Animated.loop(
                 Animated.sequence([
                     Animated.timing(pulseAnim, {
@@ -96,7 +97,7 @@ export const VoiceAssistantPanel = memo(function VoiceAssistantPanel() {
         } else {
             pulseAnim.setValue(1);
         }
-    }, [isListening]);
+    }, [isListening, realtimeMuted]);
 
     const handleStop = async () => {
         try {
@@ -108,6 +109,7 @@ export const VoiceAssistantPanel = memo(function VoiceAssistantPanel() {
 
     const getStatusText = () => {
         if (isConnecting) return t('settingsVoice.panel.connecting');
+        if (realtimeMuted) return t('settingsVoice.panel.muted');
         if (isSpeaking) return t('settingsVoice.panel.speaking');
         if (isListening) return t('settingsVoice.panel.listening');
         return t('settingsVoice.panel.voiceAssistant');
@@ -115,6 +117,7 @@ export const VoiceAssistantPanel = memo(function VoiceAssistantPanel() {
 
     const getStatusColor = () => {
         if (isConnecting) return theme.colors.status.connecting;
+        if (realtimeMuted) return theme.colors.textSecondary;
         if (isSpeaking) return '#34C759'; // Green for speaking
         if (isListening) return '#007AFF'; // Blue for listening
         return theme.colors.textSecondary;
@@ -138,7 +141,7 @@ export const VoiceAssistantPanel = memo(function VoiceAssistantPanel() {
         >
             <BlurView
                 intensity={80}
-                tint={theme.colors.background === '#000000' ? 'dark' : 'light'}
+                tint={theme.dark ? 'dark' : 'light'}
                 style={styles.blurContainer}
             >
                 <View style={[styles.content, { backgroundColor: theme.colors.surface + 'E6' }]}>
@@ -199,25 +202,51 @@ export const VoiceAssistantPanel = memo(function VoiceAssistantPanel() {
                             </View>
                         ) : (
                             <Text style={[styles.placeholderText, { color: theme.colors.textSecondary }]}>
-                                {isListening ? t('settingsVoice.panel.startSpeaking') : t('settingsVoice.panel.waiting')}
+                                {realtimeMuted
+                                    ? t('settingsVoice.panel.microphoneMuted')
+                                    : isListening
+                                        ? t('settingsVoice.panel.startSpeaking')
+                                        : t('settingsVoice.panel.waiting')}
                             </Text>
                         )}
                     </View>
 
-                    {/* Stop Button */}
-                    <Pressable
-                        style={({ pressed }) => [
-                            styles.stopButton,
-                            {
-                                backgroundColor: '#FF3B30',
-                                opacity: pressed ? 0.8 : 1,
-                            }
-                        ]}
-                        onPress={handleStop}
-                    >
-                        <Ionicons name="stop" size={24} color="#FFFFFF" />
-                        <Text style={styles.stopButtonText}>{t('settingsVoice.panel.end')}</Text>
-                    </Pressable>
+                    {/* Action Buttons */}
+                    <View style={styles.buttonRow}>
+                        {/* Mute Button */}
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.muteButton,
+                                {
+                                    backgroundColor: realtimeMuted ? '#FF9500' : theme.colors.surface,
+                                    borderColor: realtimeMuted ? '#FF9500' : theme.colors.divider,
+                                    opacity: pressed ? 0.8 : 1,
+                                }
+                            ]}
+                            onPress={toggleRealtimeMuted}
+                        >
+                            <Ionicons
+                                name={realtimeMuted ? 'mic-off' : 'mic'}
+                                size={22}
+                                color={realtimeMuted ? '#FFFFFF' : theme.colors.text}
+                            />
+                        </Pressable>
+
+                        {/* Stop Button */}
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.stopButton,
+                                {
+                                    backgroundColor: '#FF3B30',
+                                    opacity: pressed ? 0.8 : 1,
+                                }
+                            ]}
+                            onPress={handleStop}
+                        >
+                            <Ionicons name="stop" size={24} color="#FFFFFF" />
+                            <Text style={styles.stopButtonText}>{t('settingsVoice.panel.end')}</Text>
+                        </Pressable>
+                    </View>
                 </View>
             </BlurView>
         </Animated.View>
@@ -387,7 +416,21 @@ const styles = StyleSheet.create((theme) => ({
         fontStyle: 'italic',
         ...Typography.default(),
     },
+    buttonRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    muteButton: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+    },
     stopButton: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',

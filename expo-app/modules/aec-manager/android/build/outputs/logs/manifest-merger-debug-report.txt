@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml:2:13-83
+INJECTED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml:2:13-83
+	package
+		INJECTED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml
+	xmlns:android
+		ADDED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml:2:23-81
+uses-sdk
+INJECTED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml reason: use-sdk injection requested
+INJECTED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml
+INJECTED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml
+	android:targetSdkVersion
+		INJECTED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml
+	android:minSdkVersion
+		INJECTED from /Users/gyr/project/github/happy/expo-app/modules/aec-manager/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest6745170277804616731.xml

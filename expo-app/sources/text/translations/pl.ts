@@ -606,6 +606,20 @@ export const pl: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID (deweloperski)',
             agentIdProdPlaceholder: 'Agent ID (produkcyjny)',
         },
+        // Voice panel
+        panel: {
+            connecting: 'Łączenie...',
+            speaking: 'Mówi',
+            listening: 'Słucha...',
+            muted: 'Wyciszony',
+            voiceAssistant: 'Asystent głosowy',
+            you: 'TY',
+            assistant: 'ASYSTENT',
+            startSpeaking: 'Zacznij mówić...',
+            waiting: 'Oczekiwanie...',
+            microphoneMuted: 'Mikrofon jest wyciszony',
+            end: 'Zakończ',
+        },
     },
 
     settingsAccount: {

@@ -32,6 +32,9 @@ interface AgentInputProps {
     onSend: () => void;
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
+    onMicLongPressStart?: () => void;
+    onMicLongPressEnd?: () => void;
+    isPTTMode?: boolean;
     isMicActive?: boolean;
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
@@ -262,6 +265,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     sendButtonInactive: {
         backgroundColor: theme.colors.button.primary.disabled,
+    },
+    sendButtonPTT: {
+        backgroundColor: '#FF3B30',
+        transform: [{ scale: 1.1 }],
     },
     sendButtonInner: {
         width: '100%',
@@ -1092,7 +1099,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         styles.sendButton,
                                         (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
                                             ? styles.sendButtonActive
-                                            : styles.sendButtonInactive
+                                            : styles.sendButtonInactive,
+                                        props.isPTTMode && styles.sendButtonPTT
                                     ]}
                                 >
                                     <Pressable
@@ -1112,6 +1120,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 props.onMicPress?.();
                                             }
                                         }}
+                                        onLongPress={() => {
+                                            if (!hasText && props.onMicLongPressStart) {
+                                                hapticsLight();
+                                                props.onMicLongPressStart();
+                                            }
+                                        }}
+                                        onPressOut={() => {
+                                            if (!hasText && props.isPTTMode && props.onMicLongPressEnd) {
+                                                props.onMicLongPressEnd();
+                                            }
+                                        }}
+                                        delayLongPress={300}
                                         disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
                                     >
                                         {props.isSending ? (

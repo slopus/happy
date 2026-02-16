@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string gender="unknown" name="alert_description">Alerta</string>
+    <string gender="unknown" name="combobox_description">Cuadro combinado</string>
+    <string gender="unknown" name="header_description">Encabezado</string>
+    <string gender="unknown" name="image_description">Imagen</string>
+    <string gender="unknown" name="imagebutton_description">Botón, imagen</string>
+    <string gender="unknown" name="link_description">Enlace</string>
+    <string gender="unknown" name="menu_description">Menú</string>
+    <string gender="unknown" name="menubar_description">Barra de menú</string>
+    <string gender="unknown" name="menuitem_description">Elemento del menú</string>
+    <string gender="unknown" name="progressbar_description">Barra de progreso</string>
+    <string gender="unknown" name="radiogroup_description">Grupo de botones de radio</string>
+    <string gender="unknown" name="rn_tab_description">Pestaña</string>
+    <string gender="unknown" name="scrollbar_description">Barra de desplazamiento</string>
+    <string gender="unknown" name="spinbutton_description">Botón de selección</string>
+    <string gender="unknown" name="state_busy_description">ocupado</string>
+    <string gender="unknown" name="state_collapsed_description">contraído</string>
+    <string gender="unknown" name="state_expanded_description">ampliado</string>
+    <string gender="unknown" name="state_mixed_description">mezclado</string>
+    <string gender="unknown" name="state_off_description">desactivado</string>
+    <string gender="unknown" name="state_on_description">activado</string>
+    <string gender="unknown" name="state_unselected_description">sin seleccionar</string>
+    <string gender="unknown" name="summary_description">Resumen</string>
+    <string gender="unknown" name="tablist_description">Lista de pestañas</string>
+    <string gender="unknown" name="timer_description">Temporizador</string>
+    <string gender="unknown" name="toolbar_description">Barra de herramientas</string>
+</resources>

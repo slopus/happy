@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout-watch-v20/abc_alert_dialog_button_bar_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout-watch-v20/abc_alert_dialog_button_bar_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout-watch-v20/abc_alert_dialog_title_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout-watch-v20/abc_alert_dialog_title_material.xml"
+    }
+]

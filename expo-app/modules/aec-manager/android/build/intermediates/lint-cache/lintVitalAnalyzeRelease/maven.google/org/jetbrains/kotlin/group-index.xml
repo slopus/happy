@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<org.jetbrains.kotlin>
+  <kotlin-compiler-embeddable versions="1.3.60-dev-withExperimentalGoogleExtensions-20191016,1.3.61-dev-withExperimentalGoogleExtensions-20191127,1.3.61-dev-withExperimentalGoogleExtensions-20200129,1.3.70-dev-withExperimentalGoogleExtensions-20200424,1.4.0-dev-withExperimentalGoogleExtensions-20200720"/>
+  <kotlin-ksp versions="1.4.0-dev-experimental-20200828,1.4.0-dev-experimental-20200914,1.4.0-rc-dev-experimental-20200731,1.4.0-rc-dev-experimental-20200814,1.4.0-rc-dev-experimental-20200828,1.4-M1-dev-experimental-20200610,1.4-M1-dev-experimental-20200626,1.4-M1-dev-experimental-20200716"/>
+  <kotlin-symbol-processing-api versions="1.4.0-dev-experimental-20200828,1.4.0-dev-experimental-20200914,1.4.0-rc-dev-experimental-20200731,1.4.0-rc-dev-experimental-20200814,1.4.0-rc-dev-experimental-20200828,1.4-M1-dev-experimental-20200610,1.4-M1-dev-experimental-20200626,1.4-M1-dev-experimental-20200716"/>
+</org.jetbrains.kotlin>

@@ -9,10 +9,10 @@ import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { startRealtimeSession, stopRealtimeSession, startPTTMode, stopPTTMode } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useRealtimePTTMode, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -157,6 +157,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
+    const isPTTMode = useRealtimePTTMode();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
 
@@ -236,11 +237,37 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         }
     }, [realtimeStatus, sessionId]);
 
+    // Handle long press start for PTT (Push-to-Talk) mode
+    const handleMicLongPressStart = React.useCallback(async () => {
+        if (realtimeStatus === 'connecting') {
+            return;
+        }
+        try {
+            const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
+            await startPTTMode(sessionId, initialPrompt);
+            tracking?.capture('voice_ptt_started', { sessionId });
+        } catch (error) {
+            console.error('Failed to start PTT mode:', error);
+            Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
+        }
+    }, [realtimeStatus, sessionId]);
+
+    // Handle long press end for PTT mode
+    const handleMicLongPressEnd = React.useCallback(() => {
+        if (isPTTMode) {
+            stopPTTMode();
+            tracking?.capture('voice_ptt_released', { sessionId });
+        }
+    }, [isPTTMode, sessionId]);
+
     // Memoize mic button state to prevent flashing during chat transitions
     const micButtonState = useMemo(() => ({
         onMicPress: handleMicrophonePress,
+        onMicLongPressStart: handleMicLongPressStart,
+        onMicLongPressEnd: handleMicLongPressEnd,
+        isPTTMode: isPTTMode,
         isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
-    }), [handleMicrophonePress, realtimeStatus]);
+    }), [handleMicrophonePress, handleMicLongPressStart, handleMicLongPressEnd, isPTTMode, realtimeStatus]);
 
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
@@ -298,6 +325,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 }
             }}
             onMicPress={micButtonState.onMicPress}
+            onMicLongPressStart={micButtonState.onMicLongPressStart}
+            onMicLongPressEnd={micButtonState.onMicLongPressEnd}
+            isPTTMode={micButtonState.isPTTMode}
             isMicActive={micButtonState.isMicActive}
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}

@@ -1,0 +1,38 @@
+[
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_color_highlight_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_color_highlight_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_btn_colored_borderless_text_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_btn_colored_borderless_text_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_tint_btn_checkable.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_tint_btn_checkable.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_tint_edittext.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_tint_edittext.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_btn_colored_text_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_btn_colored_text_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_tint_switch_track.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_tint_switch_track.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_tint_spinner.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_tint_spinner.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_tint_seek_thumb.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_tint_seek_thumb.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color-v23/abc_tint_default.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color-v23/abc_tint_default.xml"
+    }
+]

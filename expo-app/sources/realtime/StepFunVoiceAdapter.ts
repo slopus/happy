@@ -10,6 +10,7 @@ import { StepFunAudioRecorder } from './stepfun/StepFunAudioRecorder';
 import { StepFunAudioPlayer } from './stepfun/StepFunAudioPlayer';
 import { getStepFunToolDefinitions, executeStepFunTool } from './stepfun/StepFunToolHandler';
 import { STEPFUN_CONSTANTS } from './stepfun/constants';
+import { onPTTResponseComplete } from './RealtimeSession';
 import type {
     VoiceProviderAdapter,
     VoiceProviderType,
@@ -52,6 +53,8 @@ class StepFunVoiceSession implements VoiceSession {
                 // Resume recording when playback stops
                 if (!isPlaying) {
                     this.recorder?.resume();
+                    // Check if PTT mode should auto-close
+                    onPTTResponseComplete();
                 }
             });
             await this.player.initialize();
@@ -212,6 +215,10 @@ ${initialPrompt || ''}`;
 
     sendContextualUpdate(update: string): void {
         this.client?.sendContextualUpdate(update);
+    }
+
+    setMuted(muted: boolean): void {
+        this.recorder?.setMuted(muted);
     }
 
     private cleanup(): void {

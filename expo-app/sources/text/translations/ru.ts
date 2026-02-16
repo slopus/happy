@@ -606,6 +606,20 @@ export const ru: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID (разработка)',
             agentIdProdPlaceholder: 'Agent ID (продакшен)',
         },
+        // Voice panel
+        panel: {
+            connecting: 'Подключение...',
+            speaking: 'Говорит',
+            listening: 'Слушает...',
+            muted: 'Без звука',
+            voiceAssistant: 'Голосовой помощник',
+            you: 'ВЫ',
+            assistant: 'ПОМОЩНИК',
+            startSpeaking: 'Начните говорить...',
+            waiting: 'Ожидание...',
+            microphoneMuted: 'Микрофон отключён',
+            end: 'Завершить',
+        },
     },
 
     settingsAccount: {

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"瀏覽主頁"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"向上瀏覽"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"更多選項"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"完成"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"查看全部"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"選擇應用程式"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"關閉"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"開啟"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt +"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl +"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"刪除"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"Enter 鍵"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Fn +"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta +"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Shift +"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"空白鍵"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym +"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Menu +"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"搜尋…"</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"清除查詢"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"搜尋查詢"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"搜尋"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"提交查詢"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"語音搜尋"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"分享對象"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"使用「<ns1:g id="APPLICATION_NAME">%s</ns1:g>」分享"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"收合"</string>
+    <string gender="unknown" name="alert_description">提醒</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"接聽"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"視像"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"拒接"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"掛斷"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"來電"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"通話中"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"正在過濾來電"</string>
+    <string msgid="406453423630273620" name="close_drawer">"閂導覽選單"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"閂表單"</string>
+    <string gender="unknown" name="combobox_description">下拉式方塊</string>
+    <string msgid="8038256446254964252" name="default_error_message">"輸入嘅資料無效"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"彈出式視窗"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"下拉式選單"</string>
+    <string gender="unknown" name="header_description">標題</string>
+    <string gender="unknown" name="image_description">圖像</string>
+    <string gender="unknown" name="imagebutton_description">圖像，按鈕</string>
+    <string msgid="6827826412747255547" name="in_progress">"進行中"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"部分剔咗"</string>
+    <string gender="unknown" name="link_description">連結</string>
+    <string gender="unknown" name="menu_description">選單</string>
+    <string gender="unknown" name="menubar_description">選單列</string>
+    <string gender="unknown" name="menuitem_description">選單項目</string>
+    <string msgid="542007171693138492" name="navigation_menu">"導覽選單"</string>
+    <string msgid="6610465462668679431" name="not_selected">"未揀"</string>
+    <string gender="unknown" name="progressbar_description">進度列</string>
+    <string gender="unknown" name="radiogroup_description">選項按鈕群組</string>
+    <string msgid="5941395253238309765" name="range_end">"範圍結束"</string>
+    <string msgid="7097486360902471446" name="range_start">"範圍開始"</string>
+    <string gender="unknown" name="rn_tab_description">分頁</string>
+    <string gender="unknown" name="scrollbar_description">捲軸</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"搜尋"</string>
+    <string msgid="6043586758067023" name="selected">"揀咗"</string>
+    <string gender="unknown" name="spinbutton_description">微調按鈕</string>
+    <string gender="unknown" name="state_busy_description">忙碌中</string>
+    <string gender="unknown" name="state_collapsed_description">已收合</string>
+    <string msgid="4139871816613051306" name="state_empty">"空白"</string>
+    <string gender="unknown" name="state_expanded_description">已展開</string>
+    <string gender="unknown" name="state_mixed_description">混合</string>
+    <string msgid="5834637030682409883" name="state_off">"閂"</string>
+    <string gender="unknown" name="state_off_description">關閉</string>
+    <string msgid="1490883874751719580" name="state_on">"開"</string>
+    <string gender="unknown" name="state_on_description">開啟</string>
+    <string gender="unknown" name="state_unselected_description">已取消選取</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string gender="unknown" name="summary_description">摘要</string>
+    <string msgid="2561197295334830845" name="switch_role">"按鈕裝置"</string>
+    <string msgid="1672349317127674378" name="tab">"分頁"</string>
+    <string gender="unknown" name="tablist_description">分頁清單</string>
+    <string msgid="5946805113151406391" name="template_percent">"百分之 <ns1:g id="PERCENTAGE">%1$d</ns1:g>。"</string>
+    <string gender="unknown" name="timer_description">計時器</string>
+    <string gender="unknown" name="toolbar_description">工具列</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"提示"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"顯示提示"</string>
+</resources>

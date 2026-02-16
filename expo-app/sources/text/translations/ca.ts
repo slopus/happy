@@ -596,6 +596,20 @@ export const ca: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID (Desenvolupament)',
             agentIdProdPlaceholder: 'Agent ID (Producció)',
         },
+        // Voice panel
+        panel: {
+            connecting: 'Connectant...',
+            speaking: 'Parlant',
+            listening: 'Escoltant...',
+            muted: 'Silenciat',
+            voiceAssistant: 'Assistent de veu',
+            you: 'TU',
+            assistant: 'ASSISTENT',
+            startSpeaking: 'Comença a parlar...',
+            waiting: 'Esperant...',
+            microphoneMuted: 'El micròfon està silenciat',
+            end: 'Finalitzar',
+        },
     },
 
     settingsAccount: {

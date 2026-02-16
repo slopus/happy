@@ -1,0 +1,34 @@
+{
+    "logs": [
+        {
+            "outputFile": "expo.modules.aecmanager.aec-manager-release-48:/values-land/values-land.xml",
+            "map": [
+                {
+                    "source": "/Users/gyr/.gradle/caches/8.14.3/transforms/300a8a04ff5a162b58516bc4fc3a6e8c/transformed/appcompat-1.7.0/res/values-land/values-land.xml",
+                    "from": {
+                        "startLines": "2,3,4",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,125,196",
+                        "endColumns": "69,70,67",
+                        "endOffsets": "120,191,259"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "expo.modules.aecmanager.aec-manager-mergeReleaseResources-46:/values-land/values-land.xml",
+            "map": [
+                {
+                    "source": "/Users/gyr/.gradle/caches/8.14.3/transforms/300a8a04ff5a162b58516bc4fc3a6e8c/transformed/appcompat-1.7.0/res/values-land/values-land.xml",
+                    "from": {
+                        "startLines": "2,3,4",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,125,196",
+                        "endColumns": "69,70,67",
+                        "endOffsets": "120,191,259"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,62 @@
+[
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_primary_text_disable_only_material_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_primary_text_disable_only_material_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_secondary_text_material_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_secondary_text_material_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_hint_foreground_material_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_hint_foreground_material_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/switch_thumb_material_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/switch_thumb_material_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_search_url_text.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_search_url_text.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_primary_text_material_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_primary_text_material_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_primary_text_material_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_primary_text_material_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_background_cache_hint_selector_material_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_background_cache_hint_selector_material_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_primary_text_disable_only_material_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_primary_text_disable_only_material_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/vector_tint_theme_color.xml",
+        "source": "expo.modules.aecmanager.aec-manager-ui-release-25:/color/vector_tint_theme_color.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_secondary_text_material_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_secondary_text_material_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_background_cache_hint_selector_material_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_background_cache_hint_selector_material_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/abc_hint_foreground_material_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/abc_hint_foreground_material_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/switch_thumb_material_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/color/switch_thumb_material_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/color/vector_tint_color.xml",
+        "source": "expo.modules.aecmanager.aec-manager-ui-release-25:/color/vector_tint_color.xml"
+    }
+]

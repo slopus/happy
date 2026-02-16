@@ -1,0 +1,34 @@
+{
+    "logs": [
+        {
+            "outputFile": "expo.modules.aecmanager.aec-manager-release-48:/values-es-rES/values-es-rES.xml",
+            "map": [
+                {
+                    "source": "/Users/gyr/.gradle/caches/8.14.3/transforms/b8386586485b5fc2cc94605b476aeda0/transformed/react-android-0.81.4-release/res/values-es-rES/values-es-rES.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,125,208,283,353,436,505,572,651,735,822,916,988,1079,1166,1242,1325,1406,1484,1563,1638,1728,1801,1884,1960",
+                        "endColumns": "69,82,74,69,82,68,66,78,83,86,93,71,90,86,75,82,80,77,78,74,89,72,82,75,86",
+                        "endOffsets": "120,203,278,348,431,500,567,646,730,817,911,983,1074,1161,1237,1320,1401,1479,1558,1633,1723,1796,1879,1955,2042"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "expo.modules.aecmanager.aec-manager-mergeReleaseResources-46:/values-es-rES/values-es-rES.xml",
+            "map": [
+                {
+                    "source": "/Users/gyr/.gradle/caches/8.14.3/transforms/b8386586485b5fc2cc94605b476aeda0/transformed/react-android-0.81.4-release/res/values-es-rES/values-es-rES.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,125,208,283,353,436,505,572,651,735,822,916,988,1079,1166,1242,1325,1406,1484,1563,1638,1728,1801,1884,1960",
+                        "endColumns": "69,82,74,69,82,68,66,78,83,86,93,71,90,86,75,82,80,77,78,74,89,72,82,75,86",
+                        "endOffsets": "120,203,278,348,431,500,567,646,730,817,911,983,1074,1161,1237,1320,1401,1479,1558,1633,1723,1796,1879,1955,2042"
+                    }
+                }
+            ]
+        }
+    ]
+}

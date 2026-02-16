@@ -598,6 +598,20 @@ export const zhHans: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID（开发环境）',
             agentIdProdPlaceholder: 'Agent ID（生产环境）',
         },
+        // Voice panel
+        panel: {
+            connecting: '连接中...',
+            speaking: '正在说话',
+            listening: '正在听...',
+            muted: '已静音',
+            voiceAssistant: '语音助手',
+            you: '你',
+            assistant: '助手',
+            startSpeaking: '开始说话...',
+            waiting: '等待中...',
+            microphoneMuted: '麦克风已静音',
+            end: '结束',
+        },
     },
 
     settingsAccount: {

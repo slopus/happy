@@ -14,6 +14,8 @@ export interface AudioRecorderCallbacks {
 export class StepFunAudioRecorder {
     private audioContext: AudioContext | null = null;
     private isRecording: boolean = false;
+    private isPaused: boolean = false;
+    private isMuted: boolean = false;
     private callbacks: AudioRecorderCallbacks;
     private mediaStream: MediaStream | null = null;
     private workletNode: AudioWorkletNode | null = null;
@@ -60,7 +62,7 @@ export class StepFunAudioRecorder {
             this.workletNode = new AudioWorkletNode(this.audioContext, 'stepfun-pcm16-processor');
 
             this.workletNode.port.onmessage = (event: MessageEvent) => {
-                if (!this.isRecording) return;
+                if (!this.isRecording || this.isPaused || this.isMuted) return;
 
                 const pcm16Data = event.data as Uint8Array;
                 const base64Audio = this.uint8ArrayToBase64(pcm16Data);
@@ -90,6 +92,36 @@ export class StepFunAudioRecorder {
         this.isRecording = false;
         this.cleanup();
         console.log('[StepFunAudioRecorder] Recording stopped');
+    }
+
+    /**
+     * Pause sending audio data (recorder keeps running to avoid restart latency)
+     */
+    pause(): void {
+        if (this.isPaused) return;
+        console.log('[StepFunAudioRecorder] Pausing audio capture');
+        this.isPaused = true;
+    }
+
+    /**
+     * Resume sending audio data
+     */
+    resume(): void {
+        if (!this.isPaused) return;
+        console.log('[StepFunAudioRecorder] Resuming audio capture');
+        this.isPaused = false;
+    }
+
+    /**
+     * Set user mute state (independent of AI pause)
+     */
+    setMuted(muted: boolean): void {
+        console.log(`[StepFunAudioRecorder] Setting muted: ${muted}`);
+        this.isMuted = muted;
+    }
+
+    getIsMuted(): boolean {
+        return this.isMuted;
     }
 
     private cleanup(): void {

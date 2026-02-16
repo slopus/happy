@@ -1,0 +1,182 @@
+[
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_action_menu_layout.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_action_menu_layout.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/autofill_inline_suggestion.xml",
+        "source": "expo.modules.aecmanager.aec-manager-autofill-1.1.0-10:/layout/autofill_inline_suggestion.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_list_menu_item_radio.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_list_menu_item_radio.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/select_dialog_singlechoice_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/select_dialog_singlechoice_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_popup_menu_item_layout.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_popup_menu_item_layout.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_select_dialog_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_select_dialog_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_screen_simple.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_screen_simple.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/ime_base_split_test_activity.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/layout/ime_base_split_test_activity.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/redbox_item_frame.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/layout/redbox_item_frame.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/custom_dialog.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/layout/custom_dialog.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/select_dialog_multichoice_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/select_dialog_multichoice_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/notification_template_part_time.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/layout/notification_template_part_time.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_cascading_menu_item_layout.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_cascading_menu_item_layout.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/alert_title_layout.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/layout/alert_title_layout.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_action_mode_bar.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_action_mode_bar.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_screen_simple_overlay_action_mode.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_screen_simple_overlay_action_mode.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_expanded_menu_layout.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_expanded_menu_layout.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/fps_view.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/layout/fps_view.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_dialog_title_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_dialog_title_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_activity_chooser_view.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_activity_chooser_view.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_tooltip.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_tooltip.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/redbox_view.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/layout/redbox_view.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_alert_dialog_title_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_alert_dialog_title_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_screen_content_include.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_screen_content_include.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_action_bar_up_container.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_action_bar_up_container.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_alert_dialog_button_bar_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_alert_dialog_button_bar_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_activity_chooser_view_list_item.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_activity_chooser_view_list_item.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_search_dropdown_item_icons_2line.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_search_dropdown_item_icons_2line.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_screen_toolbar.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_screen_toolbar.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/notification_template_part_chronometer.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/layout/notification_template_part_chronometer.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_list_menu_item_layout.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_list_menu_item_layout.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_action_menu_item_layout.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_action_menu_item_layout.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/redbox_item_title.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/layout/redbox_item_title.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_list_menu_item_icon.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_list_menu_item_icon.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_action_bar_title_item.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_action_bar_title_item.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/paused_in_debugger_view.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/layout/paused_in_debugger_view.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/support_simple_spinner_dropdown_item.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/support_simple_spinner_dropdown_item.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_popup_menu_header_item_layout.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_popup_menu_header_item_layout.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/ime_secondary_split_test_activity.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/layout/ime_secondary_split_test_activity.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/dev_loading_view.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/layout/dev_loading_view.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/select_dialog_item_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/select_dialog_item_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_alert_dialog_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_alert_dialog_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_list_menu_item_checkbox.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_list_menu_item_checkbox.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_action_mode_close_item_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_action_mode_close_item_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/layout/abc_search_view.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/layout/abc_search_view.xml"
+    }
+]

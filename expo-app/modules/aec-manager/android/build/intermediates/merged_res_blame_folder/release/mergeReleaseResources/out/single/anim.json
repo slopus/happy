@@ -1,0 +1,122 @@
+[
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_slide_in_bottom.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_slide_in_bottom.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/catalyst_fade_out.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/anim/catalyst_fade_out.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_grow_fade_in_from_bottom.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_grow_fade_in_from_bottom.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_radio_to_off_mtrl_ring_outer_path_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_radio_to_off_mtrl_ring_outer_path_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_radio_to_on_mtrl_dot_group_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_radio_to_on_mtrl_dot_group_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_radio_to_on_mtrl_ring_outer_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_radio_to_on_mtrl_ring_outer_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_tooltip_enter.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_tooltip_enter.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_radio_to_off_mtrl_dot_group_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_radio_to_off_mtrl_dot_group_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_fade_in.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_fade_in.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_checkbox_to_checked_icon_null_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_checkbox_to_checked_icon_null_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_radio_to_off_mtrl_ring_outer_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_radio_to_off_mtrl_ring_outer_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_checkbox_to_checked_box_outer_merged_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_checkbox_to_checked_box_outer_merged_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_checkbox_to_unchecked_box_inner_merged_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_checkbox_to_unchecked_box_inner_merged_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_slide_in_top.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_slide_in_top.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_popup_enter.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_popup_enter.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_fade_out.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_fade_out.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/catalyst_push_up_in.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/anim/catalyst_push_up_in.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_popup_exit.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_popup_exit.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/catalyst_fade_in.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/anim/catalyst_fade_in.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_checkbox_to_unchecked_icon_null_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_checkbox_to_unchecked_icon_null_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_slide_out_bottom.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_slide_out_bottom.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_checkbox_to_unchecked_check_path_merged_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_checkbox_to_unchecked_check_path_merged_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_shrink_fade_out_from_bottom.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_shrink_fade_out_from_bottom.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/catalyst_push_up_out.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/anim/catalyst_push_up_out.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/catalyst_slide_down.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/anim/catalyst_slide_down.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_checkbox_to_checked_box_inner_merged_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_checkbox_to_checked_box_inner_merged_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/catalyst_slide_up.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/anim/catalyst_slide_up.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_slide_out_top.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_slide_out_top.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/abc_tooltip_exit.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/abc_tooltip_exit.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/anim/btn_radio_to_on_mtrl_ring_outer_path_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/anim/btn_radio_to_on_mtrl_ring_outer_path_animation.xml"
+    }
+]

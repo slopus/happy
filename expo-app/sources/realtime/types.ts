@@ -80,6 +80,12 @@ export interface VoiceSession {
      * This is a silent update that provides context without triggering a response
      */
     sendContextualUpdate(update: string): void;
+
+    /**
+     * Set microphone mute state
+     * When muted, audio is not sent to the voice model
+     */
+    setMuted?(muted: boolean): void;
 }
 
 // ===== Voice Provider Interface =====

@@ -1,0 +1,8 @@
+{
+  "android": {
+    "package": "com.anonymous.monorepo"
+  },
+  "ios": {
+    "bundleIdentifier": "com.anonymous.monorepo"
+  }
+}

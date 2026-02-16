@@ -1,0 +1,18 @@
+<lint-module
+    format="1"
+    dir="/Users/gyr/project/github/happy/expo-app/modules/aec-manager/android"
+    name=":aec-manager"
+    type="LIBRARY"
+    maven="expo.modules.aecmanager:aec-manager:1.0.0"
+    agpVersion="8.11.0"
+    buildFolder="build"
+    bootClassPath="/Users/gyr/Library/Android/sdk/platforms/android-36/android.jar:/Users/gyr/Library/Android/sdk/build-tools/35.0.0/core-lambda-stubs.jar"
+    javaSourceLevel="17"
+    compileTarget="android-36"
+    neverShrinking="true">
+  <lintOptions
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

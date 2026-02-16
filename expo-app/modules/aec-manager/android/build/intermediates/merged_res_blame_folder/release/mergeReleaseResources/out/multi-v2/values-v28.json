@@ -1,0 +1,36 @@
+{
+    "logs": [
+        {
+            "outputFile": "expo.modules.aecmanager.aec-manager-release-48:/values-v28/values-v28.xml",
+            "map": [
+                {
+                    "source": "/Users/gyr/.gradle/caches/8.14.3/transforms/300a8a04ff5a162b58516bc4fc3a6e8c/transformed/appcompat-1.7.0/res/values-v28/values-v28.xml",
+                    "from": {
+                        "startLines": "2,3,4,8",
+                        "startColumns": "4,4,4,4",
+                        "startOffsets": "55,130,217,397",
+                        "endLines": "2,3,7,11",
+                        "endColumns": "74,86,12,12",
+                        "endOffsets": "125,212,392,584"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "expo.modules.aecmanager.aec-manager-mergeReleaseResources-46:/values-v28/values-v28.xml",
+            "map": [
+                {
+                    "source": "/Users/gyr/.gradle/caches/8.14.3/transforms/300a8a04ff5a162b58516bc4fc3a6e8c/transformed/appcompat-1.7.0/res/values-v28/values-v28.xml",
+                    "from": {
+                        "startLines": "2,3,4,8",
+                        "startColumns": "4,4,4,4",
+                        "startOffsets": "55,130,217,397",
+                        "endLines": "2,3,7,11",
+                        "endColumns": "74,86,12,12",
+                        "endOffsets": "125,212,392,584"
+                    }
+                }
+            ]
+        }
+    ]
+}

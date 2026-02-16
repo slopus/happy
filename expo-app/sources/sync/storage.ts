@@ -88,6 +88,9 @@ interface StorageState {
     friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     realtimeMode: 'idle' | 'speaking';
+    realtimeMuted: boolean;
+    realtimePTTMode: boolean;  // Push-to-talk mode: recording while pressed
+    realtimePTTWaitingForResponse: boolean;  // Waiting for AI response after PTT release
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
@@ -112,6 +115,9 @@ interface StorageState {
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
+    setRealtimeMuted: (muted: boolean) => void;
+    setRealtimePTTMode: (active: boolean) => void;
+    setRealtimePTTWaitingForResponse: (waiting: boolean) => void;
     clearRealtimeModeDebounce: () => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
@@ -277,6 +283,9 @@ export const storage = create<StorageState>()((set, get) => {
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
+        realtimeMuted: false,
+        realtimePTTMode: false,
+        realtimePTTWaitingForResponse: false,
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
@@ -721,6 +730,18 @@ export const storage = create<StorageState>()((set, get) => {
                 realtimeModeDebounceTimer = null;
             }
         },
+        setRealtimeMuted: (muted: boolean) => set((state) => ({
+            ...state,
+            realtimeMuted: muted
+        })),
+        setRealtimePTTMode: (active: boolean) => set((state) => ({
+            ...state,
+            realtimePTTMode: active
+        })),
+        setRealtimePTTWaitingForResponse: (waiting: boolean) => set((state) => ({
+            ...state,
+            realtimePTTWaitingForResponse: waiting
+        })),
         setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
             const now = Date.now();
             const updates: Partial<StorageState> = {
@@ -1268,6 +1289,23 @@ export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected'
 
 export function useRealtimeMode(): 'idle' | 'speaking' {
     return storage(useShallow((state) => state.realtimeMode));
+}
+
+export function useRealtimeMuted(): boolean {
+    return storage(useShallow((state) => state.realtimeMuted));
+}
+
+export function useRealtimePTTMode(): boolean {
+    return storage(useShallow((state) => state.realtimePTTMode));
+}
+
+export function useRealtimePTTWaitingForResponse(): boolean {
+    return storage(useShallow((state) => state.realtimePTTWaitingForResponse));
+}
+
+export function useVoiceTranscript(): { text: string; role: 'user' | 'assistant' } {
+    // TODO: Implement actual voice transcript tracking
+    return { text: '', role: 'user' };
 }
 
 export function useSocketStatus() {

@@ -1,0 +1,34 @@
+{
+    "logs": [
+        {
+            "outputFile": "expo.modules.aecmanager.aec-manager-mergeReleaseResources-46:/values-large-v4/values-large-v4.xml",
+            "map": [
+                {
+                    "source": "/Users/gyr/.gradle/caches/8.14.3/transforms/300a8a04ff5a162b58516bc4fc3a6e8c/transformed/appcompat-1.7.0/res/values-large-v4/values-large-v4.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,114,185,256,326,396,464,532,636",
+                        "endColumns": "58,70,70,69,69,67,67,103,115",
+                        "endOffsets": "109,180,251,321,391,459,527,631,747"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "expo.modules.aecmanager.aec-manager-release-48:/values-large-v4/values-large-v4.xml",
+            "map": [
+                {
+                    "source": "/Users/gyr/.gradle/caches/8.14.3/transforms/300a8a04ff5a162b58516bc4fc3a6e8c/transformed/appcompat-1.7.0/res/values-large-v4/values-large-v4.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,114,185,256,326,396,464,532,636",
+                        "endColumns": "58,70,70,69,69,67,67,103,115",
+                        "endOffsets": "109,180,251,321,391,459,527,631,747"
+                    }
+                }
+            ]
+        }
+    ]
+}

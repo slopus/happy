@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"Navigate home"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"Navigate up"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"More options"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"Done"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"See all"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"Choose an app"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"OFF"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"ON"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt+"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl+"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"delete"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"enter"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Function+"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta+"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Shift+"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"space"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym+"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Menu+"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"Search…"</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"Clear query"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"Search query"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"Search"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"Submit query"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"Voice search"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"Share with"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"Share with <ns1:g id="APPLICATION_NAME">%s</ns1:g>"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"Collapse"</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"Answer"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"Video"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"Decline"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"Hang Up"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"Incoming call"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"Ongoing call"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"Screening an incoming call"</string>
+    <string msgid="406453423630273620" name="close_drawer">"Close navigation menu"</string>
+    <string msgid="7573152094250666567" name="close_sheet">"Close sheet"</string>
+    <string msgid="8038256446254964252" name="default_error_message">"Invalid input"</string>
+    <string msgid="6312721426453364202" name="default_popup_window_title">"Pop-Up Window"</string>
+    <string msgid="1890207353314751437" name="dropdown_menu">"Dropdown menu"</string>
+    <string msgid="6827826412747255547" name="in_progress">"In progress"</string>
+    <string msgid="7933458017204019916" name="indeterminate">"Partially checked"</string>
+    <string msgid="542007171693138492" name="navigation_menu">"Navigation menu"</string>
+    <string msgid="6610465462668679431" name="not_selected">"Not selected"</string>
+    <string msgid="5941395253238309765" name="range_end">"Range end"</string>
+    <string msgid="7097486360902471446" name="range_start">"Range start"</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"Search"</string>
+    <string msgid="6043586758067023" name="selected">"Selected"</string>
+    <string msgid="4139871816613051306" name="state_empty">"Empty"</string>
+    <string msgid="5834637030682409883" name="state_off">"Off"</string>
+    <string msgid="1490883874751719580" name="state_on">"On"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="2561197295334830845" name="switch_role">"Switch"</string>
+    <string msgid="1672349317127674378" name="tab">"Tab"</string>
+    <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> percent."</string>
+    <string msgid="3765533235322692011" name="tooltip_description">"tooltip"</string>
+    <string msgid="3124740595719787496" name="tooltip_label">"show tooltip"</string>
+</resources>

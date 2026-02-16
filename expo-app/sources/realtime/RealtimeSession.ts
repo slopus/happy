@@ -32,9 +32,24 @@ export function registerVoiceProvider(
 
 /**
  * Determine which provider to use based on configuration
+ * Priority: User settings > App config (env vars)
  */
 function determineProviderType(): VoiceProviderType {
-    // Check for StepFun configuration first (higher priority)
+    // Check user settings first (highest priority)
+    const settings = storage.getState().settings;
+    if (settings.voiceProvider && settings.voiceProvider !== 'none') {
+        // Verify the provider has required configuration
+        if (settings.voiceProvider === 'stepfun' && settings.voiceProviderStepFun?.apiKey) {
+            return 'stepfun';
+        }
+        if (settings.voiceProvider === 'elevenlabs' &&
+            (settings.voiceProviderElevenLabs?.agentIdDev || settings.voiceProviderElevenLabs?.agentIdProd)) {
+            return 'elevenlabs';
+        }
+    }
+
+    // Fallback to app config (env vars)
+    // Check for StepFun configuration
     if (config.stepFunApiKey) {
         return 'stepfun';
     }
@@ -77,30 +92,40 @@ function getOrCreateAdapter(): VoiceProviderAdapter | null {
 
 /**
  * Build session configuration based on provider type
+ * Reads from user settings first, falls back to app config
  */
 function buildSessionConfig(sessionId: string, initialContext?: string): VoiceSessionConfig & Record<string, any> {
     const providerType = determineProviderType();
+    const settings = storage.getState().settings;
     const baseConfig: VoiceSessionConfig = {
         sessionId,
         initialContext,
     };
 
     switch (providerType) {
-        case 'stepfun':
+        case 'stepfun': {
+            // User settings take priority over app config
+            const stepFunSettings = settings.voiceProviderStepFun;
             return {
                 ...baseConfig,
                 provider: 'stepfun',
-                apiKey: config.stepFunApiKey!,
-                modelId: config.stepFunModelId,
-                voice: config.stepFunVoice,
+                apiKey: stepFunSettings?.apiKey || config.stepFunApiKey!,
+                modelId: stepFunSettings?.modelId || config.stepFunModelId,
+                voice: stepFunSettings?.voice || config.stepFunVoice,
             };
+        }
 
-        case 'elevenlabs':
+        case 'elevenlabs': {
+            // User settings take priority over app config
+            const elevenLabsSettings = settings.voiceProviderElevenLabs;
+            const agentIdDev = elevenLabsSettings?.agentIdDev || config.elevenLabsAgentIdDev;
+            const agentIdProd = elevenLabsSettings?.agentIdProd || config.elevenLabsAgentIdProd;
             return {
                 ...baseConfig,
                 provider: 'elevenlabs',
-                agentId: __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd,
+                agentId: __DEV__ ? agentIdDev : agentIdProd,
             };
+        }
 
         default:
             return baseConfig;
@@ -185,6 +210,69 @@ export function getVoiceSession(): VoiceSession | null {
  */
 export function getCurrentRealtimeSessionId(): string | null {
     return currentSessionId;
+}
+
+/**
+ * Set microphone mute state for the current session
+ */
+export function setRealtimeMuted(muted: boolean): void {
+    storage.getState().setRealtimeMuted(muted);
+    currentSession?.setMuted?.(muted);
+}
+
+/**
+ * Toggle microphone mute state
+ */
+export function toggleRealtimeMuted(): void {
+    const current = storage.getState().realtimeMuted;
+    setRealtimeMuted(!current);
+}
+
+/**
+ * Start Push-to-Talk (PTT) recording mode
+ * Called when user presses and holds the mic button
+ */
+export async function startPTTMode(sessionId: string, initialContext?: string): Promise<void> {
+    console.log('[RealtimeSession] Starting PTT mode');
+    storage.getState().setRealtimePTTMode(true);
+    storage.getState().setRealtimePTTWaitingForResponse(false);
+
+    // If not connected, start a new session
+    if (storage.getState().realtimeStatus === 'disconnected') {
+        await startRealtimeSession(sessionId, initialContext);
+    }
+
+    // Unmute to start capturing audio
+    setRealtimeMuted(false);
+}
+
+/**
+ * Stop Push-to-Talk (PTT) recording mode
+ * Called when user releases the mic button
+ * Mutes mic and waits for AI response, then auto-closes
+ */
+export function stopPTTMode(): void {
+    console.log('[RealtimeSession] Stopping PTT mode, waiting for response');
+    storage.getState().setRealtimePTTMode(false);
+
+    // Mute to stop sending audio
+    setRealtimeMuted(true);
+
+    // Mark that we're waiting for the AI response
+    storage.getState().setRealtimePTTWaitingForResponse(true);
+}
+
+/**
+ * Called when AI finishes speaking in PTT mode
+ * Should auto-close the session
+ */
+export async function onPTTResponseComplete(): Promise<void> {
+    const state = storage.getState();
+    if (state.realtimePTTWaitingForResponse && !state.realtimePTTMode) {
+        console.log('[RealtimeSession] PTT response complete, closing session');
+        storage.getState().setRealtimePTTWaitingForResponse(false);
+        await stopRealtimeSession();
+    }
 }
 
 /**

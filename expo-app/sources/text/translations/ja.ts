@@ -628,6 +628,20 @@ export const ja: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID（開発）',
             agentIdProdPlaceholder: 'Agent ID（本番）',
         },
+        // Voice panel
+        panel: {
+            connecting: '接続中...',
+            speaking: '話し中',
+            listening: '聞いています...',
+            muted: 'ミュート',
+            voiceAssistant: '音声アシスタント',
+            you: 'あなた',
+            assistant: 'アシスタント',
+            startSpeaking: '話し始めてください...',
+            waiting: '待機中...',
+            microphoneMuted: 'マイクがミュートされています',
+            end: '終了',
+        },
     },
 
     settingsAccount: {

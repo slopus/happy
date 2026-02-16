@@ -595,6 +595,20 @@ export const en = {
             agentIdDevPlaceholder: 'Agent ID (Development)',
             agentIdProdPlaceholder: 'Agent ID (Production)',
         },
+        // Voice panel
+        panel: {
+            connecting: 'Connecting...',
+            speaking: 'Speaking',
+            listening: 'Listening...',
+            muted: 'Muted',
+            voiceAssistant: 'Voice Assistant',
+            you: 'YOU',
+            assistant: 'ASSISTANT',
+            startSpeaking: 'Start speaking...',
+            waiting: 'Waiting...',
+            microphoneMuted: 'Microphone is muted',
+            end: 'End',
+        },
     },
 
     settingsAccount: {

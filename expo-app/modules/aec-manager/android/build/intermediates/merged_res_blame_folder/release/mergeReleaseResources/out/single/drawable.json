@@ -1,0 +1,238 @@
+[
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/btn_radio_off_mtrl.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/btn_radio_off_mtrl.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_btn_radio_material_anim.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_btn_radio_material_anim.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_seekbar_thumb_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_seekbar_thumb_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/ripple_effect.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/drawable/ripple_effect.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_ab_back_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_ab_back_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_search_api_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_search_api_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_star_half_black_48dp.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_star_half_black_48dp.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_btn_borderless_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_btn_borderless_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/btn_checkbox_checked_mtrl.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/btn_checkbox_checked_mtrl.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/redbox_top_border_background.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/drawable/redbox_top_border_background.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_menu_overflow_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_menu_overflow_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/btn_radio_off_to_on_mtrl_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/btn_radio_off_to_on_mtrl_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_list_selector_holo_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_list_selector_holo_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/notification_icon_background.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/drawable/notification_icon_background.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_cab_background_internal_bg.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_cab_background_internal_bg.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_textfield_search_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_textfield_search_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ratingbar_small_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ratingbar_small_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_seekbar_tick_mark_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_seekbar_tick_mark_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_menu_copy_mtrl_am_alpha.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_menu_copy_mtrl_am_alpha.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_star_black_48dp.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_star_black_48dp.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/tooltip_frame_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/tooltip_frame_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ratingbar_indicator_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ratingbar_indicator_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/btn_radio_on_to_off_mtrl_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/btn_radio_on_to_off_mtrl_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_menu_share_mtrl_alpha.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_menu_share_mtrl_alpha.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_clear_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_clear_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_tab_indicator_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_tab_indicator_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/btn_checkbox_unchecked_mtrl.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/btn_checkbox_unchecked_mtrl.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/notification_tile_bg.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/drawable/notification_tile_bg.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_btn_radio_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_btn_radio_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/btn_checkbox_unchecked_to_checked_mtrl_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/btn_checkbox_unchecked_to_checked_mtrl_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_btn_check_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_btn_check_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/notification_bg.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/drawable/notification_bg.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_arrow_drop_right_black_24dp.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_arrow_drop_right_black_24dp.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_seekbar_track_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_seekbar_track_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_menu_paste_mtrl_am_alpha.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_menu_paste_mtrl_am_alpha.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ratingbar_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ratingbar_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_cab_background_top_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_cab_background_top_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_btn_check_material_anim.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_btn_check_material_anim.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_menu_cut_mtrl_alpha.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_menu_cut_mtrl_alpha.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_switch_thumb_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_switch_thumb_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/test_level_drawable.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/test_level_drawable.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_btn_default_mtrl_shape.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_btn_default_mtrl_shape.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/btn_checkbox_checked_to_unchecked_mtrl_animation.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/btn_checkbox_checked_to_unchecked_mtrl_animation.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_item_background_holo_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_item_background_holo_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/tooltip_frame_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/tooltip_frame_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_vector_test.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-resources-1.7.0-42:/drawable/abc_vector_test.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_list_selector_background_transition_holo_light.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_list_selector_background_transition_holo_light.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/btn_radio_on_mtrl.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/btn_radio_on_mtrl.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_item_background_holo_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_item_background_holo_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_menu_selectall_mtrl_alpha.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_menu_selectall_mtrl_alpha.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_list_selector_background_transition_holo_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_list_selector_background_transition_holo_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_text_cursor_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_text_cursor_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_spinner_textfield_background_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_spinner_textfield_background_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/paused_in_debugger_background.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/drawable/paused_in_debugger_background.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_list_selector_holo_dark.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_list_selector_holo_dark.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/notification_bg_low.xml",
+        "source": "expo.modules.aecmanager.aec-manager-core-1.13.1-18:/drawable/notification_bg_low.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_voice_search_api_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_voice_search_api_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/abc_ic_go_search_api_material.xml",
+        "source": "expo.modules.aecmanager.aec-manager-appcompat-1.7.0-6:/drawable/abc_ic_go_search_api_material.xml"
+    },
+    {
+        "merged": "expo.modules.aecmanager.aec-manager-release-48:/drawable/paused_in_debugger_dialog_background.xml",
+        "source": "expo.modules.aecmanager.aec-manager-react-android-0.81.4-release-31:/drawable/paused_in_debugger_dialog_background.xml"
+    }
+]

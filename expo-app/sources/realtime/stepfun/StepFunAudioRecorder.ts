@@ -17,6 +17,7 @@ export class StepFunAudioRecorder {
     private recorder: AudioRecorder | null = null;
     private isRecording: boolean = false;
     private isPaused: boolean = false;
+    private isMuted: boolean = false;
     private callbacks: AudioRecorderCallbacks;
 
     constructor(callbacks: AudioRecorderCallbacks) {
@@ -41,7 +42,7 @@ export class StepFunAudioRecorder {
             // Register audio data callback
             let chunkCount = 0;
             this.recorder.onAudioReady((event) => {
-                if (!this.isRecording || this.isPaused) return;
+                if (!this.isRecording || this.isPaused || this.isMuted) return;
 
                 try {
                     // Get audio data from buffer
@@ -103,6 +104,18 @@ export class StepFunAudioRecorder {
         if (!this.isPaused) return;
         console.log('[StepFunAudioRecorder] Resuming audio capture');
         this.isPaused = false;
+    }
+
+    /**
+     * Set user mute state (independent of AI pause)
+     */
+    setMuted(muted: boolean): void {
+        console.log(`[StepFunAudioRecorder] Setting muted: ${muted}`);
+        this.isMuted = muted;
+    }
+
+    getIsMuted(): boolean {
+        return this.isMuted;
     }
 
     stop(): void {
