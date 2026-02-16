@@ -12,6 +12,15 @@ import { db } from "@/storage/db";
 export function connectRoutes(app: Fastify) {
 
     // Add content type parser for webhook endpoints to preserve raw body
+    // NOTE(logical): This registers an `application/json` parser on the Fastify instance. Depending on
+    // Fastify encapsulation / plugin registration order, this may affect JSON parsing for other routes
+    // too (not just the GitHub webhook), creating implicit coupling and potentially changing how empty
+    // bodies are represented (e.g. `{}` vs `undefined`) for unrelated endpoints.
+    // Suggested hardening: scope the parser to a dedicated plugin instance that only registers the
+    // webhook route, or use a route-scoped raw-body approach so normal JSON routes keep default parsing.
+    // Related: empty-body edge cases for this parser have been fixed before:
+    // - https://github.com/slopus/happy/commit/d70ce239 (handle empty JSON bodies)
+    // - https://github.com/slopus/happy/commit/37fdaa28 (handle empty bodies for DELETE/GET)
     app.addContentTypeParser(
         'application/json',
         { parseAs: 'string' },
