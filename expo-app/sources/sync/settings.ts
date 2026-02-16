@@ -285,6 +285,10 @@ export const SettingsSchema = z.object({
         agentIdDev: z.string().optional(),
         agentIdProd: z.string().optional(),
     }).nullable().describe('ElevenLabs voice provider configuration'),
+    // ASR (Speech-to-Text) provider configuration
+    asrProvider: z.enum(['stepfun', 'none']).nullable().describe('Selected ASR provider for voice input'),
+    // Input mode preference (keyboard or voice)
+    inputMode: z.enum(['keyboard', 'voice']).describe('Preferred input mode for message composition'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
     recentMachinePaths: z.array(z.object({
         machineId: z.string(),
@@ -359,6 +363,9 @@ export const settingsDefaults: Settings = {
     voiceProvider: null,
     voiceProviderStepFun: null,
     voiceProviderElevenLabs: null,
+    // ASR defaults
+    asrProvider: null,
+    inputMode: 'keyboard',
     preferredLanguage: null,
     recentMachinePaths: [],
     lastUsedAgent: null,

@@ -475,6 +475,10 @@ export const it: TranslationStructure = {
             fileLabel: 'FILE',
             folderLabel: 'CARTELLA',
         },
+        plusMenu: {
+            voiceCall: 'Chiamata vocale',
+            pushToTalk: 'Premi per parlare',
+        },
         noMachinesAvailable: 'Nessuna macchina',
     },
 
@@ -625,6 +629,12 @@ export const it: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID (Sviluppo)',
             agentIdProdPlaceholder: 'Agent ID (Produzione)',
         },
+        // ASR (riconoscimento vocale) impostazioni
+        asr: {
+            title: 'Input vocale (ASR)',
+            description: 'Conversione voce-testo per la modalità di input vocale',
+            apiKeyNote: 'Nota: StepFun ASR utilizza la stessa chiave API del provider vocale sopra. Configurala nella sezione StepFun.',
+        },
         // Voice panel
         panel: {
             connecting: 'Connessione...',
@@ -639,6 +649,16 @@ export const it: TranslationStructure = {
             microphoneMuted: 'Il microfono è silenziato',
             end: 'Termina',
         },
+    },
+
+    // Overlay di input vocale
+    voiceInput: {
+        holdToSpeak: 'Tieni premuto per parlare',
+        recording: 'Rilascia per inviare',
+        cancel: 'Annulla',
+        slideToText: 'Scorri qui per convertire',
+        releaseToSend: 'Rilascia per inviare',
+        transcribing: 'Riconoscimento...',
     },
 
     settingsAccount: {

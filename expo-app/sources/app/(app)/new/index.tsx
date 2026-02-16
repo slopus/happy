@@ -996,7 +996,7 @@ function NewSessionWizard() {
     }, [selectedMachineId, selectedPath, router]);
 
     // Session creation
-    const handleCreateSession = React.useCallback(async () => {
+    const handleCreateSession = React.useCallback(async (promptOverride?: string) => {
         if (!selectedMachineId) {
             Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
             return;
@@ -1067,10 +1067,11 @@ function NewSessionWizard() {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
                 }
 
-                // Send initial message if provided
-                if (sessionPrompt.trim()) {
-                    await sync.sendMessage(result.sessionId, sessionPrompt);
-                }
+            // Send initial message if provided
+            const promptText = typeof promptOverride === 'string' ? promptOverride : sessionPrompt;
+            if (promptText.trim()) {
+                await sync.sendMessage(result.sessionId, promptText);
+            }
 
                 router.replace(`/session/${result.sessionId}`, {
                     dangerouslySingular() {

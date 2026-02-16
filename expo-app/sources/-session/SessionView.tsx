@@ -42,6 +42,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+    const [settingsOpen, setSettingsOpen] = React.useState(false);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -141,7 +142,13 @@ export const SessionView = React.memo((props: { id: string }) => {
                     </View>
                 ) : (
                     // Normal session view
-                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
+                    <SessionViewLoaded
+                        key={sessionId}
+                        sessionId={sessionId}
+                        session={session}
+                        settingsOpen={settingsOpen}
+                        onSettingsOpenChange={setSettingsOpen}
+                    />
                 )}
             </View>
         </>
@@ -149,7 +156,17 @@ export const SessionView = React.memo((props: { id: string }) => {
 });
 
 
-function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
+function SessionViewLoaded({
+    sessionId,
+    session,
+    settingsOpen,
+    onSettingsOpenChange,
+}: {
+    sessionId: string;
+    session: Session;
+    settingsOpen: boolean;
+    onSettingsOpenChange: (open: boolean) => void;
+}) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
@@ -179,6 +196,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
+
+    // Input mode state (keyboard vs voice)
+    const [inputMode, setInputMode] = React.useState<'keyboard' | 'voice'>('keyboard');
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -305,8 +325,16 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             value={message}
             onChangeText={setMessage}
             sessionId={sessionId}
+            // Input mode (keyboard/voice toggle)
+            inputMode={inputMode}
+            onInputModeChange={setInputMode}
+            // Voice call (realtime voice) - existing functionality
+            onVoiceCallPress={micButtonState.onMicPress}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={onSettingsOpenChange}
+            showSettingsButton={false}
             modelMode={modelMode as any}
             onModelModeChange={updateModelMode as any}
             metadata={session.metadata}
@@ -316,13 +344,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing
             }}
-            onSend={() => {
-                if (message.trim()) {
+            onSend={(text?: string) => {
+                const content = typeof text === 'string' ? text : message;
+                const trimmed = content.trim();
+                if (!trimmed) {
+                    return;
+                }
+                const shouldClear = typeof text !== 'string' || message.trim() === trimmed;
+                if (shouldClear) {
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
-                    trackMessageSent();
                 }
+                sync.sendMessage(sessionId, content);
+                trackMessageSent();
             }}
             onMicPress={micButtonState.onMicPress}
             onMicLongPressStart={micButtonState.onMicLongPressStart}

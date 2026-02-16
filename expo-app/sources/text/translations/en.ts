@@ -461,6 +461,10 @@ export const en: TranslationStructure = {
             fileLabel: 'FILE',
             folderLabel: 'FOLDER',
         },
+        plusMenu: {
+            voiceCall: 'Voice call',
+            pushToTalk: 'Push to talk',
+        },
         noMachinesAvailable: 'No machines',
     },
 
@@ -611,6 +615,12 @@ export const en: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID (Development)',
             agentIdProdPlaceholder: 'Agent ID (Production)',
         },
+        // ASR (Speech-to-Text) settings
+        asr: {
+            title: 'Voice Input (ASR)',
+            description: 'Speech-to-text for voice input mode',
+            apiKeyNote: 'Note: StepFun ASR uses the same API key as the voice provider above. Please configure it in the StepFun section.',
+        },
         // Voice panel
         panel: {
             connecting: 'Connecting...',
@@ -625,6 +635,16 @@ export const en: TranslationStructure = {
             microphoneMuted: 'Microphone is muted',
             end: 'End',
         },
+    },
+
+    // Voice input overlay
+    voiceInput: {
+        holdToSpeak: 'Hold to Speak',
+        recording: 'Release to Send',
+        cancel: 'Cancel',
+        slideToText: 'Slide here to convert',
+        releaseToSend: 'Release to Send',
+        transcribing: 'Recognizing...',
     },
 
     settingsAccount: {

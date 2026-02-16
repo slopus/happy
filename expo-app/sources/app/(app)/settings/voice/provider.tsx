@@ -11,6 +11,7 @@ import { t } from '@/text';
 import { STEPFUN_CONSTANTS } from '@/realtime/stepfun/constants';
 
 type VoiceProviderType = 'stepfun' | 'elevenlabs' | 'none';
+type ASRProviderType = 'stepfun' | 'none';
 
 const PROVIDERS: { type: VoiceProviderType; name: string; description: string; icon: string; color: string }[] = [
     {
@@ -47,12 +48,30 @@ const STEPFUN_MODELS = [
     { id: 'step-audio-2', name: 'step-audio-2' },
 ];
 
+const ASR_PROVIDERS: { type: ASRProviderType; name: string; description: string; icon: string; color: string }[] = [
+    {
+        type: 'stepfun',
+        name: 'StepFun ASR',
+        description: 'StepFun Speech-to-Text (step-asr)',
+        icon: 'mic-outline',
+        color: '#FF9500',
+    },
+    {
+        type: 'none',
+        name: 'None',
+        description: 'Disable voice input',
+        icon: 'close-circle-outline',
+        color: '#8E8E93',
+    },
+];
+
 export default memo(function VoiceProviderScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const [voiceProvider, setVoiceProvider] = useSettingMutable('voiceProvider');
     const [stepFunConfig, setStepFunConfig] = useSettingMutable('voiceProviderStepFun');
     const [elevenLabsConfig, setElevenLabsConfig] = useSettingMutable('voiceProviderElevenLabs');
+    const [asrProvider, setAsrProvider] = useSettingMutable('asrProvider');
 
     // Local state for form inputs
     const [apiKey, setApiKey] = useState(stepFunConfig?.apiKey || '');
@@ -67,6 +86,10 @@ export default memo(function VoiceProviderScreen() {
     const handleProviderSelect = useCallback((type: VoiceProviderType) => {
         setVoiceProvider(type);
     }, [setVoiceProvider]);
+
+    const handleASRProviderSelect = useCallback((type: ASRProviderType) => {
+        setAsrProvider(type);
+    }, [setAsrProvider]);
 
     const handleSaveStepFunConfig = useCallback(() => {
         setStepFunConfig({
@@ -261,6 +284,37 @@ export default memo(function VoiceProviderScreen() {
                                 </View>
                             </View>
                         </View>
+                    </ItemGroup>
+                )}
+
+                {/* ASR Provider Selection */}
+                <ItemGroup
+                    title={t('settingsVoice.asr.title') || 'Voice Input (ASR)'}
+                    footer={t('settingsVoice.asr.description') || 'Speech-to-text for voice input mode'}
+                >
+                    {ASR_PROVIDERS.map((provider) => (
+                        <Item
+                            key={provider.type}
+                            title={provider.name}
+                            subtitle={provider.description}
+                            icon={<Ionicons name={provider.icon as any} size={29} color={provider.color} />}
+                            rightElement={
+                                asrProvider === provider.type ? (
+                                    <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
+                                ) : null
+                            }
+                            onPress={() => handleASRProviderSelect(provider.type)}
+                            showChevron={false}
+                        />
+                    ))}
+                </ItemGroup>
+
+                {/* ASR uses same API key as voice provider when StepFun is selected */}
+                {asrProvider === 'stepfun' && !stepFunConfig?.apiKey && (
+                    <ItemGroup
+                        title=""
+                        footer={t('settingsVoice.asr.apiKeyNote') || 'Note: StepFun ASR uses the same API key as the voice provider above. Please configure it in the StepFun section.'}
+                    >
                     </ItemGroup>
                 )}
             </ItemList>

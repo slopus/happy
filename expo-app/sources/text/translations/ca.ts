@@ -446,6 +446,10 @@ export const ca: TranslationStructure = {
             fileLabel: 'FITXER',
             folderLabel: 'CARPETA',
         },
+        plusMenu: {
+            voiceCall: 'Trucada de veu',
+            pushToTalk: 'Prem per parlar',
+        },
         noMachinesAvailable: 'Sense màquines',
     },
 
@@ -596,6 +600,12 @@ export const ca: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID (Desenvolupament)',
             agentIdProdPlaceholder: 'Agent ID (Producció)',
         },
+        // ASR (reconeixement de veu) configuració
+        asr: {
+            title: 'Entrada de veu (ASR)',
+            description: 'Conversió de veu a text per al mode d\'entrada de veu',
+            apiKeyNote: 'Nota: StepFun ASR utilitza la mateixa clau API que el proveïdor de veu anterior. Si us plau, configura-la a la secció de StepFun.',
+        },
         // Voice panel
         panel: {
             connecting: 'Connectant...',
@@ -610,6 +620,16 @@ export const ca: TranslationStructure = {
             microphoneMuted: 'El micròfon està silenciat',
             end: 'Finalitzar',
         },
+    },
+
+    // Superposició d'entrada de veu
+    voiceInput: {
+        holdToSpeak: 'Mantén premut per parlar',
+        recording: 'Deixa anar per enviar',
+        cancel: 'Cancel·la',
+        slideToText: 'Llisca aquí per convertir',
+        releaseToSend: 'Deixa anar per enviar',
+        transcribing: 'Reconeixent...',
     },
 
     settingsAccount: {

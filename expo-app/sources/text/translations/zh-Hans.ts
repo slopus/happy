@@ -448,6 +448,10 @@ export const zhHans: TranslationStructure = {
             fileLabel: '文件',
             folderLabel: '文件夹',
         },
+        plusMenu: {
+            voiceCall: '语音通话',
+            pushToTalk: '按住说话',
+        },
         noMachinesAvailable: '无设备',
     },
 
@@ -598,6 +602,12 @@ export const zhHans: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID（开发环境）',
             agentIdProdPlaceholder: 'Agent ID（生产环境）',
         },
+        // ASR (语音转文字) 设置
+        asr: {
+            title: '语音输入 (ASR)',
+            description: '语音输入模式的语音转文字功能',
+            apiKeyNote: '注意：StepFun ASR 使用与上方语音服务提供商相同的 API 密钥。请在 StepFun 部分进行配置。',
+        },
         // Voice panel
         panel: {
             connecting: '连接中...',
@@ -612,6 +622,16 @@ export const zhHans: TranslationStructure = {
             microphoneMuted: '麦克风已静音',
             end: '结束',
         },
+    },
+
+    // 语音输入覆盖层
+    voiceInput: {
+        holdToSpeak: '按住说话',
+        recording: '松开发送',
+        cancel: '取消',
+        slideToText: '滑动到此处转换',
+        releaseToSend: '松开发送',
+        transcribing: '识别中...',
     },
 
     settingsAccount: {

@@ -478,6 +478,10 @@ export const ja: TranslationStructure = {
             fileLabel: 'ファイル',
             folderLabel: 'フォルダ',
         },
+        plusMenu: {
+            voiceCall: '音声通話',
+            pushToTalk: '押して話す',
+        },
         noMachinesAvailable: 'マシンなし',
     },
 
@@ -628,6 +632,12 @@ export const ja: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID（開発）',
             agentIdProdPlaceholder: 'Agent ID（本番）',
         },
+        // ASR (音声認識) 設定
+        asr: {
+            title: '音声入力 (ASR)',
+            description: '音声入力モード用の音声テキスト変換',
+            apiKeyNote: '注意：StepFun ASRは上記の音声プロバイダーと同じAPIキーを使用します。StepFunセクションで設定してください。',
+        },
         // Voice panel
         panel: {
             connecting: '接続中...',
@@ -642,6 +652,16 @@ export const ja: TranslationStructure = {
             microphoneMuted: 'マイクがミュートされています',
             end: '終了',
         },
+    },
+
+    // 音声入力オーバーレイ
+    voiceInput: {
+        holdToSpeak: '押して話す',
+        recording: '離して送信',
+        cancel: 'キャンセル',
+        slideToText: 'ここにスライドして変換',
+        releaseToSend: '離して送信',
+        transcribing: '認識中...',
     },
 
     settingsAccount: {

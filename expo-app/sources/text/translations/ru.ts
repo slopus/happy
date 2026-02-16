@@ -456,6 +456,10 @@ export const ru: TranslationStructure = {
             fileLabel: 'ФАЙЛ',
             folderLabel: 'ПАПКА',
         },
+        plusMenu: {
+            voiceCall: 'Голосовой звонок',
+            pushToTalk: 'Нажмите, чтобы говорить',
+        },
         noMachinesAvailable: 'Нет машин',
     },
 
@@ -606,6 +610,12 @@ export const ru: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID (разработка)',
             agentIdProdPlaceholder: 'Agent ID (продакшен)',
         },
+        // ASR (распознавание речи) настройки
+        asr: {
+            title: 'Голосовой ввод (ASR)',
+            description: 'Преобразование речи в текст для режима голосового ввода',
+            apiKeyNote: 'Примечание: StepFun ASR использует тот же API-ключ, что и голосовой провайдер выше. Пожалуйста, настройте его в разделе StepFun.',
+        },
         // Voice panel
         panel: {
             connecting: 'Подключение...',
@@ -620,6 +630,16 @@ export const ru: TranslationStructure = {
             microphoneMuted: 'Микрофон отключён',
             end: 'Завершить',
         },
+    },
+
+    // Оверлей голосового ввода
+    voiceInput: {
+        holdToSpeak: 'Удерживайте, чтобы говорить',
+        recording: 'Отпустите для отправки',
+        cancel: 'Отмена',
+        slideToText: 'Сдвиньте сюда для преобразования',
+        releaseToSend: 'Отпустите для отправки',
+        transcribing: 'Распознавание...',
     },
 
     settingsAccount: {

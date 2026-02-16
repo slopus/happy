@@ -456,6 +456,10 @@ export const pl: TranslationStructure = {
             fileLabel: 'PLIK',
             folderLabel: 'FOLDER',
         },
+        plusMenu: {
+            voiceCall: 'Połączenie głosowe',
+            pushToTalk: 'Naciśnij, aby mówić',
+        },
         noMachinesAvailable: 'Brak maszyn',
     },
 
@@ -606,6 +610,12 @@ export const pl: TranslationStructure = {
             agentIdDevPlaceholder: 'Agent ID (deweloperski)',
             agentIdProdPlaceholder: 'Agent ID (produkcyjny)',
         },
+        // ASR (rozpoznawanie mowy) ustawienia
+        asr: {
+            title: 'Wejście głosowe (ASR)',
+            description: 'Zamiana mowy na tekst dla trybu głosowego',
+            apiKeyNote: 'Uwaga: StepFun ASR używa tego samego klucza API co powyższy dostawca głosu. Skonfiguruj go w sekcji StepFun.',
+        },
         // Voice panel
         panel: {
             connecting: 'Łączenie...',
@@ -620,6 +630,16 @@ export const pl: TranslationStructure = {
             microphoneMuted: 'Mikrofon jest wyciszony',
             end: 'Zakończ',
         },
+    },
+
+    // Nakładka wejścia głosowego
+    voiceInput: {
+        holdToSpeak: 'Przytrzymaj, aby mówić',
+        recording: 'Puść, aby wysłać',
+        cancel: 'Anuluj',
+        slideToText: 'Przesuń tutaj, aby przekonwertować',
+        releaseToSend: 'Puść, aby wysłać',
+        transcribing: 'Rozpoznawanie...',
     },
 
     settingsAccount: {

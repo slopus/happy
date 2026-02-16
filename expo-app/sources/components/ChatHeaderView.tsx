@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Avatar } from '@/components/Avatar';
 import { Typography } from '@/constants/Typography';
@@ -14,6 +14,7 @@ interface ChatHeaderViewProps {
     subtitle?: string;
     onBackPress?: () => void;
     onAvatarPress?: () => void;
+    onSettingsPress?: () => void;
     avatarId?: string;
     backgroundColor?: string;
     tintColor?: string;
@@ -26,6 +27,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     subtitle,
     onBackPress,
     onAvatarPress,
+    onSettingsPress,
     avatarId,
     isConnected = true,
     flavor,
@@ -87,6 +89,20 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     )}
                 </View>
                 
+                {onSettingsPress && (
+                    <Pressable
+                        onPress={onSettingsPress}
+                        hitSlop={15}
+                        style={styles.settingsButton}
+                    >
+                        <Octicons
+                            name="gear"
+                            size={16}
+                            color={theme.colors.header.tint}
+                        />
+                    </Pressable>
+                )}
+
                 {avatarId && onAvatarPress && (
                     <Pressable
                         onPress={onAvatarPress}
@@ -152,5 +168,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: Platform.select({ ios: -8, default: -8 }),
+    },
+    settingsButton: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 2,
     },
 });
