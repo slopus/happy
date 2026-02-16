@@ -64,9 +64,6 @@ export async function runGemini(opts: {
   // Define session
   //
 
-  
-  const sessionTag = randomUUID();
-
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Gemini');
 
@@ -85,6 +82,9 @@ export async function runGemini(opts: {
     process.exit(1);
   }
   logger.debug(`Using machineId: ${machineId}`);
+
+  // Deterministic session tag: same machine + directory + flavor = same session
+  const sessionTag = hashObject({ machineId, path: process.cwd(), flavor: 'gemini' });
   await api.getOrCreateMachine({
     machineId,
     metadata: initialMachineMetadata
