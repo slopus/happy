@@ -569,6 +569,7 @@ export async function runGemini(opts: {
     // Callback to send messages directly from the processor
     session.sendAgentMessage('gemini', message);
   });
+  diffProcessor.setSessionId(session.sessionId);
   
   // Update permission handler when permission mode changes
   const updatePermissionMode = (mode: PermissionMode) => {

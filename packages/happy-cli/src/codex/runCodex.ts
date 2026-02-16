@@ -491,6 +491,7 @@ export async function runCodex(opts: {
         session.sendAgentMessage('codex', message);
         messageSentThisTurn = true;
     });
+    diffProcessor.setSessionId(session.sessionId);
 
     /**
      * Handle AgentMessage from the backend.

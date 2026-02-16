@@ -4,16 +4,20 @@
  * This processor tracks changes to the unified_diff field in turn_diff messages
  * and sends CodexDiff tool calls with a lightweight summary (file names + stats)
  * instead of the full diff content, to avoid large payloads to the mobile app.
+ *
+ * Full diff content is persisted to disk via diffStore for on-demand retrieval.
  */
 
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
+import { saveDiffRecords, type DiffRecord } from '@/modules/common/diffStore';
 
 export interface DiffToolCall {
     type: 'tool-call';
     name: 'CodexDiff';
     callId: string;
     input: {
+        callId: string;
         files: string[];
         stats: { additions: number; deletions: number };
     };
@@ -29,78 +33,168 @@ export interface DiffToolResult {
     id: string;
 }
 
+interface PerFileDiff {
+    filePath: string;
+    diff: string;
+    additions: number;
+    deletions: number;
+}
+
 /**
- * Parse a unified diff string to extract file names and line stats.
+ * Split a cumulative unified diff into per-file chunks and compute stats for each.
  */
-function summarizeUnifiedDiff(unifiedDiff: string): { files: string[]; stats: { additions: number; deletions: number } } {
-    const files: string[] = [];
+function splitUnifiedDiff(unifiedDiff: string): PerFileDiff[] {
+    const results: PerFileDiff[] = [];
+    const lines = unifiedDiff.split('\n');
+
+    let currentFile: string | null = null;
+    let fallbackFile: string | null = null; // From "--- a/..." for deleted files
+    let currentLines: string[] = [];
     let additions = 0;
     let deletions = 0;
 
-    for (const line of unifiedDiff.split('\n')) {
-        if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
-            const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
-            if (fileName && !files.includes(fileName)) {
-                files.push(fileName);
-            }
-        } else if (line.startsWith('+') && !line.startsWith('+++')) {
-            additions++;
-        } else if (line.startsWith('-') && !line.startsWith('---')) {
-            deletions++;
+    function flush() {
+        if (currentFile && currentLines.length > 0) {
+            results.push({
+                filePath: currentFile,
+                diff: currentLines.join('\n'),
+                additions,
+                deletions,
+            });
         }
+        currentFile = null;
+        fallbackFile = null;
+        currentLines = [];
+        additions = 0;
+        deletions = 0;
     }
 
-    return { files, stats: { additions, deletions } };
+    for (const line of lines) {
+        // New file boundary: "diff --git a/... b/..."
+        if (line.startsWith('diff --git ')) {
+            flush();
+            currentLines.push(line);
+        } else if (line.startsWith('--- a/')) {
+            // Track source file name for deleted files
+            fallbackFile = line.replace(/^--- a\//, '');
+            currentLines.push(line);
+        } else if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
+            const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
+            // Use fallback for deleted files (+++ /dev/null)
+            if (fileName && fileName !== '/dev/null') {
+                currentFile = fileName;
+            } else if (fallbackFile) {
+                currentFile = fallbackFile;
+            }
+            currentLines.push(line);
+        } else if (line.startsWith('+') && !line.startsWith('+++')) {
+            additions++;
+            currentLines.push(line);
+        } else if (line.startsWith('-') && !line.startsWith('---')) {
+            deletions++;
+            currentLines.push(line);
+        } else {
+            currentLines.push(line);
+        }
+    }
+    flush();
+
+    return results;
 }
 
 export class DiffProcessor {
-    private previousDiff: string | null = null;
+    private previousPerFile = new Map<string, string>(); // filePath → diff content
     private onMessage: ((message: any) => void) | null = null;
+    private sessionId: string | null = null;
 
     constructor(onMessage?: (message: any) => void) {
         this.onMessage = onMessage || null;
     }
 
     /**
-     * Process a turn_diff message and check if the unified_diff has changed
+     * Set the session ID for persisting diffs to disk.
+     */
+    setSessionId(sessionId: string): void {
+        this.sessionId = sessionId;
+    }
+
+    /**
+     * Process a turn_diff message. The unified_diff is cumulative (entire session).
+     * We split by file, compare with previous to find changed files, and persist incremental diffs.
      */
     processDiff(unifiedDiff: string): void {
-        // Check if the diff has changed from the previous value
-        if (this.previousDiff !== unifiedDiff) {
-            logger.debug('[DiffProcessor] Unified diff changed, sending CodexDiff tool call');
+        const perFile = splitUnifiedDiff(unifiedDiff);
 
-            const { files, stats } = summarizeUnifiedDiff(unifiedDiff);
-
-            // Generate a unique call ID for this diff
-            const callId = randomUUID();
-
-            // Send tool call with lightweight summary instead of full diff
-            const toolCall: DiffToolCall = {
-                type: 'tool-call',
-                name: 'CodexDiff',
-                callId: callId,
-                input: { files, stats },
-                id: randomUUID()
-            };
-
-            this.onMessage?.(toolCall);
-
-            // Immediately send the tool result to mark it as completed
-            const toolResult: DiffToolResult = {
-                type: 'tool-call-result',
-                callId: callId,
-                output: {
-                    status: 'completed'
-                },
-                id: randomUUID()
-            };
-
-            this.onMessage?.(toolResult);
+        // Find files that changed since last turn_diff
+        const changedFiles: PerFileDiff[] = [];
+        for (const file of perFile) {
+            const prev = this.previousPerFile.get(file.filePath);
+            if (prev !== file.diff) {
+                changedFiles.push(file);
+            }
         }
 
-        // Update the stored diff value
-        this.previousDiff = unifiedDiff;
-        logger.debug('[DiffProcessor] Updated stored diff');
+        if (changedFiles.length === 0) {
+            // Replace entire map so removed files don't linger
+            this.rebuildPerFileMap(perFile);
+            return;
+        }
+
+        logger.debug(`[DiffProcessor] ${changedFiles.length} file(s) changed, sending CodexDiff tool call`);
+
+        const callId = randomUUID();
+
+        // Compute aggregate stats from changed files only
+        let totalAdditions = 0;
+        let totalDeletions = 0;
+        const files: string[] = [];
+        for (const f of changedFiles) {
+            files.push(f.filePath);
+            totalAdditions += f.additions;
+            totalDeletions += f.deletions;
+        }
+
+        // Persist to disk
+        if (this.sessionId) {
+            const records: DiffRecord[] = changedFiles.map((f) => ({
+                callId,
+                agent: 'codex' as const,
+                filePath: f.filePath,
+                diff: f.diff,
+                additions: f.additions,
+                deletions: f.deletions,
+                timestamp: Date.now(),
+            }));
+            saveDiffRecords(this.sessionId, records);
+        }
+
+        // Send lightweight summary to App
+        const toolCall: DiffToolCall = {
+            type: 'tool-call',
+            name: 'CodexDiff',
+            callId,
+            input: { callId, files, stats: { additions: totalAdditions, deletions: totalDeletions } },
+            id: randomUUID(),
+        };
+        this.onMessage?.(toolCall);
+
+        const toolResult: DiffToolResult = {
+            type: 'tool-call-result',
+            callId,
+            output: { status: 'completed' },
+            id: randomUUID(),
+        };
+        this.onMessage?.(toolResult);
+
+        // Replace entire map so removed files don't linger
+        this.rebuildPerFileMap(perFile);
+    }
+
+    private rebuildPerFileMap(perFile: PerFileDiff[]): void {
+        this.previousPerFile.clear();
+        for (const file of perFile) {
+            this.previousPerFile.set(file.filePath, file.diff);
+        }
     }
 
     /**
@@ -108,7 +202,7 @@ export class DiffProcessor {
      */
     reset(): void {
         logger.debug('[DiffProcessor] Resetting diff state');
-        this.previousDiff = null;
+        this.previousPerFile.clear();
     }
 
     /**
@@ -116,12 +210,5 @@ export class DiffProcessor {
      */
     setMessageCallback(callback: (message: any) => void): void {
         this.onMessage = callback;
-    }
-
-    /**
-     * Get the current diff value
-     */
-    getCurrentDiff(): string | null {
-        return this.previousDiff;
     }
 }

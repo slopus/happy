@@ -6,16 +6,20 @@
  *
  * Sends only a lightweight summary (file path + stats) instead of full diff content,
  * to avoid large payloads to the mobile app.
+ *
+ * Full diff content is persisted to disk via diffStore for on-demand retrieval.
  */
 
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
+import { saveDiffRecords } from '@/modules/common/diffStore';
 
 export interface DiffToolCall {
     type: 'tool-call';
     name: 'GeminiDiff';
     callId: string;
     input: {
+        callId: string;
         files: string[];
         stats: { additions: number; deletions: number };
         description?: string;
@@ -59,9 +63,17 @@ function summarizeUnifiedDiff(unifiedDiff: string): { files: string[]; stats: { 
 export class GeminiDiffProcessor {
     private previousDiffs = new Map<string, string>(); // Track diffs per file path
     private onMessage: ((message: any) => void) | null = null;
+    private sessionId: string | null = null;
 
     constructor(onMessage?: (message: any) => void) {
         this.onMessage = onMessage || null;
+    }
+
+    /**
+     * Set the session ID for persisting diffs to disk.
+     */
+    setSessionId(sessionId: string): void {
+        this.sessionId = sessionId;
     }
 
     /**
@@ -115,11 +127,25 @@ export class GeminiDiffProcessor {
 
             const callId = randomUUID();
 
+            // Persist to disk — store for each file in the list so App can look up any
+            if (this.sessionId) {
+                const uniqueFiles = [...new Set(files)];
+                saveDiffRecords(this.sessionId, uniqueFiles.map((fp) => ({
+                    callId,
+                    agent: 'gemini' as const,
+                    filePath: fp,
+                    diff: unifiedDiff,
+                    additions: stats.additions,
+                    deletions: stats.deletions,
+                    timestamp: Date.now(),
+                })));
+            }
+
             const toolCall: DiffToolCall = {
                 type: 'tool-call',
                 name: 'GeminiDiff',
                 callId: callId,
-                input: { files, stats, description },
+                input: { callId, files, stats, description },
                 id: randomUUID()
             };
 
@@ -154,19 +180,5 @@ export class GeminiDiffProcessor {
      */
     setMessageCallback(callback: (message: any) => void): void {
         this.onMessage = callback;
-    }
-
-    /**
-     * Get the current diff value for a specific path
-     */
-    getCurrentDiff(path: string): string | null {
-        return this.previousDiffs.get(path) || null;
-    }
-
-    /**
-     * Get all tracked diffs
-     */
-    getAllDiffs(): Map<string, string> {
-        return new Map(this.previousDiffs);
     }
 }

@@ -79,7 +79,7 @@ export class ApiSessionClient extends EventEmitter {
             encryptionVariant: this.encryptionVariant,
             logger: (msg, data) => logger.debug(msg, data)
         });
-        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path, this.sessionId);
 
         //
         // Create socket

@@ -8,6 +8,7 @@ import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
+import { getDiffDetail } from './diffStore';
 
 const execAsync = promisify(exec);
 
@@ -151,7 +152,7 @@ export type SpawnSessionResult =
 /**
  * Register all RPC handlers with the session
  */
-export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string) {
+export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string, sessionId?: string) {
 
     // Shell command handler - executes commands in the default shell
     rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
@@ -525,4 +526,26 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             };
         }
     });
+
+    // Get diff detail handler - returns stored diff for a specific callId + filePath
+    if (sessionId) {
+        rpcHandlerManager.registerHandler<
+            { callId: string; filePath: string },
+            { success: boolean; diff?: string; additions?: number; deletions?: number; error?: string }
+        >('getDiffDetail', async (data) => {
+            logger.debug('getDiffDetail request:', data.callId, data.filePath);
+
+            const result = getDiffDetail(sessionId, data.callId, data.filePath);
+            if (!result) {
+                return { success: false, error: 'not_found' };
+            }
+
+            return {
+                success: true,
+                diff: result.diff,
+                additions: result.additions,
+                deletions: result.deletions,
+            };
+        });
+    }
 }
