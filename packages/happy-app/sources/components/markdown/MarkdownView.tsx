@@ -401,12 +401,14 @@ function RenderTableBlock(props: {
     const measuredRef = React.useRef<number[][]>(
         Array.from({ length: totalRows }, () => new Array(columnCount).fill(0))
     );
+    const rowLockedRef = React.useRef<boolean[]>(new Array(totalRows).fill(false));
     const containerWidthRef = React.useRef(0);
 
     const resetMeasurements = React.useCallback(() => {
         const arr: number[][] = [];
         for (let i = 0; i < totalRows; i++) arr.push(new Array(columnCount).fill(0));
         measuredRef.current = arr;
+        rowLockedRef.current = new Array(totalRows).fill(false);
         setRowHeights(new Array(totalRows).fill(undefined));
     }, [totalRows, columnCount]);
 
@@ -431,20 +433,20 @@ function RenderTableBlock(props: {
 
     const handleCellLayout = React.useCallback((rowIndex: number, colIndex: number, height: number) => {
         if (containerWidthRef.current <= 0) return;
+        if (rowLockedRef.current[rowIndex]) return;
         const normalizedHeight = Math.ceil(height);
-        if (normalizedHeight <= 0) return;
+        if (normalizedHeight <= 1) return;
 
         const grid = measuredRef.current;
         if (!grid[rowIndex]) return;
-        const prev = grid[rowIndex][colIndex];
-        // Ignore transient smaller measurements; they can happen during route transitions on web.
-        if (normalizedHeight <= prev) return;
         grid[rowIndex][colIndex] = normalizedHeight;
 
-        // Compute max height for this row
+        // Lock row height after we have one valid measurement from every column.
+        if (!grid[rowIndex].every((h) => h > 0)) return;
         const maxH = Math.max(...grid[rowIndex]);
+        rowLockedRef.current[rowIndex] = true;
         setRowHeights(old => {
-            if ((old[rowIndex] ?? 0) >= maxH) return old;
+            if (old[rowIndex] === maxH) return old;
             const next = [...old];
             next[rowIndex] = maxH;
             return next;
