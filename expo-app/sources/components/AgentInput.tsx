@@ -1154,7 +1154,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             <Ionicons
                                                 name="call"
                                                 size={16}
-                                                color="#FFFFFF"
+                                                color={theme.colors.button.primary.tint}
                                                 style={{ transform: [{ rotate: '135deg' }] }}
                                             />
                                         ) : props.onMicPress ? (

@@ -36,31 +36,33 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
         }
     };
 
+    const tint = theme.colors.button.primary.tint;
+
     const getStatusInfo = () => {
         switch (realtimeStatus) {
             case 'connecting':
                 return {
-                    color: theme.colors.status.connecting,
-                    backgroundColor: theme.colors.surfaceHighest,
+                    color: tint,
+                    backgroundColor: theme.colors.status.connecting,
                     isPulsing: true,
                     text: 'Connecting...',
-                    textColor: theme.colors.text
+                    textColor: tint
                 };
             case 'connected':
                 return {
-                    color: theme.colors.status.connected,
-                    backgroundColor: theme.colors.surfaceHighest,
+                    color: tint,
+                    backgroundColor: theme.colors.status.connected,
                     isPulsing: false,
                     text: getConnectedText(),
-                    textColor: theme.colors.text
+                    textColor: tint
                 };
             case 'error':
                 return {
-                    color: theme.colors.status.error,
-                    backgroundColor: theme.colors.surfaceHighest,
+                    color: tint,
+                    backgroundColor: theme.colors.status.error,
                     isPulsing: false,
                     text: 'Connection Error',
-                    textColor: theme.colors.text
+                    textColor: tint
                 };
             default:
                 return {
