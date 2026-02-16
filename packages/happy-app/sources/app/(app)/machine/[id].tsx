@@ -257,9 +257,6 @@ export default function MachineDetailScreen() {
             });
             switch (result.type) {
                 case 'success':
-                    // Dismiss machine picker & machine detail screen
-                    router.back();
-                    router.back();
                     navigateToSession(result.sessionId);
                     break;
                 case 'requestToApproveDirectoryCreation': {
