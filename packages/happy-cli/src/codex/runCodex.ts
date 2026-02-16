@@ -5,7 +5,6 @@ import { CodexMcpClient } from './codexMcpClient';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
-import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -81,8 +80,6 @@ export async function runCodex(opts: {
     // Define session
     //
 
-    const sessionTag = randomUUID();
-
     // Set backend for offline warnings (before any API calls)
     connectionState.setBackend('Codex');
 
@@ -103,6 +100,9 @@ export async function runCodex(opts: {
         process.exit(1);
     }
     logger.debug(`Using machineId: ${machineId}`);
+
+    // Deterministic session tag: same machine + directory + flavor = same session
+    const sessionTag = hashObject({ machineId, path: process.cwd(), flavor: 'codex' });
     await api.getOrCreateMachine({
         machineId,
         metadata: initialMachineMetadata

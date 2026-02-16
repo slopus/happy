@@ -1,5 +1,4 @@
 import os from 'node:os';
-import { randomUUID } from 'node:crypto';
 
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
@@ -50,7 +49,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
     
     const workingDirectory = process.cwd();
-    const sessionTag = randomUUID();
 
     // Log environment info at startup
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
@@ -90,6 +88,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }
     logger.debug(`Using machineId: ${machineId}`);
 
+    // Deterministic session tag: same machine + directory + flavor = same session
+    const sessionTag = hashObject({ machineId, path: workingDirectory, flavor: 'claude' });
+
     // Create machine if it doesn't exist
     await api.getOrCreateMachine({
         machineId,
@@ -126,7 +127,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         const reconnection = startOfflineReconnection({
             serverUrl: configuration.serverUrl,
             onReconnected: async () => {
-                const resp = await api.getOrCreateSession({ tag: randomUUID(), metadata, state });
+                const resp = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
                 if (!resp) throw new Error('Server unavailable');
                 const session = api.sessionSyncClient(resp);
                 const scanner = await createSessionScanner({
