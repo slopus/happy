@@ -28,6 +28,7 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { restoreStdin } from '@/utils/restoreStdin';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -387,6 +388,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Setup signal handlers for graceful shutdown
     const cleanup = async () => {
         logger.debug('[START] Received termination signal, cleaning up...');
+
+        // Restore terminal BEFORE any async work or process.exit() —
+        // signal handlers bypass finally blocks, so this is our only chance
+        // to prevent leaving the terminal in raw mode.
+        restoreStdin();
 
         try {
             // Update lifecycle state to archived before closing

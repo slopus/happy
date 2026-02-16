@@ -11,6 +11,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { restoreStdin } from "@/utils/restoreStdin";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -184,8 +185,10 @@ export async function claudeLocal(opts: {
 
     // Spawn the process
     try {
-        // Start the interactive process
-        process.stdin.pause();
+        // Ensure stdin is fully clean before handing it to the child process.
+        // This guards against edge cases where remote mode cleanup was incomplete
+        // (e.g., encoding left as utf8, raw mode still active, flowing mode).
+        restoreStdin();
         await new Promise<void>((r, reject) => {
             const args: string[] = []
 

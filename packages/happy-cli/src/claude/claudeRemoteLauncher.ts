@@ -6,6 +6,7 @@ import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
+import { restoreStdin } from "@/utils/restoreStdin";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
@@ -443,14 +444,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // Clean up permission handler
         permissionHandler.reset();
 
-        // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
+        // Unmount Ink FIRST — it expects raw mode to still be active during teardown.
+        // Reversing this order (disabling raw mode first) causes Ink to corrupt the terminal.
         if (inkInstance) {
-            inkInstance.unmount();
+            try {
+                inkInstance.unmount();
+            } catch {
+                // Ink unmount can throw if already unmounted
+            }
         }
+
+        // Now restore stdin to a clean state for the next consumer (local mode / child process)
+        restoreStdin();
+
         messageBuffer.clear();
 
         // Resolve abort future
