@@ -15,7 +15,8 @@
     "slaphappy": "./bin/happy.mjs",
     "slaphappy-mcp": "./bin/happy-mcp.mjs",
     "happy": "./bin/happy.mjs",
-    "happy-mcp": "./bin/happy-mcp.mjs"
+    "happy-mcp": "./bin/happy-mcp.mjs",
+    "happy-debug": "./bin/happy.mjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -56,6 +57,7 @@
     "dist",
     "bin",
     "scripts",
+    "skills",
     "tools",
     "package.json"
   ],

@@ -421,6 +421,30 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'attach') {
+    try {
+      const { handleAttachCommand } = await import('./commands/attach')
+      await handleAttachCommand(args.slice(1))
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'sync') {
+    try {
+      const { handleSyncCommand } = await import('./commands/sync')
+      await handleSyncCommand(args.slice(1))
+    } catch (error) {
+      // Sync errors should not break Claude Code
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(0)  // Exit 0 even on error — don't break hooks
+    }
+    return;
   } else if (subcommand === 'daemon') {
     // Show daemon management help
     const daemonSubcommand = args[1]
@@ -637,6 +661,7 @@ ${chalk.bold('Usage:')}
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
+  happy attach <session-id>  Attach running Claude Code session to happy
   happy notify            Send push notification
   happy daemon            Manage background service that allows
                             to spawn new sessions away from your computer

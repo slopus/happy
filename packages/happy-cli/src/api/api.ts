@@ -137,6 +137,20 @@ export class ApiClient {
   }
 
   /**
+   * Delete a session from the server.
+   * Used to clean up ghost sessions when attach fails after session creation.
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    await axios.delete(
+      `${configuration.serverUrl}/v1/sessions/${sessionId}`,
+      {
+        headers: { 'Authorization': `Bearer ${this.credential.token}` },
+        timeout: 10000,
+      }
+    );
+  }
+
+  /**
    * Register or update machine with the server
    * Returns the current machine state from the server with decrypted metadata and daemonState
    */
