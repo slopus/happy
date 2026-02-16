@@ -136,6 +136,9 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     exitReason = { type: 'exit', code: e.exitCode };
                     break;
                 }
+                // Always consume one-time flags on error too, to prevent
+                // --continue/--resume from leaking through on retry
+                session.consumeOneTimeFlags();
                 if (!exitReason) {
                     session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     continue;
