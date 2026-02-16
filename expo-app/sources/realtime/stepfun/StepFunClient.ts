@@ -37,6 +37,20 @@ export interface StepFunClientCallbacks {
     onAssistantTranscriptDone?: (transcript: string) => void;
 }
 
+const defaultCallbacks: StepFunClientCallbacks = {
+    onSessionCreated: () => {},
+    onSessionUpdated: () => {},
+    onSpeechStarted: () => {},
+    onSpeechStopped: () => {},
+    onAudioDelta: () => {},
+    onAudioDone: () => {},
+    onTextDelta: () => {},
+    onTextDone: () => {},
+    onFunctionCall: async () => '',
+    onError: () => {},
+    onDisconnected: () => {},
+};
+
 export class StepFunClient {
     private ws: WebSocket | null = null;
     private config: StepFunClientConfig;
@@ -47,9 +61,10 @@ export class StepFunClient {
     private connectionResolve: (() => void) | null = null;
     private connectionReject: ((error: Error) => void) | null = null;
 
-    constructor(config: StepFunClientConfig, callbacks: StepFunClientCallbacks) {
+    constructor(config: StepFunClientConfig, callbacks: Partial<StepFunClientCallbacks> = {}) {
         this.config = config;
-        this.callbacks = callbacks;
+        const safeCallbacks = callbacks ?? {};
+        this.callbacks = { ...defaultCallbacks, ...safeCallbacks };
     }
 
     async connect(): Promise<void> {
@@ -159,11 +174,9 @@ export class StepFunClient {
     }
 
     private handleMessage(event: StepFunServerEvent): void {
-        // Log all events for debugging
-        if (event.type !== 'response.audio.delta') {
+        // Log most events for debugging, but skip noisy streaming deltas
+        if (event.type !== 'response.audio.delta' && event.type !== 'response.audio_transcript.delta') {
             console.log('[StepFunClient] Received:', event.type, JSON.stringify(event).slice(0, 200));
-        } else {
-            console.log('[StepFunClient] Received: response.audio.delta (audio data)');
         }
 
         switch (event.type) {

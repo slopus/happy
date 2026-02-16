@@ -1,6 +1,6 @@
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
@@ -8,11 +8,9 @@ import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
-import { StatusDot } from './StatusDot';
 import { useActiveWord } from './autocomplete/useActiveWord';
 import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { AgentInputAutocomplete } from './AgentInputAutocomplete';
-import { FloatingOverlay } from './FloatingOverlay';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
@@ -23,21 +21,35 @@ import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile } from '@/sync/profileUtils';
+import { VoiceInputButton } from './VoiceInputButton';
+import { VoiceInputOverlay } from './VoiceInputOverlay';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+export type InputMode = 'keyboard' | 'voice';
 
 interface AgentInputProps {
     value: string;
     placeholder: string;
     onChangeText: (text: string) => void;
     sessionId?: string;
-    onSend: () => void;
+    onSend: (text?: string) => void;
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
     onMicLongPressStart?: () => void;
     onMicLongPressEnd?: () => void;
     isPTTMode?: boolean;
     isMicActive?: boolean;
+    // Voice input mode (keyboard/voice toggle)
+    inputMode?: InputMode;
+    onInputModeChange?: (mode: InputMode) => void;
+    // Voice call button (moved to plus menu)
+    onVoiceCallPress?: () => void;
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
+    settingsOpen?: boolean;
+    onSettingsOpenChange?: (open: boolean) => void;
+    showSettingsButton?: boolean;
     modelMode?: ModelMode;
     onModelModeChange?: (mode: ModelMode) => void;
     metadata?: Metadata | null;
@@ -149,6 +161,23 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.divider,
         marginHorizontal: 16,
     },
+    abortSquareButton: {
+        width: 20,
+        height: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 6,
+        backgroundColor: 'transparent',
+    },
+    abortSquareButtonPressed: {
+        opacity: 0.6,
+    },
+    abortSquare: {
+        width: 10,
+        height: 10,
+        borderRadius: 2,
+        borderWidth: 1,
+    },
 
     // Selection styles
     selectionItem: {
@@ -200,18 +229,57 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'space-between',
         paddingHorizontal: 16,
         paddingBottom: 4,
+        minHeight: 20,
     },
-    statusRow: {
+    statusLeft: {
         flexDirection: 'row',
         alignItems: 'center',
+        minWidth: 150,
+    },
+    statusPrimary: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 999,
+        backgroundColor: theme.colors.surfacePressed,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        position: 'relative',
+        overflow: 'visible',
+    },
+    statusPrimaryContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        zIndex: 1,
+    },
+    statusStaticDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    statusDotText: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    statusMeta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     statusText: {
         fontSize: 11,
         ...Typography.default(),
     },
-    permissionModeContainer: {
-        flexDirection: 'column',
-        alignItems: 'flex-end',
+    statusRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        flex: 1,
+        gap: 8,
     },
     permissionModeText: {
         fontSize: 11,
@@ -219,7 +287,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     contextWarningText: {
         fontSize: 11,
-        marginLeft: 8,
         ...Typography.default(),
     },
 
@@ -282,6 +349,78 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
     },
+    inputField: {
+        flex: 1,
+        minWidth: 0,
+    },
+    plusButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 4,
+        borderWidth: 1,
+        borderColor: '#000000',
+        backgroundColor: 'transparent',
+    },
+    plusButtonSend: {
+        backgroundColor: theme.colors.button.primary.background,
+        borderColor: theme.colors.button.primary.background,
+    },
+    plusButtonPressed: {
+        opacity: 0.7,
+    },
+    plusMenuRoot: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    plusMenuBackdrop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    },
+    plusMenuSheet: {
+        backgroundColor: theme.colors.surface,
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        paddingTop: 12,
+        paddingHorizontal: 16,
+    },
+    plusMenuGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 16,
+        paddingVertical: 8,
+    },
+    plusMenuItem: {
+        width: 80,
+        alignItems: 'center',
+        gap: 8,
+    },
+    plusMenuItemPressed: {
+        opacity: 0.7,
+    },
+    plusMenuIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.surfaceHigh,
+    },
+    plusMenuIconActive: {
+        backgroundColor: theme.colors.box.warning.background,
+    },
+    plusMenuLabel: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        ...Typography.default(),
+    },
 }));
 
 const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
@@ -302,7 +441,12 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const screenWidth = useWindowDimensions().width;
+    const safeArea = useSafeAreaInsets();
+    const window = useWindowDimensions();
+    const screenWidth = window.width;
+    const screenHeight = window.height;
+    const containerRef = React.useRef<View>(null);
+    const [overlayOffset, setOverlayOffset] = React.useState<{ top: number; left: number } | null>(null);
 
     const hasText = props.value.trim().length > 0;
 
@@ -328,6 +472,67 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
+
+    // Voice input state
+    const isVoiceMode = props.inputMode === 'voice';
+    const rightButtonIsSend = !isVoiceMode && hasText;
+    const abortFillColor = theme.dark ? 'rgba(255, 90, 86, 0.8)' : 'rgba(255, 59, 48, 0.85)';
+    const showAbortIndicator = Boolean(props.onAbort && props.showAbortButton);
+    const showStatusPrimary = showAbortIndicator || Boolean(props.connectionStatus);
+    const shouldFlowStatus = Boolean(props.connectionStatus?.isPulsing);
+    const voiceInput = useVoiceInput({
+        onTranscriptionComplete: React.useCallback((text: string, mode: 'send' | 'text') => {
+            if (mode === 'send') {
+                props.onSend(text);
+            } else {
+                props.onChangeText(text);
+                props.onInputModeChange?.('keyboard');
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(() => inputRef.current?.focus());
+                } else {
+                    setTimeout(() => inputRef.current?.focus(), 0);
+                }
+            }
+        }, [props.onChangeText, props.onSend]),
+        onCancel: React.useCallback(() => {
+            // Nothing special on cancel
+        }, []),
+    });
+
+    const updateOverlayOffset = React.useCallback(() => {
+        const node = containerRef.current;
+        if (!node || !node.measureInWindow) return;
+        node.measureInWindow((x, y) => {
+            const top = -y;
+            const left = -x;
+            setOverlayOffset(prev => {
+                if (prev && prev.top === top && prev.left === left) {
+                    return prev;
+                }
+                return { top, left };
+            });
+        });
+    }, []);
+
+    const handleContainerLayout = React.useCallback(() => {
+        updateOverlayOffset();
+    }, [updateOverlayOffset]);
+
+    React.useEffect(() => {
+        if (!voiceInput.state.isRecording) return;
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(updateOverlayOffset);
+        } else {
+            setTimeout(updateOverlayOffset, 0);
+        }
+    }, [voiceInput.state.isRecording, screenWidth, screenHeight, updateOverlayOffset]);
+
+    // Handle mode toggle
+    const handleModeToggle = React.useCallback(() => {
+        const newMode = props.inputMode === 'voice' ? 'keyboard' : 'voice';
+        hapticsLight();
+        props.onInputModeChange?.(newMode);
+    }, [props.inputMode, props.onInputModeChange]);
 
 
     // Abort button state
@@ -396,20 +601,49 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [suggestions, inputState, props.autocompletePrefixes]);
 
     // Settings modal state
-    const [showSettings, setShowSettings] = React.useState(false);
+    const [internalShowSettings, setInternalShowSettings] = React.useState(false);
+    const isSettingsControlled = typeof props.settingsOpen === 'boolean';
+    const showSettings = isSettingsControlled ? props.settingsOpen : internalShowSettings;
+    const setShowSettings = React.useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+        const resolved = typeof next === 'function' ? next(showSettings) : next;
+        if (!isSettingsControlled) {
+            setInternalShowSettings(resolved);
+        }
+        props.onSettingsOpenChange?.(resolved);
+    }, [isSettingsControlled, props.onSettingsOpenChange, showSettings]);
+    const [showPlusMenu, setShowPlusMenu] = React.useState(false);
+    const hasPlusMenu = Boolean(props.onVoiceCallPress);
+
+    React.useEffect(() => {
+        if (showSettings && showPlusMenu) {
+            setShowPlusMenu(false);
+        }
+    }, [showSettings, showPlusMenu]);
 
     // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
         hapticsLight();
+        setShowPlusMenu(false);
         setShowSettings(prev => !prev);
-    }, []);
+    }, [setShowSettings, setShowPlusMenu]);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
         hapticsLight();
         props.onPermissionModeChange?.(mode);
-        // Don't close the settings overlay - let users see the change and potentially switch again
-    }, [props.onPermissionModeChange]);
+        setShowSettings(false);
+    }, [props.onPermissionModeChange, setShowSettings]);
+
+    const handlePlusPress = React.useCallback(() => {
+        hapticsLight();
+        setShowSettings(false);
+        console.log('[AgentInput] plus menu opened, voiceCall available:', !!props.onVoiceCallPress);
+        setShowPlusMenu(prev => !prev);
+    }, [props.onVoiceCallPress]);
+
+    const closePlusMenu = React.useCallback(() => {
+        setShowPlusMenu(false);
+    }, []);
 
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
@@ -495,18 +729,20 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return false; // Key was not handled
     }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
 
-
-
-
     return (
-        <View style={[
-            styles.container,
-            { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
-        ]}>
-            <View style={[
-                styles.innerContainer,
-                { maxWidth: layout.maxWidth }
-            ]}>
+        <>
+            <View
+                ref={containerRef}
+                onLayout={handleContainerLayout}
+                style={[
+                    styles.container,
+                    { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+                ]}
+            >
+                <View style={[
+                    styles.innerContainer,
+                    { maxWidth: layout.maxWidth }
+                ]}>
                 {/* Autocomplete suggestions overlay */}
                 {suggestions.length > 0 && (
                     <View style={[
@@ -525,17 +761,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </View>
                 )}
 
-                {/* Settings overlay */}
+                {/* Permission Mode Selection Modal */}
                 {showSettings && (
-                    <>
-                        <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
-                            <View style={styles.overlayBackdrop} />
-                        </TouchableWithoutFeedback>
-                        <View style={[
-                            styles.settingsOverlay,
-                            { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
-                        ]}>
-                            <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                    <Modal
+                        transparent
+                        animationType="fade"
+                        statusBarTranslucent
+                        onRequestClose={() => setShowSettings(false)}
+                    >
+                        <View style={styles.plusMenuRoot}>
+                            <Pressable style={styles.plusMenuBackdrop} onPress={() => setShowSettings(false)} />
+                            <View style={[styles.plusMenuSheet, { paddingBottom: safeArea.bottom + 16 }]}>
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
@@ -573,14 +809,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     flexDirection: 'row',
                                                     alignItems: 'center',
                                                     paddingHorizontal: 16,
-                                                    paddingVertical: 8,
+                                                    paddingVertical: 12,
                                                     backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
                                                 })}
                                             >
                                                 <View style={{
-                                                    width: 16,
-                                                    height: 16,
-                                                    borderRadius: 8,
+                                                    width: 20,
+                                                    height: 20,
+                                                    borderRadius: 10,
                                                     borderWidth: 2,
                                                     borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
                                                     alignItems: 'center',
@@ -589,15 +825,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 }}>
                                                     {isSelected && (
                                                         <View style={{
-                                                            width: 6,
-                                                            height: 6,
-                                                            borderRadius: 3,
+                                                            width: 8,
+                                                            height: 8,
+                                                            borderRadius: 4,
                                                             backgroundColor: theme.colors.radio.dot
                                                         }} />
                                                     )}
                                                 </View>
                                                 <Text style={{
-                                                    fontSize: 14,
+                                                    fontSize: 15,
                                                     color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                                     ...Typography.default()
                                                 }}>
@@ -612,7 +848,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 <View style={{
                                     height: 1,
                                     backgroundColor: theme.colors.divider,
-                                    marginHorizontal: 16
+                                    marginHorizontal: 16,
+                                    marginVertical: 8
                                 }} />
 
                                 {/* Model Section */}
@@ -649,14 +886,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                         flexDirection: 'row',
                                                         alignItems: 'center',
                                                         paddingHorizontal: 16,
-                                                        paddingVertical: 8,
+                                                        paddingVertical: 12,
                                                         backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
                                                     })}
                                                 >
                                                     <View style={{
-                                                        width: 16,
-                                                        height: 16,
-                                                        borderRadius: 8,
+                                                        width: 20,
+                                                        height: 20,
+                                                        borderRadius: 10,
                                                         borderWidth: 2,
                                                         borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
                                                         alignItems: 'center',
@@ -665,23 +902,23 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     }}>
                                                         {isSelected && (
                                                             <View style={{
-                                                                width: 6,
-                                                                height: 6,
-                                                                borderRadius: 3,
+                                                                width: 8,
+                                                                height: 8,
+                                                                borderRadius: 4,
                                                                 backgroundColor: theme.colors.radio.dot
                                                             }} />
                                                         )}
                                                     </View>
                                                     <View>
                                                         <Text style={{
-                                                            fontSize: 14,
+                                                            fontSize: 15,
                                                             color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                                             ...Typography.default()
                                                         }}>
                                                             {config.label}
                                                         </Text>
                                                         <Text style={{
-                                                            fontSize: 11,
+                                                            fontSize: 12,
                                                             color: theme.colors.textSecondary,
                                                             ...Typography.default()
                                                         }}>
@@ -693,7 +930,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         })
                                     ) : (
                                         <Text style={{
-                                            fontSize: 13,
+                                            fontSize: 14,
                                             color: theme.colors.textSecondary,
                                             paddingHorizontal: 16,
                                             paddingVertical: 8,
@@ -703,151 +940,247 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         </Text>
                                     )}
                                 </View>
-                            </FloatingOverlay>
+                            </View>
                         </View>
-                    </>
+                    </Modal>
+                )}
+
+                {/* Plus menu overlay */}
+                {showPlusMenu && hasPlusMenu && (
+                    <Modal
+                        transparent
+                        animationType="fade"
+                        statusBarTranslucent
+                        onRequestClose={closePlusMenu}
+                    >
+                        <View style={styles.plusMenuRoot}>
+                            <Pressable style={styles.plusMenuBackdrop} onPress={closePlusMenu} />
+                            <View style={[styles.plusMenuSheet, { paddingBottom: safeArea.bottom + 16 }]}>
+                                <View style={styles.plusMenuGrid}>
+                                    {props.onVoiceCallPress && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onVoiceCallPress?.();
+                                                closePlusMenu();
+                                            }}
+                                            style={({ pressed }) => [
+                                                styles.plusMenuItem,
+                                                pressed && styles.plusMenuItemPressed
+                                            ]}
+                                        >
+                                            <View style={[
+                                                styles.plusMenuIcon,
+                                                props.isMicActive && styles.plusMenuIconActive
+                                            ]}>
+                                                <Ionicons
+                                                    name="call-outline"
+                                                    size={22}
+                                                    color={props.isMicActive ? theme.colors.textDestructive : theme.colors.text}
+                                                />
+                                            </View>
+                                            <Text style={styles.plusMenuLabel}>
+                                                {t('agentInput.plusMenu.voiceCall')}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+                                </View>
+                            </View>
+                        </View>
+                    </Modal>
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || props.permissionMode) && (
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 16,
-                        paddingBottom: 4,
-                        minHeight: 20, // Fixed minimum height to prevent jumping
-                    }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
-                            {props.connectionStatus && (
-                                <>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                        <StatusDot
-                                            color={props.connectionStatus.dotColor}
-                                            isPulsing={props.connectionStatus.isPulsing}
-                                            size={6}
-                                        />
-                                        <Text style={{
-                                            fontSize: 11,
-                                            color: props.connectionStatus.color,
-                                            ...Typography.default()
-                                        }}>
-                                            {props.connectionStatus.text}
-                                        </Text>
-                                    </View>
-                                    {/* CLI Status - only shown when provided (wizard only) */}
-                                    {props.connectionStatus.cliStatus && (
-                                        <>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.claude
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {props.connectionStatus.cliStatus.claude ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.claude
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    claude
-                                                </Text>
-                                            </View>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.codex
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {props.connectionStatus.cliStatus.codex ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    color: props.connectionStatus.cliStatus.codex
-                                                        ? theme.colors.success
-                                                        : theme.colors.textDestructive,
-                                                    ...Typography.default()
-                                                }}>
-                                                    codex
-                                                </Text>
-                                            </View>
-                                            {props.connectionStatus.cliStatus.gemini !== undefined && (
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                    <Text style={{
-                                                        fontSize: 11,
-                                                        color: props.connectionStatus.cliStatus.gemini
-                                                            ? theme.colors.success
-                                                            : theme.colors.textDestructive,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        {props.connectionStatus.cliStatus.gemini ? '✓' : '✗'}
-                                                    </Text>
-                                                    <Text style={{
-                                                        fontSize: 11,
-                                                        color: props.connectionStatus.cliStatus.gemini
-                                                            ? theme.colors.success
-                                                            : theme.colors.textDestructive,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        gemini
-                                                    </Text>
-                                                </View>
-                                            )}
-                                        </>
-                                    )}
-                                </>
-                            )}
-                            {contextWarning && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: contextWarning.color,
-                                    marginLeft: props.connectionStatus ? 8 : 0,
-                                    ...Typography.default()
-                                }}>
-                                    {props.connectionStatus ? '• ' : ''}{contextWarning.text}
-                                </Text>
+                {(props.connectionStatus || contextWarning || props.permissionMode || showAbortIndicator) && (
+                    <View style={styles.statusContainer}>
+                        <View style={styles.statusLeft}>
+                            {props.permissionMode && props.onPermissionModeChange && (
+                                <Pressable
+                                    onPress={handleSettingsPress}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    style={({ pressed }) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        opacity: pressed ? 0.7 : 1,
+                                    })}
+                                >
+                                    <Text style={[
+                                        styles.permissionModeText,
+                                        {
+                                            color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                                props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                                    props.permissionMode === 'plan' ? theme.colors.permission.plan :
+                                                        props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
+                                                            props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                                props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
+                                                                    theme.colors.textSecondary,
+                                        }
+                                    ]}>
+                                        {isCodex ? (
+                                            props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
+                                                props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                                                    props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                                                        props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
+                                        ) : isGemini ? (
+                                            props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
+                                                props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
+                                                    props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
+                                                        props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
+                                        ) : (
+                                            props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
+                                                props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                                                    props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                                                        props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                                        )}
+                                    </Text>
+                                    <Ionicons
+                                        name="chevron-down"
+                                        size={12}
+                                        color={props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                            props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                                props.permissionMode === 'plan' ? theme.colors.permission.plan :
+                                                    props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
+                                                        props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                            props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
+                                                                theme.colors.textSecondary}
+                                    />
+                                </Pressable>
                             )}
                         </View>
-                        <View style={{
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            minWidth: 150, // Fixed minimum width to prevent layout shift
-                        }}>
-                            {props.permissionMode && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                            props.permissionMode === 'plan' ? theme.colors.permission.plan :
-                                                props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
-                                                    props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                        props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                            theme.colors.textSecondary, // Use secondary text color for default
-                                    ...Typography.default()
-                                }}>
-                                    {isCodex ? (
-                                        props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
-                                    ) : isGemini ? (
-                                        props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                                            props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
-                                                props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
-                                                    props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
-                                    ) : (
-                                        props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
-                                            props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                                    props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                        <View style={styles.statusRight}>
+                            {showStatusPrimary && (
+                                <View style={styles.statusPrimary}>
+                                    <View style={styles.statusPrimaryContent}>
+                                        {shouldFlowStatus && showAbortIndicator ? (
+                                            <Shaker ref={shakerRef}>
+                                                <Pressable
+                                                    style={({ pressed }) => [
+                                                        styles.abortSquareButton,
+                                                        pressed && styles.abortSquareButtonPressed
+                                                    ]}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                    onPress={handleAbortPress}
+                                                    disabled={isAborting}
+                                                >
+                                                    {isAborting ? (
+                                                        <ActivityIndicator
+                                                            size="small"
+                                                            color={theme.colors.textDestructive}
+                                                        />
+                                                    ) : (
+                                                        <View
+                                                            style={[
+                                                                styles.abortSquare,
+                                                                {
+                                                                    backgroundColor: abortFillColor,
+                                                                    borderColor: theme.colors.textDestructive,
+                                                                }
+                                                            ]}
+                                                        />
+                                                    )}
+                                                </Pressable>
+                                            </Shaker>
+                                        ) : (
+                                            props.connectionStatus && (
+                                                <View
+                                                    style={[
+                                                        styles.statusStaticDot,
+                                                        { backgroundColor: props.connectionStatus.color }
+                                                    ]}
+                                                />
+                                            )
+                                        )}
+                                        {props.connectionStatus && (
+                                            <Text style={[
+                                                styles.statusText,
+                                                { color: props.connectionStatus.color }
+                                            ]}>
+                                                {props.connectionStatus.text}
+                                            </Text>
+                                        )}
+                                    </View>
+                                </View>
+                            )}
+                            {/* CLI Status - only shown when provided (wizard only) */}
+                            {props.connectionStatus?.cliStatus && (
+                                <View style={styles.statusMeta}>
+                                    <View style={styles.statusDotText}>
+                                        <Text style={[
+                                            styles.statusText,
+                                            {
+                                                color: props.connectionStatus.cliStatus.claude
+                                                    ? theme.colors.success
+                                                    : theme.colors.textDestructive,
+                                            }
+                                        ]}>
+                                            {props.connectionStatus.cliStatus.claude ? '✓' : '✗'}
+                                        </Text>
+                                        <Text style={[
+                                            styles.statusText,
+                                            {
+                                                color: props.connectionStatus.cliStatus.claude
+                                                    ? theme.colors.success
+                                                    : theme.colors.textDestructive,
+                                            }
+                                        ]}>
+                                            claude
+                                        </Text>
+                                    </View>
+                                    <View style={styles.statusDotText}>
+                                        <Text style={[
+                                            styles.statusText,
+                                            {
+                                                color: props.connectionStatus.cliStatus.codex
+                                                    ? theme.colors.success
+                                                    : theme.colors.textDestructive,
+                                            }
+                                        ]}>
+                                            {props.connectionStatus.cliStatus.codex ? '✓' : '✗'}
+                                        </Text>
+                                        <Text style={[
+                                            styles.statusText,
+                                            {
+                                                color: props.connectionStatus.cliStatus.codex
+                                                    ? theme.colors.success
+                                                    : theme.colors.textDestructive,
+                                            }
+                                        ]}>
+                                            codex
+                                        </Text>
+                                    </View>
+                                    {props.connectionStatus.cliStatus.gemini !== undefined && (
+                                        <View style={styles.statusDotText}>
+                                            <Text style={[
+                                                styles.statusText,
+                                                {
+                                                    color: props.connectionStatus.cliStatus.gemini
+                                                        ? theme.colors.success
+                                                        : theme.colors.textDestructive,
+                                                }
+                                            ]}>
+                                                {props.connectionStatus.cliStatus.gemini ? '✓' : '✗'}
+                                            </Text>
+                                            <Text style={[
+                                                styles.statusText,
+                                                {
+                                                    color: props.connectionStatus.cliStatus.gemini
+                                                        ? theme.colors.success
+                                                        : theme.colors.textDestructive,
+                                                }
+                                            ]}>
+                                                gemini
+                                            </Text>
+                                        </View>
                                     )}
+                                </View>
+                            )}
+                            {contextWarning && (
+                                <Text style={[
+                                    styles.contextWarningText,
+                                    { color: contextWarning.color }
+                                ]}>
+                                    {props.connectionStatus ? '• ' : ''}{contextWarning.text}
                                 </Text>
                             )}
                         </View>
@@ -937,19 +1270,93 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                 {/* Box 2: Action Area (Input + Send) */}
                 <View style={styles.unifiedPanel}>
-                    {/* Input field */}
+                    {/* Input field with optional mode toggle */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
-                        <MultiTextInput
-                            ref={inputRef}
-                            value={props.value}
-                            paddingTop={Platform.OS === 'web' ? 10 : 8}
-                            paddingBottom={Platform.OS === 'web' ? 10 : 8}
-                            onChangeText={props.onChangeText}
-                            placeholder={props.placeholder}
-                            onKeyPress={handleKeyPress}
-                            onStateChange={handleInputStateChange}
-                            maxHeight={120}
-                        />
+                        {/* Mode toggle button (keyboard/voice) */}
+                        {props.onInputModeChange && (
+                            <Pressable
+                                onPress={handleModeToggle}
+                                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+                                style={(p) => ({
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: 16,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 4,
+                                    borderWidth: 1,
+                                    borderColor: '#000000',
+                                    backgroundColor: 'transparent',
+                                    opacity: p.pressed ? 0.7 : 1,
+                                })}
+                            >
+                                {isVoiceMode ? (
+                                    <MaterialCommunityIcons
+                                        name="keyboard-outline"
+                                        size={20}
+                                        color="#000000"
+                                    />
+                                ) : (
+                                    <Image
+                                        source={require('@/assets/images/icon-voice-white.png')}
+                                        style={{ width: 22, height: 22 }}
+                                        tintColor="#000000"
+                                    />
+                                )}
+                            </Pressable>
+                        )}
+
+                        {/* Text input or Voice button */}
+                        <View style={styles.inputField}>
+                            {isVoiceMode ? (
+                                <VoiceInputButton
+                                    isRecording={voiceInput.state.isRecording}
+                                    onLongPressStart={voiceInput.startRecording}
+                                    onPressEnd={voiceInput.stopRecording}
+                                    onGestureMove={voiceInput.updateGesture}
+                                    disabled={!voiceInput.isASRAvailable}
+                                />
+                            ) : (
+                                <MultiTextInput
+                                    ref={inputRef}
+                                    value={props.value}
+                                    paddingTop={Platform.OS === 'web' ? 10 : 8}
+                                    paddingBottom={Platform.OS === 'web' ? 10 : 8}
+                                    onChangeText={props.onChangeText}
+                                    placeholder={props.placeholder}
+                                    onKeyPress={handleKeyPress}
+                                    onStateChange={handleInputStateChange}
+                                    maxHeight={120}
+                                />
+                            )}
+                        </View>
+
+                        <Pressable
+                            onPress={() => {
+                                if (rightButtonIsSend) {
+                                    hapticsLight();
+                                    props.onSend();
+                                    return;
+                                }
+                                if (hasPlusMenu) {
+                                    handlePlusPress();
+                                }
+                            }}
+                            disabled={rightButtonIsSend && (props.isSendDisabled || props.isSending)}
+                            hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+                            style={({ pressed }) => [
+                                styles.plusButton,
+                                rightButtonIsSend && styles.plusButtonSend,
+                                pressed && styles.plusButtonPressed
+                            ]}
+                        >
+                            <Ionicons
+                                name={rightButtonIsSend ? 'arrow-up' : 'add'}
+                                size={20}
+                                color={rightButtonIsSend ? theme.colors.button.primary.tint : '#000000'}
+                                style={rightButtonIsSend ? { marginTop: Platform.OS === 'web' ? 2 : 0 } : undefined}
+                            />
+                        </Pressable>
                     </View>
 
                     {/* Action buttons below input */}
@@ -958,30 +1365,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <View style={styles.actionButtonsLeft}>
-
-                                {/* Settings button */}
-                                {props.onPermissionModeChange && (
-                                    <Pressable
-                                        onPress={handleSettingsPress}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 8,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                        })}
-                                    >
-                                        <Octicons
-                                            name={'gear'}
-                                            size={16}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                    </Pressable>
-                                )}
 
                                 {/* Profile selector button - FIRST */}
                                 {props.profileId && props.onProfileClick && (
@@ -1055,128 +1438,38 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Pressable>
                                 )}
 
-                                {/* Abort button */}
-                                {props.onAbort && (
-                                    <Shaker ref={shakerRef}>
-                                        <Pressable
-                                            style={(p) => ({
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                borderRadius: Platform.select({ default: 16, android: 20 }),
-                                                paddingHorizontal: 8,
-                                                paddingVertical: 6,
-                                                justifyContent: 'center',
-                                                height: 32,
-                                                opacity: p.pressed ? 0.7 : 1,
-                                            })}
-                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            onPress={handleAbortPress}
-                                            disabled={isAborting}
-                                        >
-                                            {isAborting ? (
-                                                <ActivityIndicator
-                                                    size="small"
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            ) : (
-                                                <Octicons
-                                                    name={"stop"}
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            )}
-                                        </Pressable>
-                                    </Shaker>
-                                )}
-
                                 {/* Git Status Badge */}
                                 <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                                 </View>
 
-                                {/* Send/Voice button - aligned with first row */}
-                                <View
-                                    style={[
-                                        styles.sendButton,
-                                        (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
-                                            ? styles.sendButtonActive
-                                            : styles.sendButtonInactive,
-                                        props.isPTTMode && styles.sendButtonPTT
-                                    ]}
-                                >
-                                    <Pressable
-                                        style={(p) => ({
-                                            width: '100%',
-                                            height: '100%',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            opacity: p.pressed ? 0.7 : 1,
-                                        })}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        onPress={() => {
-                                            hapticsLight();
-                                            if (hasText) {
-                                                props.onSend();
-                                            } else {
-                                                props.onMicPress?.();
-                                            }
-                                        }}
-                                        onLongPress={() => {
-                                            if (!hasText && props.onMicLongPressStart) {
-                                                hapticsLight();
-                                                props.onMicLongPressStart();
-                                            }
-                                        }}
-                                        onPressOut={() => {
-                                            if (!hasText && props.isPTTMode && props.onMicLongPressEnd) {
-                                                props.onMicLongPressEnd();
-                                            }
-                                        }}
-                                        delayLongPress={300}
-                                        disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
-                                    >
-                                        {props.isSending ? (
-                                            <ActivityIndicator
-                                                size="small"
-                                                color={theme.colors.button.primary.tint}
-                                            />
-                                        ) : hasText ? (
-                                            <Octicons
-                                                name="arrow-up"
-                                                size={16}
-                                                color={theme.colors.button.primary.tint}
-                                                style={[
-                                                    styles.sendButtonIcon,
-                                                    { marginTop: Platform.OS === 'web' ? 2 : 0 }
-                                                ]}
-                                            />
-                                        ) : props.onMicPress && !props.isMicActive ? (
-                                            <Image
-                                                source={require('@/assets/images/icon-voice-white.png')}
-                                                style={{
-                                                    width: 24,
-                                                    height: 24,
-                                                }}
-                                                tintColor={theme.colors.button.primary.tint}
-                                            />
-                                        ) : (
-                                            <Octicons
-                                                name="arrow-up"
-                                                size={16}
-                                                color={theme.colors.button.primary.tint}
-                                                style={[
-                                                    styles.sendButtonIcon,
-                                                    { marginTop: Platform.OS === 'web' ? 2 : 0 }
-                                                ]}
-                                            />
-                                        )}
-                                    </Pressable>
-                                </View>
+                                {/* Send button hidden; plus button becomes send when text exists */}
                             </View>
                         </View>
                     </View>
                 </View>
+            {/* Voice Input Overlay - shown during recording */}
+            {props.onInputModeChange && (
+                <View
+                    pointerEvents="none"
+                    style={{
+                        position: 'absolute',
+                        top: overlayOffset?.top ?? 0,
+                        left: overlayOffset?.left ?? 0,
+                        width: screenWidth,
+                        height: screenHeight,
+                        zIndex: 9999,
+                        elevation: 9999,
+                    }}
+                >
+                    <VoiceInputOverlay
+                        state={voiceInput.state}
+                        visible={voiceInput.state.isRecording}
+                    />
+                </View>
+            )}
             </View>
         </View>
+        </>
     );
 }));
 
