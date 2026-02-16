@@ -21,6 +21,7 @@ import { enableAuthentication } from "./utils/enableAuthentication";
 import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
+import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 
 export async function startApi() {
 
@@ -66,8 +67,9 @@ export async function startApi() {
     userRoutes(typed);
     feedRoutes(typed);
     kvRoutes(typed);
+    v3SessionRoutes(typed);
 
-    // Start HTTP 
+    // Start HTTP
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
     await app.listen({ port, host: '0.0.0.0' });
     onShutdown('api', async () => {

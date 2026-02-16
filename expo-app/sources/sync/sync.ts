@@ -12,7 +12,7 @@ import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
@@ -27,6 +27,7 @@ import { config } from '@/config';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
+import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
@@ -40,10 +41,28 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
 
-class Sync {
-    // Spawned agents (especially in spawn mode) can take noticeable time to connect.
-    private static readonly SESSION_READY_TIMEOUT_MS = 10000;
+type V3GetSessionMessagesResponse = {
+    messages: ApiMessage[];
+    hasMore: boolean;
+};
 
+type V3PostSessionMessagesResponse = {
+    messages: Array<{
+        id: string;
+        seq: number;
+        localId: string | null;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+type OutboxMessage = {
+    localId: string;
+    content: string;
+};
+
+class Sync {
+    private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
     encryption!: Encryption;
     serverID!: string;
     anonID!: string;
@@ -51,7 +70,13 @@ class Sync {
     public encryptionCache = new EncryptionCache();
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
-    private sessionReceivedMessages = new Map<string, Set<string>>();
+    private sendSync = new Map<string, InvalidateSync>();
+    private sendAbortControllers = new Map<string, AbortController>();
+    private sessionLastSeq = new Map<string, number>();
+    private pendingOutbox = new Map<string, OutboxMessage[]>();
+    private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
+    private sessionQueueProcessing = new Set<string>();
+    private sessionMessageLocks = new Map<string, AsyncLock>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -68,6 +93,10 @@ class Sync {
     private todosSync: InvalidateSync;
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
+    private appState: AppStateStatus = AppState.currentState;
+    private backgroundSendTimeout: ReturnType<typeof setTimeout> | null = null;
+    private backgroundSendNotificationId: string | null = null;
+    private backgroundSendStartedAt: number | null = null;
     revenueCatInitialized = false;
 
     // Generic locking mechanism
@@ -98,7 +127,17 @@ class Sync {
 
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
+            this.appState = nextAppState;
             if (nextAppState === 'active') {
+                const shouldFailAfterResume = this.backgroundSendStartedAt !== null
+                    && this.hasPendingOutboxMessages()
+                    && (Date.now() - this.backgroundSendStartedAt) >= Sync.BACKGROUND_SEND_TIMEOUT_MS;
+                void this.cancelBackgroundSendTimeoutNotification();
+                this.clearBackgroundSendWatchdog();
+                if (shouldFailAfterResume) {
+                    void this.notifyMessageSendFailed();
+                    this.failPendingOutboxMessages('Message failed to send in background after 30s. Please retry.');
+                }
                 log.log('📱 App became active');
                 this.purchasesSync.invalidate();
                 this.profileSync.invalidate();
@@ -114,6 +153,7 @@ class Sync {
                 this.todosSync.invalidate();
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
+                this.maybeStartBackgroundSendWatchdog();
             }
         });
     }
@@ -188,13 +228,209 @@ class Sync {
     }
 
 
-    onSessionVisible = (sessionId: string) => {
-        let ex = this.messagesSync.get(sessionId);
-        if (!ex) {
-            ex = new InvalidateSync(() => this.fetchMessages(sessionId));
-            this.messagesSync.set(sessionId, ex);
+    private getMessagesSync(sessionId: string): InvalidateSync {
+        let sync = this.messagesSync.get(sessionId);
+        if (!sync) {
+            sync = new InvalidateSync(() => this.fetchMessages(sessionId));
+            this.messagesSync.set(sessionId, sync);
         }
-        ex.invalidate();
+        return sync;
+    }
+
+    private getSendSync(sessionId: string): InvalidateSync {
+        let sync = this.sendSync.get(sessionId);
+        if (!sync) {
+            sync = new InvalidateSync(() => this.flushOutbox(sessionId));
+            this.sendSync.set(sessionId, sync);
+        }
+        return sync;
+    }
+
+    private getSessionMessageLock(sessionId: string): AsyncLock {
+        let lock = this.sessionMessageLocks.get(sessionId);
+        if (!lock) {
+            lock = new AsyncLock();
+            this.sessionMessageLocks.set(sessionId, lock);
+        }
+        return lock;
+    }
+
+    private enqueueMessages(sessionId: string, messages: NormalizedMessage[]) {
+        if (messages.length === 0) {
+            return;
+        }
+
+        let queue = this.sessionMessageQueue.get(sessionId);
+        if (!queue) {
+            queue = [];
+            this.sessionMessageQueue.set(sessionId, queue);
+        }
+        queue.push(...messages);
+
+        this.scheduleQueuedMessagesProcessing(sessionId);
+    }
+
+    private scheduleQueuedMessagesProcessing(sessionId: string) {
+        if (this.sessionQueueProcessing.has(sessionId)) {
+            return;
+        }
+
+        this.sessionQueueProcessing.add(sessionId);
+        const lock = this.getSessionMessageLock(sessionId);
+        void lock.inLock(() => {
+            while (true) {
+                const pending = this.sessionMessageQueue.get(sessionId);
+                if (!pending || pending.length === 0) {
+                    break;
+                }
+                const batch = pending.splice(0, pending.length);
+                this.applyMessages(sessionId, batch);
+            }
+        }).finally(() => {
+            this.sessionQueueProcessing.delete(sessionId);
+            const pending = this.sessionMessageQueue.get(sessionId);
+            if (pending && pending.length > 0) {
+                this.scheduleQueuedMessagesProcessing(sessionId);
+            }
+        });
+    }
+
+    private hasPendingOutboxMessages() {
+        if (this.sendAbortControllers.size > 0) {
+            return true;
+        }
+        for (const messages of this.pendingOutbox.values()) {
+            if (messages.length > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private maybeStartBackgroundSendWatchdog() {
+        if (Platform.OS === 'web' || this.appState === 'active') {
+            return;
+        }
+        if (!this.hasPendingOutboxMessages() || this.backgroundSendTimeout) {
+            return;
+        }
+
+        log.log('📨 Pending messages detected in background. Starting 30s send watchdog.');
+        this.backgroundSendStartedAt = Date.now();
+        this.backgroundSendTimeout = setTimeout(() => {
+            this.backgroundSendTimeout = null;
+            void this.handleBackgroundSendTimeout();
+        }, Sync.BACKGROUND_SEND_TIMEOUT_MS);
+        void this.scheduleBackgroundSendTimeoutNotification();
+    }
+
+    private clearBackgroundSendWatchdog() {
+        if (this.backgroundSendTimeout) {
+            clearTimeout(this.backgroundSendTimeout);
+            this.backgroundSendTimeout = null;
+        }
+        this.backgroundSendStartedAt = null;
+    }
+
+    private async scheduleBackgroundSendTimeoutNotification() {
+        if (Platform.OS === 'web' || this.backgroundSendNotificationId) {
+            return;
+        }
+        try {
+            this.backgroundSendNotificationId = await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: 'Message not sent',
+                    body: 'A message is still sending in the background. It will fail in 30 seconds if not delivered.',
+                    sound: true
+                },
+                trigger: {
+                    type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                    seconds: Math.ceil(Sync.BACKGROUND_SEND_TIMEOUT_MS / 1000)
+                }
+            });
+        } catch (error) {
+            log.log(`Failed to schedule background send timeout notification: ${error}`);
+        }
+    }
+
+    private async cancelBackgroundSendTimeoutNotification() {
+        if (!this.backgroundSendNotificationId) {
+            return;
+        }
+        try {
+            await Notifications.cancelScheduledNotificationAsync(this.backgroundSendNotificationId);
+        } catch (error) {
+            log.log(`Failed to cancel background send timeout notification: ${error}`);
+        } finally {
+            this.backgroundSendNotificationId = null;
+        }
+    }
+
+    private async notifyMessageSendFailed() {
+        if (Platform.OS === 'web') {
+            return;
+        }
+        try {
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: 'Message failed',
+                    body: 'A message failed to send while the app was in background. Open Runline and retry.',
+                    sound: true
+                },
+                trigger: null
+            });
+        } catch (error) {
+            log.log(`Failed to schedule message failure notification: ${error}`);
+        }
+    }
+
+    private failPendingOutboxMessages(reasonText: string) {
+        for (const controller of this.sendAbortControllers.values()) {
+            controller.abort();
+        }
+        this.sendAbortControllers.clear();
+
+        const now = Date.now();
+        const sessionIds: string[] = [];
+        for (const [sessionId, pending] of this.pendingOutbox) {
+            if (pending.length === 0) {
+                continue;
+            }
+            pending.length = 0;
+            this.pendingOutbox.delete(sessionId);
+            sessionIds.push(sessionId);
+        }
+
+        for (const sessionId of sessionIds) {
+            this.enqueueMessages(sessionId, [{
+                id: randomUUID(),
+                localId: null,
+                createdAt: now,
+                role: 'event',
+                isSidechain: false,
+                content: {
+                    type: 'message',
+                    message: reasonText
+                }
+            }]);
+        }
+    }
+
+    private async handleBackgroundSendTimeout() {
+        if (!this.hasPendingOutboxMessages()) {
+            await this.cancelBackgroundSendTimeoutNotification();
+            this.backgroundSendStartedAt = null;
+            return;
+        }
+
+        await this.cancelBackgroundSendTimeoutNotification();
+        await this.notifyMessageSendFailed();
+        this.failPendingOutboxMessages('Message failed to send in background after 30s. Please retry.');
+        this.backgroundSendStartedAt = null;
+    }
+
+    onSessionVisible = (sessionId: string) => {
+        this.getMessagesSync(sessionId).invalidate();
 
         // Also invalidate git status sync for this session
         gitStatusSync.getSync(sessionId).invalidate();
@@ -281,22 +517,21 @@ class Sync {
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
         if (normalizedMessage) {
-            this.applyMessages(sessionId, [normalizedMessage]);
+            this.enqueueMessages(sessionId, [normalizedMessage]);
         }
 
-        const ready = await this.waitForAgentReady(sessionId);
-        if (!ready) {
-            log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
+        let pending = this.pendingOutbox.get(sessionId);
+        if (!pending) {
+            pending = [];
+            this.pendingOutbox.set(sessionId, pending);
         }
-
-        // Send message with optional permission mode and source identifier
-        apiSocket.send('message', {
-            sid: sessionId,
-            message: encryptedRawRecord,
+        pending.push({
             localId,
-            sentFrom,
-            permissionMode: permissionMode || 'default'
+            content: encryptedRawRecord
         });
+
+        this.getSendSync(sessionId).invalidate();
+        this.maybeStartBackgroundSendWatchdog();
     }
 
     applySettings = (delta: Partial<Settings>) => {
@@ -1389,63 +1624,128 @@ class Sync {
         }
     }
 
+    private flushOutbox = async (sessionId: string) => {
+        const pending = this.pendingOutbox.get(sessionId);
+        if (!pending || pending.length === 0) {
+            if (!this.hasPendingOutboxMessages()) {
+                this.clearBackgroundSendWatchdog();
+                await this.cancelBackgroundSendTimeoutNotification();
+                this.backgroundSendStartedAt = null;
+            }
+            return;
+        }
+
+        const batch = pending.slice();
+        const controller = new AbortController();
+        this.sendAbortControllers.set(sessionId, controller);
+        try {
+            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    messages: batch.map((message) => ({
+                        localId: message.localId,
+                        content: message.content
+                    }))
+                }),
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                signal: controller.signal
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to send messages for ${sessionId}: ${response.status}`);
+            }
+
+            const data = await response.json() as V3PostSessionMessagesResponse;
+            pending.splice(0, batch.length);
+            if (Array.isArray(data.messages) && data.messages.length > 0) {
+                const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+                let maxSeq = currentLastSeq;
+                for (const message of data.messages) {
+                    if (message.seq > maxSeq) {
+                        maxSeq = message.seq;
+                    }
+                }
+                this.sessionLastSeq.set(sessionId, maxSeq);
+            }
+        } catch (error) {
+            this.maybeStartBackgroundSendWatchdog();
+            throw error;
+        } finally {
+            this.sendAbortControllers.delete(sessionId);
+        }
+
+        if (pending.length === 0) {
+            this.pendingOutbox.delete(sessionId);
+        }
+        if (!this.hasPendingOutboxMessages()) {
+            this.clearBackgroundSendWatchdog();
+            await this.cancelBackgroundSendTimeoutNotification();
+            this.backgroundSendStartedAt = null;
+        } else if (this.appState !== 'active') {
+            this.maybeStartBackgroundSendWatchdog();
+        }
+    }
+
     private fetchMessages = async (sessionId: string) => {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
-
-        // Get encryption - may not be ready yet if session was just created
-        // Throwing an error triggers backoff retry in InvalidateSync
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) {
-            log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
-            throw new Error(`Session encryption not ready for ${sessionId}`);
-        }
-
-        // Request
-        const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages`);
-        const data = await response.json();
-
-        // Collect existing messages
-        let eixstingMessages = this.sessionReceivedMessages.get(sessionId);
-        if (!eixstingMessages) {
-            eixstingMessages = new Set<string>();
-            this.sessionReceivedMessages.set(sessionId, eixstingMessages);
-        }
-
-        // Decrypt and normalize messages
-        let start = Date.now();
-        let normalizedMessages: NormalizedMessage[] = [];
-
-        // Filter out existing messages and prepare for batch decryption
-        const messagesToDecrypt: ApiMessage[] = [];
-        for (const msg of [...data.messages as ApiMessage[]].reverse()) {
-            if (!eixstingMessages.has(msg.id)) {
-                messagesToDecrypt.push(msg);
+        const lock = this.getSessionMessageLock(sessionId);
+        await lock.inLock(async () => {
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
+                throw new Error(`Session encryption not ready for ${sessionId}`);
             }
-        }
 
-        // Batch decrypt all messages at once
-        const decryptedMessages = await encryption.decryptMessages(messagesToDecrypt);
+            let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+            let hasMore = true;
+            let totalNormalized = 0;
 
-        // Process decrypted messages
-        for (let i = 0; i < decryptedMessages.length; i++) {
-            const decrypted = decryptedMessages[i];
-            if (decrypted) {
-                eixstingMessages.add(decrypted.id);
-                // Normalize the decrypted message
-                let normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                if (normalized) {
-                    normalizedMessages.push(normalized);
+            while (hasMore) {
+                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
                 }
-            }
-        }
-        console.log('Batch decrypted and normalized messages in', Date.now() - start, 'ms');
-        console.log('normalizedMessages', JSON.stringify(normalizedMessages));
-        // console.log('messages', JSON.stringify(normalizedMessages));
+                const data = await response.json() as V3GetSessionMessagesResponse;
+                const messages = Array.isArray(data.messages) ? data.messages : [];
 
-        // Apply to storage
-        this.applyMessages(sessionId, normalizedMessages);
-        storage.getState().applyMessagesLoaded(sessionId);
-        log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${normalizedMessages.length} messages`);
+                let maxSeq = afterSeq;
+                for (const message of messages) {
+                    if (message.seq > maxSeq) {
+                        maxSeq = message.seq;
+                    }
+                }
+
+                const decryptedMessages = await encryption.decryptMessages(messages);
+                const normalizedMessages: NormalizedMessage[] = [];
+                for (let i = 0; i < decryptedMessages.length; i++) {
+                    const decrypted = decryptedMessages[i];
+                    if (!decrypted) {
+                        continue;
+                    }
+                    const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                    if (normalized) {
+                        normalizedMessages.push(normalized);
+                    }
+                }
+
+                if (normalizedMessages.length > 0) {
+                    totalNormalized += normalizedMessages.length;
+                    this.enqueueMessages(sessionId, normalizedMessages);
+                }
+
+                this.sessionLastSeq.set(sessionId, maxSeq);
+                hasMore = !!data.hasMore;
+                if (hasMore && maxSeq === afterSeq) {
+                    log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
+                    break;
+                }
+                afterSeq = maxSeq;
+            }
+
+            storage.getState().applyMessagesLoaded(sessionId);
+            log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`);
+        });
     }
 
     private registerPushToken = async () => {
@@ -1505,11 +1805,14 @@ class Sync {
             if (sessionsData) {
                 for (const item of sessionsData) {
                     if (typeof item !== 'string') {
-                        this.messagesSync.get(item.id)?.invalidate();
+                        this.getMessagesSync(item.id).invalidate();
                         // Also invalidate git status on reconnection
                         gitStatusSync.invalidate(item.id);
                     }
                 }
+            }
+            for (const sync of this.sendSync.values()) {
+                sync.invalidate();
             }
         });
     }
@@ -1580,10 +1883,13 @@ class Sync {
                         this.fetchSessions();
                     }
 
-                    // Update messages
-                    if (lastMessage) {
-                        console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
-                        this.applyMessages(updateData.body.sid, [lastMessage]);
+                    // Fast-path only on consecutive seq values, otherwise fetch from server.
+                    const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
+                    const incomingSeq = updateData.body.message.seq;
+                    if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
+                        console.log('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
+                        this.enqueueMessages(updateData.body.sid, [lastMessage]);
+                        this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
                         let hasMutableTool = false;
                         if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
                             hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
@@ -1591,6 +1897,8 @@ class Sync {
                         if (hasMutableTool) {
                             gitStatusSync.invalidate(updateData.body.sid);
                         }
+                    } else {
+                        this.getMessagesSync(updateData.body.sid).invalidate();
                     }
                 }
             }
@@ -1616,6 +1924,13 @@ class Sync {
 
             // Clear any cached git status
             gitStatusSync.clearForSession(sessionId);
+            this.messagesSync.delete(sessionId);
+            this.sendSync.delete(sessionId);
+            this.pendingOutbox.delete(sessionId);
+            this.sessionLastSeq.delete(sessionId);
+            this.sessionMessageLocks.delete(sessionId);
+            this.sessionMessageQueue.delete(sessionId);
+            this.sessionQueueProcessing.delete(sessionId);
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
@@ -2053,38 +2368,6 @@ class Sync {
         }
     }
 
-    /**
-     * Waits for the CLI agent to be ready by watching agentStateVersion.
-     *
-     * When a session is created, agentStateVersion starts at 0. Once the CLI
-     * connects and sends its first state update (via updateAgentState()), the
-     * version becomes > 0. This serves as a reliable signal that the CLI's
-     * WebSocket is connected and ready to receive messages.
-     */
-    private waitForAgentReady(sessionId: string, timeoutMs: number = Sync.SESSION_READY_TIMEOUT_MS): Promise<boolean> {
-        const startedAt = Date.now();
-
-        return new Promise((resolve) => {
-            const done = (ready: boolean, reason: string) => {
-                clearTimeout(timeout);
-                unsubscribe();
-                const duration = Date.now() - startedAt;
-                log.log(`Session ${sessionId} ${reason} after ${duration}ms`);
-                resolve(ready);
-            };
-
-            const check = () => {
-                const s = storage.getState().sessions[sessionId];
-                if (s && s.agentStateVersion > 0) {
-                    done(true, `ready (agentStateVersion=${s.agentStateVersion})`);
-                }
-            };
-
-            const timeout = setTimeout(() => done(false, 'ready wait timed out'), timeoutMs);
-            const unsubscribe = storage.subscribe(check);
-            check(); // Check current state immediately
-        });
-    }
 }
 
 // Global singleton instance
