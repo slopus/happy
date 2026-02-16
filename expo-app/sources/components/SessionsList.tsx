@@ -86,27 +86,27 @@ const stylesheet = StyleSheet.create((theme) => ({
         overflow: 'hidden',
     },
     sessionItemFirst: {
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
+        borderTopLeftRadius: 8,
+        borderTopRightRadius: 8,
     },
     sessionItemLast: {
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
+        borderBottomLeftRadius: 8,
+        borderBottomRightRadius: 8,
     },
     sessionItemSingle: {
-        borderRadius: 12,
+        borderRadius: 8,
     },
     sessionItemContainerFirst: {
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
+        borderTopLeftRadius: 8,
+        borderTopRightRadius: 8,
     },
     sessionItemContainerLast: {
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
+        borderBottomLeftRadius: 8,
+        borderBottomRightRadius: 8,
         marginBottom: 12,
     },
     sessionItemContainerSingle: {
-        borderRadius: 12,
+        borderRadius: 8,
         marginBottom: 12,
     },
     sessionItemSelected: {
@@ -123,7 +123,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 2,
     },
     sessionTitle: {
-        fontSize: 15,
+        fontSize: 14,
         fontWeight: '500',
         flex: 1,
         ...Typography.default('semiBold'),

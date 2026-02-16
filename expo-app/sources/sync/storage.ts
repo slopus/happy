@@ -87,7 +87,7 @@ interface StorageState {
     feedLoaded: boolean;  // True after initial feed fetch
     friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
-    realtimeMode: 'idle' | 'speaking';
+    realtimeMode: 'idle' | 'listening' | 'speaking';
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
@@ -111,7 +111,7 @@ interface StorageState {
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
-    setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
+    setRealtimeMode: (mode: 'idle' | 'listening' | 'speaking', immediate?: boolean) => void;
     clearRealtimeModeDebounce: () => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
@@ -694,7 +694,7 @@ export const storage = create<StorageState>()((set, get) => {
             ...state,
             realtimeStatus: status
         })),
-        setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => {
+        setRealtimeMode: (mode: 'idle' | 'listening' | 'speaking', immediate?: boolean) => {
             if (immediate) {
                 // Clear any pending debounce and set immediately
                 if (realtimeModeDebounceTimer) {
@@ -1230,7 +1230,7 @@ export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected'
     return storage(useShallow((state) => state.realtimeStatus));
 }
 
-export function useRealtimeMode(): 'idle' | 'speaking' {
+export function useRealtimeMode(): 'idle' | 'listening' | 'speaking' {
     return storage(useShallow((state) => state.realtimeMode));
 }
 

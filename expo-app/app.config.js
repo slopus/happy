@@ -169,7 +169,9 @@ export default {
                 projectId: "cdbf75d0-33e5-4874-a238-e8c65281c100"
             },
             app: {
-                postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY
+                postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
+                elevenLabsAgentIdDev: process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV || "agent_1001khhha4ddex099d08b18rjnyv",
+                elevenLabsAgentIdProd: process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD || "agent_1001khhha4ddex099d08b18rjnyv"
             }
         },
         owner: "runline"

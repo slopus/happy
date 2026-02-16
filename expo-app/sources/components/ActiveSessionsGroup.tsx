@@ -39,7 +39,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.surface,
         marginBottom: 8,
         marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        borderRadius: 8,
         overflow: 'hidden',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 0.33 },
@@ -70,7 +70,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sectionHeaderAgentName: {
         ...Typography.default('semiBold'),
         color: theme.colors.text,
-        fontSize: 15,
+        fontSize: 14,
         fontWeight: '600',
     },
     sectionHeaderPath: {
@@ -104,7 +104,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
     },
     sessionTitle: {
-        fontSize: 15,
+        fontSize: 14,
         flex: 1,
         fontWeight: '500',
         ...Typography.default('semiBold'),

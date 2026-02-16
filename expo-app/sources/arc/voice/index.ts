@@ -1,0 +1,1 @@
+export { VoiceActivityBar } from './VoiceActivityBar';

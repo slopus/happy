@@ -120,13 +120,15 @@ export const RealtimeVoiceSession: React.FC = () => {
         },
         onModeChange: (data) => {
             console.log('Realtime mode change:', data);
-            
-            // Only animate when speaking
+
             const mode = data.mode as string;
-            const isSpeaking = mode === 'speaking';
-            
-            // Use centralized debounce logic from storage
-            storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
+            if (mode === 'speaking') {
+                storage.getState().setRealtimeMode('speaking');
+            } else if (mode === 'listening') {
+                storage.getState().setRealtimeMode('listening');
+            } else {
+                storage.getState().setRealtimeMode('idle');
+            }
         },
         onDebug: (message) => {
             console.debug('Realtime debug:', message);

@@ -1,6 +1,7 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
@@ -23,6 +24,7 @@ import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile } from '@/sync/profileUtils';
+import { VoiceActivityBar } from '@/arc/voice';
 
 interface AgentInputProps {
     value: string;
@@ -327,6 +329,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [isAborting, setIsAborting] = React.useState(false);
     const shakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
+
+    // Pulse animation for voice-active end-call button
+    const voicePulseScale = useSharedValue(1);
+    React.useEffect(() => {
+        if (props.isMicActive) {
+            voicePulseScale.value = withRepeat(withTiming(1.12, { duration: 800 }), -1, true);
+        } else {
+            voicePulseScale.value = withTiming(1, { duration: 200 });
+        }
+    }, [props.isMicActive]);
+    const voicePulseStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: voicePulseScale.value }],
+    }));
 
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
@@ -945,6 +960,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         />
                     </View>
 
+                    {/* Voice activity strip — shown when voice session is active */}
+                    {props.isMicActive && <VoiceActivityBar />}
+
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
@@ -1087,12 +1105,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </View>
 
                                 {/* Send/Voice button - aligned with first row */}
-                                <View
+                                <Animated.View
                                     style={[
                                         styles.sendButton,
-                                        (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
-                                            ? styles.sendButtonActive
-                                            : styles.sendButtonInactive
+                                        props.isMicActive
+                                            ? { backgroundColor: theme.colors.status.error }
+                                            : (hasText || props.isSending || props.onMicPress)
+                                                ? styles.sendButtonActive
+                                                : styles.sendButtonInactive,
+                                        props.isMicActive && voicePulseStyle,
                                     ]}
                                 >
                                     <Pressable
@@ -1129,7 +1150,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     { marginTop: Platform.OS === 'web' ? 2 : 0 }
                                                 ]}
                                             />
-                                        ) : props.onMicPress && !props.isMicActive ? (
+                                        ) : props.isMicActive ? (
+                                            <Ionicons
+                                                name="call"
+                                                size={16}
+                                                color="#FFFFFF"
+                                                style={{ transform: [{ rotate: '135deg' }] }}
+                                            />
+                                        ) : props.onMicPress ? (
                                             <Image
                                                 source={require('@/assets/images/icon-voice-white.png')}
                                                 style={{
@@ -1150,7 +1178,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             />
                                         )}
                                     </Pressable>
-                                </View>
+                                </Animated.View>
                             </View>
                         </View>
                     </View>
