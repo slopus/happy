@@ -154,7 +154,7 @@ export default {
             ]
         ],
         updates: {
-            url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
+            url: "https://u.expo.dev/34aed959-a047-437d-8d68-d9ba6ef2b779",
             requestHeaders: {
                 "expo-channel-name": "production"
             }
@@ -167,7 +167,7 @@ export default {
                 root: "./sources/app"
             },
             eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
+                projectId: "34aed959-a047-437d-8d68-d9ba6ef2b779"
             },
             app: {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
@@ -176,6 +176,6 @@ export default {
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE
             }
         },
-        owner: "bulkacorp"
+        owner: "hiroki6021s-organization"
     }
 };
