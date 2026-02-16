@@ -332,11 +332,11 @@ function RenderOptionsBlock(props: {
     );
 }
 
-function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, isHeader?: boolean }) {
+function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, isHeader?: boolean, disableCodeLineHeight?: boolean }) {
     return (<>
         {props.spans.map((span, index) => {
             const spanStyles = span.styles.map((s) => {
-                if (props.isHeader && s === 'code') {
+                if ((props.isHeader || props.disableCodeLineHeight) && s === 'code') {
                     return style.codeHeader;
                 }
                 return (style as any)[s];
@@ -486,7 +486,7 @@ function RenderTableBlock(props: {
                                 onLayout={(e) => handleCellLayout(0, colIndex, e.nativeEvent.layout.height)}
                             >
                                 <Text style={style.tableHeaderText}>
-                                    <RenderSpans spans={headerSpans} baseStyle={style.tableHeaderText} />
+                                    <RenderSpans spans={headerSpans} baseStyle={style.tableHeaderText} disableCodeLineHeight={true} />
                                 </Text>
                             </View>
                             {/* Data cells */}
@@ -501,7 +501,7 @@ function RenderTableBlock(props: {
                                     onLayout={(e) => handleCellLayout(rowIndex + 1, colIndex, e.nativeEvent.layout.height)}
                                 >
                                     <Text style={style.tableCellText}>
-                                        <RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} />
+                                        <RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} disableCodeLineHeight={true} />
                                     </Text>
                                 </View>
                             ))}
