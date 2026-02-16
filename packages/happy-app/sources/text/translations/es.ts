@@ -301,6 +301,7 @@ export const es: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Escriba un mensaje ...',
+        startedByDaemon: 'daemon',
     },
 
     commandPalette: {
