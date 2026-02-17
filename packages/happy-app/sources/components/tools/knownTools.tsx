@@ -261,7 +261,9 @@ export const knownTools = {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.file_path === 'string') {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                const editCount = Array.isArray(opts.tool.input.edits) ? opts.tool.input.edits.length : 0;
+                const editCount = Array.isArray(opts.tool.input.edits)
+                    ? opts.tool.input.edits.length
+                    : (typeof opts.tool.input.editCount === 'number' ? opts.tool.input.editCount : 0);
                 if (editCount > 1) {
                     return t('tools.desc.multiEditEdits', { path, count: editCount });
                 }
@@ -282,7 +284,9 @@ export const knownTools = {
         extractStatus: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.file_path === 'string') {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                const editCount = Array.isArray(opts.tool.input.edits) ? opts.tool.input.edits.length : 0;
+                const editCount = Array.isArray(opts.tool.input.edits)
+                    ? opts.tool.input.edits.length
+                    : (typeof opts.tool.input.editCount === 'number' ? opts.tool.input.editCount : 0);
                 if (editCount > 0) {
                     return t('tools.desc.multiEditEdits', { path, count: editCount });
                 }

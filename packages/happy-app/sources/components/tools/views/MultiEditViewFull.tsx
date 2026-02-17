@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
@@ -8,6 +9,7 @@ import { DiffView } from '@/components/diff/DiffView';
 import { trimIdent } from '@/utils/trimIdent';
 import { t } from '@/text';
 import { useSetting } from '@/sync/storage';
+import { resolvePath } from '@/utils/pathUtils';
 
 interface MultiEditViewFullProps {
     tool: ToolCall;
@@ -17,6 +19,25 @@ interface MultiEditViewFullProps {
 export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, metadata }) => {
     const { input } = tool;
     const wrapLinesInDiffs = useSetting('wrapLinesInDiffs');
+
+    // Trimmed mode: diff data was offloaded, view in session conversation instead
+    if (input?._trimmed === true) {
+        const filePath = typeof input.file_path === 'string' ? resolvePath(input.file_path, metadata) : '';
+        const editCount = typeof input.editCount === 'number' ? input.editCount : 0;
+        return (
+            <View style={toolFullViewStyles.sectionFullWidth}>
+                <View style={trimmedStyles.container}>
+                    <Text style={trimmedStyles.fileName}>{filePath}</Text>
+                    {editCount > 0 && (
+                        <Text style={trimmedStyles.hint}>
+                            {editCount} {editCount === 1 ? 'edit' : 'edits'} — available in session view
+                        </Text>
+                    )}
+                    {!editCount && <Text style={trimmedStyles.hint}>Diff available in session view</Text>}
+                </View>
+            </View>
+        );
+    }
 
     // Parse the input
     let edits: Array<{ old_string: string; new_string: string; replace_all?: boolean }> = [];
@@ -116,3 +137,20 @@ const styles = StyleSheet.create({
         marginVertical: 16,
     },
 });
+
+const trimmedStyles = StyleSheet.create((theme) => ({
+    container: {
+        padding: 16,
+        alignItems: 'center',
+        gap: 8,
+    },
+    fileName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: theme.colors.text,
+    },
+    hint: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+    },
+}));

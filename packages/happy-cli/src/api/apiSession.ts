@@ -8,9 +8,14 @@ import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
+import { trimToolUseResult, trimToolResultContent, trimToolUseInput } from './trimToolUseResult';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
+
+/** Tools whose tool_use.input should be trimmed and saved to diffStore */
+const INPUT_TRIMMABLE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -59,6 +64,8 @@ export class ApiSessionClient extends EventEmitter {
     private syncedModel: string | null;
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
+    /** Maps tool_use_id → tool name for trimming tool results before sending to App */
+    private toolIdToName = new Map<string, string>();
 
     constructor(token: string, session: Session) {
         super()
@@ -199,6 +206,36 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private buildMessageContent(body: RawJSONLines): MessageContent {
+        // Track tool_use_id → tool name from assistant messages, and trim Edit/Write/MultiEdit inputs
+        if (body.type === 'assistant' && body.message?.content && Array.isArray(body.message.content)) {
+            let needsInputTrim = false;
+            for (const block of body.message.content) {
+                if (block.type === 'tool_use' && block.id && block.name) {
+                    this.toolIdToName.set(block.id, block.name);
+                    if (INPUT_TRIMMABLE_TOOLS.has(block.name)) {
+                        needsInputTrim = true;
+                    }
+                }
+            }
+            // Bound map size for long sessions
+            if (this.toolIdToName.size > 1000) {
+                const iter = this.toolIdToName.keys();
+                for (let i = 0; i < 500; i++) {
+                    const key = iter.next().value;
+                    if (key) this.toolIdToName.delete(key);
+                }
+            }
+            // Trim large tool_use inputs (Edit/Write/MultiEdit) and save to diffStore
+            if (needsInputTrim) {
+                body = this.trimToolUseInputs(body);
+            }
+        }
+
+        // Trim tool result payloads before sending to App
+        if (body.type === 'user') {
+            body = this.trimToolResultPayload(body);
+        }
+
         // Check if body is a user message (not sidechain or meta)
         if (body.type === 'user' && body.isSidechain !== true && body.isMeta !== true) {
             // Handle string content directly
@@ -269,6 +306,82 @@ export class ApiSessionClient extends EventEmitter {
             meta: {
                 sentFrom: 'cli'
             }
+        };
+    }
+
+    /**
+     * Trim large, unused fields from tool_result messages before sending to App.
+     * Returns a shallow copy with trimmed toolUseResult and message.content.
+     */
+    private trimToolResultPayload(body: RawJSONLines): RawJSONLines {
+        if (body.type !== 'user') return body;
+
+        const content = body.message?.content;
+        if (!Array.isArray(content)) return body;
+
+        // Find tool_result items and resolve tool names
+        let needsTrim = false;
+        for (const block of content) {
+            if (block.type === 'tool_result' && block.tool_use_id && this.toolIdToName.has(block.tool_use_id)) {
+                needsTrim = true;
+                break;
+            }
+        }
+        if (!needsTrim) return body;
+
+        // Shallow-copy to avoid mutating the original
+        const trimmedContent = content.map((block: any) => {
+            if (block.type !== 'tool_result' || !block.tool_use_id) return block;
+            const toolName = this.toolIdToName.get(block.tool_use_id);
+            if (!toolName) return block;
+            return {
+                ...block,
+                content: trimToolResultContent(toolName, block.content),
+            };
+        });
+
+        // Trim toolUseResult (the primary data source for App's tool.result).
+        // sdkToLogConverter's 'tool_result' path produces exactly one tool_result
+        // block per message, so using find() is safe here.
+        const anyBody = body as any;
+        let trimmedTUR = anyBody.toolUseResult;
+        const firstToolResult = content.find((b: any) => b.type === 'tool_result' && b.tool_use_id);
+        if (firstToolResult && trimmedTUR !== undefined) {
+            const toolName = this.toolIdToName.get(firstToolResult.tool_use_id);
+            if (toolName) {
+                trimmedTUR = trimToolUseResult(toolName, trimmedTUR);
+            }
+        }
+
+        return {
+            ...anyBody,
+            message: {
+                ...body.message,
+                content: trimmedContent,
+            },
+            ...(trimmedTUR !== undefined ? { toolUseResult: trimmedTUR } : {}),
+        };
+    }
+
+    /**
+     * Trim large tool_use inputs (Edit/Write/MultiEdit) from assistant messages.
+     * Saves full content to diffStore, replaces input with lightweight metadata.
+     */
+    private trimToolUseInputs(body: RawJSONLines): RawJSONLines {
+        const content = (body as any).message?.content;
+        if (!Array.isArray(content)) return body;
+
+        const trimmedContent = content.map((block: any) => {
+            if (block.type !== 'tool_use' || !INPUT_TRIMMABLE_TOOLS.has(block.name)) return block;
+            return trimToolUseInput(block, this.sessionId);
+        });
+
+        return {
+            ...(body as any),
+            message: {
+                ...(body as any).message,
+                content: trimmedContent,
+            },
         };
     }
 
