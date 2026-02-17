@@ -104,7 +104,7 @@ function formatTextForConsole(text: string): string {
   return JSON.stringify(truncateForConsole(toSingleLine(text), ACP_EVENT_PREVIEW_CHARS));
 }
 
-function formatOptionalDetail(text: string | undefined, limit = ACP_EVENT_PREVIEW_CHARS): string {
+function formatOptionalDetail(text: string | null | undefined, limit = ACP_EVENT_PREVIEW_CHARS): string {
   if (!text) {
     return '';
   }

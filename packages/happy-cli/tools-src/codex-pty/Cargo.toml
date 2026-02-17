@@ -1,0 +1,19 @@
+[package]
+name = "codex-controller"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+portable-pty = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "sync", "time"] }
+vt100 = "0.15"
+crossterm = "0.28"
+
+
+[[bin]]
+name = "codex-pty"
+path = "src/bin/codex_pty.rs"
+

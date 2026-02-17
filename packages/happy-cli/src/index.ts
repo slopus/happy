@@ -124,6 +124,62 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       process.exit(1)
     }
     return;
+
+  } else if (subcommand === 'codex-pty') {
+    // Handle codex-pty command
+    try {
+      const { runCodexPty } = await import('@/codexPty/runCodexPty');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let ptyCols: number | undefined = undefined;
+      let ptyRows: number | undefined = undefined;
+
+      const subArgs = args.slice(1);
+      for (let i = 0; i < subArgs.length; i++) {
+        const a = subArgs[i];
+        if (a === '--started-by') {
+          const v = subArgs[++i];
+          if (!v) {
+            throw new Error('--started-by requires a value');
+          }
+          startedBy = v as 'daemon' | 'terminal';
+        } else if (a === '--pty-cols') {
+          const v = subArgs[++i];
+          if (!v) {
+            throw new Error('--pty-cols requires a value');
+          }
+          const n = Number(v);
+          if (!Number.isInteger(n) || n <= 0) {
+            throw new Error('--pty-cols must be a positive integer');
+          }
+          ptyCols = n;
+        } else if (a === '--pty-rows') {
+          const v = subArgs[++i];
+          if (!v) {
+            throw new Error('--pty-rows requires a value');
+          }
+          const n = Number(v);
+          if (!Number.isInteger(n) || n <= 0) {
+            throw new Error('--pty-rows must be a positive integer');
+          }
+          ptyRows = n;
+        } else if (a === '--help' || a === '-h') {
+          console.log('Usage: happy codex-pty [--pty-cols N] [--pty-rows N]');
+          return;
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await runCodexPty({ credentials, startedBy, ptyCols, ptyRows });
+      // Do not force exit here; allow instrumentation to show lingering handles
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'gemini') {
     // Handle gemini subcommands
     const geminiSubcommand = args[1];
@@ -633,6 +689,8 @@ ${chalk.bold('Usage:')}
   happy [options]         Start Claude with mobile control
   happy auth              Manage authentication
   happy codex             Start Codex mode
+
+  happy codex-pty         Start Codex via PTY bridge
   happy gemini            Start Gemini mode (ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
