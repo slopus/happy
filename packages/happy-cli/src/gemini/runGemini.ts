@@ -52,6 +52,7 @@ import {
 import { ConversationHistory } from '@/gemini/utils/conversationHistory';
 import { GeminiSessionWriter } from '@/gemini/utils/sessionWriter';
 import { readGeminiSessionLog, buildResumeContextFromSessionLog } from '@/gemini/utils/sessionReader';
+import { backfillGeminiSessionHistory } from '@/gemini/utils/geminiBackfill';
 
 
 /**
@@ -984,6 +985,29 @@ export async function runGemini(opts: {
       }
     } catch (error) {
       logger.debug(`[gemini] Failed to load resume session:`, error);
+    }
+  }
+
+  // Backfill history from previous session to app (if resuming/copying)
+  // Awaited so that replace-mode batch completes before the main loop processes new messages
+  if (geminiResumeSessionId && ['1', 'true', 'yes'].includes(String(process.env.HAPPY_GEMINI_BACKFILL).toLowerCase())) {
+    try {
+      // Wait briefly for socket connection to avoid dropping backfill messages
+      for (let i = 0; i < 15 && !session.isConnected(); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      if (session.isConnected()) {
+        await backfillGeminiSessionHistory({
+          sessionId: geminiResumeSessionId,
+          sendBatch: async (messages) => {
+            await session.sendBackfillBatch(messages, 'replace');
+          },
+        });
+      } else {
+        logger.debug('[gemini] Backfill skipped: socket not connected');
+      }
+    } catch (error) {
+      logger.debug('[gemini] Backfill failed:', error);
     }
   }
 

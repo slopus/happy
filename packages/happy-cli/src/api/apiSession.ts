@@ -569,6 +569,39 @@ export class ApiSessionClient extends EventEmitter {
         });
     }
 
+    /**
+     * Send a batch of pre-built message content objects for backfill (session resume/copy).
+     * Each item.content should be a complete message object (role + content) ready to encrypt.
+     * Works for any agent type (Codex, Gemini, etc.) — caller builds the message format.
+     */
+    async sendBackfillBatch(
+        messages: { content: unknown; localId: string }[],
+        mode: 'replace' | 'append' = 'append',
+    ) {
+        if (!this.socket.connected) {
+            logger.debug(`[API] Socket not connected, cannot send backfill batch (${messages.length} messages)`);
+            return { result: 'error' as const };
+        }
+
+        const payload = messages.map((item) => {
+            const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, item.content));
+            return {
+                message: encrypted,
+                localId: item.localId,
+            };
+        });
+
+        logger.debug(`[SOCKET] Sending backfill batch: ${messages.length} messages, mode=${mode}`);
+
+        const response = await this.socket.emitWithAck('message-batch', {
+            sid: this.sessionId,
+            messages: payload,
+            mode,
+        });
+
+        return response;
+    }
+
     sendSessionEvent(event: {
         type: 'switch', mode: 'local' | 'remote'
     } | {

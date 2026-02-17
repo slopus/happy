@@ -276,9 +276,29 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 const now = Date.now();
                 await db.$transaction(async (tx) => {
                     if (mode === 'replace') {
-                        await tx.sessionMessage.deleteMany({
-                            where: { sessionId: sid }
-                        });
+                        // Only delete previous backfill messages (identified by localId prefix),
+                        // not user/agent messages that may have arrived concurrently.
+                        const backfillLocalIds = sanitized
+                            .map(item => item.localId)
+                            .filter((id): id is string => id !== null);
+                        const prefixes = new Set<string>();
+                        for (const id of backfillLocalIds) {
+                            // Extract prefix like "claude-log:", "codex-log:", "gemini-log:"
+                            const colonIdx = id.indexOf(':');
+                            if (colonIdx > 0) {
+                                prefixes.add(id.substring(0, colonIdx + 1));
+                            }
+                        }
+                        if (prefixes.size > 0) {
+                            await tx.sessionMessage.deleteMany({
+                                where: {
+                                    sessionId: sid,
+                                    OR: [...prefixes].map(prefix => ({
+                                        localId: { startsWith: prefix }
+                                    }))
+                                }
+                            });
+                        }
                     }
 
                     const updatedSession = await tx.session.update({

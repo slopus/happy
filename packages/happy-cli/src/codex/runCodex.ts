@@ -28,6 +28,7 @@ import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { backfillCodexSessionHistory } from './utils/codexBackfill';
 import { downloadImage } from '@/utils/downloadImage';
 import type { ImageContent } from '@/api/types';
 import type { SendPromptOptions } from '@/agent/core';
@@ -779,6 +780,29 @@ export async function runCodex(opts: {
     }
 
     let first = true;
+
+    // Backfill history from previous session (if resuming/copying)
+    // Awaited so that replace-mode batch completes before the main loop processes new messages
+    if (envResumeFile && ['1', 'true', 'yes'].includes(String(process.env.HAPPY_CODEX_BACKFILL).toLowerCase())) {
+        try {
+            // Wait briefly for socket connection to avoid dropping backfill messages
+            for (let i = 0; i < 15 && !session.isConnected(); i++) {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            if (session.isConnected()) {
+                await backfillCodexSessionHistory({
+                    sessionIdOrPath: envResumeFile,
+                    sendBatch: async (messages) => {
+                        await session.sendBackfillBatch(messages, 'replace');
+                    },
+                });
+            } else {
+                logger.debug('[Codex] Backfill skipped: socket not connected');
+            }
+        } catch (error) {
+            logger.debug('[Codex] Backfill failed:', error);
+        }
+    }
 
     try {
         let wasCreated = false;
