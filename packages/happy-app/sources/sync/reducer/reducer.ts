@@ -1055,6 +1055,36 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         }
     }
 
+    // Recover from missing tool_result updates after a completed task.
+    // This keeps cards from staying "running" forever when result events are lost.
+    if (agentState?.taskCompleted) {
+        const taskCompletedAt = agentState.taskCompleted;
+        for (const [messageId, message] of state.messages) {
+            if (!message.tool) {
+                continue;
+            }
+            if (message.tool.state !== 'running') {
+                continue;
+            }
+            if (message.tool.startedAt === null) {
+                continue;
+            }
+            if (message.tool.permission?.status === 'pending') {
+                continue;
+            }
+            if (message.tool.startedAt > taskCompletedAt) {
+                continue;
+            }
+
+            message.tool.state = 'completed';
+            message.tool.completedAt = taskCompletedAt;
+            if (!message.tool.result) {
+                message.tool.result = { error: 'Tool execution ended without a result.' };
+            }
+            changed.add(messageId);
+        }
+    }
+
     //
     // Collect changed messages (only root-level messages)
     //

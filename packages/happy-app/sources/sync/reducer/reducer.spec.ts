@@ -1967,6 +1967,58 @@ describe('reducer', () => {
             expect(message?.tool?.permission?.id).toBe('tool-1');
         });
 
+        it('should close stale running tools when taskCompleted is set and no tool_result arrives', () => {
+            const state = createReducer();
+
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'sleep 1' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
+
+            reducer(state, [toolMessage], undefined);
+
+            const before = state.toolIdToMessageId.get('tool-1');
+            const beforeMessage = before ? state.messages.get(before) : null;
+            expect(beforeMessage?.tool?.state).toBe('running');
+            expect(beforeMessage?.tool?.startedAt).toBe(1000);
+
+            const agentState: AgentState = {
+                taskCompleted: 2000,
+                completedRequests: {
+                    'tool-1': {
+                        tool: 'Bash',
+                        arguments: { command: 'sleep 1' },
+                        createdAt: 900,
+                        completedAt: 2000,
+                        status: 'approved'
+                    }
+                }
+            };
+
+            const result = reducer(state, [], agentState);
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.state).toBe('completed');
+                expect(result.messages[0].tool.completedAt).toBe(2000);
+                expect(result.messages[0].tool.result).toEqual({
+                    error: 'Tool execution ended without a result.'
+                });
+            }
+        });
+
         it('should handle app loading flow: tool loaded first, then AgentState with approved permission', () => {
             const state = createReducer();
             

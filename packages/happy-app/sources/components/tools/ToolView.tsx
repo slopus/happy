@@ -29,6 +29,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
+    const isActuallyRunning = tool.state === 'running' && tool.startedAt !== null;
 
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
@@ -136,7 +137,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     } else {
         switch (tool.state) {
             case 'running':
-                if (!noStatus) {
+                if (!noStatus && isActuallyRunning) {
                     statusIcon = <ActivityIndicator size="small" color={theme.colors.text} style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
                 }
                 break;
@@ -167,9 +168,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </Text>
                             )}
                         </View>
-                        {tool.state === 'running' && (
+                        {isActuallyRunning && (
                             <View style={styles.elapsedContainer}>
-                                <ElapsedView from={tool.createdAt} />
+                                <ElapsedView from={tool.startedAt ?? tool.createdAt} />
                             </View>
                         )}
                         {statusIcon}
@@ -189,9 +190,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </Text>
                             )}
                         </View>
-                        {tool.state === 'running' && (
+                        {isActuallyRunning && (
                             <View style={styles.elapsedContainer}>
-                                <ElapsedView from={tool.createdAt} />
+                                <ElapsedView from={tool.startedAt ?? tool.createdAt} />
                             </View>
                         )}
                         {statusIcon}
