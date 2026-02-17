@@ -240,6 +240,18 @@ export class ApiSessionClient extends EventEmitter {
         if (body.type === 'user' && body.isSidechain !== true && body.isMeta !== true) {
             // Handle string content directly
             if (typeof body.message.content === 'string') {
+                if (this.isSyntheticTaskNotification(body.message.content)) {
+                    return {
+                        role: 'agent',
+                        content: {
+                            type: 'output',
+                            data: body
+                        },
+                        meta: {
+                            sentFrom: 'cli'
+                        }
+                    };
+                }
                 return {
                     role: 'user',
                     content: {
@@ -307,6 +319,15 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
+    }
+
+    /**
+     * Claude can emit background task completion payloads as synthetic user strings.
+     * These are internal notifications, not real human input.
+     */
+    private isSyntheticTaskNotification(content: string): boolean {
+        const text = content.trim();
+        return text.startsWith('<task-notification>') && text.includes('</task-notification>');
     }
 
     /**

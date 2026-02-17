@@ -172,24 +172,20 @@ export async function claudeRemote(opts: {
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
 
-    // Handle different message content types for initial message
-    let initialMessageContent: string | ClaudeContent[];
-
-    if (typeof initial.message === 'object' && 'type' in initial.message) {
-        if (initial.message.type === 'mixed') {
-            // Mixed message with images
-            initialMessageContent = await formatMessageForClaude(
-                initial.message.text,
-                initial.message.images
-            );
-        } else {
-            // Text type message
-            initialMessageContent = initial.message.text;
+    // Normalize queue message payloads into Claude SDK content format
+    const toClaudeMessageContent = async (
+        message: string | { type: 'text'; text: string } | { type: 'mixed'; text: string; images: ImageContent[] }
+    ): Promise<string | ClaudeContent[]> => {
+        if (typeof message === 'object' && 'type' in message) {
+            if (message.type === 'mixed') {
+                return formatMessageForClaude(message.text, message.images);
+            }
+            return message.text;
         }
-    } else {
-        // Plain string message (legacy)
-        initialMessageContent = initial.message;
-    }
+        return message;
+    };
+
+    const initialMessageContent = await toClaudeMessageContent(initial.message);
 
     messages.push({
         type: 'user',
@@ -204,6 +200,38 @@ export async function claudeRemote(opts: {
         opts.interruptState.pendingUserMessage = false;
         opts.interruptState.interruptRequested = false;
     }
+
+    let awaitingNextUserMessage = false;
+    let streamEnded = false;
+    const pumpNextUserMessage = async (): Promise<void> => {
+        if (awaitingNextUserMessage || streamEnded) {
+            return;
+        }
+        awaitingNextUserMessage = true;
+        try {
+            const next = await opts.nextMessage();
+            if (!next) {
+                streamEnded = true;
+                messages.end();
+                return;
+            }
+            mode = next.mode;
+            const messageContent = await toClaudeMessageContent(next.message);
+            messages.push({
+                type: 'user',
+                message: {
+                    role: 'user',
+                    content: messageContent
+                }
+            });
+        } catch (error) {
+            logger.debug('[claudeRemote] Failed to fetch next user message', error);
+            streamEnded = true;
+            messages.end();
+        } finally {
+            awaitingNextUserMessage = false;
+        }
+    };
 
     // Start the loop
     const response = query({
@@ -242,7 +270,7 @@ export async function claudeRemote(opts: {
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                logger.debug('[claudeRemote] Result received, waiting for next user message');
 
                 if (opts.interruptState) {
                     opts.interruptState.pendingUserMessage = false;
@@ -261,34 +289,10 @@ export async function claudeRemote(opts: {
                 // Send ready event
                 opts.onReady();
 
-                // Push next message
-                const next = await opts.nextMessage();
-                if (!next) {
-                    messages.end();
-                    return;
-                }
-                mode = next.mode;
-
-                // Handle different message content types
-                let messageContent: string | ClaudeContent[];
-
-                if (typeof next.message === 'object' && 'type' in next.message) {
-                    if (next.message.type === 'mixed') {
-                        // Mixed message with images
-                        messageContent = await formatMessageForClaude(
-                            next.message.text,
-                            next.message.images
-                        );
-                    } else {
-                        // Text type message
-                        messageContent = next.message.text;
-                    }
-                } else {
-                    // Plain string message (legacy)
-                    messageContent = next.message;
-                }
-
-                messages.push({ type: 'user', message: { role: 'user', content: messageContent } });
+                // Keep consuming SDK output while waiting for next user message.
+                // Waiting inline here can block late-arriving events (task notifications, tool outputs)
+                // until the user sends another message.
+                void pumpNextUserMessage();
             }
 
             // Handle tool result

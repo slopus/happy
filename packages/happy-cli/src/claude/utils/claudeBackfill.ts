@@ -37,6 +37,12 @@ function isPrimaryUserMessage(message: RawJSONLines): boolean {
     // Tool results have content as array with tool_result type, not real user input
     const content = (message as any).message?.content;
     if (Array.isArray(content)) return false;
+    if (typeof content === 'string') {
+        const text = content.trim();
+        if (text.startsWith('<task-notification>') && text.includes('</task-notification>')) {
+            return false;
+        }
+    }
     return true;
 }
 
