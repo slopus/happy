@@ -67,6 +67,8 @@ const OnDemandEditDiff = React.memo<{
     const callId = typeof tool.input?.callId === 'string' ? tool.input.callId : '';
     const resolved = filePath ? resolvePath(filePath, metadata) : '';
     const fileName = resolved ? (resolved.split('/').pop() || resolved) : 'Unknown file';
+    const additions = typeof tool.input?.additions === 'number' ? tool.input.additions : 0;
+    const deletions = typeof tool.input?.deletions === 'number' ? tool.input.deletions : 0;
 
     const [expanded, setExpanded] = React.useState(false);
     const [loading, setLoading] = React.useState(false);
@@ -120,6 +122,12 @@ const OnDemandEditDiff = React.memo<{
                     />
                     <Octicons name="file-diff" size={14} color={theme.colors.textSecondary} />
                     <Text style={styles.fileName} numberOfLines={1}>{fileName}</Text>
+                    {(additions > 0 || deletions > 0) && (
+                        <View style={styles.statsRow}>
+                            {additions > 0 && <Text style={[styles.statText, { color: theme.colors.success }]}>+{additions}</Text>}
+                            {deletions > 0 && <Text style={[styles.statText, { color: theme.colors.textDestructive }]}>-{deletions}</Text>}
+                        </View>
+                    )}
                     {loading && <ActivityIndicator size="small" style={{ marginLeft: 4 }} />}
                 </TouchableOpacity>
                 {expanded && cache.current?.oldString !== undefined && (
@@ -160,6 +168,14 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         ...Typography.mono(),
         flexShrink: 1,
+    },
+    statsRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    statText: {
+        fontSize: 12,
+        ...Typography.mono('semiBold'),
     },
     diffContainer: {
         marginTop: 4,

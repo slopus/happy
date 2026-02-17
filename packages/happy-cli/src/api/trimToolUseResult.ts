@@ -131,6 +131,42 @@ export function trimToolResultContent(toolName: string, content: unknown): unkno
 }
 
 /**
+ * Count added and deleted lines between two strings using LCS-based diff.
+ * Only counts lines that actually changed, not unchanged context lines.
+ * Falls back to raw line counts when input is too large for LCS (>1000 lines per side).
+ */
+function countLineChanges(oldStr: string, newStr: string): { additions: number; deletions: number } {
+    if (!oldStr && !newStr) return { additions: 0, deletions: 0 };
+    const oldLines = oldStr ? oldStr.split('\n') : [];
+    const newLines = newStr ? newStr.split('\n') : [];
+    // Strip trailing empty line from final newline
+    if (oldLines.length > 0 && oldLines[oldLines.length - 1] === '') oldLines.pop();
+    if (newLines.length > 0 && newLines[newLines.length - 1] === '') newLines.pop();
+    if (oldLines.length === 0) return { additions: newLines.length, deletions: 0 };
+    if (newLines.length === 0) return { additions: 0, deletions: oldLines.length };
+    const m = oldLines.length;
+    const n = newLines.length;
+    // Guard: skip LCS for very large inputs to avoid O(n*m) slowdown
+    if (m > 1000 || n > 1000) return { additions: n, deletions: m };
+    // LCS length via DP — Uint32Array avoids overflow for up to 1000 lines
+    const prev = new Uint32Array(n + 1);
+    const curr = new Uint32Array(n + 1);
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (oldLines[i - 1] === newLines[j - 1]) {
+                curr[j] = prev[j - 1] + 1;
+            } else {
+                curr[j] = Math.max(prev[j], curr[j - 1]);
+            }
+        }
+        prev.set(curr);
+        curr.fill(0);
+    }
+    const lcs = prev[n];
+    return { additions: n - lcs, deletions: m - lcs };
+}
+
+/**
  * Trim tool_use.input for Edit/Write/MultiEdit in assistant messages.
  * Extracts large strings (old_string, new_string, content), saves them to diffStore,
  * and replaces input with lightweight metadata. App fetches on demand via getDiffDetail RPC.
@@ -150,14 +186,15 @@ export function trimToolUseInput(
             if (!filePath || typeof filePath !== 'string') return block;
             const oldString = typeof input.old_string === 'string' ? input.old_string : '';
             const newString = typeof input.new_string === 'string' ? input.new_string : '';
+            const { additions, deletions } = countLineChanges(oldString, newString);
 
             saveDiffRecords(sessionId, [{
                 callId,
                 agent: 'claude',
                 filePath,
                 diff: JSON.stringify({ oldString, newString }),
-                additions: 0,
-                deletions: 0,
+                additions,
+                deletions,
                 timestamp: Date.now(),
             }]);
 
@@ -167,6 +204,8 @@ export function trimToolUseInput(
                     file_path: filePath,
                     _trimmed: true,
                     callId,
+                    additions,
+                    deletions,
                 },
             };
         }
@@ -175,13 +214,16 @@ export function trimToolUseInput(
             const filePath = input.file_path;
             if (!filePath || typeof filePath !== 'string') return block;
             const content = typeof input.content === 'string' ? input.content : '';
+            // Strip trailing newline to avoid off-by-one
+            const lines = content ? content.replace(/\n$/, '').split('\n') : [];
+            const additions = lines.length;
 
             saveDiffRecords(sessionId, [{
                 callId,
                 agent: 'claude',
                 filePath,
                 diff: JSON.stringify({ oldString: '', newString: content }),
-                additions: 0,
+                additions,
                 deletions: 0,
                 timestamp: Date.now(),
             }]);
@@ -192,6 +234,8 @@ export function trimToolUseInput(
                     file_path: filePath,
                     _trimmed: true,
                     callId,
+                    additions,
+                    deletions: 0,
                 },
             };
         }
@@ -202,18 +246,24 @@ export function trimToolUseInput(
             const edits = Array.isArray(input.edits) ? input.edits : [];
             if (edits.length === 0) return block;
 
-            const records: DiffRecord[] = edits.map((edit: any, index: number) => ({
-                callId,
-                agent: 'claude' as const,
-                filePath: `${filePath}#edit-${index}`,
-                diff: JSON.stringify({
-                    oldString: typeof edit.old_string === 'string' ? edit.old_string : '',
-                    newString: typeof edit.new_string === 'string' ? edit.new_string : '',
-                }),
-                additions: 0,
-                deletions: 0,
-                timestamp: Date.now(),
-            }));
+            let totalAdditions = 0;
+            let totalDeletions = 0;
+            const records: DiffRecord[] = edits.map((edit: any, index: number) => {
+                const oldStr = typeof edit.old_string === 'string' ? edit.old_string : '';
+                const newStr = typeof edit.new_string === 'string' ? edit.new_string : '';
+                const { additions, deletions } = countLineChanges(oldStr, newStr);
+                totalAdditions += additions;
+                totalDeletions += deletions;
+                return {
+                    callId,
+                    agent: 'claude' as const,
+                    filePath: `${filePath}#edit-${index}`,
+                    diff: JSON.stringify({ oldString: oldStr, newString: newStr }),
+                    additions,
+                    deletions,
+                    timestamp: Date.now(),
+                };
+            });
 
             saveDiffRecords(sessionId, records);
 
@@ -224,6 +274,8 @@ export function trimToolUseInput(
                     _trimmed: true,
                     callId,
                     editCount: edits.length,
+                    additions: totalAdditions,
+                    deletions: totalDeletions,
                 },
             };
         }

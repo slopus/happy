@@ -231,6 +231,8 @@ describe('trimToolUseInput', () => {
                 file_path: '/src/app.ts',
                 _trimmed: true,
                 callId: 'call-123',
+                additions: 1,
+                deletions: 1,
             });
             expect(result.input.old_string).toBeUndefined();
             expect(result.input.new_string).toBeUndefined();
@@ -244,6 +246,40 @@ describe('trimToolUseInput', () => {
                 oldString: 'const a = 1',
                 newString: 'const a = 2',
             });
+        });
+
+        it('computes accurate additions/deletions via LCS diff', () => {
+            const block = {
+                type: 'tool_use',
+                id: 'call-lcs',
+                name: 'Edit',
+                input: {
+                    file_path: '/src/app.ts',
+                    // 3 lines, only middle line changed
+                    old_string: 'a\nb\nc',
+                    new_string: 'a\nx\nc',
+                },
+            };
+            const result = trimToolUseInput(block, 'session-lcs');
+            // LCS = 2 (a, c unchanged), so additions=1, deletions=1
+            expect(result.input.additions).toBe(1);
+            expect(result.input.deletions).toBe(1);
+        });
+
+        it('handles trailing newline without off-by-one', () => {
+            const block = {
+                type: 'tool_use',
+                id: 'call-trail',
+                name: 'Edit',
+                input: {
+                    file_path: '/src/app.ts',
+                    old_string: 'a\nb\n',
+                    new_string: 'a\nx\n',
+                },
+            };
+            const result = trimToolUseInput(block, 'session-trail');
+            expect(result.input.additions).toBe(1);
+            expect(result.input.deletions).toBe(1);
         });
 
         it('returns block unchanged if no file_path', () => {
@@ -274,6 +310,8 @@ describe('trimToolUseInput', () => {
                 file_path: '/src/new.ts',
                 _trimmed: true,
                 callId: 'call-456',
+                additions: 1,
+                deletions: 0,
             });
             expect(result.input.content).toBeUndefined();
             const records = mockSave.mock.calls[0][1];
@@ -281,6 +319,22 @@ describe('trimToolUseInput', () => {
                 oldString: '',
                 newString: 'export const x = 1;',
             });
+        });
+
+        it('handles trailing newline without off-by-one', () => {
+            const block = {
+                type: 'tool_use',
+                id: 'call-write-trail',
+                name: 'Write',
+                input: {
+                    file_path: '/src/new.ts',
+                    content: 'line1\nline2\n',
+                },
+            };
+            const result = trimToolUseInput(block, 'session-write-trail');
+            // "line1\nline2\n" → strip trailing \n → "line1\nline2" → 2 lines
+            expect(result.input.additions).toBe(2);
+            expect(result.input.deletions).toBe(0);
         });
     });
 
@@ -304,6 +358,8 @@ describe('trimToolUseInput', () => {
                 _trimmed: true,
                 callId: 'call-789',
                 editCount: 2,
+                additions: 2,
+                deletions: 2,
             });
             expect(result.input.edits).toBeUndefined();
             const records = mockSave.mock.calls[0][1];

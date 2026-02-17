@@ -105,6 +105,8 @@ const OnDemandMultiEditDiff = React.memo<{
     const callId = typeof tool.input?.callId === 'string' ? tool.input.callId : '';
     const rawEditCount = tool.input?.editCount;
     const editCount = typeof rawEditCount === 'number' && rawEditCount > 0 ? rawEditCount : 0;
+    const additions = typeof tool.input?.additions === 'number' ? tool.input.additions : 0;
+    const deletions = typeof tool.input?.deletions === 'number' ? tool.input.deletions : 0;
     const resolved = filePath ? resolvePath(filePath, metadata) : '';
     const fileName = resolved ? (resolved.split('/').pop() || resolved) : 'Unknown file';
 
@@ -196,6 +198,12 @@ const OnDemandMultiEditDiff = React.memo<{
                             ({editCount} edits)
                         </Text>
                     )}
+                    {(additions > 0 || deletions > 0) && (
+                        <View style={styles.statsRow}>
+                            {additions > 0 && <Text style={[styles.statText, { color: theme.colors.success }]}>+{additions}</Text>}
+                            {deletions > 0 && <Text style={[styles.statText, { color: theme.colors.textDestructive }]}>-{deletions}</Text>}
+                        </View>
+                    )}
                     {loading && <ActivityIndicator size="small" style={{ marginLeft: 4 }} />}
                 </TouchableOpacity>
                 {expanded && cache.current?.edits && (
@@ -257,6 +265,14 @@ const styles = StyleSheet.create((theme) => ({
     editCount: {
         fontSize: 12,
         ...Typography.mono(),
+    },
+    statsRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    statText: {
+        fontSize: 12,
+        ...Typography.mono('semiBold'),
     },
     diffContainer: {
         marginTop: 4,
