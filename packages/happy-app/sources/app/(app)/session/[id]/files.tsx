@@ -155,21 +155,31 @@ export default function FilesScreen() {
         return <Octicons name={statusIcon as any} size={16} color={statusColor} />;
     };
 
-    const renderLineChanges = (file: GitFileStatus) => {
-        const parts = [];
-        if (file.linesAdded > 0) {
-            parts.push(`+${file.linesAdded}`);
-        }
-        if (file.linesRemoved > 0) {
-            parts.push(`-${file.linesRemoved}`);
-        }
-        return parts.length > 0 ? parts.join(' ') : '';
+    const renderRightElement = (file: GitFileStatus) => {
+        const hasAdded = file.linesAdded > 0;
+        const hasRemoved = file.linesRemoved > 0;
+        const hasChanges = hasAdded || hasRemoved;
+
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {hasChanges && (
+                    <Text style={{
+                        fontSize: 13,
+                        color: theme.colors.textSecondary,
+                        ...Typography.default()
+                    }}>
+                        {hasAdded && <Text style={{ color: '#34C759' }}>+{file.linesAdded}</Text>}
+                        {hasAdded && hasRemoved && ' '}
+                        {hasRemoved && <Text style={{ color: '#FF3B30' }}>-{file.linesRemoved}</Text>}
+                    </Text>
+                )}
+                {renderStatusIcon(file)}
+            </View>
+        );
     };
 
     const renderFileSubtitle = (file: GitFileStatus) => {
-        const lineChanges = renderLineChanges(file);
-        const pathPart = file.filePath || t('files.projectRoot');
-        return lineChanges ? `${pathPart} • ${lineChanges}` : pathPart;
+        return file.filePath || t('files.projectRoot');
     };
 
     const renderFileIconForSearch = (file: FileItem) => {
@@ -396,7 +406,7 @@ export default function FilesScreen() {
                                         title={file.fileName}
                                         subtitle={renderFileSubtitle(file)}
                                         icon={renderFileIcon(file)}
-                                        rightElement={renderStatusIcon(file)}
+                                        rightElement={renderRightElement(file)}
                                         onPress={() => handleFilePress(file)}
                                         showDivider={index < gitStatusFiles.stagedFiles.length - 1 || gitStatusFiles.unstagedFiles.length > 0}
                                     />
@@ -429,7 +439,7 @@ export default function FilesScreen() {
                                         title={file.fileName}
                                         subtitle={renderFileSubtitle(file)}
                                         icon={renderFileIcon(file)}
-                                        rightElement={renderStatusIcon(file)}
+                                        rightElement={renderRightElement(file)}
                                         onPress={() => handleFilePress(file)}
                                         showDivider={index < gitStatusFiles.unstagedFiles.length - 1}
                                     />

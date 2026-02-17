@@ -277,19 +277,34 @@ export default function StatusScreen() {
     }, [theme.dark]);
 
     const renderFileSubtitle = React.useCallback((file: GitFileStatus) => {
-        const parts: string[] = [];
-        if (file.linesAdded > 0) parts.push(`+${file.linesAdded}`);
-        if (file.linesRemoved > 0) parts.push(`-${file.linesRemoved}`);
-        const lineChanges = parts.length > 0 ? parts.join(' ') : '';
-        const pathPart = file.filePath || t('files.projectRoot');
-        return lineChanges ? `${pathPart} \u2022 ${lineChanges}` : pathPart;
+        return file.filePath || t('files.projectRoot');
     }, []);
 
     const renderRightElement = React.useCallback((file: GitFileStatus, staged: boolean) => {
         const statusIcon = renderStatusIcon(file);
-        if (!isWeb) return statusIcon;
+        const hasAdded = file.linesAdded > 0;
+        const hasRemoved = file.linesRemoved > 0;
+        const hasChanges = hasAdded || hasRemoved;
+
+        const lineChangesEl = hasChanges ? (
+            <Text style={{ fontSize: 13, color: theme.colors.textSecondary, ...Typography.default() }}>
+                {hasAdded && <Text style={{ color: '#34C759' }}>+{file.linesAdded}</Text>}
+                {hasAdded && hasRemoved && ' '}
+                {hasRemoved && <Text style={{ color: '#FF3B30' }}>-{file.linesRemoved}</Text>}
+            </Text>
+        ) : null;
+
+        if (!isWeb) {
+            return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {lineChangesEl}
+                    {statusIcon}
+                </View>
+            );
+        }
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {lineChangesEl}
                 {statusIcon}
                 <Pressable
                     onPress={() => handleLongPress(file, staged)}
