@@ -369,6 +369,8 @@ export default function FilesScreen() {
                         style={{
                             flex: 1,
                             fontSize: 16,
+                            height: 24,
+                            color: theme.colors.text,
                             ...Typography.default()
                         }}
                         placeholderTextColor={theme.colors.input.placeholder}
