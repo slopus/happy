@@ -40,7 +40,7 @@ export interface DiffToolResult {
 /**
  * Parse a unified diff string to extract file names and per-file + aggregate stats.
  */
-function summarizeUnifiedDiff(unifiedDiff: string): {
+export function summarizeUnifiedDiff(unifiedDiff: string): {
     files: string[];
     stats: { additions: number; deletions: number };
     fileStats: Record<string, { additions: number; deletions: number }>;

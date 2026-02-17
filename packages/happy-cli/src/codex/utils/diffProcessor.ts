@@ -34,7 +34,7 @@ export interface DiffToolResult {
     id: string;
 }
 
-interface PerFileDiff {
+export interface PerFileDiff {
     filePath: string;
     diff: string;
     additions: number;
@@ -44,7 +44,7 @@ interface PerFileDiff {
 /**
  * Split a cumulative unified diff into per-file chunks and compute stats for each.
  */
-function splitUnifiedDiff(unifiedDiff: string): PerFileDiff[] {
+export function splitUnifiedDiff(unifiedDiff: string): PerFileDiff[] {
     const results: PerFileDiff[] = [];
     const lines = unifiedDiff.split('\n');
 
