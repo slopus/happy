@@ -145,6 +145,7 @@ interface StorageState {
     getProjectSessions: (projectId: string) => string[];
     // Project git status methods
     getProjectGitStatus: (projectId: string) => import('./storageTypes').GitStatus | null;
+    getProjectGitStatusByKey: (machineId: string, path: string) => import('./storageTypes').GitStatus | null;
     getSessionProjectGitStatus: (sessionId: string) => import('./storageTypes').GitStatus | null;
     updateSessionProjectGitStatus: (sessionId: string, status: import('./storageTypes').GitStatus | null) => void;
     // Friend management methods
@@ -975,6 +976,7 @@ export const storage = create<StorageState>()((set, get) => {
         getProjectSessions: (projectId: string) => projectManager.getProjectSessions(projectId),
         // Project git status methods
         getProjectGitStatus: (projectId: string) => projectManager.getProjectGitStatus(projectId),
+        getProjectGitStatusByKey: (machineId: string, path: string) => projectManager.getProjectGitStatusByKey({ machineId, path }),
         getSessionProjectGitStatus: (sessionId: string) => projectManager.getSessionProjectGitStatus(sessionId),
         updateSessionProjectGitStatus: (sessionId: string, status: GitStatus | null) => {
             projectManager.updateSessionProjectGitStatus(sessionId, status);
@@ -1370,6 +1372,10 @@ export function useProjectSessions(projectId: string | null) {
 
 export function useProjectGitStatus(projectId: string | null) {
     return storage(useShallow((state) => projectId ? state.getProjectGitStatus(projectId) : null));
+}
+
+export function useProjectGitStatusByKey(machineId: string | null, path: string | null) {
+    return storage(useShallow((state) => (machineId && path) ? state.getProjectGitStatusByKey(machineId, path) : null));
 }
 
 export function useSessionProjectGitStatus(sessionId: string | null) {

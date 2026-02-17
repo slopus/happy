@@ -5,11 +5,10 @@
 
 import { InvalidateSync } from '@/utils/sync';
 import { sessionBash } from './ops';
-import { GitStatus } from './storageTypes';
+import { GitStatus, Session } from './storageTypes';
 import { storage } from './storage';
 import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
 import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2, getTrackingInfoV2 } from './git-parsers/parseStatusV2';
-import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { projectManager, createProjectKey } from './projectManager';
 
@@ -18,6 +17,12 @@ export class GitStatusSync {
     private projectSyncMap = new Map<string, InvalidateSync>();
     // Map session IDs to project keys for cleanup
     private sessionToProjectKey = new Map<string, string>();
+    // Reverse index for fast lookup of live session by project key
+    private projectToSessionIds = new Map<string, Set<string>>();
+    // Limit concurrent git status fetches to avoid shell request bursts
+    private inFlightFetches = 0;
+    private fetchWaiters: Array<() => void> = [];
+    private readonly maxConcurrentFetches = 3;
 
     /**
      * Get project key string for a session
@@ -30,6 +35,100 @@ export class GitStatusSync {
         return `${session.metadata.machineId}:${session.metadata.path}`;
     }
 
+    private linkSessionToProject(sessionId: string, projectKey: string): void {
+        const previousProjectKey = this.sessionToProjectKey.get(sessionId);
+        if (previousProjectKey && previousProjectKey !== projectKey) {
+            const previousSet = this.projectToSessionIds.get(previousProjectKey);
+            if (previousSet) {
+                previousSet.delete(sessionId);
+                if (previousSet.size === 0) {
+                    this.projectToSessionIds.delete(previousProjectKey);
+                }
+            }
+        }
+
+        this.sessionToProjectKey.set(sessionId, projectKey);
+        let sessionIds = this.projectToSessionIds.get(projectKey);
+        if (!sessionIds) {
+            sessionIds = new Set<string>();
+            this.projectToSessionIds.set(projectKey, sessionIds);
+        }
+        sessionIds.add(sessionId);
+    }
+
+    private unlinkSession(sessionId: string): string | null {
+        const projectKey = this.sessionToProjectKey.get(sessionId);
+        if (!projectKey) {
+            return null;
+        }
+
+        this.sessionToProjectKey.delete(sessionId);
+        const sessionIds = this.projectToSessionIds.get(projectKey);
+        if (sessionIds) {
+            sessionIds.delete(sessionId);
+            if (sessionIds.size === 0) {
+                this.projectToSessionIds.delete(projectKey);
+            }
+        }
+
+        return projectKey;
+    }
+
+    private getLiveSessionForProject(projectKey: string): { sessionId: string; session: Session } | null {
+        const sessions = storage.getState().sessions;
+        const sessionIds = this.projectToSessionIds.get(projectKey);
+        if (!sessionIds || sessionIds.size === 0) {
+            return null;
+        }
+
+        for (const sessionId of Array.from(sessionIds)) {
+            const session = sessions[sessionId];
+            if (!session) {
+                this.unlinkSession(sessionId);
+                continue;
+            }
+
+            const currentProjectKey = this.getProjectKeyForSession(sessionId);
+            if (!currentProjectKey) {
+                this.unlinkSession(sessionId);
+                continue;
+            }
+
+            if (currentProjectKey !== projectKey) {
+                this.linkSessionToProject(sessionId, currentProjectKey);
+                continue;
+            }
+
+            if (!session.metadata?.path) {
+                this.unlinkSession(sessionId);
+                continue;
+            }
+
+            return { sessionId, session };
+        }
+
+        return null;
+    }
+
+    private async withFetchSlot<T>(task: () => Promise<T>): Promise<T> {
+        if (this.inFlightFetches >= this.maxConcurrentFetches) {
+            await new Promise<void>((resolve) => {
+                this.fetchWaiters.push(resolve);
+            });
+        }
+
+        this.inFlightFetches++;
+        try {
+            return await task();
+        } finally {
+            this.inFlightFetches = Math.max(0, this.inFlightFetches - 1);
+            const next = this.fetchWaiters.shift();
+            if (next) {
+                next();
+            }
+        }
+    }
+
     /**
      * Get or create git status sync for a session (creates project-based sync)
      */
@@ -40,12 +139,11 @@ export class GitStatusSync {
             return new InvalidateSync(async () => {});
         }
 
-        // Map session to project key
-        this.sessionToProjectKey.set(sessionId, projectKey);
+        this.linkSessionToProject(sessionId, projectKey);
 
         let sync = this.projectSyncMap.get(projectKey);
         if (!sync) {
-            sync = new InvalidateSync(() => this.fetchGitStatusForProject(sessionId, projectKey));
+            sync = new InvalidateSync(() => this.fetchGitStatusForProject(projectKey));
             this.projectSyncMap.set(projectKey, sync);
         }
         return sync;
@@ -55,12 +153,36 @@ export class GitStatusSync {
      * Invalidate git status for a session (triggers refresh for the entire project)
      */
     invalidate(sessionId: string): void {
-        const projectKey = this.sessionToProjectKey.get(sessionId);
-        if (projectKey) {
-            const sync = this.projectSyncMap.get(projectKey);
-            if (sync) {
-                sync.invalidate();
+        const currentProjectKey = this.getProjectKeyForSession(sessionId);
+        if (currentProjectKey) {
+            this.linkSessionToProject(sessionId, currentProjectKey);
+        }
+
+        const projectKey = currentProjectKey || this.sessionToProjectKey.get(sessionId);
+        if (!projectKey) {
+            return;
+        }
+
+        let sync = this.projectSyncMap.get(projectKey);
+        if (!sync) {
+            sync = new InvalidateSync(() => this.fetchGitStatusForProject(projectKey));
+            this.projectSyncMap.set(projectKey, sync);
+        }
+        sync.invalidate();
+    }
+
+    /**
+     * Invalidate git status for multiple sessions (deduped by project key)
+     */
+    invalidateForSessions(sessionIds: string[]): void {
+        const seenProjectKeys = new Set<string>();
+        for (const sessionId of sessionIds) {
+            const projectKey = this.getProjectKeyForSession(sessionId);
+            if (!projectKey || seenProjectKeys.has(projectKey)) {
+                continue;
             }
+            seenProjectKeys.add(projectKey);
+            this.invalidate(sessionId);
         }
     }
 
@@ -68,12 +190,10 @@ export class GitStatusSync {
      * Stop git status sync for a session
      */
     stop(sessionId: string): void {
-        const projectKey = this.sessionToProjectKey.get(sessionId);
+        const projectKey = this.unlinkSession(sessionId);
         if (projectKey) {
-            this.sessionToProjectKey.delete(sessionId);
-            
-            // Check if any other sessions are using this project
-            const hasOtherSessions = Array.from(this.sessionToProjectKey.values()).includes(projectKey);
+            const remainingSessions = this.projectToSessionIds.get(projectKey);
+            const hasOtherSessions = !!remainingSessions && remainingSessions.size > 0;
             
             // Only stop the project sync if no other sessions are using it
             if (!hasOtherSessions) {
@@ -101,78 +221,85 @@ export class GitStatusSync {
     /**
      * Fetch git status for a project using any session in that project
      */
-    private async fetchGitStatusForProject(sessionId: string, projectKey: string): Promise<void> {
+    private async fetchGitStatusForProject(projectKey: string): Promise<void> {
         try {
-            // Check if we have a session with valid metadata
-            const session = storage.getState().sessions[sessionId];
-            if (!session?.metadata?.path) {
-                return;
-            }
-
-            // First check if we're in a git repository
-            const gitCheckResult = await sessionBash(sessionId, {
-                command: 'git rev-parse --is-inside-work-tree',
-                cwd: session.metadata.path,
-                timeout: 5000
-            });
-
-            if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
-                // Not a git repository, clear any existing status
-                storage.getState().applyGitStatus(sessionId, null);
-                
-                // Also update the project git status
-                if (session.metadata?.machineId) {
-                    const projectKey = createProjectKey(session.metadata.machineId, session.metadata.path);
-                    projectManager.updateProjectGitStatus(projectKey, null);
+            await this.withFetchSlot(async () => {
+                const liveSession = this.getLiveSessionForProject(projectKey);
+                if (!liveSession) {
+                    return;
                 }
-                return;
-            }
+                const { sessionId: targetSessionId, session: targetSession } = liveSession;
+                const metadata = targetSession.metadata;
+                if (!metadata?.path) {
+                    this.unlinkSession(targetSessionId);
+                    return;
+                }
 
-            // Get git status in porcelain v2 format (includes branch info)
-            // --untracked-files=all ensures we get individual files, not directories
-            const statusResult = await sessionBash(sessionId, {
-                command: 'git status --porcelain=v2 --branch --show-stash --untracked-files=all',
-                cwd: session.metadata.path,
-                timeout: 10000
+                // First check if we're in a git repository
+                const gitCheckResult = await sessionBash(targetSessionId, {
+                    command: 'git rev-parse --is-inside-work-tree',
+                    cwd: metadata.path,
+                    timeout: 5000
+                });
+
+                if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
+                    // Not a git repository, clear any existing status
+                    storage.getState().applyGitStatus(targetSessionId, null);
+
+                    // Also update the project git status
+                    if (metadata.machineId) {
+                        const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
+                        projectManager.updateProjectGitStatus(targetProjectKey, null);
+                    }
+                    return;
+                }
+
+                // Get git status in porcelain v2 format (includes branch info)
+                // --untracked-files=all ensures we get individual files, not directories
+                const statusResult = await sessionBash(targetSessionId, {
+                    command: 'git status --porcelain=v2 --branch --show-stash --untracked-files=all',
+                    cwd: metadata.path,
+                    timeout: 10000
+                });
+
+                if (!statusResult.success) {
+                    console.error('Failed to get git status:', statusResult.error);
+                    return;
+                }
+
+                // Get git diff statistics for unstaged changes
+                const diffStatResult = await sessionBash(targetSessionId, {
+                    command: 'git diff --numstat',
+                    cwd: metadata.path,
+                    timeout: 10000
+                });
+
+                // Get git diff statistics for staged changes
+                const stagedDiffStatResult = await sessionBash(targetSessionId, {
+                    command: 'git diff --cached --numstat',
+                    cwd: metadata.path,
+                    timeout: 10000
+                });
+
+                // Parse the git status output with diff statistics
+                const gitStatus = this.parseGitStatusV2(
+                    statusResult.stdout,
+                    diffStatResult.success ? diffStatResult.stdout : '',
+                    stagedDiffStatResult.success ? stagedDiffStatResult.stdout : ''
+                );
+
+                // Apply to storage (this also updates the project git status via the modified applyGitStatus)
+                storage.getState().applyGitStatus(targetSessionId, gitStatus);
+
+                // Additionally, update the project directly for efficiency
+                if (metadata.machineId) {
+                    const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
+                    projectManager.updateProjectGitStatus(targetProjectKey, gitStatus);
+                }
             });
-
-            if (!statusResult.success) {
-                console.error('Failed to get git status:', statusResult.error);
-                return;
-            }
-
-            // Get git diff statistics for unstaged changes
-            const diffStatResult = await sessionBash(sessionId, {
-                command: 'git diff --numstat',
-                cwd: session.metadata.path,
-                timeout: 10000
-            });
-
-            // Get git diff statistics for staged changes
-            const stagedDiffStatResult = await sessionBash(sessionId, {
-                command: 'git diff --cached --numstat',
-                cwd: session.metadata.path,
-                timeout: 10000
-            });
-
-            // Parse the git status output with diff statistics
-            const gitStatus = this.parseGitStatusV2(
-                statusResult.stdout,
-                diffStatResult.success ? diffStatResult.stdout : '',
-                stagedDiffStatResult.success ? stagedDiffStatResult.stdout : ''
-            );
-
-            // Apply to storage (this also updates the project git status via the modified applyGitStatus)
-            storage.getState().applyGitStatus(sessionId, gitStatus);
-            
-            // Additionally, update the project directly for efficiency
-            if (session.metadata?.machineId) {
-                const projectKey = createProjectKey(session.metadata.machineId, session.metadata.path);
-                projectManager.updateProjectGitStatus(projectKey, gitStatus);
-            }
 
         } catch (error) {
-            console.error('Error fetching git status for session', sessionId, ':', error);
+            console.error('Error fetching git status for project', projectKey, ':', error);
             // Don't apply error state, just skip this update
         }
     }

@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
-import { GitStatus } from '@/sync/storageTypes';
 import { StyleSheet } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
+import { getAddedLines, getRemovedLines, hasMeaningfulLineChanges } from '@/sync/gitStatusUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -48,11 +48,12 @@ export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
     const gitStatus = projectGitStatus || sessionGitStatus;
 
     // Don't render if no git status or no meaningful changes
-    if (!gitStatus || !hasMeaningfulChanges(gitStatus)) {
+    if (!hasMeaningfulLineChanges(gitStatus)) {
         return null;
     }
 
-    const hasLineChanges = gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
+    const addedLines = getAddedLines(gitStatus);
+    const removedLines = getRemovedLines(gitStatus);
 
     return (
         <View style={styles.container}>
@@ -62,30 +63,20 @@ export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
                 color={styles.fileCountText.color}
                 style={{ marginRight: 2 }}
             />
-            
-            {/* Show line changes in compact format */}
-            {hasLineChanges && (
-                <View style={styles.lineChanges}>
-                    {gitStatus.unstagedLinesAdded > 0 && (
-                        <Text style={styles.addedText}>
-                            +{gitStatus.unstagedLinesAdded}
-                        </Text>
-                    )}
-                    {gitStatus.unstagedLinesRemoved > 0 && (
-                        <Text style={styles.removedText}>
-                            -{gitStatus.unstagedLinesRemoved}
-                        </Text>
-                    )}
-                </View>
-            )}
-        </View>
-    );
-}
 
-function hasMeaningfulChanges(status: GitStatus): boolean {
-    // Only show when there are actual line changes
-    return status.lastUpdatedAt > 0 && status.isDirty && (
-        status.unstagedLinesAdded > 0 ||
-        status.unstagedLinesRemoved > 0
+            {/* Show total line changes in compact format */}
+            <View style={styles.lineChanges}>
+                {addedLines > 0 && (
+                    <Text style={styles.addedText}>
+                        +{addedLines}
+                    </Text>
+                )}
+                {removedLines > 0 && (
+                    <Text style={styles.removedText}>
+                        -{removedLines}
+                    </Text>
+                )}
+            </View>
+        </View>
     );
 }

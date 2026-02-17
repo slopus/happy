@@ -148,6 +148,7 @@ class Sync {
                 this.friendRequestsSync.invalidate();
                 this.feedSync.invalidate();
                 this.todosSync.invalidate();
+                gitStatusSync.invalidateForSessions(Object.keys(storage.getState().sessions));
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
             }
@@ -218,6 +219,7 @@ class Sync {
             this.sessionsSync.awaitQueue(),
             this.machinesSync.awaitQueue()
         ]).then(() => {
+            gitStatusSync.invalidateForSessions(Object.keys(storage.getState().sessions));
             storage.getState().applyReady();
         }).catch((error) => {
             console.error('Failed to load initial data:', error);

@@ -69,6 +69,16 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
         flex: 1,
     },
+    sectionHeaderMachine: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 12, default: 13 }),
+        lineHeight: Platform.select({ ios: 16, default: 18 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+        maxWidth: 140,
+        textAlign: 'right',
+    },
     sessionRow: {
         height: 56,
         flexDirection: 'row',
@@ -248,10 +258,11 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     return (
         <View style={styles.container}>
             {sortedProjectGroups.map(([projectPath, projectGroup]) => {
-
-                // Get the avatar ID from the first session
-                const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
+                const machineEntries = Array.from(projectGroup.machines.entries());
+                const firstSession = machineEntries[0]?.[1]?.sessions[0];
                 const avatarId = firstSession ? getSessionAvatarId(firstSession) : undefined;
+                const singleMachineEntry = machineEntries.length === 1 ? machineEntries[0] : null;
+                const singleMachineId = singleMachineEntry?.[0];
 
                 return (
                     <View key={projectPath}>
@@ -267,10 +278,19 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                     {projectGroup.displayPath}
                                 </Text>
                             </View>
-                            {/* Show git status instead of machine name */}
-                            {firstSession ? (
-                                <ProjectGitStatus sessionId={firstSession.id} />
+                            {/* Only show git stats when this path maps to a single machine project key */}
+                            {singleMachineId && firstSession?.metadata?.path ? (
+                                <ProjectGitStatus
+                                    machineId={singleMachineId}
+                                    path={firstSession.metadata.path}
+                                    sessionId={firstSession.id}
+                                />
                             ) : null}
+                            {!singleMachineEntry && (
+                                <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
+                                    {`${projectGroup.machines.size} machines`}
+                                </Text>
+                            )}
                         </View>
 
                         {/* Card with just the sessions */}

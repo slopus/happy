@@ -15,7 +15,7 @@ import { AgentInputAutocomplete } from './AgentInputAutocomplete';
 import { FloatingOverlay } from './FloatingOverlay';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
-import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
+import { GitStatusBadge, useHasLoadedGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
@@ -1553,7 +1553,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
 // Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
-    const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
+    const hasLoadedGitStatus = useHasLoadedGitStatus(sessionId || '');
     const styles = stylesheet;
     const { theme } = useUnistyles();
 
@@ -1580,7 +1580,7 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 onPress?.();
             }}
         >
-            {hasMeaningfulGitStatus ? (
+            {hasLoadedGitStatus ? (
                 <GitStatusBadge sessionId={sessionId} />
             ) : (
                 <Octicons

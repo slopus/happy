@@ -15,7 +15,6 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
-import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -291,10 +290,14 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         <View style={styles.container}>
             {sortedProjectGroups.map(([projectPath, projectGroup]) => {
                 // Get the first machine name from this project's machines
-                const firstMachine = Array.from(projectGroup.machines.values())[0];
+                const machineEntries = Array.from(projectGroup.machines.entries());
+                const firstMachine = machineEntries[0]?.[1];
                 const machineName = projectGroup.machines.size === 1
                     ? firstMachine?.machineName
                     : `${projectGroup.machines.size} machines`;
+                const singleMachineEntry = machineEntries.length === 1 ? machineEntries[0] : null;
+                const singleMachineId = singleMachineEntry?.[0];
+                const singleMachineSession = singleMachineEntry?.[1]?.sessions[0];
 
                 return (
                     <View key={projectPath}>
@@ -305,18 +308,18 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                     {projectGroup.displayPath}
                                 </Text>
                             </View>
-                            {/* Show git status instead of machine name */}
-                            {(() => {
-                                // Get the first session from any machine in this project
-                                const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
-                                return firstSession ? (
-                                    <ProjectGitStatus sessionId={firstSession.id} />
-                                ) : (
-                                    <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
-                                        {machineName}
-                                    </Text>
-                                );
-                            })()}
+                            {/* Only show git stats when this path maps to a single machine project key */}
+                            {singleMachineId && singleMachineSession?.metadata?.path ? (
+                                <ProjectGitStatus
+                                    machineId={singleMachineId}
+                                    path={singleMachineSession.metadata.path}
+                                    sessionId={singleMachineSession.id}
+                                />
+                            ) : (
+                                <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
+                                    {machineName}
+                                </Text>
+                            )}
                         </View>
 
                         {/* Card with just the sessions */}

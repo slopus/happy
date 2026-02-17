@@ -271,6 +271,20 @@ class ProjectManager {
     }
 
     /**
+     * Get git status for a project by key
+     */
+    getProjectGitStatusByKey(projectKey: ProjectKey): GitStatus | null {
+        const keyString = this.getProjectKeyString(projectKey);
+        const projectId = this.projectKeyToId.get(keyString);
+        if (!projectId) {
+            return null;
+        }
+
+        const project = this.projects.get(projectId);
+        return project?.gitStatus || null;
+    }
+
+    /**
      * Update git status for a project (identified by project ID)
      */
     updateProjectGitStatusById(projectId: string, gitStatus: GitStatus | null): void {
