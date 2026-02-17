@@ -20,6 +20,7 @@ export interface DiffToolCall {
         callId: string;
         files: string[];
         stats: { additions: number; deletions: number };
+        fileStats?: Record<string, { additions: number; deletions: number }>;
     };
     id: string;
 }
@@ -144,14 +145,16 @@ export class DiffProcessor {
 
         const callId = randomUUID();
 
-        // Compute aggregate stats from changed files only
+        // Compute aggregate and per-file stats from changed files
         let totalAdditions = 0;
         let totalDeletions = 0;
         const files: string[] = [];
+        const fileStats: Record<string, { additions: number; deletions: number }> = {};
         for (const f of changedFiles) {
             files.push(f.filePath);
             totalAdditions += f.additions;
             totalDeletions += f.deletions;
+            fileStats[f.filePath] = { additions: f.additions, deletions: f.deletions };
         }
 
         // Persist to disk
@@ -173,7 +176,7 @@ export class DiffProcessor {
             type: 'tool-call',
             name: 'CodexDiff',
             callId,
-            input: { callId, files, stats: { additions: totalAdditions, deletions: totalDeletions } },
+            input: { callId, files, stats: { additions: totalAdditions, deletions: totalDeletions }, fileStats },
             id: randomUUID(),
         };
         this.onMessage?.(toolCall);

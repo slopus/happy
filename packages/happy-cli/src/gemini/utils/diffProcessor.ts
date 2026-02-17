@@ -22,6 +22,7 @@ export interface DiffToolCall {
         callId: string;
         files: string[];
         stats: { additions: number; deletions: number };
+        fileStats?: Record<string, { additions: number; deletions: number }>;
         description?: string;
     };
     id: string;
@@ -37,27 +38,49 @@ export interface DiffToolResult {
 }
 
 /**
- * Parse a unified diff string to extract file names and line stats.
+ * Parse a unified diff string to extract file names and per-file + aggregate stats.
  */
-function summarizeUnifiedDiff(unifiedDiff: string): { files: string[]; stats: { additions: number; deletions: number } } {
+function summarizeUnifiedDiff(unifiedDiff: string): {
+    files: string[];
+    stats: { additions: number; deletions: number };
+    fileStats: Record<string, { additions: number; deletions: number }>;
+} {
     const files: string[] = [];
-    let additions = 0;
-    let deletions = 0;
+    const fileStats: Record<string, { additions: number; deletions: number }> = {};
+    let currentFile: string | null = null;
+    let fallbackFile: string | null = null; // From "--- a/..." for deleted files
+    let totalAdditions = 0;
+    let totalDeletions = 0;
 
     for (const line of unifiedDiff.split('\n')) {
-        if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
-            const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
+        if (line.startsWith('--- a/')) {
+            fallbackFile = line.replace(/^--- a\//, '');
+        } else if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
+            const raw = line.replace(/^\+\+\+ (b\/)?/, '');
+            // For deleted files, +++ /dev/null — use fallback from --- a/...
+            const fileName = (raw && raw !== '/dev/null') ? raw : fallbackFile;
+            fallbackFile = null;
             if (fileName && !files.includes(fileName)) {
                 files.push(fileName);
             }
+            currentFile = fileName || null;
+            if (currentFile && !fileStats[currentFile]) {
+                fileStats[currentFile] = { additions: 0, deletions: 0 };
+            }
         } else if (line.startsWith('+') && !line.startsWith('+++')) {
-            additions++;
+            totalAdditions++;
+            if (currentFile && fileStats[currentFile]) {
+                fileStats[currentFile].additions++;
+            }
         } else if (line.startsWith('-') && !line.startsWith('---')) {
-            deletions++;
+            totalDeletions++;
+            if (currentFile && fileStats[currentFile]) {
+                fileStats[currentFile].deletions++;
+            }
         }
     }
 
-    return { files, stats: { additions, deletions } };
+    return { files, stats: { additions: totalAdditions, deletions: totalDeletions }, fileStats };
 }
 
 export class GeminiDiffProcessor {
@@ -119,7 +142,7 @@ export class GeminiDiffProcessor {
         if (previousDiff !== unifiedDiff) {
             logger.debug(`[GeminiDiffProcessor] Unified diff changed for ${path}, sending GeminiDiff tool call`);
 
-            const { files, stats } = summarizeUnifiedDiff(unifiedDiff);
+            const { files, stats, fileStats } = summarizeUnifiedDiff(unifiedDiff);
             // Ensure the path is included in files list
             if (!files.includes(path) && path) {
                 files.unshift(path);
@@ -127,7 +150,7 @@ export class GeminiDiffProcessor {
 
             const callId = randomUUID();
 
-            // Persist to disk — store for each file in the list so App can look up any
+            // Persist to disk — store per-file stats for each file
             if (this.sessionId) {
                 const uniqueFiles = [...new Set(files)];
                 saveDiffRecords(this.sessionId, uniqueFiles.map((fp) => ({
@@ -135,8 +158,8 @@ export class GeminiDiffProcessor {
                     agent: 'gemini' as const,
                     filePath: fp,
                     diff: unifiedDiff,
-                    additions: stats.additions,
-                    deletions: stats.deletions,
+                    additions: fileStats[fp]?.additions ?? 0,
+                    deletions: fileStats[fp]?.deletions ?? 0,
                     timestamp: Date.now(),
                 })));
             }
@@ -145,7 +168,7 @@ export class GeminiDiffProcessor {
                 type: 'tool-call',
                 name: 'GeminiDiff',
                 callId: callId,
-                input: { callId, files, stats, description },
+                input: { callId, files, stats, fileStats, description },
                 id: randomUUID()
             };
 

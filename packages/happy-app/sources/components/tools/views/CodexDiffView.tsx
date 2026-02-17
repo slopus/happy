@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Octicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
@@ -74,7 +74,7 @@ export const CodexDiffView = React.memo<CodexDiffViewProps>(({ tool, metadata, s
     const { input } = tool;
 
     const files: string[] = input?.files && Array.isArray(input.files) ? input.files : [];
-    const stats = input?.stats as { additions?: number; deletions?: number } | undefined;
+    const fileStats = input?.fileStats as Record<string, { additions?: number; deletions?: number }> | undefined;
 
     // Track expanded file and per-file cache to avoid race conditions
     const [expandedFile, setExpandedFile] = React.useState<string | null>(null);
@@ -127,22 +127,13 @@ export const CodexDiffView = React.memo<CodexDiffViewProps>(({ tool, metadata, s
     return (
         <ToolSectionView>
             <View style={styles.container}>
-                {stats && (stats.additions || stats.deletions) ? (
-                    <View style={styles.statsRow}>
-                        {stats.additions ? (
-                            <Text style={[styles.statText, { color: theme.colors.success }]}>+{stats.additions}</Text>
-                        ) : null}
-                        {stats.deletions ? (
-                            <Text style={[styles.statText, { color: theme.colors.textDestructive }]}>-{stats.deletions}</Text>
-                        ) : null}
-                    </View>
-                ) : null}
                 {files.map((file, index) => {
                     const resolved = resolvePath(file, metadata);
                     const fileName = resolved.split('/').pop() || resolved;
                     const isExpanded = expandedFile === file;
                     const isLoading = loadingFile === file;
                     const fileCached = isExpanded ? diffCache.current.get(file) : undefined;
+                    const fStats = fileStats?.[file];
 
                     return (
                         <View key={index}>
@@ -158,6 +149,12 @@ export const CodexDiffView = React.memo<CodexDiffViewProps>(({ tool, metadata, s
                                 />
                                 <Octicons name="file-diff" size={14} color={theme.colors.textSecondary} />
                                 <Text style={styles.fileName} numberOfLines={1}>{fileName}</Text>
+                                {fStats && (fStats.additions || fStats.deletions) ? (
+                                    <View style={styles.statsRow}>
+                                        {fStats.additions ? <Text style={[styles.statText, { color: theme.colors.success }]}>+{fStats.additions}</Text> : null}
+                                        {fStats.deletions ? <Text style={[styles.statText, { color: theme.colors.textDestructive }]}>-{fStats.deletions}</Text> : null}
+                                    </View>
+                                ) : null}
                                 {isLoading && <ActivityIndicator size="small" style={{ marginLeft: 4 }} />}
                             </TouchableOpacity>
                             {isExpanded && fileCached?.diff && (
@@ -189,13 +186,11 @@ const styles = StyleSheet.create((theme) => ({
     },
     statsRow: {
         flexDirection: 'row',
-        gap: 12,
-        marginBottom: 2,
+        gap: 8,
     },
     statText: {
-        fontSize: 13,
-        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-        fontWeight: '600',
+        fontSize: 12,
+        ...Typography.mono('semiBold'),
     },
     fileRow: {
         flexDirection: 'row',
@@ -206,7 +201,7 @@ const styles = StyleSheet.create((theme) => ({
     fileName: {
         fontSize: 13,
         color: theme.colors.text,
-        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+        ...Typography.mono(),
         flexShrink: 1,
     },
     diffContainer: {
