@@ -22,6 +22,7 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
+import { inspect } from 'node:util';
 // delay not currently used
 import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
@@ -59,6 +60,28 @@ export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, not
     sendReady();
     notify?.();
     return true;
+}
+
+function formatUnknownCodexError(error: unknown): string {
+    if (error instanceof Error) {
+        return `${error.message}\n${error.stack ?? ''}`;
+    }
+    if (typeof error === 'string') {
+        return error;
+    }
+    try {
+        const json = JSON.stringify(error, null, 2);
+        if (json && json !== '{}') {
+            return json;
+        }
+    } catch {
+        // Fall through to inspect fallback
+    }
+    try {
+        return inspect(error, { depth: 5, breakLength: 120 });
+    } catch {
+        return String(error);
+    }
 }
 
 /**
@@ -915,9 +938,7 @@ export async function runCodex(opts: {
                     await backend!.waitForResponseComplete!();
                 }
             } catch (error) {
-                const errMsg = error instanceof Error
-                    ? `${error.message}\n${error.stack}`
-                    : JSON.stringify(error, null, 2);
+                const errMsg = formatUnknownCodexError(error);
                 logger.warn('Error in codex session:', errMsg);
                 const isAbortError = error instanceof Error && error.name === 'AbortError';
 

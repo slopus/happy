@@ -87,6 +87,45 @@ interface PendingApproval {
   callId: string;
 }
 
+type ApprovalParams = Record<string, unknown>;
+
+// Event types that indicate real turn progress and should reset idle timeout.
+const TURN_PROGRESS_EVENT_TYPES = new Set<string>([
+  'task_started',
+  'agent_message_delta',
+  'agent_message_content_delta',
+  'agent_message',
+  'agent_reasoning_delta',
+  'reasoning_content_delta',
+  'agent_reasoning',
+  'agent_reasoning_section_break',
+  'exec_command_begin',
+  'exec_command_end',
+  'exec_command_output_delta',
+  'exec_approval_request',
+  'patch_apply_begin',
+  'patch_apply_end',
+  'apply_patch_approval_request',
+  'mcp_tool_call_begin',
+  'mcp_tool_call_end',
+  'web_search_begin',
+  'web_search_end',
+  'view_image_tool_call',
+  'turn_diff',
+  'plan_update',
+  'context_compacted',
+  'item_started',
+  'item_completed',
+  'background_event',
+  'task_complete',
+  'turn_aborted',
+  'shutdown_complete',
+]);
+
+export function isTurnProgressEvent(eventType: string): boolean {
+  return TURN_PROGRESS_EVENT_TYPES.has(eventType);
+}
+
 // ─── Backend ────────────────────────────────────────────────────
 
 export class CodexAppServerBackend implements AgentBackend {
@@ -101,6 +140,11 @@ export class CodexAppServerBackend implements AgentBackend {
   // Resolvers for waitForResponseComplete()
   private turnCompleteResolve: (() => void) | null = null;
   private turnCompletePromise: Promise<void> | null = null;
+  private turnCompleteSettled = false;
+  private turnCompletionError: Error | null = null;
+  private turnStartedAt = 0;
+  private turnLastProgressAt = 0;
+  private turnLastProgressEvent: string | null = null;
 
   constructor(private readonly options: CodexAppServerBackendOptions) {
     this.peer = new CodexJsonRpcPeer();
@@ -123,8 +167,14 @@ export class CodexAppServerBackend implements AgentBackend {
     this.peer.onNotification((method, params) => this.handleNotification(method, params));
     this.peer.onServerRequest((method, params, id) => this.handleServerRequest(method, params, id));
     this.peer.onClose(() => {
-      // Resolve any pending waitForResponseComplete() to unblock the caller
-      this.resolveTurnComplete();
+      if (!this.turnCompletePromise || this.turnCompleteSettled) {
+        return;
+      }
+      if (this.disposed) {
+        this.resolveTurnComplete();
+      } else {
+        this.resolveTurnComplete(new Error('Codex app-server closed before turn completed'));
+      }
     });
 
     // 3. Initialize handshake
@@ -241,15 +291,40 @@ export class CodexAppServerBackend implements AgentBackend {
       this.resetTurnComplete();
     }
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const idleTimeoutMs = timeoutMs;
+    const checkIntervalMs = Math.max(100, Math.min(1000, Math.floor(idleTimeoutMs / 10)));
+
+    let timer: ReturnType<typeof setInterval> | undefined;
     const timeout = new Promise<void>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('waitForResponseComplete timed out')), timeoutMs);
+      timer = setInterval(() => {
+        const now = Date.now();
+        const lastProgressAt = this.turnLastProgressAt || this.turnStartedAt || now;
+        const idleMs = now - lastProgressAt;
+        if (idleMs < idleTimeoutMs) {
+          return;
+        }
+
+        const elapsedMs = this.turnStartedAt ? now - this.turnStartedAt : idleMs;
+        const lastProgressEvent = this.turnLastProgressEvent ?? 'none';
+        reject(
+          new Error(
+            `waitForResponseComplete idle timeout after ${idleTimeoutMs}ms ` +
+            `(idle=${idleMs}ms, elapsed=${elapsedMs}ms, ` +
+            `lastProgressEvent=${lastProgressEvent}, pendingApprovals=${this.pendingApprovals.size})`
+          )
+        );
+      }, checkIntervalMs);
     });
 
     try {
       await Promise.race([this.turnCompletePromise!, timeout]);
+      if (this.turnCompletionError) {
+        throw this.turnCompletionError;
+      }
     } finally {
-      clearTimeout(timer);
+      if (timer) {
+        clearInterval(timer);
+      }
     }
   }
 
@@ -264,7 +339,7 @@ export class CodexAppServerBackend implements AgentBackend {
     this.pendingApprovals.clear();
 
     // Resolve any waitForResponseComplete
-    this.turnCompleteResolve?.();
+    this.resolveTurnComplete();
 
     await this.peer.close();
   }
@@ -336,15 +411,33 @@ export class CodexAppServerBackend implements AgentBackend {
   // ─── Turn Complete ──────────────────────────────────────────
 
   private resetTurnComplete(): void {
+    const now = Date.now();
+    this.turnStartedAt = now;
+    this.turnLastProgressAt = now;
+    this.turnLastProgressEvent = 'turn_start';
+    this.turnCompletionError = null;
+    this.turnCompleteSettled = false;
     this.turnCompletePromise = new Promise<void>((resolve) => {
       this.turnCompleteResolve = resolve;
     });
   }
 
-  private resolveTurnComplete(): void {
+  private resolveTurnComplete(error?: Error): void {
+    if (!this.turnCompletePromise || this.turnCompleteSettled) {
+      return;
+    }
+    this.turnCompleteSettled = true;
+    this.turnCompletionError = error ?? null;
     this.turnCompleteResolve?.();
     this.turnCompleteResolve = null;
-    this.turnCompletePromise = null;
+  }
+
+  private markTurnProgress(eventType: string): void {
+    if (!this.turnCompletePromise || this.turnCompleteSettled) {
+      return;
+    }
+    this.turnLastProgressAt = Date.now();
+    this.turnLastProgressEvent = eventType;
   }
 
   // ─── Emit ───────────────────────────────────────────────────
@@ -413,6 +506,10 @@ export class CodexAppServerBackend implements AgentBackend {
   // ─── Event Mapping ──────────────────────────────────────────
 
   private handleCodexEvent(raw: RawCodexEvent): void {
+    if (isTurnProgressEvent(raw.type)) {
+      this.markTurnProgress(raw.type);
+    }
+
     // Cast to any-typed record for property access — the switch narrows logically
     const event = raw as Record<string, any>;
     switch (raw.type) {
@@ -601,9 +698,13 @@ export class CodexAppServerBackend implements AgentBackend {
 
       // ── Errors/warnings ──
       case 'stream_error':
-      case 'error':
-        this.emit({ type: 'status', status: 'error', detail: event.message });
+      case 'error': {
+        const errorDetail = typeof event.message === 'string' ? event.message : JSON.stringify(event.message);
+        const message = errorDetail && errorDetail !== 'undefined' ? errorDetail : 'Codex event error';
+        this.emit({ type: 'status', status: 'error', detail: message });
+        this.resolveTurnComplete(new Error(`Codex event error: ${message}`));
         break;
+      }
 
       case 'warning':
         this.emit({ type: 'event', name: 'warning', payload: { message: event.message } });
@@ -668,7 +769,16 @@ export class CodexAppServerBackend implements AgentBackend {
   }
 
   private handlePatchApproval(params: ApplyPatchApprovalParams, jsonRpcId: number | string): void {
-    const callId = params.callId;
+    const rawParams = params as unknown as ApprovalParams;
+    const callId = this.getApprovalCallId(rawParams);
+    if (!callId) {
+      logger.warn('[CodexBackend] applyPatchApproval missing callId/call_id; denying request');
+      this.peer.respond(jsonRpcId, { decision: 'denied' as ReviewDecision });
+      return;
+    }
+
+    const reason = this.getApprovalReason(rawParams);
+    const changes = this.getPatchChanges(rawParams);
 
     if (this.options.permissionHandler) {
       // Store pending approval for respondToPermission()
@@ -677,8 +787,8 @@ export class CodexAppServerBackend implements AgentBackend {
       // Delegate to permission handler
       this.options.permissionHandler
         .handleToolCall(callId, 'CodexPatch', {
-          changes: params.fileChanges,
-          reason: params.reason,
+          changes,
+          reason,
         })
         .then((result) => {
           // If still pending (not already responded via respondToPermission)
@@ -688,8 +798,8 @@ export class CodexAppServerBackend implements AgentBackend {
             this.peer.respond(jsonRpcId, { decision });
 
             // Queue feedback for denied/abort with reason
-            if ((decision === 'denied' || decision === 'abort') && params.reason) {
-              this.feedbackQueue.push(params.reason);
+            if ((decision === 'denied' || decision === 'abort') && reason) {
+              this.feedbackQueue.push(reason);
             }
           }
         })
@@ -707,16 +817,26 @@ export class CodexAppServerBackend implements AgentBackend {
   }
 
   private handleExecApproval(params: ExecCommandApprovalParams, jsonRpcId: number | string): void {
-    const callId = params.callId;
+    const rawParams = params as unknown as ApprovalParams;
+    const callId = this.getApprovalCallId(rawParams);
+    if (!callId) {
+      logger.warn('[CodexBackend] execCommandApproval missing callId/call_id; denying request');
+      this.peer.respond(jsonRpcId, { decision: 'denied' as ReviewDecision });
+      return;
+    }
+
+    const reason = this.getApprovalReason(rawParams);
+    const command = this.getExecCommand(rawParams);
+    const cwd = this.getExecCwd(rawParams);
 
     if (this.options.permissionHandler) {
       this.pendingApprovals.set(callId, { jsonRpcId, callId });
 
       this.options.permissionHandler
         .handleToolCall(callId, 'CodexBash', {
-          command: params.command,
-          cwd: params.cwd,
-          reason: params.reason,
+          command,
+          cwd,
+          reason,
         })
         .then((result) => {
           if (this.pendingApprovals.has(callId)) {
@@ -725,8 +845,8 @@ export class CodexAppServerBackend implements AgentBackend {
             this.peer.respond(jsonRpcId, { decision });
 
             // Queue feedback for denied/abort with reason
-            if ((decision === 'denied' || decision === 'abort') && params.reason) {
-              this.feedbackQueue.push(params.reason);
+            if ((decision === 'denied' || decision === 'abort') && reason) {
+              this.feedbackQueue.push(reason);
             }
           }
         })
@@ -750,6 +870,58 @@ export class CodexAppServerBackend implements AgentBackend {
       default:
         return 'denied';
     }
+  }
+
+  private getApprovalCallId(params: ApprovalParams): string | null {
+    if (typeof params.callId === 'string' && params.callId.length > 0) {
+      return params.callId;
+    }
+    if (typeof params.call_id === 'string' && params.call_id.length > 0) {
+      return params.call_id;
+    }
+    return null;
+  }
+
+  private getApprovalReason(params: ApprovalParams): string | undefined {
+    if (typeof params.reason === 'string' && params.reason.length > 0) {
+      return params.reason;
+    }
+    return undefined;
+  }
+
+  private getPatchChanges(params: ApprovalParams): Record<string, unknown> {
+    const fileChanges = params.fileChanges;
+    if (fileChanges && typeof fileChanges === 'object') {
+      return fileChanges as Record<string, unknown>;
+    }
+    const snakeFileChanges = params.file_changes;
+    if (snakeFileChanges && typeof snakeFileChanges === 'object') {
+      return snakeFileChanges as Record<string, unknown>;
+    }
+    return {};
+  }
+
+  private getExecCommand(params: ApprovalParams): string[] {
+    const command = params.command;
+    if (Array.isArray(command)) {
+      return command.filter((part): part is string => typeof part === 'string');
+    }
+    const parsedCmd = params.parsedCmd;
+    if (Array.isArray(parsedCmd)) {
+      return parsedCmd.map(String);
+    }
+    const snakeParsedCmd = params.parsed_cmd;
+    if (Array.isArray(snakeParsedCmd)) {
+      return snakeParsedCmd.map(String);
+    }
+    return [];
+  }
+
+  private getExecCwd(params: ApprovalParams): string {
+    if (typeof params.cwd === 'string') {
+      return params.cwd;
+    }
+    return '';
   }
 
   // ─── Public Accessors ───────────────────────────────────────
