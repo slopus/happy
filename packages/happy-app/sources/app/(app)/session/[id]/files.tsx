@@ -19,6 +19,7 @@ import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import { ActionMenuItem } from '@/components/ActionMenu';
+import { shellEscape } from '@/utils/shellEscape';
 
 export default function FilesScreen() {
     const route = useRoute();
@@ -77,8 +78,9 @@ export default function FilesScreen() {
     const handleStageFile = React.useCallback(async (file: GitFileStatus) => {
         setIsOperating(true);
         try {
+            const escapedPath = shellEscape(file.fullPath);
             await sessionBash(sessionId, {
-                command: `git add "${file.fullPath}"`,
+                command: `git add -- ${escapedPath}`,
                 cwd: commandCwd,
                 timeout: 10000,
             });
@@ -94,8 +96,9 @@ export default function FilesScreen() {
     const handleUnstageFile = React.useCallback(async (file: GitFileStatus) => {
         setIsOperating(true);
         try {
+            const escapedPath = shellEscape(file.fullPath);
             await sessionBash(sessionId, {
-                command: `git reset HEAD -- "${file.fullPath}"`,
+                command: `git reset HEAD -- ${escapedPath}`,
                 cwd: commandCwd,
                 timeout: 10000,
             });
@@ -152,21 +155,22 @@ export default function FilesScreen() {
 
         setIsOperating(true);
         try {
+            const escapedPath = shellEscape(file.fullPath);
             if (file.status === 'untracked') {
                 await sessionBash(sessionId, {
-                    command: `git clean -f -- "${file.fullPath}"`,
+                    command: `git clean -f -- ${escapedPath}`,
                     cwd: commandCwd,
                     timeout: 10000,
                 });
             } else if (file.isStaged) {
                 await sessionBash(sessionId, {
-                    command: `git reset HEAD -- "${file.fullPath}" && git checkout -- "${file.fullPath}"`,
+                    command: `git reset HEAD -- ${escapedPath} && git checkout -- ${escapedPath}`,
                     cwd: commandCwd,
                     timeout: 10000,
                 });
             } else {
                 await sessionBash(sessionId, {
-                    command: `git checkout -- "${file.fullPath}"`,
+                    command: `git checkout -- ${escapedPath}`,
                     cwd: commandCwd,
                     timeout: 10000,
                 });

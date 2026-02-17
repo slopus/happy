@@ -18,10 +18,7 @@ import { FileIcon } from '@/components/FileIcon';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import { ActionMenuItem } from '@/components/ActionMenu';
 import { t } from '@/text';
-
-function shellEscapeSingleQuoted(value: string): string {
-    return value.replace(/'/g, "'\\''");
-}
+import { shellEscape } from '@/utils/shellEscape';
 
 export default function StatusScreen() {
     const route = useRoute();
@@ -38,7 +35,7 @@ export default function StatusScreen() {
     const commandCwd = useGitPathOverride ? defaultSessionPath : targetRepoPath;
     const gitPrefix = React.useMemo(() => (
         useGitPathOverride
-            ? `git -C '${shellEscapeSingleQuoted(targetRepoPath)}'`
+            ? `git -C ${shellEscape(targetRepoPath)}`
             : 'git'
     ), [useGitPathOverride, targetRepoPath]);
     const gitCommand = React.useCallback((args: string) => `${gitPrefix} ${args}`, [gitPrefix]);
@@ -76,7 +73,7 @@ export default function StatusScreen() {
         setIsOperating(true);
         try {
             await sessionBash(sessionId, {
-                command: gitCommand(`add "${file.fullPath}"`),
+                command: gitCommand(`add -- ${shellEscape(file.fullPath)}`),
                 cwd: commandCwd,
                 timeout: 10000,
             });
@@ -93,7 +90,7 @@ export default function StatusScreen() {
         setIsOperating(true);
         try {
             await sessionBash(sessionId, {
-                command: gitCommand(`reset HEAD -- "${file.fullPath}"`),
+                command: gitCommand(`reset HEAD -- ${shellEscape(file.fullPath)}`),
                 cwd: commandCwd,
                 timeout: 10000,
             });
@@ -150,9 +147,8 @@ export default function StatusScreen() {
 
         setIsOperating(true);
         try {
-            const escaped = message.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
             const result = await sessionBash(sessionId, {
-                command: gitCommand(`commit -m "${escaped}"`),
+                command: gitCommand(`commit -m ${shellEscape(message)}`),
                 cwd: commandCwd,
                 timeout: 30000,
             });
@@ -180,22 +176,23 @@ export default function StatusScreen() {
 
         setIsOperating(true);
         try {
+            const escapedPath = shellEscape(file.fullPath);
             if (file.status === 'untracked') {
                 await sessionBash(sessionId, {
-                    command: gitCommand(`clean -f -- "${file.fullPath}"`),
+                    command: gitCommand(`clean -f -- ${escapedPath}`),
                     cwd: commandCwd,
                     timeout: 10000,
                 });
             } else if (file.isStaged) {
                 // Staged file: reset from index first, then restore working tree
                 await sessionBash(sessionId, {
-                    command: `${gitCommand(`reset HEAD -- "${file.fullPath}"`)} && ${gitCommand(`checkout -- "${file.fullPath}"`)}`,
+                    command: `${gitCommand(`reset HEAD -- ${escapedPath}`)} && ${gitCommand(`checkout -- ${escapedPath}`)}`,
                     cwd: commandCwd,
                     timeout: 10000,
                 });
             } else {
                 await sessionBash(sessionId, {
-                    command: gitCommand(`checkout -- "${file.fullPath}"`),
+                    command: gitCommand(`checkout -- ${escapedPath}`),
                     cwd: commandCwd,
                     timeout: 10000,
                 });

@@ -7,6 +7,7 @@ import { sessionBash } from './ops';
 import { storage } from './storage';
 import { parseStatusSummaryV2, getCurrentBranchV2 } from './git-parsers/parseStatusV2';
 import { parseNumStat, createDiffStatsMap } from './git-parsers/parseDiff';
+import { shellEscape } from '@/utils/shellEscape';
 
 export interface GitFileStatus {
     fileName: string;
@@ -27,10 +28,6 @@ export interface GitStatusFiles {
     totalUnstaged: number;
 }
 
-function shellEscapeSingleQuoted(value: string): string {
-    return value.replace(/'/g, "'\\''");
-}
-
 /**
  * Fetch detailed git status with file-level information
  */
@@ -46,7 +43,7 @@ export async function getGitStatusFiles(sessionId: string, cwd?: string): Promis
         const useGitPathOverride = Boolean(cwd && sessionPath && cwd !== sessionPath);
         const commandCwd = useGitPathOverride ? sessionPath : targetRepoPath;
         const gitPrefix = useGitPathOverride
-            ? `git -C '${shellEscapeSingleQuoted(targetRepoPath)}'`
+            ? `git -C ${shellEscape(targetRepoPath)}`
             : 'git';
 
         // Get git status in porcelain v2 format (includes branch info and repo check)

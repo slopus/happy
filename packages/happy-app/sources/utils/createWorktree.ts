@@ -4,11 +4,7 @@
 
 import { machineBash } from '@/sync/ops';
 import { generateWorktreeName } from './generateWorktreeName';
-
-/** Shell-escape a string for use in single quotes */
-function shellEscape(s: string): string {
-    return s.replace(/'/g, "'\\''");
-}
+import { shellEscape } from './shellEscape';
 
 export async function createWorktree(
     machineId: string,
@@ -41,7 +37,7 @@ export async function createWorktree(
     const worktreePath = `.dev/worktree/${name}`;
     let result = await machineBash(
         machineId,
-        `git worktree add -b '${shellEscape(name)}' '${shellEscape(worktreePath)}'`,
+        `git worktree add -b ${shellEscape(name)} ${shellEscape(worktreePath)}`,
         basePath
     );
 
@@ -53,7 +49,7 @@ export async function createWorktree(
             const newWorktreePath = `.dev/worktree/${newName}`;
             result = await machineBash(
                 machineId,
-                `git worktree add -b '${shellEscape(newName)}' '${shellEscape(newWorktreePath)}'`,
+                `git worktree add -b ${shellEscape(newName)} ${shellEscape(newWorktreePath)}`,
                 basePath
             );
 

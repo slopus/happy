@@ -19,6 +19,14 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { storeTempText } from '@/sync/persistence';
 import * as Clipboard from 'expo-clipboard';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { shellEscape } from '@/utils/shellEscape';
+
+function getRepoRelativePath(filePath: string, repoPath: string): string {
+    if (repoPath && filePath.startsWith(`${repoPath}/`)) {
+        return filePath.substring(repoPath.length + 1);
+    }
+    return filePath;
+}
 
 interface FileContent {
     content: string;
@@ -186,8 +194,9 @@ export default function FileScreen() {
                         { destructive: true },
                     );
                     if (!confirmed) return;
+                    const escapedPath = shellEscape(filePath);
                     const result = await sessionBash(sessionId!, {
-                        command: `rm "${filePath}"`,
+                        command: `rm -- ${escapedPath}`,
                         cwd: sessionPath,
                         timeout: 5000,
                     });
@@ -306,9 +315,11 @@ export default function FileScreen() {
                 // Fetch git diff for the file
                 if (sessionPath && sessionId) {
                     try {
+                        const repoRelativePath = getRepoRelativePath(filePath, sessionPath);
+                        const escapedPath = shellEscape(repoRelativePath);
                         const diffCommand = ref
-                            ? `git diff --no-ext-diff ${ref}~1 ${ref} -- "${filePath.startsWith(sessionPath) ? filePath.substring(sessionPath.length + 1) : filePath}"`
-                            : `git diff --no-ext-diff "${filePath}"`;
+                            ? `git diff --no-ext-diff ${shellEscape(`${ref}~1`)} ${shellEscape(ref)} -- ${escapedPath}`
+                            : `git diff --no-ext-diff -- ${escapedPath}`;
                         const diffResponse = await sessionBash(sessionId, {
                             command: diffCommand,
                             cwd: sessionPath,
@@ -325,11 +336,10 @@ export default function FileScreen() {
 
                 if (ref && sessionPath && sessionId) {
                     // For a specific commit ref, use git show to get file content at that revision
-                    const relativePath = filePath.startsWith(sessionPath)
-                        ? filePath.substring(sessionPath.length + 1)
-                        : filePath;
+                    const relativePath = getRepoRelativePath(filePath, sessionPath);
+                    const escapedShowTarget = shellEscape(`${ref}:${relativePath}`);
                     const showResponse = await sessionBash(sessionId, {
-                        command: `git show ${ref}:"${relativePath}"`,
+                        command: `git show ${escapedShowTarget}`,
                         cwd: sessionPath,
                         timeout: 10000,
                     });

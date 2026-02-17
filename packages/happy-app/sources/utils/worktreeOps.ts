@@ -5,15 +5,11 @@
 
 import { machineBash } from '@/sync/ops';
 import type { Metadata } from '@/sync/storageTypes';
+import { shellEscape } from './shellEscape';
 
 /** Validate a git ref name to prevent shell injection */
 function isValidGitRef(name: string): boolean {
     return /^[a-zA-Z0-9._\/-]+$/.test(name) && name.length > 0 && name.length < 256;
-}
-
-/** Shell-escape a string for use in single quotes */
-function shellEscape(s: string): string {
-    return s.replace(/'/g, "'\\''");
 }
 
 /** Check if a session is a worktree session (detected by CLI at startup via git) */
@@ -42,7 +38,7 @@ export async function pushWorktreeBranch(
     }
     const result = await machineBash(
         machineId,
-        `git push -u origin '${shellEscape(branchName)}'`,
+        `git push -u origin ${shellEscape(branchName)}`,
         worktreePath
     );
     if (!result.success) {
@@ -93,13 +89,13 @@ export async function mergeWorktreeBranch(
 
     // Switch to target branch if needed
     if (needsCheckout) {
-        const checkout = await machineBash(machineId, `git checkout '${shellEscape(targetBranch)}'`, basePath);
+        const checkout = await machineBash(machineId, `git checkout ${shellEscape(targetBranch)}`, basePath);
         if (!checkout.success) {
             return { success: false, error: checkout.stderr || `Failed to checkout ${targetBranch}` };
         }
     }
 
-    const merge = await machineBash(machineId, `git merge '${shellEscape(branchName)}' --no-edit`, basePath);
+    const merge = await machineBash(machineId, `git merge ${shellEscape(branchName)} --no-edit`, basePath);
     if (!merge.success) {
         const hasConflicts = merge.stdout.includes('CONFLICT') || merge.stderr.includes('CONFLICT');
         if (hasConflicts) {
@@ -107,7 +103,7 @@ export async function mergeWorktreeBranch(
         }
         // Restore original branch
         if (needsCheckout && originalBranch) {
-            await machineBash(machineId, `git checkout '${shellEscape(originalBranch)}'`, basePath);
+            await machineBash(machineId, `git checkout ${shellEscape(originalBranch)}`, basePath);
         }
         if (hasConflicts) {
             return { success: false, hasConflicts: true, error: 'Merge has conflicts' };
@@ -117,7 +113,7 @@ export async function mergeWorktreeBranch(
 
     // Restore original branch after successful merge
     if (needsCheckout && originalBranch) {
-        await machineBash(machineId, `git checkout '${shellEscape(originalBranch)}'`, basePath);
+        await machineBash(machineId, `git checkout ${shellEscape(originalBranch)}`, basePath);
     }
 
     return { success: true };
@@ -152,10 +148,10 @@ export async function createWorktreePR(
 
     // Create PR with safe quoting
     const prTitle = title || branchName;
-    const baseArg = baseBranch ? ` --base '${shellEscape(baseBranch)}'` : '';
+    const baseArg = baseBranch ? ` --base ${shellEscape(baseBranch)}` : '';
     const result = await machineBash(
         machineId,
-        `gh pr create --head '${shellEscape(branchName)}'${baseArg} --title '${shellEscape(prTitle)}' --body 'Created from Happy mobile app'`,
+        `gh pr create --head ${shellEscape(branchName)}${baseArg} --title ${shellEscape(prTitle)} --body 'Created from Happy mobile app'`,
         worktreePath
     );
     if (!result.success) {
@@ -182,7 +178,7 @@ export async function cleanupWorktree(
 
     const result = await machineBash(
         machineId,
-        `git worktree remove '${shellEscape(worktreeDir)}' --force`,
+        `git worktree remove ${shellEscape(worktreeDir)} --force`,
         basePath
     );
 
@@ -197,7 +193,7 @@ export async function cleanupWorktree(
     if (deleteBranch) {
         const branchResult = await machineBash(
             machineId,
-            `git branch -D '${shellEscape(branchName)}'`,
+            `git branch -D ${shellEscape(branchName)}`,
             basePath
         );
         if (!branchResult.success) {
