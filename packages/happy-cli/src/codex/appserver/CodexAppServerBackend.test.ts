@@ -1,0 +1,194 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CodexAppServerBackend, isTurnProgressEvent } from './CodexAppServerBackend';
+import { logger } from '@/ui/logger';
+
+function createBackend(): CodexAppServerBackend {
+  return new CodexAppServerBackend({
+    cwd: process.cwd(),
+    command: 'codex',
+  });
+}
+
+describe('isTurnProgressEvent', () => {
+  it('marks real progress events as progress', () => {
+    expect(isTurnProgressEvent('agent_message_delta')).toBe(true);
+    expect(isTurnProgressEvent('exec_command_begin')).toBe(true);
+  });
+
+  it('ignores noisy events', () => {
+    expect(isTurnProgressEvent('token_count')).toBe(false);
+    expect(isTurnProgressEvent('terminal_interaction')).toBe(false);
+  });
+});
+
+describe('CodexAppServerBackend.waitForResponseComplete', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns immediately when a turn completed before waiting starts', async () => {
+    const backend = createBackend();
+    const anyBackend = backend as any;
+
+    anyBackend.resetTurnComplete();
+    anyBackend.handleCodexEvent({ type: 'task_complete' });
+
+    await expect(backend.waitForResponseComplete(100)).resolves.toBeUndefined();
+  });
+
+  it('does not timeout while progress events continue', async () => {
+    const backend = createBackend();
+    const anyBackend = backend as any;
+
+    anyBackend.resetTurnComplete();
+    const waitPromise = backend.waitForResponseComplete(120);
+
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(90);
+      anyBackend.handleCodexEvent({ type: 'agent_message_delta', delta: 'x' });
+    }
+
+    anyBackend.handleCodexEvent({ type: 'task_complete' });
+    await expect(waitPromise).resolves.toBeUndefined();
+  });
+
+  it('times out when only non-progress events are received', async () => {
+    const backend = createBackend();
+    const anyBackend = backend as any;
+
+    anyBackend.resetTurnComplete();
+    const waitPromise = backend.waitForResponseComplete(120).then(
+      () => null,
+      (error: Error) => error
+    );
+
+    for (let i = 0; i < 4; i++) {
+      anyBackend.handleCodexEvent({ type: 'token_count', info: {} });
+      await vi.advanceTimersByTimeAsync(40);
+    }
+    await vi.advanceTimersByTimeAsync(120);
+
+    const err = await waitPromise;
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('idle timeout');
+    expect((err as Error).message).toContain('lastProgressEvent=turn_start');
+  });
+
+  it('fails immediately when an error event is received', async () => {
+    const backend = createBackend();
+    const anyBackend = backend as any;
+
+    anyBackend.resetTurnComplete();
+    const waitPromise = backend.waitForResponseComplete(5000).then(
+      () => null,
+      (error: Error) => error
+    );
+
+    anyBackend.handleCodexEvent({ type: 'error', message: 'boom' });
+    const err = await waitPromise;
+
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('Codex event error: boom');
+  });
+});
+
+describe('CodexAppServerBackend approval request parsing', () => {
+  it('accepts snake_case call_id for exec approval requests', async () => {
+    const permissionHandler = {
+      handleToolCall: vi.fn().mockResolvedValue({ decision: 'approved' }),
+    };
+    const backend = new CodexAppServerBackend({
+      cwd: process.cwd(),
+      command: 'codex',
+      permissionHandler,
+    });
+    const anyBackend = backend as any;
+    const respond = vi.fn();
+    anyBackend.peer = { respond };
+
+    anyBackend.handleExecApproval(
+      {
+        call_id: 'exec-call-1',
+        command: ['ls', '-la'],
+        cwd: '/tmp',
+        reason: 'command failed; retry without sandbox?',
+      },
+      123
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(permissionHandler.handleToolCall).toHaveBeenCalledWith(
+      'exec-call-1',
+      'CodexBash',
+      {
+        command: ['ls', '-la'],
+        cwd: '/tmp',
+        reason: 'command failed; retry without sandbox?',
+      }
+    );
+    expect(respond).toHaveBeenCalledWith(123, { decision: 'approved' });
+  });
+
+  it('denies exec approval requests that do not include a call id', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    const permissionHandler = {
+      handleToolCall: vi.fn().mockResolvedValue({ decision: 'approved' }),
+    };
+    const backend = new CodexAppServerBackend({
+      cwd: process.cwd(),
+      command: 'codex',
+      permissionHandler,
+    });
+    const anyBackend = backend as any;
+    const respond = vi.fn();
+    anyBackend.peer = { respond };
+
+    anyBackend.handleExecApproval({ command: ['ls'], cwd: '/tmp' }, 456);
+
+    expect(permissionHandler.handleToolCall).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(456, { decision: 'denied' });
+    warnSpy.mockRestore();
+  });
+
+  it('accepts snake_case call_id for patch approval requests', async () => {
+    const permissionHandler = {
+      handleToolCall: vi.fn().mockResolvedValue({ decision: 'approved' }),
+    };
+    const backend = new CodexAppServerBackend({
+      cwd: process.cwd(),
+      command: 'codex',
+      permissionHandler,
+    });
+    const anyBackend = backend as any;
+    const respond = vi.fn();
+    anyBackend.peer = { respond };
+
+    anyBackend.handlePatchApproval(
+      {
+        call_id: 'patch-call-1',
+        file_changes: { 'a.txt': { type: 'update' } },
+        reason: 'patch apply approval',
+      },
+      789
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(permissionHandler.handleToolCall).toHaveBeenCalledWith(
+      'patch-call-1',
+      'CodexPatch',
+      {
+        changes: { 'a.txt': { type: 'update' } },
+        reason: 'patch apply approval',
+      }
+    );
+    expect(respond).toHaveBeenCalledWith(789, { decision: 'approved' });
+  });
+});
