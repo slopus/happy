@@ -1,26 +1,30 @@
 import * as React from 'react';
-import { View, ActivityIndicator, Platform, TextInput } from 'react-native';
+import { View, ActivityIndicator, Platform, TextInput, Pressable } from 'react-native';
 import { t } from '@/text';
 import { useRoute } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { useSessionGitStatus, useSessionProjectGitStatus, storage } from '@/sync/storage';
+import { sessionBash } from '@/sync/ops';
+import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import { ActionMenuItem } from '@/components/ActionMenu';
 
 export default function FilesScreen() {
     const route = useRoute();
     const router = useRouter();
     const sessionId = (route.params! as any).id as string;
-    
+
     const [gitStatusFiles, setGitStatusFiles] = React.useState<GitStatusFiles | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -31,7 +35,15 @@ export default function FilesScreen() {
     const sessionGitStatus = useSessionGitStatus(sessionId);
     const gitStatus = projectGitStatus || sessionGitStatus;
     const { theme } = useUnistyles();
-    
+    const isWeb = Platform.OS === 'web';
+
+    const session = storage.getState().sessions[sessionId];
+    const commandCwd = session?.metadata?.path || '';
+
+    const [isOperating, setIsOperating] = React.useState(false);
+    const [menuVisible, setMenuVisible] = React.useState(false);
+    const [menuItems, setMenuItems] = React.useState<ActionMenuItem[]>([]);
+
     // Track whether initial data has been fully loaded (git status + file list if clean)
     const initialLoadDone = React.useRef(false);
 
@@ -60,6 +72,135 @@ export default function FilesScreen() {
             setIsLoading(false);
         }
     }, [sessionId, gitStatusFiles]);
+
+    // Stage a file
+    const handleStageFile = React.useCallback(async (file: GitFileStatus) => {
+        setIsOperating(true);
+        try {
+            await sessionBash(sessionId, {
+                command: `git add "${file.fullPath}"`,
+                cwd: commandCwd,
+                timeout: 10000,
+            });
+            await loadGitStatusFiles(true);
+        } catch {
+            Modal.alert(t('common.error'), t('status.operationFailed'));
+        } finally {
+            setIsOperating(false);
+        }
+    }, [sessionId, commandCwd, loadGitStatusFiles]);
+
+    // Unstage a file
+    const handleUnstageFile = React.useCallback(async (file: GitFileStatus) => {
+        setIsOperating(true);
+        try {
+            await sessionBash(sessionId, {
+                command: `git reset HEAD -- "${file.fullPath}"`,
+                cwd: commandCwd,
+                timeout: 10000,
+            });
+            await loadGitStatusFiles(true);
+        } catch {
+            Modal.alert(t('common.error'), t('status.operationFailed'));
+        } finally {
+            setIsOperating(false);
+        }
+    }, [sessionId, commandCwd, loadGitStatusFiles]);
+
+    // Stage all files
+    const handleStageAll = React.useCallback(async () => {
+        setIsOperating(true);
+        try {
+            await sessionBash(sessionId, {
+                command: 'git add -A',
+                cwd: commandCwd,
+                timeout: 10000,
+            });
+            await loadGitStatusFiles(true);
+        } catch {
+            Modal.alert(t('common.error'), t('status.operationFailed'));
+        } finally {
+            setIsOperating(false);
+        }
+    }, [sessionId, commandCwd, loadGitStatusFiles]);
+
+    // Unstage all files
+    const handleUnstageAll = React.useCallback(async () => {
+        setIsOperating(true);
+        try {
+            await sessionBash(sessionId, {
+                command: 'git reset HEAD',
+                cwd: commandCwd,
+                timeout: 10000,
+            });
+            await loadGitStatusFiles(true);
+        } catch {
+            Modal.alert(t('common.error'), t('status.operationFailed'));
+        } finally {
+            setIsOperating(false);
+        }
+    }, [sessionId, commandCwd, loadGitStatusFiles]);
+
+    // Discard changes for a file
+    const handleDiscardFile = React.useCallback(async (file: GitFileStatus) => {
+        const confirmed = await Modal.confirm(
+            t('status.discardTitle'),
+            t('status.discardMessage', { fileName: file.fileName }),
+            { destructive: true },
+        );
+        if (!confirmed) return;
+
+        setIsOperating(true);
+        try {
+            if (file.status === 'untracked') {
+                await sessionBash(sessionId, {
+                    command: `git clean -f -- "${file.fullPath}"`,
+                    cwd: commandCwd,
+                    timeout: 10000,
+                });
+            } else if (file.isStaged) {
+                await sessionBash(sessionId, {
+                    command: `git reset HEAD -- "${file.fullPath}" && git checkout -- "${file.fullPath}"`,
+                    cwd: commandCwd,
+                    timeout: 10000,
+                });
+            } else {
+                await sessionBash(sessionId, {
+                    command: `git checkout -- "${file.fullPath}"`,
+                    cwd: commandCwd,
+                    timeout: 10000,
+                });
+            }
+            await loadGitStatusFiles(true);
+        } catch {
+            Modal.alert(t('common.error'), t('status.operationFailed'));
+        } finally {
+            setIsOperating(false);
+        }
+    }, [sessionId, commandCwd, loadGitStatusFiles]);
+
+    // Long press menu
+    const handleLongPress = React.useCallback((file: GitFileStatus, staged: boolean) => {
+        const items: ActionMenuItem[] = [];
+        if (staged) {
+            items.push({
+                label: t('status.unstage'),
+                onPress: () => handleUnstageFile(file),
+            });
+        } else {
+            items.push({
+                label: t('status.stage'),
+                onPress: () => handleStageFile(file),
+            });
+        }
+        items.push({
+            label: t('status.discard'),
+            onPress: () => handleDiscardFile(file),
+            destructive: true,
+        });
+        setMenuItems(items);
+        setMenuVisible(true);
+    }, [handleStageFile, handleUnstageFile, handleDiscardFile]);
 
     // Load on mount
     React.useEffect(() => {
@@ -155,25 +296,38 @@ export default function FilesScreen() {
         return <Octicons name={statusIcon as any} size={16} color={statusColor} />;
     };
 
-    const renderRightElement = (file: GitFileStatus) => {
+    const renderRightElement = (file: GitFileStatus, staged: boolean) => {
         const hasAdded = file.linesAdded > 0;
         const hasRemoved = file.linesRemoved > 0;
         const hasChanges = hasAdded || hasRemoved;
 
+        const lineChangesEl = hasChanges ? (
+            <Text style={{ fontSize: 13, color: theme.colors.textSecondary, ...Typography.default() }}>
+                {hasAdded && <Text style={{ color: '#34C759' }}>+{file.linesAdded}</Text>}
+                {hasAdded && hasRemoved && ' '}
+                {hasRemoved && <Text style={{ color: '#FF3B30' }}>-{file.linesRemoved}</Text>}
+            </Text>
+        ) : null;
+
+        if (!isWeb) {
+            return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {lineChangesEl}
+                    {renderStatusIcon(file)}
+                </View>
+            );
+        }
         return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {hasChanges && (
-                    <Text style={{
-                        fontSize: 13,
-                        color: theme.colors.textSecondary,
-                        ...Typography.default()
-                    }}>
-                        {hasAdded && <Text style={{ color: '#34C759' }}>+{file.linesAdded}</Text>}
-                        {hasAdded && hasRemoved && ' '}
-                        {hasRemoved && <Text style={{ color: '#FF3B30' }}>-{file.linesRemoved}</Text>}
-                    </Text>
-                )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {lineChangesEl}
                 {renderStatusIcon(file)}
+                <Pressable
+                    onPress={() => handleLongPress(file, staged)}
+                    hitSlop={8}
+                    style={{ padding: 4 }}
+                >
+                    <Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.textSecondary} />
+                </Pressable>
             </View>
         );
     };
@@ -186,13 +340,13 @@ export default function FilesScreen() {
         if (file.fileType === 'folder') {
             return <Octicons name="file-directory" size={29} color="#007AFF" />;
         }
-        
+
         return <FileIcon fileName={file.fileName} size={29} />;
     };
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
-            
+
             {/* Search Input - Always Visible */}
             <View style={{
                 padding: 16,
@@ -223,7 +377,7 @@ export default function FilesScreen() {
                     />
                 </View>
             </View>
-            
+
             {/* Header with branch info */}
             {!isLoading && gitStatusFiles && (
                 <View style={{
@@ -259,18 +413,18 @@ export default function FilesScreen() {
             {/* Git Status List */}
             <ItemList style={{ flex: 1 }}>
                 {isLoading ? (
-                    <View style={{ 
-                        flex: 1, 
-                        justifyContent: 'center', 
+                    <View style={{
+                        flex: 1,
+                        justifyContent: 'center',
                         alignItems: 'center',
                         paddingTop: 40
                     }}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 ) : !gitStatusFiles ? (
-                    <View style={{ 
-                        flex: 1, 
-                        justifyContent: 'center', 
+                    <View style={{
+                        flex: 1,
+                        justifyContent: 'center',
                         alignItems: 'center',
                         paddingTop: 40,
                         paddingHorizontal: 20
@@ -317,9 +471,9 @@ export default function FilesScreen() {
                             </Text>
                         </View>
                     ) : !isSearching && searchResults.length === 0 ? (
-                        <View style={{ 
-                            flex: 1, 
-                            justifyContent: 'center', 
+                        <View style={{
+                            flex: 1,
+                            justifyContent: 'center',
                             alignItems: 'center',
                             paddingTop: 40,
                             paddingHorizontal: 20
@@ -384,13 +538,20 @@ export default function FilesScreen() {
                         {/* Staged Changes Section */}
                         {gitStatusFiles.stagedFiles.length > 0 && (
                             <>
-                                <View style={{
-                                    backgroundColor: theme.colors.surfaceHigh,
-                                    paddingHorizontal: 16,
-                                    paddingVertical: 12,
-                                    borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                                    borderBottomColor: theme.colors.divider
-                                }}>
+                                <Pressable
+                                    onPress={handleUnstageAll}
+                                    disabled={isOperating}
+                                    style={{
+                                        backgroundColor: theme.colors.surfaceHigh,
+                                        paddingHorizontal: 16,
+                                        paddingVertical: 12,
+                                        borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                                        borderBottomColor: theme.colors.divider,
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                    }}
+                                >
                                     <Text style={{
                                         fontSize: 14,
                                         fontWeight: '600',
@@ -399,15 +560,24 @@ export default function FilesScreen() {
                                     }}>
                                         {t('files.stagedChanges', { count: gitStatusFiles.stagedFiles.length })}
                                     </Text>
-                                </View>
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: theme.colors.header.tint,
+                                        ...Typography.default(),
+                                    }}>
+                                        {t('status.unstageAll')}
+                                    </Text>
+                                </Pressable>
                                 {gitStatusFiles.stagedFiles.map((file, index) => (
                                     <Item
                                         key={`staged-${file.fullPath}-${index}`}
                                         title={file.fileName}
                                         subtitle={renderFileSubtitle(file)}
                                         icon={renderFileIcon(file)}
-                                        rightElement={renderRightElement(file)}
+                                        rightElement={renderRightElement(file, true)}
                                         onPress={() => handleFilePress(file)}
+                                        onLongPress={() => handleLongPress(file, true)}
+                                        showChevron={true}
                                         showDivider={index < gitStatusFiles.stagedFiles.length - 1 || gitStatusFiles.unstagedFiles.length > 0}
                                     />
                                 ))}
@@ -417,13 +587,20 @@ export default function FilesScreen() {
                         {/* Unstaged Changes Section */}
                         {gitStatusFiles.unstagedFiles.length > 0 && (
                             <>
-                                <View style={{
-                                    backgroundColor: theme.colors.surfaceHigh,
-                                    paddingHorizontal: 16,
-                                    paddingVertical: 12,
-                                    borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                                    borderBottomColor: theme.colors.divider
-                                }}>
+                                <Pressable
+                                    onPress={handleStageAll}
+                                    disabled={isOperating}
+                                    style={{
+                                        backgroundColor: theme.colors.surfaceHigh,
+                                        paddingHorizontal: 16,
+                                        paddingVertical: 12,
+                                        borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                                        borderBottomColor: theme.colors.divider,
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                    }}
+                                >
                                     <Text style={{
                                         fontSize: 14,
                                         fontWeight: '600',
@@ -432,15 +609,24 @@ export default function FilesScreen() {
                                     }}>
                                         {t('files.unstagedChanges', { count: gitStatusFiles.unstagedFiles.length })}
                                     </Text>
-                                </View>
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: theme.colors.header.tint,
+                                        ...Typography.default(),
+                                    }}>
+                                        {t('status.stageAll')}
+                                    </Text>
+                                </Pressable>
                                 {gitStatusFiles.unstagedFiles.map((file, index) => (
                                     <Item
                                         key={`unstaged-${file.fullPath}-${index}`}
                                         title={file.fileName}
                                         subtitle={renderFileSubtitle(file)}
                                         icon={renderFileIcon(file)}
-                                        rightElement={renderRightElement(file)}
+                                        rightElement={renderRightElement(file, false)}
                                         onPress={() => handleFilePress(file)}
+                                        onLongPress={() => handleLongPress(file, false)}
+                                        showChevron={true}
                                         showDivider={index < gitStatusFiles.unstagedFiles.length - 1}
                                     />
                                 ))}
@@ -449,11 +635,12 @@ export default function FilesScreen() {
                     </>
                 )}
             </ItemList>
+            <ActionMenuModal visible={menuVisible} items={menuItems} onClose={() => setMenuVisible(false)} />
         </View>
     );
 }
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create((_theme) => ({
     container: {
         flex: 1,
         maxWidth: layout.maxWidth,
