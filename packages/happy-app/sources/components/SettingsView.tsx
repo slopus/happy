@@ -11,10 +11,10 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
-import { useEntitlement, useLocalSettingMutable, useSetting } from '@/sync/storage';
+import { useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
-import { trackPaywallButtonClicked, trackWhatsNewClicked } from '@/track';
+import { trackWhatsNewClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
 import { useAllMachines } from '@/sync/storage';
@@ -35,7 +35,6 @@ export const SettingsView = React.memo(function SettingsView() {
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const auth = useAuth();
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
-    const isPro = __DEV__ || useEntitlement('pro');
     const experiments = useSetting('experiments');
     const isCustomServer = isUsingCustomServer();
     const allMachines = useAllMachines();
@@ -59,16 +58,6 @@ export const SettingsView = React.memo(function SettingsView() {
         const supported = await Linking.canOpenURL(url);
         if (supported) {
             await Linking.openURL(url);
-        }
-    };
-
-    const handleSubscribe = async () => {
-        trackPaywallButtonClicked();
-        const result = await sync.presentPaywall();
-        if (!result.success) {
-            console.error('Failed to present paywall:', result.error);
-        } else if (result.purchased) {
-            console.log('Purchase successful!');
         }
     };
 
@@ -196,17 +185,6 @@ export const SettingsView = React.memo(function SettingsView() {
                     />
                 </ItemGroup>
             )}
-
-            {/* Support Us */}
-            <ItemGroup>
-                <Item
-                    title={t('settings.supportUs')}
-                    subtitle={isPro ? t('settings.supportUsSubtitlePro') : t('settings.supportUsSubtitle')}
-                    icon={<Ionicons name="heart" size={29} color="#FF3B30" />}
-                    showChevron={false}
-                    onPress={isPro ? undefined : handleSubscribe}
-                />
-            </ItemGroup>
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item

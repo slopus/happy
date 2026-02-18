@@ -322,12 +322,6 @@ export default function DevScreen() {
             {/* System */}
             <ItemGroup title="System">
                 <Item
-                    title="Purchases"
-                    subtitle="View subscriptions and entitlements"
-                    icon={<Ionicons name="card-outline" size={28} color="#007AFF" />}
-                    onPress={() => router.push('/dev/purchases')}
-                />
-                <Item
                     title="Expo Constants"
                     subtitle="View expoConfig, manifests, and system constants"
                     icon={<Ionicons name="information-circle-outline" size={28} color="#007AFF" />}

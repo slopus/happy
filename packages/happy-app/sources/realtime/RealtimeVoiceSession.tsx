@@ -25,8 +25,8 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
             
-            if (!config.token && !config.agentId) {
-                throw new Error('Neither token nor agentId provided');
+            if (!config.agentId) {
+                throw new Error('Agent ID not provided');
             }
             
             const sessionConfig: any = {
@@ -39,7 +39,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                         language: elevenLabsLanguage
                     }
                 },
-                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId })
+                agentId: config.agentId
             };
             
             await conversationInstance.startSession(sessionConfig);
