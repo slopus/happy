@@ -49,12 +49,21 @@ Start a Gemini CLI session with remote control capabilities.
 happy connect gemini
 ```
 
+### Kimi
+
+```bash
+happy kimi
+```
+
+Start a Kimi AI session with remote control capabilities.
+
 ## Commands
 
 ### Main Commands
 
 - `happy` – Start Claude Code session (default)
 - `happy gemini` – Start Gemini CLI session
+- `happy kimi` – Start Kimi AI session
 - `happy codex` – Start Codex mode
 - `happy acp` – Start a generic ACP-compatible agent
 
@@ -87,6 +96,12 @@ happy gemini project get          # Show current Google Cloud Project ID
 ```
 
 **Available models:** `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+
+### Kimi Subcommands
+
+```bash
+happy kimi                        # Start Kimi session
+```
 
 ### Generic ACP Commands
 
@@ -135,6 +150,10 @@ happy sandbox disable    # Disable sandboxing
 - `GEMINI_MODEL` - Override default Gemini model
 - `GOOGLE_CLOUD_PROJECT` - Google Cloud Project ID (required for Workspace accounts)
 
+### Kimi Configuration
+
+- `MOONSHOT_API_KEY` - Moonshot AI API key for Kimi CLI authentication
+
 ## Gemini Authentication
 
 ### Personal Google Account
@@ -181,6 +200,11 @@ Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for developme
 
 - Gemini CLI installed (`npm install -g @google/gemini-cli`)
 - Google account authenticated via `happy connect gemini`
+
+### For Kimi
+
+- Kimi CLI installed and available in PATH (`kimi` command)
+- Authenticated via `kimi login` or `MOONSHOT_API_KEY` environment variable
 
 ## License
 

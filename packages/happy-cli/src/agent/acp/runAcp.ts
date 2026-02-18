@@ -745,7 +745,7 @@ export async function runAcp(opts: {
         if (verbose) {
           logAcp('muted', `Outgoing modes from ${opts.agentName} (${modes.availableModes.length}), current=${modes.currentModeId}:`);
           for (const mode of modes.availableModes) {
-            logAcp('muted', `  mode=${mode.id} name=${mode.name}${formatOptionalDetail(mode.description, 160)}`);
+            logAcp('muted', `  mode=${mode.id} name=${mode.name}${formatOptionalDetail(mode.description ?? undefined, 160)}`);
           }
         }
         session.updateMetadata((currentMetadata) =>
