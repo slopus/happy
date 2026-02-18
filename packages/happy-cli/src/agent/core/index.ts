@@ -21,6 +21,8 @@ export type {
   AgentBackendConfig,
   AcpAgentConfig,
   McpServerConfig,
+  McpServerStdioConfig,
+  McpServerHttpConfig,
   AgentTransport,
   AgentId,
   StartSessionResult,

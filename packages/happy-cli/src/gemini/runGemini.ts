@@ -554,7 +554,7 @@ export async function runGemini(opts: {
   //
 
   const mcp = await createMcpContext(session);
-  const mcpServers = mcp.configForStdio();
+  const mcpServers = mcp.configForHttp();
 
   // Create permission handler for tool approval (variable declared earlier for onSessionSwap)
   permissionHandler = new GeminiPermissionHandler(session);

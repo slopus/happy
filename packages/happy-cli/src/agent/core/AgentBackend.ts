@@ -55,12 +55,22 @@ export type AgentMessage =
   | { type: 'patch-apply-begin'; call_id: string; auto_approved?: boolean; changes: Record<string, unknown> } // Patch operation begin (like Codex patch_apply_begin)
   | { type: 'patch-apply-end'; call_id: string; stdout?: string; stderr?: string; success: boolean } // Patch operation end (like Codex patch_apply_end)
 
-/** MCP server configuration for tools */
-export interface McpServerConfig {
+/** MCP server configuration for tools - STDIO transport */
+export interface McpServerStdioConfig {
   command: string;
   args?: string[];
   env?: Record<string, string>;
 }
+
+/** MCP server configuration for tools - HTTP transport */
+export interface McpServerHttpConfig {
+  type: 'http';
+  url: string;
+  headers?: Record<string, string>;
+}
+
+/** MCP server configuration for tools */
+export type McpServerConfig = McpServerStdioConfig | McpServerHttpConfig;
 
 /** Transport type for agent communication */
 export type AgentTransport = 'native-claude' | 'codex-appserver' | 'acp';

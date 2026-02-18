@@ -4,7 +4,7 @@
  * Each AI agent requires a different MCP config format:
  * - Claude: HTTP direct  → { type: 'http', url }
  * - Codex:  STDIO bridge → { command, args }
- * - Gemini: STDIO bridge → { command, args }
+ * - Gemini: HTTP direct  → { type: 'http', url }
  *
  * This module defines a canonical format and adapts it per-agent,
  * so adding a new MCP server only requires a change in one place.
@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import type { ApiSessionClient } from '@/api/apiSession';
-import type { McpServerConfig } from '@/agent/core/AgentBackend';
+import type { McpServerHttpConfig, McpServerStdioConfig } from '@/agent/core/AgentBackend';
 
 /** Canonical MCP server definition - the single source of truth */
 interface McpServerDefinition {
@@ -36,8 +36,10 @@ interface ClaudeMcpServerConfig {
 export interface McpContext {
     /** Get MCP config adapted for Claude (HTTP direct) */
     configForClaude(): Record<string, ClaudeMcpServerConfig>;
-    /** Get MCP config adapted for STDIO-based agents (Codex, Gemini, etc.) */
-    configForStdio(): Record<string, McpServerConfig>;
+    /** Get MCP config adapted for STDIO-based agents (Codex) */
+    configForStdio(): Record<string, McpServerStdioConfig>;
+    /** Get MCP config adapted for HTTP-capable ACP agents (Gemini) */
+    configForHttp(): Record<string, McpServerHttpConfig>;
     /** Get all allowed tool names prefixed as mcp__<server>__<tool> */
     allowedToolNames(): string[];
     /** Stop all MCP servers and release resources */
@@ -53,8 +55,13 @@ function adaptForClaude(def: McpServerDefinition): ClaudeMcpServerConfig {
 }
 
 /** Adapt a server for STDIO-based agents: use the HTTP→STDIO bridge */
-function adaptForStdio(def: McpServerDefinition): McpServerConfig {
+function adaptForStdio(def: McpServerDefinition): McpServerStdioConfig {
     return { command: getBridgeCommand(), args: ['--url', def.url] };
+}
+
+/** Adapt a server for HTTP-capable ACP agents: pass HTTP URL directly via ACP */
+function adaptForHttp(def: McpServerDefinition): McpServerHttpConfig {
+    return { type: 'http', url: def.url, headers: {} };
 }
 
 /**
@@ -65,8 +72,10 @@ function adaptForStdio(def: McpServerDefinition): McpServerConfig {
  * const mcp = await createMcpContext(session);
  * // For Claude:
  * mcpServers: mcp.configForClaude()
- * // For Codex/Gemini:
+ * // For Codex:
  * mcpServers: mcp.configForStdio()
+ * // For Gemini (HTTP direct via ACP):
+ * mcpServers: mcp.configForHttp()
  * // Cleanup:
  * mcp.stop()
  * ```
@@ -92,9 +101,17 @@ export async function createMcpContext(session: ApiSessionClient): Promise<McpCo
         },
 
         configForStdio() {
-            const result: Record<string, McpServerConfig> = {};
+            const result: Record<string, McpServerStdioConfig> = {};
             for (const [name, def] of Object.entries(servers)) {
                 result[name] = adaptForStdio(def);
+            }
+            return result;
+        },
+
+        configForHttp() {
+            const result: Record<string, McpServerHttpConfig> = {};
+            for (const [name, def] of Object.entries(servers)) {
+                result[name] = adaptForHttp(def);
             }
             return result;
         },

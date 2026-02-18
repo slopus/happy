@@ -46,6 +46,14 @@ const RETRY_CONFIG = {
   /** Maximum delay between retries in ms */
   maxDelayMs: 5000,
 } as const;
+
+/**
+ * Delay (ms) before sending the first prompt when MCP servers are configured.
+ * Gemini CLI's ACP mode does not fully block on MCP discovery before accepting
+ * prompts, so we need to give it time to connect and register tools.
+ */
+const MCP_DISCOVERY_DELAY_MS = 2000;
+
 import {
   type TransportHandler,
   type StderrContext,
@@ -695,14 +703,29 @@ export class AcpBackend implements AgentBackend {
 
       // Create a new session with retry
       const mcpServers = this.options.mcpServers
-        ? Object.entries(this.options.mcpServers).map(([name, config]) => ({
-            name,
-            command: config.command,
-            args: config.args || [],
-            env: config.env
-              ? Object.entries(config.env).map(([envName, envValue]) => ({ name: envName, value: envValue }))
-              : [],
-          }))
+        ? Object.entries(this.options.mcpServers).map(([name, config]) => {
+            if ('type' in config && config.type === 'http') {
+              // HTTP transport: pass URL directly to ACP agent
+              return {
+                name,
+                type: 'http' as const,
+                url: config.url,
+                headers: config.headers
+                  ? Object.entries(config.headers).map(([hName, value]) => ({ name: hName, value }))
+                  : [],
+              };
+            }
+            // STDIO transport: pass command/args/env
+            const stdioConfig = config as { command: string; args?: string[]; env?: Record<string, string> };
+            return {
+              name,
+              command: stdioConfig.command,
+              args: stdioConfig.args || [],
+              env: stdioConfig.env
+                ? Object.entries(stdioConfig.env).map(([envName, envValue]) => ({ name: envName, value: envValue }))
+                : [],
+            };
+          })
         : [];
 
       const newSessionRequest: NewSessionRequest = {
@@ -751,7 +774,20 @@ export class AcpBackend implements AgentBackend {
 
       // Send initial prompt if provided
       if (initialPrompt) {
-        this.sendPrompt(sessionId, initialPrompt).catch((error) => {
+        // Gemini CLI's ACP mode does not fully block on MCP discovery before
+        // accepting prompts. Add a brief delay so tools are registered in time.
+        const hasHttpMcp = this.options.mcpServers &&
+          Object.values(this.options.mcpServers).some(c => 'type' in c && c.type === 'http');
+        const mcpDelay = hasHttpMcp ? MCP_DISCOVERY_DELAY_MS : 0;
+
+        const sendInitialPrompt = async () => {
+          if (mcpDelay > 0) {
+            logger.debug(`[AcpBackend] Waiting ${mcpDelay}ms for MCP discovery before first prompt`);
+            await new Promise(r => setTimeout(r, mcpDelay));
+          }
+          await this.sendPrompt(sessionId, initialPrompt);
+        };
+        sendInitialPrompt().catch((error) => {
           // Log to file only, not console
           logger.debug('[AcpBackend] Error sending initial prompt:', error);
           this.emit({ type: 'status', status: 'error', detail: String(error) });
