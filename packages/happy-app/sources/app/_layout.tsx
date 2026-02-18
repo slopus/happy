@@ -182,7 +182,6 @@ export default function RootLayout() {
                 await loadFonts();
                 await sodium.ready;
                 const credentials = await TokenStorage.getCredentials();
-                console.log('credentials', credentials);
                 if (credentials) {
                     await syncRestore(credentials);
                 }
