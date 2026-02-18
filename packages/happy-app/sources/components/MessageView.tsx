@@ -11,7 +11,6 @@ import { layout } from "./layout";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { Option } from './markdown/MarkdownView';
-import { useSetting } from "@/sync/storage";
 import { Modal } from "@/modal";
 import { sync } from "@/sync/sync";
 
@@ -161,7 +160,6 @@ function AgentTextBlock(props: {
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
 }) {
-  const experiments = useSetting('experiments');
   const [optionsLoadingState, setOptionsLoadingState] = React.useState<OptionsLoadingState>({ loadingIndex: null });
 
   // Click to send
@@ -190,11 +188,6 @@ function AgentTextBlock(props: {
   const handleOptionLongPress = React.useCallback((option: Option, allOptions: string[]) => {
     props.onFillInput?.(option.title, allOptions);
   }, [props.onFillInput]);
-
-  // Hide thinking messages unless experiments is enabled
-  if (props.message.isThinking && !experiments) {
-    return null;
-  }
 
   return (
     <View style={styles.agentMessageContainer}>
