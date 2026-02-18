@@ -434,6 +434,97 @@ export type NormalizedMessage = ({
     contextWindowSize?: number,
 };
 
+type PlanStepStatus = 'pending' | 'in_progress' | 'completed';
+
+function normalizePlanUpdateMessage(
+    messageId: string,
+    text: string,
+    parentUUID: string | null
+): NormalizedAgentContent[] | null {
+    const match = text.match(/^\[Plan Update\]\s*([\s\S]+)$/);
+    if (!match) {
+        return null;
+    }
+
+    const rawPayload = match[1]?.trim();
+    if (!rawPayload) {
+        return null;
+    }
+
+    let payload: unknown;
+    try {
+        payload = JSON.parse(rawPayload);
+    } catch {
+        return null;
+    }
+
+    if (!payload || typeof payload !== 'object') {
+        return null;
+    }
+
+    const plan = Array.isArray((payload as any).plan) ? (payload as any).plan : null;
+    if (!plan || plan.length === 0) {
+        return null;
+    }
+
+    const todos = plan
+        .map((item: any, index: number): { id: string; content: string; status: PlanStepStatus } | null => {
+            if (!item || typeof item !== 'object') {
+                return null;
+            }
+            const step = typeof item.step === 'string' ? item.step.trim() : '';
+            const status = item.status;
+            if (!step) {
+                return null;
+            }
+            if (status !== 'pending' && status !== 'in_progress' && status !== 'completed') {
+                return null;
+            }
+            return {
+                id: `plan_step_${index + 1}`,
+                content: step,
+                status: status as PlanStepStatus,
+            };
+        })
+        .filter((todo: { id: string; content: string; status: PlanStepStatus } | null): todo is { id: string; content: string; status: PlanStepStatus } => Boolean(todo));
+
+    if (todos.length === 0) {
+        return null;
+    }
+
+    const explanationRaw = (payload as any).explanation;
+    const explanation = typeof explanationRaw === 'string' && explanationRaw.trim().length > 0
+        ? explanationRaw.trim()
+        : null;
+    const toolCallId = `plan_update_${messageId}`;
+
+    return [
+        {
+            type: 'tool-call',
+            id: toolCallId,
+            name: 'TodoWrite',
+            input: {
+                todos,
+                ...(explanation ? { explanation } : {})
+            },
+            description: explanation,
+            uuid: `${messageId}:plan_call`,
+            parentUUID,
+        },
+        {
+            type: 'tool-result',
+            tool_use_id: toolCallId,
+            content: {
+                oldTodos: [],
+                newTodos: todos,
+            },
+            is_error: false,
+            uuid: `${messageId}:plan_result`,
+            parentUUID,
+        }
+    ];
+}
+
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
     // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
@@ -628,6 +719,18 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
         }
         if (raw.content.type === 'codex') {
             if (raw.content.data.type === 'message') {
+                const planUpdateContent = normalizePlanUpdateMessage(id, raw.content.data.message, null);
+                if (planUpdateContent) {
+                    return {
+                        id,
+                        localId,
+                        createdAt,
+                        role: 'agent',
+                        isSidechain: false,
+                        content: planUpdateContent,
+                        meta: raw.meta
+                    } satisfies NormalizedMessage;
+                }
                 // Cast codex messages to agent text messages
                 return {
                     id,
@@ -704,6 +807,18 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
         // ACP (Agent Communication Protocol) - unified format for all agent providers
         if (raw.content.type === 'acp') {
             if (raw.content.data.type === 'message') {
+                const planUpdateContent = normalizePlanUpdateMessage(id, raw.content.data.message, null);
+                if (planUpdateContent) {
+                    return {
+                        id,
+                        localId,
+                        createdAt,
+                        role: 'agent',
+                        isSidechain: false,
+                        content: planUpdateContent,
+                        meta: raw.meta
+                    } satisfies NormalizedMessage;
+                }
                 return {
                     id,
                     localId,

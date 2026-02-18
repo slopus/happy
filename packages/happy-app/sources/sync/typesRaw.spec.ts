@@ -472,6 +472,91 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
         });
     });
 
+    describe('Plan Update compatibility', () => {
+        it('maps codex [Plan Update] message to TodoWrite tool call/result', () => {
+            const planPayload = {
+                explanation: 'Update the plan after reading files',
+                plan: [
+                    { step: 'Inspect files', status: 'completed' },
+                    { step: 'Apply patch', status: 'in_progress' },
+                    { step: 'Run tests', status: 'pending' }
+                ]
+            };
+            const raw = {
+                role: 'agent',
+                content: {
+                    type: 'codex',
+                    data: {
+                        type: 'message',
+                        message: `[Plan Update] ${JSON.stringify(planPayload)}`
+                    }
+                }
+            } as const;
+
+            const normalized = normalizeRawMessage('msg-plan-codex', null, 123, raw as any);
+
+            expect(normalized).not.toBeNull();
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content).toHaveLength(2);
+                const call = normalized.content[0];
+                const result = normalized.content[1];
+
+                expect(call.type).toBe('tool-call');
+                if (call.type === 'tool-call') {
+                    expect(call.name).toBe('TodoWrite');
+                    expect(call.description).toBe('Update the plan after reading files');
+                    expect(call.input.todos).toHaveLength(3);
+                    expect(call.input.todos[0]).toMatchObject({
+                        content: 'Inspect files',
+                        status: 'completed'
+                    });
+                }
+
+                expect(result.type).toBe('tool-result');
+                if (result.type === 'tool-result') {
+                    expect(result.tool_use_id).toBe('plan_update_msg-plan-codex');
+                    expect(result.is_error).toBe(false);
+                    expect(result.content).toMatchObject({
+                        oldTodos: [],
+                    });
+                    expect(result.content.newTodos).toHaveLength(3);
+                }
+            }
+        });
+
+        it('maps acp [Plan Update] message to TodoWrite tool call/result', () => {
+            const planPayload = {
+                explanation: null,
+                plan: [
+                    { step: 'Step A', status: 'completed' },
+                    { step: 'Step B', status: 'pending' }
+                ]
+            };
+            const raw = {
+                role: 'agent',
+                content: {
+                    type: 'acp',
+                    provider: 'codex',
+                    data: {
+                        type: 'message',
+                        message: `[Plan Update]${JSON.stringify(planPayload)}`
+                    }
+                }
+            } as const;
+
+            const normalized = normalizeRawMessage('msg-plan-acp', null, 456, raw as any);
+
+            expect(normalized).not.toBeNull();
+            expect(normalized?.role).toBe('agent');
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content).toHaveLength(2);
+                expect(normalized.content[0].type).toBe('tool-call');
+                expect(normalized.content[1].type).toBe('tool-result');
+            }
+        });
+    });
+
     describe('Handles unexpected data formats gracefully', () => {
         it('handles tool-call with both callId and id fields (prefers callId)', () => {
             const message = {
