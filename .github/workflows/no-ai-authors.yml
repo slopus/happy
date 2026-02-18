@@ -1,0 +1,40 @@
+name: Block AI Author Attribution
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+jobs:
+  check-authors:
+    name: Verify no AI commit authors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for AI-attributed commits
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            RANGE="$BASE..$HEAD"
+          else
+            if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+              RANGE="${{ github.sha }}"
+            else
+              RANGE="${{ github.event.before }}..${{ github.sha }}"
+            fi
+          fi
+          echo "Checking commits in range: $RANGE"
+          AI_PATTERN="claude|copilot|gpt|openai|anthropic|github-actions\[bot\]|ai-agent|crusty-bot|openclaw"
+          VIOLATIONS=$(git log "$RANGE" --format="%H %an <%ae>" 2>/dev/null | grep -iE "($AI_PATTERN)" || true)
+          COAUTHOR_VIOLATIONS=$(git log "$RANGE" --format="%B" 2>/dev/null | grep -iE "Co-authored-by:.*($AI_PATTERN)" || true)
+          if [ -n "$VIOLATIONS" ] || [ -n "$COAUTHOR_VIOLATIONS" ]; then
+            echo "❌ AI-attributed commits detected!"
+            [ -n "$VIOLATIONS" ] && echo "Author violations:" && echo "$VIOLATIONS"
+            [ -n "$COAUTHOR_VIOLATIONS" ] && echo "Co-author violations:" && echo "$COAUTHOR_VIOLATIONS"
+            echo ""
+            echo "Fix with: git commit --amend --author='Your Name <you@example.com>'"
+            exit 1
+          fi
+          echo "✅ All commits have human authors"
