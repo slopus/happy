@@ -1482,6 +1482,42 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('accepts output rate_limit_event and skips normalization gracefully', () => {
+            const rateLimitEventMessage = {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'rate_limit_event',
+                        parentUuid: '408621c6-32cc-4f75-8bb1-38f25de1f955',
+                        isSidechain: false,
+                        userType: 'external',
+                        cwd: '/home/coder/workspaces/happy',
+                        sessionId: '5ba215c9-6fdc-494c-9e31-434261a448d7',
+                        version: '0.0.0',
+                        gitBranch: 'dev',
+                        uuid: 'a7b9d2a1-2d49-4622-b584-f76ddc9c16bd',
+                        timestamp: '2026-02-18T13:06:25.073Z',
+                        rate_limit_info: {
+                            status: 'allowed',
+                            resetsAt: 1771434000,
+                            rateLimitType: 'five_hour',
+                            overageStatus: 'rejected',
+                            overageDisabledReason: 'org_level_disabled',
+                            isUsingOverage: false
+                        },
+                        session_id: '5ba215c9-6fdc-494c-9e31-434261a448d7'
+                    }
+                }
+            };
+
+            const result = RawRecordSchema.safeParse(rateLimitEventMessage);
+            expect(result.success).toBe(true);
+
+            const normalized = normalizeRawMessage('msg-rate-limit', null, Date.now(), rateLimitEventMessage as any);
+            expect(normalized).toBeNull();
+        });
+
         it('END-TO-END: preserves unknown fields through normalizeRawMessage()', () => {
             const messageWithUnknownFields = {
                 role: 'agent' as const,

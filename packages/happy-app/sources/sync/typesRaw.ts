@@ -200,6 +200,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
         z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string().optional(), content: z.array(rawAgentContentSchema).optional(), usage: usageDataSchema.optional() }).passthrough(), parent_tool_use_id: z.string().nullable().optional() }),
         z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.union([z.string(), z.array(rawAgentContentSchema)]) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
         z.object({ type: z.literal('progress') }).passthrough(),  // Progress events (hook_progress, mcp_progress, etc.)
+        z.object({ type: z.literal('rate_limit_event') }).passthrough(),  // CLI status event (non-renderable)
     ]), z.object({
         isSidechain: z.boolean().nullish(),
         isCompactSummary: z.boolean().nullish(),
