@@ -104,6 +104,8 @@ export const MermaidRenderer = React.memo((props: {
     }
 
     // For iOS/Android, use WebView
+    // Pass mermaid content via JSON to prevent XSS from HTML interpolation
+    const mermaidContent = JSON.stringify(props.content);
     const html = `
         <!DOCTYPE html>
         <html>
@@ -123,25 +125,38 @@ export const MermaidRenderer = React.memo((props: {
                     align-items: center;
                     width: 100%;
                 }
-                .mermaid {
-                    text-align: center;
-                    width: 100%;
-                }
-                .mermaid svg {
+                #mermaid-container svg {
                     max-width: 100%;
                     height: auto;
+                }
+                .error {
+                    color: #ff6b6b;
+                    font-family: monospace;
+                    white-space: pre-wrap;
                 }
             </style>
         </head>
         <body>
-            <div id="mermaid-container" class="mermaid">
-                ${props.content}
-            </div>
+            <div id="mermaid-container"></div>
             <script>
-                mermaid.initialize({
-                    startOnLoad: true,
-                    theme: 'dark'
-                });
+                (async function() {
+                    const content = ${mermaidContent};
+                    const container = document.getElementById('mermaid-container');
+                    
+                    try {
+                        mermaid.initialize({
+                            startOnLoad: false,
+                            theme: 'dark'
+                        });
+                        
+                        const { svg } = await mermaid.render('mermaid-diagram', content);
+                        container.innerHTML = svg;
+                    } catch (error) {
+                        container.innerHTML = '<div class="error">Diagram error: ' + 
+                            (error.message || String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
+                            '</div>';
+                    }
+                })();
             </script>
         </body>
         </html>
