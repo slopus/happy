@@ -219,15 +219,41 @@ export async function claudeLocal(opts: {
                 args.push('--allowedTools', opts.allowedTools.join(','));
             }
 
-            // Add custom Claude arguments
+            // Separate flag arguments from positional arguments in claudeArgs
+            // Positional prompts must come after all flags (including --settings)
+            // to be correctly interpreted by Claude CLI
+            const flagArgs: string[] = [];
+            const positionalArgs: string[] = [];
             if (opts.claudeArgs) {
-                args.push(...opts.claudeArgs)
+                for (let i = 0; i < opts.claudeArgs.length; i++) {
+                    const arg = opts.claudeArgs[i];
+                    if (arg.startsWith('-')) {
+                        flagArgs.push(arg);
+                        // Check if this flag has a value (next arg doesn't start with -)
+                        if (i + 1 < opts.claudeArgs.length && !opts.claudeArgs[i + 1].startsWith('-')) {
+                            flagArgs.push(opts.claudeArgs[++i]);
+                        }
+                    } else {
+                        // Positional argument (likely a prompt)
+                        positionalArgs.push(arg);
+                    }
+                }
+            }
+
+            // Add flag arguments first
+            if (flagArgs.length > 0) {
+                args.push(...flagArgs);
             }
 
             // Add hook settings for session tracking (when available)
             if (opts.hookSettingsPath) {
                 args.push('--settings', opts.hookSettingsPath);
                 logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
+            }
+
+            // Add positional arguments (prompts) at the very end
+            if (positionalArgs.length > 0) {
+                args.push(...positionalArgs);
             }
 
             if (!claudeCliPath || !existsSync(claudeCliPath)) {
