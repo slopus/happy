@@ -8,6 +8,7 @@ import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from '
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
+import { delay } from '@/utils/time';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
@@ -240,7 +241,12 @@ class Sync {
     private getMessagesSync(sessionId: string): InvalidateSync {
         let sync = this.messagesSync.get(sessionId);
         if (!sync) {
-            sync = new InvalidateSync(() => this.fetchMessages(sessionId));
+            sync = new InvalidateSync(() => this.fetchMessages(sessionId), {
+                maxRetries: 30,
+                onError: (error) => {
+                    console.error(`[Sync] Message sync for session ${sessionId} gave up:`, error);
+                },
+            });
             this.messagesSync.set(sessionId, sync);
         }
         return sync;
@@ -1602,6 +1608,9 @@ class Sync {
             let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
             let hasMore = true;
             let totalNormalized = 0;
+            let totalFetched = 0;
+            let totalDecryptFailed = 0;
+            let totalNormalizeFailed = 0;
 
             while (hasMore) {
                 const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
@@ -1610,6 +1619,7 @@ class Sync {
                 }
                 const data = await response.json() as V3GetSessionMessagesResponse;
                 const messages = Array.isArray(data.messages) ? data.messages : [];
+                totalFetched += messages.length;
 
                 let maxSeq = afterSeq;
                 for (const message of messages) {
@@ -1622,12 +1632,15 @@ class Sync {
                 const normalizedMessages: NormalizedMessage[] = [];
                 for (let i = 0; i < decryptedMessages.length; i++) {
                     const decrypted = decryptedMessages[i];
-                    if (!decrypted) {
+                    if (!decrypted || !decrypted.content) {
+                        totalDecryptFailed++;
                         continue;
                     }
                     const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                     if (normalized) {
                         normalizedMessages.push(normalized);
+                    } else {
+                        totalNormalizeFailed++;
                     }
                 }
 
@@ -1646,7 +1659,11 @@ class Sync {
             }
 
             storage.getState().applyMessagesLoaded(sessionId);
-            log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`);
+
+            if (totalFetched > 0 && totalNormalized === 0) {
+                console.warn(`[Sync] All ${totalFetched} fetched messages for session ${sessionId} were dropped (decryptFailed=${totalDecryptFailed}, normalizeFailed=${totalNormalizeFailed}). Session may appear empty despite having messages.`);
+            }
+            log.log(`💬 fetchMessages completed for session ${sessionId} - fetched=${totalFetched}, normalized=${totalNormalized}, decryptFailed=${totalDecryptFailed}, normalizeFailed=${totalNormalizeFailed}, lastSeq=${afterSeq}`);
         });
     }
 
@@ -1720,24 +1737,33 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
-        console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
-            console.log('❌ Sync: Invalid update received:', validatedUpdate.error);
-            console.error('❌ Sync: Invalid update data:', update);
+            console.warn(`[Sync] Invalid update dropped:`, validatedUpdate.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', '));
             return;
         }
         const updateData = validatedUpdate.data;
-        console.log(`🔄 Sync: Validated update type: ${updateData.body.t}`);
 
         if (updateData.body.t === 'new-message') {
 
-            // Get encryption
-            const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
-            if (!encryption) { // Should never happen
-                console.error(`Session ${updateData.body.sid} not found`);
-                this.fetchSessions(); // Just fetch sessions again
-                return;
+            // Get encryption - if not ready, refresh sessions then fall through to fetchMessages
+            let encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+            if (!encryption) {
+                console.error(`[Sync] Session encryption missing for ${updateData.body.sid}, refreshing sessions`);
+                try {
+                    await Promise.race([
+                        this.sessionsSync.invalidateAndAwait(),
+                        delay(10000).then(() => { throw new Error('Session refresh timed out'); }),
+                    ]);
+                } catch (e) {
+                    console.error(`[Sync] Failed to refresh sessions:`, e);
+                }
+                encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+                if (!encryption) {
+                    console.error(`[Sync] Session encryption still missing for ${updateData.body.sid} after refresh, triggering fetchMessages`);
+                    this.getMessagesSync(updateData.body.sid).invalidate();
+                    return;
+                }
             }
 
             // Decrypt message
@@ -1801,7 +1827,6 @@ class Sync {
                     const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
                     const incomingSeq = updateData.body.message.seq;
                     if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-                        console.log('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
                         this.enqueueMessages(updateData.body.sid, [lastMessage]);
                         this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
                         let hasMutableTool = false;
