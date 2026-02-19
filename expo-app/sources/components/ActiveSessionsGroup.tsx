@@ -184,6 +184,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'center',
         backgroundColor: theme.colors.status.error,
     },
+    swipeActionPin: {
+        width: 112,
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.status.connected,
+    },
     swipeActionText: {
         marginTop: 4,
         fontSize: 12,
@@ -367,6 +374,11 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         );
     }, [performArchive]);
 
+    const handleTogglePin = React.useCallback(() => {
+        swipeableRef.current?.close();
+        storage.getState().pinSession(session.id);
+    }, [session.id]);
+
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
@@ -482,11 +494,25 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         </Pressable>
     );
 
+    const renderLeftActions = () => (
+        <Pressable
+            style={styles.swipeActionPin}
+            onPress={handleTogglePin}
+        >
+            <Ionicons name="pin" size={20} color="#FFFFFF" />
+            <Text style={styles.swipeActionText} numberOfLines={1}>
+                {t('common.pin')}
+            </Text>
+        </Pressable>
+    );
+
     return (
         <Swipeable
             ref={swipeableRef}
             renderRightActions={renderRightActions}
+            renderLeftActions={renderLeftActions}
             overshootRight={false}
+            overshootLeft={false}
             enabled={!archivingSession}
         >
             {itemContent}

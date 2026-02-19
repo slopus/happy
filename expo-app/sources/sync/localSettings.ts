@@ -13,6 +13,8 @@ export const LocalSettingsSchema = z.object({
     markdownCopyV2: z.boolean().describe('Replace native paragraph selection with long-press modal for full markdown copy'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
+    // Pinned sessions - array of session IDs that should appear at the top
+    pinnedSessions: z.array(z.string()).describe('Session IDs that are pinned to the top of the list'),
 });
 
 //
@@ -35,6 +37,7 @@ export const localSettingsDefaults: LocalSettings = {
     themePreference: 'adaptive',
     markdownCopyV2: false,
     acknowledgedCliVersions: {},
+    pinnedSessions: [],
 };
 Object.freeze(localSettingsDefaults);
 

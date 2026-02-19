@@ -57,6 +57,8 @@ export const en = {
         files: 'Files',
         fileViewer: 'File Viewer',
         loading: 'Loading...',
+        pin: 'Pin',
+        unpin: 'Unpin',
         retry: 'Retry',
         delete: 'Delete',
         optional: 'optional',

@@ -59,6 +59,8 @@ export const zhHans: TranslationStructure = {
         files: '文件',
         fileViewer: '文件查看器',
         loading: '加载中...',
+        pin: '置顶',
+        unpin: '取消置顶',
         retry: '重试',
         delete: '删除',
         optional: '可选的',
