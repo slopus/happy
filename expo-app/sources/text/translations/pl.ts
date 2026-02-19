@@ -221,6 +221,7 @@ export const pl: TranslationStructure = {
         enhancedSessionWizardDisabled: 'Używanie standardowego launchera sesji',
     },
 
+
     errors: {
         networkError: 'Wystąpił błąd sieci',
         serverError: 'Wystąpił błąd serwera',

@@ -210,6 +210,7 @@ export const pt: TranslationStructure = {
         enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
     },
 
+
     errors: {
         networkError: 'Ocorreu um erro de rede',
         serverError: 'Ocorreu um erro do servidor',

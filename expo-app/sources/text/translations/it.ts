@@ -239,6 +239,7 @@ export const it: TranslationStructure = {
         enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
     },
 
+
     errors: {
         networkError: 'Si è verificato un errore di rete',
         serverError: 'Si è verificato un errore del server',

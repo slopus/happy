@@ -1,3 +1,4 @@
+const path = require("path");
 const { getDefaultConfig } = require("expo/metro-config");
 
 const config = getDefaultConfig(__dirname, {
@@ -19,5 +20,12 @@ config.transformer.getTransformOptions = async () => ({
     inlineRequires: true, // Critical for @shopify/react-native-skia
   },
 });
+
+// Force Metro to resolve from known node_modules only (prevents duplicate React Native copies).
+config.resolver.disableHierarchicalLookup = true;
+config.resolver.nodeModulesPaths = [
+  path.join(__dirname, "node_modules"),
+  path.join(__dirname, "..", "node_modules"),
+];
 
 module.exports = config;

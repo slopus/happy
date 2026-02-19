@@ -211,6 +211,7 @@ export const en = {
         enhancedSessionWizardDisabled: 'Using standard session launcher',
     },
 
+
     errors: {
         networkError: 'Network error occurred',
         serverError: 'Server error occurred',

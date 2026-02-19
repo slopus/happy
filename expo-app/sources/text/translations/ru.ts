@@ -192,6 +192,7 @@ export const ru: TranslationStructure = {
         enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
     },
 
+
     errors: {
         networkError: 'Произошла ошибка сети',
         serverError: 'Произошла ошибка сервера',

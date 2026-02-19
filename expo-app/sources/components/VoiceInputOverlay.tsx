@@ -179,55 +179,11 @@ const VoiceWaveform: React.FC<{
             return;
         }
         lastLogRef.current = now;
-        console.log('[voice-input][ui] waveform layout', {
-            label,
-            x: Math.round(layout.x),
-            y: Math.round(layout.y),
-            width: Math.round(layout.width),
-            height: Math.round(layout.height),
-            baseScale,
-            barHeight,
-            isActive,
-            audioLevel: Number(audioLevel.toFixed(4)),
-        });
+        // Debug logging disabled
     }, [audioLevel, barHeight, baseScale, isActive]);
 
     const logWaveformMetrics = React.useCallback((label: string) => {
-        const now = Date.now();
-        if (now - lastMetricsLogRef.current < 800) {
-            return;
-        }
-        const containerLayout = containerLayoutRef.current;
-        const barLayout = barLayoutRef.current;
-        if (!containerLayout || !barLayout) {
-            return;
-        }
-        lastMetricsLogRef.current = now;
-        const activity = activityValueRef.current;
-        const minActivity = minActivityRef.current;
-        const silenceMs = silenceMsRef.current;
-        const scale = baseScale + activity * (bar0ScaleRef.current - baseScale);
-        const visualTop = barLayout.y + barLayout.height / 2 - (barLayout.height * scale) / 2;
-        const visualBottom = visualTop + barLayout.height * scale;
-        console.log('[voice-input][ui] waveform pixels', {
-            label,
-            containerX: Math.round(containerLayout.x),
-            containerY: Math.round(containerLayout.y),
-            containerWidth: Math.round(containerLayout.width),
-            containerHeight: Math.round(containerLayout.height),
-            barX: Math.round(barLayout.x),
-            barY: Math.round(barLayout.y),
-            barWidth: Math.round(barLayout.width),
-            barHeight: Math.round(barLayout.height),
-            scale: Number(scale.toFixed(3)),
-            activity: Number(activity.toFixed(3)),
-            minActivity: Number(minActivity.toFixed(3)),
-            silenceMs: Math.round(silenceMs),
-            visualTop: Math.round(visualTop),
-            visualBottom: Math.round(visualBottom),
-            isActive,
-            audioLevel: Number(audioLevel.toFixed(4)),
-        });
+        // Debug logging disabled
     }, [audioLevel, isActive, baseScale]);
 
     useEffect(() => {

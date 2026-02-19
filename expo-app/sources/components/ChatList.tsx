@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useSession, useSessionMessages } from "@/sync/storage";
-import { FlatList, Platform, View } from 'react-native';
+import { FlatList, Platform, Text, View } from 'react-native';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,60 @@ import { Message } from '@/sync/typesMessage';
 import { FastScrollbar, useFastScrollbar } from './FastScrollbar';
 import { useCollapseListener } from '@/hooks/useCollapsedTools';
 import Animated from 'react-native-reanimated';
+import { StyleSheet } from 'react-native-unistyles';
+import { t } from '@/text';
+
+type DateSeparatorItem = {
+    kind: 'date-separator';
+    id: string;
+    timestamp: number;
+};
+
+type ChatListItem = Message | DateSeparatorItem;
+
+const MS_PER_DAY = 86400000;
+const MS_PER_MINUTE = 60000;
+const MIN_SEPARATOR_GAP_MS = 5 * MS_PER_MINUTE;
+
+const dayStamp = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+
+const isSameDay = (a: number, b: number) => {
+    const dateA = new Date(a);
+    const dateB = new Date(b);
+    return dateA.getFullYear() === dateB.getFullYear()
+        && dateA.getMonth() === dateB.getMonth()
+        && dateA.getDate() === dateB.getDate();
+};
+
+const formatSeparatorLabel = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const timeLabel = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const diffDays = Math.floor((dayStamp(now) - dayStamp(date)) / MS_PER_DAY);
+
+    if (diffDays <= 0) {
+        return timeLabel;
+    }
+
+    if (diffDays === 1) {
+        return `${t('sessionHistory.yesterday')} ${timeLabel}`;
+    }
+
+    if (diffDays < 7) {
+        const weekday = date.toLocaleDateString(undefined, { weekday: 'short' });
+        return `${weekday} ${timeLabel}`;
+    }
+
+    const includeYear = date.getFullYear() !== now.getFullYear();
+    const dateLabel = date.toLocaleDateString(undefined, {
+        month: 'long',
+        day: 'numeric',
+        ...(includeYear ? { year: 'numeric' } : {})
+    });
+    return `${dateLabel} ${timeLabel}`;
+};
+
+const isDateSeparator = (item: ChatListItem): item is DateSeparatorItem => item.kind === 'date-separator';
 
 export const ChatList = React.memo((props: { session: Session }) => {
     const { messages } = useSessionMessages(props.session.id);
@@ -74,10 +128,40 @@ const ChatListInternal = React.memo((props: {
 
     useCollapseListener(handleCollapseEvent);
 
-    const keyExtractor = useCallback((item: any) => item.id, []);
-    const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
-    ), [props.metadata, props.sessionId]);
+    const listItems = React.useMemo(() => {
+        if (!props.messages.length) {
+            return props.messages as ChatListItem[];
+        }
+
+        const items: ChatListItem[] = [];
+        for (let i = 0; i < props.messages.length; i++) {
+            const message = props.messages[i];
+            const next = props.messages[i + 1];
+            items.push(message);
+
+            const shouldInsertSeparator = !next
+                || !isSameDay(message.createdAt, next.createdAt)
+                || (message.createdAt - next.createdAt > MIN_SEPARATOR_GAP_MS);
+
+            if (shouldInsertSeparator) {
+                items.push({
+                    kind: 'date-separator',
+                    id: `date-${message.id}`,
+                    timestamp: message.createdAt
+                });
+            }
+        }
+
+        return items;
+    }, [props.messages]);
+
+    const keyExtractor = useCallback((item: ChatListItem) => item.id, []);
+    const renderItem = useCallback(({ item }: { item: ChatListItem }) => {
+        if (isDateSeparator(item)) {
+            return <DateSeparator timestamp={item.timestamp} />;
+        }
+        return <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />;
+    }, [props.metadata, props.sessionId]);
 
     const handleContentSizeChange = useCallback((width: number, height: number) => {
         // If we have stored scroll state from before collapse, adjust scroll position
@@ -110,7 +194,7 @@ const ChatListInternal = React.memo((props: {
         <View style={{ flex: 1 }}>
             <Animated.FlatList
                 ref={flatListRef as any}
-                data={props.messages}
+                data={listItems}
                 inverted={true}
                 keyExtractor={keyExtractor}
                 maintainVisibleContentPosition={{
@@ -138,3 +222,30 @@ const ChatListInternal = React.memo((props: {
         </View>
     )
 });
+
+const DateSeparator = React.memo((props: { timestamp: number }) => {
+    return (
+        <View style={styles.dateSeparatorContainer}>
+            <View style={styles.dateSeparatorPill}>
+                <Text style={styles.dateSeparatorText}>{formatSeparatorLabel(props.timestamp)}</Text>
+            </View>
+        </View>
+    );
+});
+
+const styles = StyleSheet.create((theme) => ({
+    dateSeparatorContainer: {
+        alignItems: 'center',
+        paddingVertical: 6,
+    },
+    dateSeparatorPill: {
+        backgroundColor: theme.colors.surfaceHigh,
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 10,
+    },
+    dateSeparatorText: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+    },
+}));

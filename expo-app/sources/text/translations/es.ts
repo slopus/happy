@@ -210,6 +210,7 @@ export const es: TranslationStructure = {
         enhancedSessionWizardDisabled: 'Usando el lanzador de sesión estándar',
     },
 
+
     errors: {
         networkError: 'Error de conexión',
         serverError: 'Error del servidor',
