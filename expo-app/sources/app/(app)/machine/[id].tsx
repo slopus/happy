@@ -246,8 +246,9 @@ export default function MachineDetailScreen() {
     };
 
     const pastUsedRelativePath = useCallback((session: Session) => {
-        if (!session.metadata) return 'unknown path';
-        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+        const path = session.metadata?.path;
+        if (!path) return t('status.unknown');
+        return formatPathRelativeToHome(path, session.metadata?.homeDir);
     }, []);
 
     if (!machine) {

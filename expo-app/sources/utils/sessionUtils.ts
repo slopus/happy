@@ -77,16 +77,44 @@ export function useSessionStatus(session: Session): SessionStatus {
  * Returns the last segment of the path, or 'unknown' if no path is available.
  */
 export function getSessionName(session: Session): string {
-    if (session.metadata?.summary) {
-        return session.metadata.summary.text;
-    } else if (session.metadata) {
-        const segments = session.metadata.path.split('/').filter(Boolean);
-        const lastSegment = segments.pop();
-        if (!lastSegment) {
-            return t('status.unknown');
-        }
-        return lastSegment;
+    const metadata = session.metadata;
+    if (!metadata) {
+        return t('status.unknown');
     }
+
+    if (metadata.summary) {
+        return metadata.summary.text;
+    }
+
+    const channelName = pickFirstString(
+        metadata.channelName,
+        metadata.conversationName,
+        metadata.threadName,
+        metadata.groupName,
+        metadata.roomName,
+        metadata.chatName,
+        metadata.name,
+        metadata.title,
+        metadata.userName
+    );
+    if (channelName) {
+        return channelName;
+    }
+
+    const path = normalizeDisplayString(metadata.path);
+    if (path) {
+        const segments = path.split(/[\\/]/).filter(Boolean);
+        const lastSegment = segments.pop();
+        if (lastSegment) {
+            return lastSegment;
+        }
+    }
+
+    const host = normalizeDisplayString(metadata.host);
+    if (host) {
+        return host;
+    }
+
     return t('status.unknown');
 }
 
@@ -136,9 +164,66 @@ export function formatPathRelativeToHome(path: string, homeDir?: string): string
  * Returns the session path for the subtitle.
  */
 export function getSessionSubtitle(session: Session): string {
-    if (session.metadata) {
-        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+    const metadata = session.metadata;
+    if (!metadata) {
+        return t('status.unknown');
     }
+
+    const path = normalizeDisplayString(metadata.path);
+    if (path && looksLikeFilePath(path, metadata.homeDir)) {
+        return formatPathRelativeToHome(path, metadata.homeDir);
+    }
+
+    const channelProvider = pickFirstString(
+        metadata.channel,
+        metadata.channelProvider,
+        metadata.channelType,
+        metadata.provider,
+        metadata.platform,
+        metadata.source,
+        metadata.host
+    );
+    const channelId = pickFirstString(
+        metadata.channelId,
+        metadata.conversationId,
+        metadata.threadId,
+        metadata.groupId,
+        metadata.roomId,
+        metadata.chatId,
+        metadata.jid,
+        metadata.userId
+    );
+    const channelName = pickFirstString(
+        metadata.channelName,
+        metadata.conversationName,
+        metadata.threadName,
+        metadata.groupName,
+        metadata.roomName,
+        metadata.chatName,
+        metadata.title,
+        metadata.name,
+        metadata.userName
+    );
+
+    if (channelProvider && channelId) {
+        return `${channelProvider} · ${channelId}`;
+    }
+    if (channelProvider && channelName) {
+        return `${channelProvider} · ${channelName}`;
+    }
+    if (channelProvider) {
+        return channelProvider;
+    }
+    if (channelId) {
+        return channelId;
+    }
+    if (channelName) {
+        return channelName;
+    }
+    if (path) {
+        return path;
+    }
+
     return t('status.unknown');
 }
 
@@ -218,3 +303,26 @@ export function formatLastSeen(activeAt: number, isActive: boolean = false): str
 }
 
 const vibingMessages = ["Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing", "Calculating", "Cerebrating", "Channelling", "Churning", "Clauding", "Coalescing", "Cogitating", "Computing", "Combobulating", "Concocting", "Conjuring", "Considering", "Contemplating", "Cooking", "Crafting", "Creating", "Crunching", "Deciphering", "Deliberating", "Determining", "Discombobulating", "Divining", "Doing", "Effecting", "Elucidating", "Enchanting", "Envisioning", "Finagling", "Flibbertigibbeting", "Forging", "Forming", "Frolicking", "Generating", "Germinating", "Hatching", "Herding", "Honking", "Ideating", "Imagining", "Incubating", "Inferring", "Manifesting", "Marinating", "Meandering", "Moseying", "Mulling", "Mustering", "Musing", "Noodling", "Percolating", "Perusing", "Philosophising", "Pontificating", "Pondering", "Processing", "Puttering", "Puzzling", "Reticulating", "Ruminating", "Scheming", "Schlepping", "Shimmying", "Simmering", "Smooshing", "Spelunking", "Spinning", "Stewing", "Sussing", "Synthesizing", "Thinking", "Tinkering", "Transmuting", "Unfurling", "Unravelling", "Vibing", "Wandering", "Whirring", "Wibbling", "Wizarding", "Working", "Wrangling"];
+
+const normalizeDisplayString = (value: string | undefined | null): string | undefined => {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const pickFirstString = (...values: Array<string | undefined | null>): string | undefined => {
+    for (const value of values) {
+        const normalized = normalizeDisplayString(value);
+        if (normalized) {
+            return normalized;
+        }
+    }
+    return undefined;
+};
+
+const looksLikeFilePath = (value: string, homeDir?: string): boolean => {
+    if (homeDir && value.startsWith(homeDir)) return true;
+    if (value.startsWith('/') || value.startsWith('~') || value.startsWith('\\')) return true;
+    if (/^[a-zA-Z]:[\\/]/.test(value)) return true;
+    return false;
+};

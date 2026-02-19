@@ -278,18 +278,22 @@ function SessionInfoContent({ session }: { session: Session }) {
                 {/* Metadata */}
                 {session.metadata && (
                     <ItemGroup title={t('sessionInfo.metadata')}>
-                        <Item
-                            title={t('sessionInfo.host')}
-                            subtitle={session.metadata.host}
-                            icon={<Ionicons name="desktop-outline" size={29} color="#5856D6" />}
-                            showChevron={false}
-                        />
-                        <Item
-                            title={t('sessionInfo.path')}
-                            subtitle={formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
-                            icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
-                            showChevron={false}
-                        />
+                        {session.metadata.host && (
+                            <Item
+                                title={t('sessionInfo.host')}
+                                subtitle={session.metadata.host}
+                                icon={<Ionicons name="desktop-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
+                        {session.metadata.path && (
+                            <Item
+                                title={t('sessionInfo.path')}
+                                subtitle={formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
+                                icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
                         {session.metadata.version && (
                             <Item
                                 title={t('sessionInfo.cliVersion')}
@@ -314,6 +318,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 if (flavor === 'claude') return 'Claude';
                                 if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
                                 if (flavor === 'gemini') return 'Gemini';
+                                if (flavor === 'openclaw' || flavor === 'nanoclaw') return 'OpenClaw';
                                 return flavor;
                             })()}
                             icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}

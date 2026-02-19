@@ -57,7 +57,7 @@ interface SessionMessages {
 
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
-    | { type: 'header'; title: string }
+    | { type: 'header'; title: string; collapsible?: boolean; sectionId?: string; sessionCount?: number }
     | { type: 'active-sessions'; sessions: Session[] }
     | { type: 'project-group'; displayPath: string; machine: Machine }
     | { type: 'session'; session: Session; variant?: 'default' | 'no-path' };
@@ -212,7 +212,13 @@ function buildSessionListViewData(
                     headerTitle = `${diffDays} days ago`;
                 }
 
-                listData.push({ type: 'header', title: headerTitle });
+                listData.push({
+                    type: 'header',
+                    title: headerTitle,
+                    collapsible: true,
+                    sectionId: `date-${sessionDateOnly.toISOString().split('T')[0]}`,
+                    sessionCount: currentDateGroup.length
+                });
                 currentDateGroup.forEach(sess => {
                     listData.push({ type: 'session', session: sess });
                 });
@@ -242,7 +248,13 @@ function buildSessionListViewData(
             headerTitle = `${diffDays} days ago`;
         }
 
-        listData.push({ type: 'header', title: headerTitle });
+        listData.push({
+            type: 'header',
+            title: headerTitle,
+            collapsible: true,
+            sectionId: `date-${sessionDateOnly.toISOString().split('T')[0]}`,
+            sessionCount: currentDateGroup.length
+        });
         currentDateGroup.forEach(sess => {
             listData.push({ type: 'session', session: sess });
         });

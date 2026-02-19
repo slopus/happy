@@ -4,9 +4,55 @@ import { z } from "zod";
 // Agent states
 //
 
-export const MetadataSchema = z.object({
-    path: z.string(),
-    host: z.string(),
+export interface Metadata {
+    path: string;
+    host: string;
+    version?: string;
+    name?: string;
+    os?: string;
+    summary?: {
+        text: string;
+        updatedAt: number;
+    };
+    machineId?: string;
+    claudeSessionId?: string; // Claude Code session ID
+    tools?: string[];
+    slashCommands?: string[];
+    homeDir?: string; // User's home directory on the machine
+    happyHomeDir?: string; // Happy configuration directory 
+    hostPid?: number; // Process ID of the session
+    flavor?: string | null; // Session flavor/variant identifier
+    // Channel / conversation metadata (OpenClaw and other channel integrations)
+    channel?: string;
+    channelId?: string;
+    channelName?: string;
+    channelType?: string;
+    channelProvider?: string;
+    conversationId?: string;
+    conversationName?: string;
+    threadId?: string;
+    threadName?: string;
+    groupId?: string;
+    groupName?: string;
+    roomId?: string;
+    roomName?: string;
+    chatId?: string;
+    chatName?: string;
+    jid?: string;
+    userId?: string;
+    userName?: string;
+    title?: string;
+    provider?: string;
+    platform?: string;
+    source?: string;
+}
+
+const ChannelIdSchema = z.union([z.string(), z.number()]);
+const ChannelSchema = z.union([z.string(), z.number(), z.record(z.any())]);
+
+const RawMetadataSchema = z.object({
+    path: z.string().optional(),
+    host: z.string().optional(),
     version: z.string().optional(),
     name: z.string().optional(),
     os: z.string().optional(),
@@ -21,10 +67,179 @@ export const MetadataSchema = z.object({
     homeDir: z.string().optional(), // User's home directory on the machine
     happyHomeDir: z.string().optional(), // Happy configuration directory 
     hostPid: z.number().optional(), // Process ID of the session
-    flavor: z.string().nullish() // Session flavor/variant identifier
-});
+    flavor: z.string().nullish(), // Session flavor/variant identifier
+    // Channel / conversation metadata (OpenClaw and other channel integrations)
+    channel: ChannelSchema.optional(),
+    channelId: ChannelIdSchema.optional(),
+    channelName: z.string().optional(),
+    channelType: z.string().optional(),
+    channelProvider: z.string().optional(),
+    conversationId: ChannelIdSchema.optional(),
+    conversationName: z.string().optional(),
+    threadId: ChannelIdSchema.optional(),
+    threadName: z.string().optional(),
+    groupId: ChannelIdSchema.optional(),
+    groupName: z.string().optional(),
+    roomId: ChannelIdSchema.optional(),
+    roomName: z.string().optional(),
+    chatId: ChannelIdSchema.optional(),
+    chatName: z.string().optional(),
+    jid: ChannelIdSchema.optional(),
+    userId: ChannelIdSchema.optional(),
+    userName: z.string().optional(),
+    title: z.string().optional(),
+    provider: z.string().optional(),
+    platform: z.string().optional(),
+    source: z.string().optional(),
+}).passthrough();
 
-export type Metadata = z.infer<typeof MetadataSchema>;
+type RawMetadata = z.infer<typeof RawMetadataSchema>;
+
+const normalizeMetadataString = (value: unknown): string | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
+    }
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+    return value as Record<string, unknown>;
+};
+
+const pickFirstString = (record: Record<string, unknown>, keys: string[]): string | undefined => {
+    for (const key of keys) {
+        const value = normalizeMetadataString(record[key]);
+        if (value) {
+            return value;
+        }
+    }
+    return undefined;
+};
+
+const normalizeMetadata = (data: RawMetadata): Metadata => {
+    const record = data as Record<string, unknown>;
+    const explicitPath = normalizeMetadataString(data.path);
+    const explicitHost = normalizeMetadataString(data.host);
+    const channelRecord = asRecord(record.channel);
+
+    const channelProvider = normalizeMetadataString(data.channelProvider)
+        ?? pickFirstString(record, ['channel_provider', 'provider', 'platform', 'source', 'service', 'network'])
+        ?? (channelRecord ? pickFirstString(channelRecord, ['provider', 'platform', 'source', 'service', 'network']) : undefined);
+    const channelType = normalizeMetadataString(data.channelType)
+        ?? pickFirstString(record, ['channel_type'])
+        ?? (channelRecord ? pickFirstString(channelRecord, ['type', 'channelType', 'channel_type']) : undefined);
+    const channel = normalizeMetadataString(data.channel)
+        ?? channelProvider
+        ?? pickFirstString(record, ['channel', 'provider', 'platform', 'source', 'service', 'network', 'channelType', 'channelProvider', 'channel_type', 'channel_provider']);
+    const channelId = normalizeMetadataString(data.channelId)
+        ?? pickFirstString(record, [
+            'channel_id',
+            'conversationId',
+            'conversation_id',
+            'threadId',
+            'thread_id',
+            'roomId',
+            'room_id',
+            'groupId',
+            'group_id',
+            'chatId',
+            'chat_id',
+            'jid',
+            'chat_jid',
+            'contactId',
+            'contact_id',
+            'userId',
+            'user_id'
+        ])
+        ?? (channelRecord ? pickFirstString(channelRecord, [
+            'id',
+            'channelId',
+            'channel_id',
+            'conversationId',
+            'conversation_id',
+            'threadId',
+            'thread_id',
+            'roomId',
+            'room_id',
+            'groupId',
+            'group_id',
+            'chatId',
+            'chat_id',
+            'jid',
+            'chat_jid',
+            'contactId',
+            'contact_id',
+            'userId',
+            'user_id'
+        ]) : undefined);
+    const channelName = normalizeMetadataString(data.channelName)
+        ?? pickFirstString(record, [
+            'channel_name',
+            'conversationName',
+            'conversation_name',
+            'threadName',
+            'thread_name',
+            'roomName',
+            'room_name',
+            'groupName',
+            'group_name',
+            'chatName',
+            'chat_name',
+            'name',
+            'title',
+            'contactName',
+            'contact_name',
+            'userName',
+            'user_name',
+            'displayName',
+            'display_name'
+        ])
+        ?? (channelRecord ? pickFirstString(channelRecord, [
+            'name',
+            'channelName',
+            'channel_name',
+            'conversationName',
+            'conversation_name',
+            'threadName',
+            'thread_name',
+            'roomName',
+            'room_name',
+            'groupName',
+            'group_name',
+            'chatName',
+            'chat_name',
+            'title',
+            'displayName',
+            'display_name'
+        ]) : undefined);
+
+    const host = explicitHost
+        ?? channel
+        ?? channelProvider
+        ?? normalizeMetadataString(data.provider)
+        ?? normalizeMetadataString(data.platform)
+        ?? normalizeMetadataString(data.source)
+        ?? '';
+    const path = explicitPath ?? channelId ?? channelName ?? '';
+
+    return {
+        ...data,
+        host,
+        path,
+        channel,
+        channelId,
+        channelName,
+        channelProvider,
+        channelType,
+    };
+};
+
+export const MetadataSchema: z.ZodType<Metadata> = RawMetadataSchema.transform((data) => normalizeMetadata(data));
 
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),

@@ -13,6 +13,9 @@ export function resolvePath(path: string, metadata: Metadata | null): string {
     if (!metadata) {
         return path;
     }
+    if (!metadata.path) {
+        return path;
+    }
     if (path.toLowerCase().startsWith(metadata.path.toLowerCase())) {
         // Check that the path is actually within the metadata path by ensuring
         // there's either an exact match or a path separator after the metadata path

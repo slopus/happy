@@ -1350,12 +1350,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 pressed && styles.plusButtonPressed
                             ]}
                         >
-                            <Ionicons
-                                name={rightButtonIsSend ? 'arrow-up' : 'add'}
-                                size={20}
-                                color={rightButtonIsSend ? theme.colors.button.primary.tint : '#000000'}
-                                style={rightButtonIsSend ? { marginTop: Platform.OS === 'web' ? 2 : 0 } : undefined}
-                            />
+                            {props.isSending ? (
+                                <ActivityIndicator
+                                    size={16}
+                                    color={theme.colors.button.primary.tint}
+                                />
+                            ) : (
+                                <Ionicons
+                                    name={rightButtonIsSend ? 'arrow-up' : 'add'}
+                                    size={20}
+                                    color={rightButtonIsSend ? theme.colors.button.primary.tint : '#000000'}
+                                    style={rightButtonIsSend ? { marginTop: Platform.OS === 'web' ? 2 : 0 } : undefined}
+                                />
+                            )}
                         </Pressable>
                     </View>
 

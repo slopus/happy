@@ -9,6 +9,7 @@ import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarI
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
+import { CollapsibleSectionHeader } from './CollapsibleSectionHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSetting } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
@@ -238,6 +239,15 @@ export function SessionsList() {
     const renderItem = React.useCallback(({ item, index }: { item: SessionListViewItem & { selected?: boolean }, index: number }) => {
         switch (item.type) {
             case 'header':
+                if (item.collapsible && item.sectionId) {
+                    return (
+                        <CollapsibleSectionHeader
+                            title={item.title}
+                            sectionId={item.sectionId}
+                            sessionCount={item.sessionCount}
+                        />
+                    );
+                }
                 return (
                     <View style={styles.headerSection}>
                         <Text style={styles.headerText}>
