@@ -697,6 +697,21 @@ export async function runCodex(opts: {
                         context_window_size: tokenData.model_context_window,
                     } : {}),
                 });
+
+                // Persist token usage to server for statistics
+                const info = tokenData as import('../codex/appserver/types').TokenUsageInfo;
+                if (info.total_tokens && info.total_tokens > 0) {
+                    session.sendUsageReport({
+                        key: 'codex-session',
+                        tokens: {
+                            total: info.total_tokens,
+                            input: info.input_tokens ?? 0,
+                            output: info.output_tokens ?? 0,
+                            reasoning: info.reasoning_tokens ?? 0,
+                        },
+                        cost: { total: 0 },
+                    });
+                }
                 break;
             }
 

@@ -14,6 +14,7 @@ export interface UsageQueryParams {
     startTime?: number; // Unix timestamp in seconds
     endTime?: number;   // Unix timestamp in seconds
     groupBy?: 'hour' | 'day';
+    keys?: string[];
 }
 
 export interface UsageResponse {
@@ -57,7 +58,8 @@ export async function queryUsage(
 export async function getUsageForPeriod(
     credentials: AuthCredentials,
     period: 'today' | '7days' | '30days',
-    sessionId?: string
+    sessionId?: string,
+    keys?: string[],
 ): Promise<UsageResponse> {
     const now = Math.floor(Date.now() / 1000);
     const oneDaySeconds = 24 * 60 * 60;
@@ -87,43 +89,31 @@ export async function getUsageForPeriod(
         sessionId,
         startTime,
         endTime: now,
-        groupBy
+        groupBy,
+        keys,
     });
 }
 
 /**
- * Calculate total tokens and cost from usage data
+ * Calculate total tokens from usage data
  */
 export function calculateTotals(usage: UsageDataPoint[]): {
     totalTokens: number;
-    totalCost: number;
     tokensByModel: Record<string, number>;
-    costByModel: Record<string, number>;
 } {
     const result = {
         totalTokens: 0,
-        totalCost: 0,
         tokensByModel: {} as Record<string, number>,
-        costByModel: {} as Record<string, number>
     };
-    
+
     for (const dataPoint of usage) {
-        // Sum tokens
         for (const [model, tokens] of Object.entries(dataPoint.tokens)) {
             if (typeof tokens === 'number') {
                 result.totalTokens += tokens;
                 result.tokensByModel[model] = (result.tokensByModel[model] || 0) + tokens;
             }
         }
-        
-        // Sum costs
-        for (const [model, cost] of Object.entries(dataPoint.cost)) {
-            if (typeof cost === 'number') {
-                result.totalCost += cost;
-                result.costByModel[model] = (result.costByModel[model] || 0) + cost;
-            }
-        }
     }
-    
+
     return result;
 }

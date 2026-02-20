@@ -182,13 +182,14 @@ export function accountRoutes(app: Fastify) {
                 sessionId: z.string().nullish(),
                 startTime: z.number().int().positive().nullish(),
                 endTime: z.number().int().positive().nullish(),
-                groupBy: z.enum(['hour', 'day']).nullish()
+                groupBy: z.enum(['hour', 'day']).nullish(),
+                keys: z.array(z.string()).nullish(),
             })
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.userId;
-        const { sessionId, startTime, endTime, groupBy } = request.body;
+        const { sessionId, startTime, endTime, groupBy, keys } = request.body;
         const actualGroupBy = groupBy || 'day';
 
         try {
@@ -196,6 +197,7 @@ export function accountRoutes(app: Fastify) {
             const where: {
                 accountId: string;
                 sessionId?: string | null;
+                key?: { in: string[] };
                 createdAt?: {
                     gte?: Date;
                     lte?: Date;
@@ -203,6 +205,10 @@ export function accountRoutes(app: Fastify) {
             } = {
                 accountId: userId
             };
+
+            if (keys && keys.length > 0) {
+                where.key = { in: keys };
+            }
 
             if (sessionId) {
                 // Verify session belongs to user

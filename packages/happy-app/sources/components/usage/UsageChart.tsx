@@ -1,12 +1,11 @@
 import React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { UsageDataPoint } from '@/sync/apiUsage';
 
 interface UsageChartProps {
     data: UsageDataPoint[];
-    metric: 'tokens' | 'cost';
     height?: number;
     onBarPress?: (dataPoint: UsageDataPoint, index: number) => void;
 }
@@ -60,12 +59,9 @@ const styles = StyleSheet.create((theme) => ({
 
 export const UsageChart: React.FC<UsageChartProps> = ({
     data,
-    metric,
     height = 200,
     onBarPress
 }) => {
-    const { theme } = useUnistyles();
-    
     if (!data || data.length === 0) {
         return (
             <View style={styles.emptyState}>
@@ -76,11 +72,7 @@ export const UsageChart: React.FC<UsageChartProps> = ({
     
     // Calculate max value for scaling
     const getValueForDataPoint = (point: UsageDataPoint): number => {
-        if (metric === 'tokens') {
-            return Object.values(point.tokens).reduce((sum, val) => sum + (val || 0), 0);
-        } else {
-            return Object.values(point.cost).reduce((sum, val) => sum + (val || 0), 0);
-        }
+        return Object.values(point.tokens).reduce((sum, val) => sum + (val || 0), 0);
     };
     
     const maxValue = Math.max(...data.map(getValueForDataPoint), 1);
@@ -100,9 +92,7 @@ export const UsageChart: React.FC<UsageChartProps> = ({
     
     // Format value for display
     const formatValue = (value: number): string => {
-        if (metric === 'cost') {
-            return `$${value.toFixed(2)}`;
-        } else if (value >= 1000000) {
+        if (value >= 1000000) {
             return `${(value / 1000000).toFixed(1)}M`;
         } else if (value >= 1000) {
             return `${(value / 1000).toFixed(1)}K`;
@@ -146,9 +136,7 @@ export const UsageChart: React.FC<UsageChartProps> = ({
                                         styles.bar,
                                         {
                                             height: Math.max(barHeight, 2),
-                                            backgroundColor: metric === 'cost' 
-                                                ? '#FF9500' 
-                                                : '#007AFF',
+                                            backgroundColor: '#007AFF',
                                         }
                                     ]}
                                 />

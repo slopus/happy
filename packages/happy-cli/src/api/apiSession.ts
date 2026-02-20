@@ -649,20 +649,29 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * Send a generic usage report to the server for any provider
+     */
+    sendUsageReport(report: { key: string; tokens: { total: number; [key: string]: number }; cost: { total: number; [key: string]: number } }) {
+        logger.debugLargeJson('[SOCKET] Sending usage report:', report);
+        this.socket.emit('usage-report', {
+            key: report.key,
+            sessionId: this.sessionId,
+            tokens: report.tokens,
+            cost: report.cost,
+        });
+    }
+
+    /**
      * Send usage data to the server
      */
     sendUsageData(usage: Usage, model?: string) {
         this.updateModelMetadata(model);
 
-        // Calculate total tokens
         const totalTokens = usage.input_tokens + usage.output_tokens + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
-
         const costs = calculateCost(usage, model);
 
-        // Transform Claude usage format to backend expected format
-        const usageReport = {
+        this.sendUsageReport({
             key: 'claude-session',
-            sessionId: this.sessionId,
             tokens: {
                 total: totalTokens,
                 input: usage.input_tokens,
@@ -675,9 +684,7 @@ export class ApiSessionClient extends EventEmitter {
                 input: costs.input,
                 output: costs.output
             }
-        }
-        logger.debugLargeJson('[SOCKET] Sending usage data:', usageReport)
-        this.socket.emit('usage-report', usageReport);
+        });
     }
 
     private updateModelMetadata(model?: string | null): void {

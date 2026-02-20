@@ -14,6 +14,15 @@ import { t } from '@/text';
 
 type TimePeriod = 'today' | '7days' | '30days';
 
+type Provider = 'all' | 'claude' | 'codex' | 'gemini';
+
+const PROVIDER_KEYS: Record<Provider, string[] | undefined> = {
+    all: undefined,
+    claude: ['claude-session'],
+    codex: ['codex-session'],
+    gemini: ['gemini-session'],
+};
+
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
@@ -88,61 +97,41 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.status.error,
         textAlign: 'center',
     },
-    metricToggle: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 16,
-        padding: 16,
-    },
-    metricButton: {
-        paddingVertical: 6,
-        paddingHorizontal: 16,
-        borderRadius: 16,
-        backgroundColor: theme.colors.divider,
-    },
-    metricButtonActive: {
-        backgroundColor: '#007AFF',
-    },
-    metricText: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        fontWeight: '500',
-    },
-    metricTextActive: {
-        color: '#FFFFFF',
-    }
 }));
 
 export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     const { theme } = useUnistyles();
     const auth = useAuth();
     const [period, setPeriod] = useState<TimePeriod>('7days');
-    const [chartMetric, setChartMetric] = useState<'tokens' | 'cost'>('tokens');
+    const [provider, setProvider] = useState<Provider>('all');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [usageData, setUsageData] = useState<UsageDataPoint[]>([]);
     const [totals, setTotals] = useState({
         totalTokens: 0,
-        totalCost: 0,
         tokensByModel: {} as Record<string, number>,
-        costByModel: {} as Record<string, number>
     });
-    
+
     useEffect(() => {
         loadUsageData();
-    }, [period, sessionId]);
-    
+    }, [period, sessionId, provider]);
+
     const loadUsageData = async () => {
         if (!auth.credentials) {
             setError('Not authenticated');
             return;
         }
-        
+
+        if (provider === 'gemini') {
+            return;
+        }
+
         setLoading(true);
         setError(null);
-        
+
         try {
-            const response = await getUsageForPeriod(auth.credentials, period, sessionId);
+            const keys = PROVIDER_KEYS[provider];
+            const response = await getUsageForPeriod(auth.credentials, period, sessionId, keys);
             setUsageData(response.usage || []);
             setTotals(calculateTotals(response.usage || []));
         } catch (err) {
@@ -156,7 +145,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
             setLoading(false);
         }
     };
-    
+
     const formatTokens = (tokens: number): string => {
         if (tokens >= 1000000) {
             return `${(tokens / 1000000).toFixed(2)}M`;
@@ -165,17 +154,13 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
         }
         return tokens.toLocaleString();
     };
-    
-    const formatCost = (cost: number): string => {
-        return `$${cost.toFixed(4)}`;
-    };
-    
+
     const periodLabels: Record<TimePeriod, string> = {
         'today': t('usage.today'),
         '7days': t('usage.last7Days'),
         '30days': t('usage.last30Days')
     };
-    
+
     // Get top models by usage
     const topModels = Object.entries(totals.tokensByModel)
         .sort(([, a], [, b]) => b - a)
@@ -200,7 +185,29 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                 ))}
             </View>
 
-            {loading ? (
+            {/* Provider Selector */}
+            <View style={styles.periodSelector}>
+                {(['all', 'claude', 'codex', 'gemini'] as Provider[]).map((p) => (
+                    <Pressable
+                        key={p}
+                        style={[styles.periodButton, provider === p && styles.periodButtonActive]}
+                        onPress={() => setProvider(p)}
+                    >
+                        <Text style={[styles.periodText, provider === p && styles.periodTextActive]}>
+                            {t(`usage.${p === 'all' ? 'allProviders' : p === 'claude' ? 'claudeCode' : p}`)}
+                        </Text>
+                    </Pressable>
+                ))}
+            </View>
+
+            {provider === 'gemini' ? (
+                <View style={styles.loadingContainer}>
+                    <Ionicons name="analytics-outline" size={48} color={theme.colors.textSecondary} />
+                    <Text style={[styles.errorText, { color: theme.colors.textSecondary, marginTop: 12 }]}>
+                        {t('usage.providerNoData')}
+                    </Text>
+                </View>
+            ) : loading ? (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color="#007AFF" />
                 </View>
@@ -210,52 +217,27 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                     <Text style={styles.errorText}>{error}</Text>
                 </View>
             ) : (<>
-            
+
             {/* Summary Stats */}
             <View style={styles.statsContainer}>
                 <View style={styles.statRow}>
                     <Text style={styles.statLabel}>{t('usage.totalTokens')}</Text>
                     <Text style={styles.statValue}>{formatTokens(totals.totalTokens)}</Text>
                 </View>
-                <View style={styles.statRow}>
-                    <Text style={styles.statLabel}>{t('usage.totalCost')}</Text>
-                    <Text style={styles.statValue}>{formatCost(totals.totalCost)}</Text>
-                </View>
             </View>
-            
+
             {/* Usage Chart */}
             {usageData.length > 0 && (
                 <View style={styles.chartSection}>
                     <Text style={styles.sectionTitle}>{t('usage.usageOverTime')}</Text>
-                    
-                    {/* Metric Toggle */}
-                    <View style={styles.metricToggle}>
-                        <Pressable
-                            style={[styles.metricButton, chartMetric === 'tokens' && styles.metricButtonActive]}
-                            onPress={() => setChartMetric('tokens')}
-                        >
-                            <Text style={[styles.metricText, chartMetric === 'tokens' && styles.metricTextActive]}>
-                                {t('usage.tokens')}
-                            </Text>
-                        </Pressable>
-                        <Pressable
-                            style={[styles.metricButton, chartMetric === 'cost' && styles.metricButtonActive]}
-                            onPress={() => setChartMetric('cost')}
-                        >
-                            <Text style={[styles.metricText, chartMetric === 'cost' && styles.metricTextActive]}>
-                                {t('usage.cost')}
-                            </Text>
-                        </Pressable>
-                    </View>
-                    
-                    <UsageChart 
+
+                    <UsageChart
                         data={usageData}
-                        metric={chartMetric}
                         height={180}
                     />
                 </View>
             )}
-            
+
             {/* Usage by Model */}
             {topModels.length > 0 && (
                 <ItemGroup title={t('usage.byModel')}>
