@@ -9,6 +9,7 @@ import { storage, useDootaskProfile } from '@/sync/storage';
 import { dootaskFetchTaskDetail, dootaskFetchTaskContent } from '@/sync/dootask/api';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { ImageViewer } from '@/components/ImageViewer';
 import type { DooTaskItem } from '@/sync/dootask/types';
 
 /**
@@ -35,14 +36,31 @@ function DetailField({ label, value, color, theme }: {
 }
 
 // --- HTML Content Renderer ---
-const HtmlContent = React.memo(({ html, theme }: { html: string; theme: any }) => {
+const HtmlContent = React.memo(({ html, theme, onImagePress }: { html: string; theme: any; onImagePress?: (url: string) => void }) => {
     const [height, setHeight] = React.useState(100);
+    const containerRef = React.useRef<any>(null);
+
+    // Web: attach click delegation for images
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !containerRef.current || !onImagePress) return;
+        const el = containerRef.current as HTMLElement;
+        const handler = (e: Event) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'IMG') {
+                e.preventDefault();
+                onImagePress((target as HTMLImageElement).src);
+            }
+        };
+        el.addEventListener('click', handler);
+        return () => el.removeEventListener('click', handler);
+    }, [onImagePress]);
 
     if (Platform.OS === 'web') {
         return (
             <View style={styles.htmlContainer}>
                 {/* @ts-ignore - Web only */}
                 <div
+                    ref={containerRef}
                     style={{ color: theme.colors.text, fontSize: 14, lineHeight: 1.6, wordBreak: 'break-word' }}
                     dangerouslySetInnerHTML={{ __html: html }}
                 />
@@ -56,7 +74,7 @@ const HtmlContent = React.memo(({ html, theme }: { html: string; theme: any }) =
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <style>
 body { margin: 0; padding: 0; color: ${theme.colors.text}; font-size: 14px; line-height: 1.6; background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; word-break: break-word; }
-img { max-width: 100%; height: auto; border-radius: 4px; }
+img { max-width: 100%; height: auto; border-radius: 4px; cursor: pointer; }
 a { color: #0A84FF; }
 pre, code { background: ${theme.colors.surfaceHighest || '#2a2a2a'}; border-radius: 4px; padding: 2px 4px; font-size: 13px; }
 pre { padding: 8px; overflow-x: auto; }
@@ -71,6 +89,13 @@ function sendHeight() { window.ReactNativeWebView.postMessage(JSON.stringify({ t
 sendHeight();
 new MutationObserver(sendHeight).observe(document.body, { childList: true, subtree: true });
 window.addEventListener('load', sendHeight);
+document.addEventListener('click', function(e) {
+    var el = e.target;
+    if (el.tagName === 'IMG') {
+        e.preventDefault();
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'imagePress', url: el.src }));
+    }
+});
 </script>
 </body></html>`;
 
@@ -86,6 +111,8 @@ window.addEventListener('load', sendHeight);
                         const data = JSON.parse(event.nativeEvent.data);
                         if (data.type === 'height' && data.height > 0) {
                             setHeight(data.height + 16);
+                        } else if (data.type === 'imagePress' && data.url && onImagePress) {
+                            onImagePress(data.url);
                         }
                     } catch { }
                 }}
@@ -106,6 +133,15 @@ export default function DooTaskDetail() {
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [spawning, setSpawning] = React.useState(false);
+
+    // Image viewer state
+    const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
+    const [imageViewerUrl, setImageViewerUrl] = React.useState('');
+
+    const handleImagePress = React.useCallback((url: string) => {
+        setImageViewerUrl(url);
+        setImageViewerVisible(true);
+    }, []);
 
     React.useEffect(() => {
         if (!profile || !taskId) return;
@@ -202,7 +238,7 @@ export default function DooTaskDetail() {
     const flowColor = flow?.color || theme.colors.textSecondary;
 
     return (
-        <ScrollView contentContainerStyle={styles.container} style={{ backgroundColor: theme.colors.groupped.background }}>
+        <ScrollView contentContainerStyle={styles.container} style={{ backgroundColor: theme.colors.surface }}>
             <Text style={[styles.title, { color: theme.colors.text }]}>{task.name}</Text>
 
             <View style={styles.fieldGroup}>
@@ -245,7 +281,7 @@ export default function DooTaskDetail() {
                     <Text style={[styles.descLabel, { color: theme.colors.textSecondary }]}>
                         {t('dootask.description')}
                     </Text>
-                    <HtmlContent html={taskContent} theme={theme} />
+                    <HtmlContent html={taskContent} theme={theme} onImagePress={handleImagePress} />
                 </View>
             ) : task.desc ? (
                 <View style={styles.descSection}>
@@ -269,6 +305,12 @@ export default function DooTaskDetail() {
                     </Text>
                 )}
             </Pressable>
+
+            <ImageViewer
+                images={imageViewerUrl ? [{ uri: imageViewerUrl }] : []}
+                visible={imageViewerVisible}
+                onClose={() => setImageViewerVisible(false)}
+            />
         </ScrollView>
     );
 }
