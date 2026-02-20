@@ -253,15 +253,15 @@ export const SettingsView = React.memo(function SettingsView() {
                         : 'Connect DooTask'
                     }
                     icon={
-                        <Ionicons
-                            name="checkmark-done-outline"
-                            size={29}
-                            color={isDootaskConnected ? theme.colors.status.connected : theme.colors.textSecondary}
+                        <Image
+                            source={require('@/assets/images/icon-dootask.png')}
+                            style={{ width: 29, height: 29 }}
+                            contentFit="contain"
                         />
                     }
                     onPress={isDootaskConnected ? handleDisconnectDootask : connectDootask}
                     loading={connectingDootask || disconnectingDootask}
-                    showChevron={!isDootaskConnected}
+                    showChevron={false}
                 />
             </ItemGroup>
 
