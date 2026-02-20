@@ -9,7 +9,9 @@ import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile } from "./persistence";
+import { DooTaskProfile, DooTaskProject, DooTaskItem, DooTaskFilters, DooTaskPager } from './dootask/types';
+import { dootaskFetchProjects, dootaskFetchTasks } from './dootask/api';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import React from "react";
 import { sync } from "./sync";
@@ -92,6 +94,14 @@ interface StorageState {
     socketLastDisconnectedAt: number | null;
     isDataReady: boolean;
     nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
+    // DooTask integration
+    dootaskProfile: DooTaskProfile | null;
+    dootaskTasks: DooTaskItem[];
+    dootaskProjects: DooTaskProject[];
+    dootaskLoading: boolean;
+    dootaskError: string | null;
+    dootaskFilters: DooTaskFilters;
+    dootaskPager: DooTaskPager;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyOpenClawMachines: (machines: OpenClawMachine[], replace?: boolean) => void;
@@ -149,6 +159,12 @@ interface StorageState {
     // Feed methods
     applyFeedItems: (items: FeedItem[]) => void;
     clearFeed: () => void;
+    // DooTask methods
+    setDootaskProfile: (profile: DooTaskProfile | null) => void;
+    fetchDootaskProjects: () => Promise<void>;
+    fetchDootaskTasks: (opts?: { refresh?: boolean; loadMore?: boolean }) => Promise<void>;
+    setDootaskFilter: (filters: Partial<DooTaskFilters>) => void;
+    clearDootaskData: () => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -322,6 +338,14 @@ export const storage = create<StorageState>()((set, get) => {
         socketLastDisconnectedAt: null,
         isDataReady: false,
         nativeUpdateStatus: null,
+        // DooTask integration
+        dootaskProfile: loadDooTaskProfile(),
+        dootaskTasks: [],
+        dootaskProjects: [],
+        dootaskLoading: false,
+        dootaskError: null,
+        dootaskFilters: { status: 'uncompleted' },
+        dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -1268,6 +1292,100 @@ export const storage = create<StorageState>()((set, get) => {
             feedLoaded: false,  // Reset loading flag
             friendsLoaded: false  // Reset loading flag
         })),
+        // DooTask methods
+        setDootaskProfile: (profile) => {
+            saveDooTaskProfile(profile);
+            set((state) => ({ ...state, dootaskProfile: profile, dootaskError: null }));
+        },
+
+        fetchDootaskProjects: async () => {
+            const { dootaskProfile } = get();
+            if (!dootaskProfile) return;
+            try {
+                const res = await dootaskFetchProjects(dootaskProfile.serverUrl, dootaskProfile.token);
+                if (res.ret === 1) {
+                    const projects = (res.data?.data || res.data || []).map((p: any) => ({
+                        id: p.id, name: p.name
+                    }));
+                    set((state) => ({ ...state, dootaskProjects: projects }));
+                }
+            } catch {
+                // silent — projects are supplementary
+            }
+        },
+
+        fetchDootaskTasks: async (opts) => {
+            const { dootaskProfile, dootaskFilters, dootaskPager, dootaskTasks } = get();
+            if (!dootaskProfile) return;
+            const refresh = opts?.refresh ?? false;
+            const loadMore = opts?.loadMore ?? false;
+            const page = loadMore ? dootaskPager.page + 1 : 1;
+
+            set((state) => ({ ...state, dootaskLoading: true, dootaskError: null }));
+            try {
+                const keys: Record<string, string> = {};
+                if (dootaskFilters.status && dootaskFilters.status !== 'all') {
+                    keys['status'] = dootaskFilters.status;
+                }
+                const res = await dootaskFetchTasks(dootaskProfile.serverUrl, dootaskProfile.token, {
+                    page,
+                    pagesize: dootaskPager.pagesize,
+                    project_id: dootaskFilters.projectId,
+                    keys: Object.keys(keys).length > 0 ? keys : undefined,
+                    time: dootaskFilters.time,
+                });
+
+                if (res.ret === -1 || /身份已失效|请登录后继续/.test(res.msg)) {
+                    set((state) => ({ ...state, dootaskLoading: false, dootaskError: 'token_expired' }));
+                    return;
+                }
+
+                if (res.ret === 1) {
+                    const newTasks: DooTaskItem[] = res.data.data || [];
+                    const merged = loadMore ? [...dootaskTasks, ...newTasks] : newTasks;
+                    set((state) => ({
+                        ...state,
+                        dootaskTasks: merged,
+                        dootaskLoading: false,
+                        dootaskPager: {
+                            ...state.dootaskPager,
+                            page: res.data.current_page,
+                            total: res.data.total,
+                            hasMore: res.data.current_page < res.data.last_page,
+                        },
+                    }));
+                } else {
+                    set((state) => ({ ...state, dootaskLoading: false, dootaskError: res.msg }));
+                }
+            } catch (e) {
+                set((state) => ({
+                    ...state,
+                    dootaskLoading: false,
+                    dootaskError: e instanceof Error ? e.message : 'Failed to load tasks',
+                }));
+            }
+        },
+
+        setDootaskFilter: (filters) => {
+            set((state) => ({
+                ...state,
+                dootaskFilters: { ...state.dootaskFilters, ...filters },
+            }));
+        },
+
+        clearDootaskData: () => {
+            saveDooTaskProfile(null);
+            set((state) => ({
+                ...state,
+                dootaskProfile: null,
+                dootaskTasks: [],
+                dootaskProjects: [],
+                dootaskLoading: false,
+                dootaskError: null,
+                dootaskFilters: { status: 'uncompleted' },
+                dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
+            }));
+        },
     }
 });
 
@@ -1516,4 +1634,26 @@ export function useRequestedFriends() {
         // Filter friends to get sent requests (where status is 'requested')
         return Object.values(state.friends).filter(friend => friend.status === 'requested');
     }));
+}
+
+// DooTask hooks
+export function useDootaskProfile(): DooTaskProfile | null {
+    return storage(useShallow((s) => s.dootaskProfile));
+}
+
+export function useDootaskTasks() {
+    return storage(useShallow((s) => ({
+        tasks: s.dootaskTasks,
+        loading: s.dootaskLoading,
+        error: s.dootaskError,
+        pager: s.dootaskPager,
+    })));
+}
+
+export function useDootaskProjects(): DooTaskProject[] {
+    return storage(useShallow((s) => s.dootaskProjects));
+}
+
+export function useDootaskFilters(): DooTaskFilters {
+    return storage(useShallow((s) => s.dootaskFilters));
 }

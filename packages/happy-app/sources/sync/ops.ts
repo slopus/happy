@@ -157,6 +157,12 @@ export interface SpawnSessionOptions {
     // Worktree metadata - passed to CLI so it's included in initial metadata (avoids race condition)
     worktreeBasePath?: string;
     worktreeBranchName?: string;
+    // Extra MCP servers to inject (e.g., DooTask MCP)
+    mcpServers?: Array<{
+        name: string;
+        url: string;
+        headers?: Record<string, string>;
+    }>;
 }
 
 export interface ClaudeSessionIndexEntry {
@@ -207,7 +213,7 @@ export type SessionPreviewMessage = ClaudeSessionPreviewMessage;
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName, mcpServers } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -222,10 +228,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             environmentVariables?: Record<string, string>;
             worktreeBasePath?: string,
             worktreeBranchName?: string,
+            mcpServers?: Array<{ name: string; url: string; headers?: Record<string, string> }>,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName, mcpServers }
         );
         return result;
     } catch (error) {

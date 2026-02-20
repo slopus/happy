@@ -11,7 +11,8 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
-import { useLocalSettingMutable, useSetting } from '@/sync/storage';
+import { useLocalSettingMutable, useSetting, useDootaskProfile } from '@/sync/storage';
+import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackWhatsNewClicked } from '@/track';
@@ -115,6 +116,30 @@ export const SettingsView = React.memo(function SettingsView() {
         }
     });
 
+    // DooTask connection
+    const dootaskProfile = useDootaskProfile();
+    const isDootaskConnected = !!dootaskProfile;
+
+    const [connectingDootask, connectDootask] = useHappyAction(async () => {
+        router.push('/settings/connect/dootask');
+    });
+
+    const [disconnectingDootask, handleDisconnectDootask] = useHappyAction(async () => {
+        const confirmed = await Modal.confirm(
+            'Disconnect DooTask',
+            'This will remove your DooTask connection and clear cached data.',
+            { confirmText: t('modals.disconnect'), destructive: true }
+        );
+        if (confirmed) {
+            if (dootaskProfile) {
+                try {
+                    const { dootaskLogout } = await import('@/sync/dootask/api');
+                    await dootaskLogout(dootaskProfile.serverUrl, dootaskProfile.token);
+                } catch { /* non-critical */ }
+            }
+            storage.getState().clearDootaskData();
+        }
+    });
 
     return (
 
@@ -220,6 +245,23 @@ export const SettingsView = React.memo(function SettingsView() {
                     onPress={isGitHubConnected ? handleDisconnectGitHub : connectGitHub}
                     loading={connectingGitHub || disconnectingGitHub}
                     showChevron={false}
+                />
+                <Item
+                    title="DooTask"
+                    subtitle={isDootaskConnected
+                        ? `Connected as ${dootaskProfile!.username}`
+                        : 'Connect DooTask'
+                    }
+                    icon={
+                        <Ionicons
+                            name="checkmark-done-outline"
+                            size={29}
+                            color={isDootaskConnected ? theme.colors.status.connected : theme.colors.textSecondary}
+                        />
+                    }
+                    onPress={isDootaskConnected ? handleDisconnectDootask : connectDootask}
+                    loading={connectingDootask || disconnectingDootask}
+                    showChevron={!isDootaskConnected}
                 />
             </ItemGroup>
 

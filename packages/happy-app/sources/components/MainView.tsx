@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, ActivityIndicator, Text, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
+import { useFriendRequests, useSocketStatus, useRealtimeStatus, useDootaskProfile } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
@@ -11,6 +11,7 @@ import { FABWide } from './FABWide';
 import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
+import { DooTaskListView } from './DooTaskListView';
 import { SessionsListWrapper } from './SessionsListWrapper';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
@@ -103,11 +104,12 @@ const styles = StyleSheet.create((theme) => ({
 const TAB_TITLES = {
     sessions: 'tabs.sessions',
     inbox: 'tabs.inbox',
+    dootask: 'tabs.dootask',
     settings: 'tabs.settings',
 } as const;
 
 // Active tabs
-type ActiveTabType = 'sessions' | 'inbox' | 'settings';
+type ActiveTabType = 'sessions' | 'inbox' | 'dootask' | 'settings';
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -205,6 +207,10 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
         );
     }
 
+    if (activeTab === 'dootask') {
+        return <View style={styles.headerButton} />;
+    }
+
     if (activeTab === 'settings') {
         if (!isCustomServer) {
             // Empty view to maintain header centering
@@ -231,6 +237,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const router = useRouter();
     const friendRequests = useFriendRequests();
     const realtimeStatus = useRealtimeStatus();
+    const dootaskProfile = useDootaskProfile();
+    const showDootaskTab = !!dootaskProfile;
 
     // Tab state management
     const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
@@ -248,6 +256,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         switch (activeTab) {
             case 'inbox':
                 return <InboxView />;
+            case 'dootask':
+                return <DooTaskListView />;
             case 'settings':
                 return <SettingsViewWrapper />;
             case 'sessions':
@@ -318,6 +328,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 activeTab={activeTab}
                 onTabPress={handleTabPress}
                 inboxBadgeCount={friendRequests.length}
+                showDootaskTab={showDootaskTab}
             />
         </>
     );
