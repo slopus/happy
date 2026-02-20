@@ -145,6 +145,17 @@ export async function dootaskFetchTaskDetail(serverUrl: string, token: string, t
     return response.json();
 }
 
+export async function dootaskFetchUsersBasic(serverUrl: string, token: string, userIds: number[]): Promise<DooTaskResponse> {
+    if (userIds.length === 0) return { ret: 1, msg: '', data: [] };
+    const url = validateServerUrl(serverUrl);
+    const qs = new URLSearchParams({ userid: JSON.stringify(userIds) });
+    const response = await fetch(`${url}/api/users/basic?${qs}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
 export async function dootaskFetchTaskContent(serverUrl: string, token: string, taskId: number): Promise<DooTaskResponse> {
     const url = validateServerUrl(serverUrl);
     const response = await fetch(`${url}/api/project/task/content`, {

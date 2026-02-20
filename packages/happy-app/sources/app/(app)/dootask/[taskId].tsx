@@ -6,7 +6,7 @@ import { WebView } from 'react-native-webview';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskProfile } from '@/sync/storage';
-import { dootaskFetchTaskDetail, dootaskFetchTaskContent } from '@/sync/dootask/api';
+import { dootaskFetchTaskDetail, dootaskFetchTaskContent, dootaskFetchUsersBasic } from '@/sync/dootask/api';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ImageViewer } from '@/components/ImageViewer';
@@ -153,6 +153,7 @@ export default function DooTaskDetail() {
 
     const [task, setTask] = React.useState<DooTaskItem | null>(null);
     const [taskContent, setTaskContent] = React.useState<string | null>(null);
+    const [userMap, setUserMap] = React.useState<Record<number, string>>({});
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [spawning, setSpawning] = React.useState(false);
@@ -182,9 +183,24 @@ export default function DooTaskDetail() {
             dootaskFetchTaskDetail(profile.serverUrl, profile.token, id),
             dootaskFetchTaskContent(profile.serverUrl, profile.token, id),
         ])
-            .then(([detailRes, contentRes]) => {
+            .then(async ([detailRes, contentRes]) => {
                 if (detailRes.ret === 1) {
-                    setTask(detailRes.data);
+                    const taskData = detailRes.data;
+                    setTask(taskData);
+                    // Resolve user nicknames from task_user userids
+                    const userIds = (taskData.task_user || []).map((u: any) => u.userid).filter(Boolean);
+                    if (userIds.length > 0) {
+                        try {
+                            const usersRes = await dootaskFetchUsersBasic(profile!.serverUrl, profile!.token, userIds);
+                            if (usersRes.ret === 1 && Array.isArray(usersRes.data)) {
+                                const map: Record<number, string> = {};
+                                for (const u of usersRes.data) {
+                                    if (u.userid && u.nickname) map[u.userid] = u.nickname;
+                                }
+                                setUserMap(map);
+                            }
+                        } catch { }
+                    }
                 } else {
                     setError(detailRes.msg || 'Failed to load task');
                 }
@@ -265,8 +281,8 @@ export default function DooTaskDetail() {
         );
     }
 
-    const owners = task.task_user?.filter((u) => u.owner === 1) || [];
-    const assistants = task.task_user?.filter((u) => u.owner === 0) || [];
+    const ownerNames = (task.task_user || []).filter((u) => u.owner === 1).map((u) => userMap[u.userid] || '').filter(Boolean);
+    const assistantNames = (task.task_user || []).filter((u) => u.owner === 0).map((u) => userMap[u.userid] || '').filter(Boolean);
     const flow = task.flow_item_name ? parseFlowItem(task.flow_item_name) : null;
     const flowColor = flow?.color || theme.colors.textSecondary;
 
@@ -285,17 +301,17 @@ export default function DooTaskDetail() {
                     </View>
                 ) : null}
                 <DetailField label={t('dootask.priority')} value={task.p_name} color={task.p_color} theme={theme} />
-                {owners.length > 0 ? (
+                {ownerNames.length > 0 ? (
                     <DetailField
                         label={t('dootask.assignee')}
-                        value={owners.map((u) => u.nickname).join(', ')}
+                        value={ownerNames.join(', ')}
                         theme={theme}
                     />
                 ) : null}
-                {assistants.length > 0 ? (
+                {assistantNames.length > 0 ? (
                     <DetailField
                         label={t('dootask.assistants')}
-                        value={assistants.map((u) => u.nickname).join(', ')}
+                        value={assistantNames.join(', ')}
                         theme={theme}
                     />
                 ) : null}
