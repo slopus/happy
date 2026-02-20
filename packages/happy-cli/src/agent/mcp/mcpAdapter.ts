@@ -20,8 +20,10 @@ import type { McpServerHttpConfig, McpServerStdioConfig } from '@/agent/core/Age
 interface McpServerDefinition {
     /** HTTP URL of the running MCP server */
     url: string;
-    /** Tool names this server provides (without prefix) */
+    /** Tool names this server provides (without prefix). Empty = auto-discovered by agent */
     toolNames: string[];
+    /** Optional HTTP headers (e.g., auth tokens for external servers) */
+    headers?: Record<string, string>;
     /** Cleanup function to stop the server */
     stop: () => void;
 }
@@ -30,6 +32,7 @@ interface McpServerDefinition {
 interface ClaudeMcpServerConfig {
     type: 'http';
     url: string;
+    headers?: Record<string, string>;
 }
 
 /** Result of creating all MCP servers - provides per-agent adapted config */
@@ -51,17 +54,23 @@ const getBridgeCommand = () => join(projectPath(), 'bin', 'happy-mcp.mjs');
 
 /** Adapt a server for Claude: pass HTTP URL directly */
 function adaptForClaude(def: McpServerDefinition): ClaudeMcpServerConfig {
-    return { type: 'http', url: def.url };
+    return { type: 'http', url: def.url, ...(def.headers && { headers: def.headers }) };
 }
 
 /** Adapt a server for STDIO-based agents: use the HTTP→STDIO bridge */
 function adaptForStdio(def: McpServerDefinition): McpServerStdioConfig {
-    return { command: getBridgeCommand(), args: ['--url', def.url] };
+    const args = ['--url', def.url];
+    if (def.headers) {
+        for (const [k, v] of Object.entries(def.headers)) {
+            args.push('--header', `${k}: ${v}`);
+        }
+    }
+    return { command: getBridgeCommand(), args };
 }
 
 /** Adapt a server for HTTP-capable ACP agents: pass HTTP URL directly via ACP */
 function adaptForHttp(def: McpServerDefinition): McpServerHttpConfig {
-    return { type: 'http', url: def.url, headers: {} };
+    return { type: 'http', url: def.url, headers: def.headers || {} };
 }
 
 /**
@@ -90,6 +99,25 @@ export async function createMcpContext(session: ApiSessionClient): Promise<McpCo
             stop: () => happyServer.stop(),
         },
     };
+
+    // Merge extra MCP servers from environment (e.g., DooTask)
+    const extraServersJson = process.env.HAPPY_EXTRA_MCP_SERVERS;
+    if (extraServersJson) {
+        try {
+            const extraServers: Array<{ name: string; url: string; headers?: Record<string, string> }> =
+                JSON.parse(extraServersJson);
+            for (const srv of extraServers) {
+                servers[srv.name] = {
+                    url: srv.url,
+                    toolNames: [],  // External MCP — tools discovered by agent, not whitelisted
+                    headers: srv.headers,
+                    stop: () => {},  // No lifecycle management for external servers
+                };
+            }
+        } catch (e) {
+            console.warn('Failed to parse HAPPY_EXTRA_MCP_SERVERS:', e);
+        }
+    }
 
     return {
         configForClaude() {
