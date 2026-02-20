@@ -2,16 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiClient } from './api';
 import axios from 'axios';
 import { connectionState } from '@/utils/serverConnectionErrors';
+import { encryptWithDataKey, decryptWithDataKey, deriveVendorEncryptionKey } from './encryption';
 
 // Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
-const { mockPost, mockIsAxiosError } = vi.hoisted(() => ({
+const { mockPost, mockGet, mockIsAxiosError } = vi.hoisted(() => ({
     mockPost: vi.fn(),
+    mockGet: vi.fn(),
     mockIsAxiosError: vi.fn(() => true)
 }));
 
 vi.mock('axios', () => ({
     default: {
         post: mockPost,
+        get: mockGet,
         isAxiosError: mockIsAxiosError
     },
     isAxiosError: mockIsAxiosError
@@ -25,10 +28,24 @@ vi.mock('@/ui/logger', () => ({
 
 // Mock encryption utilities
 vi.mock('./encryption', () => ({
-    decodeBase64: vi.fn((data: string) => data),
-    encodeBase64: vi.fn((data: any) => data),
+    decodeBase64: vi.fn((data: string) => {
+        // Return a Uint8Array for base64 strings (used by getVendorToken)
+        if (typeof data === 'string') return new Uint8Array(Buffer.from(data, 'base64'));
+        return data;
+    }),
+    encodeBase64: vi.fn((data: any) => {
+        // Return base64 string for Uint8Array (used by registerVendorToken)
+        if (data instanceof Uint8Array) return Buffer.from(data).toString('base64');
+        return data;
+    }),
     decrypt: vi.fn((data: any) => data),
-    encrypt: vi.fn((data: any) => data)
+    encrypt: vi.fn((data: any) => data),
+    encryptWithDataKey: vi.fn((_data: any, _key: Uint8Array) => new Uint8Array([1, 2, 3, 4])),
+    decryptWithDataKey: vi.fn((_bundle: Uint8Array, _key: Uint8Array) => null),
+    deriveVendorEncryptionKey: vi.fn((_machineKey: Uint8Array) => new Uint8Array(32).fill(0xAB)),
+    getRandomBytes: vi.fn((size: number) => new Uint8Array(size)),
+    libsodiumPublicKeyFromSecretKey: vi.fn(() => new Uint8Array(32)),
+    libsodiumEncryptForPublicKey: vi.fn(() => new Uint8Array(32))
 }));
 
 // Mock configuration
@@ -38,7 +55,7 @@ vi.mock('./configuration', () => ({
     }
 }));
 
-// Mock libsodium encryption
+// Mock libsodium encryption (not used by encryption.ts anymore, but still imported directly in some paths)
 vi.mock('./libsodiumEncryption', () => ({
     libsodiumEncryptForPublicKey: vi.fn((data: any) => new Uint8Array(32))
 }));
@@ -309,5 +326,151 @@ describe('Api server error handling', () => {
 
             consoleSpy.mockRestore();
         });
+    });
+});
+
+describe('registerVendorToken', () => {
+    let api: ApiClient;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        connectionState.reset();
+
+        const dataKeyCredential = {
+            token: 'fake-token',
+            encryption: {
+                type: 'dataKey' as const,
+                publicKey: new Uint8Array(32).fill(0x01),
+                machineKey: new Uint8Array(32).fill(0x02)
+            }
+        };
+
+        api = await ApiClient.create(dataKeyCredential);
+    });
+
+    it('sends encrypted blob, not raw plaintext token', async () => {
+        mockPost.mockResolvedValue({ status: 200, data: { success: true } });
+
+        await api.registerVendorToken('anthropic', 'sk-ant-secret');
+
+        expect(mockPost).toHaveBeenCalledTimes(1);
+        const [_url, body] = mockPost.mock.calls[0];
+        // The token in the request body should be a base64-encoded encrypted blob, not the raw key
+        expect(body.token).not.toBe('sk-ant-secret');
+        expect(body.token).not.toBe(JSON.stringify('sk-ant-secret'));
+        expect(typeof body.token).toBe('string');
+    });
+
+    it('calls deriveVendorEncryptionKey with machineKey from credentials', async () => {
+        mockPost.mockResolvedValue({ status: 200, data: { success: true } });
+
+        await api.registerVendorToken('openai', 'sk-openai-key');
+
+        expect(deriveVendorEncryptionKey).toHaveBeenCalledWith(new Uint8Array(32).fill(0x02));
+    });
+
+    it('calls encryptWithDataKey with serialized token and derived key', async () => {
+        mockPost.mockResolvedValue({ status: 200, data: { success: true } });
+
+        await api.registerVendorToken('gemini', 'gemini-api-key');
+
+        expect(encryptWithDataKey).toHaveBeenCalledWith(
+            JSON.stringify('gemini-api-key'),
+            new Uint8Array(32).fill(0xAB) // The mocked derived key
+        );
+    });
+
+    it('throws on non-2xx response', async () => {
+        mockPost.mockResolvedValue({ status: 500, data: {} });
+
+        await expect(api.registerVendorToken('anthropic', 'key'))
+            .rejects.toThrow('Failed to register vendor token');
+    });
+});
+
+describe('getVendorToken', () => {
+    let api: ApiClient;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        connectionState.reset();
+
+        const dataKeyCredential = {
+            token: 'fake-token',
+            encryption: {
+                type: 'dataKey' as const,
+                publicKey: new Uint8Array(32).fill(0x01),
+                machineKey: new Uint8Array(32).fill(0x02)
+            }
+        };
+
+        api = await ApiClient.create(dataKeyCredential);
+    });
+
+    it('returns decrypted token from valid E2E encrypted blob', async () => {
+        // decryptWithDataKey returns the JSON.parse'd value from the encrypted blob.
+        // registerVendorToken double-encodes: JSON.stringify(apiKey) → encryptWithDataKey,
+        // so decryptWithDataKey returns a JSON string that getVendorToken parses once more.
+        vi.mocked(decryptWithDataKey).mockReturnValueOnce(JSON.stringify('sk-ant-decrypted-key'));
+
+        mockGet.mockResolvedValue({
+            status: 200,
+            data: { token: Buffer.from('encrypted-blob').toString('base64') }
+        });
+
+        const result = await api.getVendorToken('anthropic');
+
+        expect(decryptWithDataKey).toHaveBeenCalled();
+        expect(result).toBe('sk-ant-decrypted-key');
+    });
+
+    it('falls back to legacy JSON parsing when decryptWithDataKey returns null', async () => {
+        // E2E decryption fails (returns null) — legacy token
+        vi.mocked(decryptWithDataKey).mockReturnValueOnce(null);
+
+        mockGet.mockResolvedValue({
+            status: 200,
+            data: { token: JSON.stringify({ apiKey: 'legacy-key' }) }
+        });
+
+        const result = await api.getVendorToken('openai');
+
+        expect(result).toEqual({ apiKey: 'legacy-key' });
+    });
+
+    it('returns null when server returns { token: null }', async () => {
+        mockGet.mockResolvedValue({
+            status: 200,
+            data: { token: null }
+        });
+
+        const result = await api.getVendorToken('anthropic');
+
+        expect(result).toBeNull();
+    });
+
+    it('returns null on 404', async () => {
+        const error = new Error('Not found') as any;
+        error.response = { status: 404 };
+        mockGet.mockRejectedValue(error);
+
+        const result = await api.getVendorToken('gemini');
+
+        expect(result).toBeNull();
+    });
+
+    it('handles decryption throw gracefully (inner try/catch)', async () => {
+        // E2E decryption throws — should fall through to legacy parsing
+        vi.mocked(decryptWithDataKey).mockImplementationOnce(() => { throw new Error('bad blob'); });
+
+        mockGet.mockResolvedValue({
+            status: 200,
+            data: { token: JSON.stringify('plain-token') }
+        });
+
+        const result = await api.getVendorToken('anthropic');
+
+        // Should still return the legacy-parsed token
+        expect(result).toBe('plain-token');
     });
 });
