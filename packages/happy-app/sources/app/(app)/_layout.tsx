@@ -402,6 +402,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="settings/connect/dootask"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Connect DooTask',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="new/pick/machine"
                 options={{
                     headerTitle: '',
