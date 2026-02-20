@@ -10,9 +10,11 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { t } from '@/text';
+import { useUnistyles } from 'react-native-unistyles';
 
 export default function TerminalConnectScreen() {
     const router = useRouter();
+    const { theme } = useUnistyles();
     const [publicKey, setPublicKey] = useState<string | null>(null);
     const [hashProcessed, setHashProcessed] = useState(false);
     const { connectWithUrl, isLoading } = useUnifiedScanner();
@@ -63,20 +65,21 @@ export default function TerminalConnectScreen() {
                             color="#8E8E93" 
                             style={{ marginBottom: 16 }} 
                         />
-                        <Text style={{ 
-                            ...Typography.default('semiBold'), 
-                            fontSize: 18, 
+                        <Text style={{
+                            ...Typography.default('semiBold'),
+                            fontSize: 18,
+                            color: theme.colors.text,
                             textAlign: 'center',
-                            marginBottom: 12 
+                            marginBottom: 12
                         }}>
                             {t('terminal.webBrowserRequired')}
                         </Text>
-                        <Text style={{ 
-                            ...Typography.default(), 
-                            fontSize: 14, 
-                            color: '#666', 
+                        <Text style={{
+                            ...Typography.default(),
+                            fontSize: 14,
+                            color: theme.colors.textSecondary,
                             textAlign: 'center',
-                            lineHeight: 20 
+                            lineHeight: 20
                         }}>
                             {t('terminal.webBrowserRequiredDescription')}
                         </Text>
@@ -96,7 +99,7 @@ export default function TerminalConnectScreen() {
                         paddingVertical: 32,
                         paddingHorizontal: 16
                     }}>
-                        <Text style={{ ...Typography.default(), color: '#666' }}>
+                        <Text style={{ ...Typography.default(), color: theme.colors.textSecondary }}>
                             {t('terminal.processingConnection')}
                         </Text>
                     </View>
@@ -130,12 +133,12 @@ export default function TerminalConnectScreen() {
                         }}>
                             {t('terminal.invalidConnectionLink')}
                         </Text>
-                        <Text style={{ 
-                            ...Typography.default(), 
-                            fontSize: 14, 
-                            color: '#666', 
+                        <Text style={{
+                            ...Typography.default(),
+                            fontSize: 14,
+                            color: theme.colors.textSecondary,
                             textAlign: 'center',
-                            lineHeight: 20 
+                            lineHeight: 20
                         }}>
                             {t('terminal.invalidConnectionLinkDescription')}
                         </Text>
@@ -161,20 +164,21 @@ export default function TerminalConnectScreen() {
                         color="#007AFF" 
                         style={{ marginBottom: 16 }} 
                     />
-                    <Text style={{ 
-                        ...Typography.default('semiBold'), 
-                        fontSize: 20, 
+                    <Text style={{
+                        ...Typography.default('semiBold'),
+                        fontSize: 20,
+                        color: theme.colors.text,
                         textAlign: 'center',
                         marginBottom: 12
                     }}>
                         {t('terminal.connectTerminal')}
                     </Text>
-                    <Text style={{ 
-                        ...Typography.default(), 
-                        fontSize: 14, 
-                        color: '#666', 
+                    <Text style={{
+                        ...Typography.default(),
+                        fontSize: 14,
+                        color: theme.colors.textSecondary,
                         textAlign: 'center',
-                        lineHeight: 20 
+                        lineHeight: 20
                     }}>
                         {t('terminal.terminalRequestDescription')}
                     </Text>

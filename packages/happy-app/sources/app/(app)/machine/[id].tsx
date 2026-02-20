@@ -472,7 +472,7 @@ export default function MachineDetailScreen() {
                                     showDivider={false}
                                     titleStyle={{
                                         textAlign: 'center',
-                                        color: (theme as any).dark ? theme.colors.button.primary.tint : theme.colors.button.primary.background
+                                        color: theme.colors.button.primary.background
                                     }}
                                 />
                             )}
