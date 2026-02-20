@@ -585,6 +585,11 @@ export const ja: TranslationStructure = {
         file: 'ファイル',
         fileEmpty: 'ファイルは空です',
         noChanges: '表示する変更はありません',
+        // Browse mode strings
+        browseTab: 'ブラウズ',
+        changesTab: '変更',
+        directory: 'ディレクトリ',
+        emptyDirectory: 'このディレクトリは空です',
     },
 
     settingsVoice: {
