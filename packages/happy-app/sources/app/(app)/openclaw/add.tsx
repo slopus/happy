@@ -7,9 +7,12 @@
  */
 
 import React from 'react';
-import { View, Text, ScrollView, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, TextInput, Pressable, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
+import { useHeaderHeight } from '@react-navigation/elements';
+import Constants from 'expo-constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
 import { t } from '@/text';
@@ -30,11 +33,13 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         backgroundColor: theme.colors.groupped.background,
     },
+    scrollView: {
+        flex: 1,
+    },
     scrollContent: {
         maxWidth: layout.maxWidth,
         alignSelf: 'center',
         width: '100%',
-        paddingBottom: 24,
     },
     inputWrapper: {
         backgroundColor: theme.colors.surface,
@@ -106,6 +111,8 @@ const MachineItem = React.memo(({ machine, isSelected, onSelect, showDivider = t
 export default function AddOpenClawMachinePage() {
     const router = useRouter();
     const { theme } = useUnistyles();
+    const headerHeight = useHeaderHeight();
+    const safeArea = useSafeAreaInsets();
     const machines = useAllMachines();
 
     // Form state
@@ -197,8 +204,17 @@ export default function AddOpenClawMachinePage() {
     }, [canSubmit, isSubmitting, machineType, selectedMachineId, gatewayUrl, gatewayToken, machineName, router]);
 
     return (
-        <View style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
+        >
+            <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: safeArea.bottom + 24 }]}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            >
                 {/* Machine Name */}
                 <ItemGroup title={`${t('openclaw.sessionName')} (${t('common.optional')})`}>
                     <View style={styles.inputWrapper}>
@@ -337,6 +353,6 @@ export default function AddOpenClawMachinePage() {
                     )}
                 </Pressable>
             </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
     );
 }

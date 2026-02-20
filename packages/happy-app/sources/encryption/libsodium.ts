@@ -1,6 +1,6 @@
 import { getRandomBytes } from 'expo-crypto';
 import sodium from '@/encryption/libsodium.lib';
-import { getPublicKeyAsync, signAsync, utils as ed25519Utils } from '@noble/ed25519';
+import { getPublicKeyAsync, signAsync } from '@noble/ed25519';
 
 export function getPublicKeyForBox(secretKey: Uint8Array): Uint8Array {
     return sodium.crypto_box_seed_keypair(secretKey).publicKey;
@@ -63,8 +63,9 @@ export function decryptSecretBox(data: Uint8Array, secret: Uint8Array): any | nu
  * Returns public key (32 bytes) and private key (32-byte seed)
  */
 export async function generateSignKeypair(): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array }> {
-    // Use @noble/ed25519 for cross-platform compatibility
-    const privateKey = ed25519Utils.randomSecretKey(); // 32-byte seed
+    // Use expo-crypto's getRandomBytes for React Native compatibility
+    // (ed25519Utils.randomSecretKey() from @noble/ed25519 relies on crypto.getRandomValues which isn't available in RN)
+    const privateKey = getRandomBytes(32);
     const publicKey = await getPublicKeyAsync(privateKey);
     return {
         publicKey,
