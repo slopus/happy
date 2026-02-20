@@ -12,6 +12,7 @@ import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { FileIcon } from '@/components/FileIcon';
+import { base64ToUtf8 } from '@/utils/stringUtils';
 
 interface FileContent {
     content: string;
@@ -76,12 +77,16 @@ export default function FileScreen() {
     const encodedPath = searchParams.path as string;
     let filePath = '';
     
-    // Decode base64 path with error handling
+    // Decode base64 path with error handling (UTF-8 safe, with legacy btoa fallback)
     try {
-        filePath = encodedPath ? atob(encodedPath) : '';
-    } catch (error) {
-        console.error('Failed to decode file path:', error);
-        filePath = encodedPath || ''; // Fallback to original path if decoding fails
+        filePath = encodedPath ? base64ToUtf8(encodedPath) : '';
+    } catch {
+        // Fallback to plain atob for legacy paths encoded before UTF-8 migration
+        try {
+            filePath = encodedPath ? atob(encodedPath) : '';
+        } catch {
+            filePath = encodedPath || '';
+        }
     }
     
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);

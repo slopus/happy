@@ -17,6 +17,7 @@ import { storage, useSessionGitStatus, useSessionProjectGitStatus } from '@/sync
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
+import { utf8ToBase64 } from '@/utils/stringUtils';
 
 const BINARY_EXTENSIONS = new Set([
     'png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'ico',
@@ -184,7 +185,7 @@ export default function FilesScreen() {
     }, [searchQuery, gitStatusFiles, sessionId, isLoading, viewMode]);
 
     const handleFilePress = React.useCallback((file: GitFileStatus | FileItem) => {
-        const encodedPath = btoa(file.fullPath);
+        const encodedPath = utf8ToBase64(file.fullPath);
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId]);
 
@@ -192,7 +193,7 @@ export default function FilesScreen() {
         const session = storage.getState().sessions[sessionId];
         const basePath = session?.metadata?.path || '';
         const filePath = currentPath === '.' ? entry.name : `${currentPath}/${entry.name}`;
-        const encodedPath = btoa(`${basePath}/${filePath}`);
+        const encodedPath = utf8ToBase64(`${basePath}/${filePath}`);
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId, currentPath]);
 
