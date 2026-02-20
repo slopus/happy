@@ -3,6 +3,7 @@ import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './set
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
+import { DooTaskProfile, DooTaskProfileSchema } from './dootask/types';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -238,6 +239,25 @@ export function loadSessionLastViewedAt(): Map<string, number> {
 
 export function saveSessionLastViewedAt(map: Map<string, number>) {
     mmkv.set(SESSION_LAST_VIEWED_KEY, JSON.stringify(Object.fromEntries(map)));
+}
+
+export function loadDooTaskProfile(): DooTaskProfile | null {
+    const raw = mmkv.getString('dootask-profile');
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        return DooTaskProfileSchema.parse(parsed);
+    } catch {
+        return null;
+    }
+}
+
+export function saveDooTaskProfile(profile: DooTaskProfile | null): void {
+    if (profile) {
+        mmkv.set('dootask-profile', JSON.stringify(profile));
+    } else {
+        mmkv.delete('dootask-profile');
+    }
 }
 
 export function clearPersistence() {
