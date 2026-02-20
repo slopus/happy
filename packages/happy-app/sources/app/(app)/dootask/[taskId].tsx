@@ -4,8 +4,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
-import { useDootaskProfile } from '@/sync/storage';
+import { storage, useDootaskProfile } from '@/sync/storage';
 import { dootaskFetchTaskDetail } from '@/sync/dootask/api';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import type { DooTaskItem } from '@/sync/dootask/types';
 
 function DetailField({ label, value, color, theme }: {
@@ -24,10 +26,12 @@ export default function DooTaskDetail() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const profile = useDootaskProfile();
+    const navigateToSession = useNavigateToSession();
 
     const [task, setTask] = React.useState<DooTaskItem | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
+    const [spawning, setSpawning] = React.useState(false);
 
     React.useEffect(() => {
         if (!profile || !taskId) return;
@@ -43,6 +47,56 @@ export default function DooTaskDetail() {
             .catch((e) => setError(e.message))
             .finally(() => setLoading(false));
     }, [taskId, profile?.serverUrl]);
+
+    const handleStartAiSession = React.useCallback(async () => {
+        if (!profile || !task) return;
+        setSpawning(true);
+        try {
+            const state = storage.getState();
+            const machines = Object.values(state.machines);
+            const onlineMachine = machines.find((m) => m.active);
+
+            if (!onlineMachine) {
+                router.push('/new');
+                return;
+            }
+
+            const mcpServers = [{
+                name: 'dootask',
+                url: `${profile.serverUrl}/apps/mcp_server/mcp`,
+                headers: { Authorization: `Bearer ${profile.token}` },
+            }];
+
+            const result = await machineSpawnNewSession({
+                machineId: onlineMachine.id,
+                directory: onlineMachine.metadata?.homeDir || '~',
+                agent: 'claude',
+                sessionTitle: `DooTask: ${task.name}`,
+                mcpServers,
+            });
+
+            if (result.type === 'success') {
+                const taskPrompt = [
+                    'I need your help with a task from DooTask.',
+                    `Task ID: ${task.id}`,
+                    `Title: ${task.name}`,
+                    `Project: ${task.project_name}`,
+                    task.desc ? `Description:\n${task.desc}` : '',
+                    '',
+                    'Use DooTask MCP tools when needed: get_task, send_message, update_task, complete_task.',
+                ].filter(Boolean).join('\n');
+
+                storage.getState().updateSessionDraft(result.sessionId, taskPrompt);
+                navigateToSession(result.sessionId);
+            } else if (result.type === 'error') {
+                setError(result.errorMessage);
+            }
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to start session');
+        } finally {
+            setSpawning(false);
+        }
+    }, [profile, task, router, navigateToSession]);
 
     if (loading) {
         return <ActivityIndicator style={{ flex: 1 }} />;
@@ -86,16 +140,18 @@ export default function DooTaskDetail() {
                 </View>
             ) : null}
 
-            {/* Start AI Session button — wired in Task 16 */}
             <Pressable
-                style={[styles.aiButton, { backgroundColor: theme.colors.button.primary.background }]}
-                onPress={() => {
-                    // Implemented in Task 16
-                }}
+                style={[styles.aiButton, { backgroundColor: theme.colors.button.primary.background }, spawning && { opacity: 0.6 }]}
+                onPress={handleStartAiSession}
+                disabled={spawning}
             >
-                <Text style={[styles.aiButtonText, { color: theme.colors.button.primary.tint }]}>
-                    {t('dootask.startAiSession')}
-                </Text>
+                {spawning ? (
+                    <ActivityIndicator color={theme.colors.button.primary.tint} />
+                ) : (
+                    <Text style={[styles.aiButtonText, { color: theme.colors.button.primary.tint }]}>
+                        {t('dootask.startAiSession')}
+                    </Text>
+                )}
             </Pressable>
         </ScrollView>
     );
