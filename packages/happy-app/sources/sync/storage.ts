@@ -103,6 +103,7 @@ interface StorageState {
     dootaskFilters: DooTaskFilters;
     dootaskPager: DooTaskPager;
     dootaskUserCache: Record<number, string>;
+    dootaskTaskDetailCache: Record<number, { task: DooTaskItem; content: string | null }>;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyOpenClawMachines: (machines: OpenClawMachine[], replace?: boolean) => void;
@@ -349,6 +350,7 @@ export const storage = create<StorageState>()((set, get) => {
         dootaskFilters: { status: 'uncompleted' },
         dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
         dootaskUserCache: {},
+        dootaskTaskDetailCache: {},
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -1411,6 +1413,7 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskFilters: { status: 'uncompleted' },
                 dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
                 dootaskUserCache: {},
+                dootaskTaskDetailCache: {},
             }));
         },
     }
@@ -1687,4 +1690,8 @@ export function useDootaskFilters(): DooTaskFilters {
 
 export function useDootaskUserCache(): Record<number, string> {
     return storage(useShallow((s) => s.dootaskUserCache));
+}
+
+export function useDootaskTaskDetailCache(taskId: number) {
+    return storage(useShallow((s) => s.dootaskTaskDetailCache[taskId] ?? null));
 }

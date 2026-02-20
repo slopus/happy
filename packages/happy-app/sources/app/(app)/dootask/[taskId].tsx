@@ -5,7 +5,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { WebView } from 'react-native-webview';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
-import { storage, useDootaskProfile, useDootaskUserCache } from '@/sync/storage';
+import { storage, useDootaskProfile, useDootaskUserCache, useDootaskTaskDetailCache } from '@/sync/storage';
 import { dootaskFetchTaskDetail, dootaskFetchTaskContent } from '@/sync/dootask/api';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -152,10 +152,12 @@ export default function DooTaskDetail() {
     const navigateToSession = useNavigateToSession();
 
     const userCache = useDootaskUserCache();
+    const id = Number(taskId);
+    const cached = useDootaskTaskDetailCache(id);
 
-    const [task, setTask] = React.useState<DooTaskItem | null>(null);
-    const [taskContent, setTaskContent] = React.useState<string | null>(null);
-    const [loading, setLoading] = React.useState(true);
+    const [task, setTask] = React.useState<DooTaskItem | null>(cached?.task ?? null);
+    const [taskContent, setTaskContent] = React.useState<string | null>(cached?.content ?? null);
+    const [loading, setLoading] = React.useState(!cached);
     const [refreshing, setRefreshing] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [spawning, setSpawning] = React.useState(false);
@@ -177,7 +179,6 @@ export default function DooTaskDetail() {
 
     const fetchData = React.useCallback(async () => {
         if (!profile || !taskId) return;
-        const id = Number(taskId);
 
         // Fetch task detail and content in parallel
         const [detailRes, contentRes] = await Promise.all([
@@ -185,11 +186,14 @@ export default function DooTaskDetail() {
             dootaskFetchTaskContent(profile.serverUrl, profile.token, id),
         ]);
 
+        let newTask: DooTaskItem | null = null;
+        let newContent: string | null = null;
+
         if (detailRes.ret === 1) {
-            const taskData = detailRes.data;
-            setTask(taskData);
+            newTask = detailRes.data;
+            setTask(newTask);
             // Fetch user nicknames via global SWR cache (only fetches missing ones)
-            const userIds = (taskData.task_user || []).map((u: any) => u.userid).filter(Boolean);
+            const userIds = (newTask!.task_user || []).map((u: any) => u.userid).filter(Boolean);
             if (userIds.length > 0) {
                 storage.getState().fetchDootaskUsers(userIds);
             }
@@ -204,14 +208,21 @@ export default function DooTaskDetail() {
             if (raw) {
                 // Replace {{RemoteURL}} placeholder with actual server URL
                 const baseUrl = profile.serverUrl.replace(/\/+$/, '') + '/';
-                setTaskContent(raw.replace(/\{\{RemoteURL\}\}/g, baseUrl));
+                newContent = raw.replace(/\{\{RemoteURL\}\}/g, baseUrl);
+                setTaskContent(newContent);
             }
         }
-    }, [taskId, profile?.serverUrl, profile?.token]);
+
+        // Write to global cache for SWR on next visit
+        if (newTask) {
+            const prev = storage.getState().dootaskTaskDetailCache;
+            storage.setState({ dootaskTaskDetailCache: { ...prev, [id]: { task: newTask, content: newContent } } });
+        }
+    }, [id, profile?.serverUrl, profile?.token]);
 
     React.useEffect(() => {
         if (!profile || !taskId) return;
-        setLoading(true);
+        if (!cached) setLoading(true);
         fetchData()
             .catch((e) => setError(e.message))
             .finally(() => setLoading(false));
