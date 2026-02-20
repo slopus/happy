@@ -224,6 +224,36 @@ class Sync {
     }
 
 
+    forceResyncMessages = async (sessionId: string) => {
+        // Stop existing message sync to prevent further scheduling
+        const existingSync = this.messagesSync.get(sessionId);
+        if (existingSync) {
+            existingSync.stop();
+            this.messagesSync.delete(sessionId);
+        }
+
+        // Wait for any in-flight fetchMessages to finish (it holds this lock)
+        const lock = this.getSessionMessageLock(sessionId);
+        await lock.inLock(async () => {
+            // Reset seq cursor so fetchMessages starts from seq 0
+            this.sessionLastSeq.delete(sessionId);
+
+            // Clear queued message buffers to prevent stale messages flushing post-clear
+            this.sessionMessageQueue.delete(sessionId);
+            this.sessionQueueProcessing.delete(sessionId);
+
+            // Clear accumulated messages from store
+            storage.getState().clearSessionMessages(sessionId);
+        });
+
+        // Re-fetch from scratch
+        const newSync = this.getMessagesSync(sessionId);
+        await newSync.invalidateAndAwait();
+        if (newSync.isWedged) {
+            throw new Error(`Force re-sync failed for session ${sessionId} (sync wedged after retries)`);
+        }
+    }
+
     onSessionVisible = (sessionId: string) => {
         this.getMessagesSync(sessionId).invalidate();
 
