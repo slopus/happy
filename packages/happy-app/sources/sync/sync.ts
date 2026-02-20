@@ -1653,7 +1653,12 @@ class Sync {
 
                 if (normalizedMessages.length > 0) {
                     totalNormalized += normalizedMessages.length;
-                    this.enqueueMessages(sessionId, normalizedMessages);
+                    // Apply messages directly instead of enqueuing to avoid lock
+                    // contention: enqueueMessages -> scheduleQueuedMessagesProcessing
+                    // tries to acquire the same lock we already hold, deferring
+                    // processing until after applyMessagesLoaded sets isLoaded=true
+                    // with an empty message list.
+                    this.applyMessages(sessionId, normalizedMessages);
                 }
 
                 // Monotonic advance: never rewind cursor even if socket updates raced ahead

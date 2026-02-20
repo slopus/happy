@@ -593,10 +593,6 @@ function normalizeSessionEnvelope(
 
     if (envelope.ev.t === 'text') {
         if (envelope.role === 'user') {
-            if (!isSessionProtocolSendEnabled()) {
-                return null;
-            }
-
             return {
                 id: messageId,
                 localId,
@@ -722,10 +718,6 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     }
     raw = parsed.data;
     if (raw.role === 'user') {
-        if (isSessionProtocolSendEnabled()) {
-            return null;
-        }
-
         return {
             id,
             localId,
