@@ -13,7 +13,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables, validateProfileForAgent, getProfileEnvironmentVariables } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables, validateProfileForAgent, getProfileEnvironmentVariables, readCredentials } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -272,21 +272,48 @@ export async function startDaemon(): Promise<void> {
         // Layer 2 (middle): Profile environment variables - GUI profile OR CLI local profile
         // Layer 3 (top): Auth tokens again to ensure they're never overridden
 
-        // Layer 1: Resolve authentication token if provided
+        // Layer 1: Resolve authentication token.
+        // Prefer locally-decrypted vendor token (E2E secure — server never sees plaintext).
+        // Fall back to RPC-provided token for backward compatibility during migration.
         const authEnv: Record<string, string> = {};
-        if (options.token) {
+        let resolvedToken: string | null = null;
+
+        // Try to self-serve the vendor token from local credentials
+        try {
+          const credentials = await readCredentials();
+          if (credentials) {
+            const api = await ApiClient.create(credentials);
+            const vendor = options.agent === 'codex' ? 'openai' : options.agent === 'gemini' ? 'gemini' : 'anthropic';
+            const vendorTokenData = await api.getVendorToken(vendor);
+            if (vendorTokenData) {
+              // For Claude/Codex, the token is an OAuth object with access_token or similar
+              resolvedToken = typeof vendorTokenData === 'string' ? vendorTokenData : JSON.stringify(vendorTokenData);
+              logger.debug(`[DAEMON RUN] Self-served vendor token for ${vendor} from local credentials (E2E)`);
+            }
+          }
+        } catch (error) {
+          logger.debug('[DAEMON RUN] Failed to self-serve vendor token, falling back to RPC token:', error);
+        }
+
+        // Fall back to RPC-provided token (legacy path — server decrypted it)
+        if (!resolvedToken && options.token) {
+          resolvedToken = options.token;
+          logger.debug('[DAEMON RUN] Using RPC-provided token (legacy path)');
+        }
+
+        if (resolvedToken) {
           if (options.agent === 'codex') {
 
             // Create a temporary directory for Codex
             const codexHomeDir = tmp.dirSync();
 
             // Write the token to the temporary directory
-            fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
+            fs.writeFile(join(codexHomeDir.name, 'auth.json'), resolvedToken);
 
             // Set the environment variable for Codex
             authEnv.CODEX_HOME = codexHomeDir.name;
           } else { // Assuming claude
-            authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
+            authEnv.CLAUDE_CODE_OAUTH_TOKEN = resolvedToken;
           }
         }
 

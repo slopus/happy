@@ -68,9 +68,10 @@ ${chalk.bold('Examples:')}
   happy connect gemini
   happy connect status
 
-${chalk.bold('Notes:')} 
+${chalk.bold('Notes:')}
   • You must be authenticated with Happy first (run 'happy auth login')
-  • API keys are encrypted and stored securely in Happy cloud
+  • API keys are end-to-end encrypted on your device before being sent to Happy cloud
+  • The server stores an opaque encrypted blob it cannot decrypt
   • You can manage your stored keys at app.happy.engineering
 `);
 }

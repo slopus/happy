@@ -3,7 +3,7 @@ import { logger } from '@/ui/logger'
 import type { AgentState, CreateSessionResponse, Metadata, Session, Machine, MachineMetadata, DaemonState } from '@/api/types'
 import { ApiSessionClient } from './apiSession';
 import { ApiMachineClient } from './apiMachine';
-import { decodeBase64, encodeBase64, getRandomBytes, encrypt, decrypt, libsodiumEncryptForPublicKey } from './encryption';
+import { decodeBase64, encodeBase64, getRandomBytes, encrypt, decrypt, libsodiumEncryptForPublicKey, encryptWithDataKey, decryptWithDataKey, deriveVendorEncryptionKey } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
 import { configuration } from '@/configuration';
 import chalk from 'chalk';
@@ -286,15 +286,40 @@ export class ApiClient {
   }
 
   /**
-   * Register a vendor API token with the server
-   * The token is sent as a JSON string - server handles encryption
+   * Derive the vendor encryption key from credentials.
+   * Returns the derived key or null if credentials don't support E2E encryption.
+   */
+  private getVendorEncryptionKey(): Uint8Array | null {
+    if (this.credential.encryption.type === 'dataKey') {
+      return deriveVendorEncryptionKey(this.credential.encryption.machineKey);
+    }
+    // Legacy credentials: fall back to legacy secret for encryption
+    return this.credential.encryption.secret;
+  }
+
+  /**
+   * Register a vendor API token with the server.
+   * The token is E2E encrypted client-side before transmission —
+   * the server stores an opaque blob it cannot decrypt.
    */
   async registerVendorToken(vendor: 'openai' | 'anthropic' | 'gemini', apiKey: any): Promise<void> {
     try {
+      const vendorKey = this.getVendorEncryptionKey();
+      const tokenJson = JSON.stringify(apiKey);
+
+      // E2E encrypt the token client-side so the server only stores an opaque blob
+      let tokenPayload: string;
+      if (vendorKey) {
+        tokenPayload = encodeBase64(encryptWithDataKey(tokenJson, vendorKey));
+      } else {
+        // Should not happen in practice, but fall back to plaintext for safety
+        tokenPayload = tokenJson;
+      }
+
       const response = await axios.post(
         `${configuration.serverUrl}/v1/connect/${vendor}/register`,
         {
-          token: JSON.stringify(apiKey)
+          token: tokenPayload
         },
         {
           headers: {
@@ -309,7 +334,7 @@ export class ApiClient {
         throw new Error(`Server returned status ${response.status}`);
       }
 
-      logger.debug(`[API] Vendor token for ${vendor} registered successfully`);
+      logger.debug(`[API] Vendor token for ${vendor} registered successfully (E2E encrypted)`);
     } catch (error) {
       logger.debug(`[API] [ERROR] Failed to register vendor token:`, error);
       throw new Error(`Failed to register vendor token: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -317,8 +342,9 @@ export class ApiClient {
   }
 
   /**
-   * Get vendor API token from the server
-   * Returns the token if it exists, null otherwise
+   * Get vendor API token from the server.
+   * The server returns an E2E encrypted blob which is decrypted client-side.
+   * Returns the token if it exists, null otherwise.
    */
   async getVendorToken(vendor: 'openai' | 'anthropic' | 'gemini'): Promise<any | null> {
     try {
@@ -342,7 +368,6 @@ export class ApiClient {
         throw new Error(`Server returned status ${response.status}`);
       }
 
-      // Log raw response for debugging
       logger.debug(`[API] Raw vendor token response:`, {
         status: response.status,
         dataKeys: Object.keys(response.data || {}),
@@ -350,41 +375,52 @@ export class ApiClient {
         tokenType: typeof response.data?.token,
       });
 
-      // Token is returned as JSON string, parse it
-      let tokenData: any = null;
-      if (response.data?.token) {
-        if (typeof response.data.token === 'string') {
-          try {
-            tokenData = JSON.parse(response.data.token);
-          } catch (parseError) {
-            logger.debug(`[API] Failed to parse token as JSON, using as string:`, parseError);
-            tokenData = response.data.token;
-          }
-        } else if (response.data.token !== null) {
-          // Token exists and is not null
-          tokenData = response.data.token;
-        } else {
-          // Token is explicitly null - treat as not found
-          logger.debug(`[API] Token is null for ${vendor}, treating as not found`);
-          return null;
-        }
-      } else if (response.data && typeof response.data === 'object') {
-        // Maybe the token is directly in response.data
-        // But check if it's { token: null } - treat as not found
-        if (response.data.token === null && Object.keys(response.data).length === 1) {
-          logger.debug(`[API] Response contains only null token for ${vendor}, treating as not found`);
-          return null;
-        }
-        tokenData = response.data;
+      if (!response.data?.token) {
+        logger.debug(`[API] Token is null/empty for ${vendor}`);
+        return null;
       }
-      
-      // Final check: if tokenData is null or { token: null }, return null
-      if (tokenData === null || (tokenData && typeof tokenData === 'object' && tokenData.token === null && Object.keys(tokenData).length === 1)) {
+
+      const rawToken = response.data.token;
+
+      // Attempt client-side decryption (E2E encrypted blob)
+      const vendorKey = this.getVendorEncryptionKey();
+      if (vendorKey && typeof rawToken === 'string') {
+        try {
+          const blob = decodeBase64(rawToken);
+          const decrypted = decryptWithDataKey(blob, vendorKey);
+          if (decrypted !== null) {
+            // Successfully decrypted E2E encrypted token
+            const tokenData = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+            logger.debug(`[API] Vendor token for ${vendor} decrypted successfully (E2E)`);
+            return tokenData;
+          }
+        } catch {
+          // Decryption failed — token may be in legacy (server-encrypted) format.
+          // Fall through to legacy parsing below.
+          logger.debug(`[API] E2E decryption failed for ${vendor}, trying legacy format`);
+        }
+      }
+
+      // Legacy fallback: token was stored with server-side encryption (pre-migration).
+      // The server decrypted it and returned plaintext JSON.
+      let tokenData: any = null;
+      if (typeof rawToken === 'string') {
+        try {
+          tokenData = JSON.parse(rawToken);
+        } catch {
+          logger.debug(`[API] Failed to parse token as JSON for ${vendor}, using as string`);
+          tokenData = rawToken;
+        }
+      } else if (rawToken !== null) {
+        tokenData = rawToken;
+      }
+
+      if (tokenData === null) {
         logger.debug(`[API] Token data is null for ${vendor}`);
         return null;
       }
-      
-      logger.debug(`[API] Vendor token for ${vendor} retrieved successfully`, {
+
+      logger.debug(`[API] Vendor token for ${vendor} retrieved successfully (legacy format)`, {
         tokenDataType: typeof tokenData,
         tokenDataKeys: tokenData && typeof tokenData === 'object' ? Object.keys(tokenData) : 'not an object',
       });
