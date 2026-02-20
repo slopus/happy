@@ -1141,7 +1141,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             zIndex: 1001,
                         }}>
                             {props.onModelModeChange && (
-                                <Pressable onPress={() => { hapticsLight(); setShowSettings(prev => prev === 'model' ? false : 'model'); }} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+                                <Pressable hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }} onPress={() => { hapticsLight(); setShowSettings(prev => prev === 'model' ? false : 'model'); }} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
                                     <Text style={{
                                         fontSize: 11,
                                         color: theme.colors.textSecondary,
@@ -1154,7 +1154,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </Pressable>
                             )}
                             {props.permissionMode && (
-                                <Pressable onPress={handlePermissionPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+                                <Pressable hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }} onPress={handlePermissionPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
                                     <Text style={{
                                         fontSize: 11,
                                         color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
