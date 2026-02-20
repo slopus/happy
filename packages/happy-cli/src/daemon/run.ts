@@ -215,12 +215,21 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    // Spawn a new session (sessionId reserved for future --resume functionality)
+    // Spawn a new session (or resume an existing one if sessionId is provided)
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
-      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
+      const { directory, sessionId: rawSessionId, machineId, approvedNewDirectoryCreation = true } = options;
       let directoryCreated = false;
+
+      // Validate sessionId format to prevent command injection (especially in tmux path)
+      // Claude session IDs are UUIDs — reject anything that doesn't match
+      const sessionId = rawSessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawSessionId)
+        ? rawSessionId
+        : undefined;
+      if (rawSessionId && !sessionId) {
+        logger.warn(`[DAEMON RUN] Invalid sessionId format rejected: ${rawSessionId}`);
+      }
 
       try {
         await fs.access(directory);
@@ -388,7 +397,11 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          let fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          if (sessionId) {
+            fullCommand += ` --resume ${sessionId}`;
+            logger.debug(`[DAEMON RUN] Resuming Claude session in tmux: ${sessionId}`);
+          }
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -495,8 +508,12 @@ export async function startDaemon(): Promise<void> {
             '--started-by', 'daemon'
           ];
 
-          // TODO: In future, sessionId could be used with --resume to continue existing sessions
-          // For now, we ignore it - each spawn creates a new session
+          // If sessionId (Claude session ID) is provided, resume that conversation
+          if (sessionId) {
+            args.push('--resume', sessionId);
+            logger.debug(`[DAEMON RUN] Resuming Claude session: ${sessionId}`);
+          }
+
           const happyProcess = spawnHappyCLI(args, {
             cwd: directory,
             detached: true,  // Sessions stay alive when daemon stops

@@ -26,8 +26,11 @@ import { useRouter } from 'expo-router';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { sessionDelete } from '@/sync/ops';
+import { sessionDelete, machineResumeSession } from '@/sync/ops';
 import { HappyError } from '@/utils/errors';
+import { useMachine } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -179,11 +182,18 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.groupped.background,
     },
     swipeAction: {
-        width: 112,
+        width: 80,
         height: '100%',
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: theme.colors.status.error,
+    },
+    swipeActionResume: {
+        width: 80,
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#34C759',
     },
     swipeActionText: {
         marginTop: 4,
@@ -362,6 +372,34 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         );
     }, [performDelete]);
 
+    const canResume = !sessionStatus.isConnected && !session.active
+        && !!session.metadata?.claudeSessionId && !!session.metadata?.machineId;
+    const machine = useMachine(session.metadata?.machineId || '');
+    const machineOnline = machine ? isMachineOnline(machine) : false;
+
+    const [resumingSession, performResume] = useHappyAction(async () => {
+        if (!session.metadata?.claudeSessionId || !session.metadata?.machineId || !session.metadata?.path) return;
+        const result = await machineResumeSession({
+            machineId: session.metadata.machineId,
+            directory: session.metadata.path,
+            claudeSessionId: session.metadata.claudeSessionId,
+            agent: (session.metadata?.flavor as 'claude' | 'codex' | 'gemini') || 'claude',
+        });
+        if (result.type !== 'success') {
+            throw new HappyError(
+                'errorMessage' in result ? result.errorMessage : t('sessionInfo.failedToResumeSession'),
+                false
+            );
+        }
+        await sync.refreshSessions();
+        navigateToSession(result.sessionId);
+    });
+
+    const handleResume = React.useCallback(() => {
+        swipeableRef.current?.close();
+        performResume();
+    }, [performResume]);
+
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
@@ -446,16 +484,30 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     }
 
     const renderRightActions = () => (
-        <Pressable
-            style={styles.swipeAction}
-            onPress={handleDelete}
-            disabled={deletingSession}
-        >
-            <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.swipeActionText} numberOfLines={2}>
-                {t('sessionInfo.deleteSession')}
-            </Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row' }}>
+            {canResume && machineOnline && (
+                <Pressable
+                    style={styles.swipeActionResume}
+                    onPress={handleResume}
+                    disabled={resumingSession}
+                >
+                    <Ionicons name="play-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.swipeActionText} numberOfLines={1}>
+                        {t('sessionInfo.resumeSession')}
+                    </Text>
+                </Pressable>
+            )}
+            <Pressable
+                style={styles.swipeAction}
+                onPress={handleDelete}
+                disabled={deletingSession}
+            >
+                <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+                <Text style={styles.swipeActionText} numberOfLines={2}>
+                    {t('sessionInfo.deleteSession')}
+                </Text>
+            </Pressable>
+        </View>
     );
 
     return (
@@ -464,7 +516,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 ref={swipeableRef}
                 renderRightActions={renderRightActions}
                 overshootRight={false}
-                enabled={!deletingSession}
+                enabled={!deletingSession && !resumingSession}
             >
                 {itemContent}
             </Swipeable>
