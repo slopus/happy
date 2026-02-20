@@ -23,13 +23,28 @@ interface ToolViewProps {
     onPress?: () => void;
     sessionId?: string;
     messageId?: string;
+    localId?: string | null;
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
-    const { tool, onPress, sessionId, messageId } = props;
+    const { tool, onPress, sessionId, messageId, localId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
     const isActuallyRunning = tool.state === 'running' && tool.startedAt !== null;
+    const isBackfillMessage = typeof localId === 'string' && /^(claude|codex|gemini)-log:/.test(localId);
+    const toolResultText = React.useMemo(() => {
+        if (typeof tool.result === 'string') {
+            return tool.result;
+        }
+        if (tool.result === undefined || tool.result === null) {
+            return '';
+        }
+        try {
+            return JSON.stringify(tool.result);
+        } catch {
+            return String(tool.result);
+        }
+    }, [tool.result]);
 
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
@@ -121,11 +136,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     let statusIcon = null;
 
-    let isToolUseError = false;
-    if (tool.state === 'error' && tool.result && parseToolUseError(tool.result).isToolUseError) {
-        isToolUseError = true;
-        console.log('isToolUseError', tool.result);
-    }
+    const parsedToolUseError = parseToolUseError(toolResultText);
+    const isToolUseError = tool.state === 'error' && !!tool.result && parsedToolUseError.isToolUseError;
+    const isReadBeforeWriteError = /File has not been read yet\.\s*Read it first before writing to it\./i.test(toolResultText);
+    const shouldHideBackfillErrorBox = isBackfillMessage && (isToolUseError || isReadBeforeWriteError);
 
     // Check permission status first for denied/canceled states
     if (tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) {
@@ -215,8 +229,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                             <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} sessionId={sessionId} />
                             {tool.state === 'error' && tool.result &&
                                 !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
-                                !hideDefaultError && (
-                                    <ToolError message={String(tool.result)} />
+                                !hideDefaultError &&
+                                !shouldHideBackfillErrorBox && (
+                                    <ToolError message={toolResultText} />
                                 )}
                         </View>
                     );
@@ -225,10 +240,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 // Show error state if present (but not for denied/canceled permissions and not when hideDefaultError is true)
                 if (tool.state === 'error' && tool.result &&
                     !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
-                    !isToolUseError) {
+                    !isToolUseError &&
+                    !shouldHideBackfillErrorBox) {
                     return (
                         <View style={styles.content}>
-                            <ToolError message={String(tool.result)} />
+                            <ToolError message={toolResultText} />
                         </View>
                     );
                 }

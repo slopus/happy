@@ -268,6 +268,7 @@ function ToolCallBlock(props: {
         messages={props.message.children}
         sessionId={props.sessionId}
         messageId={props.message.id}
+        localId={props.message.localId}
       />
     </View>
   );

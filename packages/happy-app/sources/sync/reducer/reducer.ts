@@ -316,6 +316,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         state.messages.set(mid, {
             id: mid,
             realID: message.id,
+            localId: message.localId ?? null,
             role: 'agent',
             createdAt: message.createdAt,
             event: event,
@@ -686,6 +687,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         const message = state.messages.get(existingMessageId);
                         if (message?.tool) {
                             message.realID = msg.id;
+                            message.localId = msg.localId ?? message.localId ?? null;
                             message.tool.description = c.description;
                             message.tool.startedAt = msg.createdAt;
                             // If permission was approved and shown as completed (no tool), now it's running
@@ -753,6 +755,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         state.messages.set(mid, {
                             id: mid,
                             realID: msg.id,
+                            localId: msg.localId ?? null,
                             role: 'agent',
                             createdAt: msg.createdAt,
                             text: null,
@@ -927,6 +930,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     let toolMsg: ReducerMessage = {
                         id: mid,
                         realID: msg.id,
+                        localId: msg.localId ?? null,
                         role: 'agent',
                         createdAt: msg.createdAt,
                         text: null,
@@ -1044,6 +1048,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             state.messages.set(mid, {
                 id: mid,
                 realID: msg.id,
+                localId: msg.localId ?? null,
                 role: 'agent',
                 createdAt: msg.createdAt,
                 event: msg.content,
@@ -1162,7 +1167,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
     } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
         return {
             id: reducerMsg.id,
-            localId: null,
+            localId: reducerMsg.localId ?? null,
             createdAt: reducerMsg.createdAt,
             kind: 'agent-text',
             text: reducerMsg.text,
@@ -1182,7 +1187,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
 
         return {
             id: reducerMsg.id,
-            localId: null,
+            localId: reducerMsg.localId ?? null,
             createdAt: reducerMsg.createdAt,
             kind: 'tool-call',
             tool: { ...reducerMsg.tool },
