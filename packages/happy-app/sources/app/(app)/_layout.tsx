@@ -140,6 +140,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/[id]/tool-diff"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('common.fileViewer'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="settings/account"
                 options={{
                     headerTitle: t('settings.account'),
