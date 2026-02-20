@@ -268,6 +268,8 @@ export const ja: TranslationStructure = {
         inlineToolCallsDescription: 'チャットメッセージ内にツール呼び出しを直接表示',
         expandTodoLists: 'Todoリストを展開',
         expandTodoListsDescription: '変更点だけでなくすべてのTodoを表示',
+        showThinkingMessages: '思考メッセージを表示',
+        showThinkingMessagesDescription: 'チャットでAIの推論と思考プロセスを表示',
         showLineNumbersInDiffs: '差分に行番号を表示',
         showLineNumbersInDiffsDescription: 'コード差分に行番号を表示',
         showLineNumbersInToolViews: 'ツールビューに行番号を表示',

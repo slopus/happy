@@ -265,6 +265,8 @@ export const it: TranslationStructure = {
         inlineToolCallsDescription: 'Mostra le chiamate agli strumenti direttamente nei messaggi di chat',
         expandTodoLists: 'Espandi liste di attività',
         expandTodoListsDescription: 'Mostra tutte le attività invece dei soli cambiamenti',
+        showThinkingMessages: 'Mostra messaggi di pensiero',
+        showThinkingMessagesDescription: 'Mostra il processo di ragionamento dell\'IA nella chat',
         showLineNumbersInDiffs: 'Mostra numeri di riga nelle differenze',
         showLineNumbersInDiffsDescription: 'Mostra i numeri di riga nei diff del codice',
         showLineNumbersInToolViews: 'Mostra numeri di riga nelle viste strumenti',

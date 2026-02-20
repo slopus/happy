@@ -109,6 +109,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
+                showThinkingMessages: true,
                 hideInactiveSessions: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
@@ -143,6 +144,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient', // This should be preserved from currentSettings
                 showFlavorIcons: false,
                 compactSessionView: false,
+                showThinkingMessages: true,
                 hideInactiveSessions: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
@@ -177,6 +179,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
+                showThinkingMessages: true,
                 hideInactiveSessions: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
@@ -213,6 +216,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
+                showThinkingMessages: true,
                 hideInactiveSessions: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
@@ -254,6 +258,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
+                showThinkingMessages: true,
                 hideInactiveSessions: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
@@ -304,6 +309,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
+                showThinkingMessages: true,
                 hideInactiveSessions: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
@@ -380,6 +386,7 @@ describe('settings', () => {
                 favoriteMachines: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
                 useEnhancedSessionWizard: false,
+                showThinkingMessages: true,
             });
         });
 

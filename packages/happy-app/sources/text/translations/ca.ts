@@ -236,6 +236,8 @@ export const ca: TranslationStructure = {
         inlineToolCallsDescription: 'Mostra les crides d\'eines directament als missatges de xat',
         expandTodoLists: 'Expandeix les llistes de tasques',
         expandTodoListsDescription: 'Mostra totes les tasques en lloc de només els canvis',
+        showThinkingMessages: 'Mostra missatges de pensament',
+        showThinkingMessagesDescription: 'Mostra el procés de raonament de la IA al xat',
         showLineNumbersInDiffs: 'Mostra els números de línia a les diferències',
         showLineNumbersInDiffsDescription: 'Mostra els números de línia a les diferències de codi',
         showLineNumbersInToolViews: 'Mostra els números de línia a les vistes d\'eines',

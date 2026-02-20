@@ -200,6 +200,8 @@ export const ru: TranslationStructure = {
         inlineToolCallsDescription: 'Отображать вызовы инструментов прямо в сообщениях чата',
         expandTodoLists: 'Развернуть списки задач',
         expandTodoListsDescription: 'Показывать все задачи вместо только изменений',
+        showThinkingMessages: 'Показывать сообщения размышлений',
+        showThinkingMessagesDescription: 'Отображать процесс рассуждений ИИ в чате',
         showLineNumbersInDiffs: 'Показывать номера строк в различиях',
         showLineNumbersInDiffsDescription: 'Отображать номера строк в различиях кода',
         showLineNumbersInToolViews: 'Показывать номера строк в представлениях инструментов',

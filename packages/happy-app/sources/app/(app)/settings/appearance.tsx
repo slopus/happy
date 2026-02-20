@@ -30,6 +30,7 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
+    const [showThinkingMessages, setShowThinkingMessages] = useSettingMutable('showThinkingMessages');
     const [compactSessionView, setCompactSessionView] = useSettingMutable('compactSessionView');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
@@ -151,6 +152,17 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={expandTodos}
                             onValueChange={setExpandTodos}
+                        />
+                    }
+                />
+                <Item
+                    title={t('settingsAppearance.showThinkingMessages')}
+                    subtitle={t('settingsAppearance.showThinkingMessagesDescription')}
+                    icon={<Ionicons name="bulb-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={showThinkingMessages}
+                            onValueChange={setShowThinkingMessages}
                         />
                     }
                 />

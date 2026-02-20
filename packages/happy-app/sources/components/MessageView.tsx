@@ -13,6 +13,7 @@ import { AgentEvent } from "@/sync/typesRaw";
 import { Option } from './markdown/MarkdownView';
 import { Modal } from "@/modal";
 import { sync } from "@/sync/sync";
+import { useSetting } from "@/sync/storage";
 
 export const MessageView = (props: {
   message: Message;
@@ -160,7 +161,13 @@ function AgentTextBlock(props: {
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
 }) {
+  const showThinkingMessages = useSetting('showThinkingMessages');
   const [optionsLoadingState, setOptionsLoadingState] = React.useState<OptionsLoadingState>({ loadingIndex: null });
+
+  // Hide thinking messages if setting is disabled
+  if (props.message.isThinking && !showThinkingMessages) {
+    return null;
+  }
 
   // Click to send
   const handleOptionPress = React.useCallback(async (option: Option, allOptions: string[]) => {

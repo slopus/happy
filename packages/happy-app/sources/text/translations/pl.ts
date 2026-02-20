@@ -247,6 +247,8 @@ export const pl: TranslationStructure = {
         inlineToolCallsDescription: 'Wyświetlaj wywołania narzędzi bezpośrednio w wiadomościach czatu',
         expandTodoLists: 'Rozwiń listy zadań',
         expandTodoListsDescription: 'Pokazuj wszystkie zadania zamiast tylko zmian',
+        showThinkingMessages: 'Pokaż wiadomości myślenia',
+        showThinkingMessagesDescription: 'Wyświetlaj proces rozumowania AI w czacie',
         showLineNumbersInDiffs: 'Pokaż numery linii w różnicach',
         showLineNumbersInDiffsDescription: 'Wyświetlaj numery linii w różnicach kodu',
         showLineNumbersInToolViews: 'Pokaż numery linii w widokach narzędzi',

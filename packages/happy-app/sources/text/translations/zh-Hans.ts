@@ -238,6 +238,8 @@ export const zhHans: TranslationStructure = {
         inlineToolCallsDescription: '在聊天消息中直接显示工具调用',
         expandTodoLists: '展开待办列表',
         expandTodoListsDescription: '显示所有待办事项而不仅仅是变更',
+        showThinkingMessages: '显示思考消息',
+        showThinkingMessagesDescription: '在聊天中显示 AI 的推理和思考过程',
         showLineNumbersInDiffs: '在差异中显示行号',
         showLineNumbersInDiffsDescription: '在代码差异中显示行号',
         showLineNumbersInToolViews: '在工具视图中显示行号',
