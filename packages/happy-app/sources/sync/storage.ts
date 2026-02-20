@@ -125,6 +125,7 @@ interface StorageState {
     updateArtifact: (artifact: DecryptedArtifact) => void;
     deleteArtifact: (artifactId: string) => void;
     deleteSession: (sessionId: string) => void;
+    clearSessionMessages: (sessionId: string) => void;
     // Project management methods
     getProjects: () => import('./projectManager').Project[];
     getProject: (projectId: string) => import('./projectManager').Project | null;
@@ -941,6 +942,10 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionGitStatus: remainingGitStatus,
                 sessionListViewData
             };
+        }),
+        clearSessionMessages: (sessionId: string) => set((state) => {
+            const { [sessionId]: _, ...remainingSessionMessages } = state.sessionMessages;
+            return { ...state, sessionMessages: remainingSessionMessages };
         }),
         // Friend management methods
         applyFriends: (friends: UserProfile[]) => set((state) => {

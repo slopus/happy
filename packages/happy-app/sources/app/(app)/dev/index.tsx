@@ -7,13 +7,14 @@ import { ItemList } from '@/components/ItemList';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
-import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
+import { storage, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
 import { Switch } from '@/components/Switch';
 import { useUnistyles } from 'react-native-unistyles';
 import { setLastViewedVersion, getLatestVersion } from '@/changelog';
+import { useHappyAction } from '@/hooks/useHappyAction';
 
 export default function DevScreen() {
     const router = useRouter();
@@ -22,6 +23,25 @@ export default function DevScreen() {
     const socketStatus = useSocketStatus();
     const anonymousId = sync.encryption!.anonID;
     const { theme } = useUnistyles();
+
+    const [resyncLoading, handleForceResync] = useHappyAction(async () => {
+        const sessions = storage.getState().getActiveSessions();
+        if (sessions.length === 0) {
+            Modal.alert('No Sessions', 'No active sessions found.');
+            return;
+        }
+        const sessionId = await Modal.prompt(
+            'Force Re-sync Messages',
+            'Enter session ID to wipe local message cache and re-fetch:',
+            {
+                defaultValue: sessions[0]?.id || '',
+                confirmText: 'Re-sync'
+            }
+        );
+        if (!sessionId?.trim()) return;
+        await sync.forceResyncMessages(sessionId.trim());
+        Modal.alert('Done', `Messages re-synced for session ${sessionId.trim()}`);
+    });
 
     const handleEditServerUrl = async () => {
         const currentUrl = getServerUrl();
@@ -276,6 +296,13 @@ export default function DevScreen() {
                             throw new Error('Test crash triggered from dev menu');
                         }
                     }}
+                />
+                <Item
+                    title="Force Re-sync Messages"
+                    subtitle="Clear message cache for a session and re-fetch"
+                    icon={<Ionicons name="sync-outline" size={28} color="#007AFF" />}
+                    onPress={handleForceResync}
+                    loading={resyncLoading}
                 />
                 <Item
                     title="Clear Cache"
