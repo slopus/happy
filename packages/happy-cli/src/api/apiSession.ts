@@ -309,29 +309,29 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private async flushOutbox() {
-        if (this.pendingOutbox.length === 0) {
-            return;
+        const MAX_BATCH_SIZE = 100;
+
+        while (this.pendingOutbox.length > 0) {
+            const batch = this.pendingOutbox.slice(0, MAX_BATCH_SIZE);
+            const response = await axios.post<V3PostSessionMessagesResponse>(
+                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                {
+                    messages: batch
+                },
+                {
+                    headers: this.authHeaders(),
+                    timeout: 60000
+                }
+            );
+
+            this.pendingOutbox.splice(0, batch.length);
+
+            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+            const maxSeq = messages.reduce((acc, message) => (
+                message.seq > acc ? message.seq : acc
+            ), this.lastSeq);
+            this.lastSeq = maxSeq;
         }
-
-        const batch = this.pendingOutbox.slice();
-        const response = await axios.post<V3PostSessionMessagesResponse>(
-            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-            {
-                messages: batch
-            },
-            {
-                headers: this.authHeaders(),
-                timeout: 60000
-            }
-        );
-
-        this.pendingOutbox.splice(0, batch.length);
-
-        const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-        const maxSeq = messages.reduce((acc, message) => (
-            message.seq > acc ? message.seq : acc
-        ), this.lastSeq);
-        this.lastSeq = maxSeq;
     }
 
     private enqueueMessage(content: unknown, invalidate: boolean = true) {

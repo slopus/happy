@@ -123,7 +123,9 @@ export async function claudeRemote(opts: {
         customSystemPrompt: initial.mode.customSystemPrompt ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt : undefined,
         appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
-        disallowedTools: initial.mode.disallowedTools,
+        disallowedTools: mapToClaudeMode(initial.mode.permissionMode) === 'bypassPermissions'
+            ? [...(initial.mode.disallowedTools || []), 'AskUserQuestion']
+            : initial.mode.disallowedTools,
         canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal }) => opts.canCallTool(toolName, input, mode, options),
         executable: opts.jsRuntime ?? 'node',
         abort: opts.signal,
