@@ -1,12 +1,12 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { WebView } from 'react-native-webview';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
-import { storage, useDootaskProfile } from '@/sync/storage';
-import { dootaskFetchTaskDetail, dootaskFetchTaskContent, dootaskFetchUsersBasic } from '@/sync/dootask/api';
+import { storage, useDootaskProfile, useDootaskUserCache } from '@/sync/storage';
+import { dootaskFetchTaskDetail, dootaskFetchTaskContent } from '@/sync/dootask/api';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ImageViewer } from '@/components/ImageViewer';
@@ -151,10 +151,12 @@ export default function DooTaskDetail() {
     const profile = useDootaskProfile();
     const navigateToSession = useNavigateToSession();
 
+    const userCache = useDootaskUserCache();
+
     const [task, setTask] = React.useState<DooTaskItem | null>(null);
     const [taskContent, setTaskContent] = React.useState<string | null>(null);
-    const [userMap, setUserMap] = React.useState<Record<number, string>>({});
     const [loading, setLoading] = React.useState(true);
+    const [refreshing, setRefreshing] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [spawning, setSpawning] = React.useState(false);
 
@@ -173,51 +175,59 @@ export default function DooTaskDetail() {
         setImageViewerVisible(true);
     }, [contentImages]);
 
-    React.useEffect(() => {
+    const fetchData = React.useCallback(async () => {
         if (!profile || !taskId) return;
-        setLoading(true);
         const id = Number(taskId);
 
         // Fetch task detail and content in parallel
-        Promise.all([
+        const [detailRes, contentRes] = await Promise.all([
             dootaskFetchTaskDetail(profile.serverUrl, profile.token, id),
             dootaskFetchTaskContent(profile.serverUrl, profile.token, id),
-        ])
-            .then(async ([detailRes, contentRes]) => {
-                if (detailRes.ret === 1) {
-                    const taskData = detailRes.data;
-                    setTask(taskData);
-                    // Resolve user nicknames from task_user userids
-                    const userIds = (taskData.task_user || []).map((u: any) => u.userid).filter(Boolean);
-                    if (userIds.length > 0) {
-                        try {
-                            const usersRes = await dootaskFetchUsersBasic(profile!.serverUrl, profile!.token, userIds);
-                            if (usersRes.ret === 1 && Array.isArray(usersRes.data)) {
-                                const map: Record<number, string> = {};
-                                for (const u of usersRes.data) {
-                                    if (u.userid && u.nickname) map[u.userid] = u.nickname;
-                                }
-                                setUserMap(map);
-                            }
-                        } catch { }
-                    }
-                } else {
-                    setError(detailRes.msg || 'Failed to load task');
-                }
-                if (contentRes.ret === 1 && contentRes.data) {
-                    const raw = typeof contentRes.data === 'string'
-                        ? contentRes.data
-                        : contentRes.data.content || '';
-                    if (raw) {
-                        // Replace {{RemoteURL}} placeholder with actual server URL
-                        const baseUrl = profile!.serverUrl.replace(/\/+$/, '') + '/';
-                        setTaskContent(raw.replace(/\{\{RemoteURL\}\}/g, baseUrl));
-                    }
-                }
-            })
+        ]);
+
+        if (detailRes.ret === 1) {
+            const taskData = detailRes.data;
+            setTask(taskData);
+            // Fetch user nicknames via global SWR cache (only fetches missing ones)
+            const userIds = (taskData.task_user || []).map((u: any) => u.userid).filter(Boolean);
+            if (userIds.length > 0) {
+                storage.getState().fetchDootaskUsers(userIds);
+            }
+        } else {
+            setError(detailRes.msg || 'Failed to load task');
+        }
+
+        if (contentRes.ret === 1 && contentRes.data) {
+            const raw = typeof contentRes.data === 'string'
+                ? contentRes.data
+                : contentRes.data.content || '';
+            if (raw) {
+                // Replace {{RemoteURL}} placeholder with actual server URL
+                const baseUrl = profile.serverUrl.replace(/\/+$/, '') + '/';
+                setTaskContent(raw.replace(/\{\{RemoteURL\}\}/g, baseUrl));
+            }
+        }
+    }, [taskId, profile?.serverUrl, profile?.token]);
+
+    React.useEffect(() => {
+        if (!profile || !taskId) return;
+        setLoading(true);
+        fetchData()
             .catch((e) => setError(e.message))
             .finally(() => setLoading(false));
-    }, [taskId, profile?.serverUrl, profile?.token]);
+    }, [fetchData]);
+
+    const handleRefresh = React.useCallback(async () => {
+        setRefreshing(true);
+        setError(null);
+        try {
+            await fetchData();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to refresh');
+        } finally {
+            setRefreshing(false);
+        }
+    }, [fetchData]);
 
     const handleStartAiSession = React.useCallback(async () => {
         if (!profile || !task) return;
@@ -281,13 +291,17 @@ export default function DooTaskDetail() {
         );
     }
 
-    const ownerNames = (task.task_user || []).filter((u) => u.owner === 1).map((u) => userMap[u.userid] || '').filter(Boolean);
-    const assistantNames = (task.task_user || []).filter((u) => u.owner === 0).map((u) => userMap[u.userid] || '').filter(Boolean);
+    const ownerNames = (task.task_user || []).filter((u) => u.owner === 1).map((u) => userCache[u.userid] || String(u.userid));
+    const assistantNames = (task.task_user || []).filter((u) => u.owner === 0).map((u) => userCache[u.userid] || String(u.userid));
     const flow = task.flow_item_name ? parseFlowItem(task.flow_item_name) : null;
     const flowColor = flow?.color || theme.colors.textSecondary;
 
     return (
-        <ScrollView contentContainerStyle={styles.container} style={{ backgroundColor: theme.colors.surface }}>
+        <ScrollView
+            contentContainerStyle={styles.container}
+            style={{ backgroundColor: theme.colors.surface }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        >
             <Text style={[styles.title, { color: theme.colors.text }]}>{task.name}</Text>
 
             <View style={styles.fieldGroup}>

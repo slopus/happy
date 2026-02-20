@@ -11,7 +11,7 @@ import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile } from "./persistence";
 import { DooTaskProfile, DooTaskProject, DooTaskItem, DooTaskFilters, DooTaskPager } from './dootask/types';
-import { dootaskFetchProjects, dootaskFetchTasks } from './dootask/api';
+import { dootaskFetchProjects, dootaskFetchTasks, dootaskFetchUsersBasic } from './dootask/api';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import React from "react";
 import { sync } from "./sync";
@@ -102,6 +102,7 @@ interface StorageState {
     dootaskError: string | null;
     dootaskFilters: DooTaskFilters;
     dootaskPager: DooTaskPager;
+    dootaskUserCache: Record<number, string>;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyOpenClawMachines: (machines: OpenClawMachine[], replace?: boolean) => void;
@@ -164,6 +165,7 @@ interface StorageState {
     fetchDootaskProjects: () => Promise<void>;
     fetchDootaskTasks: (opts?: { refresh?: boolean; loadMore?: boolean }) => Promise<void>;
     setDootaskFilter: (filters: Partial<DooTaskFilters>) => void;
+    fetchDootaskUsers: (userIds: number[]) => Promise<Record<number, string>>;
     clearDootaskData: () => void;
 }
 
@@ -346,6 +348,7 @@ export const storage = create<StorageState>()((set, get) => {
         dootaskError: null,
         dootaskFilters: { status: 'uncompleted' },
         dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
+        dootaskUserCache: {},
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -1373,6 +1376,29 @@ export const storage = create<StorageState>()((set, get) => {
             }));
         },
 
+        fetchDootaskUsers: async (userIds) => {
+            const { dootaskProfile, dootaskUserCache } = get();
+            if (!dootaskProfile || userIds.length === 0) return dootaskUserCache;
+
+            // Only fetch userids not already cached
+            const missingIds = userIds.filter((id) => !(id in dootaskUserCache));
+            if (missingIds.length === 0) return dootaskUserCache;
+
+            try {
+                const res = await dootaskFetchUsersBasic(dootaskProfile.serverUrl, dootaskProfile.token, missingIds);
+                if (res.ret === 1 && Array.isArray(res.data)) {
+                    const newEntries: Record<number, string> = {};
+                    for (const u of res.data) {
+                        if (u.userid) newEntries[u.userid] = u.nickname || '';
+                    }
+                    const merged = { ...get().dootaskUserCache, ...newEntries };
+                    set((state) => ({ ...state, dootaskUserCache: merged }));
+                    return merged;
+                }
+            } catch { /* silent */ }
+            return get().dootaskUserCache;
+        },
+
         clearDootaskData: () => {
             saveDooTaskProfile(null);
             set((state) => ({
@@ -1384,6 +1410,7 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskError: null,
                 dootaskFilters: { status: 'uncompleted' },
                 dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
+                dootaskUserCache: {},
             }));
         },
     }
@@ -1656,4 +1683,8 @@ export function useDootaskProjects(): DooTaskProject[] {
 
 export function useDootaskFilters(): DooTaskFilters {
     return storage(useShallow((s) => s.dootaskFilters));
+}
+
+export function useDootaskUserCache(): Record<number, string> {
+    return storage(useShallow((s) => s.dootaskUserCache));
 }
