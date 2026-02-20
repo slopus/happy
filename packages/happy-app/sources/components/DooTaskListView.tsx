@@ -8,6 +8,19 @@ import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile } from '
 import type { DooTaskItem } from '@/sync/dootask/types';
 
 /**
+ * Parse DooTask flow_item_name which comes as "status|name|color" from the API.
+ * E.g. "end|已完成|#52c41a" or "start|待处理|".
+ * Returns parsed { status, name, color } matching DooTask's convertWorkflow().
+ */
+function parseFlowItem(raw: string): { status: string | null; name: string; color: string | null } {
+    if (raw.indexOf('|') !== -1) {
+        const arr = `${raw}||`.split('|');
+        return { status: arr[0] || null, name: arr[1] || raw, color: arr[2] || null };
+    }
+    return { status: null, name: raw, color: null };
+}
+
+/**
  * Format end_at date as countdown or short date (matches DooTask dashboard logic).
  * - Within 7 days: countdown like "3d 05h", "-1d 02h" (negative = overdue)
  * - Beyond 7 days: "MM-DD" (same year) or "YYYY-MM-DD"
@@ -81,6 +94,8 @@ const TaskCard = React.memo(({ item, onPress }: { item: DooTaskItem; onPress: ()
     const { theme } = useUnistyles();
     const owner = item.taskUser?.find((u) => u.owner === 1);
     const isCompleted = !!item.complete_at;
+    const flow = item.flow_item_name ? parseFlowItem(item.flow_item_name) : null;
+    const flowColor = flow?.color || theme.colors.textSecondary;
 
     return (
         <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
@@ -91,10 +106,10 @@ const TaskCard = React.memo(({ item, onPress }: { item: DooTaskItem; onPress: ()
                 </Text>
             </View>
             <View style={styles.cardMeta}>
-                {item.flow_item_name ? (
-                    <View style={[styles.statusBadge, { backgroundColor: (item.p_color || theme.colors.textSecondary) + '20' }]}>
-                        <Text style={[styles.statusBadgeText, { color: item.p_color || theme.colors.textSecondary }]}>
-                            {item.flow_item_name}
+                {flow ? (
+                    <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
+                        <Text style={[styles.statusBadgeText, { color: flowColor }]}>
+                            {flow.name}
                         </Text>
                     </View>
                 ) : null}
