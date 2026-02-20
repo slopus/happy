@@ -104,16 +104,22 @@ class Sync {
     private lastRecalculationTime = 0;
 
     constructor() {
-        this.sessionsSync = new InvalidateSync(this.fetchSessions);
-        this.settingsSync = new InvalidateSync(this.syncSettings);
-        this.profileSync = new InvalidateSync(this.fetchProfile);
-        this.purchasesSync = new InvalidateSync(this.syncPurchases);
-        this.machinesSync = new InvalidateSync(this.fetchMachines);
-        this.nativeUpdateSync = new InvalidateSync(this.fetchNativeUpdate);
-        this.artifactsSync = new InvalidateSync(this.fetchArtifactsList);
-        this.friendsSync = new InvalidateSync(this.fetchFriends);
-        this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests);
-        this.feedSync = new InvalidateSync(this.fetchFeed);
+        const startupSyncOpts = {
+            maxRetries: 50,
+            onError: (error: unknown) => {
+                console.error('[Sync] Startup sync gave up:', error);
+            },
+        };
+        this.sessionsSync = new InvalidateSync(this.fetchSessions, startupSyncOpts);
+        this.settingsSync = new InvalidateSync(this.syncSettings, startupSyncOpts);
+        this.profileSync = new InvalidateSync(this.fetchProfile, startupSyncOpts);
+        this.purchasesSync = new InvalidateSync(this.syncPurchases, startupSyncOpts);
+        this.machinesSync = new InvalidateSync(this.fetchMachines, startupSyncOpts);
+        this.nativeUpdateSync = new InvalidateSync(this.fetchNativeUpdate, startupSyncOpts);
+        this.artifactsSync = new InvalidateSync(this.fetchArtifactsList, startupSyncOpts);
+        this.friendsSync = new InvalidateSync(this.fetchFriends, startupSyncOpts);
+        this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests, startupSyncOpts);
+        this.feedSync = new InvalidateSync(this.fetchFeed, startupSyncOpts);
 
         const registerPushToken = async () => {
             if (__DEV__) {
@@ -121,7 +127,7 @@ class Sync {
             }
             await this.registerPushToken();
         }
-        this.pushTokenSync = new InvalidateSync(registerPushToken);
+        this.pushTokenSync = new InvalidateSync(registerPushToken, startupSyncOpts);
         this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 2000);
 
         // Listen for app state changes to refresh purchases

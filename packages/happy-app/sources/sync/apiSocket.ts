@@ -117,11 +117,11 @@ class ApiSocket {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
         
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const result = await this.socket!.timeout(30000).emitWithAck('rpc-call', {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
-        
+
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
@@ -137,7 +137,7 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const result = await this.socket!.timeout(30000).emitWithAck('rpc-call', {
             method: `${machineId}:${method}`,
             params: await machineEncryption.encryptRaw(params)
         });
@@ -157,7 +157,7 @@ class ApiSocket {
         if (!this.socket) {
             throw new Error('Socket not connected');
         }
-        return await this.socket.emitWithAck(event, data);
+        return await this.socket.timeout(15000).emitWithAck(event, data);
     }
 
     //
@@ -180,10 +180,20 @@ class ApiSocket {
             ...options?.headers
         };
 
-        return fetch(url, {
-            ...options,
-            headers
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
+        if (options?.signal) {
+            options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+        }
+        try {
+            return await fetch(url, {
+                ...options,
+                headers,
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeout);
+        }
     }
 
     //
