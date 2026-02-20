@@ -7,6 +7,36 @@ import { Typography } from '@/constants/Typography';
 import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile } from '@/sync/storage';
 import type { DooTaskItem } from '@/sync/dootask/types';
 
+/**
+ * Format end_at date as countdown or short date (matches DooTask dashboard logic).
+ * - Within 7 days: countdown like "3d 05h", "-1d 02h" (negative = overdue)
+ * - Beyond 7 days: "MM-DD" (same year) or "YYYY-MM-DD"
+ */
+function formatEndAt(endAt: string): string {
+    const now = Date.now();
+    const end = new Date(endAt).getTime();
+    if (isNaN(end)) return endAt;
+
+    const diffSec = Math.floor((end - now) / 1000);
+    if (Math.abs(diffSec) < 86400 * 7) {
+        const pre = diffSec < 0 ? '-' : '';
+        const abs = Math.abs(diffSec);
+        const days = Math.floor(abs / 86400);
+        const hours = Math.floor((abs % 86400) / 3600);
+        const minutes = Math.floor((abs % 3600) / 60);
+        if (days > 0) return `${pre}${days}d ${String(hours).padStart(2, '0')}h`;
+        if (hours > 0) return `${pre}${hours}h ${String(minutes).padStart(2, '0')}min`;
+        return `${pre}${minutes}min`;
+    }
+
+    const d = new Date(end);
+    const nowDate = new Date(now);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    if (d.getFullYear() === nowDate.getFullYear()) return `${mm}-${dd}`;
+    return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 // --- Filter Bar ---
 const FilterBar = React.memo(() => {
     const filters = useDootaskFilters();
@@ -35,7 +65,7 @@ const FilterBar = React.memo(() => {
                     >
                         <Text style={[
                             styles.chipText,
-                            { color: filters.status === opt.key ? '#fff' : theme.colors.text },
+                            { color: filters.status === opt.key ? theme.colors.button.primary.tint : theme.colors.text },
                         ]}>
                             {opt.label}
                         </Text>
@@ -50,6 +80,7 @@ const FilterBar = React.memo(() => {
 const TaskCard = React.memo(({ item, onPress }: { item: DooTaskItem; onPress: () => void }) => {
     const { theme } = useUnistyles();
     const owner = item.taskUser?.find((u) => u.owner === 1);
+    const isCompleted = !!item.complete_at;
 
     return (
         <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
@@ -60,26 +91,28 @@ const TaskCard = React.memo(({ item, onPress }: { item: DooTaskItem; onPress: ()
                 </Text>
             </View>
             <View style={styles.cardMeta}>
+                {item.flow_item_name ? (
+                    <View style={[styles.statusBadge, { backgroundColor: (item.p_color || theme.colors.textSecondary) + '20' }]}>
+                        <Text style={[styles.statusBadgeText, { color: item.p_color || theme.colors.textSecondary }]}>
+                            {item.flow_item_name}
+                        </Text>
+                    </View>
+                ) : null}
                 <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
                     {item.project_name}
                 </Text>
-                {item.flow_item_name ? (
-                    <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
-                        {item.flow_item_name}
-                    </Text>
-                ) : null}
                 {owner ? (
                     <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
                         {owner.nickname}
                     </Text>
                 ) : null}
             </View>
-            {item.end_at ? (
+            {item.end_at && !isCompleted ? (
                 <Text style={[
                     styles.metaText,
                     { color: item.overdue ? theme.colors.deleteAction : theme.colors.textSecondary, marginTop: 4 },
                 ]}>
-                    {item.end_at}
+                    {formatEndAt(item.end_at)}
                     {item.overdue ? ` (${t('dootask.overdue')})` : ''}
                 </Text>
             ) : null}
@@ -182,7 +215,7 @@ export const DooTaskListView = React.memo(() => {
     );
 });
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create((_theme) => ({
     filterBar: { paddingHorizontal: 16, paddingVertical: 8 },
     filterRow: { flexDirection: 'row', gap: 8 },
     chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
@@ -196,7 +229,9 @@ const styles = StyleSheet.create((theme) => ({
     cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
     priorityDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
     cardTitle: { ...Typography.default('semiBold'), fontSize: 15, flex: 1 },
-    cardMeta: { flexDirection: 'row', gap: 12, marginTop: 6, flexWrap: 'wrap' },
+    cardMeta: { flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' },
+    statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    statusBadgeText: { ...Typography.default(), fontSize: 11 },
     metaText: { ...Typography.default(), fontSize: 12 },
     empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
     emptyTitle: { ...Typography.default('semiBold'), fontSize: 16 },
