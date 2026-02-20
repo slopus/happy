@@ -24,6 +24,12 @@ export const PRICING = {
         cache_write: 18.75,
         cache_read: 1.50
     },
+    'claude-4.6-sonnet': {
+        input: 3.0,
+        output: 15.0,
+        cache_write: 3.75,
+        cache_read: 0.30
+    },
     'claude-4.5-sonnet': {
         input: 3.0,
         output: 15.0,
@@ -106,7 +112,8 @@ export function calculateCost(usage: Usage, modelId?: string): { total: number, 
             else pricing = PRICING['claude-3-opus-20240229'];
         }
         else if (modelId?.includes('sonnet')) {
-            if (modelId.includes('4.5')) pricing = PRICING['claude-4.5-sonnet'];
+            if (modelId.includes('4.6')) pricing = PRICING['claude-4.6-sonnet'];
+            else if (modelId.includes('4.5')) pricing = PRICING['claude-4.5-sonnet'];
             else if (modelId.includes('4')) pricing = PRICING['claude-4-sonnet'];
             else pricing = PRICING['claude-3-5-sonnet-20241022'];
         }

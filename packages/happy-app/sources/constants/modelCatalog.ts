@@ -15,6 +15,7 @@ export const MODEL_MODES = [
     MODEL_MODE_DEFAULT,
     'claude-opus-4-6',
     'claude-opus-4-5',
+    'claude-sonnet-4-6',
     'claude-sonnet-4-5',
     'claude-haiku-4-5',
     'gpt-5.3-codex-low',
@@ -46,6 +47,7 @@ export const CLAUDE_MODEL_MODES = [
     MODEL_MODE_DEFAULT,
     'claude-opus-4-6',
     'claude-opus-4-5',
+    'claude-sonnet-4-6',
     'claude-sonnet-4-5',
     'claude-haiku-4-5',
 ] as const satisfies readonly ModelMode[];
@@ -105,6 +107,7 @@ export const CLAUDE_MODEL_OPTIONS = [
     { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' },
     { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', shortLabel: 'Opus 4.6', description: 'Most capable' },
     { value: 'claude-opus-4-5', label: 'Claude Opus 4.5', shortLabel: 'Opus 4.5', description: 'Most capable' },
+    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', shortLabel: 'Sonnet 4.6', description: 'Balanced speed and quality' },
     { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', shortLabel: 'Sonnet 4.5', description: 'Balanced speed and quality' },
     { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', shortLabel: 'Haiku 4.5', description: 'Fastest' },
 ] as const;
@@ -203,6 +206,7 @@ const MODEL_NAME_LABELS: Record<string, string> = {
     'gpt-5.1-codex-mini': 'GPT-5.1-Codex-Mini',
     'claude-opus-4-6': 'Claude Opus 4.6',
     'claude-opus-4-5': 'Claude Opus 4.5',
+    'claude-sonnet-4-6': 'Claude Sonnet 4.6',
     'claude-sonnet-4-5': 'Claude Sonnet 4.5',
     'claude-haiku-4-5': 'Claude Haiku 4.5',
     'gemini-3-pro-preview': 'Gemini 3 Pro (Preview)',
@@ -279,6 +283,7 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
     // Claude models
     'claude-opus-4-6': 200_000,
     'claude-opus-4-5': 200_000,
+    'claude-sonnet-4-6': 200_000,
     'claude-sonnet-4-5': 200_000,
     'claude-haiku-4-5': 200_000,
     // Codex models (fallback; actual value comes from CLI via context_window_size)

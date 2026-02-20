@@ -86,7 +86,7 @@ export DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
         case 'zai':
             return {
                 setupGuideUrl: 'https://docs.z.ai/devpack/tool/claude',
-                description: 'Z.AI GLM-4.7 API proxied through Anthropic-compatible interface',
+                description: 'Z.AI GLM-5.0 API proxied through Anthropic-compatible interface',
                 environmentVariables: [
                     {
                         name: 'Z_AI_BASE_URL',
@@ -108,20 +108,20 @@ export DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
                     },
                     {
                         name: 'Z_AI_MODEL',
-                        expectedValue: 'GLM-4.7',
+                        expectedValue: 'GLM-5.0',
                         description: 'Default model',
                         isSecret: false,
                     },
                     {
                         name: 'Z_AI_OPUS_MODEL',
-                        expectedValue: 'GLM-4.7',
-                        description: 'Model for "Opus" tasks (maps to GLM-4.7)',
+                        expectedValue: 'GLM-5.0',
+                        description: 'Model for "Opus" tasks (maps to GLM-5.0)',
                         isSecret: false,
                     },
                     {
                         name: 'Z_AI_SONNET_MODEL',
-                        expectedValue: 'GLM-4.7',
-                        description: 'Model for "Sonnet" tasks (maps to GLM-4.7)',
+                        expectedValue: 'GLM-5.0',
+                        description: 'Model for "Sonnet" tasks (maps to GLM-5.0)',
                         isSecret: false,
                     },
                     {
@@ -135,9 +135,9 @@ export DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
 export Z_AI_BASE_URL="https://api.z.ai/api/anthropic"
 export Z_AI_AUTH_TOKEN="sk-YOUR_ZAI_API_KEY"
 export Z_AI_API_TIMEOUT_MS="3000000"
-export Z_AI_MODEL="GLM-4.7"
-export Z_AI_OPUS_MODEL="GLM-4.7"
-export Z_AI_SONNET_MODEL="GLM-4.7"
+export Z_AI_MODEL="GLM-5.0"
+export Z_AI_OPUS_MODEL="GLM-5.0"
+export Z_AI_SONNET_MODEL="GLM-5.0"
 export Z_AI_HAIKU_MODEL="GLM-4.5-Air"`,
             };
         case 'openai':
@@ -279,21 +279,21 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
         case 'zai':
             // Z.AI profile: Maps Z_AI_* daemon environment to ANTHROPIC_* for Claude CLI
             // Launch daemon with: Z_AI_AUTH_TOKEN=sk-... Z_AI_BASE_URL=https://api.z.ai/api/anthropic
-            // Model mappings: Z_AI_OPUS_MODEL=GLM-4.7, Z_AI_SONNET_MODEL=GLM-4.7, Z_AI_HAIKU_MODEL=GLM-4.5-Air
+            // Model mappings: Z_AI_OPUS_MODEL=GLM-5.0, Z_AI_SONNET_MODEL=GLM-5.0, Z_AI_HAIKU_MODEL=GLM-4.5-Air
             // Uses ${VAR:-default} format for fallback values (bash parameter expansion)
             // Secrets use ${VAR} without fallback for security
             // NOTE: anthropicConfig left empty so environmentVariables aren't overridden
             return {
                 id: 'zai',
-                name: 'Z.AI (GLM-4.7)',
+                name: 'Z.AI (GLM-5.0)',
                 anthropicConfig: {},
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${Z_AI_BASE_URL:-https://api.z.ai/api/anthropic}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' }, // Secret - no fallback
                     { name: 'API_TIMEOUT_MS', value: '${Z_AI_API_TIMEOUT_MS:-3000000}' },
-                    { name: 'ANTHROPIC_MODEL', value: '${Z_AI_MODEL:-GLM-4.7}' },
-                    { name: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: '${Z_AI_OPUS_MODEL:-GLM-4.7}' },
-                    { name: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: '${Z_AI_SONNET_MODEL:-GLM-4.7}' },
+                    { name: 'ANTHROPIC_MODEL', value: '${Z_AI_MODEL:-GLM-5.0}' },
+                    { name: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: '${Z_AI_OPUS_MODEL:-GLM-5.0}' },
+                    { name: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: '${Z_AI_SONNET_MODEL:-GLM-5.0}' },
                     { name: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', value: '${Z_AI_HAIKU_MODEL:-GLM-4.5-Air}' },
                 ],
                 defaultPermissionMode: 'default',
@@ -378,7 +378,7 @@ export const DEFAULT_PROFILES = [
     },
     {
         id: 'zai',
-        name: 'Z.AI (GLM-4.7)',
+        name: 'Z.AI (GLM-5.0)',
         isBuiltIn: true,
     },
     {
