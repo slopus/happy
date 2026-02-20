@@ -92,7 +92,7 @@ const FilterBar = React.memo(() => {
 // --- Task Card ---
 const TaskCard = React.memo(({ item, onPress }: { item: DooTaskItem; onPress: () => void }) => {
     const { theme } = useUnistyles();
-    const owner = item.taskUser?.find((u) => u.owner === 1);
+    const owner = item.task_user?.find((u) => u.owner === 1);
     const isCompleted = !!item.complete_at;
     const flow = item.flow_item_name ? parseFlowItem(item.flow_item_name) : null;
     const flowColor = flow?.color || theme.colors.textSecondary;

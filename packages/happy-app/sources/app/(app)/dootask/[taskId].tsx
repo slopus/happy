@@ -265,8 +265,8 @@ export default function DooTaskDetail() {
         );
     }
 
-    const owners = task.taskUser?.filter((u) => u.owner === 1) || [];
-    const assistants = task.taskUser?.filter((u) => u.owner === 0) || [];
+    const owners = task.task_user?.filter((u) => u.owner === 1) || [];
+    const assistants = task.task_user?.filter((u) => u.owner === 0) || [];
     const flow = task.flow_item_name ? parseFlowItem(task.flow_item_name) : null;
     const flowColor = flow?.color || theme.colors.textSecondary;
 

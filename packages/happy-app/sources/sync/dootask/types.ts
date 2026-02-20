@@ -32,7 +32,7 @@ export type DooTaskItem = {
     end_at: string | null;
     complete_at: string | null;
     overdue: boolean;
-    taskUser: Array<{ userid: number; nickname: string; owner?: number }>;
+    task_user: Array<{ userid: number; nickname: string; owner?: number }>;
 };
 
 export type DooTaskFilters = {
