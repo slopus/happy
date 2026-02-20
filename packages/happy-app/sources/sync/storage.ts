@@ -247,6 +247,44 @@ function buildSessionListViewData(
     return listData;
 }
 
+function areSessionsShallowEqual(a: Session, b: Session): boolean {
+    return (
+        a.id === b.id &&
+        a.seq === b.seq &&
+        a.createdAt === b.createdAt &&
+        a.updatedAt === b.updatedAt &&
+        a.active === b.active &&
+        a.activeAt === b.activeAt &&
+        a.metadata === b.metadata &&
+        a.metadataVersion === b.metadataVersion &&
+        a.agentState === b.agentState &&
+        a.agentStateVersion === b.agentStateVersion &&
+        a.thinking === b.thinking &&
+        a.thinkingAt === b.thinkingAt &&
+        a.messageSyncing === b.messageSyncing &&
+        a.presence === b.presence &&
+        a.todos === b.todos &&
+        a.draft === b.draft &&
+        a.permissionMode === b.permissionMode &&
+        a.modelMode === b.modelMode &&
+        a.latestUsage === b.latestUsage
+    );
+}
+
+function hasReferenceMapChanges<T>(prev: Record<string, T>, next: Record<string, T>): boolean {
+    const prevKeys = Object.keys(prev);
+    const nextKeys = Object.keys(next);
+    if (prevKeys.length !== nextKeys.length) {
+        return true;
+    }
+    for (const key of prevKeys) {
+        if (prev[key] !== next[key]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 export const storage = create<StorageState>()((set, get) => {
     let { settings, version } = loadSettings();
     let localSettings = loadLocalSettings();
@@ -323,9 +361,9 @@ export const storage = create<StorageState>()((set, get) => {
                 // Only update metadata/agentState if new version is higher or equal
                 // This prevents out-of-order updates from overwriting newer data
                 const useExistingMetadata = existing &&
-                    existing.metadataVersion > session.metadataVersion;
+                    existing.metadataVersion >= session.metadataVersion;
                 const useExistingAgentState = existing &&
-                    existing.agentStateVersion > session.agentStateVersion;
+                    existing.agentStateVersion >= session.agentStateVersion;
 
                 // Preserve existing draft and permission mode if they exist, or load from saved data
                 const existingDraft = existing?.draft;
@@ -335,7 +373,7 @@ export const storage = create<StorageState>()((set, get) => {
                 const existingModelMode = existing?.modelMode;
                 const savedModelMode = savedModelModes[session.id];
                 const existingMessageSyncing = existing?.messageSyncing;
-                mergedSessions[session.id] = {
+                const mergedSession: Session = {
                     ...session,
                     // Use existing metadata/agentState if their versions are higher
                     metadata: useExistingMetadata ? existing.metadata : session.metadata,
@@ -348,50 +386,12 @@ export const storage = create<StorageState>()((set, get) => {
                     modelMode: existingModelMode || savedModelMode || session.modelMode || 'default',
                     messageSyncing: existingMessageSyncing ?? session.messageSyncing
                 };
+
+                // Keep object identity stable when nothing changed to avoid no-op render loops.
+                mergedSessions[session.id] = existing && areSessionsShallowEqual(existing, mergedSession)
+                    ? existing
+                    : mergedSession;
             });
-
-            // Build active set from all sessions (including existing ones)
-            const activeSet = new Set<string>();
-            Object.values(mergedSessions).forEach(session => {
-                if (isSessionActive(session)) {
-                    activeSet.add(session.id);
-                }
-            });
-
-            // Separate active and inactive sessions
-            const activeSessions: Session[] = [];
-            const inactiveSessions: Session[] = [];
-
-            // Process all sessions from merged set
-            Object.values(mergedSessions).forEach(session => {
-                if (activeSet.has(session.id)) {
-                    activeSessions.push(session);
-                } else {
-                    inactiveSessions.push(session);
-                }
-            });
-
-            // Sort both arrays by creation date for stable ordering
-            activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-            inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
-
-            // Build flat list data for FlashList
-            const listData: SessionListItem[] = [];
-
-            if (activeSessions.length > 0) {
-                listData.push('online');
-                listData.push(...activeSessions);
-            }
-
-            // Legacy sessionsData - to be removed
-            // Machines are now integrated into sessionListViewData
-
-            if (inactiveSessions.length > 0) {
-                listData.push('offline');
-                listData.push(...inactiveSessions);
-            }
-
-            // console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
 
             // Process AgentState updates for sessions that already have messages loaded
             const updatedSessionMessages = { ...state.sessionMessages };
@@ -460,18 +460,69 @@ export const storage = create<StorageState>()((set, get) => {
 
                     // IMPORTANT: Copy latestUsage from reducerState to Session for immediate availability
                     if (existingSessionMessages.reducerState.latestUsage) {
-                        mergedSessions[session.id] = {
-                            ...mergedSessions[session.id],
+                        const nextSessionWithUsage: Session = {
+                            ...newSession,
                             latestUsage: { ...existingSessionMessages.reducerState.latestUsage }
                         };
+                        mergedSessions[session.id] = areSessionsShallowEqual(newSession, nextSessionWithUsage)
+                            ? newSession
+                            : nextSessionWithUsage;
                     }
                 }
             });
+            const hasSessionChanges = hasReferenceMapChanges(state.sessions, mergedSessions);
+            const hasSessionMessageChanges = hasReferenceMapChanges(state.sessionMessages, updatedSessionMessages);
 
-            // Build new unified list view data
-            const sessionListViewData = buildSessionListViewData(
-                mergedSessions
-            );
+            if (!hasSessionChanges && !hasSessionMessageChanges) {
+                return state;
+            }
+
+            // Legacy sessionsData - to be removed
+            // Machines are now integrated into sessionListViewData
+            let listData: SessionListItem[] | null = state.sessionsData;
+            let sessionListViewData: SessionListViewItem[] | null = state.sessionListViewData;
+            if (hasSessionChanges) {
+                // Build active set from all sessions (including existing ones)
+                const activeSet = new Set<string>();
+                Object.values(mergedSessions).forEach(session => {
+                    if (isSessionActive(session)) {
+                        activeSet.add(session.id);
+                    }
+                });
+
+                // Separate active and inactive sessions
+                const activeSessions: Session[] = [];
+                const inactiveSessions: Session[] = [];
+
+                // Process all sessions from merged set
+                Object.values(mergedSessions).forEach(session => {
+                    if (activeSet.has(session.id)) {
+                        activeSessions.push(session);
+                    } else {
+                        inactiveSessions.push(session);
+                    }
+                });
+
+                // Sort both arrays by creation date for stable ordering
+                activeSessions.sort((a, b) => b.createdAt - a.createdAt);
+                inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
+
+                // Build flat list data for FlashList
+                const nextListData: SessionListItem[] = [];
+
+                if (activeSessions.length > 0) {
+                    nextListData.push('online');
+                    nextListData.push(...activeSessions);
+                }
+
+                if (inactiveSessions.length > 0) {
+                    nextListData.push('offline');
+                    nextListData.push(...inactiveSessions);
+                }
+
+                listData = nextListData;
+                sessionListViewData = buildSessionListViewData(mergedSessions);
+            }
 
             // Update project manager with current sessions and machines
             const machineMetadataMap = new Map<string, any>();
@@ -484,10 +535,10 @@ export const storage = create<StorageState>()((set, get) => {
 
             return {
                 ...state,
-                sessions: mergedSessions,
-                sessionsData: listData,  // Legacy - to be removed
-                sessionListViewData,
-                sessionMessages: updatedSessionMessages
+                sessions: hasSessionChanges ? mergedSessions : state.sessions,
+                sessionsData: hasSessionChanges ? listData : state.sessionsData,  // Legacy - to be removed
+                sessionListViewData: hasSessionChanges ? sessionListViewData : state.sessionListViewData,
+                sessionMessages: hasSessionMessageChanges ? updatedSessionMessages : state.sessionMessages
             };
         }),
         applyLoaded: () => set((state) => {
