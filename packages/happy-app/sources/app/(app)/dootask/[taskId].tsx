@@ -46,7 +46,7 @@ export default function DooTaskDetail() {
             })
             .catch((e) => setError(e.message))
             .finally(() => setLoading(false));
-    }, [taskId, profile?.serverUrl]);
+    }, [taskId, profile?.serverUrl, profile?.token]);
 
     const handleStartAiSession = React.useCallback(async () => {
         if (!profile || !task) return;

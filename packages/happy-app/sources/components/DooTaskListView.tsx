@@ -99,7 +99,7 @@ export const DooTaskListView = React.memo(() => {
             storage.getState().fetchDootaskProjects();
             storage.getState().fetchDootaskTasks({ refresh: true });
         }
-    }, [profile?.serverUrl]);
+    }, [profile?.serverUrl, profile?.token]);
 
     if (!profile) {
         return (

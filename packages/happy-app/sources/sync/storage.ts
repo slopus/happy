@@ -1295,7 +1295,7 @@ export const storage = create<StorageState>()((set, get) => {
         // DooTask methods
         setDootaskProfile: (profile) => {
             saveDooTaskProfile(profile);
-            set((state) => ({ ...state, dootaskProfile: profile }));
+            set((state) => ({ ...state, dootaskProfile: profile, dootaskError: null }));
         },
 
         fetchDootaskProjects: async () => {

@@ -62,7 +62,11 @@ export async function dootaskLogin(params: LoginParams): Promise<LoginResult> {
     }
 
     if (json.ret === 0 && json.data?.code === 'need') {
-        return { type: 'captcha_required', message: json.msg, codeKey: json.data.code_key || '' };
+        const codeKey = json.data.code_key;
+        if (!codeKey) {
+            return { type: 'error', message: json.msg || 'Captcha required but server returned invalid response' };
+        }
+        return { type: 'captcha_required', message: json.msg, codeKey };
     }
 
     if (isTokenExpired(json)) {
