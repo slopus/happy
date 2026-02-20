@@ -70,9 +70,9 @@ export const UsageChart: React.FC<UsageChartProps> = ({
         );
     }
     
-    // Calculate max value for scaling
+    // Calculate max value for scaling — use 'total' key to avoid double-counting
     const getValueForDataPoint = (point: UsageDataPoint): number => {
-        return Object.values(point.tokens).reduce((sum, val) => sum + (val || 0), 0);
+        return point.tokens['total'] ?? 0;
     };
     
     const maxValue = Math.max(...data.map(getValueForDataPoint), 1);

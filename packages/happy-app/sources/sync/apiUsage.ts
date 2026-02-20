@@ -99,18 +99,23 @@ export async function getUsageForPeriod(
  */
 export function calculateTotals(usage: UsageDataPoint[]): {
     totalTokens: number;
-    tokensByModel: Record<string, number>;
+    tokensByType: Record<string, number>;
 } {
     const result = {
         totalTokens: 0,
-        tokensByModel: {} as Record<string, number>,
+        tokensByType: {} as Record<string, number>,
     };
 
     for (const dataPoint of usage) {
-        for (const [model, tokens] of Object.entries(dataPoint.tokens)) {
-            if (typeof tokens === 'number') {
-                result.totalTokens += tokens;
-                result.tokensByModel[model] = (result.tokensByModel[model] || 0) + tokens;
+        // Use 'total' key for the aggregate; fall back to summing all keys
+        const total = dataPoint.tokens['total'];
+        if (typeof total === 'number') {
+            result.totalTokens += total;
+        }
+
+        for (const [key, tokens] of Object.entries(dataPoint.tokens)) {
+            if (typeof tokens === 'number' && key !== 'total') {
+                result.tokensByType[key] = (result.tokensByType[key] || 0) + tokens;
             }
         }
     }

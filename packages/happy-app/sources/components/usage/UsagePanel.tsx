@@ -29,7 +29,8 @@ const styles = StyleSheet.create((theme) => ({
     },
     periodSelector: {
         flexDirection: 'row',
-        padding: 16,
+        paddingHorizontal: 16,
+        paddingTop: 16,
         gap: 8,
     },
     periodButton: {
@@ -50,6 +51,32 @@ const styles = StyleSheet.create((theme) => ({
     },
     periodTextActive: {
         color: '#FFFFFF',
+    },
+    providerSelector: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        gap: 6,
+    },
+    providerButton: {
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        borderRadius: 12,
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
+    providerButtonActive: {
+        backgroundColor: theme.colors.text,
+        borderColor: theme.colors.text,
+    },
+    providerText: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        fontWeight: '500',
+    },
+    providerTextActive: {
+        color: theme.colors.groupped.background,
     },
     statsContainer: {
         padding: 16,
@@ -109,7 +136,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     const [usageData, setUsageData] = useState<UsageDataPoint[]>([]);
     const [totals, setTotals] = useState({
         totalTokens: 0,
-        tokensByModel: {} as Record<string, number>,
+        tokensByType: {} as Record<string, number>,
     });
 
     useEffect(() => {
@@ -161,12 +188,20 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
         '30days': t('usage.last30Days')
     };
 
-    // Get top models by usage
-    const topModels = Object.entries(totals.tokensByModel)
+    const TOKEN_TYPE_LABELS: Record<string, string> = {
+        input: t('usage.tokenInput'),
+        output: t('usage.tokenOutput'),
+        cache_read: t('usage.tokenCacheRead'),
+        cache_creation: t('usage.tokenCacheCreation'),
+        reasoning: t('usage.tokenReasoning'),
+    };
+
+    // Get top token types by usage (e.g. input, output, cache_read, cache_creation)
+    const topTypes = Object.entries(totals.tokensByType)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 5);
 
-    const maxModelTokens = Math.max(...Object.values(totals.tokensByModel), 1);
+    const maxTypeTokens = Math.max(...Object.values(totals.tokensByType), 1);
 
     return (
         <ScrollView style={styles.container}>
@@ -186,14 +221,14 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
             </View>
 
             {/* Provider Selector */}
-            <View style={styles.periodSelector}>
+            <View style={styles.providerSelector}>
                 {(['all', 'claude', 'codex', 'gemini'] as Provider[]).map((p) => (
                     <Pressable
                         key={p}
-                        style={[styles.periodButton, provider === p && styles.periodButtonActive]}
+                        style={[styles.providerButton, provider === p && styles.providerButtonActive]}
                         onPress={() => setProvider(p)}
                     >
-                        <Text style={[styles.periodText, provider === p && styles.periodTextActive]}>
+                        <Text style={[styles.providerText, provider === p && styles.providerTextActive]}>
                             {t(`usage.${p === 'all' ? 'allProviders' : p === 'claude' ? 'claudeCode' : p}`)}
                         </Text>
                     </Pressable>
@@ -238,16 +273,16 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                 </View>
             )}
 
-            {/* Usage by Model */}
-            {topModels.length > 0 && (
-                <ItemGroup title={t('usage.byModel')}>
+            {/* Token Breakdown */}
+            {topTypes.length > 0 && (
+                <ItemGroup title={t('usage.tokenBreakdown')}>
                     <View style={{ padding: 16 }}>
-                        {topModels.map(([model, tokens]) => (
+                        {topTypes.map(([type, tokens]) => (
                             <UsageBar
-                                key={model}
-                                label={model}
+                                key={type}
+                                label={TOKEN_TYPE_LABELS[type] || type}
                                 value={tokens}
-                                maxValue={maxModelTokens}
+                                maxValue={maxTypeTokens}
                                 color="#007AFF"
                             />
                         ))}
