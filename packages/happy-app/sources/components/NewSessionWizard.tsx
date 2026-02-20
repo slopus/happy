@@ -848,7 +848,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
         // First, add paths from recentMachinePaths (these are the most recent)
         recentMachinePaths.forEach(entry => {
-            if (entry.machineId === selectedMachineId && !pathSet.has(entry.path) && !entry.path.includes('/.dev/worktree/')) {
+            if (entry.machineId === selectedMachineId && !pathSet.has(entry.path)) {
                 paths.push(entry.path);
                 pathSet.add(entry.path);
             }
@@ -864,7 +864,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 const session = item as any;
                 if (session.metadata?.machineId === selectedMachineId && session.metadata?.path) {
                     const path = session.metadata.path;
-                    if (!pathSet.has(path) && !path.includes('/.dev/worktree/')) {
+                    if (!pathSet.has(path)) {
                         pathSet.add(path);
                         pathsWithTimestamps.push({
                             path,

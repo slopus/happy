@@ -85,7 +85,7 @@ export default function PathPickerScreen() {
 
         // First, add paths from recentMachinePaths (these are the most recent)
         recentMachinePaths.forEach(entry => {
-            if (entry.machineId === params.machineId && !pathSet.has(entry.path) && !entry.path.includes('/.dev/worktree/')) {
+            if (entry.machineId === params.machineId && !pathSet.has(entry.path)) {
                 paths.push(entry.path);
                 pathSet.add(entry.path);
             }
@@ -101,7 +101,7 @@ export default function PathPickerScreen() {
                 const session = item as any;
                 if (session.metadata?.machineId === params.machineId && session.metadata?.path) {
                     const path = session.metadata.path;
-                    if (!pathSet.has(path) && !path.includes('/.dev/worktree/')) {
+                    if (!pathSet.has(path)) {
                         pathSet.add(path);
                         pathsWithTimestamps.push({
                             path,
