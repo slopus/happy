@@ -3,7 +3,8 @@ import { type Fastify, GitHubProfile } from "../types";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
 import { eventRouter } from "@/app/events/eventRouter";
-import { decryptString, encryptString } from "@/modules/encrypt";
+// Vendor tokens are now E2E encrypted client-side — server stores opaque blobs.
+// Server-side encrypt/decrypt imports removed intentionally.
 import { githubConnect } from "@/app/github/githubConnect";
 import { githubDisconnect } from "@/app/github/githubDisconnect";
 import { Context } from "@/context";
@@ -257,11 +258,12 @@ export function connectRoutes(app: Fastify) {
         }
     }, async (request, reply) => {
         const userId = request.userId;
-        const encrypted = encryptString(['user', userId, 'vendors', request.params.vendor, 'token'], request.body.token);
+        // Token arrives E2E encrypted by the client — store as opaque blob.
+        // The server cannot and should not decrypt vendor tokens.
         await db.serviceAccountToken.upsert({
             where: { accountId_vendor: { accountId: userId, vendor: request.params.vendor } },
-            update: { updatedAt: new Date(), token: encrypted },
-            create: { accountId: userId, vendor: request.params.vendor, token: encrypted }
+            update: { updatedAt: new Date(), token: request.body.token },
+            create: { accountId: userId, vendor: request.params.vendor, token: request.body.token }
         });
         reply.send({ success: true });
     });
@@ -287,7 +289,8 @@ export function connectRoutes(app: Fastify) {
         if (!token) {
             return reply.send({ token: null });
         } else {
-            return reply.send({ token: decryptString(['user', userId, 'vendors', request.params.vendor, 'token'], token.token) });
+            // Return E2E encrypted blob as-is — only the client can decrypt
+            return reply.send({ token: token.token });
         }
     });
 
@@ -324,11 +327,9 @@ export function connectRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const tokens = await db.serviceAccountToken.findMany({ where: { accountId: userId } });
-        let decrypted = [];
-        for (const token of tokens) {
-            decrypted.push({ vendor: token.vendor, token: decryptString(['user', userId, 'vendors', token.vendor, 'token'], token.token) });
-        }
-        return reply.send({ tokens: decrypted });
+        // Return E2E encrypted blobs as-is — only the client can decrypt
+        const result = tokens.map(token => ({ vendor: token.vendor, token: token.token }));
+        return reply.send({ tokens: result });
     });
 
 }
