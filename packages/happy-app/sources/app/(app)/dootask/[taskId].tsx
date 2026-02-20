@@ -36,14 +36,28 @@ function DetailField({ label, value, color, theme }: {
 }
 
 // --- HTML Content Renderer ---
-const HtmlContent = React.memo(({ html, theme, onImagePress }: { html: string; theme: any; onImagePress?: (url: string) => void }) => {
+type HtmlContentProps = {
+    html: string;
+    theme: any;
+    onImagePress?: (url: string) => void;
+    onImagesFound?: (urls: string[]) => void;
+};
+
+const HtmlContent = React.memo(({ html, theme, onImagePress, onImagesFound }: HtmlContentProps) => {
     const [height, setHeight] = React.useState(100);
     const containerRef = React.useRef<any>(null);
 
-    // Web: attach click delegation for images
+    // Web: attach click delegation and extract images from DOM
     React.useEffect(() => {
-        if (Platform.OS !== 'web' || !containerRef.current || !onImagePress) return;
+        if (Platform.OS !== 'web' || !containerRef.current) return;
         const el = containerRef.current as HTMLElement;
+        // Extract images from actual DOM
+        if (onImagesFound) {
+            const imgs = el.querySelectorAll('img');
+            const urls = Array.from(imgs).map((img: any) => img.src).filter(Boolean);
+            if (urls.length > 0) onImagesFound(urls);
+        }
+        if (!onImagePress) return;
         const handler = (e: Event) => {
             const target = e.target as HTMLElement;
             if (target.tagName === 'IMG') {
@@ -53,7 +67,7 @@ const HtmlContent = React.memo(({ html, theme, onImagePress }: { html: string; t
         };
         el.addEventListener('click', handler);
         return () => el.removeEventListener('click', handler);
-    }, [onImagePress]);
+    }, [onImagePress, onImagesFound, html]);
 
     if (Platform.OS === 'web') {
         return (
@@ -86,9 +100,16 @@ blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid ${theme.c
 </head><body>${html}
 <script>
 function sendHeight() { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'height', height: document.body.scrollHeight })); }
+function sendImages() {
+    var imgs = document.querySelectorAll('img');
+    var urls = [];
+    for (var i = 0; i < imgs.length; i++) { if (imgs[i].src) urls.push(imgs[i].src); }
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'images', urls: urls }));
+}
 sendHeight();
-new MutationObserver(sendHeight).observe(document.body, { childList: true, subtree: true });
-window.addEventListener('load', sendHeight);
+sendImages();
+new MutationObserver(function() { sendHeight(); sendImages(); }).observe(document.body, { childList: true, subtree: true });
+window.addEventListener('load', function() { sendHeight(); sendImages(); });
 document.addEventListener('click', function(e) {
     var el = e.target;
     if (el.tagName === 'IMG') {
@@ -113,6 +134,8 @@ document.addEventListener('click', function(e) {
                             setHeight(data.height + 16);
                         } else if (data.type === 'imagePress' && data.url && onImagePress) {
                             onImagePress(data.url);
+                        } else if (data.type === 'images' && data.urls && onImagesFound) {
+                            onImagesFound(data.urls);
                         }
                     } catch { }
                 }}
@@ -137,18 +160,11 @@ export default function DooTaskDetail() {
     // Image viewer state
     const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
+    const [contentImages, setContentImages] = React.useState<Array<{ uri: string }>>([]);
 
-    // Extract all image URLs from HTML content
-    const contentImages = React.useMemo(() => {
-        if (!taskContent) return [];
-        const urls: string[] = [];
-        const re = /<img[^>]+src=["']([^"']+)["']/gi;
-        let match;
-        while ((match = re.exec(taskContent)) !== null) {
-            urls.push(match[1]);
-        }
-        return urls.map((uri) => ({ uri }));
-    }, [taskContent]);
+    const handleImagesFound = React.useCallback((urls: string[]) => {
+        setContentImages(urls.map((uri) => ({ uri })));
+    }, []);
 
     const handleImagePress = React.useCallback((url: string) => {
         const idx = contentImages.findIndex((img) => img.uri === url);
@@ -298,7 +314,7 @@ export default function DooTaskDetail() {
                     <Text style={[styles.descLabel, { color: theme.colors.textSecondary }]}>
                         {t('dootask.description')}
                     </Text>
-                    <HtmlContent html={taskContent} theme={theme} onImagePress={handleImagePress} />
+                    <HtmlContent html={taskContent} theme={theme} onImagePress={handleImagePress} onImagesFound={handleImagesFound} />
                 </View>
             ) : task.desc ? (
                 <View style={styles.descSection}>
