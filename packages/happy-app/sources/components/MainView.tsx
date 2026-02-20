@@ -99,14 +99,14 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-// Tab header configuration (zen excluded as that tab is disabled, openclaw moved to settings)
+// Tab header configuration
 const TAB_TITLES = {
     sessions: 'tabs.sessions',
     inbox: 'tabs.inbox',
     settings: 'tabs.settings',
 } as const;
 
-// Active tabs (excludes zen which is disabled, openclaw moved to settings)
+// Active tabs
 type ActiveTabType = 'sessions' | 'inbox' | 'settings';
 
 // Header title component with connection status
@@ -233,7 +233,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const realtimeStatus = useRealtimeStatus();
 
     // Tab state management
-    // NOTE: Zen tab removed - the feature never got to a useful state
     const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
 
     const handleNewSession = React.useCallback(() => {
