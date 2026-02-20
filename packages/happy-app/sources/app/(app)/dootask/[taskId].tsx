@@ -173,10 +173,14 @@ export default function DooTaskDetail() {
                     setError(detailRes.msg || 'Failed to load task');
                 }
                 if (contentRes.ret === 1 && contentRes.data) {
-                    const content = typeof contentRes.data === 'string'
+                    const raw = typeof contentRes.data === 'string'
                         ? contentRes.data
                         : contentRes.data.content || '';
-                    if (content) setTaskContent(content);
+                    if (raw) {
+                        // Replace {{RemoteURL}} placeholder with actual server URL
+                        const baseUrl = profile!.serverUrl.replace(/\/+$/, '') + '/';
+                        setTaskContent(raw.replace(/\{\{RemoteURL\}\}/g, baseUrl));
+                    }
                 }
             })
             .catch((e) => setError(e.message))
