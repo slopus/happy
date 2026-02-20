@@ -154,15 +154,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 }
             }
         }
+        // Collect tool call IDs to release atomically with the next enqueue
+        let releaseIds: string[] = [];
         if (message.type === 'user') {
             let umessage = message as SDKUserMessage;
             if (umessage.message.content && Array.isArray(umessage.message.content)) {
                 for (let c of umessage.message.content) {
                     if (c.type === 'tool_result' && c.tool_use_id) {
                         ongoingToolCalls.delete(c.tool_use_id);
-
-                        // When tool result received, release any delayed messages for this tool call
-                        messageQueue.releaseToolCall(c.tool_use_id);
+                        releaseIds.push(c.tool_use_id);
                     }
                 }
             }
@@ -262,7 +262,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         // Top-level tool call - queue with delay
                         messageQueue.enqueue(logMessage, {
                             delay: 250,
-                            toolCallIds
+                            toolCallIds,
+                            releaseToolCallIds: releaseIds.length > 0 ? releaseIds : undefined
                         });
                         return; // Don't queue again below
                     }
@@ -270,7 +271,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             }
 
             // Queue all other messages immediately (no delay)
-            messageQueue.enqueue(logMessage);
+            // Release any pending tool calls atomically with this enqueue
+            messageQueue.enqueue(logMessage, releaseIds.length > 0 ? { releaseToolCallIds: releaseIds } : undefined);
         }
 
         // Insert a fake message to start the sidechain
@@ -381,7 +383,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
-                    onReady: () => {
+                    onReady: async () => {
+                        // Flush all queued messages before closing the turn
+                        // This prevents turn-end from arriving at the App before
+                        // delayed tool call messages, which would cause orphan turns
+                        await messageQueue.flush();
                         session.client.closeClaudeSessionTurn('completed');
                         if (!pending && session.queue.size() === 0) {
                             session.api.push().sendToAllDevices(
