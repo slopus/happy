@@ -251,6 +251,7 @@ export const en: TranslationStructure = {
         priority: 'Priority',
         status: 'Status',
         assignee: 'Assignee',
+        assistants: 'Assistants',
         dueDate: 'Due Date',
         description: 'Description',
         project: 'Project',

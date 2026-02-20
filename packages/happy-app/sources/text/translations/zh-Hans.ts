@@ -237,6 +237,7 @@ export const zhHans: TranslationStructure = {
         priority: '优先级',
         status: '状态',
         assignee: '负责人',
+        assistants: '协助人',
         dueDate: '截止日期',
         description: '描述',
         project: '项目',

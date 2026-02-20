@@ -235,6 +235,7 @@ export const en = {
         priority: 'Priority',
         status: 'Status',
         assignee: 'Assignee',
+        assistants: 'Assistants',
         dueDate: 'Due Date',
         description: 'Description',
         project: 'Project',

@@ -1,14 +1,27 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { WebView } from 'react-native-webview';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskProfile } from '@/sync/storage';
-import { dootaskFetchTaskDetail } from '@/sync/dootask/api';
+import { dootaskFetchTaskDetail, dootaskFetchTaskContent } from '@/sync/dootask/api';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import type { DooTaskItem } from '@/sync/dootask/types';
+
+/**
+ * Parse DooTask flow_item_name "status|name|color" format.
+ * Matches DooTask's convertWorkflow() logic.
+ */
+function parseFlowItem(raw: string): { status: string | null; name: string; color: string | null } {
+    if (raw.indexOf('|') !== -1) {
+        const arr = `${raw}||`.split('|');
+        return { status: arr[0] || null, name: arr[1] || raw, color: arr[2] || null };
+    }
+    return { status: null, name: raw, color: null };
+}
 
 function DetailField({ label, value, color, theme }: {
     label: string; value: string; color?: string; theme: any;
@@ -21,6 +34,66 @@ function DetailField({ label, value, color, theme }: {
     );
 }
 
+// --- HTML Content Renderer ---
+const HtmlContent = React.memo(({ html, theme }: { html: string; theme: any }) => {
+    const [height, setHeight] = React.useState(100);
+
+    if (Platform.OS === 'web') {
+        return (
+            <View style={styles.htmlContainer}>
+                {/* @ts-ignore - Web only */}
+                <div
+                    style={{ color: theme.colors.text, fontSize: 14, lineHeight: 1.6, wordBreak: 'break-word' }}
+                    dangerouslySetInnerHTML={{ __html: html }}
+                />
+            </View>
+        );
+    }
+
+    const wrappedHtml = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<style>
+body { margin: 0; padding: 0; color: ${theme.colors.text}; font-size: 14px; line-height: 1.6; background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; word-break: break-word; }
+img { max-width: 100%; height: auto; border-radius: 4px; }
+a { color: #0A84FF; }
+pre, code { background: ${theme.colors.surfaceHighest || '#2a2a2a'}; border-radius: 4px; padding: 2px 4px; font-size: 13px; }
+pre { padding: 8px; overflow-x: auto; }
+pre code { padding: 0; background: none; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid ${theme.colors.divider || '#333'}; padding: 6px 8px; text-align: left; }
+blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid ${theme.colors.divider || '#333'}; color: ${theme.colors.textSecondary}; }
+</style>
+</head><body>${html}
+<script>
+function sendHeight() { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'height', height: document.body.scrollHeight })); }
+sendHeight();
+new MutationObserver(sendHeight).observe(document.body, { childList: true, subtree: true });
+window.addEventListener('load', sendHeight);
+</script>
+</body></html>`;
+
+    return (
+        <View style={{ height, minHeight: 50 }}>
+            <WebView
+                source={{ html: wrappedHtml }}
+                style={{ flex: 1, backgroundColor: 'transparent' }}
+                scrollEnabled={false}
+                originWhitelist={['*']}
+                onMessage={(event) => {
+                    try {
+                        const data = JSON.parse(event.nativeEvent.data);
+                        if (data.type === 'height' && data.height > 0) {
+                            setHeight(data.height + 16);
+                        }
+                    } catch { }
+                }}
+            />
+        </View>
+    );
+});
+
 export default function DooTaskDetail() {
     const { taskId } = useLocalSearchParams<{ taskId: string }>();
     const router = useRouter();
@@ -29,6 +102,7 @@ export default function DooTaskDetail() {
     const navigateToSession = useNavigateToSession();
 
     const [task, setTask] = React.useState<DooTaskItem | null>(null);
+    const [taskContent, setTaskContent] = React.useState<string | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [spawning, setSpawning] = React.useState(false);
@@ -36,12 +110,24 @@ export default function DooTaskDetail() {
     React.useEffect(() => {
         if (!profile || !taskId) return;
         setLoading(true);
-        dootaskFetchTaskDetail(profile.serverUrl, profile.token, Number(taskId))
-            .then((res) => {
-                if (res.ret === 1) {
-                    setTask(res.data);
+        const id = Number(taskId);
+
+        // Fetch task detail and content in parallel
+        Promise.all([
+            dootaskFetchTaskDetail(profile.serverUrl, profile.token, id),
+            dootaskFetchTaskContent(profile.serverUrl, profile.token, id),
+        ])
+            .then(([detailRes, contentRes]) => {
+                if (detailRes.ret === 1) {
+                    setTask(detailRes.data);
                 } else {
-                    setError(res.msg || 'Failed to load task');
+                    setError(detailRes.msg || 'Failed to load task');
+                }
+                if (contentRes.ret === 1 && contentRes.data) {
+                    const content = typeof contentRes.data === 'string'
+                        ? contentRes.data
+                        : contentRes.data.content || '';
+                    if (content) setTaskContent(content);
                 }
             })
             .catch((e) => setError(e.message))
@@ -110,7 +196,10 @@ export default function DooTaskDetail() {
         );
     }
 
-    const owner = task.taskUser?.find((u) => u.owner === 1);
+    const owners = task.taskUser?.filter((u) => u.owner === 1) || [];
+    const assistants = task.taskUser?.filter((u) => u.owner === 0) || [];
+    const flow = task.flow_item_name ? parseFlowItem(task.flow_item_name) : null;
+    const flowColor = flow?.color || theme.colors.textSecondary;
 
     return (
         <ScrollView contentContainerStyle={styles.container} style={{ backgroundColor: theme.colors.groupped.background }}>
@@ -118,9 +207,29 @@ export default function DooTaskDetail() {
 
             <View style={styles.fieldGroup}>
                 <DetailField label={t('dootask.project')} value={task.project_name} theme={theme} />
-                <DetailField label={t('dootask.status')} value={task.flow_item_name} theme={theme} />
+                {flow ? (
+                    <View style={styles.field}>
+                        <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{t('dootask.status')}</Text>
+                        <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
+                            <Text style={[styles.statusBadgeText, { color: flowColor }]}>{flow.name}</Text>
+                        </View>
+                    </View>
+                ) : null}
                 <DetailField label={t('dootask.priority')} value={task.p_name} color={task.p_color} theme={theme} />
-                {owner ? <DetailField label={t('dootask.assignee')} value={owner.nickname} theme={theme} /> : null}
+                {owners.length > 0 ? (
+                    <DetailField
+                        label={t('dootask.assignee')}
+                        value={owners.map((u) => u.nickname).join(', ')}
+                        theme={theme}
+                    />
+                ) : null}
+                {assistants.length > 0 ? (
+                    <DetailField
+                        label={t('dootask.assistants')}
+                        value={assistants.map((u) => u.nickname).join(', ')}
+                        theme={theme}
+                    />
+                ) : null}
                 {task.end_at ? (
                     <DetailField
                         label={t('dootask.dueDate')}
@@ -131,7 +240,14 @@ export default function DooTaskDetail() {
                 ) : null}
             </View>
 
-            {task.desc ? (
+            {taskContent ? (
+                <View style={styles.descSection}>
+                    <Text style={[styles.descLabel, { color: theme.colors.textSecondary }]}>
+                        {t('dootask.description')}
+                    </Text>
+                    <HtmlContent html={taskContent} theme={theme} />
+                </View>
+            ) : task.desc ? (
                 <View style={styles.descSection}>
                     <Text style={[styles.descLabel, { color: theme.colors.textSecondary }]}>
                         {t('dootask.description')}
@@ -157,7 +273,7 @@ export default function DooTaskDetail() {
     );
 }
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create((_theme) => ({
     container: { padding: 20, gap: 16 },
     empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     title: { ...Typography.default('semiBold'), fontSize: 20 },
@@ -165,9 +281,12 @@ const styles = StyleSheet.create((theme) => ({
     field: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     fieldLabel: { ...Typography.default(), fontSize: 14 },
     fieldValue: { ...Typography.default('semiBold'), fontSize: 14 },
+    statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
+    statusBadgeText: { ...Typography.default('semiBold'), fontSize: 13 },
     descSection: { gap: 6 },
     descLabel: { ...Typography.default('semiBold'), fontSize: 14 },
     descText: { ...Typography.default(), fontSize: 14, lineHeight: 20 },
+    htmlContainer: { minHeight: 20 },
     aiButton: {
         height: 48,
         borderRadius: 10,

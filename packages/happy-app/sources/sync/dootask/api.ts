@@ -144,3 +144,13 @@ export async function dootaskFetchTaskDetail(serverUrl: string, token: string, t
     });
     return response.json();
 }
+
+export async function dootaskFetchTaskContent(serverUrl: string, token: string, taskId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/task/content`, {
+        method: 'POST',
+        headers: buildHeaders(token),
+        body: JSON.stringify({ task_id: taskId }),
+    });
+    return response.json();
+}
