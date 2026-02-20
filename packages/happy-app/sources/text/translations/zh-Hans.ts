@@ -774,6 +774,8 @@ export const zhHans: TranslationStructure = {
         insertions: ({ count }: { count: number }) => `${count} 处插入`,
         deletions: ({ count }: { count: number }) => `${count} 处删除`,
         selectBranch: '选择分支查看提交记录',
+        copyHash: '复制提交哈希',
+        copyMessage: '复制提交信息',
     },
 
     settingsVoice: {

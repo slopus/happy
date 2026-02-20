@@ -777,6 +777,8 @@ export const en = {
         insertions: ({ count }: { count: number }) => `${count} insertion${count !== 1 ? 's' : ''}`,
         deletions: ({ count }: { count: number }) => `${count} deletion${count !== 1 ? 's' : ''}`,
         selectBranch: 'Select a branch to view commits',
+        copyHash: 'Copy Commit Hash',
+        copyMessage: 'Copy Commit Message',
     },
 
     settingsVoice: {

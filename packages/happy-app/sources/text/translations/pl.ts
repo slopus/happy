@@ -782,6 +782,8 @@ export const pl: TranslationStructure = {
         insertions: ({ count }: { count: number }) => `${count} insertion${count !== 1 ? 's' : ''}`,
         deletions: ({ count }: { count: number }) => `${count} deletion${count !== 1 ? 's' : ''}`,
         selectBranch: 'Wybierz gałąź, aby zobaczyć commity',
+        copyHash: 'Kopiuj hash commita',
+        copyMessage: 'Kopiuj wiadomość commita',
     },
 
     settingsVoice: {

@@ -804,6 +804,8 @@ export const ja: TranslationStructure = {
         insertions: ({ count }: { count: number }) => `${count}件の追加`,
         deletions: ({ count }: { count: number }) => `${count}件の削除`,
         selectBranch: 'ブランチを選択してコミットを表示',
+        copyHash: 'コミットハッシュをコピー',
+        copyMessage: 'コミットメッセージをコピー',
     },
 
     settingsVoice: {

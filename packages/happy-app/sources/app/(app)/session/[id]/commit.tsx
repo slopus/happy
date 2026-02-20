@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Pressable } from 'react-native';
 import { useRoute } from '@react-navigation/native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Item } from '@/components/Item';
@@ -13,6 +13,10 @@ import { storage } from '@/sync/storage';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
+import * as Clipboard from 'expo-clipboard';
+import { Modal } from '@/modal';
 import { t } from '@/text';
 
 interface CommitDetail {
@@ -142,6 +146,31 @@ export default function CommitScreen() {
         router.push(`/session/${sessionId}/file?path=${encodedPath}&ref=${hash}`);
     }, [router, sessionId, sessionPath, hash]);
 
+    // Action menu
+    const [menuVisible, setMenuVisible] = React.useState(false);
+    const menuItems: ActionMenuItem[] = React.useMemo(() => {
+        if (!commitDetail) return [];
+        return [
+            {
+                label: t('commits.copyHash'),
+                onPress: async () => {
+                    await Clipboard.setStringAsync(commitDetail.hash);
+                    Modal.alert(t('common.success'), t('common.copied'));
+                },
+            },
+            {
+                label: t('commits.copyMessage'),
+                onPress: async () => {
+                    const message = commitDetail.body
+                        ? `${commitDetail.title}\n\n${commitDetail.body}`
+                        : commitDetail.title;
+                    await Clipboard.setStringAsync(message);
+                    Modal.alert(t('common.success'), t('common.copied'));
+                },
+            },
+        ];
+    }, [commitDetail]);
+
     // Calculate totals
     const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
     const totalDeletions = files.reduce((sum, f) => sum + f.deletions, 0);
@@ -167,6 +196,23 @@ export default function CommitScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.groupped?.background || theme.colors.surface }]}>
+            <Stack.Screen
+                options={{
+                    headerRight: () => (
+                        <Pressable
+                            onPress={() => setMenuVisible(true)}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                            <Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.header.tint} />
+                        </Pressable>
+                    ),
+                }}
+            />
+            <ActionMenuModal
+                visible={menuVisible}
+                items={menuItems}
+                onClose={() => setMenuVisible(false)}
+            />
             <ItemList style={{ flex: 1 }}>
                 {/* Commit message */}
                 <ItemGroup>

@@ -782,6 +782,8 @@ export const ru: TranslationStructure = {
         insertions: ({ count }: { count: number }) => `${count} insertion${count !== 1 ? 's' : ''}`,
         deletions: ({ count }: { count: number }) => `${count} deletion${count !== 1 ? 's' : ''}`,
         selectBranch: 'Выберите ветку для просмотра коммитов',
+        copyHash: 'Копировать хэш коммита',
+        copyMessage: 'Копировать сообщение коммита',
     },
 
     settingsVoice: {

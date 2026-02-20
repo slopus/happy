@@ -773,6 +773,8 @@ export const zhHant: TranslationStructure = {
         insertions: ({ count }: { count: number }) => `${count} 處插入`,
         deletions: ({ count }: { count: number }) => `${count} 處刪除`,
         selectBranch: '選擇分支查看提交記錄',
+        copyHash: '複製提交雜湊',
+        copyMessage: '複製提交訊息',
     },
 
     settingsVoice: {

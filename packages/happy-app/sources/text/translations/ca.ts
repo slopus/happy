@@ -772,6 +772,8 @@ export const ca: TranslationStructure = {
         insertions: ({ count }: { count: number }) => `${count} insertion${count !== 1 ? 's' : ''}`,
         deletions: ({ count }: { count: number }) => `${count} deletion${count !== 1 ? 's' : ''}`,
         selectBranch: 'Seleccioneu una branca per veure commits',
+        copyHash: 'Copiar hash del commit',
+        copyMessage: 'Copiar missatge del commit',
     },
 
     settingsVoice: {
