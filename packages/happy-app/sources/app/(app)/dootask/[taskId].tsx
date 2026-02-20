@@ -136,12 +136,25 @@ export default function DooTaskDetail() {
 
     // Image viewer state
     const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
-    const [imageViewerUrl, setImageViewerUrl] = React.useState('');
+    const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
+
+    // Extract all image URLs from HTML content
+    const contentImages = React.useMemo(() => {
+        if (!taskContent) return [];
+        const urls: string[] = [];
+        const re = /<img[^>]+src=["']([^"']+)["']/gi;
+        let match;
+        while ((match = re.exec(taskContent)) !== null) {
+            urls.push(match[1]);
+        }
+        return urls.map((uri) => ({ uri }));
+    }, [taskContent]);
 
     const handleImagePress = React.useCallback((url: string) => {
-        setImageViewerUrl(url);
+        const idx = contentImages.findIndex((img) => img.uri === url);
+        setImageViewerIndex(idx >= 0 ? idx : 0);
         setImageViewerVisible(true);
-    }, []);
+    }, [contentImages]);
 
     React.useEffect(() => {
         if (!profile || !taskId) return;
@@ -307,7 +320,8 @@ export default function DooTaskDetail() {
             </Pressable>
 
             <ImageViewer
-                images={imageViewerUrl ? [{ uri: imageViewerUrl }] : []}
+                images={contentImages}
+                initialIndex={imageViewerIndex}
                 visible={imageViewerVisible}
                 onClose={() => setImageViewerVisible(false)}
             />
