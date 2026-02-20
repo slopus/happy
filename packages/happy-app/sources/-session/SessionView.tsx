@@ -317,7 +317,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             text: sessionStatus.statusText,
             color: sessionStatus.statusColor,
             dotColor: sessionStatus.statusDotColor,
-            isPulsing: sessionStatus.isPulsing
+            isPulsing: sessionStatus.isPulsing,
+            ...(sessionStatus.state === 'permission_required' && { action: 'openPermission' as const }),
         };
     }, [silentRefreshPhase, isRefreshingStatus, sessionStatus, theme.colors.status.connecting, theme.colors.status.error, handleRetryStatusRefresh]);
 

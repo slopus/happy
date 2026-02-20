@@ -60,6 +60,7 @@ interface AgentInputProps {
         dotColor: string;
         isPulsing?: boolean;
         onPress?: () => void;
+        action?: 'openPermission';
         cliStatus?: {
             claude: boolean | null;
             codex: boolean | null;
@@ -1037,9 +1038,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
                             {props.connectionStatus && (
                                 <>
-                                    {props.connectionStatus.onPress ? (
+                                    {(props.connectionStatus.onPress || props.connectionStatus.action) ? (
                                         <Pressable
-                                            onPress={props.connectionStatus.onPress}
+                                            hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                                            onPress={() => {
+                                                if (props.connectionStatus?.action === 'openPermission') {
+                                                    hapticsLight();
+                                                    setShowSettings(prev => prev === 'permission' ? false : 'permission');
+                                                } else {
+                                                    props.connectionStatus?.onPress?.();
+                                                }
+                                            }}
                                             style={({ pressed }) => ({
                                                 flexDirection: 'row',
                                                 alignItems: 'center',
