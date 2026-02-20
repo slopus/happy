@@ -410,6 +410,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dootask/[taskId]"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Task Detail',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="new/pick/machine"
                 options={{
                     headerTitle: '',
