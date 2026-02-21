@@ -482,7 +482,7 @@ export default function DooTaskDetail() {
                     <DetailField
                         label={t('dootask.dueDate')}
                         value={task.end_at}
-                        color={task.overdue ? theme.colors.deleteAction : undefined}
+                        color={task.overdue && !task.complete_at ? theme.colors.deleteAction : undefined}
                         theme={theme}
                     />
                 ) : null}
