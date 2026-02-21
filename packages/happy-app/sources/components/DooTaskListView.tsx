@@ -318,7 +318,7 @@ const TaskCard = React.memo(({ item, projectName, userCache, onPress }: { item: 
     return (
         <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
             <View style={styles.cardHeader}>
-                <View style={[styles.priorityDot, { backgroundColor: item.p_color || theme.colors.textSecondary }]} />
+                <View style={[styles.priorityBar, { backgroundColor: item.p_color || theme.colors.textSecondary }]} />
                 <Text style={[styles.cardTitle, { color: theme.colors.text }]} numberOfLines={2}>
                     {item.name}
                 </Text>
@@ -546,7 +546,7 @@ const styles = StyleSheet.create((_theme) => ({
         marginTop: 8,
     },
     cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-    priorityDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+    priorityBar: { width: 3, alignSelf: 'stretch' as const, borderRadius: 1.5 },
     cardTitle: { ...Typography.default('semiBold'), fontSize: 15, flex: 1 },
     cardMeta: { flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' },
     statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
