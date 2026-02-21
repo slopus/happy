@@ -259,6 +259,7 @@ export const zhHant: TranslationStructure = {
         searchPlaceholder: '搜尋任務...',
         selectProject: '選擇專案',
         searchProjects: '搜尋專案...',
+        relatedSessions: '相關對話',
     },
 
     settingsAppearance: {

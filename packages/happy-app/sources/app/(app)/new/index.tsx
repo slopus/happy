@@ -14,7 +14,7 @@ import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineSpawnNewSession, sessionUpdateMetadataFields } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
@@ -1098,6 +1098,9 @@ function NewSessionWizard() {
                     worktreeBasePath: selectedPath,
                     worktreeBranchName,
                 } : {}),
+                // Pass through external MCP servers and session title
+                ...(tempSessionData?.mcpServers ? { mcpServers: tempSessionData.mcpServers } : {}),
+                ...(tempSessionData?.sessionTitle ? { sessionTitle: tempSessionData.sessionTitle } : {}),
             });
 
             if ('sessionId' in result && result.sessionId) {
@@ -1105,6 +1108,28 @@ function NewSessionWizard() {
                 clearNewSessionDraft();
 
                 await sync.refreshSessions();
+
+                // Write external context and session icon to metadata
+                if (tempSessionData?.externalContext || tempSessionData?.sessionIcon) {
+                    const freshSession = storage.getState().sessions[result.sessionId];
+                    if (freshSession?.metadata) {
+                        try {
+                            await sessionUpdateMetadataFields(
+                                result.sessionId,
+                                freshSession.metadata,
+                                {
+                                    ...(tempSessionData.externalContext ? { externalContext: tempSessionData.externalContext } : {}),
+                                    ...(tempSessionData.sessionIcon ? { sessionIcon: tempSessionData.sessionIcon } : {}),
+                                },
+                                freshSession.metadataVersion
+                            );
+                        } catch (e) {
+                            console.warn('Failed to write external context to session metadata:', e);
+                        }
+                    } else {
+                        console.warn('Session metadata not available after refresh, external context not written for session:', result.sessionId);
+                    }
+                }
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
@@ -1139,7 +1164,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, images, clearImages]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, images, clearImages, tempSessionData]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1181,6 +1206,33 @@ function NewSessionWizard() {
         };
     }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
 
+    const externalContextBanner = tempSessionData?.externalContext ? (
+        <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            gap: 8,
+            backgroundColor: theme.colors.surface,
+            borderRadius: 10,
+            marginBottom: 8,
+        }}>
+            {tempSessionData.sessionIcon ? (
+                <Text style={{ fontSize: 18 }}>{tempSessionData.sessionIcon}</Text>
+            ) : null}
+            <View style={{ flex: 1 }}>
+                <Text style={{ ...Typography.default(), fontSize: 13, color: theme.colors.textSecondary }}>
+                    {tempSessionData.externalContext.source === 'dootask' ? 'DooTask' : tempSessionData.externalContext.source}
+                </Text>
+                {tempSessionData.externalContext.title ? (
+                    <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: theme.colors.text }} numberOfLines={1}>
+                        {tempSessionData.externalContext.title}
+                    </Text>
+                ) : null}
+            </View>
+        </View>
+    ) : null;
+
     // ========================================================================
     // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
     // Shows machine/path selection via chips that navigate to picker screens
@@ -1190,6 +1242,15 @@ function NewSessionWizard() {
             <View style={[styles.container, Platform.OS !== 'web' && { paddingTop: 40 }]}>
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
                     <Animated.View style={animatedInputStyle}>
+                    {/* External context banner */}
+                    {externalContextBanner && (
+                        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+                            <View style={{ maxWidth: layout.maxWidth, width: '100%', paddingHorizontal: screenWidth > 700 ? 16 : 0, alignSelf: 'center' }}>
+                                {externalContextBanner}
+                            </View>
+                        </View>
+                    )}
+
                     {/* Session type selector */}
                     <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', paddingHorizontal: screenWidth > 700 ? 16 : 0, alignSelf: 'center' }}>
@@ -1284,6 +1345,9 @@ function NewSessionWizard() {
                         { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
                         <View ref={profileSectionRef} style={styles.wizardContainer}>
+                            {/* External context banner */}
+                            {externalContextBanner}
+
                             {/* CLI Detection Status Banner - shows after detection completes */}
                             {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
                                 <View style={{

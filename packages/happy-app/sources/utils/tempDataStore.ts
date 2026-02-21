@@ -5,14 +5,34 @@ export interface TempDataEntry {
     timestamp: number;
 }
 
+export interface ExternalContext {
+    source: string;
+    sourceUrl?: string;
+    resourceType: string;
+    resourceId: string;
+    title?: string;
+    deepLink?: string;
+    extra?: Record<string, unknown>;
+}
+
 export interface NewSessionData {
     prompt?: string;
     machineId?: string;
     path?: string;
     agentType?: 'claude' | 'codex' | 'gemini';
     sessionType?: 'simple' | 'worktree';
+    /** @deprecated Use externalContext instead */
     taskId?: string;
+    /** @deprecated Use externalContext instead */
     taskTitle?: string;
+    externalContext?: ExternalContext;
+    mcpServers?: Array<{
+        name: string;
+        url: string;
+        headers?: Record<string, string>;
+    }>;
+    sessionTitle?: string;
+    sessionIcon?: string;
 }
 
 // In-memory store for temporary data

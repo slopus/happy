@@ -7,11 +7,13 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskProfile, useDootaskUserCache, useDootaskTaskDetailCache } from '@/sync/storage';
 import { dootaskFetchTaskDetail, dootaskFetchTaskContent, dootaskFetchTaskFlow, dootaskUpdateTask, dootaskFetchSubTasks, dootaskFetchTaskFiles } from '@/sync/dootask/api';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { storeTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { ImageViewer } from '@/components/ImageViewer';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
+import { useLinkedSessions } from '@/hooks/useLinkedSessions';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { getSessionName } from '@/utils/sessionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import type { DooTaskItem, DooTaskFile } from '@/sync/dootask/types';
@@ -176,24 +178,33 @@ document.addEventListener('click', function(e) {
     );
 });
 
+function formatSessionAge(ts: number): string {
+    const sec = Math.floor((Date.now() - ts) / 1000);
+    if (sec < 60) return '<1m';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h`;
+    const day = Math.floor(hr / 24);
+    return `${day}d`;
+}
+
 export default function DooTaskDetail() {
     const { taskId } = useLocalSearchParams<{ taskId: string }>();
     const router = useRouter();
     const { theme } = useUnistyles();
     const profile = useDootaskProfile();
-    const navigateToSession = useNavigateToSession();
-
     const userCache = useDootaskUserCache();
     const id = Number(taskId);
     const cached = useDootaskTaskDetailCache(id);
+    const linkedSessions = useLinkedSessions('dootask', String(id), 'task', profile?.serverUrl);
+    const navigateToSession = useNavigateToSession();
 
     const [task, setTask] = React.useState<DooTaskItem | null>(cached?.task ?? null);
     const [taskContent, setTaskContent] = React.useState<string | null>(cached?.content ?? null);
     const [loading, setLoading] = React.useState(!cached);
     const [refreshing, setRefreshing] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
-    const [spawning, setSpawning] = React.useState(false);
-
     // Action menu
     const [menuVisible, setMenuVisible] = React.useState(false);
 
@@ -456,55 +467,42 @@ export default function DooTaskDetail() {
         }
     }, [profile, subStatusLoading, fetchData]);
 
-    const handleStartAiSession = React.useCallback(async () => {
+    const handleStartAiSession = React.useCallback(() => {
         if (!profile || !task) return;
-        setSpawning(true);
-        try {
-            const state = storage.getState();
-            const machines = Object.values(state.machines);
-            const onlineMachine = machines.find((m) => m.active);
 
-            if (!onlineMachine) {
-                router.push('/new');
-                return;
-            }
-
-            const mcpServers = [{
+        const dataId = storeTempData({
+            prompt: [
+                'I need your help with a task from DooTask.',
+                `Task ID: ${task.id}`,
+                `Title: ${task.name}`,
+                `Project: ${task.project_name}`,
+                task.desc ? `Description:\n${task.desc}` : '',
+                '',
+                'Use DooTask MCP tools when needed.',
+            ].filter(Boolean).join('\n'),
+            sessionTitle: `DooTask: ${task.name}`,
+            sessionIcon: '📋',
+            mcpServers: [{
                 name: 'dootask',
                 url: `${profile.serverUrl}/apps/mcp_server/mcp`,
                 headers: { Authorization: `Bearer ${profile.token}` },
-            }];
+            }],
+            externalContext: {
+                source: 'dootask',
+                sourceUrl: profile.serverUrl,
+                resourceType: 'task',
+                resourceId: String(task.id),
+                title: task.name,
+                deepLink: `/dootask/${task.id}`,
+                extra: {
+                    projectId: task.project_id,
+                    projectName: task.project_name,
+                },
+            },
+        } satisfies NewSessionData);
 
-            const result = await machineSpawnNewSession({
-                machineId: onlineMachine.id,
-                directory: onlineMachine.metadata?.homeDir || '~',
-                agent: 'claude',
-                sessionTitle: `DooTask: ${task.name}`,
-                mcpServers,
-            });
-
-            if (result.type === 'success') {
-                const taskPrompt = [
-                    'I need your help with a task from DooTask.',
-                    `Task ID: ${task.id}`,
-                    `Title: ${task.name}`,
-                    `Project: ${task.project_name}`,
-                    task.desc ? `Description:\n${task.desc}` : '',
-                    '',
-                    'Use DooTask MCP tools when needed: get_task, send_message, update_task, complete_task.',
-                ].filter(Boolean).join('\n');
-
-                storage.getState().updateSessionDraft(result.sessionId, taskPrompt);
-                navigateToSession(result.sessionId);
-            } else if (result.type === 'error') {
-                setError(result.errorMessage);
-            }
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to start session');
-        } finally {
-            setSpawning(false);
-        }
-    }, [profile, task, router, navigateToSession]);
+        router.push(`/new?dataId=${dataId}`);
+    }, [profile, task, router]);
 
     const menuItems: ActionMenuItem[] = React.useMemo(() => [
         {
@@ -698,18 +696,39 @@ export default function DooTaskDetail() {
                 </View>
             ) : null}
 
-            <Pressable
-                style={[styles.aiButton, { backgroundColor: theme.colors.button.primary.background }, spawning && { opacity: 0.6 }]}
-                onPress={handleStartAiSession}
-                disabled={spawning}
-            >
-                {spawning ? (
-                    <ActivityIndicator color={theme.colors.button.primary.tint} />
-                ) : (
-                    <Text style={[styles.aiButtonText, { color: theme.colors.button.primary.tint }]}>
-                        {t('dootask.startAiSession')}
+            {linkedSessions.length > 0 ? (
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                        {t('dootask.relatedSessions')} ({linkedSessions.length})
                     </Text>
-                )}
+                    {linkedSessions.map((session) => (
+                        <Pressable
+                            key={session.id}
+                            style={[styles.sessionCard, { backgroundColor: theme.colors.surface }]}
+                            onPress={() => navigateToSession(session.id)}
+                        >
+                            <Text style={[styles.sessionTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                                {getSessionName(session)}
+                            </Text>
+                            <Text style={[styles.sessionMeta, { color: theme.colors.textSecondary }]}>
+                                {[
+                                    session.metadata?.flavor || 'claude',
+                                    session.metadata?.host,
+                                    formatSessionAge(session.createdAt),
+                                ].filter(Boolean).join(' · ')}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </View>
+            ) : null}
+
+            <Pressable
+                style={[styles.aiButton, { backgroundColor: theme.colors.button.primary.background }]}
+                onPress={handleStartAiSession}
+            >
+                <Text style={[styles.aiButtonText, { color: theme.colors.button.primary.tint }]}>
+                    {t('dootask.startAiSession')}
+                </Text>
             </Pressable>
 
             <ImageViewer
@@ -775,4 +794,12 @@ const styles = StyleSheet.create((_theme) => ({
     fileInfo: { flex: 1 },
     fileName: { ...Typography.default(), fontSize: 14 },
     fileSize: { ...Typography.default(), fontSize: 12 },
+    sessionCard: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 8,
+        gap: 2,
+    },
+    sessionTitle: { ...Typography.default('semiBold'), fontSize: 14 },
+    sessionMeta: { ...Typography.default(), fontSize: 12 },
 }));

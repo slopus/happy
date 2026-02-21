@@ -222,6 +222,7 @@ export const ru: TranslationStructure = {
         searchPlaceholder: 'Поиск задач...',
         selectProject: 'Выбрать проект',
         searchProjects: 'Поиск проектов...',
+        relatedSessions: 'Связанные сессии',
     },
 
     settingsAppearance: {
