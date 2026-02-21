@@ -287,6 +287,7 @@ export const it: TranslationStructure = {
         searchPlaceholder: 'Cerca attività...',
         selectProject: 'Seleziona progetto',
         searchProjects: 'Cerca progetti...',
+        relatedSessions: 'Sessioni correlate',
     },
 
     settingsAppearance: {

@@ -260,6 +260,7 @@ export const zhHans: TranslationStructure = {
         searchPlaceholder: '搜索任务...',
         selectProject: '选择项目',
         searchProjects: '搜索项目...',
+        relatedSessions: '相关会话',
     },
 
     settingsAppearance: {

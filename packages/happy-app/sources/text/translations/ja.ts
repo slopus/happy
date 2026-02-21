@@ -290,6 +290,7 @@ export const ja: TranslationStructure = {
         searchPlaceholder: 'タスクを検索...',
         selectProject: 'プロジェクトを選択',
         searchProjects: 'プロジェクトを検索...',
+        relatedSessions: '関連セッション',
     },
 
     settingsAppearance: {

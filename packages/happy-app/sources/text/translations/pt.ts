@@ -258,6 +258,7 @@ export const pt: TranslationStructure = {
         searchPlaceholder: 'Pesquisar tarefas...',
         selectProject: 'Selecionar projeto',
         searchProjects: 'Pesquisar projetos...',
+        relatedSessions: 'Sessões relacionadas',
     },
 
     settingsAppearance: {

@@ -11,6 +11,9 @@ import { storeTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { ImageViewer } from '@/components/ImageViewer';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
+import { useLinkedSessions } from '@/hooks/useLinkedSessions';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { getSessionName } from '@/utils/sessionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import type { DooTaskItem, DooTaskFile } from '@/sync/dootask/types';
@@ -183,6 +186,8 @@ export default function DooTaskDetail() {
     const userCache = useDootaskUserCache();
     const id = Number(taskId);
     const cached = useDootaskTaskDetailCache(id);
+    const linkedSessions = useLinkedSessions('dootask', String(id));
+    const navigateToSession = useNavigateToSession();
 
     const [task, setTask] = React.useState<DooTaskItem | null>(cached?.task ?? null);
     const [taskContent, setTaskContent] = React.useState<string | null>(cached?.content ?? null);
@@ -680,6 +685,28 @@ export default function DooTaskDetail() {
                 </View>
             ) : null}
 
+            {linkedSessions.length > 0 ? (
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                        {t('dootask.relatedSessions')} ({linkedSessions.length})
+                    </Text>
+                    {linkedSessions.map((session) => (
+                        <Pressable
+                            key={session.id}
+                            style={[styles.sessionCard, { backgroundColor: theme.colors.surface }]}
+                            onPress={() => navigateToSession(session.id)}
+                        >
+                            <Text style={[styles.sessionTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                                {getSessionName(session)}
+                            </Text>
+                            <Text style={[styles.sessionMeta, { color: theme.colors.textSecondary }]}>
+                                {session.metadata?.host ?? ''}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </View>
+            ) : null}
+
             <Pressable
                 style={[styles.aiButton, { backgroundColor: theme.colors.button.primary.background }]}
                 onPress={handleStartAiSession}
@@ -752,4 +779,12 @@ const styles = StyleSheet.create((_theme) => ({
     fileInfo: { flex: 1 },
     fileName: { ...Typography.default(), fontSize: 14 },
     fileSize: { ...Typography.default(), fontSize: 12 },
+    sessionCard: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 8,
+        gap: 2,
+    },
+    sessionTitle: { ...Typography.default('semiBold'), fontSize: 14 },
+    sessionMeta: { ...Typography.default(), fontSize: 12 },
 }));

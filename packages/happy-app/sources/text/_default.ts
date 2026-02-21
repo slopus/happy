@@ -258,6 +258,7 @@ export const en = {
         searchPlaceholder: 'Search tasks...',
         selectProject: 'Select Project',
         searchProjects: 'Search projects...',
+        relatedSessions: 'Related Sessions',
     },
 
     settingsAppearance: {
