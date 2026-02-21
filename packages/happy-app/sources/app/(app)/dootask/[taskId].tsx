@@ -400,18 +400,18 @@ export default function DooTaskDetail() {
 
     const menuItems: ActionMenuItem[] = React.useMemo(() => [
         {
-            label: t('dootask.changeStatus'),
-            onPress: () => handleStatusPress(),
-        },
-        {
             label: t('dootask.startAiSession'),
             onPress: () => handleStartAiSession(),
+        },
+        {
+            label: t('dootask.changeStatus'),
+            onPress: () => handleStatusPress(),
         },
         {
             label: t('dootask.refresh'),
             onPress: () => handleRefresh(),
         },
-    ], [handleStatusPress, handleStartAiSession, handleRefresh]);
+    ], [handleStartAiSession, handleStatusPress, handleRefresh]);
 
     if (loading) {
         return <ActivityIndicator style={{ flex: 1 }} />;
