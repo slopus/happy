@@ -1204,6 +1204,33 @@ function NewSessionWizard() {
         };
     }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
 
+    const externalContextBanner = tempSessionData?.externalContext ? (
+        <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            gap: 8,
+            backgroundColor: theme.colors.surface,
+            borderRadius: 10,
+            marginBottom: 8,
+        }}>
+            {tempSessionData.sessionIcon ? (
+                <Text style={{ fontSize: 18 }}>{tempSessionData.sessionIcon}</Text>
+            ) : null}
+            <View style={{ flex: 1 }}>
+                <Text style={{ ...Typography.default(), fontSize: 13, color: theme.colors.textSecondary }}>
+                    {tempSessionData.externalContext.source === 'dootask' ? 'DooTask' : tempSessionData.externalContext.source}
+                </Text>
+                {tempSessionData.externalContext.title ? (
+                    <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: theme.colors.text }} numberOfLines={1}>
+                        {tempSessionData.externalContext.title}
+                    </Text>
+                ) : null}
+            </View>
+        </View>
+    ) : null;
+
     // ========================================================================
     // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
     // Shows machine/path selection via chips that navigate to picker screens
@@ -1213,6 +1240,15 @@ function NewSessionWizard() {
             <View style={[styles.container, Platform.OS !== 'web' && { paddingTop: 40 }]}>
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
                     <Animated.View style={animatedInputStyle}>
+                    {/* External context banner */}
+                    {externalContextBanner && (
+                        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+                            <View style={{ maxWidth: layout.maxWidth, width: '100%', paddingHorizontal: screenWidth > 700 ? 16 : 0, alignSelf: 'center' }}>
+                                {externalContextBanner}
+                            </View>
+                        </View>
+                    )}
+
                     {/* Session type selector */}
                     <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', paddingHorizontal: screenWidth > 700 ? 16 : 0, alignSelf: 'center' }}>
@@ -1307,6 +1343,9 @@ function NewSessionWizard() {
                         { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
                         <View ref={profileSectionRef} style={styles.wizardContainer}>
+                            {/* External context banner */}
+                            {externalContextBanner}
+
                             {/* CLI Detection Status Banner - shows after detection completes */}
                             {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
                                 <View style={{
