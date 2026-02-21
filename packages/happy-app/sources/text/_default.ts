@@ -232,6 +232,7 @@ export const en = {
         noTasksDescription: 'Try adjusting your filters',
         startAiSession: 'Start AI Session',
         refresh: 'Refresh',
+        changeStatus: 'Change Status',
         taskDetail: 'Task Detail',
         priority: 'Priority',
         status: 'Status',

@@ -233,6 +233,7 @@ export const zhHant: TranslationStructure = {
         noTasksDescription: 'Try adjusting your filters',
         startAiSession: 'Start AI Session',
         refresh: '重新整理',
+        changeStatus: '修改狀態',
         taskDetail: 'Task Detail',
         priority: 'Priority',
         status: 'Status',

@@ -234,6 +234,7 @@ export const zhHans: TranslationStructure = {
         noTasksDescription: '试试调整筛选条件',
         startAiSession: '启动 AI 会话',
         refresh: '刷新',
+        changeStatus: '修改状态',
         taskDetail: '任务详情',
         priority: '优先级',
         status: '状态',

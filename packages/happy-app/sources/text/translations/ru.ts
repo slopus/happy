@@ -196,6 +196,7 @@ export const ru: TranslationStructure = {
         noTasksDescription: 'Try adjusting your filters',
         startAiSession: 'Start AI Session',
         refresh: 'Обновить',
+        changeStatus: 'Изменить статус',
         taskDetail: 'Task Detail',
         priority: 'Priority',
         status: 'Status',
