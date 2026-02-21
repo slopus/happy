@@ -6,9 +6,13 @@ import { z } from "zod";
 import { type Fastify } from "../types";
 
 const getMessagesQuerySchema = z.object({
-    after_seq: z.coerce.number().int().min(0).default(0),
+    after_seq: z.coerce.number().int().min(0).optional(),
+    before_seq: z.coerce.number().int().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(100)
-});
+}).refine(
+    (data) => !(data.after_seq !== undefined && data.before_seq !== undefined),
+    { message: "Cannot specify both after_seq and before_seq" }
+);
 
 const sendMessagesBodySchema = z.object({
     messages: z.array(z.object({
@@ -59,7 +63,7 @@ export function v3SessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
-        const { after_seq, limit } = request.query;
+        const { after_seq, before_seq, limit } = request.query;
 
         const session = await db.session.findFirst({
             where: {
@@ -73,10 +77,46 @@ export function v3SessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
+        if (before_seq !== undefined || (after_seq === undefined && before_seq === undefined)) {
+            // Reverse pagination: newest-first
+            // - with before_seq: returns messages with seq < before_seq
+            // - without any cursor: returns the latest messages
+            const whereClause: { sessionId: string; seq?: { lt: number } } = { sessionId };
+            if (before_seq !== undefined) {
+                whereClause.seq = { lt: before_seq };
+            }
+
+            const messages = await db.sessionMessage.findMany({
+                where: whereClause,
+                orderBy: { seq: 'desc' },
+                take: limit + 1,
+                select: {
+                    id: true,
+                    seq: true,
+                    content: true,
+                    localId: true,
+                    createdAt: true,
+                    updatedAt: true
+                }
+            });
+
+            const hasMore = messages.length > limit;
+            const page = hasMore ? messages.slice(0, limit) : messages;
+            // Return in ascending seq order
+            page.reverse();
+
+            return reply.send({
+                messages: page.map(toResponseMessage),
+                hasMore
+            });
+        }
+
+        // Forward pagination: oldest-first (with after_seq)
+        const afterSeq = after_seq ?? 0;
         const messages = await db.sessionMessage.findMany({
             where: {
                 sessionId,
-                seq: { gt: after_seq }
+                seq: { gt: afterSeq }
             },
             orderBy: { seq: 'asc' },
             take: limit + 1,

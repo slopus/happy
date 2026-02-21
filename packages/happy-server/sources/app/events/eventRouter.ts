@@ -146,6 +146,7 @@ export type UpdateEvent = {
     body: any;
     cursor: string;
     createdAt: number;
+    repeatKey: string | null;
 } | {
     type: 'kv-batch-update';
     changes: Array<{
@@ -602,6 +603,7 @@ export function buildNewFeedPostUpdate(feedItem: {
     body: any;
     cursor: string;
     createdAt: number;
+    repeatKey?: string | null;
 }, updateSeq: number, updateId: string): UpdatePayload {
     return {
         id: updateId,
@@ -611,7 +613,8 @@ export function buildNewFeedPostUpdate(feedItem: {
             id: feedItem.id,
             body: feedItem.body,
             cursor: feedItem.cursor,
-            createdAt: feedItem.createdAt
+            createdAt: feedItem.createdAt,
+            repeatKey: feedItem.repeatKey ?? null
         },
         createdAt: Date.now()
     };

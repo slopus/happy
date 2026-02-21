@@ -127,12 +127,17 @@ const {
         if (typeof args?.where?.seq?.gt === "number") {
             rows = rows.filter((message) => message.seq > args.where.seq.gt);
         }
+        if (typeof args?.where?.seq?.lt === "number") {
+            rows = rows.filter((message) => message.seq < args.where.seq.lt);
+        }
         if (Array.isArray(args?.where?.localId?.in)) {
             const localIds = new Set(args.where.localId.in);
             rows = rows.filter((message) => localIds.has(message.localId));
         }
         if (args?.orderBy?.seq === "asc") {
             rows.sort((a, b) => a.seq - b.seq);
+        } else if (args?.orderBy?.seq === "desc") {
+            rows.sort((a, b) => b.seq - a.seq);
         }
         if (args?.orderBy?.createdAt === "desc") {
             rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -434,6 +439,94 @@ describe("v3SessionRoutes", () => {
         expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2]);
         expect(state.messages).toHaveLength(2);
         expect(emitUpdateMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("supports reverse pagination with before_seq", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        for (let seq = 1; seq <= 10; seq += 1) {
+            seedMessage({ sessionId: "session-1", seq, localId: `l${seq}`, content: { t: "encrypted", c: String(seq) } });
+        }
+
+        app = await createApp();
+
+        // Get the latest 3 messages (before seq 11 = all, limited to 3)
+        const page1 = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?before_seq=11&limit=3",
+            headers: { "x-user-id": "user-1" }
+        });
+        const body1 = page1.json();
+        expect(body1.messages.map((m: any) => m.seq)).toEqual([8, 9, 10]);
+        expect(body1.hasMore).toBe(true);
+
+        // Get the next 3 older messages
+        const page2 = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?before_seq=8&limit=3",
+            headers: { "x-user-id": "user-1" }
+        });
+        const body2 = page2.json();
+        expect(body2.messages.map((m: any) => m.seq)).toEqual([5, 6, 7]);
+        expect(body2.hasMore).toBe(true);
+
+        // Get the remaining older messages
+        const page3 = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?before_seq=5&limit=10",
+            headers: { "x-user-id": "user-1" }
+        });
+        const body3 = page3.json();
+        expect(body3.messages.map((m: any) => m.seq)).toEqual([1, 2, 3, 4]);
+        expect(body3.hasMore).toBe(false);
+    });
+
+    it("rejects specifying both after_seq and before_seq", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        app = await createApp();
+
+        const response = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?after_seq=0&before_seq=10",
+            headers: { "x-user-id": "user-1" }
+        });
+        expect(response.statusCode).toBe(400);
+    });
+
+    it("returns latest messages when no cursor params specified (with limit)", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        for (let seq = 1; seq <= 10; seq += 1) {
+            seedMessage({ sessionId: "session-1", seq, localId: `l${seq}`, content: { t: "encrypted", c: String(seq) } });
+        }
+
+        app = await createApp();
+
+        // No after_seq or before_seq, just limit=3 → latest 3 messages
+        const response = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?limit=3",
+            headers: { "x-user-id": "user-1" }
+        });
+        const body = response.json();
+        expect(response.statusCode).toBe(200);
+        expect(body.messages.map((m: any) => m.seq)).toEqual([8, 9, 10]);
+        expect(body.hasMore).toBe(true);
+    });
+
+    it("returns empty results for before_seq=1 (no messages before seq 1)", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        seedMessage({ sessionId: "session-1", seq: 1, localId: "l1", content: { t: "encrypted", c: "a" } });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?before_seq=1",
+            headers: { "x-user-id": "user-1" }
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        expect(body.messages).toEqual([]);
+        expect(body.hasMore).toBe(false);
     });
 
     it("enforces send validation limits and auth/session ownership", async () => {
