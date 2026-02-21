@@ -230,6 +230,8 @@ const FilterBar = React.memo(() => {
                     value={searchText}
                     onChangeText={handleSearchChange}
                     returnKeyType="search"
+                    autoCorrect={false}
+                    underlineColorAndroid="transparent"
                 />
                 {searchText ? (
                     <Pressable onPress={handleClearSearch} hitSlop={8}>
@@ -471,7 +473,7 @@ export const DooTaskListView = React.memo(() => {
 });
 
 const styles = StyleSheet.create((_theme) => ({
-    filterBar: { paddingHorizontal: 16, paddingVertical: 8, gap: 8 },
+    filterBar: { paddingHorizontal: 16, paddingVertical: 8, gap: 12 },
     searchBox: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -484,8 +486,13 @@ const styles = StyleSheet.create((_theme) => ({
         flex: 1,
         ...Typography.default(),
         fontSize: 14,
-        padding: 0,
+        lineHeight: 18,
         height: 36,
+        textAlignVertical: 'center',
+        includeFontPadding: false,
+        paddingHorizontal: 0,
+        paddingVertical: 0,
+        margin: 0,
     },
     filterRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
     chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 4 },
