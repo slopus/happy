@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { apiSocket } from '@/sync/apiSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
+import { SessionEncryption } from '@/sync/encryption/sessionEncryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
@@ -1602,6 +1603,32 @@ class Sync {
         }
     }
 
+    private static INITIAL_MESSAGE_LIMIT = 50;
+
+    private decryptAndNormalize = async (
+        encryption: SessionEncryption,
+        messages: ApiMessage[]
+    ): Promise<{ normalized: NormalizedMessage[]; decryptFailed: number; normalizeFailed: number }> => {
+        const decryptedMessages = await encryption.decryptMessages(messages);
+        const normalized: NormalizedMessage[] = [];
+        let decryptFailed = 0;
+        let normalizeFailed = 0;
+        for (let i = 0; i < decryptedMessages.length; i++) {
+            const decrypted = decryptedMessages[i];
+            if (!decrypted || !decrypted.content) {
+                decryptFailed++;
+                continue;
+            }
+            const msg = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+            if (msg) {
+                normalized.push(msg);
+            } else {
+                normalizeFailed++;
+            }
+        }
+        return { normalized, decryptFailed, normalizeFailed };
+    }
+
     private fetchMessages = async (sessionId: string) => {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
         const lock = this.getSessionMessageLock(sessionId);
@@ -1612,73 +1639,173 @@ class Sync {
                 throw new Error(`Session encryption not ready for ${sessionId}`);
             }
 
-            let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
-            let hasMore = true;
-            let totalNormalized = 0;
-            let totalFetched = 0;
-            let totalDecryptFailed = 0;
-            let totalNormalizeFailed = 0;
+            const lastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
 
-            while (hasMore) {
-                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
-                }
-                const data = await response.json() as V3GetSessionMessagesResponse;
-                const messages = Array.isArray(data.messages) ? data.messages : [];
-                totalFetched += messages.length;
-
-                let maxSeq = afterSeq;
-                for (const message of messages) {
-                    if (message.seq > maxSeq) {
-                        maxSeq = message.seq;
-                    }
-                }
-
-                const decryptedMessages = await encryption.decryptMessages(messages);
-                const normalizedMessages: NormalizedMessage[] = [];
-                for (let i = 0; i < decryptedMessages.length; i++) {
-                    const decrypted = decryptedMessages[i];
-                    if (!decrypted || !decrypted.content) {
-                        totalDecryptFailed++;
-                        continue;
-                    }
-                    const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                    if (normalized) {
-                        normalizedMessages.push(normalized);
-                    } else {
-                        totalNormalizeFailed++;
-                    }
-                }
-
-                if (normalizedMessages.length > 0) {
-                    totalNormalized += normalizedMessages.length;
-                    // Apply messages directly instead of enqueuing to avoid lock
-                    // contention: enqueueMessages -> scheduleQueuedMessagesProcessing
-                    // tries to acquire the same lock we already hold, deferring
-                    // processing until after applyMessagesLoaded sets isLoaded=true
-                    // with an empty message list.
-                    this.applyMessages(sessionId, normalizedMessages);
-                }
-
-                // Monotonic advance: never rewind cursor even if socket updates raced ahead
-                const currentSeq = this.sessionLastSeq.get(sessionId) ?? 0;
-                this.sessionLastSeq.set(sessionId, Math.max(currentSeq, maxSeq));
-                hasMore = !!data.hasMore;
-                if (hasMore && maxSeq === afterSeq) {
-                    log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
-                    break;
-                }
-                afterSeq = maxSeq;
+            if (lastSeq === 0) {
+                // Initial load: fetch latest N messages using reverse pagination
+                await this.fetchLatestMessages(sessionId, encryption);
+            } else {
+                // Incremental sync: fetch new messages after lastSeq
+                await this.fetchForwardMessages(sessionId, encryption, lastSeq);
             }
 
             storage.getState().applyMessagesLoaded(sessionId);
-
-            if (totalFetched > 0 && totalNormalized === 0) {
-                console.warn(`[Sync] All ${totalFetched} fetched messages for session ${sessionId} were dropped (decryptFailed=${totalDecryptFailed}, normalizeFailed=${totalNormalizeFailed}). Session may appear empty despite having messages.`);
-            }
-            log.log(`💬 fetchMessages completed for session ${sessionId} - fetched=${totalFetched}, normalized=${totalNormalized}, decryptFailed=${totalDecryptFailed}, normalizeFailed=${totalNormalizeFailed}, lastSeq=${afterSeq}`);
         });
+    }
+
+    private fetchLatestMessages = async (
+        sessionId: string,
+        encryption: SessionEncryption
+    ) => {
+        const limit = Sync.INITIAL_MESSAGE_LIMIT;
+
+        // No cursor params = server returns latest N messages (reverse pagination)
+        const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?limit=${limit}`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch latest messages for ${sessionId}: ${response.status}`);
+        }
+        const data = await response.json() as V3GetSessionMessagesResponse;
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+
+        const { normalized, decryptFailed, normalizeFailed } = await this.decryptAndNormalize(encryption, messages);
+
+        // Find min and max seq
+        let minSeq = Infinity;
+        let maxSeq = 0;
+        for (const message of messages) {
+            if (message.seq < minSeq) minSeq = message.seq;
+            if (message.seq > maxSeq) maxSeq = message.seq;
+        }
+
+        if (normalized.length > 0) {
+            this.applyMessages(sessionId, normalized);
+        }
+
+        // Monotonic advance: never rewind cursor even if socket updates raced ahead
+        if (maxSeq > 0) {
+            const currentSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+            this.sessionLastSeq.set(sessionId, Math.max(currentSeq, maxSeq));
+        }
+
+        // Track pagination state
+        storage.getState().setOlderMessagesState(sessionId, {
+            hasOlderMessages: data.hasMore,
+            oldestLoadedSeq: messages.length > 0 ? minSeq : null,
+        });
+
+        if (messages.length > 0 && normalized.length === 0) {
+            console.warn(`[Sync] All ${messages.length} fetched messages for session ${sessionId} were dropped (decryptFailed=${decryptFailed}, normalizeFailed=${normalizeFailed}). Session may appear empty despite having messages.`);
+        }
+        log.log(`💬 fetchLatestMessages completed for session ${sessionId} - fetched=${messages.length}, normalized=${normalized.length}, hasOlder=${data.hasMore}, lastSeq=${maxSeq}`);
+    }
+
+    private fetchForwardMessages = async (
+        sessionId: string,
+        encryption: SessionEncryption,
+        startAfterSeq: number
+    ) => {
+        let afterSeq = startAfterSeq;
+        let hasMore = true;
+        let totalNormalized = 0;
+        let totalFetched = 0;
+        let totalDecryptFailed = 0;
+        let totalNormalizeFailed = 0;
+
+        while (hasMore) {
+            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
+            }
+            const data = await response.json() as V3GetSessionMessagesResponse;
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+            totalFetched += messages.length;
+
+            let maxSeq = afterSeq;
+            for (const message of messages) {
+                if (message.seq > maxSeq) {
+                    maxSeq = message.seq;
+                }
+            }
+
+            const { normalized, decryptFailed, normalizeFailed } = await this.decryptAndNormalize(encryption, messages);
+            totalDecryptFailed += decryptFailed;
+            totalNormalizeFailed += normalizeFailed;
+
+            if (normalized.length > 0) {
+                totalNormalized += normalized.length;
+                this.applyMessages(sessionId, normalized);
+            }
+
+            // Monotonic advance: never rewind cursor even if socket updates raced ahead
+            const currentSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+            this.sessionLastSeq.set(sessionId, Math.max(currentSeq, maxSeq));
+            hasMore = !!data.hasMore;
+            if (hasMore && maxSeq === afterSeq) {
+                log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
+                break;
+            }
+            afterSeq = maxSeq;
+        }
+
+        if (totalFetched > 0 && totalNormalized === 0) {
+            console.warn(`[Sync] All ${totalFetched} fetched messages for session ${sessionId} were dropped (decryptFailed=${totalDecryptFailed}, normalizeFailed=${totalNormalizeFailed}). Session may appear empty despite having messages.`);
+        }
+        log.log(`💬 fetchForwardMessages completed for session ${sessionId} - fetched=${totalFetched}, normalized=${totalNormalized}, decryptFailed=${totalDecryptFailed}, normalizeFailed=${totalNormalizeFailed}, lastSeq=${afterSeq}`);
+    }
+
+    fetchOlderMessages = async (sessionId: string) => {
+        const sessionMessages = storage.getState().sessionMessages[sessionId];
+        if (!sessionMessages || !sessionMessages.hasOlderMessages || sessionMessages.oldestLoadedSeq === null) {
+            return;
+        }
+
+        storage.getState().setOlderMessagesState(sessionId, { isLoadingOlder: true });
+
+        try {
+            const lock = this.getSessionMessageLock(sessionId);
+            await lock.inLock(async () => {
+                const encryption = this.encryption.getSessionEncryption(sessionId);
+                if (!encryption) {
+                    throw new Error(`Session encryption not ready for ${sessionId}`);
+                }
+
+                const beforeSeq = storage.getState().sessionMessages[sessionId]?.oldestLoadedSeq;
+                if (beforeSeq === null || beforeSeq === undefined) {
+                    storage.getState().setOlderMessagesState(sessionId, { isLoadingOlder: false });
+                    return;
+                }
+
+                const limit = Sync.INITIAL_MESSAGE_LIMIT;
+                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=${limit}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch older messages for ${sessionId}: ${response.status}`);
+                }
+                const data = await response.json() as V3GetSessionMessagesResponse;
+                const messages = Array.isArray(data.messages) ? data.messages : [];
+
+                const { normalized } = await this.decryptAndNormalize(encryption, messages);
+
+                let minSeq = beforeSeq;
+                for (const message of messages) {
+                    if (message.seq < minSeq) minSeq = message.seq;
+                }
+
+                if (normalized.length > 0) {
+                    this.applyMessages(sessionId, normalized);
+                }
+
+                storage.getState().setOlderMessagesState(sessionId, {
+                    hasOlderMessages: data.hasMore,
+                    oldestLoadedSeq: messages.length > 0 ? minSeq : beforeSeq,
+                    isLoadingOlder: false,
+                });
+
+                log.log(`💬 fetchOlderMessages completed for session ${sessionId} - fetched=${messages.length}, normalized=${normalized.length}, hasOlder=${data.hasMore}`);
+            });
+        } catch (error) {
+            storage.getState().setOlderMessagesState(sessionId, { isLoadingOlder: false });
+            throw error;
+        }
     }
 
     private registerPushToken = async () => {
