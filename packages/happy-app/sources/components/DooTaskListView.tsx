@@ -56,7 +56,11 @@ function formatEndAt(endAt: string): string {
 // --- Project Picker Modal ---
 const PICKER_ITEM_HEIGHT = 48;
 
-const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal>((_, ref) => {
+type ProjectPickerModalProps = {
+    onRefreshTasks: () => void;
+};
+
+const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal, ProjectPickerModalProps>(({ onRefreshTasks }, ref) => {
     const { theme } = useUnistyles();
     const filters = useDootaskFilters();
     const projects = useDootaskProjects();
@@ -99,9 +103,9 @@ const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal>((_, ref
 
     const selectProject = React.useCallback((id: number | undefined) => {
         storage.getState().setDootaskFilter({ projectId: id });
-        storage.getState().fetchDootaskTasks({ refresh: true });
+        onRefreshTasks();
         if (ref && typeof ref !== 'function') ref.current?.dismiss();
-    }, [ref]);
+    }, [onRefreshTasks, ref]);
 
     const data = React.useMemo(() => [null, ...filteredProjects] as (DooTaskProject | null)[], [filteredProjects]);
 
@@ -183,13 +187,16 @@ const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal>((_, ref
 }));
 
 // --- Filter Bar ---
-const FilterBar = React.memo(() => {
+type FilterBarProps = {
+    onRefreshTasks: () => void;
+};
+
+const FilterBar = React.memo(({ onRefreshTasks }: FilterBarProps) => {
     const filters = useDootaskFilters();
     const projects = useDootaskProjects();
     const { theme } = useUnistyles();
     const [searchText, setSearchText] = React.useState(filters.search || '');
     const pickerRef = React.useRef<BottomSheetModal>(null);
-    const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const statusOptions: Array<{ key: 'all' | 'uncompleted' | 'completed'; label: string }> = [
         { key: 'all', label: t('dootask.allStatuses') },
@@ -203,20 +210,22 @@ const FilterBar = React.memo(() => {
         return p?.name || t('dootask.allProjects');
     }, [filters.projectId, projects]);
 
+    const applySearch = React.useCallback((rawText: string) => {
+        const normalized = rawText.trim();
+        const nextSearch = normalized ? normalized : undefined;
+        const currentSearch = storage.getState().dootaskFilters.search;
+        if (currentSearch === nextSearch) return;
+        storage.getState().setDootaskFilter({ search: nextSearch });
+        onRefreshTasks();
+    }, [onRefreshTasks]);
+
     const handleSearchChange = (text: string) => {
         setSearchText(text);
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-            storage.getState().setDootaskFilter({ search: text || undefined });
-            storage.getState().fetchDootaskTasks({ refresh: true });
-        }, 500);
     };
 
     const handleClearSearch = () => {
         setSearchText('');
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        storage.getState().setDootaskFilter({ search: undefined });
-        storage.getState().fetchDootaskTasks({ refresh: true });
+        applySearch('');
     };
 
     return (
@@ -229,6 +238,8 @@ const FilterBar = React.memo(() => {
                     placeholderTextColor={theme.colors.textSecondary}
                     value={searchText}
                     onChangeText={handleSearchChange}
+                    onSubmitEditing={() => applySearch(searchText)}
+                    onEndEditing={() => applySearch(searchText)}
                     returnKeyType="search"
                     autoCorrect={false}
                     underlineColorAndroid="transparent"
@@ -249,7 +260,7 @@ const FilterBar = React.memo(() => {
                         ]}
                         onPress={() => {
                             storage.getState().setDootaskFilter({ status: opt.key });
-                            storage.getState().fetchDootaskTasks({ refresh: true });
+                            onRefreshTasks();
                         }}
                     >
                         <Text style={[
@@ -283,7 +294,7 @@ const FilterBar = React.memo(() => {
                     />
                 </Pressable>
             </View>
-            <ProjectPickerModal ref={pickerRef} />
+            <ProjectPickerModal ref={pickerRef} onRefreshTasks={onRefreshTasks} />
         </View>
     );
 });
@@ -364,11 +375,42 @@ export const DooTaskListView = React.memo(() => {
     const profile = useDootaskProfile();
     const projects = useDootaskProjects();
     const userCache = useDootaskUserCache();
+    const [isPullRefreshing, setIsPullRefreshing] = React.useState(false);
+    const isRefreshRunningRef = React.useRef(false);
+    const hasQueuedRefreshRef = React.useRef(false);
     const projectMap = React.useMemo(() => {
         const map: Record<number, string> = {};
         for (const p of projects) map[p.id] = p.name;
         return map;
     }, [projects]);
+
+    const handlePullRefresh = React.useCallback(async () => {
+        if (isRefreshRunningRef.current) {
+            hasQueuedRefreshRef.current = true;
+            return;
+        }
+
+        isRefreshRunningRef.current = true;
+        const startedAt = Date.now();
+        setIsPullRefreshing(true);
+        try {
+            do {
+                hasQueuedRefreshRef.current = false;
+                await storage.getState().fetchDootaskTasks({ refresh: true });
+            } while (hasQueuedRefreshRef.current);
+        } finally {
+            const elapsed = Date.now() - startedAt;
+            if (elapsed < 300) {
+                await new Promise((resolve) => setTimeout(resolve, 300 - elapsed));
+            }
+            isRefreshRunningRef.current = false;
+            setIsPullRefreshing(false);
+        }
+    }, []);
+
+    const triggerRefreshWithFeedback = React.useCallback(() => {
+        void handlePullRefresh();
+    }, [handlePullRefresh]);
 
     React.useEffect(() => {
         if (profile) {
@@ -417,7 +459,7 @@ export const DooTaskListView = React.memo(() => {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
-            <FilterBar />
+            <FilterBar onRefreshTasks={triggerRefreshWithFeedback} />
             <FlatList
                 data={tasks}
                 keyExtractor={(item) => String(item.id)}
@@ -431,8 +473,8 @@ export const DooTaskListView = React.memo(() => {
                 )}
                 refreshControl={
                     <RefreshControl
-                        refreshing={loading && tasks.length > 0}
-                        onRefresh={() => storage.getState().fetchDootaskTasks({ refresh: true })}
+                        refreshing={isPullRefreshing}
+                        onRefresh={handlePullRefresh}
                     />
                 }
                 onEndReached={() => {
@@ -463,7 +505,7 @@ export const DooTaskListView = React.memo(() => {
             {error && error !== 'token_expired' ? (
                 <View style={[styles.errorBanner, { backgroundColor: theme.colors.deleteAction + '20' }]}>
                     <Text style={[styles.errorText, { color: theme.colors.deleteAction }]}>{error}</Text>
-                    <Pressable onPress={() => storage.getState().fetchDootaskTasks({ refresh: true })}>
+                    <Pressable onPress={triggerRefreshWithFeedback}>
                         <Text style={styles.retryText}>{t('common.retry')}</Text>
                     </Pressable>
                 </View>

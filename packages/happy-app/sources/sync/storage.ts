@@ -1352,14 +1352,17 @@ export const storage = create<StorageState>()((set, get) => {
             set((state) => ({ ...state, dootaskLoading: true, dootaskError: null }));
             try {
                 const keys: Record<string, string> = {};
+                const search = dootaskFilters.search?.trim();
                 if (dootaskFilters.status && dootaskFilters.status !== 'all') {
                     keys['status'] = dootaskFilters.status;
+                }
+                if (search) {
+                    keys['name'] = search;
                 }
                 const res = await dootaskFetchTasks(dootaskProfile.serverUrl, dootaskProfile.token, {
                     page,
                     pagesize: dootaskPager.pagesize,
                     project_id: dootaskFilters.projectId,
-                    search: dootaskFilters.search || undefined,
                     keys: Object.keys(keys).length > 0 ? keys : undefined,
                     time: dootaskFilters.time,
                 });
