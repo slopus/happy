@@ -375,6 +375,10 @@ export const ca: TranslationStructure = {
         deleteSessionWarning: 'Aquesta acció no es pot desfer. Tots els missatges i dades associats amb aquesta sessió s\'eliminaran permanentment.',
         failedToDeleteSession: 'Error en eliminar la sessió',
         sessionDeleted: 'Sessió eliminada amb èxit',
+        resumeSession: 'Reprendre la sessió',
+        resumeSessionSubtitle: 'Continuar aquesta conversa en una nova sessió',
+        resumeSessionMachineOffline: 'La màquina està fora de línia',
+        failedToResumeSession: 'Error en reprendre la sessió',
         
     },
 

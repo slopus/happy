@@ -185,6 +185,41 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
 }
 
 /**
+ * Resume a previous Claude session on a specific machine.
+ * Creates a new Happy session but continues the Claude conversation via --resume.
+ */
+export async function machineResumeSession(options: {
+    machineId: string;
+    directory: string;
+    claudeSessionId: string;
+    agent?: 'codex' | 'claude' | 'gemini';
+    environmentVariables?: Record<string, string>;
+}): Promise<SpawnSessionResult> {
+    const { machineId, directory, claudeSessionId, agent, environmentVariables } = options;
+
+    try {
+        const result = await apiSocket.machineRPC<SpawnSessionResult, {
+            type: 'spawn-in-directory'
+            directory: string
+            sessionId: string
+            approvedNewDirectoryCreation: boolean
+            agent?: 'codex' | 'claude' | 'gemini'
+            environmentVariables?: Record<string, string>
+        }>(
+            machineId,
+            'spawn-happy-session',
+            { type: 'spawn-in-directory', directory, sessionId: claudeSessionId, approvedNewDirectoryCreation: false, agent, environmentVariables }
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to resume session'
+        };
+    }
+}
+
+/**
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {

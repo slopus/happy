@@ -377,6 +377,10 @@ export const zhHans: TranslationStructure = {
         deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
         failedToDeleteSession: '删除会话失败',
         sessionDeleted: '会话删除成功',
+        resumeSession: '恢复会话',
+        resumeSessionSubtitle: '在新会话中继续此对话',
+        resumeSessionMachineOffline: '机器离线',
+        failedToResumeSession: '恢复会话失败',
         
     },
 
