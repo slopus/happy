@@ -416,7 +416,8 @@ export default function CommitsScreen() {
                     const localSet = new Set(localBranches);
                     // Local branches first
                     const items: ActionMenuItem[] = localBranches.map(branch => ({
-                        label: branch === activeBranch ? `${branch} ✓` : branch,
+                        label: branch,
+                        selected: branch === activeBranch,
                         onPress: () => handleBranchSelect(branch),
                     }));
                     // Remote-only branches (filter out those that have a local counterpart)
@@ -425,7 +426,8 @@ export default function CommitsScreen() {
                         const shortName = remote.includes('/') ? remote.substring(remote.indexOf('/') + 1) : remote;
                         if (!localSet.has(shortName)) {
                             items.push({
-                                label: remote === activeBranch ? `${remote} ✓` : remote,
+                                label: remote,
+                                selected: remote === activeBranch,
                                 onPress: () => handleBranchSelect(remote),
                                 secondary: true,
                             });

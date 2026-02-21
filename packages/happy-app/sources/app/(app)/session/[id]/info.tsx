@@ -416,7 +416,8 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
         setBranchPickerTitle(title);
         setBranchPickerItems(candidates.map(branch => ({
-            label: branch === current ? `${branch} ✓` : branch,
+            label: branch,
+            selected: branch === current,
             onPress: () => {
                 setBranchPickerVisible(false);
                 onSelect(branch);
