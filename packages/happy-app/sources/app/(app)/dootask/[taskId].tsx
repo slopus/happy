@@ -458,19 +458,17 @@ export default function DooTaskDetail() {
                 <View style={styles.field}>
                     <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{t('dootask.status')}</Text>
                     <Pressable onPress={handleStatusPress} disabled={statusLoading}>
-                        {statusLoading ? (
-                            <View style={styles.statusBadge}>
-                                <ActivityIndicator size="small" style={{ height: 13, width: 13 }} color={flow ? flowColor : completedColor} />
-                            </View>
-                        ) : flow ? (
+                        {flow ? (
                             <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
-                                <Text style={[styles.statusBadgeText, { color: flowColor }]}>{flow.name}</Text>
+                                <Text style={[styles.statusBadgeText, { color: flowColor, opacity: statusLoading ? 0 : 1 }]}>{flow.name}</Text>
+                                {statusLoading ? <ActivityIndicator size="small" color={flowColor} style={StyleSheet.absoluteFillObject} /> : null}
                             </View>
                         ) : (
                             <View style={[styles.statusBadge, { backgroundColor: completedColor + '20' }]}>
-                                <Text style={[styles.statusBadgeText, { color: completedColor }]}>
+                                <Text style={[styles.statusBadgeText, { color: completedColor, opacity: statusLoading ? 0 : 1 }]}>
                                     {isCompleted ? t('dootask.completed') : t('dootask.uncompleted')}
                                 </Text>
+                                {statusLoading ? <ActivityIndicator size="small" color={completedColor} style={StyleSheet.absoluteFillObject} /> : null}
                             </View>
                         )}
                     </Pressable>
