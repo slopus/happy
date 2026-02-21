@@ -260,6 +260,44 @@ export function saveDooTaskProfile(profile: DooTaskProfile | null): void {
     }
 }
 
+export function loadDooTaskUserCache(): { cache: Record<number, string>; fetchedAt: number | null } {
+    const raw = mmkv.getString('dootask-user-cache');
+    if (!raw) return { cache: {}, fetchedAt: null };
+    try {
+        const parsed = JSON.parse(raw);
+        return { cache: parsed.cache || {}, fetchedAt: parsed.fetchedAt ?? null };
+    } catch {
+        return { cache: {}, fetchedAt: null };
+    }
+}
+
+export function saveDooTaskUserCache(cache: Record<number, string>, fetchedAt: number | null): void {
+    mmkv.set('dootask-user-cache', JSON.stringify({ cache, fetchedAt }));
+}
+
+export function clearDooTaskUserCache(): void {
+    mmkv.delete('dootask-user-cache');
+}
+
+export function loadDooTaskProjects(): { projects: Array<{ id: number; name: string }>; fetchedAt: number | null } {
+    const raw = mmkv.getString('dootask-projects');
+    if (!raw) return { projects: [], fetchedAt: null };
+    try {
+        const parsed = JSON.parse(raw);
+        return { projects: parsed.projects || [], fetchedAt: parsed.fetchedAt ?? null };
+    } catch {
+        return { projects: [], fetchedAt: null };
+    }
+}
+
+export function saveDooTaskProjects(projects: Array<{ id: number; name: string }>, fetchedAt: number | null): void {
+    mmkv.set('dootask-projects', JSON.stringify({ projects, fetchedAt }));
+}
+
+export function clearDooTaskProjects(): void {
+    mmkv.delete('dootask-projects');
+}
+
 export function clearPersistence() {
     mmkv.clearAll();
 }

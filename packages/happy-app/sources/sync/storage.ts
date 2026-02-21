@@ -9,7 +9,7 @@ import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile, loadDooTaskUserCache, saveDooTaskUserCache, clearDooTaskUserCache, loadDooTaskProjects, saveDooTaskProjects, clearDooTaskProjects } from "./persistence";
 import { DooTaskProfile, DooTaskProject, DooTaskItem, DooTaskFilters, DooTaskPager } from './dootask/types';
 import { dootaskFetchProjects, dootaskFetchTasks, dootaskFetchUsersBasic } from './dootask/api';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
@@ -312,6 +312,8 @@ export const storage = create<StorageState>()((set, get) => {
     let localSettings = loadLocalSettings();
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
+    const _cachedProjects = loadDooTaskProjects();
+    const _cachedUsers = loadDooTaskUserCache();
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
     return {
@@ -347,15 +349,15 @@ export const storage = create<StorageState>()((set, get) => {
         // DooTask integration
         dootaskProfile: loadDooTaskProfile(),
         dootaskTasks: [],
-        dootaskProjects: [],
+        dootaskProjects: _cachedProjects.projects,
         dootaskLoading: false,
         dootaskError: null,
         dootaskFilters: { status: 'uncompleted' },
         dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
-        dootaskUserCache: {},
+        dootaskUserCache: _cachedUsers.cache,
         dootaskTaskDetailCache: {},
-        dootaskProjectsFetchedAt: null,
-        dootaskUserCacheFetchedAt: null,
+        dootaskProjectsFetchedAt: _cachedProjects.fetchedAt,
+        dootaskUserCacheFetchedAt: _cachedUsers.fetchedAt,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -1305,6 +1307,8 @@ export const storage = create<StorageState>()((set, get) => {
         // DooTask methods
         setDootaskProfile: (profile) => {
             saveDooTaskProfile(profile);
+            clearDooTaskUserCache();
+            clearDooTaskProjects();
             set((state) => ({
                 ...state,
                 dootaskProfile: profile,
@@ -1335,7 +1339,9 @@ export const storage = create<StorageState>()((set, get) => {
                     const projects = (res.data?.data || res.data || []).map((p: any) => ({
                         id: p.id, name: p.name
                     }));
-                    set((state) => ({ ...state, dootaskProjects: projects, dootaskProjectsFetchedAt: Date.now() }));
+                    const now = Date.now();
+                    saveDooTaskProjects(projects, now);
+                    set((state) => ({ ...state, dootaskProjects: projects, dootaskProjectsFetchedAt: now }));
                 }
             } catch {
                 // silent — projects are supplementary
@@ -1438,7 +1444,9 @@ export const storage = create<StorageState>()((set, get) => {
                         ? Object.fromEntries(Object.entries(oldCache).filter(([id]) => !missingIds.includes(Number(id))))
                         : oldCache;
                     const merged = { ...base, ...newEntries };
-                    set((state) => ({ ...state, dootaskUserCache: merged, dootaskUserCacheFetchedAt: Date.now() }));
+                    const now = Date.now();
+                    saveDooTaskUserCache(merged, now);
+                    set((state) => ({ ...state, dootaskUserCache: merged, dootaskUserCacheFetchedAt: now }));
                     return merged;
                 }
             } catch { /* silent */ }
@@ -1455,6 +1463,8 @@ export const storage = create<StorageState>()((set, get) => {
 
         clearDootaskData: () => {
             saveDooTaskProfile(null);
+            clearDooTaskUserCache();
+            clearDooTaskProjects();
             set((state) => ({
                 ...state,
                 dootaskProfile: null,
