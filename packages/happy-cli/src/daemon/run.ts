@@ -408,6 +408,11 @@ export async function startDaemon(): Promise<void> {
           // Add extra environment variables (these should already be filtered)
           Object.assign(tmuxEnv, extraEnv);
 
+          // Remove Claude Code nested-session detection variables so spawned
+          // sessions don't inherit them from a daemon started inside Claude Code.
+          delete tmuxEnv.CLAUDECODE;
+          delete tmuxEnv.CLAUDE_CODE_ENTRYPOINT;
+
           const tmuxResult = await tmux.spawnInTmux([fullCommand], {
             sessionName: tmuxSessionName,
             windowName: windowName,
@@ -497,14 +502,22 @@ export async function startDaemon(): Promise<void> {
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
           // For now, we ignore it - each spawn creates a new session
+          // Build a clean environment for the spawned session.
+          // Remove CLAUDECODE and CLAUDE_CODE_ENTRYPOINT to prevent Claude Code from
+          // detecting a "nested session" and refusing to start when the daemon was
+          // launched from within a Claude Code session.
+          const spawnEnv: Record<string, string | undefined> = {
+            ...process.env,
+            ...extraEnv
+          };
+          delete spawnEnv.CLAUDECODE;
+          delete spawnEnv.CLAUDE_CODE_ENTRYPOINT;
+
           const happyProcess = spawnHappyCLI(args, {
             cwd: directory,
             detached: true,  // Sessions stay alive when daemon stops
             stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
-            env: {
-              ...process.env,
-              ...extraEnv
-            }
+            env: spawnEnv
           });
 
           // Log output for debugging

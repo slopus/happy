@@ -77,6 +77,13 @@ export function getCleanEnv(): NodeJS.ProcessEnv {
         logger.debug('[Claude SDK] Removed Bun-specific environment variables for Node.js compatibility')
     }
 
+    // Remove Claude Code nested-session detection variables.
+    // When the daemon is started from within a Claude Code session, CLAUDECODE=1 leaks
+    // into all child processes. Claude Code detects this and refuses to start, causing
+    // every remote session to crash with "Process exited unexpectedly".
+    delete env.CLAUDECODE
+    delete env.CLAUDE_CODE_ENTRYPOINT
+
     return env
 }
 
