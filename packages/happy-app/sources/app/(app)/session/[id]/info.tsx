@@ -404,6 +404,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 showChevron={false}
                             />
                         )}
+                        {session.metadata.startedBy && (
+                            <Item
+                                title={t('sessionInfo.startedBy')}
+                                detail={session.metadata.startedBy === 'daemon' ? t('sessionInfo.startedByDaemon') : t('sessionInfo.startedByTerminal')}
+                                icon={<Ionicons name={session.metadata.startedBy === 'daemon' ? 'cloud-outline' : 'terminal-outline'} size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
                         {session.metadata.happyHomeDir && (
                             <Item
                                 title={t('sessionInfo.happyHome')}
