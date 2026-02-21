@@ -220,6 +220,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Function to update permission mode
     const updatePermissionMode = React.useCallback((mode: PermissionMode) => {
         storage.getState().updateSessionPermissionMode(sessionId, mode.key);
+        sync.applySettings({ lastUsedPermissionMode: mode.key });
     }, [sessionId]);
 
     const updateModelMode = React.useCallback((mode: ModelMode) => {
