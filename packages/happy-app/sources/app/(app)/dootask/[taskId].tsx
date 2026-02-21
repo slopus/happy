@@ -237,10 +237,11 @@ export default function DooTaskDetail() {
             }
         }
 
-        // Write to global cache for SWR on next visit
+        // Write to global cache for SWR on next visit + sync list item
         if (newTask) {
             const prev = storage.getState().dootaskTaskDetailCache;
             storage.setState({ dootaskTaskDetailCache: { ...prev, [id]: { task: newTask, content: newContent } } });
+            storage.getState().updateDootaskTask(id, newTask);
         }
     }, [id, profile?.serverUrl, profile?.token]);
 

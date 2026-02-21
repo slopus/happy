@@ -167,6 +167,7 @@ interface StorageState {
     fetchDootaskTasks: (opts?: { refresh?: boolean; loadMore?: boolean }) => Promise<void>;
     setDootaskFilter: (filters: Partial<DooTaskFilters>) => void;
     fetchDootaskUsers: (userIds: number[]) => Promise<Record<number, string>>;
+    updateDootaskTask: (taskId: number, updates: Partial<DooTaskItem>) => void;
     clearDootaskData: () => void;
 }
 
@@ -1400,6 +1401,14 @@ export const storage = create<StorageState>()((set, get) => {
             } catch { /* silent */ }
             return get().dootaskUserCache;
         },
+
+        updateDootaskTask: (taskId, updates) => set((state) => {
+            const idx = state.dootaskTasks.findIndex((t) => t.id === taskId);
+            if (idx === -1) return state;
+            const updated = [...state.dootaskTasks];
+            updated[idx] = { ...updated[idx], ...updates };
+            return { ...state, dootaskTasks: updated };
+        }),
 
         clearDootaskData: () => {
             saveDooTaskProfile(null);
