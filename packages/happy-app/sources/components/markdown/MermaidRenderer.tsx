@@ -5,6 +5,19 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
+/**
+ * Escape HTML special characters to prevent XSS when interpolating
+ * user content into WebView HTML templates.
+ */
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // Style for Web platform
 const webStyle: any = {
     backgroundColor: '#1a1a1a',
@@ -134,14 +147,21 @@ export const MermaidRenderer = React.memo((props: {
             </style>
         </head>
         <body>
-            <div id="mermaid-container" class="mermaid">
-                ${props.content}
-            </div>
+            <div id="mermaid-container"></div>
             <script>
                 mermaid.initialize({
-                    startOnLoad: true,
+                    startOnLoad: false,
                     theme: 'dark'
                 });
+                (async function() {
+                    try {
+                        var content = decodeURIComponent("${encodeURIComponent(props.content)}");
+                        var result = await mermaid.render('mermaid-diagram', content);
+                        document.getElementById('mermaid-container').innerHTML = result.svg;
+                    } catch (e) {
+                        document.getElementById('mermaid-container').textContent = 'Mermaid render error: ' + e.message;
+                    }
+                })();
             </script>
         </body>
         </html>
