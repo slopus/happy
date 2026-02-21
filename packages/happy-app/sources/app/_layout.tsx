@@ -12,6 +12,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
 import sodium from '@/encryption/libsodium.lib';
 import { AppState, View, Platform } from 'react-native';
@@ -300,20 +301,22 @@ export default function RootLayout() {
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <KeyboardProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
-                    <AuthProvider initialCredentials={initState.credentials}>
-                        <ThemeProvider value={navigationTheme}>
-                            <StatusBarProvider />
-                            <ModalProvider>
-                                <CommandPaletteProvider>
-                                    <RealtimeProvider>
-                                        <HorizontalSafeAreaWrapper>
-                                            <SidebarNavigator />
-                                        </HorizontalSafeAreaWrapper>
-                                    </RealtimeProvider>
-                                </CommandPaletteProvider>
-                            </ModalProvider>
-                        </ThemeProvider>
-                    </AuthProvider>
+                    <BottomSheetModalProvider>
+                        <AuthProvider initialCredentials={initState.credentials}>
+                            <ThemeProvider value={navigationTheme}>
+                                <StatusBarProvider />
+                                <ModalProvider>
+                                    <CommandPaletteProvider>
+                                        <RealtimeProvider>
+                                            <HorizontalSafeAreaWrapper>
+                                                <SidebarNavigator />
+                                            </HorizontalSafeAreaWrapper>
+                                        </RealtimeProvider>
+                                    </CommandPaletteProvider>
+                                </ModalProvider>
+                            </ThemeProvider>
+                        </AuthProvider>
+                    </BottomSheetModalProvider>
                 </GestureHandlerRootView>
             </KeyboardProvider>
         </SafeAreaProvider>

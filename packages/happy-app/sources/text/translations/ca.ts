@@ -255,6 +255,9 @@ export const ca: TranslationStructure = {
         subTasks: 'Subtasques',
         files: 'Fitxers',
         tags: 'Etiquetes',
+        searchPlaceholder: 'Cerca tasques...',
+        selectProject: 'Selecciona projecte',
+        searchProjects: 'Cerca projectes...',
     },
 
     settingsAppearance: {

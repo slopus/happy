@@ -287,6 +287,9 @@ export const ja: TranslationStructure = {
         subTasks: 'サブタスク',
         files: 'ファイル',
         tags: 'タグ',
+        searchPlaceholder: 'タスクを検索...',
+        selectProject: 'プロジェクトを選択',
+        searchProjects: 'プロジェクトを検索...',
     },
 
     settingsAppearance: {

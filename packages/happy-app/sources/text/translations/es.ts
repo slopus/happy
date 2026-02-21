@@ -255,6 +255,9 @@ export const es: TranslationStructure = {
         subTasks: 'Subtareas',
         files: 'Archivos',
         tags: 'Etiquetas',
+        searchPlaceholder: 'Buscar tareas...',
+        selectProject: 'Seleccionar proyecto',
+        searchProjects: 'Buscar proyectos...',
     },
 
     settingsAppearance: {

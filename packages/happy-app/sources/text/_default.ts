@@ -255,6 +255,9 @@ export const en = {
         subTasks: 'Sub-tasks',
         files: 'Files',
         tags: 'Tags',
+        searchPlaceholder: 'Search tasks...',
+        selectProject: 'Select Project',
+        searchProjects: 'Search projects...',
     },
 
     settingsAppearance: {

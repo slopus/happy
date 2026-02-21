@@ -1359,6 +1359,7 @@ export const storage = create<StorageState>()((set, get) => {
                     page,
                     pagesize: dootaskPager.pagesize,
                     project_id: dootaskFilters.projectId,
+                    search: dootaskFilters.search || undefined,
                     keys: Object.keys(keys).length > 0 ? keys : undefined,
                     time: dootaskFilters.time,
                 });

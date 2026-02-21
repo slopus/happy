@@ -257,6 +257,9 @@ export const zhHans: TranslationStructure = {
         subTasks: '子任务',
         files: '文件',
         tags: '标签',
+        searchPlaceholder: '搜索任务...',
+        selectProject: '选择项目',
+        searchProjects: '搜索项目...',
     },
 
     settingsAppearance: {

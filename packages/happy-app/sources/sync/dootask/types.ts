@@ -51,6 +51,7 @@ export type DooTaskFile = {
 export type DooTaskFilters = {
     projectId?: number;
     status?: 'all' | 'uncompleted' | 'completed';
+    search?: string;
     time?: string;
 };
 

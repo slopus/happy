@@ -1,12 +1,14 @@
 import * as React from 'react';
-import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { BottomSheetModal, BottomSheetFlatList, BottomSheetTextInput, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile, useDootaskProjects, useDootaskUserCache } from '@/sync/storage';
-import type { DooTaskItem } from '@/sync/dootask/types';
+import { dootaskFetchProjects } from '@/sync/dootask/api';
+import type { DooTaskItem, DooTaskProject } from '@/sync/dootask/types';
 
 /**
  * Parse DooTask flow_item_name which comes as "status|name|color" from the API.
@@ -51,10 +53,143 @@ function formatEndAt(endAt: string): string {
     return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+// --- Project Picker Modal ---
+const PICKER_ITEM_HEIGHT = 48;
+
+const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal>((_, ref) => {
+    const { theme } = useUnistyles();
+    const filters = useDootaskFilters();
+    const projects = useDootaskProjects();
+    const profile = useDootaskProfile();
+
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [searchedProjects, setSearchedProjects] = React.useState<DooTaskProject[] | null>(null);
+    const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const searchQueryRef = React.useRef(searchQuery);
+    searchQueryRef.current = searchQuery;
+
+    const showSearch = projects.length > 20;
+
+    const handleSearchChange = React.useCallback((text: string) => {
+        setSearchQuery(text);
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+        if (!text) {
+            setSearchedProjects(null);
+            return;
+        }
+        const query = text;
+        searchTimerRef.current = setTimeout(async () => {
+            if (!profile) return;
+            try {
+                const res = await dootaskFetchProjects(profile.serverUrl, profile.token, { keys: { name: query } });
+                if (res.ret === 1 && query === searchQueryRef.current) {
+                    setSearchedProjects((res.data?.data || res.data || []).map((p: any) => ({ id: p.id, name: p.name })));
+                }
+            } catch { /* silent */ }
+        }, 600);
+    }, [profile]);
+
+    const projectSource = searchedProjects ?? projects;
+
+    const filteredProjects = React.useMemo(() => {
+        if (!searchQuery) return projectSource;
+        const q = searchQuery.toLowerCase();
+        return projectSource.filter((p) => p.name.toLowerCase().includes(q));
+    }, [projectSource, searchQuery]);
+
+    const selectProject = React.useCallback((id: number | undefined) => {
+        storage.getState().setDootaskFilter({ projectId: id });
+        storage.getState().fetchDootaskTasks({ refresh: true });
+        if (ref && typeof ref !== 'function') ref.current?.dismiss();
+    }, [ref]);
+
+    const data = React.useMemo(() => [null, ...filteredProjects] as (DooTaskProject | null)[], [filteredProjects]);
+
+    const renderItem = React.useCallback(({ item }: { item: DooTaskProject | null }) => {
+        const isAll = item === null;
+        const isSelected = isAll ? !filters.projectId : filters.projectId === item!.id;
+        return (
+            <Pressable
+                style={({ pressed }) => [
+                    styles.pickerItem,
+                    { borderBottomColor: theme.colors.divider },
+                    pressed && !isSelected && { backgroundColor: theme.colors.surfacePressed },
+                ]}
+                onPress={() => !isSelected && selectProject(isAll ? undefined : item!.id)}
+            >
+                <Text
+                    style={[styles.pickerItemText, { color: theme.colors.textLink }]}
+                    numberOfLines={1}
+                >
+                    {isAll ? t('dootask.allProjects') : item!.name}
+                </Text>
+                {isSelected ? <Ionicons name="checkmark" size={20} color={theme.colors.textLink} /> : null}
+            </Pressable>
+        );
+    }, [filters.projectId, selectProject, theme]);
+
+    const handleDismiss = React.useCallback(() => {
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+        setSearchQuery('');
+        setSearchedProjects(null);
+    }, []);
+
+    const renderBackdrop = React.useCallback(
+        (props: any) => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} pressBehavior="close" />,
+        [],
+    );
+
+    return (
+        <BottomSheetModal
+            ref={ref}
+            snapPoints={['50%']}
+            enableDynamicSizing={false}
+            backdropComponent={renderBackdrop}
+            onDismiss={handleDismiss}
+            keyboardBehavior="interactive"
+            keyboardBlurBehavior="restore"
+            android_keyboardInputMode="adjustResize"
+            backgroundStyle={{ backgroundColor: theme.colors.surface }}
+            handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
+        >
+            <View style={[styles.pickerTitle, { borderBottomColor: theme.colors.divider }]}>
+                <Text style={[styles.pickerTitleText, { color: theme.colors.textSecondary }]}>
+                    {t('dootask.selectProject')}
+                </Text>
+            </View>
+            {showSearch ? (
+                <View style={[styles.pickerSearch, { borderBottomColor: theme.colors.divider }]}>
+                    <BottomSheetTextInput
+                        style={[styles.pickerSearchInput, {
+                            color: theme.colors.text,
+                            backgroundColor: theme.colors.groupped.background,
+                        }]}
+                        placeholder={t('dootask.searchProjects')}
+                        placeholderTextColor={theme.colors.textSecondary}
+                        value={searchQuery}
+                        onChangeText={handleSearchChange}
+                        autoCorrect={false}
+                    />
+                </View>
+            ) : null}
+            <BottomSheetFlatList
+                data={data}
+                keyExtractor={(item: DooTaskProject | null) => item === null ? '__all__' : String(item.id)}
+                renderItem={renderItem}
+                keyboardShouldPersistTaps="handled"
+            />
+        </BottomSheetModal>
+    );
+}));
+
 // --- Filter Bar ---
 const FilterBar = React.memo(() => {
     const filters = useDootaskFilters();
+    const projects = useDootaskProjects();
     const { theme } = useUnistyles();
+    const [searchText, setSearchText] = React.useState(filters.search || '');
+    const pickerRef = React.useRef<BottomSheetModal>(null);
+    const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const statusOptions: Array<{ key: 'all' | 'uncompleted' | 'completed'; label: string }> = [
         { key: 'all', label: t('dootask.allStatuses') },
@@ -62,8 +197,46 @@ const FilterBar = React.memo(() => {
         { key: 'completed', label: t('dootask.completed') },
     ];
 
+    const selectedProjectName = React.useMemo(() => {
+        if (!filters.projectId) return t('dootask.allProjects');
+        const p = projects.find((p) => p.id === filters.projectId);
+        return p?.name || t('dootask.allProjects');
+    }, [filters.projectId, projects]);
+
+    const handleSearchChange = (text: string) => {
+        setSearchText(text);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            storage.getState().setDootaskFilter({ search: text || undefined });
+            storage.getState().fetchDootaskTasks({ refresh: true });
+        }, 500);
+    };
+
+    const handleClearSearch = () => {
+        setSearchText('');
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        storage.getState().setDootaskFilter({ search: undefined });
+        storage.getState().fetchDootaskTasks({ refresh: true });
+    };
+
     return (
         <View style={styles.filterBar}>
+            <View style={[styles.searchBox, { backgroundColor: theme.colors.surface }]}>
+                <Ionicons name="search" size={16} color={theme.colors.textSecondary} />
+                <TextInput
+                    style={[styles.searchInput, { color: theme.colors.text }]}
+                    placeholder={t('dootask.searchPlaceholder')}
+                    placeholderTextColor={theme.colors.textSecondary}
+                    value={searchText}
+                    onChangeText={handleSearchChange}
+                    returnKeyType="search"
+                />
+                {searchText ? (
+                    <Pressable onPress={handleClearSearch} hitSlop={8}>
+                        <Ionicons name="close-circle" size={16} color={theme.colors.textSecondary} />
+                    </Pressable>
+                ) : null}
+            </View>
             <View style={styles.filterRow}>
                 {statusOptions.map((opt) => (
                     <Pressable
@@ -85,7 +258,30 @@ const FilterBar = React.memo(() => {
                         </Text>
                     </Pressable>
                 ))}
+                <Pressable
+                    style={[
+                        styles.chip,
+                        { backgroundColor: filters.projectId ? theme.colors.button.primary.background : theme.colors.surface },
+                    ]}
+                    onPress={() => pickerRef.current?.present()}
+                >
+                    <Text
+                        style={[
+                            styles.chipText,
+                            { color: filters.projectId ? theme.colors.button.primary.tint : theme.colors.text },
+                        ]}
+                        numberOfLines={1}
+                    >
+                        {selectedProjectName}
+                    </Text>
+                    <Ionicons
+                        name="chevron-down"
+                        size={12}
+                        color={filters.projectId ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                    />
+                </Pressable>
             </View>
+            <ProjectPickerModal ref={pickerRef} />
         </View>
     );
 });
@@ -275,9 +471,24 @@ export const DooTaskListView = React.memo(() => {
 });
 
 const styles = StyleSheet.create((_theme) => ({
-    filterBar: { paddingHorizontal: 16, paddingVertical: 8 },
-    filterRow: { flexDirection: 'row', gap: 8 },
-    chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+    filterBar: { paddingHorizontal: 16, paddingVertical: 8, gap: 8 },
+    searchBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        height: 36,
+        gap: 6,
+    },
+    searchInput: {
+        flex: 1,
+        ...Typography.default(),
+        fontSize: 14,
+        padding: 0,
+        height: 36,
+    },
+    filterRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+    chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 4 },
     chipText: { ...Typography.default(), fontSize: 13 },
     list: { paddingHorizontal: 16, paddingBottom: 20 },
     card: {
@@ -306,4 +517,35 @@ const styles = StyleSheet.create((_theme) => ({
         padding: 12,
     },
     errorText: { fontSize: 13, ...Typography.default() },
+    // --- Project Picker ---
+    pickerTitle: {
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        alignItems: 'center',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    pickerTitleText: { fontSize: 13, ...Typography.default('semiBold') },
+    pickerSearch: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    pickerSearchInput: {
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        height: 32,
+        fontSize: 14,
+        ...Typography.default(),
+        padding: 0,
+    },
+    pickerItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: PICKER_ITEM_HEIGHT,
+        paddingHorizontal: 20,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        gap: 6,
+    },
+    pickerItemText: { fontSize: 17, ...Typography.default() },
 }));

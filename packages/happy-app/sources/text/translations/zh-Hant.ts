@@ -256,6 +256,9 @@ export const zhHant: TranslationStructure = {
         subTasks: '子任務',
         files: '檔案',
         tags: '標籤',
+        searchPlaceholder: '搜尋任務...',
+        selectProject: '選擇專案',
+        searchProjects: '搜尋專案...',
     },
 
     settingsAppearance: {

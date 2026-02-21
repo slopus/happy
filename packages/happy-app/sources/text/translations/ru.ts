@@ -219,6 +219,9 @@ export const ru: TranslationStructure = {
         subTasks: 'Подзадачи',
         files: 'Файлы',
         tags: 'Теги',
+        searchPlaceholder: 'Поиск задач...',
+        selectProject: 'Выбрать проект',
+        searchProjects: 'Поиск проектов...',
     },
 
     settingsAppearance: {

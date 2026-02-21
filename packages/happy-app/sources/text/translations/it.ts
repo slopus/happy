@@ -284,6 +284,9 @@ export const it: TranslationStructure = {
         subTasks: 'Sotto-attività',
         files: 'File',
         tags: 'Tag',
+        searchPlaceholder: 'Cerca attività...',
+        selectProject: 'Seleziona progetto',
+        searchProjects: 'Cerca progetti...',
     },
 
     settingsAppearance: {

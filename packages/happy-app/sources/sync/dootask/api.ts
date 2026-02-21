@@ -99,16 +99,22 @@ type FetchTasksParams = {
     page: number;
     pagesize: number;
     project_id?: number;
+    search?: string;
     keys?: Record<string, string>;
     time?: string;
     timerange?: string;
 };
 
-export async function dootaskFetchProjects(serverUrl: string, token: string, params: { page?: number; pagesize?: number } = {}): Promise<DooTaskResponse> {
+export async function dootaskFetchProjects(serverUrl: string, token: string, params: { page?: number; pagesize?: number; keys?: Record<string, string> } = {}): Promise<DooTaskResponse> {
     const url = validateServerUrl(serverUrl);
     const qs = new URLSearchParams();
     if (params.page) qs.set('page', String(params.page));
     if (params.pagesize) qs.set('pagesize', String(params.pagesize));
+    if (params.keys) {
+        for (const [k, v] of Object.entries(params.keys)) {
+            qs.set(`keys[${k}]`, v);
+        }
+    }
     const response = await fetch(`${url}/api/project/lists?${qs}`, {
         method: 'GET',
         headers: buildHeaders(token),
@@ -122,6 +128,7 @@ export async function dootaskFetchTasks(serverUrl: string, token: string, params
     qs.set('page', String(params.page));
     qs.set('pagesize', String(params.pagesize));
     if (params.project_id) qs.set('project_id', String(params.project_id));
+    if (params.search) qs.set('search', params.search);
     if (params.time) qs.set('time', params.time);
     if (params.timerange) qs.set('timerange', params.timerange);
     if (params.keys) {
