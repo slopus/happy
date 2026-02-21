@@ -388,7 +388,7 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          const fullCommand = `node --no-warnings --no-deprecation "${cliPath}" ${agent} --happy-starting-mode remote --started-by daemon`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
