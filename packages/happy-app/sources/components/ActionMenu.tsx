@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
@@ -20,6 +21,8 @@ export interface ActionMenuItem {
     secondary?: boolean;
     /** Custom text color (overrides default) */
     color?: string;
+    /** Show checkmark to indicate current/active state */
+    selected?: boolean;
 }
 
 interface ActionMenuProps {
@@ -42,9 +45,14 @@ const styles = StyleSheet.create((theme) => ({
     item: {
         paddingVertical: 16,
         paddingHorizontal: 20,
-        alignItems: 'center',
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.divider,
+    },
+    itemContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
     },
     itemLast: {
         borderBottomWidth: 0,
@@ -106,7 +114,7 @@ export function ActionMenu({ items, onClose, title }: ActionMenuProps) {
             <View style={[styles.container, { maxHeight: 400 }]}>
                 {title ? (
                     <View style={styles.titleContainer}>
-                        <Text style={styles.titleText}>{title}</Text>
+                        <Text style={styles.titleText} numberOfLines={2}>{title}</Text>
                     </View>
                 ) : null}
                 <ScrollView bounces={false}>
@@ -116,20 +124,25 @@ export function ActionMenu({ items, onClose, title }: ActionMenuProps) {
                             style={({ pressed }) => [
                                 styles.item,
                                 index === items.length - 1 && styles.itemLast,
-                                pressed && { backgroundColor: theme.colors.surfacePressed },
+                                pressed && !item.selected && { backgroundColor: theme.colors.surfacePressed },
                             ]}
-                            onPress={() => handleItemPress(item)}
+                            onPress={() => !item.selected && handleItemPress(item)}
                         >
-                            <Text
-                                style={[
-                                    styles.itemText,
-                                    item.destructive && styles.itemTextDestructive,
-                                    item.secondary && styles.itemTextSecondary,
-                                    item.color ? { color: item.color } : undefined,
-                                ]}
-                            >
-                                {item.label}
-                            </Text>
+                            <View style={styles.itemContent}>
+                                <Text
+                                    style={[
+                                        styles.itemText,
+                                        item.destructive && styles.itemTextDestructive,
+                                        item.secondary && styles.itemTextSecondary,
+                                        item.color ? { color: item.color } : undefined,
+                                    ]}
+                                >
+                                    {item.label}
+                                </Text>
+                                {item.selected ? (
+                                    <Ionicons name="checkmark" size={20} color={item.color || theme.colors.textLink} />
+                                ) : null}
+                            </View>
                         </Pressable>
                     ))}
                 </ScrollView>
