@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
-import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile } from '@/sync/storage';
+import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile, useDootaskProjects } from '@/sync/storage';
 import type { DooTaskItem } from '@/sync/dootask/types';
 
 /**
@@ -90,7 +90,7 @@ const FilterBar = React.memo(() => {
 });
 
 // --- Task Card ---
-const TaskCard = React.memo(({ item, onPress }: { item: DooTaskItem; onPress: () => void }) => {
+const TaskCard = React.memo(({ item, projectName, onPress }: { item: DooTaskItem; projectName: string; onPress: () => void }) => {
     const { theme } = useUnistyles();
     const owner = item.task_user?.find((u) => u.owner === 1);
     const isCompleted = !!item.complete_at;
@@ -113,9 +113,11 @@ const TaskCard = React.memo(({ item, onPress }: { item: DooTaskItem; onPress: ()
                         </Text>
                     </View>
                 ) : null}
-                <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
-                    {item.project_name}
-                </Text>
+                {projectName ? (
+                    <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+                        {projectName}
+                    </Text>
+                ) : null}
                 {owner ? (
                     <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
                         {owner.nickname}
@@ -141,6 +143,12 @@ export const DooTaskListView = React.memo(() => {
     const { theme } = useUnistyles();
     const { tasks, loading, error, pager } = useDootaskTasks();
     const profile = useDootaskProfile();
+    const projects = useDootaskProjects();
+    const projectMap = React.useMemo(() => {
+        const map: Record<number, string> = {};
+        for (const p of projects) map[p.id] = p.name;
+        return map;
+    }, [projects]);
 
     React.useEffect(() => {
         if (profile) {
@@ -184,6 +192,7 @@ export const DooTaskListView = React.memo(() => {
                 renderItem={({ item }) => (
                     <TaskCard
                         item={item}
+                        projectName={item.project_name || projectMap[item.project_id] || ''}
                         onPress={() => router.push(`/dootask/${item.id}`)}
                     />
                 )}
