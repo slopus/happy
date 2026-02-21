@@ -31,6 +31,16 @@ export const MetadataSchema = z.object({
     worktreeBranchName: z.string().optional(), // Branch name created for the worktree
     worktreePrUrl: z.string().optional(), // GitHub PR URL for this worktree
     reviewOfSessionId: z.string().optional(), // Links review session to the session being reviewed
+    externalContext: z.object({
+        source: z.string(),
+        sourceUrl: z.string().optional(),
+        resourceType: z.string(),
+        resourceId: z.string(),
+        title: z.string().optional(),
+        deepLink: z.string().optional(),
+        extra: z.record(z.unknown()).optional(),
+    }).optional(),
+    sessionIcon: z.string().optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
