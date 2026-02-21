@@ -14,7 +14,7 @@ import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineSpawnNewSession, sessionUpdateMetadataFields } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
@@ -1108,6 +1108,26 @@ function NewSessionWizard() {
                 clearNewSessionDraft();
 
                 await sync.refreshSessions();
+
+                // Write external context and session icon to metadata
+                if (tempSessionData?.externalContext || tempSessionData?.sessionIcon) {
+                    const freshSession = storage.getState().sessions[result.sessionId];
+                    if (freshSession?.metadata) {
+                        try {
+                            await sessionUpdateMetadataFields(
+                                result.sessionId,
+                                freshSession.metadata,
+                                {
+                                    ...(tempSessionData.externalContext ? { externalContext: tempSessionData.externalContext } : {}),
+                                    ...(tempSessionData.sessionIcon ? { sessionIcon: tempSessionData.sessionIcon } : {}),
+                                },
+                                freshSession.metadataVersion
+                            );
+                        } catch (e) {
+                            console.warn('Failed to write external context to session metadata:', e);
+                        }
+                    }
+                }
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
