@@ -6,7 +6,7 @@ import { WebView } from 'react-native-webview';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskProfile, useDootaskUserCache, useDootaskTaskDetailCache } from '@/sync/storage';
-import { dootaskFetchTaskDetail, dootaskFetchTaskContent } from '@/sync/dootask/api';
+import { dootaskFetchTaskDetail, dootaskFetchTaskContent, dootaskFetchTaskFlow, dootaskUpdateTask } from '@/sync/dootask/api';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ImageViewer } from '@/components/ImageViewer';
@@ -168,6 +168,10 @@ export default function DooTaskDetail() {
     // Action menu
     const [menuVisible, setMenuVisible] = React.useState(false);
 
+    // Status change menu
+    const [statusMenuVisible, setStatusMenuVisible] = React.useState(false);
+    const [statusMenuItems, setStatusMenuItems] = React.useState<ActionMenuItem[]>([]);
+
     // Image viewer state
     const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
@@ -245,6 +249,59 @@ export default function DooTaskDetail() {
             setRefreshing(false);
         }
     }, [fetchData]);
+
+    const handleStatusPress = React.useCallback(async () => {
+        if (!profile || !task) return;
+        try {
+            const res = await dootaskFetchTaskFlow(profile.serverUrl, profile.token, task.id);
+            if (res.ret !== 1 || !res.data) {
+                setError(res.msg || 'Failed to load workflow');
+                return;
+            }
+
+            const { flow_item_id, turns } = res.data as {
+                flow_item_id: number;
+                turns: Array<{ id: number; name: string; status: string; color: string; turns: number[] }>;
+            };
+
+            // Find the current flow item to get its allowed transitions
+            const currentItem = turns.find((item) => item.id === flow_item_id);
+            const allowedIds = currentItem?.turns || [];
+
+            // Build menu items from allowed transitions
+            const items: ActionMenuItem[] = turns
+                .filter((item) => allowedIds.includes(item.id))
+                .map((item) => ({
+                    label: item.name,
+                    color: item.color || undefined,
+                    onPress: async () => {
+                        try {
+                            const updateRes = await dootaskUpdateTask(profile.serverUrl, profile.token, {
+                                task_id: task.id,
+                                flow_item_id: item.id,
+                            });
+                            if (updateRes.ret === 1) {
+                                await fetchData();
+                            } else {
+                                setError(updateRes.msg || 'Failed to update status');
+                            }
+                        } catch (e) {
+                            setError(e instanceof Error ? e.message : 'Failed to update status');
+                        }
+                    },
+                }));
+
+            if (items.length === 0) {
+                // No transitions available — nothing to show
+                return;
+            }
+
+            setStatusMenuItems(items);
+            setStatusMenuVisible(true);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to load workflow');
+        }
+    }, [profile, task, fetchData]);
 
     const handleStartAiSession = React.useCallback(async () => {
         if (!profile || !task) return;
@@ -350,9 +407,11 @@ export default function DooTaskDetail() {
                 {flow ? (
                     <View style={styles.field}>
                         <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{t('dootask.status')}</Text>
-                        <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
-                            <Text style={[styles.statusBadgeText, { color: flowColor }]}>{flow.name}</Text>
-                        </View>
+                        <Pressable onPress={handleStatusPress}>
+                            <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
+                                <Text style={[styles.statusBadgeText, { color: flowColor }]}>{flow.name}</Text>
+                            </View>
+                        </Pressable>
                     </View>
                 ) : null}
                 <DetailField label={t('dootask.priority')} value={task.p_name} color={task.p_color} theme={theme} />
@@ -421,6 +480,12 @@ export default function DooTaskDetail() {
             visible={menuVisible}
             items={menuItems}
             onClose={() => setMenuVisible(false)}
+        />
+        <ActionMenuModal
+            visible={statusMenuVisible}
+            items={statusMenuItems}
+            onClose={() => setStatusMenuVisible(false)}
+            title={t('dootask.status')}
         />
         </>
     );

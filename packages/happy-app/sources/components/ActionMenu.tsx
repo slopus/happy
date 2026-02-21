@@ -18,6 +18,8 @@ export interface ActionMenuItem {
     destructive?: boolean;
     /** Display label in secondary/muted color */
     secondary?: boolean;
+    /** Custom text color (overrides default) */
+    color?: string;
 }
 
 interface ActionMenuProps {
@@ -123,6 +125,7 @@ export function ActionMenu({ items, onClose, title }: ActionMenuProps) {
                                     styles.itemText,
                                     item.destructive && styles.itemTextDestructive,
                                     item.secondary && styles.itemTextSecondary,
+                                    item.color ? { color: item.color } : undefined,
                                 ]}
                             >
                                 {item.label}

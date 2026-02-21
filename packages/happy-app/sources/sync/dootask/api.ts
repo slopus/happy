@@ -165,3 +165,22 @@ export async function dootaskFetchTaskContent(serverUrl: string, token: string, 
     });
     return response.json();
 }
+
+export async function dootaskFetchTaskFlow(serverUrl: string, token: string, taskId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/task/flow?task_id=${taskId}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskUpdateTask(serverUrl: string, token: string, params: { task_id: number; flow_item_id?: number; complete_at?: string | boolean }): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/task/update`, {
+        method: 'POST',
+        headers: buildHeaders(token),
+        body: JSON.stringify(params),
+    });
+    return response.json();
+}
