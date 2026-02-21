@@ -457,8 +457,12 @@ export default function DooTaskDetail() {
                 <DetailField label={t('dootask.project')} value={task.project_name} theme={theme} />
                 <View style={styles.field}>
                     <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{t('dootask.status')}</Text>
-                    <Pressable onPress={handleStatusPress} disabled={statusLoading} style={{ opacity: statusLoading ? 0.4 : 1 }}>
-                        {flow ? (
+                    <Pressable onPress={handleStatusPress} disabled={statusLoading}>
+                        {statusLoading ? (
+                            <View style={styles.statusBadge}>
+                                <ActivityIndicator size="small" style={{ height: 13, width: 13 }} color={flow ? flowColor : completedColor} />
+                            </View>
+                        ) : flow ? (
                             <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
                                 <Text style={[styles.statusBadgeText, { color: flowColor }]}>{flow.name}</Text>
                             </View>
