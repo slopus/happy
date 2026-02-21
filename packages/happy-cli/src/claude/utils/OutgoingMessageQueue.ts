@@ -28,12 +28,33 @@ export class OutgoingMessageQueue {
     
     /**
      * Add message to queue
+     *
+     * @param releaseToolCallIds - Tool call IDs to release atomically before enqueuing.
+     *   This ensures the release and enqueue happen within the same lock acquisition,
+     *   preventing head-of-line blocking race conditions.
      */
     enqueue(logMessage: any, options?: {
         delay?: number,
-        toolCallIds?: string[]
+        toolCallIds?: string[],
+        releaseToolCallIds?: string[]
     }) {
         this.lock.inLock(async () => {
+            // Release specified tool calls first (atomically with enqueue)
+            if (options?.releaseToolCallIds) {
+                for (const toolCallId of options.releaseToolCallIds) {
+                    for (const existing of this.queue) {
+                        if (existing.toolCallIds?.includes(toolCallId) && !existing.released) {
+                            existing.released = true;
+                            const timer = this.delayTimers.get(existing.id);
+                            if (timer) {
+                                clearTimeout(timer);
+                                this.delayTimers.delete(existing.id);
+                            }
+                        }
+                    }
+                }
+            }
+
             const item: QueueItem = {
                 id: this.nextId++,
                 logMessage,
@@ -43,9 +64,9 @@ export class OutgoingMessageQueue {
                 released: !options?.delay,  // Not delayed = already released
                 sent: false
             };
-            
+
             this.queue.push(item);
-            
+
             // If delayed, set timer to release it
             if (item.delayed) {
                 const timer = setTimeout(() => {
@@ -54,7 +75,7 @@ export class OutgoingMessageQueue {
                 this.delayTimers.set(item.id, timer);
             }
         });
-        
+
         // Try to process queue
         this.scheduleProcessing();
     }

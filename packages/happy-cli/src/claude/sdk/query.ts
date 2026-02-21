@@ -36,13 +36,23 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
     private inputStream = new Stream<SDKMessage>()
     private canCallTool?: CanCallToolCallback
 
+    /**
+     * Optional callback fired for every non-control message as soon as it's
+     * read from stdout, regardless of whether the iterator consumer is blocked.
+     * This ensures messages are forwarded for sync even when the for-await
+     * loop is paused (e.g., waiting for user input after a result message).
+     */
+    onMessageReceived?: (message: SDKMessage) => void
+
     constructor(
         private childStdin: Writable | null,
         private childStdout: NodeJS.ReadableStream,
         private processExitPromise: Promise<void>,
-        canCallTool?: CanCallToolCallback
+        canCallTool?: CanCallToolCallback,
+        onMessageReceived?: (message: SDKMessage) => void
     ) {
         this.canCallTool = canCallTool
+        this.onMessageReceived = onMessageReceived
         this.readMessages()
         this.sdkMessages = this.readSdkMessages()
     }
@@ -106,6 +116,7 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
                             continue
                         }
 
+                        try { this.onMessageReceived?.(message) } catch (e) { logDebug(`onMessageReceived callback error: ${e}`) }
                         this.inputStream.enqueue(message)
                     } catch (e) {
                         logger.debug(line)
@@ -253,6 +264,7 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
 export function query(config: {
     prompt: QueryPrompt
     options?: QueryOptions
+    onMessageReceived?: (message: SDKMessage) => void
 }): Query {
     const {
         prompt,
@@ -393,7 +405,7 @@ export function query(config: {
     })
 
     // Create query instance
-    const query = new Query(childStdin, child.stdout, processExitPromise, canCallTool)
+    const query = new Query(childStdin, child.stdout, processExitPromise, canCallTool, config.onMessageReceived)
 
     // Handle process errors
     child.on('error', (error) => {
