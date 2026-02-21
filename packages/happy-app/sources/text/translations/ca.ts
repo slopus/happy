@@ -747,6 +747,7 @@ export const ca: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `S'ha canviat al mode ${mode}`,
         unknownEvent: 'Esdeveniment desconegut',
         usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
+        usageLimitReached: 'Límit d\'ús assolit. Espereu i torneu-ho a provar.',
         unknownTime: 'temps desconegut',
     },
 

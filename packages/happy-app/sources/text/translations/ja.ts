@@ -779,6 +779,7 @@ export const ja: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `${mode}モードに切り替えました`,
         unknownEvent: '不明なイベント',
         usageLimitUntil: ({ time }: { time: string }) => `${time}まで使用制限中`,
+        usageLimitReached: '使用制限に達しました。しばらく待ってから再試行してください。',
         unknownTime: '不明な時間',
     },
 

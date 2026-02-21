@@ -29,19 +29,27 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
     // Check for agent messages that should become events
     if (msg.role === 'agent') {
         for (const content of msg.content) {
-            // Check for Claude AI usage limit messages
             if (content.type === 'text') {
+                // Check for Claude AI usage limit messages (format: "Claude AI usage limit reached|{timestamp}")
                 const limitMatch = content.text.match(/^Claude AI usage limit reached\|(\d+)$/);
                 if (limitMatch) {
                     const timestamp = parseInt(limitMatch[1], 10);
                     if (!isNaN(timestamp)) {
                         return {
                             type: 'limit-reached',
-                            endsAt: timestamp
+                            endsAt: timestamp,
                         } as AgentEvent;
                     }
                 }
-                
+
+                // Check for generic rate limit / quota messages from any backend
+                const text = content.text;
+                if (isRateLimitMessage(text)) {
+                    return {
+                        type: 'limit-reached',
+                        message: text,
+                    } as AgentEvent;
+                }
             }
             
             // Check for mcp__happy__change_title tool calls
@@ -74,4 +82,21 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
 export function shouldSkipNormalProcessing(msg: NormalizedMessage): boolean {
     // If a message converts to an event, it should skip normal processing
     return parseMessageAsEvent(msg) !== null;
+}
+
+/**
+ * Detects rate limit / quota exhaustion messages from any backend.
+ * These messages should be surfaced as limit-reached events for visual emphasis.
+ */
+export function isRateLimitMessage(text: string): boolean {
+    const lower = text.toLowerCase();
+    return (
+        (lower.includes('rate limit') && lower.includes('exceeded')) ||
+        (lower.includes('quota') && lower.includes('exceeded')) ||
+        (lower.includes('quota') && lower.includes('exhausted')) ||
+        (lower.includes('usage limit') && lower.includes('reached')) ||
+        (lower.includes('resource') && lower.includes('exhausted')) ||
+        lower.includes('rate_limit_error') ||
+        lower.includes('ratelimitexceeded')
+    );
 }
