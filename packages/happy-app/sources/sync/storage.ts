@@ -104,6 +104,8 @@ interface StorageState {
     dootaskPager: DooTaskPager;
     dootaskUserCache: Record<number, string>;
     dootaskTaskDetailCache: Record<number, { task: DooTaskItem; content: string | null }>;
+    dootaskProjectsFetchedAt: number | null;
+    dootaskUserCacheFetchedAt: number | null;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyOpenClawMachines: (machines: OpenClawMachine[], replace?: boolean) => void;
@@ -352,6 +354,8 @@ export const storage = create<StorageState>()((set, get) => {
         dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
         dootaskUserCache: {},
         dootaskTaskDetailCache: {},
+        dootaskProjectsFetchedAt: null,
+        dootaskUserCacheFetchedAt: null,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -1301,19 +1305,37 @@ export const storage = create<StorageState>()((set, get) => {
         // DooTask methods
         setDootaskProfile: (profile) => {
             saveDooTaskProfile(profile);
-            set((state) => ({ ...state, dootaskProfile: profile, dootaskError: null }));
+            set((state) => ({
+                ...state,
+                dootaskProfile: profile,
+                dootaskError: null,
+                // Clear all data on login to avoid stale data from previous account
+                dootaskTasks: [],
+                dootaskLoading: false,
+                dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
+                dootaskProjects: [],
+                dootaskProjectsFetchedAt: null,
+                dootaskUserCache: {},
+                dootaskUserCacheFetchedAt: null,
+                dootaskTaskDetailCache: {},
+            }));
         },
 
         fetchDootaskProjects: async () => {
-            const { dootaskProfile } = get();
+            const { dootaskProfile, dootaskProjectsFetchedAt } = get();
             if (!dootaskProfile) return;
+            // Skip if fetched within 10 minutes
+            if (dootaskProjectsFetchedAt && Date.now() - dootaskProjectsFetchedAt < 600_000) return;
+            const profileKey = `${dootaskProfile.serverUrl}|${dootaskProfile.userId}|${dootaskProfile.token}`;
             try {
                 const res = await dootaskFetchProjects(dootaskProfile.serverUrl, dootaskProfile.token);
+                const cur = get().dootaskProfile;
+                if (!cur || `${cur.serverUrl}|${cur.userId}|${cur.token}` !== profileKey) return; // account switched
                 if (res.ret === 1) {
                     const projects = (res.data?.data || res.data || []).map((p: any) => ({
                         id: p.id, name: p.name
                     }));
-                    set((state) => ({ ...state, dootaskProjects: projects }));
+                    set((state) => ({ ...state, dootaskProjects: projects, dootaskProjectsFetchedAt: Date.now() }));
                 }
             } catch {
                 // silent — projects are supplementary
@@ -1323,9 +1345,9 @@ export const storage = create<StorageState>()((set, get) => {
         fetchDootaskTasks: async (opts) => {
             const { dootaskProfile, dootaskFilters, dootaskPager, dootaskTasks } = get();
             if (!dootaskProfile) return;
-            const refresh = opts?.refresh ?? false;
             const loadMore = opts?.loadMore ?? false;
             const page = loadMore ? dootaskPager.page + 1 : 1;
+            const profileKey = `${dootaskProfile.serverUrl}|${dootaskProfile.userId}|${dootaskProfile.token}`;
 
             set((state) => ({ ...state, dootaskLoading: true, dootaskError: null }));
             try {
@@ -1340,6 +1362,9 @@ export const storage = create<StorageState>()((set, get) => {
                     keys: Object.keys(keys).length > 0 ? keys : undefined,
                     time: dootaskFilters.time,
                 });
+
+                const cur = get().dootaskProfile;
+                if (!cur || `${cur.serverUrl}|${cur.userId}|${cur.token}` !== profileKey) return; // account switched
 
                 if (res.ret === -1 || /身份已失效|请登录后继续/.test(res.msg)) {
                     set((state) => ({ ...state, dootaskLoading: false, dootaskError: 'token_expired' }));
@@ -1364,6 +1389,8 @@ export const storage = create<StorageState>()((set, get) => {
                     set((state) => ({ ...state, dootaskLoading: false, dootaskError: res.msg }));
                 }
             } catch (e) {
+                const cur = get().dootaskProfile;
+                if (!cur || `${cur.serverUrl}|${cur.userId}|${cur.token}` !== profileKey) return;
                 set((state) => ({
                     ...state,
                     dootaskLoading: false,
@@ -1380,22 +1407,34 @@ export const storage = create<StorageState>()((set, get) => {
         },
 
         fetchDootaskUsers: async (userIds) => {
-            const { dootaskProfile, dootaskUserCache } = get();
+            const { dootaskProfile, dootaskUserCache, dootaskUserCacheFetchedAt } = get();
             if (!dootaskProfile || userIds.length === 0) return dootaskUserCache;
 
-            // Only fetch userids not already cached
-            const missingIds = userIds.filter((id) => !(id in dootaskUserCache));
+            // If cache expired (>10 min), re-fetch all requested IDs; otherwise only missing ones
+            const expired = !dootaskUserCacheFetchedAt || Date.now() - dootaskUserCacheFetchedAt >= 600_000;
+            const missingIds = expired
+                ? userIds
+                : userIds.filter((id) => !(id in dootaskUserCache));
             if (missingIds.length === 0) return dootaskUserCache;
 
+            const profileKey = `${dootaskProfile.serverUrl}|${dootaskProfile.userId}|${dootaskProfile.token}`;
             try {
                 const res = await dootaskFetchUsersBasic(dootaskProfile.serverUrl, dootaskProfile.token, missingIds);
+                const cur = get().dootaskProfile;
+                if (!cur || `${cur.serverUrl}|${cur.userId}|${cur.token}` !== profileKey) return get().dootaskUserCache; // account switched
                 if (res.ret === 1 && Array.isArray(res.data)) {
                     const newEntries: Record<number, string> = {};
                     for (const u of res.data) {
                         if (u.userid) newEntries[u.userid] = u.nickname || '';
                     }
-                    const merged = { ...get().dootaskUserCache, ...newEntries };
-                    set((state) => ({ ...state, dootaskUserCache: merged }));
+                    // When expired, strip requested IDs from old cache before merging
+                    // so IDs not returned by API don't retain stale values
+                    const oldCache = get().dootaskUserCache;
+                    const base = expired
+                        ? Object.fromEntries(Object.entries(oldCache).filter(([id]) => !missingIds.includes(Number(id))))
+                        : oldCache;
+                    const merged = { ...base, ...newEntries };
+                    set((state) => ({ ...state, dootaskUserCache: merged, dootaskUserCacheFetchedAt: Date.now() }));
                     return merged;
                 }
             } catch { /* silent */ }
@@ -1423,6 +1462,8 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
                 dootaskUserCache: {},
                 dootaskTaskDetailCache: {},
+                dootaskProjectsFetchedAt: null,
+                dootaskUserCacheFetchedAt: null,
             }));
         },
     }
