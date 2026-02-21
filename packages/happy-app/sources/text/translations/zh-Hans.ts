@@ -749,6 +749,7 @@ export const zhHans: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `已切换到 ${mode} 模式`,
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
+        usageLimitReached: '已达到使用限制。请稍候再试。',
         unknownTime: '未知时间',
     },
 

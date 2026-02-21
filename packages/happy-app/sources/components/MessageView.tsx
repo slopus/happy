@@ -134,10 +134,14 @@ function AgentEventBlock(props: {
       }
     };
 
+    const displayText = props.event.endsAt
+      ? t('message.usageLimitUntil', { time: formatTime(props.event.endsAt) })
+      : props.event.message || t('message.usageLimitReached');
+
     return (
-      <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>
-          {t('message.usageLimitUntil', { time: formatTime(props.event.endsAt) })}
+      <View style={styles.limitReachedContainer}>
+        <Text style={styles.limitReachedText}>
+          {displayText}
         </Text>
       </View>
     );
@@ -211,6 +215,20 @@ const styles = StyleSheet.create((theme) => ({
   agentEventText: {
     color: theme.colors.agentEventText,
     fontSize: 14,
+  },
+  limitReachedContainer: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: theme.colors.box.warning.background,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  limitReachedText: {
+    color: theme.colors.box.warning.text,
+    fontSize: 14,
+    textAlign: 'center',
   },
   toolContainer: {
     marginHorizontal: 8,

@@ -747,6 +747,7 @@ export const es: TranslationStructure = {
         switchedToMode: ({ mode }: { mode: string }) => `Cambiado al modo ${mode}`,
         unknownEvent: 'Evento desconocido',
         usageLimitUntil: ({ time }: { time: string }) => `Límite de uso alcanzado hasta ${time}`,
+        usageLimitReached: 'Límite de uso alcanzado. Espera e inténtalo de nuevo.',
         unknownTime: 'tiempo desconocido',
     },
 
