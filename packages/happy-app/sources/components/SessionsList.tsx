@@ -5,7 +5,7 @@ import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
@@ -137,6 +137,12 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 13,
         color: theme.colors.textSecondary,
         marginBottom: 4,
+        ...Typography.default(),
+    },
+    sessionTimestamp: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginLeft: 8,
         ...Typography.default(),
     },
     statusRow: {
@@ -406,6 +412,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                     ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
                         {sessionName}
+                    </Text>
+                    <Text style={styles.sessionTimestamp}>
+                        {formatLastSeen(session.updatedAt, false)}
                     </Text>
                 </View>
 
