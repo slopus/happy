@@ -178,6 +178,17 @@ document.addEventListener('click', function(e) {
     );
 });
 
+function formatSessionAge(ts: number): string {
+    const sec = Math.floor((Date.now() - ts) / 1000);
+    if (sec < 60) return '<1m';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h`;
+    const day = Math.floor(hr / 24);
+    return `${day}d`;
+}
+
 export default function DooTaskDetail() {
     const { taskId } = useLocalSearchParams<{ taskId: string }>();
     const router = useRouter();
@@ -186,7 +197,7 @@ export default function DooTaskDetail() {
     const userCache = useDootaskUserCache();
     const id = Number(taskId);
     const cached = useDootaskTaskDetailCache(id);
-    const linkedSessions = useLinkedSessions('dootask', String(id));
+    const linkedSessions = useLinkedSessions('dootask', String(id), 'task', profile?.serverUrl);
     const navigateToSession = useNavigateToSession();
 
     const [task, setTask] = React.useState<DooTaskItem | null>(cached?.task ?? null);
@@ -700,7 +711,11 @@ export default function DooTaskDetail() {
                                 {getSessionName(session)}
                             </Text>
                             <Text style={[styles.sessionMeta, { color: theme.colors.textSecondary }]}>
-                                {session.metadata?.host ?? ''}
+                                {[
+                                    session.metadata?.flavor || 'claude',
+                                    session.metadata?.host,
+                                    formatSessionAge(session.createdAt),
+                                ].filter(Boolean).join(' · ')}
                             </Text>
                         </Pressable>
                     ))}

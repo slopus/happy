@@ -1126,6 +1126,8 @@ function NewSessionWizard() {
                         } catch (e) {
                             console.warn('Failed to write external context to session metadata:', e);
                         }
+                    } else {
+                        console.warn('Session metadata not available after refresh, external context not written for session:', result.sessionId);
                     }
                 }
 
