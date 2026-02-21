@@ -242,6 +242,7 @@ export const pl: TranslationStructure = {
         noTasks: 'No tasks found',
         noTasksDescription: 'Try adjusting your filters',
         startAiSession: 'Start AI Session',
+        refresh: 'Refresh',
         taskDetail: 'Task Detail',
         priority: 'Priority',
         status: 'Status',

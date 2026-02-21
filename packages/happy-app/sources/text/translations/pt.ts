@@ -231,6 +231,7 @@ export const pt: TranslationStructure = {
         noTasks: 'No tasks found',
         noTasksDescription: 'Try adjusting your filters',
         startAiSession: 'Start AI Session',
+        refresh: 'Atualizar',
         taskDetail: 'Task Detail',
         priority: 'Priority',
         status: 'Status',

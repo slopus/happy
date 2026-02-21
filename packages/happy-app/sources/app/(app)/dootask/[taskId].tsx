@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform, RefreshControl } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { WebView } from 'react-native-webview';
 import { t } from '@/text';
@@ -10,6 +10,9 @@ import { dootaskFetchTaskDetail, dootaskFetchTaskContent } from '@/sync/dootask/
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ImageViewer } from '@/components/ImageViewer';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
+import { Ionicons } from '@expo/vector-icons';
 import type { DooTaskItem } from '@/sync/dootask/types';
 
 /**
@@ -162,6 +165,9 @@ export default function DooTaskDetail() {
     const [error, setError] = React.useState<string | null>(null);
     const [spawning, setSpawning] = React.useState(false);
 
+    // Action menu
+    const [menuVisible, setMenuVisible] = React.useState(false);
+
     // Image viewer state
     const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
@@ -290,6 +296,17 @@ export default function DooTaskDetail() {
         }
     }, [profile, task, router, navigateToSession]);
 
+    const menuItems: ActionMenuItem[] = React.useMemo(() => [
+        {
+            label: t('dootask.startAiSession'),
+            onPress: () => handleStartAiSession(),
+        },
+        {
+            label: t('dootask.refresh'),
+            onPress: () => handleRefresh(),
+        },
+    ], [handleStartAiSession, handleRefresh]);
+
     if (loading) {
         return <ActivityIndicator style={{ flex: 1 }} />;
     }
@@ -308,6 +325,19 @@ export default function DooTaskDetail() {
     const flowColor = flow?.color || theme.colors.textSecondary;
 
     return (
+        <>
+        <Stack.Screen
+            options={{
+                headerRight: () => (
+                    <Pressable
+                        onPress={() => setMenuVisible(true)}
+                        style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                    >
+                        <Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.header.tint} />
+                    </Pressable>
+                ),
+            }}
+        />
         <ScrollView
             contentContainerStyle={styles.container}
             style={{ backgroundColor: theme.colors.surface }}
@@ -387,6 +417,12 @@ export default function DooTaskDetail() {
                 onClose={() => setImageViewerVisible(false)}
             />
         </ScrollView>
+        <ActionMenuModal
+            visible={menuVisible}
+            items={menuItems}
+            onClose={() => setMenuVisible(false)}
+        />
+        </>
     );
 }
 

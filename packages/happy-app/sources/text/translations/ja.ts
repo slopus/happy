@@ -263,6 +263,7 @@ export const ja: TranslationStructure = {
         noTasks: 'No tasks found',
         noTasksDescription: 'Try adjusting your filters',
         startAiSession: 'Start AI Session',
+        refresh: 'リフレッシュ',
         taskDetail: 'Task Detail',
         priority: 'Priority',
         status: 'Status',
