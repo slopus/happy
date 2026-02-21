@@ -27,6 +27,20 @@ function parseFlowItem(raw: string): { status: string | null; name: string; colo
     return { status: null, name: raw, color: null };
 }
 
+/** Default colors per workflow status type, matching DooTask's SCSS variables. */
+const FLOW_STATUS_COLORS: Record<string, string> = {
+    start: '#FF7070',
+    progress: '#fc984b',
+    test: '#2f99ec',
+    end: '#0bc037',
+};
+
+function getFlowColor(status: string | null, color: string | null): string {
+    if (color) return color;
+    if (status && FLOW_STATUS_COLORS[status]) return FLOW_STATUS_COLORS[status];
+    return '#7f7f7f';
+}
+
 function DetailField({ label, value, color, theme }: {
     label: string; value: string; color?: string; theme: any;
 }) {
@@ -264,21 +278,19 @@ export default function DooTaskDetail() {
                 turns: Array<{ id: number; name: string; status: string; color: string; turns: number[] }>;
             };
 
-            // Find the current flow item to get its allowed transitions
-            const currentItem = turns.find((item) => item.id === flow_item_id);
-            const allowedIds = currentItem?.turns || [];
+            let items: ActionMenuItem[];
 
-            // Build menu items from allowed transitions
-            const items: ActionMenuItem[] = turns
-                .filter((item) => allowedIds.includes(item.id))
-                .map((item) => ({
-                    label: item.name,
-                    color: item.color || undefined,
+            if (turns.length === 0) {
+                // No workflow — offer complete/uncomplete toggle
+                const willComplete = !task.complete_at;
+                items = [{
+                    label: willComplete ? t('dootask.completed') : t('dootask.uncompleted'),
+                    color: willComplete ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start,
                     onPress: async () => {
                         try {
                             const updateRes = await dootaskUpdateTask(profile.serverUrl, profile.token, {
                                 task_id: task.id,
-                                flow_item_id: item.id,
+                                complete_at: willComplete,
                             });
                             if (updateRes.ret === 1) {
                                 await fetchData();
@@ -289,7 +301,35 @@ export default function DooTaskDetail() {
                             setError(e instanceof Error ? e.message : 'Failed to update status');
                         }
                     },
-                }));
+                }];
+            } else {
+                // Find the current flow item to get its allowed transitions
+                const currentItem = turns.find((item) => item.id === flow_item_id);
+                const allowedIds = currentItem?.turns || [];
+
+                // Build menu items from allowed transitions
+                items = turns
+                    .filter((item) => allowedIds.includes(item.id))
+                    .map((item) => ({
+                        label: item.name,
+                        color: getFlowColor(item.status, item.color || null),
+                        onPress: async () => {
+                            try {
+                                const updateRes = await dootaskUpdateTask(profile.serverUrl, profile.token, {
+                                    task_id: task.id,
+                                    flow_item_id: item.id,
+                                });
+                                if (updateRes.ret === 1) {
+                                    await fetchData();
+                                } else {
+                                    setError(updateRes.msg || 'Failed to update status');
+                                }
+                            } catch (e) {
+                                setError(e instanceof Error ? e.message : 'Failed to update status');
+                            }
+                        },
+                    }));
+            }
 
             if (items.length === 0) {
                 // No transitions available — nothing to show
@@ -379,7 +419,9 @@ export default function DooTaskDetail() {
     const ownerNames = (task.task_user || []).filter((u) => u.owner === 1).map((u) => userCache[u.userid] || String(u.userid));
     const assistantNames = (task.task_user || []).filter((u) => u.owner === 0).map((u) => userCache[u.userid] || String(u.userid));
     const flow = task.flow_item_name ? parseFlowItem(task.flow_item_name) : null;
-    const flowColor = flow?.color || theme.colors.textSecondary;
+    const flowColor = flow ? getFlowColor(flow.status, flow.color) : '';
+    const isCompleted = !!task.complete_at;
+    const completedColor = isCompleted ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start;
 
     return (
         <>
@@ -404,16 +446,22 @@ export default function DooTaskDetail() {
 
             <View style={styles.fieldGroup}>
                 <DetailField label={t('dootask.project')} value={task.project_name} theme={theme} />
-                {flow ? (
-                    <View style={styles.field}>
-                        <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{t('dootask.status')}</Text>
-                        <Pressable onPress={handleStatusPress}>
+                <View style={styles.field}>
+                    <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{t('dootask.status')}</Text>
+                    <Pressable onPress={handleStatusPress}>
+                        {flow ? (
                             <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
                                 <Text style={[styles.statusBadgeText, { color: flowColor }]}>{flow.name}</Text>
                             </View>
-                        </Pressable>
-                    </View>
-                ) : null}
+                        ) : (
+                            <View style={[styles.statusBadge, { backgroundColor: completedColor + '20' }]}>
+                                <Text style={[styles.statusBadgeText, { color: completedColor }]}>
+                                    {isCompleted ? t('dootask.completed') : t('dootask.uncompleted')}
+                                </Text>
+                            </View>
+                        )}
+                    </Pressable>
+                </View>
                 <DetailField label={t('dootask.priority')} value={task.p_name} color={task.p_color} theme={theme} />
                 {ownerNames.length > 0 ? (
                     <DetailField
