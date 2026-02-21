@@ -43,6 +43,7 @@ interface AgentInputProps {
     metadata?: Metadata | null;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
+    onCompact?: () => void;
     connectionStatus?: {
         text: string;
         color: string;
@@ -356,6 +357,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
+    // Show compact button when context is critically low
+    const showCompactButton = React.useMemo(() => {
+        if (!props.onCompact || !props.usageData?.contextSize) return false;
+        const percentageRemaining = Math.max(0, 100 - (props.usageData.contextSize / MAX_CONTEXT_SIZE) * 100);
+        return percentageRemaining <= 10;
+    }, [props.onCompact, props.usageData?.contextSize]);
 
     // Abort button state
     const [isAborting, setIsAborting] = React.useState(false);
@@ -1091,6 +1098,33 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             )}
                                         </Pressable>
                                     </Shaker>
+                                )}
+
+                                {/* Compact button - shown when context is critically low */}
+                                {showCompactButton && !props.showAbortButton && (
+                                    <Pressable
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            backgroundColor: theme.colors.warning + '20',
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        onPress={props.onCompact}
+                                    >
+                                        <Ionicons name="flash-outline" size={14} color={theme.colors.warning} />
+                                        <Text style={{
+                                            marginLeft: 4,
+                                            fontSize: 12,
+                                            color: theme.colors.warning,
+                                            ...Typography.default('semiBold'),
+                                        }}>{t('session.compact')}</Text>
+                                    </Pressable>
                                 )}
 
                                 {/* Git Status Badge */}

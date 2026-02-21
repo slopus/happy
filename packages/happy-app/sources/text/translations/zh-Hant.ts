@@ -302,6 +302,7 @@ export const zhHant: TranslationStructure = {
 
     session: {
         inputPlaceholder: '輸入訊息...',
+        compact: '壓縮',
     },
 
     commandPalette: {
