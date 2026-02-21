@@ -185,6 +185,7 @@ export default function DooTaskDetail() {
     // Status change menu
     const [statusMenuVisible, setStatusMenuVisible] = React.useState(false);
     const [statusMenuItems, setStatusMenuItems] = React.useState<ActionMenuItem[]>([]);
+    const [statusLoading, setStatusLoading] = React.useState(false);
 
     // Image viewer state
     const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
@@ -266,7 +267,8 @@ export default function DooTaskDetail() {
     }, [fetchData]);
 
     const handleStatusPress = React.useCallback(async () => {
-        if (!profile || !task) return;
+        if (!profile || !task || statusLoading) return;
+        setStatusLoading(true);
         try {
             const res = await dootaskFetchTaskFlow(profile.serverUrl, profile.token, task.id);
             if (res.ret !== 1 || !res.data) {
@@ -341,8 +343,10 @@ export default function DooTaskDetail() {
             setStatusMenuVisible(true);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to load workflow');
+        } finally {
+            setStatusLoading(false);
         }
-    }, [profile, task, fetchData]);
+    }, [profile, task, statusLoading, fetchData]);
 
     const handleStartAiSession = React.useCallback(async () => {
         if (!profile || !task) return;
@@ -453,8 +457,12 @@ export default function DooTaskDetail() {
                 <DetailField label={t('dootask.project')} value={task.project_name} theme={theme} />
                 <View style={styles.field}>
                     <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{t('dootask.status')}</Text>
-                    <Pressable onPress={handleStatusPress}>
-                        {flow ? (
+                    <Pressable onPress={handleStatusPress} disabled={statusLoading}>
+                        {statusLoading ? (
+                            <View style={styles.statusBadge}>
+                                <ActivityIndicator size="small" />
+                            </View>
+                        ) : flow ? (
                             <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
                                 <Text style={[styles.statusBadgeText, { color: flowColor }]}>{flow.name}</Text>
                             </View>
