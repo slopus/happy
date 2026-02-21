@@ -253,6 +253,9 @@ export const zhHant: TranslationStructure = {
         connecting: 'Connecting...',
         disconnect: 'Disconnect DooTask',
         disconnectConfirm: 'This will remove your DooTask connection and clear cached data.',
+        subTasks: '子任務',
+        files: '檔案',
+        tags: '標籤',
     },
 
     settingsAppearance: {

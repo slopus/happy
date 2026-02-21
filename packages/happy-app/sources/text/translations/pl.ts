@@ -263,6 +263,9 @@ export const pl: TranslationStructure = {
         connecting: 'Connecting...',
         disconnect: 'Disconnect DooTask',
         disconnectConfirm: 'This will remove your DooTask connection and clear cached data.',
+        subTasks: 'Podzadania',
+        files: 'Pliki',
+        tags: 'Tagi',
     },
 
     settingsAppearance: {

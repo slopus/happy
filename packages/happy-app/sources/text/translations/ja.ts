@@ -284,6 +284,9 @@ export const ja: TranslationStructure = {
         connecting: 'Connecting...',
         disconnect: 'Disconnect DooTask',
         disconnectConfirm: 'This will remove your DooTask connection and clear cached data.',
+        subTasks: 'サブタスク',
+        files: 'ファイル',
+        tags: 'タグ',
     },
 
     settingsAppearance: {

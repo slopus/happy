@@ -1,19 +1,20 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform, RefreshControl, Image } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { WebView } from 'react-native-webview';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskProfile, useDootaskUserCache, useDootaskTaskDetailCache } from '@/sync/storage';
-import { dootaskFetchTaskDetail, dootaskFetchTaskContent, dootaskFetchTaskFlow, dootaskUpdateTask } from '@/sync/dootask/api';
+import { dootaskFetchTaskDetail, dootaskFetchTaskContent, dootaskFetchTaskFlow, dootaskUpdateTask, dootaskFetchSubTasks, dootaskFetchTaskFiles } from '@/sync/dootask/api';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ImageViewer } from '@/components/ImageViewer';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
 import { Ionicons } from '@expo/vector-icons';
-import type { DooTaskItem } from '@/sync/dootask/types';
+import * as WebBrowser from 'expo-web-browser';
+import type { DooTaskItem, DooTaskFile } from '@/sync/dootask/types';
 
 /**
  * Parse DooTask flow_item_name "status|name|color" format.
@@ -39,6 +40,20 @@ function getFlowColor(status: string | null, color: string | null): string {
     if (color) return color;
     if (status && FLOW_STATUS_COLORS[status]) return FLOW_STATUS_COLORS[status];
     return '#7f7f7f';
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFileIcon(ext: string): string {
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
+    const docExts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md'];
+    if (imageExts.includes(ext.toLowerCase())) return 'image-outline';
+    if (docExts.includes(ext.toLowerCase())) return 'document-text-outline';
+    return 'document-outline';
 }
 
 function DetailField({ label, value, color, theme }: {
@@ -192,6 +207,16 @@ export default function DooTaskDetail() {
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
     const [contentImages, setContentImages] = React.useState<Array<{ uri: string }>>([]);
 
+    // Sub-tasks & files
+    const [subTasks, setSubTasks] = React.useState<DooTaskItem[]>([]);
+    const [taskFiles, setTaskFiles] = React.useState<DooTaskFile[]>([]);
+
+    // Sub-task status change menu
+    const [subStatusMenuVisible, setSubStatusMenuVisible] = React.useState(false);
+    const [subStatusMenuItems, setSubStatusMenuItems] = React.useState<ActionMenuItem[]>([]);
+    const [subStatusLoading, setSubStatusLoading] = React.useState<number | null>(null);
+    const [subStatusTitle, setSubStatusTitle] = React.useState('');
+
     const handleImagesFound = React.useCallback((urls: string[]) => {
         setContentImages(urls.map((uri) => ({ uri })));
     }, []);
@@ -206,9 +231,11 @@ export default function DooTaskDetail() {
         if (!profile || !taskId) return;
 
         // Fetch task detail and content in parallel
-        const [detailRes, contentRes] = await Promise.all([
+        const [detailRes, contentRes, subTasksRes, filesRes] = await Promise.all([
             dootaskFetchTaskDetail(profile.serverUrl, profile.token, id),
             dootaskFetchTaskContent(profile.serverUrl, profile.token, id),
+            dootaskFetchSubTasks(profile.serverUrl, profile.token, id),
+            dootaskFetchTaskFiles(profile.serverUrl, profile.token, id),
         ]);
 
         let newTask: DooTaskItem | null = null;
@@ -236,6 +263,16 @@ export default function DooTaskDetail() {
                 newContent = raw.replace(/\{\{RemoteURL\}\}/g, baseUrl);
                 setTaskContent(newContent);
             }
+        }
+
+        if (subTasksRes.ret === 1 && subTasksRes.data) {
+            const list = Array.isArray(subTasksRes.data) ? subTasksRes.data : subTasksRes.data.data;
+            if (Array.isArray(list)) setSubTasks(list);
+        }
+
+        if (filesRes.ret === 1 && filesRes.data) {
+            const list = Array.isArray(filesRes.data) ? filesRes.data : filesRes.data.data;
+            if (Array.isArray(list)) setTaskFiles(list);
         }
 
         // Write to global cache for SWR on next visit + sync list item
@@ -310,12 +347,13 @@ export default function DooTaskDetail() {
                 const currentItem = turns.find((item) => item.id === flow_item_id);
                 const allowedIds = currentItem?.turns || [];
 
-                // Build menu items from allowed transitions
+                // Build menu: current status (selected) + allowed transitions
                 items = turns
-                    .filter((item) => allowedIds.includes(item.id))
+                    .filter((item) => item.id === flow_item_id || allowedIds.includes(item.id))
                     .map((item) => ({
                         label: item.name,
                         color: getFlowColor(item.status, item.color || null),
+                        selected: item.id === flow_item_id,
                         onPress: async () => {
                             try {
                                 const updateRes = await dootaskUpdateTask(profile.serverUrl, profile.token, {
@@ -347,6 +385,76 @@ export default function DooTaskDetail() {
             setStatusLoading(false);
         }
     }, [profile, task, statusLoading, fetchData]);
+
+    const handleSubTaskStatusPress = React.useCallback(async (subTask: DooTaskItem) => {
+        if (!profile || subStatusLoading) return;
+        setSubStatusLoading(subTask.id);
+        try {
+            const res = await dootaskFetchTaskFlow(profile.serverUrl, profile.token, subTask.id);
+            if (res.ret !== 1 || !res.data) {
+                setError(res.msg || 'Failed to load workflow');
+                return;
+            }
+
+            const { flow_item_id, turns } = res.data as {
+                flow_item_id: number;
+                turns: Array<{ id: number; name: string; status: string; color: string; turns: number[] }>;
+            };
+
+            let items: ActionMenuItem[];
+
+            if (turns.length === 0) {
+                const willComplete = !subTask.complete_at;
+                items = [{
+                    label: willComplete ? t('dootask.completed') : t('dootask.uncompleted'),
+                    color: willComplete ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start,
+                    onPress: async () => {
+                        try {
+                            const updateRes = await dootaskUpdateTask(profile.serverUrl, profile.token, {
+                                task_id: subTask.id,
+                                complete_at: willComplete,
+                            });
+                            if (updateRes.ret === 1) await fetchData();
+                            else setError(updateRes.msg || 'Failed to update status');
+                        } catch (e) {
+                            setError(e instanceof Error ? e.message : 'Failed to update status');
+                        }
+                    },
+                }];
+            } else {
+                const currentItem = turns.find((item) => item.id === flow_item_id);
+                const allowedIds = currentItem?.turns || [];
+                items = turns
+                    .filter((item) => item.id === flow_item_id || allowedIds.includes(item.id))
+                    .map((item) => ({
+                        label: item.name,
+                        color: getFlowColor(item.status, item.color || null),
+                        selected: item.id === flow_item_id,
+                        onPress: async () => {
+                            try {
+                                const updateRes = await dootaskUpdateTask(profile.serverUrl, profile.token, {
+                                    task_id: subTask.id,
+                                    flow_item_id: item.id,
+                                });
+                                if (updateRes.ret === 1) await fetchData();
+                                else setError(updateRes.msg || 'Failed to update status');
+                            } catch (e) {
+                                setError(e instanceof Error ? e.message : 'Failed to update status');
+                            }
+                        },
+                    }));
+            }
+
+            if (items.length === 0) return;
+            setSubStatusMenuItems(items);
+            setSubStatusTitle(`${t('dootask.subTasks')}：${subTask.name}`);
+            setSubStatusMenuVisible(true);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to load workflow');
+        } finally {
+            setSubStatusLoading(null);
+        }
+    }, [profile, subStatusLoading, fetchData]);
 
     const handleStartAiSession = React.useCallback(async () => {
         if (!profile || !task) return;
@@ -425,8 +533,8 @@ export default function DooTaskDetail() {
         );
     }
 
-    const ownerNames = (task.task_user || []).filter((u) => u.owner === 1).map((u) => userCache[u.userid] || String(u.userid));
-    const assistantNames = (task.task_user || []).filter((u) => u.owner === 0).map((u) => userCache[u.userid] || String(u.userid));
+    const ownerNames = (task.task_user || []).filter((u) => u.owner === 1).map((u) => userCache[u.userid] || String(u.userid)).reverse();
+    const assistantNames = (task.task_user || []).filter((u) => u.owner === 0).map((u) => userCache[u.userid] || String(u.userid)).reverse();
     const flow = task.flow_item_name ? parseFlowItem(task.flow_item_name) : null;
     const flowColor = flow ? getFlowColor(flow.status, flow.color) : '';
     const isCompleted = !!task.complete_at;
@@ -514,6 +622,82 @@ export default function DooTaskDetail() {
                 </View>
             ) : null}
 
+            {/* Tags */}
+            {task.task_tag && task.task_tag.length > 0 ? (
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>{t('dootask.tags')}</Text>
+                    <View style={styles.tagsContainer}>
+                        {task.task_tag.map((tag) => (
+                            <View key={tag.id} style={[styles.tagChip, { backgroundColor: tag.color + '20' }]}>
+                                <Text style={[styles.tagText, { color: tag.color }]}>{tag.name}</Text>
+                            </View>
+                        ))}
+                    </View>
+                </View>
+            ) : null}
+
+            {/* Sub-tasks */}
+            {subTasks.length > 0 ? (
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>{t('dootask.subTasks')}</Text>
+                    {subTasks.map((sub) => {
+                        const subFlow = sub.flow_item_name ? parseFlowItem(sub.flow_item_name) : null;
+                        const subFlowColor = subFlow ? getFlowColor(subFlow.status, subFlow.color) : '';
+                        const subCompleted = !!sub.complete_at;
+                        const subCompletedColor = subCompleted ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start;
+                        return (
+                            <View key={sub.id} style={styles.subTaskRow}>
+                                <Pressable onPress={() => handleSubTaskStatusPress(sub)} style={{ flexShrink: 0 }}>
+                                    {subFlow ? (
+                                        <View style={[styles.statusBadge, { backgroundColor: subFlowColor + '20' }]}>
+                                            <Text style={[styles.statusBadgeText, { color: subFlowColor, opacity: subStatusLoading === sub.id ? 0 : 1 }]}>{subFlow.name}</Text>
+                                            {subStatusLoading === sub.id ? <ActivityIndicator size="small" color={subFlowColor} style={[StyleSheet.absoluteFillObject, { transform: [{ scale: 0.6 }] }]} /> : null}
+                                        </View>
+                                    ) : (
+                                        <View style={[styles.statusBadge, { backgroundColor: subCompletedColor + '20' }]}>
+                                            <Text style={[styles.statusBadgeText, { color: subCompletedColor, opacity: subStatusLoading === sub.id ? 0 : 1 }]}>
+                                                {subCompleted ? t('dootask.completed') : t('dootask.uncompleted')}
+                                            </Text>
+                                            {subStatusLoading === sub.id ? <ActivityIndicator size="small" color={subCompletedColor} style={[StyleSheet.absoluteFillObject, { transform: [{ scale: 0.6 }] }]} /> : null}
+                                        </View>
+                                    )}
+                                </Pressable>
+                                <Text style={[styles.subTaskName, { color: theme.colors.text }]} numberOfLines={2}>{sub.name}</Text>
+                            </View>
+                        );
+                    })}
+                </View>
+            ) : null}
+
+            {/* Files */}
+            {taskFiles.length > 0 ? (
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>{t('dootask.files')}</Text>
+                    {taskFiles.map((file) => {
+                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(file.ext.toLowerCase());
+                        const resolveUrl = (path: string) => {
+                            if (path.startsWith('http')) return path;
+                            if (!profile) return path;
+                            return profile.serverUrl.replace(/\/+$/, '') + '/' + path.replace(/^\/+/, '');
+                        };
+                        const fileUrl = resolveUrl(file.path);
+                        return (
+                            <Pressable key={file.id} style={styles.fileRow} onPress={() => WebBrowser.openBrowserAsync(fileUrl)}>
+                                {isImage && file.thumb ? (
+                                    <Image source={{ uri: resolveUrl(file.thumb) }} style={styles.fileThumbnail} />
+                                ) : (
+                                    <Ionicons name={getFileIcon(file.ext) as any} size={24} color={theme.colors.textSecondary} />
+                                )}
+                                <View style={styles.fileInfo}>
+                                    <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>{file.name}</Text>
+                                    <Text style={[styles.fileSize, { color: theme.colors.textSecondary }]}>{formatFileSize(file.size)}</Text>
+                                </View>
+                            </Pressable>
+                        );
+                    })}
+                </View>
+            ) : null}
+
             <Pressable
                 style={[styles.aiButton, { backgroundColor: theme.colors.button.primary.background }, spawning && { opacity: 0.6 }]}
                 onPress={handleStartAiSession}
@@ -547,6 +731,12 @@ export default function DooTaskDetail() {
             onClose={() => setStatusMenuVisible(false)}
             title={t('dootask.status')}
         />
+        <ActionMenuModal
+            visible={subStatusMenuVisible}
+            items={subStatusMenuItems}
+            onClose={() => setSubStatusMenuVisible(false)}
+            title={subStatusTitle}
+        />
         </>
     );
 }
@@ -573,4 +763,16 @@ const styles = StyleSheet.create((_theme) => ({
         marginTop: 8,
     },
     aiButtonText: { ...Typography.default('semiBold'), fontSize: 16 },
+    section: { gap: 8 },
+    sectionTitle: { ...Typography.default('semiBold'), fontSize: 14 },
+    tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    tagChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+    tagText: { ...Typography.default('semiBold'), fontSize: 12 },
+    subTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
+    subTaskName: { ...Typography.default(), fontSize: 14, flex: 1 },
+    fileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+    fileThumbnail: { width: 32, height: 32, borderRadius: 4 },
+    fileInfo: { flex: 1 },
+    fileName: { ...Typography.default(), fontSize: 14 },
+    fileSize: { ...Typography.default(), fontSize: 12 },
 }));

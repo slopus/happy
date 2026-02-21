@@ -252,6 +252,9 @@ export const en = {
         connecting: 'Connecting...',
         disconnect: 'Disconnect DooTask',
         disconnectConfirm: 'This will remove your DooTask connection and clear cached data.',
+        subTasks: 'Sub-tasks',
+        files: 'Files',
+        tags: 'Tags',
     },
 
     settingsAppearance: {

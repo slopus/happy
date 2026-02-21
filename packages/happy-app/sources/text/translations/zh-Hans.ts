@@ -254,6 +254,9 @@ export const zhHans: TranslationStructure = {
         connecting: '连接中...',
         disconnect: '断开 DooTask',
         disconnectConfirm: '这将移除您的 DooTask 连接并清除缓存数据。',
+        subTasks: '子任务',
+        files: '文件',
+        tags: '标签',
     },
 
     settingsAppearance: {

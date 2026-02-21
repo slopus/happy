@@ -33,6 +33,19 @@ export type DooTaskItem = {
     complete_at: string | null;
     overdue: boolean;
     task_user: Array<{ userid: number; nickname: string; owner?: number }>;
+    task_tag?: Array<{ id: number; name: string; color: string }>;
+    sub_num?: number;
+    sub_complete?: number;
+};
+
+export type DooTaskFile = {
+    id: number;
+    name: string;
+    size: number;
+    ext: string;
+    path: string;
+    thumb: string | null;
+    userid: number;
 };
 
 export type DooTaskFilters = {

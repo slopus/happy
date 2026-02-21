@@ -175,6 +175,25 @@ export async function dootaskFetchTaskFlow(serverUrl: string, token: string, tas
     return response.json();
 }
 
+export async function dootaskFetchSubTasks(serverUrl: string, token: string, parentId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const qs = new URLSearchParams({ parent_id: String(parentId), page: '1', pagesize: '100' });
+    const response = await fetch(`${url}/api/project/task/lists?${qs}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskFetchTaskFiles(serverUrl: string, token: string, taskId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/task/files?task_id=${taskId}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
 export async function dootaskUpdateTask(serverUrl: string, token: string, params: { task_id: number; flow_item_id?: number; complete_at?: string | boolean }): Promise<DooTaskResponse> {
     const url = validateServerUrl(serverUrl);
     const response = await fetch(`${url}/api/project/task/update`, {

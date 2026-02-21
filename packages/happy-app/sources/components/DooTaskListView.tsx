@@ -1,10 +1,11 @@
 import * as React from 'react';
 import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
-import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile, useDootaskProjects } from '@/sync/storage';
+import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile, useDootaskProjects, useDootaskUserCache } from '@/sync/storage';
 import type { DooTaskItem } from '@/sync/dootask/types';
 
 /**
@@ -90,12 +91,20 @@ const FilterBar = React.memo(() => {
 });
 
 // --- Task Card ---
-const TaskCard = React.memo(({ item, projectName, onPress }: { item: DooTaskItem; projectName: string; onPress: () => void }) => {
+const TaskCard = React.memo(({ item, projectName, userCache, onPress }: { item: DooTaskItem; projectName: string; userCache: Record<number, string>; onPress: () => void }) => {
     const { theme } = useUnistyles();
-    const owner = item.task_user?.find((u) => u.owner === 1);
     const isCompleted = !!item.complete_at;
     const flow = item.flow_item_name ? parseFlowItem(item.flow_item_name) : null;
     const flowColor = flow?.color || theme.colors.textSecondary;
+
+    const owners = (item.task_user || []).filter((u) => u.owner === 1).reverse();
+    const getName = (u: { userid: number; nickname: string }) => userCache[u.userid] || u.nickname || String(u.userid);
+    const assigneeText = owners.length <= 2
+        ? owners.map(getName).join(', ')
+        : `${getName(owners[0])} +${owners.length - 1}`;
+
+    const hasTime = !!item.end_at && !isCompleted;
+    const hasAssignees = owners.length > 0;
 
     return (
         <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
@@ -118,20 +127,32 @@ const TaskCard = React.memo(({ item, projectName, onPress }: { item: DooTaskItem
                         {projectName}
                     </Text>
                 ) : null}
-                {owner ? (
-                    <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
-                        {owner.nickname}
-                    </Text>
+                {item.sub_num && item.sub_num > 0 ? (
+                    <View style={styles.subCountBadge}>
+                        <Ionicons name="git-branch-outline" size={12} color={theme.colors.textSecondary} />
+                        <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+                            {item.sub_complete || 0}/{item.sub_num}
+                        </Text>
+                    </View>
                 ) : null}
             </View>
-            {item.end_at && !isCompleted ? (
-                <Text style={[
-                    styles.metaText,
-                    { color: item.overdue ? theme.colors.deleteAction : theme.colors.textSecondary, marginTop: 4 },
-                ]}>
-                    {formatEndAt(item.end_at)}
-                    {item.overdue ? ` (${t('dootask.overdue')})` : ''}
-                </Text>
+            {hasTime || hasAssignees ? (
+                <View style={styles.cardBottom}>
+                    {hasTime ? (
+                        <Text style={[
+                            styles.metaText,
+                            { color: item.overdue ? theme.colors.deleteAction : theme.colors.textSecondary },
+                        ]}>
+                            {formatEndAt(item.end_at!)}
+                            {item.overdue ? ` (${t('dootask.overdue')})` : ''}
+                        </Text>
+                    ) : <View />}
+                    {hasAssignees ? (
+                        <Text style={[styles.metaText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                            {assigneeText}
+                        </Text>
+                    ) : null}
+                </View>
             ) : null}
         </Pressable>
     );
@@ -144,6 +165,7 @@ export const DooTaskListView = React.memo(() => {
     const { tasks, loading, error, pager } = useDootaskTasks();
     const profile = useDootaskProfile();
     const projects = useDootaskProjects();
+    const userCache = useDootaskUserCache();
     const projectMap = React.useMemo(() => {
         const map: Record<number, string> = {};
         for (const p of projects) map[p.id] = p.name;
@@ -156,6 +178,18 @@ export const DooTaskListView = React.memo(() => {
             storage.getState().fetchDootaskTasks({ refresh: true });
         }
     }, [profile?.serverUrl, profile?.token]);
+
+    // Fetch missing user nicknames for all task assignees
+    React.useEffect(() => {
+        if (!tasks.length) return;
+        const ids = new Set<number>();
+        for (const task of tasks) {
+            for (const u of task.task_user || []) {
+                if (u.userid && !userCache[u.userid]) ids.add(u.userid);
+            }
+        }
+        if (ids.size > 0) storage.getState().fetchDootaskUsers([...ids]);
+    }, [tasks, userCache]);
 
     if (!profile) {
         return (
@@ -193,6 +227,7 @@ export const DooTaskListView = React.memo(() => {
                     <TaskCard
                         item={item}
                         projectName={item.project_name || projectMap[item.project_id] || ''}
+                        userCache={userCache}
                         onPress={() => router.push(`/dootask/${item.id}`)}
                     />
                 )}
@@ -257,6 +292,8 @@ const styles = StyleSheet.create((_theme) => ({
     statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     statusBadgeText: { ...Typography.default(), fontSize: 11 },
     metaText: { ...Typography.default(), fontSize: 12 },
+    subCountBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
     empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
     emptyTitle: { ...Typography.default('semiBold'), fontSize: 16 },
     emptyText: { ...Typography.default(), fontSize: 14, textAlign: 'center', marginTop: 4 },
