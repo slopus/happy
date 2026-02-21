@@ -603,12 +603,11 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         console.warn(chalk.yellow(`   To configure Claude, edit ~/.claude/settings.json instead.`))
         // Don't pass through to claudeArgs
       } else {
-        // Pass unknown arguments through to claude
+        // Pass unknown arguments through to claude as-is.
+        // Don't try to pair with the next arg — the shell already
+        // handles quoting, and the heuristic breaks positional
+        // arguments like: happy "/review URL"
         unknownArgs.push(arg)
-        // Check if this arg expects a value (simplified check for common patterns)
-        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
-          unknownArgs.push(args[++i])
-        }
       }
     }
 
