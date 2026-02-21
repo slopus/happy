@@ -461,14 +461,14 @@ export default function DooTaskDetail() {
                         {flow ? (
                             <View style={[styles.statusBadge, { backgroundColor: flowColor + '20' }]}>
                                 <Text style={[styles.statusBadgeText, { color: flowColor, opacity: statusLoading ? 0 : 1 }]}>{flow.name}</Text>
-                                {statusLoading ? <ActivityIndicator size="small" color={flowColor} style={StyleSheet.absoluteFillObject} /> : null}
+                                {statusLoading ? <ActivityIndicator size="small" color={flowColor} style={[StyleSheet.absoluteFillObject, { transform: [{ scale: 0.5 }] }]} /> : null}
                             </View>
                         ) : (
                             <View style={[styles.statusBadge, { backgroundColor: completedColor + '20' }]}>
                                 <Text style={[styles.statusBadgeText, { color: completedColor, opacity: statusLoading ? 0 : 1 }]}>
                                     {isCompleted ? t('dootask.completed') : t('dootask.uncompleted')}
                                 </Text>
-                                {statusLoading ? <ActivityIndicator size="small" color={completedColor} style={StyleSheet.absoluteFillObject} /> : null}
+                                {statusLoading ? <ActivityIndicator size="small" color={completedColor} style={[StyleSheet.absoluteFillObject, { transform: [{ scale: 0.5 }] }]} /> : null}
                             </View>
                         )}
                     </Pressable>
