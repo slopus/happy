@@ -1098,6 +1098,9 @@ function NewSessionWizard() {
                     worktreeBasePath: selectedPath,
                     worktreeBranchName,
                 } : {}),
+                // Pass through external MCP servers and session title
+                ...(tempSessionData?.mcpServers ? { mcpServers: tempSessionData.mcpServers } : {}),
+                ...(tempSessionData?.sessionTitle ? { sessionTitle: tempSessionData.sessionTitle } : {}),
             });
 
             if ('sessionId' in result && result.sessionId) {
@@ -1139,7 +1142,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, images, clearImages]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, images, clearImages, tempSessionData]);
 
     const screenWidth = useWindowDimensions().width;
 
