@@ -533,6 +533,7 @@ export default function DooTaskDetail() {
             visible={menuVisible}
             items={menuItems}
             onClose={() => setMenuVisible(false)}
+            deferItemPress
         />
         <ActionMenuModal
             visible={statusMenuVisible}
