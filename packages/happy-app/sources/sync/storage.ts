@@ -1428,10 +1428,12 @@ export const storage = create<StorageState>()((set, get) => {
             if (!dootaskProfile || userIds.length === 0) return dootaskUserCache;
 
             // If cache expired (>10 min), re-fetch all requested IDs; otherwise only missing ones
+            // Also re-fetch users whose avatar is missing from the avatar cache (e.g. after upgrade)
             const expired = !dootaskUserCacheFetchedAt || Date.now() - dootaskUserCacheFetchedAt >= 600_000;
+            const avatarCache = get().dootaskUserAvatars;
             const missingIds = expired
                 ? userIds
-                : userIds.filter((id) => !(id in dootaskUserCache));
+                : userIds.filter((id) => !(id in dootaskUserCache) || !(id in avatarCache));
             if (missingIds.length === 0) return dootaskUserCache;
 
             const profileKey = `${dootaskProfile.serverUrl}|${dootaskProfile.userId}|${dootaskProfile.token}`;

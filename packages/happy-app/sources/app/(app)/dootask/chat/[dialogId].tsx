@@ -40,6 +40,7 @@ export default React.memo(function DooTaskChat() {
 
     // Message state
     const [messages, setMessages] = React.useState<DooTaskDialogMsg[]>([]);
+    const [loading, setLoading] = React.useState(true);
     const [loadingMore, setLoadingMore] = React.useState(false);
     const [hasMore, setHasMore] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -104,6 +105,7 @@ export default React.memo(function DooTaskChat() {
         } catch (e) {
             setError(e instanceof Error ? e.message : t('dootask.errorLoadChat'));
         } finally {
+            setLoading(false);
             setWsEnabled(true);
         }
     }, [profile, id]);
@@ -290,6 +292,7 @@ export default React.memo(function DooTaskChat() {
             userNames={userCache}
             userAvatars={userAvatars}
             onLoadMore={handleLoadMore}
+            loading={loading}
             loadingMore={loadingMore}
             hasMore={hasMore}
             onMessageLongPress={handleMessageLongPress}

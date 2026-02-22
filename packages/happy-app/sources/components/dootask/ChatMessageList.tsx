@@ -15,6 +15,7 @@ type ChatMessageListProps = {
     userAvatars: Record<number, string | null>;
     onLoadMore: () => void;
     loadingMore: boolean;
+    loading?: boolean;
     hasMore: boolean;
     onMessageLongPress: (msg: DooTaskDialogMsg) => void;
     onImagePress: (url: string) => void;
@@ -42,6 +43,7 @@ export const ChatMessageList = React.memo(({
     userAvatars,
     onLoadMore,
     loadingMore,
+    loading,
     hasMore,
     onMessageLongPress,
     onImagePress,
@@ -132,11 +134,15 @@ export const ChatMessageList = React.memo(({
 
     const listEmpty = React.useMemo(() => (
         <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                {t('dootask.chatEmpty')}
-            </Text>
+            {loading ? (
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+            ) : (
+                <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                    {t('dootask.chatEmpty')}
+                </Text>
+            )}
         </View>
-    ), [theme]);
+    ), [loading, theme]);
 
     // Force FlatList to re-render when avatar data loads asynchronously
     const extraData = React.useMemo(() => ({ userAvatars, userNames }), [userAvatars, userNames]);
@@ -165,6 +171,7 @@ export const ChatMessageList = React.memo(({
 const styles = StyleSheet.create((theme) => ({
     contentContainer: {
         paddingVertical: theme.margins.sm,
+        flexGrow: 1,
     },
     itemWithAvatar: {
         marginBottom: 22,
@@ -191,7 +198,7 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: theme.margins.xxl,
+        transform: [{ scaleY: -1 }],
     },
     emptyText: {
         ...Typography.default(),
