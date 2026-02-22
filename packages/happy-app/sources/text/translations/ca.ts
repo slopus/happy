@@ -264,6 +264,15 @@ export const ca: TranslationStructure = {
         roleAll: 'Tots',
         roleOwner: 'Les meves tasques',
         roleAssist: 'Assistint',
+        connect: 'Connectar',
+        errorHttpsRequired: "L'URL del servidor ha d'utilitzar HTTPS",
+        errorInvalidUrl: 'URL del servidor no vàlida',
+        loginFailed: "Error d'inici de sessió",
+        errorLoadTask: 'Error en carregar la tasca',
+        errorRefresh: 'Error en actualitzar',
+        errorLoadWorkflow: 'Error en carregar el flux de treball',
+        errorUpdateStatus: "Error en actualitzar l'estat",
+        taskNotFound: 'Tasca no trobada',
     },
 
     settingsAppearance: {

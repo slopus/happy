@@ -293,6 +293,15 @@ export const it: TranslationStructure = {
         roleAll: 'Tutti',
         roleOwner: 'I miei compiti',
         roleAssist: 'Assistenza',
+        connect: 'Connetti',
+        errorHttpsRequired: "L'URL del server deve utilizzare HTTPS",
+        errorInvalidUrl: 'URL del server non valido',
+        loginFailed: 'Accesso fallito',
+        errorLoadTask: 'Impossibile caricare il task',
+        errorRefresh: 'Impossibile aggiornare',
+        errorLoadWorkflow: 'Impossibile caricare il flusso di lavoro',
+        errorUpdateStatus: 'Impossibile aggiornare lo stato',
+        taskNotFound: 'Task non trovato',
     },
 
     settingsAppearance: {

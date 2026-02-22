@@ -296,6 +296,15 @@ export const ja: TranslationStructure = {
         roleAll: 'すべて',
         roleOwner: '担当タスク',
         roleAssist: 'アシストタスク',
+        connect: '接続',
+        errorHttpsRequired: 'サーバーURLはHTTPSを使用する必要があります',
+        errorInvalidUrl: '無効なサーバーURL',
+        loginFailed: 'ログインに失敗しました',
+        errorLoadTask: 'タスクの読み込みに失敗しました',
+        errorRefresh: '更新に失敗しました',
+        errorLoadWorkflow: 'ワークフローの読み込みに失敗しました',
+        errorUpdateStatus: 'ステータスの更新に失敗しました',
+        taskNotFound: 'タスクが見つかりません',
     },
 
     settingsAppearance: {

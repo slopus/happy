@@ -266,6 +266,15 @@ export const zhHans: TranslationStructure = {
         roleAll: '全部',
         roleOwner: '我负责的',
         roleAssist: '我协助的',
+        connect: '连接',
+        errorHttpsRequired: '服务器地址必须使用 HTTPS',
+        errorInvalidUrl: '无效的服务器地址',
+        loginFailed: '登录失败',
+        errorLoadTask: '加载任务失败',
+        errorRefresh: '刷新失败',
+        errorLoadWorkflow: '加载工作流失败',
+        errorUpdateStatus: '更新状态失败',
+        taskNotFound: '未找到任务',
     },
 
     settingsAppearance: {

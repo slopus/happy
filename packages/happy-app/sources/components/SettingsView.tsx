@@ -126,8 +126,8 @@ export const SettingsView = React.memo(function SettingsView() {
 
     const [disconnectingDootask, handleDisconnectDootask] = useHappyAction(async () => {
         const confirmed = await Modal.confirm(
-            'Disconnect DooTask',
-            'This will remove your DooTask connection and clear cached data.',
+            t('dootask.disconnect'),
+            t('dootask.disconnectConfirm'),
             { confirmText: t('modals.disconnect'), destructive: true }
         );
         if (confirmed) {
@@ -247,10 +247,10 @@ export const SettingsView = React.memo(function SettingsView() {
                     showChevron={false}
                 />
                 <Item
-                    title="DooTask"
+                    title={t('dootask.title')}
                     subtitle={isDootaskConnected
-                        ? `Connected as ${dootaskProfile!.username}`
-                        : 'Connect DooTask'
+                        ? t('settings.dootaskConnected', { username: dootaskProfile!.username })
+                        : t('settings.connectDootask')
                     }
                     icon={
                         <Image

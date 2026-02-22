@@ -280,6 +280,15 @@ export const en: TranslationStructure = {
         roleAll: 'All',
         roleOwner: 'My Tasks',
         roleAssist: 'Assisting',
+        connect: 'Connect',
+        errorHttpsRequired: 'Server URL must use HTTPS',
+        errorInvalidUrl: 'Invalid server URL',
+        loginFailed: 'Login failed',
+        errorLoadTask: 'Failed to load task',
+        errorRefresh: 'Failed to refresh',
+        errorLoadWorkflow: 'Failed to load workflow',
+        errorUpdateStatus: 'Failed to update status',
+        taskNotFound: 'Task not found',
     },
 
     settingsAppearance: {

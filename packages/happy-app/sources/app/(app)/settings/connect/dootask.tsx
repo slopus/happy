@@ -26,6 +26,7 @@ import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { storage } from '@/sync/storage';
+import { t } from '@/text';
 import { dootaskLogin, dootaskGetTokenExpire } from '@/sync/dootask/api';
 import type { DooTaskProfile } from '@/sync/dootask/types';
 
@@ -62,12 +63,12 @@ export default React.memo(function DooTaskConnectPage() {
             try {
                 const parsed = new URL(trimmedUrl);
                 if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && parsed.hostname === 'localhost')) {
-                    setError('Server URL must use HTTPS');
+                    setError(t('dootask.errorHttpsRequired'));
                     setLoading(false);
                     return;
                 }
             } catch {
-                setError('Invalid server URL');
+                setError(t('dootask.errorInvalidUrl'));
                 setLoading(false);
                 return;
             }
@@ -114,22 +115,22 @@ export default React.memo(function DooTaskConnectPage() {
                 case 'captcha_required': {
                     setCodeKey(result.codeKey);
                     setCode('');
-                    setError(result.message || 'Captcha verification required');
+                    setError(result.message || t('dootask.captchaRequired'));
                     break;
                 }
 
                 case 'token_expired': {
-                    setError(result.message || 'Token expired, please login again');
+                    setError(result.message || t('dootask.tokenExpired'));
                     break;
                 }
 
                 case 'error': {
-                    setError(result.message || 'Login failed');
+                    setError(result.message || t('dootask.loginFailed'));
                     break;
                 }
             }
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'An unexpected error occurred');
+            setError(e instanceof Error ? e.message : t('errors.unknownError'));
         } finally {
             setLoading(false);
         }
@@ -148,7 +149,7 @@ export default React.memo(function DooTaskConnectPage() {
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             >
                 {/* Server URL */}
-                <ItemGroup title="Server URL">
+                <ItemGroup title={t('dootask.serverUrl')}>
                     <View style={styles.inputWrapper}>
                         <TextInput
                             style={styles.input}
@@ -166,7 +167,7 @@ export default React.memo(function DooTaskConnectPage() {
                 </ItemGroup>
 
                 {/* Email */}
-                <ItemGroup title="Email">
+                <ItemGroup title={t('dootask.email')}>
                     <View style={styles.inputWrapper}>
                         <TextInput
                             style={styles.input}
@@ -184,13 +185,13 @@ export default React.memo(function DooTaskConnectPage() {
                 </ItemGroup>
 
                 {/* Password */}
-                <ItemGroup title="Password">
+                <ItemGroup title={t('dootask.password')}>
                     <View style={styles.inputWrapper}>
                         <TextInput
                             style={styles.input}
                             value={password}
                             onChangeText={setPassword}
-                            placeholder="Password"
+                            placeholder={t('dootask.password')}
                             placeholderTextColor={theme.colors.textSecondary}
                             autoCapitalize="none"
                             autoCorrect={false}
@@ -204,13 +205,13 @@ export default React.memo(function DooTaskConnectPage() {
 
                 {/* Captcha Code (conditional) */}
                 {codeKey && (
-                    <ItemGroup title="Captcha Code">
+                    <ItemGroup title={t('dootask.captchaRequired')}>
                         <View style={styles.inputWrapper}>
                             <TextInput
                                 style={styles.input}
                                 value={code}
                                 onChangeText={setCode}
-                                placeholder="Enter captcha code"
+                                placeholder={t('dootask.captchaPlaceholder')}
                                 placeholderTextColor={theme.colors.textSecondary}
                                 autoCapitalize="none"
                                 autoCorrect={false}
@@ -238,7 +239,7 @@ export default React.memo(function DooTaskConnectPage() {
                     {loading ? (
                         <ActivityIndicator color={theme.colors.button.primary.tint} />
                     ) : (
-                        <Text style={styles.submitButtonText}>Connect</Text>
+                        <Text style={styles.submitButtonText}>{t('dootask.connect')}</Text>
                     )}
                 </Pressable>
             </ScrollView>

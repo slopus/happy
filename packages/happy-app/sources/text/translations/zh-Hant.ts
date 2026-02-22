@@ -265,6 +265,15 @@ export const zhHant: TranslationStructure = {
         roleAll: '全部',
         roleOwner: '我負責的',
         roleAssist: '我協助的',
+        connect: '連接',
+        errorHttpsRequired: '伺服器地址必須使用 HTTPS',
+        errorInvalidUrl: '無效的伺服器地址',
+        loginFailed: '登入失敗',
+        errorLoadTask: '載入任務失敗',
+        errorRefresh: '重新整理失敗',
+        errorLoadWorkflow: '載入工作流程失敗',
+        errorUpdateStatus: '更新狀態失敗',
+        taskNotFound: '找不到任務',
     },
 
     settingsAppearance: {

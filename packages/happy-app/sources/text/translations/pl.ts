@@ -275,6 +275,15 @@ export const pl: TranslationStructure = {
         roleAll: 'Wszystkie',
         roleOwner: 'Moje zadania',
         roleAssist: 'Wspieram',
+        connect: 'Połącz',
+        errorHttpsRequired: 'Adres serwera musi używać HTTPS',
+        errorInvalidUrl: 'Nieprawidłowy adres serwera',
+        loginFailed: 'Logowanie nie powiodło się',
+        errorLoadTask: 'Nie udało się załadować zadania',
+        errorRefresh: 'Nie udało się odświeżyć',
+        errorLoadWorkflow: 'Nie udało się załadować przepływu pracy',
+        errorUpdateStatus: 'Nie udało się zaktualizować statusu',
+        taskNotFound: 'Nie znaleziono zadania',
     },
 
     settingsAppearance: {

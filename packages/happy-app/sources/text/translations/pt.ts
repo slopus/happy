@@ -264,6 +264,15 @@ export const pt: TranslationStructure = {
         roleAll: 'Todos',
         roleOwner: 'Minhas tarefas',
         roleAssist: 'Assistindo',
+        connect: 'Conectar',
+        errorHttpsRequired: 'O URL do servidor deve usar HTTPS',
+        errorInvalidUrl: 'URL do servidor inválido',
+        loginFailed: 'Falha no login',
+        errorLoadTask: 'Falha ao carregar tarefa',
+        errorRefresh: 'Falha ao atualizar',
+        errorLoadWorkflow: 'Falha ao carregar fluxo de trabalho',
+        errorUpdateStatus: 'Falha ao atualizar status',
+        taskNotFound: 'Tarefa não encontrada',
     },
 
     settingsAppearance: {

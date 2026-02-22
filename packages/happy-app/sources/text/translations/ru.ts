@@ -228,6 +228,15 @@ export const ru: TranslationStructure = {
         roleAll: 'Все',
         roleOwner: 'Мои задачи',
         roleAssist: 'Помогаю',
+        connect: 'Подключить',
+        errorHttpsRequired: 'URL сервера должен использовать HTTPS',
+        errorInvalidUrl: 'Неверный URL сервера',
+        loginFailed: 'Ошибка входа',
+        errorLoadTask: 'Не удалось загрузить задачу',
+        errorRefresh: 'Не удалось обновить',
+        errorLoadWorkflow: 'Не удалось загрузить рабочий процесс',
+        errorUpdateStatus: 'Не удалось обновить статус',
+        taskNotFound: 'Задача не найдена',
     },
 
     settingsAppearance: {

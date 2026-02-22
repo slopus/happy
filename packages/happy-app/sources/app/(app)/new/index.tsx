@@ -1232,7 +1232,7 @@ function NewSessionWizard() {
             })() : null}
             <View style={{ flex: 1 }}>
                 <Text style={{ ...Typography.default(), fontSize: 13, color: theme.colors.textSecondary }}>
-                    {tempSessionData.externalContext.source === 'dootask' ? 'DooTask' : tempSessionData.externalContext.source}
+                    {tempSessionData.externalContext.source === 'dootask' ? t('dootask.title') : tempSessionData.externalContext.source}
                 </Text>
                 {tempSessionData.externalContext.title ? (
                     <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: theme.colors.text }} numberOfLines={1}>

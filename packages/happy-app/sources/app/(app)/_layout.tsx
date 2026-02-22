@@ -405,7 +405,7 @@ export default function RootLayout() {
                 name="settings/connect/dootask"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Connect DooTask',
+                    headerTitle: t('settings.connectDootask'),
                     headerBackTitle: t('common.back'),
                 }}
             />
@@ -413,7 +413,7 @@ export default function RootLayout() {
                 name="dootask/[taskId]"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Task Detail',
+                    headerTitle: t('dootask.taskDetail'),
                     headerBackTitle: t('common.back'),
                 }}
             />

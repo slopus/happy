@@ -289,7 +289,7 @@ export default function DooTaskDetail() {
                 storage.getState().fetchDootaskUsers(userIds);
             }
         } else {
-            setError(detailRes.msg || 'Failed to load task');
+            setError(detailRes.msg || t('dootask.errorLoadTask'));
         }
 
         if (contentRes.ret === 1 && contentRes.data) {
@@ -336,7 +336,7 @@ export default function DooTaskDetail() {
         try {
             await fetchData();
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to refresh');
+            setError(e instanceof Error ? e.message : t('dootask.errorRefresh'));
         } finally {
             setRefreshing(false);
         }
@@ -348,7 +348,7 @@ export default function DooTaskDetail() {
         try {
             const res = await dootaskFetchTaskFlow(profile.serverUrl, profile.token, task.id);
             if (res.ret !== 1 || !res.data) {
-                setError(res.msg || 'Failed to load workflow');
+                setError(res.msg || t('dootask.errorLoadWorkflow'));
                 return;
             }
 
@@ -374,10 +374,10 @@ export default function DooTaskDetail() {
                             if (updateRes.ret === 1) {
                                 await fetchData();
                             } else {
-                                setError(updateRes.msg || 'Failed to update status');
+                                setError(updateRes.msg || t('dootask.errorUpdateStatus'));
                             }
                         } catch (e) {
-                            setError(e instanceof Error ? e.message : 'Failed to update status');
+                            setError(e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
                         }
                     },
                 }];
@@ -402,10 +402,10 @@ export default function DooTaskDetail() {
                                 if (updateRes.ret === 1) {
                                     await fetchData();
                                 } else {
-                                    setError(updateRes.msg || 'Failed to update status');
+                                    setError(updateRes.msg || t('dootask.errorUpdateStatus'));
                                 }
                             } catch (e) {
-                                setError(e instanceof Error ? e.message : 'Failed to update status');
+                                setError(e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
                             }
                         },
                     }));
@@ -419,7 +419,7 @@ export default function DooTaskDetail() {
             setStatusMenuItems(items);
             setStatusMenuVisible(true);
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to load workflow');
+            setError(e instanceof Error ? e.message : t('dootask.errorLoadWorkflow'));
         } finally {
             setStatusLoading(false);
         }
@@ -431,7 +431,7 @@ export default function DooTaskDetail() {
         try {
             const res = await dootaskFetchTaskFlow(profile.serverUrl, profile.token, subTask.id);
             if (res.ret !== 1 || !res.data) {
-                setError(res.msg || 'Failed to load workflow');
+                setError(res.msg || t('dootask.errorLoadWorkflow'));
                 return;
             }
 
@@ -454,9 +454,9 @@ export default function DooTaskDetail() {
                                 complete_at: willComplete,
                             });
                             if (updateRes.ret === 1) await fetchData();
-                            else setError(updateRes.msg || 'Failed to update status');
+                            else setError(updateRes.msg || t('dootask.errorUpdateStatus'));
                         } catch (e) {
-                            setError(e instanceof Error ? e.message : 'Failed to update status');
+                            setError(e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
                         }
                     },
                 }];
@@ -476,9 +476,9 @@ export default function DooTaskDetail() {
                                     flow_item_id: item.id,
                                 });
                                 if (updateRes.ret === 1) await fetchData();
-                                else setError(updateRes.msg || 'Failed to update status');
+                                else setError(updateRes.msg || t('dootask.errorUpdateStatus'));
                             } catch (e) {
-                                setError(e instanceof Error ? e.message : 'Failed to update status');
+                                setError(e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
                             }
                         },
                     }));
@@ -489,7 +489,7 @@ export default function DooTaskDetail() {
             setSubStatusTitle(`${t('dootask.subTasks')}：${subTask.name}`);
             setSubStatusMenuVisible(true);
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to load workflow');
+            setError(e instanceof Error ? e.message : t('dootask.errorLoadWorkflow'));
         } finally {
             setSubStatusLoading(null);
         }
@@ -554,7 +554,7 @@ export default function DooTaskDetail() {
     if (error || !task) {
         return (
             <View style={styles.empty}>
-                <Text style={{ color: theme.colors.textDestructive }}>{error || 'Task not found'}</Text>
+                <Text style={{ color: theme.colors.textDestructive }}>{error || t('dootask.taskNotFound')}</Text>
             </View>
         );
     }
