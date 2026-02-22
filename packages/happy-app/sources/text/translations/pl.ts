@@ -563,6 +563,11 @@ export const pl: TranslationStructure = {
         file: 'Plik',
         fileEmpty: 'Plik jest pusty',
         noChanges: 'Brak zmian do wyświetlenia',
+        // Browse mode strings
+        browseTab: 'Przeglądaj',
+        changesTab: 'Zmiany',
+        directory: 'Katalog',
+        emptyDirectory: 'Ten katalog jest pusty',
     },
 
     settingsVoice: {

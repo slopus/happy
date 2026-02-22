@@ -552,6 +552,11 @@ export const en = {
         file: 'File',
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
+        // Browse mode strings
+        browseTab: 'Browse',
+        changesTab: 'Changes',
+        directory: 'Directory',
+        emptyDirectory: 'This directory is empty',
     },
 
     settingsVoice: {

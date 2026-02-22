@@ -563,6 +563,11 @@ export const ru: TranslationStructure = {
         file: 'Файл',
         fileEmpty: 'Файл пустой',
         noChanges: 'Нет изменений для отображения',
+        // Browse mode strings
+        browseTab: 'Обзор',
+        changesTab: 'Изменения',
+        directory: 'Каталог',
+        emptyDirectory: 'Этот каталог пуст',
     },
 
     settingsVoice: {

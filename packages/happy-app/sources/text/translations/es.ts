@@ -553,6 +553,11 @@ export const es: TranslationStructure = {
         file: 'Archivo',
         fileEmpty: 'El archivo está vacío',
         noChanges: 'No hay cambios que mostrar',
+        // Browse mode strings
+        browseTab: 'Explorar',
+        changesTab: 'Cambios',
+        directory: 'Directorio',
+        emptyDirectory: 'Este directorio está vacío',
     },
 
     settingsVoice: {

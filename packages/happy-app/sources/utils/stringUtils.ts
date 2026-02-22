@@ -27,6 +27,32 @@ export function toCamelCase(str: string): string {
 }
 
 /**
+ * UTF-8 safe, URL-safe base64 encoding.
+ * Replaces +, /, = with URL-safe characters (-, _, no padding).
+ */
+export function utf8ToBase64(str: string): string {
+    const b64 = btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,
+        (_, p1) => String.fromCharCode(parseInt(p1, 16))));
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * UTF-8 safe, URL-safe base64 decoding (inverse of utf8ToBase64).
+ * Accepts both standard and URL-safe base64.
+ */
+export function base64ToUtf8(str: string): string {
+    // Restore standard base64 from URL-safe variant (also handle + parsed as space)
+    let b64 = str.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+    // Re-add padding
+    while (b64.length % 4) b64 += '=';
+    return decodeURIComponent(
+        atob(b64).split('').map(c =>
+            '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+        ).join('')
+    );
+}
+
+/**
  * Create a safe filename from a string
  * Removes/replaces characters that might cause issues in filenames
  */

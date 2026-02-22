@@ -12,6 +12,7 @@ import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { FileIcon } from '@/components/FileIcon';
+import { base64ToUtf8 } from '@/utils/stringUtils';
 
 interface FileContent {
     content: string;
@@ -76,12 +77,16 @@ export default function FileScreen() {
     const encodedPath = searchParams.path as string;
     let filePath = '';
     
-    // Decode base64 path with error handling
+    // Decode base64 path with error handling (UTF-8 safe, with legacy btoa fallback)
     try {
-        filePath = encodedPath ? atob(encodedPath) : '';
-    } catch (error) {
-        console.error('Failed to decode file path:', error);
-        filePath = encodedPath || ''; // Fallback to original path if decoding fails
+        filePath = encodedPath ? base64ToUtf8(encodedPath) : '';
+    } catch {
+        // Fallback to plain atob for legacy paths encoded before UTF-8 migration
+        try {
+            filePath = encodedPath ? atob(encodedPath) : '';
+        } catch {
+            filePath = encodedPath || '';
+        }
     }
     
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
@@ -213,13 +218,12 @@ export default function FileScreen() {
                 const response = await sessionReadFile(sessionId, filePath);
                 
                 if (!isCancelled) {
-                    if (response.success && response.content) {
-                        // Decode base64 content to UTF-8 string
-                        let decodedContent: string;
+                    if (response.success && response.content !== undefined) {
+                        // Decode base64 content to raw bytes
+                        let binaryString: string;
                         try {
-                            decodedContent = atob(response.content);
-                        } catch (decodeError) {
-                            // If base64 decode fails, treat as binary
+                            binaryString = atob(response.content);
+                        } catch {
                             setFileContent({
                                 content: '',
                                 encoding: 'base64',
@@ -227,18 +231,63 @@ export default function FileScreen() {
                             });
                             return;
                         }
-                        
-                        // Check if content contains binary data (null bytes or too many non-printable chars)
-                        const hasNullBytes = decodedContent.includes('\0');
-                        const nonPrintableCount = decodedContent.split('').filter(char => {
-                            const code = char.charCodeAt(0);
-                            return code < 32 && code !== 9 && code !== 10 && code !== 13; // Allow tab, LF, CR
-                        }).length;
-                        const isBinary = hasNullBytes || (nonPrintableCount / decodedContent.length > 0.1);
-                        
+
+                        // Handle empty files
+                        const len = binaryString.length;
+                        if (len === 0) {
+                            setFileContent({
+                                content: '',
+                                encoding: 'utf8',
+                                isBinary: false
+                            });
+                            return;
+                        }
+
+                        // Check for binary data using a loop (avoids split/filter allocation)
+                        let nonPrintableCount = 0;
+                        let hasNullBytes = false;
+                        for (let i = 0; i < len; i++) {
+                            const code = binaryString.charCodeAt(i);
+                            if (code === 0) {
+                                hasNullBytes = true;
+                                break;
+                            }
+                            if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
+                                nonPrintableCount++;
+                            }
+                        }
+
+                        let isBinary = hasNullBytes || (nonPrintableCount / len > 0.1);
+                        let textContent = '';
+                        let encoding: 'utf8' | 'base64' = isBinary ? 'base64' : 'utf8';
+
+                        if (!isBinary) {
+                            try {
+                                const bytes = new Uint8Array(len);
+                                for (let i = 0; i < len; i++) {
+                                    bytes[i] = binaryString.charCodeAt(i);
+                                }
+
+                                if (typeof TextDecoder !== 'undefined') {
+                                    textContent = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+                                } else {
+                                    const encoded = new Array(len);
+                                    for (let i = 0; i < len; i++) {
+                                        encoded[i] = '%' + bytes[i].toString(16).padStart(2, '0');
+                                    }
+                                    textContent = decodeURIComponent(encoded.join(''));
+                                }
+                            } catch {
+                                // Invalid UTF-8: treat as binary
+                                isBinary = true;
+                                encoding = 'base64';
+                                textContent = '';
+                            }
+                        }
+
                         setFileContent({
-                            content: isBinary ? '' : decodedContent,
-                            encoding: 'utf8',
+                            content: textContent,
+                            encoding,
                             isBinary
                         });
                     } else {
