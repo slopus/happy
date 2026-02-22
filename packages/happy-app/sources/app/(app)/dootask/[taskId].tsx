@@ -62,19 +62,24 @@ function buildDooTaskPrompt(
     task: DooTaskItem,
     subTasks: DooTaskItem[],
     files: DooTaskFile[],
+    userCache: Record<number, string>,
 ): string {
     const parts: string[] = ['Help me with a DooTask task.', ''];
 
     // Task header
     const status = parseFlowItem(task.flow_item_name).name;
     const priority = task.p_name || '';
+    const resolveName = (u: { userid: number; nickname: string }) =>
+        userCache[u.userid] || u.nickname || '';
     const assignees = task.task_user
         ?.filter(u => u.owner)
-        .map(u => u.nickname)
+        .map(resolveName)
+        .filter(Boolean)
         .join(', ') || '';
     const assists = task.task_user
         ?.filter(u => !u.owner)
-        .map(u => u.nickname)
+        .map(resolveName)
+        .filter(Boolean)
         .join(', ') || '';
 
     parts.push('## Task');
@@ -84,7 +89,7 @@ function buildDooTaskPrompt(
     if (status) parts.push(`- Status: ${status}`);
     if (priority) parts.push(`- Priority: ${priority}`);
     if (assignees) parts.push(`- Assignees: ${assignees}`);
-    if (assists) parts.push(`- Assistants: ${assists}`);
+    if (assists) parts.push(`- Collaborators: ${assists}`);
 
     // Description
     if (task.desc) {
@@ -437,7 +442,7 @@ export default function DooTaskDetail() {
         if (!profile || !task) return;
 
         const dataId = storeTempData({
-            prompt: buildDooTaskPrompt(task, subTasks, taskFiles),
+            prompt: buildDooTaskPrompt(task, subTasks, taskFiles, userCache),
             sessionTitle: `DooTask: ${task.name}`,
             sessionIcon: 'dootask',
             mcpServers: [{
@@ -460,7 +465,7 @@ export default function DooTaskDetail() {
         } satisfies NewSessionData);
 
         router.push(`/new?dataId=${dataId}`);
-    }, [profile, task, subTasks, taskFiles, router]);
+    }, [profile, task, subTasks, taskFiles, userCache, router]);
 
     const menuItems: ActionMenuItem[] = React.useMemo(() => [
         {
