@@ -290,15 +290,3 @@ export async function dootaskSendFileMessage(serverUrl: string, token: string, p
     });
     return response.json();
 }
-
-// --- Logs ---
-
-export async function dootaskFetchTaskLogs(serverUrl: string, token: string, taskId: number, page: number = 1): Promise<DooTaskResponse> {
-    const url = validateServerUrl(serverUrl);
-    const qs = new URLSearchParams({ task_id: String(taskId), page: String(page), pagesize: '10' });
-    const response = await fetch(`${url}/api/project/log/lists?${qs}`, {
-        method: 'GET',
-        headers: buildHeaders(token),
-    });
-    return response.json();
-}

@@ -282,16 +282,13 @@ export const zhHans: TranslationStructure = {
         sendMessage: '发送',
         typeMessage: '输入消息...',
         reply: '回复',
+        copyMessage: '复制',
         cancelReply: '取消',
         loadingChat: '加载聊天中...',
         errorLoadChat: '加载聊天失败',
         errorSendMessage: '发送消息失败',
         unsupportedMessage: '当前客户端不支持此类消息，请使用 DooTask 客户端查看。',
         chatEmpty: '暂无消息',
-        // Logs
-        taskLogs: '动态',
-        viewFullLogs: '在 DooTask 客户端查看完整日志',
-        errorLoadLogs: '加载动态失败',
     },
 
     settingsAppearance: {

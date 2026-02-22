@@ -19,11 +19,13 @@ type ChatMessageListProps = {
     serverUrl: string;
 };
 
-/** Resolve a potentially relative avatar URL to an absolute one. */
+/** Resolve a potentially relative avatar URL to an absolute one, handling {{RemoteURL}} placeholder. */
 function resolveAvatarUrl(avatarPath: string | null | undefined, serverUrl: string): string | null {
     if (!avatarPath) return null;
-    if (avatarPath.startsWith('http')) return avatarPath;
-    return serverUrl.replace(/\/+$/, '') + '/' + avatarPath.replace(/^\/+/, '');
+    const base = serverUrl.replace(/\/+$/, '') + '/';
+    const resolved = avatarPath.replace(/\{\{RemoteURL\}\}/g, base);
+    if (resolved.startsWith('http') || resolved.startsWith('//')) return resolved;
+    return base + resolved.replace(/^\/+/, '');
 }
 
 /**

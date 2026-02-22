@@ -86,14 +86,3 @@ export type DooTaskDialog = {
     type: string;
     group_type: string;
 };
-
-export type DooTaskLogEntry = {
-    id: number;
-    project_id: number;
-    task_id: number;
-    userid: number;
-    detail: string;
-    record: { change?: string[] };
-    created_at: string;
-    time?: { ymd: string; hi: string; week: string };
-};

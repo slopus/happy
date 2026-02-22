@@ -4,12 +4,14 @@ import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Image } from 'expo-image';
+import * as Clipboard from 'expo-clipboard';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { AgentContentView } from '@/components/AgentContentView';
 import { storage, useDootaskProfile, useDootaskUserCache, useDootaskUserAvatars } from '@/sync/storage';
 import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage } from '@/sync/dootask/api';
 import { useDootaskWebSocket } from '@/hooks/useDootaskWebSocket';
 import { ChatMessageList } from '@/components/dootask/ChatMessageList';
+import { thumbRestore } from '@/components/dootask/ChatBubble';
 import { ChatInput } from '@/components/dootask/ChatInput';
 import { ImageViewer } from '@/components/ImageViewer';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
@@ -58,23 +60,25 @@ export default React.memo(function DooTaskChat() {
     // Image viewer
     const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
+    const [viewerImages, setViewerImages] = React.useState<{ uri: string }[]>([]);
 
-    // Collect all image URLs from messages for the viewer.
-    // Use a ref so handleImagePress doesn't depend on imageUrls identity,
-    // which would defeat React.memo on ChatMessageList.
-    const imageUrlsRef = React.useRef<{ uri: string }[]>([]);
-    const imageUrls = React.useMemo(() => {
+    // Pre-collect file-upload image URLs (type='image' with path) for gallery browsing.
+    // Uses a ref so handleImagePress doesn't depend on the array identity.
+    const fileImageUrlsRef = React.useRef<{ uri: string }[]>([]);
+    React.useMemo(() => {
         const urls: { uri: string }[] = [];
+        const base = (profile?.serverUrl || '').replace(/\/+$/, '') + '/';
         for (const msg of messages) {
             if (msg.type === 'image') {
                 const path = msg.msg?.path || msg.msg?.url || msg.msg?.thumb;
                 if (path) {
-                    const url = path.startsWith('http') ? path : (profile?.serverUrl.replace(/\/+$/, '') + '/' + path.replace(/^\/+/, ''));
-                    urls.push({ uri: url });
+                    const resolved = path.replace(/\{\{RemoteURL\}\}/g, base);
+                    const url = resolved.startsWith('http') ? resolved : base + resolved.replace(/^\/+/, '');
+                    urls.push({ uri: thumbRestore(url) });
                 }
             }
         }
-        imageUrlsRef.current = urls;
+        fileImageUrlsRef.current = urls;
         return urls;
     }, [messages, profile?.serverUrl]);
 
@@ -207,7 +211,7 @@ export default React.memo(function DooTaskChat() {
         }
     }, [profile, id, replyTo, sending]);
 
-    // Long press menu -> reply
+    // Long press menu -> reply / copy
     const handleMessageLongPress = React.useCallback((msg: DooTaskDialogMsg) => {
         const items: ActionMenuItem[] = [
             {
@@ -220,6 +224,24 @@ export default React.memo(function DooTaskChat() {
                 },
             },
         ];
+        // Extract copyable text from the message
+        const rawText = typeof msg.msg === 'string' ? msg.msg : (msg.msg?.text || '');
+        if (rawText) {
+            const plainText = rawText
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<\/p>/gi, '\n')
+                .replace(/<[^>]+>/g, '')
+                .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+            if (plainText) {
+                items.push({
+                    label: t('dootask.copyMessage'),
+                    onPress: () => { Clipboard.setStringAsync(plainText); },
+                });
+            }
+        }
         setMenuItems(items);
         setMenuVisible(true);
     }, [userCache]);
@@ -243,10 +265,21 @@ export default React.memo(function DooTaskChat() {
         />
     ), [taskName, router]);
 
-    // Image press -> open viewer (uses ref to avoid dependency on imageUrls)
+    // Image press -> open viewer
+    // For file-upload images: show all file images as a gallery
+    // For HTML-embedded images: show just the clicked image
     const handleImagePress = React.useCallback((url: string) => {
-        const idx = imageUrlsRef.current.findIndex(img => img.uri === url);
-        setImageViewerIndex(idx >= 0 ? idx : 0);
+        const original = thumbRestore(url);
+        const fileImages = fileImageUrlsRef.current;
+        const idx = fileImages.findIndex(img => img.uri === original);
+        if (idx >= 0) {
+            setViewerImages(fileImages);
+            setImageViewerIndex(idx);
+        } else {
+            // Image from HTML content — not in the pre-collected gallery
+            setViewerImages([{ uri: original }]);
+            setImageViewerIndex(0);
+        }
         setImageViewerVisible(true);
     }, []);
 
@@ -298,7 +331,7 @@ export default React.memo(function DooTaskChat() {
                 onClose={() => setMenuVisible(false)}
             />
             <ImageViewer
-                images={imageUrls}
+                images={viewerImages}
                 initialIndex={imageViewerIndex}
                 visible={imageViewerVisible}
                 onClose={() => setImageViewerVisible(false)}

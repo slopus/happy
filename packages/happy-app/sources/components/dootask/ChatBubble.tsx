@@ -45,11 +45,31 @@ function stripHtml(html: string): string {
         .trim();
 }
 
+/** Replace DooTask's {{RemoteURL}} placeholder and resolve relative paths to absolute URLs. */
+function resolveUrl(raw: string, serverUrl: string): string {
+    const base = serverUrl.replace(/\/+$/, '') + '/';
+    const resolved = raw.replace(/\{\{RemoteURL\}\}/g, base);
+    if (resolved.startsWith('http') || resolved.startsWith('//')) return resolved;
+    return base + resolved.replace(/^\/+/, '');
+}
+
+/** Replace {{RemoteURL}} placeholders in HTML content so images and links resolve correctly. */
+export function resolveContentUrls(html: string, serverUrl: string): string {
+    const base = serverUrl.replace(/\/+$/, '') + '/';
+    return html.replace(/\{\{RemoteURL\}\}/g, base);
+}
+
+/** Strip thumbnail suffix and crop params to get the original image URL (mirrors DooTask's thumbRestore). */
+export function thumbRestore(url: string): string {
+    return url
+        .replace(/_thumb\.(png|jpg|jpeg)$/, '')
+        .replace(/\/crop\/([^/]+)$/, '');
+}
+
 function getMsgImageUrl(msg: DooTaskDialogMsg, serverUrl: string): string | null {
     const path = msg.msg?.path || msg.msg?.url || msg.msg?.thumb || null;
     if (!path) return null;
-    if (path.startsWith('http')) return path;
-    return serverUrl.replace(/\/+$/, '') + '/' + path.replace(/^\/+/, '');
+    return resolveUrl(path, serverUrl);
 }
 
 function formatFileSize(bytes: number): string {
@@ -88,13 +108,13 @@ type ChatBubbleProps = {
 /** Check if HTML contains complex elements that need WebView rendering. */
 const COMPLEX_HTML_RE = /<(table|img|pre|code|ul|ol|li|h[1-6]|iframe|video|audio|blockquote|div\s+class|\.tox-checklist)/i;
 
-function TextContent({ msg, theme, onImagePress }: { msg: DooTaskDialogMsg; theme: any; onImagePress?: (url: string) => void }) {
+function TextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTaskDialogMsg; theme: any; serverUrl: string; onImagePress?: (url: string) => void }) {
     const text = getMsgText(msg);
     const isHtml = (typeof msg.msg === 'object' && msg.msg?.type === 'html') || /<[^>]+>/.test(text);
     // Only use WebView for complex HTML (tables, code blocks, images, lists, etc.)
     // Simple HTML (br, p, b, i, a, span) is stripped and rendered natively for instant display
     if (isHtml && COMPLEX_HTML_RE.test(text)) {
-        return <HtmlContent html={text} theme={theme} onImagePress={onImagePress} />;
+        return <HtmlContent html={resolveContentUrls(text, serverUrl)} theme={theme} onImagePress={onImagePress} />;
     }
     return (
         <Text style={[styles.msgText, { color: theme.colors.text }]}>
@@ -103,27 +123,33 @@ function TextContent({ msg, theme, onImagePress }: { msg: DooTaskDialogMsg; them
     );
 }
 
-function ImageContent({ msg, serverUrl, onImagePress }: { msg: DooTaskDialogMsg; serverUrl: string; onImagePress?: (url: string) => void }) {
+function ImageContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any; onImagePress?: (url: string) => void }) {
     const imageUrl = getMsgImageUrl(msg, serverUrl);
-    if (!imageUrl) return null;
-    return (
-        <Pressable onPress={() => onImagePress?.(imageUrl)} style={styles.imageWrapper}>
-            <Image
-                source={{ uri: imageUrl }}
-                style={{ width: 260, height: 180, borderRadius: 8 }}
-                contentFit="cover"
-            />
-        </Pressable>
-    );
+    // File-upload image: has path/url/thumb
+    if (imageUrl) {
+        return (
+            <Pressable onPress={() => onImagePress?.(imageUrl)} style={styles.imageWrapper}>
+                <Image
+                    source={{ uri: imageUrl }}
+                    style={{ width: 260, height: 180, borderRadius: 8 }}
+                    contentFit="cover"
+                />
+            </Pressable>
+        );
+    }
+    // Text-with-embedded-images: msg.msg.text contains <img> tags (DooTask classifies these as type='image')
+    const text = getMsgText(msg);
+    if (text) {
+        return <HtmlContent html={resolveContentUrls(text, serverUrl)} theme={theme} onImagePress={onImagePress} />;
+    }
+    return null;
 }
 
 function FileContent({ msg, serverUrl, theme }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any }) {
     const fileName = msg.msg?.name || '';
     const fileSize = msg.msg?.size ? formatFileSize(msg.msg.size) : '';
     const filePath = msg.msg?.path || msg.msg?.url || '';
-    const fileUrl = filePath
-        ? (filePath.startsWith('http') ? filePath : serverUrl.replace(/\/+$/, '') + '/' + filePath.replace(/^\/+/, ''))
-        : null;
+    const fileUrl = filePath ? resolveUrl(filePath, serverUrl) : null;
     return (
         <Pressable
             style={[styles.fileCard, { backgroundColor: theme.colors.surfaceHigh }]}
@@ -193,10 +219,10 @@ export const ChatBubble = React.memo(({
     let content: React.ReactNode = null;
     switch (msg.type) {
         case 'text':
-            content = <TextContent msg={msg} theme={theme} onImagePress={onImagePress} />;
+            content = <TextContent msg={msg} theme={theme} serverUrl={serverUrl} onImagePress={onImagePress} />;
             break;
         case 'image':
-            content = <ImageContent msg={msg} serverUrl={serverUrl} onImagePress={onImagePress} />;
+            content = <ImageContent msg={msg} serverUrl={serverUrl} theme={theme} onImagePress={onImagePress} />;
             break;
         case 'file':
             content = <FileContent msg={msg} serverUrl={serverUrl} theme={theme} />;
