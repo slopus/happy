@@ -145,14 +145,11 @@ export async function createMcpContext(session: ApiSessionClient): Promise<McpCo
         },
 
         allowedToolNames() {
-            // If any server has auto-discovered tools (empty toolNames),
-            // we can't enumerate all allowed tools upfront. Return empty
-            // so --allowedTools isn't passed, avoiding blocking unknown tools.
-            const hasAutoDiscovered = Object.values(servers).some(def => def.toolNames.length === 0);
-            if (hasAutoDiscovered) return [];
-
-            return Object.entries(servers).flatMap(
-                ([name, def]) => def.toolNames.map(tool => `mcp__${name}__${tool}`)
+            // Keep explicit allow-list entries for known tools (e.g. happy/change_title)
+            // even when some external MCP servers use auto-discovery.
+            // Auto-discovered tools are simply omitted from this allow-list.
+            return Object.entries(servers).flatMap(([name, def]) =>
+                def.toolNames.map(tool => `mcp__${name}__${tool}`)
             );
         },
 
