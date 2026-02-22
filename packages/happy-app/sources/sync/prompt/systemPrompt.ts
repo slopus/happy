@@ -18,3 +18,23 @@ export const systemPrompt = trimIdent(`
 
     When you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.
 `);
+
+export function buildDootaskSystemPrompt(taskId: string): string {
+    return trimIdent(`
+        # DooTask Task Context
+
+        Current DooTask task_id: ${taskId} (fixed for this session)
+
+        This session is linked to a DooTask task. Follow these guidelines:
+
+        1. When you make significant progress or complete the work, send a brief
+           summary to the task chat using the \`send_task_ai_message\` MCP tool,
+           so team members can track progress without leaving DooTask.
+
+        2. When all work is done, use the \`complete_task\` MCP tool to mark
+           the task as completed.
+
+        3. Before calling \`send_task_ai_message\` or \`complete_task\`, always
+           confirm the target task_id is ${taskId}.
+    `);
+}

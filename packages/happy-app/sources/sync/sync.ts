@@ -29,7 +29,7 @@ import { projectManager } from './projectManager';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
-import { systemPrompt } from './prompt/systemPrompt';
+import { systemPrompt, buildDootaskSystemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
@@ -261,6 +261,15 @@ class Sync {
     }
 
 
+    private buildSystemPrompt(sessionId: string): string {
+        const session = storage.getState().sessions[sessionId];
+        const ctx = session?.metadata?.externalContext;
+        if (ctx?.source === 'dootask' && ctx.resourceId) {
+            return systemPrompt + '\n\n' + buildDootaskSystemPrompt(ctx.resourceId);
+        }
+        return systemPrompt;
+    }
+
     async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[], existingLocalId?: string): Promise<{ success: boolean; error?: string; localId: string }> {
 
         // Get encryption
@@ -343,7 +352,7 @@ class Sync {
                 model,
                 reasoningEffort,
                 fallbackModel,
-                appendSystemPrompt: systemPrompt,
+                appendSystemPrompt: this.buildSystemPrompt(sessionId),
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
