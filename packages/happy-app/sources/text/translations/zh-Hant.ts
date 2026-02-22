@@ -275,6 +275,22 @@ export const zhHant: TranslationStructure = {
         errorLoadWorkflow: '載入工作流程失敗',
         errorUpdateStatus: '更新狀態失敗',
         taskNotFound: '找不到任務',
+        // Chat
+        taskChat: '任務聊天',
+        chatTitle: '聊天',
+        sendMessage: '發送',
+        typeMessage: '輸入訊息...',
+        reply: '回覆',
+        cancelReply: '取消',
+        loadingChat: '載入聊天中...',
+        errorLoadChat: '載入聊天失敗',
+        errorSendMessage: '發送訊息失敗',
+        unsupportedMessage: '目前客戶端不支援此類訊息，請使用 DooTask 客戶端查看。',
+        chatEmpty: '暫無訊息',
+        // Logs
+        taskLogs: '動態',
+        viewFullLogs: '在 DooTask 客戶端查看完整日誌',
+        errorLoadLogs: '載入動態失敗',
     },
 
     settingsAppearance: {

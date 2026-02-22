@@ -276,6 +276,22 @@ export const zhHans: TranslationStructure = {
         errorLoadWorkflow: '加载工作流失败',
         errorUpdateStatus: '更新状态失败',
         taskNotFound: '未找到任务',
+        // Chat
+        taskChat: '任务聊天',
+        chatTitle: '聊天',
+        sendMessage: '发送',
+        typeMessage: '输入消息...',
+        reply: '回复',
+        cancelReply: '取消',
+        loadingChat: '加载聊天中...',
+        errorLoadChat: '加载聊天失败',
+        errorSendMessage: '发送消息失败',
+        unsupportedMessage: '当前客户端不支持此类消息，请使用 DooTask 客户端查看。',
+        chatEmpty: '暂无消息',
+        // Logs
+        taskLogs: '动态',
+        viewFullLogs: '在 DooTask 客户端查看完整日志',
+        errorLoadLogs: '加载动态失败',
     },
 
     settingsAppearance: {

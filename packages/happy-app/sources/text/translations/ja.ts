@@ -306,6 +306,22 @@ export const ja: TranslationStructure = {
         errorLoadWorkflow: 'ワークフローの読み込みに失敗しました',
         errorUpdateStatus: 'ステータスの更新に失敗しました',
         taskNotFound: 'タスクが見つかりません',
+        // Chat
+        taskChat: 'タスクチャット',
+        chatTitle: 'チャット',
+        sendMessage: '送信',
+        typeMessage: 'メッセージを入力...',
+        reply: '返信',
+        cancelReply: 'キャンセル',
+        loadingChat: 'チャットを読み込み中...',
+        errorLoadChat: 'チャットの読み込みに失敗しました',
+        errorSendMessage: 'メッセージの送信に失敗しました',
+        unsupportedMessage: 'このメッセージタイプはサポートされていません。DooTaskクライアントでご確認ください。',
+        chatEmpty: 'メッセージはありません',
+        // Logs
+        taskLogs: 'アクティビティ',
+        viewFullLogs: 'DooTaskクライアントで全ログを表示',
+        errorLoadLogs: 'アクティビティの読み込みに失敗しました',
     },
 
     settingsAppearance: {

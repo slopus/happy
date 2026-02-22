@@ -274,6 +274,22 @@ export const es: TranslationStructure = {
         errorLoadWorkflow: 'Error al cargar el flujo de trabajo',
         errorUpdateStatus: 'Error al actualizar el estado',
         taskNotFound: 'Tarea no encontrada',
+        // Chat
+        taskChat: 'Task Chat',
+        chatTitle: 'Chat',
+        sendMessage: 'Send',
+        typeMessage: 'Type a message...',
+        reply: 'Reply',
+        cancelReply: 'Cancel',
+        loadingChat: 'Loading chat...',
+        errorLoadChat: 'Failed to load chat',
+        errorSendMessage: 'Failed to send message',
+        unsupportedMessage: 'Unsupported message type. Please use DooTask client to view.',
+        chatEmpty: 'No messages yet',
+        // Logs
+        taskLogs: 'Activity',
+        viewFullLogs: 'View full logs in DooTask client',
+        errorLoadLogs: 'Failed to load activity',
     },
 
     settingsAppearance: {
