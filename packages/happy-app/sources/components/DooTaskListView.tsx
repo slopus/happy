@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl, TextInput } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -9,6 +10,7 @@ import { Typography } from '@/constants/Typography';
 import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile, useDootaskProjects, useDootaskUserCache } from '@/sync/storage';
 import { dootaskFetchProjects } from '@/sync/dootask/api';
 import type { DooTaskItem, DooTaskProject } from '@/sync/dootask/types';
+import { useShallow } from 'zustand/react/shallow';
 
 /**
  * Parse DooTask flow_item_name which comes as "status|name|color" from the API.
@@ -52,6 +54,81 @@ function formatEndAt(endAt: string): string {
     if (d.getFullYear() === nowDate.getFullYear()) return `${mm}-${dd}`;
     return `${d.getFullYear()}-${mm}-${dd}`;
 }
+
+// --- Flavor icons for AI providers ---
+const flavorIconSources: Record<string, any> = {
+    claude: require('@/assets/images/icon-claude.png'),
+    codex: require('@/assets/images/icon-gpt.png'),
+    gemini: require('@/assets/images/icon-gemini.png'),
+};
+
+/** Build a map of taskId → unique flavor strings from all sessions linked to dootask tasks. */
+function useTaskFlavorsMap(serverUrl: string | undefined): Record<string, string[]> {
+    const sessions = storage(useShallow((s) => s.sessions));
+    return React.useMemo(() => {
+        if (!serverUrl) return {};
+        const normalizedUrl = serverUrl.replace(/\/+$/, '').toLowerCase();
+        const map: Record<string, Set<string>> = {};
+        for (const s of Object.values(sessions)) {
+            const ctx = s.metadata?.externalContext;
+            if (!ctx || ctx.source !== 'dootask' || ctx.resourceType !== 'task') continue;
+            if (ctx.sourceUrl && ctx.sourceUrl.replace(/\/+$/, '').toLowerCase() !== normalizedUrl) continue;
+            const flavor = s.metadata?.flavor;
+            if (!flavor || !flavorIconSources[flavor]) continue;
+            (map[ctx.resourceId] ??= new Set()).add(flavor);
+        }
+        const result: Record<string, string[]> = {};
+        for (const [id, set] of Object.entries(map)) result[id] = [...set];
+        return result;
+    }, [sessions, serverUrl]);
+}
+
+const FLAVOR_ICON_SIZE = 16;
+const FLAVOR_OVERLAP_RATIO = 0.3;
+
+const FlavorBadges = React.memo(({ flavors }: { flavors: string[] }) => {
+    const { theme } = useUnistyles();
+    if (flavors.length === 0) return null;
+    const outerSize = FLAVOR_ICON_SIZE;
+    const step = outerSize * (1 - FLAVOR_OVERLAP_RATIO);
+    const totalWidth = outerSize + step * (flavors.length - 1);
+    return (
+        <View style={{ width: totalWidth, height: outerSize }}>
+            {flavors.map((flavor, i) => {
+                // codex slightly smaller than others (matching Avatar.tsx convention)
+                const iconSize = flavor === 'codex' ? 10 : 12;
+                return (
+                    <View
+                        key={flavor}
+                        style={{
+                            position: 'absolute',
+                            left: i * step,
+                            width: outerSize,
+                            height: outerSize,
+                            borderRadius: outerSize / 2,
+                            backgroundColor: theme.colors.surface,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: i,
+                            shadowColor: theme.colors.shadow.color,
+                            shadowOffset: { width: 0, height: 1 },
+                            shadowOpacity: 0.2,
+                            shadowRadius: 2,
+                            elevation: 3,
+                        }}
+                    >
+                        <Image
+                            source={flavorIconSources[flavor]}
+                            style={{ width: iconSize, height: iconSize }}
+                            contentFit="contain"
+                            tintColor={flavor === 'codex' ? theme.colors.text : undefined}
+                        />
+                    </View>
+                );
+            })}
+        </View>
+    );
+});
 
 // --- Filter Panel Modal ---
 const PICKER_ITEM_HEIGHT = 48;
@@ -357,7 +434,7 @@ const FilterBar = React.memo(({ onRefreshTasks }: FilterBarProps) => {
 });
 
 // --- Task Card ---
-const TaskCard = React.memo(({ item, projectName, userCache, onPress }: { item: DooTaskItem; projectName: string; userCache: Record<number, string>; onPress: () => void }) => {
+const TaskCard = React.memo(({ item, projectName, columnName, userCache, flavors, onPress }: { item: DooTaskItem; projectName: string; columnName?: string; userCache: Record<number, string>; flavors?: string[]; onPress: () => void }) => {
     const { theme } = useUnistyles();
     const isCompleted = !!item.complete_at;
     const flow = item.flow_item_name ? parseFlowItem(item.flow_item_name) : null;
@@ -389,8 +466,8 @@ const TaskCard = React.memo(({ item, projectName, userCache, onPress }: { item: 
                     </View>
                 ) : null}
                 {projectName ? (
-                    <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
-                        {projectName}
+                    <Text style={[styles.metaText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                        {projectName}{columnName ? ` · ${columnName}` : ''}
                     </Text>
                 ) : null}
                 {item.sub_num && item.sub_num > 0 ? (
@@ -402,7 +479,7 @@ const TaskCard = React.memo(({ item, projectName, userCache, onPress }: { item: 
                     </View>
                 ) : null}
             </View>
-            {hasTime || hasAssignees ? (
+            {hasTime || hasAssignees || (flavors && flavors.length > 0) ? (
                 <View style={styles.cardBottom}>
                     {hasTime ? (
                         <Text style={[
@@ -413,11 +490,14 @@ const TaskCard = React.memo(({ item, projectName, userCache, onPress }: { item: 
                             {item.overdue ? ` (${t('dootask.overdue')})` : ''}
                         </Text>
                     ) : <View />}
-                    {hasAssignees ? (
-                        <Text style={[styles.metaText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                            {assigneeText}
-                        </Text>
-                    ) : null}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {hasAssignees ? (
+                            <Text style={[styles.metaText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                {assigneeText}
+                            </Text>
+                        ) : null}
+                        {flavors && flavors.length > 0 ? <FlavorBadges flavors={flavors} /> : null}
+                    </View>
                 </View>
             ) : null}
         </Pressable>
@@ -430,16 +510,11 @@ export const DooTaskListView = React.memo(() => {
     const { theme } = useUnistyles();
     const { tasks, loading, error, pager } = useDootaskTasks();
     const profile = useDootaskProfile();
-    const projects = useDootaskProjects();
     const userCache = useDootaskUserCache();
+    const taskFlavorsMap = useTaskFlavorsMap(profile?.serverUrl);
     const [isPullRefreshing, setIsPullRefreshing] = React.useState(false);
     const isRefreshRunningRef = React.useRef(false);
     const hasQueuedRefreshRef = React.useRef(false);
-    const projectMap = React.useMemo(() => {
-        const map: Record<number, string> = {};
-        for (const p of projects) map[p.id] = p.name;
-        return map;
-    }, [projects]);
 
     const handlePullRefresh = React.useCallback(async () => {
         if (isRefreshRunningRef.current) {
@@ -524,8 +599,10 @@ export const DooTaskListView = React.memo(() => {
                     renderItem={({ item }) => (
                         <TaskCard
                             item={item}
-                            projectName={item.project_name || projectMap[item.project_id] || ''}
+                            projectName={item.project_name || ''}
+                            columnName={item.column_name}
                             userCache={userCache}
+                            flavors={taskFlavorsMap[String(item.id)]}
                             onPress={() => router.push(`/dootask/${item.id}`)}
                         />
                     )}

@@ -93,6 +93,19 @@ describe('dootask api', () => {
             expect(url).toContain('project_id=5');
             expect(url).toContain('page=1');
         });
+
+        it('should pass with_extend as query param', async () => {
+            (global.fetch as any).mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve({
+                    ret: 1, msg: 'ok',
+                    data: { data: [], current_page: 1, last_page: 1, total: 0 }
+                })
+            });
+            await dootaskFetchTasks(serverUrl, token, { page: 1, pagesize: 20, with_extend: 'project_name,column_name' });
+            const url = (global.fetch as any).mock.calls[0][0] as string;
+            expect(url).toContain('with_extend=project_name%2Ccolumn_name');
+        });
     });
 
     describe('token expiry detection', () => {

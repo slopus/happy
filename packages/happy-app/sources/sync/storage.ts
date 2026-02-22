@@ -1370,9 +1370,11 @@ export const storage = create<StorageState>()((set, get) => {
                     page,
                     pagesize: dootaskPager.pagesize,
                     project_id: dootaskFilters.projectId,
+                    parent_id: -1,
                     keys: Object.keys(keys).length > 0 ? keys : undefined,
                     time: dootaskFilters.time,
                     owner: ownerParam,
+                    with_extend: 'project_name,column_name',
                 });
 
                 const cur = get().dootaskProfile;

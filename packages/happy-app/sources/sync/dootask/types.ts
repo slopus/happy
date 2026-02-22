@@ -24,6 +24,7 @@ export type DooTaskItem = {
     desc: string;
     project_id: number;
     project_name: string;
+    column_name?: string;
     p_level: number;
     p_name: string;
     p_color: string;
