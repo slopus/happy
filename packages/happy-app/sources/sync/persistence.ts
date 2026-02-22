@@ -298,6 +298,31 @@ export function clearDooTaskProjects(): void {
     mmkv.delete('dootask-projects');
 }
 
+const DOOTASK_LOGIN_CACHE_KEY = 'dootask-login-cache';
+
+export interface DooTaskLoginCache {
+    serverUrl: string;
+    email: string;
+}
+
+export function loadDooTaskLoginCache(): DooTaskLoginCache {
+    const raw = mmkv.getString(DOOTASK_LOGIN_CACHE_KEY);
+    if (!raw) return { serverUrl: '', email: '' };
+    try {
+        const parsed = JSON.parse(raw);
+        return {
+            serverUrl: typeof parsed.serverUrl === 'string' ? parsed.serverUrl : '',
+            email: typeof parsed.email === 'string' ? parsed.email : '',
+        };
+    } catch {
+        return { serverUrl: '', email: '' };
+    }
+}
+
+export function saveDooTaskLoginCache(cache: DooTaskLoginCache): void {
+    mmkv.set(DOOTASK_LOGIN_CACHE_KEY, JSON.stringify(cache));
+}
+
 export function clearPersistence() {
     mmkv.clearAll();
 }

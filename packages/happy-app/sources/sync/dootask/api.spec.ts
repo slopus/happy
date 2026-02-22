@@ -33,13 +33,13 @@ describe('dootask api', () => {
                 ok: true,
                 json: () => Promise.resolve({
                     ret: 0, msg: 'Captcha required',
-                    data: { code: 'need', code_key: 'abc123' }
+                    data: { code: 'need' }
                 })
             });
             const result = await dootaskLogin({ serverUrl, email: 'a@b.com', password: 'pass' });
             expect(result.type).toBe('captcha_required');
             if (result.type === 'captcha_required') {
-                expect(result.codeKey).toBe('abc123');
+                expect(result.message).toBe('Captcha required');
             }
         });
 

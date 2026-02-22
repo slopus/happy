@@ -278,6 +278,7 @@ export const it: TranslationStructure = {
         password: 'Password',
         captchaRequired: 'Verification code required',
         captchaPlaceholder: 'Enter verification code',
+        captchaLoadFailed: 'Load failed',
         connecting: 'Connecting...',
         disconnect: 'Disconnect DooTask',
         disconnectConfirm: 'This will remove your DooTask connection and clear cached data.',

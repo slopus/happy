@@ -16,6 +16,7 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
+    Image,
 } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
@@ -26,8 +27,9 @@ import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { ItemGroup } from '@/components/ItemGroup';
 import { storage } from '@/sync/storage';
+import { loadDooTaskLoginCache, saveDooTaskLoginCache } from '@/sync/persistence';
 import { t } from '@/text';
-import { dootaskLogin, dootaskGetTokenExpire } from '@/sync/dootask/api';
+import { dootaskLogin, dootaskGetTokenExpire, dootaskGetCaptcha } from '@/sync/dootask/api';
 import type { DooTaskProfile } from '@/sync/dootask/types';
 
 export default React.memo(function DooTaskConnectPage() {
@@ -37,15 +39,50 @@ export default React.memo(function DooTaskConnectPage() {
     const safeArea = useSafeAreaInsets();
 
     // Form state
-    const [serverUrl, setServerUrl] = React.useState('');
-    const [email, setEmail] = React.useState('');
+    const [loginCache] = React.useState(() => loadDooTaskLoginCache());
+    const [serverUrl, setServerUrl] = React.useState(loginCache.serverUrl);
+    const [email, setEmail] = React.useState(loginCache.email);
     const [password, setPassword] = React.useState('');
     const [code, setCode] = React.useState('');
+    const [codeNeed, setCodeNeed] = React.useState(false);
     const [codeKey, setCodeKey] = React.useState<string | null>(null);
+    const [codeImg, setCodeImg] = React.useState<string | null>(null);
+    const [codeLoading, setCodeLoading] = React.useState(false);
 
     // UI state
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+
+    // Cache refs for unmount save (avoids stale closures)
+    const serverUrlRef = React.useRef(serverUrl);
+    const emailRef = React.useRef(email);
+    React.useEffect(() => { serverUrlRef.current = serverUrl; }, [serverUrl]);
+    React.useEffect(() => { emailRef.current = email; }, [email]);
+
+    React.useEffect(() => {
+        return () => {
+            saveDooTaskLoginCache({
+                serverUrl: serverUrlRef.current,
+                email: emailRef.current,
+            });
+        };
+    }, []);
+
+    const fetchCaptcha = React.useCallback(async () => {
+        const trimmedUrl = serverUrl.trim().replace(/\/+$/, '');
+        if (!trimmedUrl) return;
+        setCodeLoading(true);
+        try {
+            const captcha = await dootaskGetCaptcha(trimmedUrl);
+            setCodeKey(captcha.key);
+            setCodeImg(captcha.img);
+            setCode('');
+        } catch {
+            setCodeImg(null);
+        } finally {
+            setCodeLoading(false);
+        }
+    }, [serverUrl]);
 
     const canSubmit = React.useMemo(() => {
         return serverUrl.trim().length > 0 && email.trim().length > 0 && password.length > 0;
@@ -113,9 +150,9 @@ export default React.memo(function DooTaskConnectPage() {
                 }
 
                 case 'captcha_required': {
-                    setCodeKey(result.codeKey);
-                    setCode('');
+                    setCodeNeed(true);
                     setError(result.message || t('dootask.captchaRequired'));
+                    fetchCaptcha();
                     break;
                 }
 
@@ -134,7 +171,7 @@ export default React.memo(function DooTaskConnectPage() {
         } finally {
             setLoading(false);
         }
-    }, [canSubmit, loading, serverUrl, email, password, code, codeKey, router]);
+    }, [canSubmit, loading, serverUrl, email, password, code, codeKey, router, fetchCaptcha]);
 
     return (
         <KeyboardAvoidingView
@@ -148,11 +185,12 @@ export default React.memo(function DooTaskConnectPage() {
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             >
-                {/* Server URL */}
-                <ItemGroup title={t('dootask.serverUrl')}>
-                    <View style={styles.inputWrapper}>
+                <ItemGroup>
+                    {/* Server URL */}
+                    <View style={styles.fieldRow}>
+                        <Text style={styles.fieldLabel}>{t('dootask.serverUrl')}</Text>
                         <TextInput
-                            style={styles.input}
+                            style={styles.fieldInput}
                             value={serverUrl}
                             onChangeText={setServerUrl}
                             placeholder="https://your-dootask-server.com"
@@ -164,13 +202,11 @@ export default React.memo(function DooTaskConnectPage() {
                             returnKeyType="next"
                         />
                     </View>
-                </ItemGroup>
-
-                {/* Email */}
-                <ItemGroup title={t('dootask.email')}>
-                    <View style={styles.inputWrapper}>
+                    {/* Email */}
+                    <View style={styles.fieldRow}>
+                        <Text style={styles.fieldLabel}>{t('dootask.email')}</Text>
                         <TextInput
-                            style={styles.input}
+                            style={styles.fieldInput}
                             value={email}
                             onChangeText={setEmail}
                             placeholder="your@email.com"
@@ -182,13 +218,11 @@ export default React.memo(function DooTaskConnectPage() {
                             returnKeyType="next"
                         />
                     </View>
-                </ItemGroup>
-
-                {/* Password */}
-                <ItemGroup title={t('dootask.password')}>
-                    <View style={styles.inputWrapper}>
+                    {/* Password */}
+                    <View style={styles.fieldRow}>
+                        <Text style={styles.fieldLabel}>{t('dootask.password')}</Text>
                         <TextInput
-                            style={styles.input}
+                            style={styles.fieldInput}
                             value={password}
                             onChangeText={setPassword}
                             placeholder={t('dootask.password')}
@@ -197,31 +231,40 @@ export default React.memo(function DooTaskConnectPage() {
                             autoCorrect={false}
                             secureTextEntry
                             textContentType="password"
-                            returnKeyType={codeKey ? 'next' : 'go'}
-                            onSubmitEditing={codeKey ? undefined : handleLogin}
+                            returnKeyType={codeNeed ? 'next' : 'go'}
+                            onSubmitEditing={codeNeed ? undefined : handleLogin}
                         />
                     </View>
-                </ItemGroup>
-
-                {/* Captcha Code (conditional) */}
-                {codeKey && (
-                    <ItemGroup title={t('dootask.captchaRequired')}>
-                        <View style={styles.inputWrapper}>
-                            <TextInput
-                                style={styles.input}
-                                value={code}
-                                onChangeText={setCode}
-                                placeholder={t('dootask.captchaPlaceholder')}
-                                placeholderTextColor={theme.colors.textSecondary}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                                keyboardType="default"
-                                returnKeyType="go"
-                                onSubmitEditing={handleLogin}
-                            />
+                    {/* Captcha Code (conditional) */}
+                    {codeNeed && (
+                        <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>{t('dootask.captchaRequired')}</Text>
+                            <View style={styles.captchaRow}>
+                                <TextInput
+                                    style={[styles.fieldInput, styles.captchaInput]}
+                                    value={code}
+                                    onChangeText={setCode}
+                                    placeholder={t('dootask.captchaPlaceholder')}
+                                    placeholderTextColor={theme.colors.textSecondary}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    keyboardType="default"
+                                    returnKeyType="go"
+                                    onSubmitEditing={handleLogin}
+                                />
+                                <Pressable onPress={fetchCaptcha} style={styles.captchaImageWrapper}>
+                                    {codeLoading ? (
+                                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                    ) : codeImg ? (
+                                        <Image source={{ uri: codeImg }} style={styles.captchaImage} resizeMode="contain" />
+                                    ) : (
+                                        <Text style={styles.captchaError}>{t('dootask.captchaLoadFailed')}</Text>
+                                    )}
+                                </Pressable>
+                            </View>
                         </View>
-                    </ItemGroup>
-                )}
+                    )}
+                </ItemGroup>
 
                 {/* Error Message */}
                 {error && (
@@ -260,18 +303,49 @@ const styles = StyleSheet.create((theme) => ({
         alignSelf: 'center',
         width: '100%',
     },
-    inputWrapper: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 16,
+    fieldRow: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+    },
+    fieldLabel: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginBottom: 2,
+        ...Typography.default('regular'),
+    },
+    fieldInput: {
+        fontSize: 17,
+        lineHeight: 22,
+        color: theme.colors.text,
+        paddingVertical: Platform.select({ ios: 4, default: 2 }),
+        padding: 0,
+        ...Typography.default(),
+    },
+    captchaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    captchaInput: {
+        flex: 1,
+    },
+    captchaImageWrapper: {
+        height: 36,
+        width: 100,
+        marginLeft: 8,
+        borderRadius: 6,
+        backgroundColor: theme.colors.groupped.background,
+        alignItems: 'center',
+        justifyContent: 'center',
         overflow: 'hidden',
     },
-    input: {
-        borderRadius: 16,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        fontSize: 17,
-        color: theme.colors.text,
-        ...Typography.default(),
+    captchaImage: {
+        width: 100,
+        height: 36,
+    },
+    captchaError: {
+        fontSize: 11,
+        color: theme.colors.textDestructive,
+        ...Typography.default('regular'),
     },
     errorContainer: {
         marginHorizontal: 16,

@@ -251,6 +251,7 @@ export const zhHans: TranslationStructure = {
         password: '密码',
         captchaRequired: '需要输入验证码',
         captchaPlaceholder: '请输入验证码',
+        captchaLoadFailed: '加载失败',
         connecting: '连接中...',
         disconnect: '断开 DooTask',
         disconnectConfirm: '这将移除您的 DooTask 连接并清除缓存数据。',

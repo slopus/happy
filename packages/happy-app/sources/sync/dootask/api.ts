@@ -10,7 +10,7 @@ type LoginParams = {
 
 type LoginResult =
     | { type: 'success'; token: string; userId: number; username: string; avatar: string | null }
-    | { type: 'captcha_required'; message: string; codeKey: string }
+    | { type: 'captcha_required'; message: string }
     | { type: 'error'; message: string }
     | { type: 'token_expired'; message: string };
 
@@ -62,11 +62,7 @@ export async function dootaskLogin(params: LoginParams): Promise<LoginResult> {
     }
 
     if (json.ret === 0 && json.data?.code === 'need') {
-        const codeKey = json.data.code_key;
-        if (!codeKey) {
-            return { type: 'error', message: json.msg || 'Captcha required but server returned invalid response' };
-        }
-        return { type: 'captcha_required', message: json.msg, codeKey };
+        return { type: 'captcha_required', message: json.msg };
     }
 
     if (isTokenExpired(json)) {
@@ -74,6 +70,16 @@ export async function dootaskLogin(params: LoginParams): Promise<LoginResult> {
     }
 
     return { type: 'error', message: json.msg || 'Login failed' };
+}
+
+export async function dootaskGetCaptcha(serverUrl: string): Promise<{ key: string; img: string }> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/users/login/codejson`, {
+        method: 'GET',
+        headers: buildHeaders(),
+    });
+    const json: DooTaskResponse = await response.json();
+    return { key: json.data?.key ?? '', img: json.data?.img ?? '' };
 }
 
 export async function dootaskGetTokenExpire(serverUrl: string, token: string): Promise<DooTaskResponse> {
