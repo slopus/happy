@@ -259,6 +259,11 @@ export const pt: TranslationStructure = {
         selectProject: 'Selecionar projeto',
         searchProjects: 'Pesquisar projetos...',
         relatedSessions: 'Sessões relacionadas',
+        filter: 'Filtro',
+        role: 'Função',
+        roleAll: 'Todos',
+        roleOwner: 'Minhas tarefas',
+        roleAssist: 'Assistindo',
     },
 
     settingsAppearance: {

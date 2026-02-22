@@ -259,6 +259,11 @@ export const es: TranslationStructure = {
         selectProject: 'Seleccionar proyecto',
         searchProjects: 'Buscar proyectos...',
         relatedSessions: 'Sesiones relacionadas',
+        filter: 'Filtro',
+        role: 'Rol',
+        roleAll: 'Todos',
+        roleOwner: 'Mis tareas',
+        roleAssist: 'Asistiendo',
     },
 
     settingsAppearance: {

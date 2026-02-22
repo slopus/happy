@@ -1365,12 +1365,14 @@ export const storage = create<StorageState>()((set, get) => {
                 if (search) {
                     keys['name'] = search;
                 }
+                const ownerParam = dootaskFilters.role === 'owner' ? 1 : dootaskFilters.role === 'assist' ? 0 : undefined;
                 const res = await dootaskFetchTasks(dootaskProfile.serverUrl, dootaskProfile.token, {
                     page,
                     pagesize: dootaskPager.pagesize,
                     project_id: dootaskFilters.projectId,
                     keys: Object.keys(keys).length > 0 ? keys : undefined,
                     time: dootaskFilters.time,
+                    owner: ownerParam,
                 });
 
                 const cur = get().dootaskProfile;

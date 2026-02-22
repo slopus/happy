@@ -53,14 +53,14 @@ function formatEndAt(endAt: string): string {
     return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-// --- Project Picker Modal ---
+// --- Filter Panel Modal ---
 const PICKER_ITEM_HEIGHT = 48;
 
-type ProjectPickerModalProps = {
+type FilterPanelModalProps = {
     onRefreshTasks: () => void;
 };
 
-const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal, ProjectPickerModalProps>(({ onRefreshTasks }, ref) => {
+const FilterPanelModal = React.memo(React.forwardRef<BottomSheetModal, FilterPanelModalProps>(({ onRefreshTasks }, ref) => {
     const { theme } = useUnistyles();
     const filters = useDootaskFilters();
     const projects = useDootaskProjects();
@@ -73,6 +73,14 @@ const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal, Project
     searchQueryRef.current = searchQuery;
 
     const showSearch = projects.length > 20;
+
+    const roleOptions: Array<{ key: 'all' | 'owner' | 'assist'; label: string }> = [
+        { key: 'all', label: t('dootask.roleAll') },
+        { key: 'owner', label: t('dootask.roleOwner') },
+        { key: 'assist', label: t('dootask.roleAssist') },
+    ];
+
+    const currentRole = filters.role || 'all';
 
     const handleSearchChange = React.useCallback((text: string) => {
         setSearchQuery(text);
@@ -104,25 +112,28 @@ const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal, Project
     const selectProject = React.useCallback((id: number | undefined) => {
         storage.getState().setDootaskFilter({ projectId: id });
         onRefreshTasks();
-        if (ref && typeof ref !== 'function') ref.current?.dismiss();
-    }, [onRefreshTasks, ref]);
+    }, [onRefreshTasks]);
+
+    const selectRole = React.useCallback((role: 'all' | 'owner' | 'assist') => {
+        storage.getState().setDootaskFilter({ role });
+        onRefreshTasks();
+    }, [onRefreshTasks]);
 
     const data = React.useMemo(() => [null, ...filteredProjects] as (DooTaskProject | null)[], [filteredProjects]);
 
-    const renderItem = React.useCallback(({ item }: { item: DooTaskProject | null }) => {
+    const renderProjectItem = React.useCallback(({ item }: { item: DooTaskProject | null }) => {
         const isAll = item === null;
         const isSelected = isAll ? !filters.projectId : filters.projectId === item!.id;
         return (
             <Pressable
                 style={({ pressed }) => [
                     styles.pickerItem,
-                    { borderBottomColor: theme.colors.divider },
                     pressed && !isSelected && { backgroundColor: theme.colors.surfacePressed },
                 ]}
                 onPress={() => !isSelected && selectProject(isAll ? undefined : item!.id)}
             >
                 <Text
-                    style={[styles.pickerItemText, { color: theme.colors.textLink }]}
+                    style={[styles.pickerItemText, { color: theme.colors.text }]}
                     numberOfLines={1}
                 >
                     {isAll ? t('dootask.allProjects') : item!.name}
@@ -143,26 +154,42 @@ const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal, Project
         [],
     );
 
-    return (
-        <BottomSheetModal
-            ref={ref}
-            snapPoints={['50%']}
-            enableDynamicSizing={false}
-            backdropComponent={renderBackdrop}
-            onDismiss={handleDismiss}
-            keyboardBehavior="interactive"
-            keyboardBlurBehavior="restore"
-            android_keyboardInputMode="adjustResize"
-            backgroundStyle={{ backgroundColor: theme.colors.surface }}
-            handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
-        >
-            <View style={[styles.pickerTitle, { borderBottomColor: theme.colors.divider }]}>
-                <Text style={[styles.pickerTitleText, { color: theme.colors.textSecondary }]}>
-                    {t('dootask.selectProject')}
+    const ListHeaderComponent = React.useMemo(() => (
+        <>
+            {/* Role Section */}
+            <View style={styles.filterSectionHeader}>
+                <Text style={[styles.filterSectionTitle, { color: theme.colors.textSecondary }]}>
+                    {t('dootask.role')}
+                </Text>
+            </View>
+            <View style={styles.roleChipRow}>
+                {roleOptions.map((opt) => (
+                    <Pressable
+                        key={opt.key}
+                        style={[
+                            styles.chip,
+                            { backgroundColor: currentRole === opt.key ? theme.colors.button.primary.background : theme.colors.groupped.background },
+                        ]}
+                        onPress={() => selectRole(opt.key)}
+                    >
+                        <Text style={[
+                            styles.chipText,
+                            { color: currentRole === opt.key ? theme.colors.button.primary.tint : theme.colors.text },
+                        ]}>
+                            {opt.label}
+                        </Text>
+                    </Pressable>
+                ))}
+            </View>
+
+            {/* Project Section */}
+            <View style={styles.filterSectionHeader}>
+                <Text style={[styles.filterSectionTitle, { color: theme.colors.textSecondary }]}>
+                    {t('dootask.project')}
                 </Text>
             </View>
             {showSearch ? (
-                <View style={[styles.pickerSearch, { borderBottomColor: theme.colors.divider }]}>
+                <View style={styles.pickerSearch}>
                     <BottomSheetTextInput
                         style={[styles.pickerSearchInput, {
                             color: theme.colors.text,
@@ -176,10 +203,32 @@ const ProjectPickerModal = React.memo(React.forwardRef<BottomSheetModal, Project
                     />
                 </View>
             ) : null}
+        </>
+    ), [theme, currentRole, searchQuery, showSearch, handleSearchChange, selectRole]);
+
+    return (
+        <BottomSheetModal
+            ref={ref}
+            snapPoints={['60%']}
+            enableDynamicSizing={false}
+            backdropComponent={renderBackdrop}
+            onDismiss={handleDismiss}
+            keyboardBehavior="interactive"
+            keyboardBlurBehavior="restore"
+            android_keyboardInputMode="adjustResize"
+            backgroundStyle={{ backgroundColor: theme.colors.surface }}
+            handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
+        >
+            <View style={[styles.pickerTitle, { borderBottomColor: theme.colors.divider }]}>
+                <Text style={[styles.pickerTitleText, { color: theme.colors.textSecondary }]}>
+                    {t('dootask.filter')}
+                </Text>
+            </View>
             <BottomSheetFlatList
                 data={data}
                 keyExtractor={(item: DooTaskProject | null) => item === null ? '__all__' : String(item.id)}
-                renderItem={renderItem}
+                renderItem={renderProjectItem}
+                ListHeaderComponent={ListHeaderComponent}
                 keyboardShouldPersistTaps="handled"
             />
         </BottomSheetModal>
@@ -204,11 +253,19 @@ const FilterBar = React.memo(({ onRefreshTasks }: FilterBarProps) => {
         { key: 'completed', label: t('dootask.completed') },
     ];
 
-    const selectedProjectName = React.useMemo(() => {
-        if (!filters.projectId) return t('dootask.allProjects');
-        const p = projects.find((p) => p.id === filters.projectId);
-        return p?.name || t('dootask.allProjects');
-    }, [filters.projectId, projects]);
+    const filterChipLabel = React.useMemo(() => {
+        const parts: string[] = [];
+        const role = filters.role || 'all';
+        if (role === 'owner') parts.push(t('dootask.roleOwner'));
+        if (role === 'assist') parts.push(t('dootask.roleAssist'));
+        if (filters.projectId) {
+            const p = projects.find((p) => p.id === filters.projectId);
+            if (p) parts.push(p.name);
+        }
+        return parts.length > 0 ? parts.join(' · ') : t('dootask.filter');
+    }, [filters.projectId, filters.role, projects]);
+
+    const hasActiveFilters = !!filters.projectId || (!!filters.role && filters.role !== 'all');
 
     const applySearch = React.useCallback((rawText: string) => {
         const normalized = rawText.trim();
@@ -274,27 +331,27 @@ const FilterBar = React.memo(({ onRefreshTasks }: FilterBarProps) => {
                 <Pressable
                     style={[
                         styles.chip,
-                        { backgroundColor: filters.projectId ? theme.colors.button.primary.background : theme.colors.surface },
+                        { backgroundColor: hasActiveFilters ? theme.colors.button.primary.background : theme.colors.surface },
                     ]}
                     onPress={() => pickerRef.current?.present()}
                 >
                     <Text
                         style={[
                             styles.chipText,
-                            { color: filters.projectId ? theme.colors.button.primary.tint : theme.colors.text },
+                            { color: hasActiveFilters ? theme.colors.button.primary.tint : theme.colors.text },
                         ]}
                         numberOfLines={1}
                     >
-                        {selectedProjectName}
+                        {filterChipLabel}
                     </Text>
                     <Ionicons
                         name="chevron-down"
                         size={12}
-                        color={filters.projectId ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                        color={hasActiveFilters ? theme.colors.button.primary.tint : theme.colors.textSecondary}
                     />
                 </Pressable>
             </View>
-            <ProjectPickerModal ref={pickerRef} onRefreshTasks={onRefreshTasks} />
+            <FilterPanelModal ref={pickerRef} onRefreshTasks={onRefreshTasks} />
         </View>
     );
 });
@@ -568,18 +625,28 @@ const styles = StyleSheet.create((_theme) => ({
         padding: 12,
     },
     errorText: { fontSize: 13, ...Typography.default() },
-    // --- Project Picker ---
+    // --- Filter Panel ---
+    filterSectionHeader: {
+        paddingHorizontal: 20,
+        paddingTop: 16,
+        paddingBottom: 4,
+    },
+    filterSectionTitle: { fontSize: 13, ...Typography.default('semiBold') },
+    roleChipRow: {
+        flexDirection: 'row',
+        gap: 8,
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+    },
     pickerTitle: {
-        paddingVertical: 12,
+        paddingVertical: 8,
         paddingHorizontal: 20,
         alignItems: 'center',
-        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     pickerTitleText: { fontSize: 13, ...Typography.default('semiBold') },
     pickerSearch: {
-        paddingHorizontal: 12,
+        paddingHorizontal: 20,
         paddingVertical: 8,
-        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     pickerSearchInput: {
         borderRadius: 8,
@@ -592,11 +659,9 @@ const styles = StyleSheet.create((_theme) => ({
     pickerItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         height: PICKER_ITEM_HEIGHT,
         paddingHorizontal: 20,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        gap: 6,
     },
-    pickerItemText: { fontSize: 17, ...Typography.default() },
+    pickerItemText: { fontSize: 15, ...Typography.default(), flex: 1 },
 }));

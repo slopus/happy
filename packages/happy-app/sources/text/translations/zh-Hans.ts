@@ -261,6 +261,11 @@ export const zhHans: TranslationStructure = {
         selectProject: '选择项目',
         searchProjects: '搜索项目...',
         relatedSessions: '相关会话',
+        filter: '筛选',
+        role: '角色',
+        roleAll: '全部',
+        roleOwner: '我负责的',
+        roleAssist: '我协助的',
     },
 
     settingsAppearance: {

@@ -223,6 +223,11 @@ export const ru: TranslationStructure = {
         selectProject: 'Выбрать проект',
         searchProjects: 'Поиск проектов...',
         relatedSessions: 'Связанные сессии',
+        filter: 'Фильтр',
+        role: 'Роль',
+        roleAll: 'Все',
+        roleOwner: 'Мои задачи',
+        roleAssist: 'Помогаю',
     },
 
     settingsAppearance: {

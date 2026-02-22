@@ -260,6 +260,11 @@ export const zhHant: TranslationStructure = {
         selectProject: '選擇專案',
         searchProjects: '搜尋專案...',
         relatedSessions: '相關對話',
+        filter: '篩選',
+        role: '角色',
+        roleAll: '全部',
+        roleOwner: '我負責的',
+        roleAssist: '我協助的',
     },
 
     settingsAppearance: {

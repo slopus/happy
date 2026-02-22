@@ -291,6 +291,11 @@ export const ja: TranslationStructure = {
         selectProject: 'プロジェクトを選択',
         searchProjects: 'プロジェクトを検索...',
         relatedSessions: '関連セッション',
+        filter: 'フィルター',
+        role: '役割',
+        roleAll: 'すべて',
+        roleOwner: '担当タスク',
+        roleAssist: 'アシストタスク',
     },
 
     settingsAppearance: {

@@ -259,6 +259,11 @@ export const ca: TranslationStructure = {
         selectProject: 'Selecciona projecte',
         searchProjects: 'Cerca projectes...',
         relatedSessions: 'Sessions relacionades',
+        filter: 'Filtre',
+        role: 'Rol',
+        roleAll: 'Tots',
+        roleOwner: 'Les meves tasques',
+        roleAssist: 'Assistint',
     },
 
     settingsAppearance: {

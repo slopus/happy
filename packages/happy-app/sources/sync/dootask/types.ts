@@ -53,6 +53,7 @@ export type DooTaskFilters = {
     status?: 'all' | 'uncompleted' | 'completed';
     search?: string;
     time?: string;
+    role?: 'all' | 'owner' | 'assist';
 };
 
 export type DooTaskPager = {

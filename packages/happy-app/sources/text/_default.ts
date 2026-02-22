@@ -259,6 +259,11 @@ export const en = {
         selectProject: 'Select Project',
         searchProjects: 'Search projects...',
         relatedSessions: 'Related Sessions',
+        filter: 'Filter',
+        role: 'Role',
+        roleAll: 'All',
+        roleOwner: 'My Tasks',
+        roleAssist: 'Assisting',
     },
 
     settingsAppearance: {
