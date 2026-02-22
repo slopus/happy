@@ -127,6 +127,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             onAvatarPress: () => router.push(`/session/${sessionId}/info`),
             isConnected: isConnected,
             flavor: session.metadata?.flavor || null,
+            sessionIcon: session.metadata?.sessionIcon || null,
             tintColor: isConnected ? '#000' : '#8E8E93'
         };
     }, [session, isDataReady, sessionId, router, sessionNotFound]);

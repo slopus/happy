@@ -502,7 +502,7 @@ const SessionHistoryItemCard = React.memo(({ session, isFirst, isLast, isSingle,
             ]}
             onPress={onPress}
         >
-            <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+            <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} sessionIcon={session.metadata?.sessionIcon} />
             <View style={styles.sessionContent}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     {sessionStatus.hasUnreadCompletion && (

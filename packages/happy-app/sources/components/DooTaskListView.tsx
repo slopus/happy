@@ -459,57 +459,59 @@ export const DooTaskListView = React.memo(() => {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
-            <FilterBar onRefreshTasks={triggerRefreshWithFeedback} />
-            <FlatList
-                data={tasks}
-                keyExtractor={(item) => String(item.id)}
-                renderItem={({ item }) => (
-                    <TaskCard
-                        item={item}
-                        projectName={item.project_name || projectMap[item.project_id] || ''}
-                        userCache={userCache}
-                        onPress={() => router.push(`/dootask/${item.id}`)}
-                    />
-                )}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={isPullRefreshing}
-                        onRefresh={handlePullRefresh}
-                    />
-                }
-                onEndReached={() => {
-                    if (pager.hasMore && !loading) {
-                        storage.getState().fetchDootaskTasks({ loadMore: true });
+            <View style={{ flex: 1, maxWidth: 800, alignSelf: 'center', width: '100%' }}>
+                <FilterBar onRefreshTasks={triggerRefreshWithFeedback} />
+                <FlatList
+                    data={tasks}
+                    keyExtractor={(item) => String(item.id)}
+                    renderItem={({ item }) => (
+                        <TaskCard
+                            item={item}
+                            projectName={item.project_name || projectMap[item.project_id] || ''}
+                            userCache={userCache}
+                            onPress={() => router.push(`/dootask/${item.id}`)}
+                        />
+                    )}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={isPullRefreshing}
+                            onRefresh={handlePullRefresh}
+                        />
                     }
-                }}
-                onEndReachedThreshold={0.5}
-                ListEmptyComponent={
-                    loading ? (
-                        <ActivityIndicator style={{ marginTop: 40 }} />
-                    ) : (
-                        <View style={styles.empty}>
-                            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-                                {t('dootask.noTasks')}
-                            </Text>
-                            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                                {t('dootask.noTasksDescription')}
-                            </Text>
-                        </View>
-                    )
-                }
-                ListFooterComponent={
-                    loading && tasks.length > 0 ? <ActivityIndicator style={{ padding: 16 }} /> : null
-                }
-                contentContainerStyle={styles.list}
-            />
-            {error && error !== 'token_expired' ? (
-                <View style={[styles.errorBanner, { backgroundColor: theme.colors.deleteAction + '20' }]}>
-                    <Text style={[styles.errorText, { color: theme.colors.deleteAction }]}>{error}</Text>
-                    <Pressable onPress={triggerRefreshWithFeedback}>
-                        <Text style={styles.retryText}>{t('common.retry')}</Text>
-                    </Pressable>
-                </View>
-            ) : null}
+                    onEndReached={() => {
+                        if (pager.hasMore && !loading) {
+                            storage.getState().fetchDootaskTasks({ loadMore: true });
+                        }
+                    }}
+                    onEndReachedThreshold={0.5}
+                    ListEmptyComponent={
+                        loading ? (
+                            <ActivityIndicator style={{ marginTop: 40 }} />
+                        ) : (
+                            <View style={styles.empty}>
+                                <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                                    {t('dootask.noTasks')}
+                                </Text>
+                                <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                                    {t('dootask.noTasksDescription')}
+                                </Text>
+                            </View>
+                        )
+                    }
+                    ListFooterComponent={
+                        loading && tasks.length > 0 ? <ActivityIndicator style={{ padding: 16 }} /> : null
+                    }
+                    contentContainerStyle={styles.list}
+                />
+                {error && error !== 'token_expired' ? (
+                    <View style={[styles.errorBanner, { backgroundColor: theme.colors.deleteAction + '20' }]}>
+                        <Text style={[styles.errorText, { color: theme.colors.deleteAction }]}>{error}</Text>
+                        <Pressable onPress={triggerRefreshWithFeedback}>
+                            <Text style={styles.retryText}>{t('common.retry')}</Text>
+                        </Pressable>
+                    </View>
+                ) : null}
+            </View>
         </View>
     );
 });

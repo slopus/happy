@@ -447,7 +447,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             }}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} sessionIcon={session.metadata?.sessionIcon} />
             </View>
             <View style={styles.sessionContent}>
                 {/* Title line */}

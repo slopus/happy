@@ -271,7 +271,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                             <View style={styles.sectionHeaderLeft}>
                                 {avatarId && (
                                     <View style={styles.sectionHeaderAvatar}>
-                                        <Avatar id={avatarId} size={24} flavor={firstSession?.metadata?.flavor} />
+                                        <Avatar id={avatarId} size={24} flavor={firstSession?.metadata?.flavor} sessionIcon={firstSession?.metadata?.sessionIcon} />
                                     </View>
                                 )}
                                 <Text style={styles.sectionHeaderPath}>

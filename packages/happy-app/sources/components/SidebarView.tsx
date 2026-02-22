@@ -11,10 +11,10 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { MainView } from './MainView';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
+import { useDootaskProfile } from '@/sync/storage';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -139,6 +139,7 @@ export const SidebarView = React.memo(() => {
     const realtimeStatus = useRealtimeStatus();
     const friendRequests = useFriendRequests();
     const inboxHasContent = useInboxHasContent();
+    const dootaskProfile = useDootaskProfile();
     // Compute connection status once per render (theme-reactive, no stale memoization)
     const connectionStatus = (() => {
         const { status } = socketStatus;
@@ -186,7 +187,7 @@ export const SidebarView = React.memo(() => {
     const { width: windowWidth } = useWindowDimensions();
     const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
     // 3 icons (108px total), threshold 328px → left-justify below ~340px
-    const shouldLeftJustify = sidebarWidth < 340;
+    const shouldLeftJustify = sidebarWidth < 340 || !!dootaskProfile;
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
@@ -256,6 +257,19 @@ export const SidebarView = React.memo(() => {
                                 <View style={styles.indicatorDot} />
                             )}
                         </Pressable>
+                        {!!dootaskProfile && (
+                            <Pressable
+                                onPress={() => router.push('/(app)/dootask')}
+                                hitSlop={15}
+                            >
+                                <Image
+                                    source={require('@/assets/images/brutalist/Specified 1.png')}
+                                    contentFit="contain"
+                                    style={[{ width: 32, height: 32 }]}
+                                    tintColor={theme.colors.header.tint}
+                                />
+                            </Pressable>
+                        )}
                         <Pressable
                             onPress={() => router.push('/(app)/openclaw')}
                             hitSlop={15}

@@ -26,6 +26,8 @@ import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
+import { Image } from 'expo-image';
+import { resolveSessionIcon } from '@/components/Avatar';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { useEnvironmentVariables, resolveEnvVarSubstitution, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
@@ -1210,16 +1212,24 @@ function NewSessionWizard() {
         <View style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 16,
             paddingVertical: 10,
             gap: 8,
             backgroundColor: theme.colors.surface,
             borderRadius: 10,
             marginBottom: 8,
         }}>
-            {tempSessionData.sessionIcon ? (
-                <Text style={{ fontSize: 18 }}>{tempSessionData.sessionIcon}</Text>
-            ) : null}
+            {tempSessionData.sessionIcon ? (() => {
+                const resolved = resolveSessionIcon(tempSessionData.sessionIcon);
+                return resolved.type === 'image' ? (
+                    <Image
+                        source={resolved.source}
+                        style={{ width: 28, height: 28, borderRadius: 6 }}
+                        contentFit="cover"
+                    />
+                ) : (
+                    <Text style={{ fontSize: 18 }}>{resolved.value}</Text>
+                );
+            })() : null}
             <View style={{ flex: 1 }}>
                 <Text style={{ ...Typography.default(), fontSize: 13, color: theme.colors.textSecondary }}>
                     {tempSessionData.externalContext.source === 'dootask' ? 'DooTask' : tempSessionData.externalContext.source}

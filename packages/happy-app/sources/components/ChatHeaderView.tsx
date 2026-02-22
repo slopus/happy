@@ -20,6 +20,7 @@ interface ChatHeaderViewProps {
     isConnected?: boolean;
     isConnecting?: boolean;
     flavor?: string | null;
+    sessionIcon?: string | null;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -31,6 +32,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     isConnected = true,
     isConnecting = false,
     flavor,
+    sessionIcon,
 }) => {
     const { theme } = useUnistyles();
     const navigation = useNavigation();
@@ -106,6 +108,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             size={32}
                             monochrome={!isConnected}
                             flavor={flavor}
+                            sessionIcon={sessionIcon}
                         />
                     </Pressable>
                 )}
