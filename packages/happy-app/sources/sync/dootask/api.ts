@@ -220,3 +220,85 @@ export async function dootaskUpdateTask(serverUrl: string, token: string, params
     });
     return response.json();
 }
+
+// --- Chat ---
+
+export async function dootaskFetchTaskDialog(serverUrl: string, token: string, taskId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/task/dialog?task_id=${taskId}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskFetchDialogMessages(serverUrl: string, token: string, params: {
+    dialog_id: number;
+    prev_id?: number;
+    next_id?: number;
+    take?: number;
+}): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const qs = new URLSearchParams();
+    qs.set('dialog_id', String(params.dialog_id));
+    if (params.prev_id) qs.set('prev_id', String(params.prev_id));
+    if (params.next_id) qs.set('next_id', String(params.next_id));
+    if (params.take) qs.set('take', String(params.take));
+    const response = await fetch(`${url}/api/dialog/msg/list?${qs}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskSendTextMessage(serverUrl: string, token: string, params: {
+    dialog_id: number;
+    text: string;
+    reply_id?: number;
+}): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/dialog/msg/sendtext`, {
+        method: 'POST',
+        headers: buildHeaders(token),
+        body: JSON.stringify({
+            dialog_id: params.dialog_id,
+            text: params.text,
+            text_type: 'md',
+            ...(params.reply_id ? { reply_id: params.reply_id } : {}),
+        }),
+    });
+    return response.json();
+}
+
+export async function dootaskSendFileMessage(serverUrl: string, token: string, params: {
+    dialog_id: number;
+    image64: string;
+    reply_id?: number;
+}): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const headers: Record<string, string> = {};
+    if (token) headers['dootask-token'] = token;
+    // multipart/form-data — let fetch set Content-Type with boundary
+    const formData = new FormData();
+    formData.append('dialog_id', String(params.dialog_id));
+    formData.append('image64', params.image64);
+    if (params.reply_id) formData.append('reply_id', String(params.reply_id));
+    const response = await fetch(`${url}/api/dialog/msg/sendfile`, {
+        method: 'POST',
+        headers,
+        body: formData,
+    });
+    return response.json();
+}
+
+// --- Logs ---
+
+export async function dootaskFetchTaskLogs(serverUrl: string, token: string, taskId: number, page: number = 1): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const qs = new URLSearchParams({ task_id: String(taskId), page: String(page), pagesize: '10' });
+    const response = await fetch(`${url}/api/project/log/lists?${qs}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
