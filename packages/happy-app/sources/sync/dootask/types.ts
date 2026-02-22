@@ -63,3 +63,37 @@ export type DooTaskPager = {
     total: number;
     hasMore: boolean;
 };
+
+export type DooTaskDialogMsg = {
+    id: number;
+    dialog_id: number;
+    userid: number;
+    type: 'text' | 'image' | 'file' | 'record' | 'notice' | 'meeting' | 'longtext' | 'template';
+    msg: any;
+    reply_id: number | null;
+    reply_num: number;
+    created_at: string;
+    emoji: Record<string, any>;
+    bot: number;
+    modify: number;
+    forward_id: number | null;
+    forward_num: number;
+};
+
+export type DooTaskDialog = {
+    id: number;
+    name: string;
+    type: string;
+    group_type: string;
+};
+
+export type DooTaskLogEntry = {
+    id: number;
+    project_id: number;
+    task_id: number;
+    userid: number;
+    detail: string;
+    record: { change?: string[] };
+    created_at: string;
+    time?: { ymd: string; hi: string; week: string };
+};
