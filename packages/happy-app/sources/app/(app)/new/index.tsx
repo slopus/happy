@@ -1185,8 +1185,10 @@ function NewSessionWizard() {
 
     // Persist the current wizard state so it survives remounts and screen navigation
     // Uses debouncing to avoid excessive writes
+    // Skip draft saving when opened via external context (e.g. DooTask "Start AI Session")
     const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     React.useEffect(() => {
+        if (tempSessionData) return;
         if (draftSaveTimerRef.current) {
             clearTimeout(draftSaveTimerRef.current);
         }
@@ -1206,7 +1208,7 @@ function NewSessionWizard() {
                 clearTimeout(draftSaveTimerRef.current);
             }
         };
-    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
+    }, [tempSessionData, sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
 
     const externalContextBanner = tempSessionData?.externalContext ? (
         <View style={{
