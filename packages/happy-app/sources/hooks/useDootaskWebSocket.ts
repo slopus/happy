@@ -27,8 +27,8 @@ export function useDootaskWebSocket({
     onMessage, onMessageUpdate, onMessageDelete,
 }: UseDootaskWebSocketParams) {
     const wsRef = useRef<WebSocket | null>(null);
-    const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-    const heartbeatTimer = useRef<ReturnType<typeof setInterval>>(undefined);
+    const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const heartbeatTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
     const unmountedRef = useRef(false);
 
     // Use refs for callbacks to avoid reconnecting when callbacks change
@@ -77,7 +77,7 @@ export function useDootaskWebSocket({
         };
 
         ws.onclose = () => {
-            clearInterval(heartbeatTimer.current);
+            if (heartbeatTimer.current !== undefined) clearInterval(heartbeatTimer.current);
             if (!unmountedRef.current) {
                 reconnectTimer.current = setTimeout(connect, 3000);
             }
@@ -95,8 +95,8 @@ export function useDootaskWebSocket({
         connect();
         return () => {
             unmountedRef.current = true;
-            clearTimeout(reconnectTimer.current);
-            clearInterval(heartbeatTimer.current);
+            if (reconnectTimer.current !== undefined) clearTimeout(reconnectTimer.current);
+            if (heartbeatTimer.current !== undefined) clearInterval(heartbeatTimer.current);
             wsRef.current?.close();
         };
     }, [connect]);
