@@ -132,10 +132,10 @@ export const SettingsView = React.memo(function SettingsView() {
         );
         if (confirmed) {
             if (dootaskProfile) {
-                try {
-                    const { dootaskLogout } = await import('@/sync/dootask/api');
-                    await dootaskLogout(dootaskProfile.serverUrl, dootaskProfile.token);
-                } catch { /* non-critical */ }
+                // Fire-and-forget: don't block disconnect on server response
+                import('@/sync/dootask/api').then(({ dootaskLogout }) => {
+                    dootaskLogout(dootaskProfile.serverUrl, dootaskProfile.token).catch(() => {});
+                });
             }
             storage.getState().clearDootaskData();
         }
