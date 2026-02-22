@@ -6,7 +6,7 @@ import { HtmlContent } from '@/components/dootask/HtmlContent';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskProfile, useDootaskUserCache, useDootaskTaskDetailCache } from '@/sync/storage';
-import { dootaskFetchTaskDetail, dootaskFetchTaskContent, dootaskFetchTaskFlow, dootaskUpdateTask, dootaskFetchSubTasks, dootaskFetchTaskFiles } from '@/sync/dootask/api';
+import { dootaskFetchTaskDetail, dootaskFetchTaskContent, dootaskFetchTaskFlow, dootaskUpdateTask, dootaskFetchSubTasks, dootaskFetchTaskFiles, dootaskFetchTaskDialog, dootaskFetchTaskLogs } from '@/sync/dootask/api';
 import { storeTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { ImageViewer } from '@/components/ImageViewer';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
@@ -16,7 +16,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { getSessionName } from '@/utils/sessionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
-import type { DooTaskItem, DooTaskFile } from '@/sync/dootask/types';
+import type { DooTaskItem, DooTaskFile, DooTaskLogEntry } from '@/sync/dootask/types';
 
 /**
  * Parse DooTask flow_item_name "status|name|color" format.
@@ -175,6 +175,8 @@ export default function DooTaskDetail() {
     const [subStatusMenuItems, setSubStatusMenuItems] = React.useState<ActionMenuItem[]>([]);
     const [subStatusLoading, setSubStatusLoading] = React.useState<number | null>(null);
     const [subStatusTitle, setSubStatusTitle] = React.useState('');
+    const [chatLoading, setChatLoading] = React.useState(false);
+    const [taskLogs, setTaskLogs] = React.useState<DooTaskLogEntry[]>([]);
 
     const handleImagesFound = React.useCallback((urls: string[]) => {
         setContentImages(urls.map((uri) => ({ uri })));
@@ -190,11 +192,12 @@ export default function DooTaskDetail() {
         if (!profile || !taskId) return;
 
         // Fetch task detail and content in parallel
-        const [detailRes, contentRes, subTasksRes, filesRes] = await Promise.all([
+        const [detailRes, contentRes, subTasksRes, filesRes, logsRes] = await Promise.all([
             dootaskFetchTaskDetail(profile.serverUrl, profile.token, id),
             dootaskFetchTaskContent(profile.serverUrl, profile.token, id),
             dootaskFetchSubTasks(profile.serverUrl, profile.token, id),
             dootaskFetchTaskFiles(profile.serverUrl, profile.token, id),
+            dootaskFetchTaskLogs(profile.serverUrl, profile.token, id),
         ]);
 
         let newTask: DooTaskItem | null = null;
@@ -232,6 +235,10 @@ export default function DooTaskDetail() {
         if (filesRes.ret === 1 && filesRes.data) {
             const list = Array.isArray(filesRes.data) ? filesRes.data : filesRes.data.data;
             if (Array.isArray(list)) setTaskFiles(list);
+        }
+
+        if (logsRes.ret === 1 && logsRes.data?.data) {
+            setTaskLogs(Array.isArray(logsRes.data.data) ? logsRes.data.data : []);
         }
 
         // Write to global cache for SWR on next visit + sync list item
@@ -415,6 +422,23 @@ export default function DooTaskDetail() {
         }
     }, [profile, subStatusLoading, fetchData]);
 
+    const handleOpenChat = React.useCallback(async () => {
+        if (!profile || !task || chatLoading) return;
+        setChatLoading(true);
+        try {
+            const res = await dootaskFetchTaskDialog(profile.serverUrl, profile.token, task.id);
+            if (res.ret === 1 && res.data?.dialog_id) {
+                router.push(`/dootask/chat/${res.data.dialog_id}`);
+            } else {
+                setError(res.msg || t('dootask.errorLoadChat'));
+            }
+        } catch (e) {
+            setError(e instanceof Error ? e.message : t('dootask.errorLoadChat'));
+        } finally {
+            setChatLoading(false);
+        }
+    }, [profile, task, chatLoading, router]);
+
     const handleStartAiSession = React.useCallback(() => {
         if (!profile || !task) return;
 
@@ -450,6 +474,10 @@ export default function DooTaskDetail() {
             onPress: () => handleStartAiSession(),
         },
         {
+            label: t('dootask.taskChat'),
+            onPress: () => handleOpenChat(),
+        },
+        {
             label: t('dootask.changeStatus'),
             onPress: () => handleStatusPress(),
         },
@@ -457,7 +485,7 @@ export default function DooTaskDetail() {
             label: t('dootask.refresh'),
             onPress: () => handleRefresh(),
         },
-    ], [handleStartAiSession, handleStatusPress, handleRefresh]);
+    ], [handleStartAiSession, handleOpenChat, handleStatusPress, handleRefresh]);
 
     if (loading) {
         return <ActivityIndicator style={{ flex: 1 }} />;
@@ -636,6 +664,25 @@ export default function DooTaskDetail() {
                 </View>
             ) : null}
 
+            {taskLogs.length > 0 ? (
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>{t('dootask.taskLogs')}</Text>
+                    {taskLogs.map((log) => (
+                        <View key={log.id} style={styles.logRow}>
+                            <Text style={[styles.logDetail, { color: theme.colors.text }]} numberOfLines={2}>
+                                {userCache[log.userid] || String(log.userid)}{'\uFF1A'}{log.detail}
+                            </Text>
+                            <Text style={[styles.logTime, { color: theme.colors.textSecondary }]}>
+                                {log.time?.ymd} {log.time?.hi}
+                            </Text>
+                        </View>
+                    ))}
+                    <Text style={[styles.logFooter, { color: theme.colors.textSecondary }]}>
+                        {t('dootask.viewFullLogs')}
+                    </Text>
+                </View>
+            ) : null}
+
             {linkedSessions.length > 0 ? (
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
@@ -661,6 +708,20 @@ export default function DooTaskDetail() {
                     ))}
                 </View>
             ) : null}
+
+            <Pressable
+                style={[styles.chatButton, { borderColor: theme.colors.divider }]}
+                onPress={handleOpenChat}
+                disabled={chatLoading}
+            >
+                {chatLoading ? (
+                    <ActivityIndicator size="small" />
+                ) : (
+                    <Text style={[styles.aiButtonText, { color: theme.colors.text }]}>
+                        {t('dootask.taskChat')}
+                    </Text>
+                )}
+            </Pressable>
 
             <Pressable
                 style={[styles.aiButton, { backgroundColor: theme.colors.button.primary.background }]}
@@ -739,4 +800,15 @@ const styles = StyleSheet.create((_theme) => ({
     },
     sessionTitle: { ...Typography.default('semiBold'), fontSize: 14 },
     sessionMeta: { ...Typography.default(), fontSize: 12 },
+    chatButton: {
+        height: 48,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+    },
+    logRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
+    logDetail: { ...Typography.default(), fontSize: 13, flex: 1 },
+    logTime: { ...Typography.default(), fontSize: 12, flexShrink: 0 },
+    logFooter: { ...Typography.default(), fontSize: 12, textAlign: 'center', marginTop: 4 },
 }));

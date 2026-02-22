@@ -41,6 +41,7 @@ export function useDootaskWebSocket({
 
     const connect = useCallback(() => {
         if (unmountedRef.current) return;
+        if (!serverUrl || !token) return;
 
         const wsUrl = serverUrl
             .replace('https://', 'wss://')

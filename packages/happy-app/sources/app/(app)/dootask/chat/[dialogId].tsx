@@ -28,6 +28,10 @@ export default React.memo(function DooTaskChat() {
     const [error, setError] = React.useState<string | null>(null);
     const [sending, setSending] = React.useState(false);
 
+    // Ref for messages (used by handleLoadMore to avoid dependency on messages array)
+    const messagesRef = React.useRef(messages);
+    messagesRef.current = messages;
+
     // Reply state
     const [replyTo, setReplyTo] = React.useState<{ msg: DooTaskDialogMsg; senderName: string } | null>(null);
 
@@ -87,11 +91,10 @@ export default React.memo(function DooTaskChat() {
 
     // Load older messages
     const handleLoadMore = React.useCallback(async () => {
-        if (!profile || loadingMore || !hasMore || messages.length === 0) return;
+        if (!profile || loadingMore || !hasMore || messagesRef.current.length === 0) return;
         setLoadingMore(true);
         try {
-            // Oldest message is at the end of our newest-first array
-            const oldestMsg = messages[messages.length - 1];
+            const oldestMsg = messagesRef.current[messagesRef.current.length - 1];
             const res = await dootaskFetchDialogMessages(profile.serverUrl, profile.token, {
                 dialog_id: id,
                 prev_id: oldestMsg.id,
@@ -112,7 +115,7 @@ export default React.memo(function DooTaskChat() {
         } catch { /* ignore */ } finally {
             setLoadingMore(false);
         }
-    }, [profile, id, loadingMore, hasMore, messages]);
+    }, [profile, id, loadingMore, hasMore]);
 
     // WebSocket for real-time
     useDootaskWebSocket({

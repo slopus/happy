@@ -418,6 +418,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dootask/chat/[dialogId]"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('dootask.chatTitle'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="new/pick/machine"
                 options={{
                     headerTitle: '',
