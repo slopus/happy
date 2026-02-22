@@ -17,6 +17,7 @@ type UseDootaskWebSocketParams = {
     serverUrl: string;
     token: string;
     dialogId: number;
+    enabled?: boolean;
     onMessage: (msg: DooTaskDialogMsg) => void;
     onMessageUpdate?: (msg: DooTaskDialogMsg) => void;
     onMessageDelete?: (msgId: number) => void;
@@ -24,6 +25,7 @@ type UseDootaskWebSocketParams = {
 
 export function useDootaskWebSocket({
     serverUrl, token, dialogId,
+    enabled = true,
     onMessage, onMessageUpdate, onMessageDelete,
 }: UseDootaskWebSocketParams) {
     const wsRef = useRef<WebSocket | null>(null);
@@ -41,7 +43,17 @@ export function useDootaskWebSocket({
 
     const connect = useCallback(() => {
         if (unmountedRef.current) return;
-        if (!serverUrl || !token) return;
+        if (!serverUrl || !token || !enabled) return;
+
+        // Close any existing connection to prevent duplicates.
+        // Null out onclose first so the stale handler doesn't schedule a reconnect.
+        if (wsRef.current) {
+            wsRef.current.onclose = null;
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+        if (heartbeatTimer.current !== undefined) clearInterval(heartbeatTimer.current);
+        if (reconnectTimer.current !== undefined) clearTimeout(reconnectTimer.current);
 
         const wsUrl = serverUrl
             .replace('https://', 'wss://')
@@ -50,7 +62,6 @@ export function useDootaskWebSocket({
         const ws = new WebSocket(`${wsUrl}/ws?action=web&token=${token}&language=zh&platform=web`);
 
         ws.onopen = () => {
-            // Start heartbeat
             heartbeatTimer.current = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'handshake' }));
@@ -79,7 +90,8 @@ export function useDootaskWebSocket({
 
         ws.onclose = () => {
             if (heartbeatTimer.current !== undefined) clearInterval(heartbeatTimer.current);
-            if (!unmountedRef.current) {
+            // Only reconnect if this is still the active connection
+            if (!unmountedRef.current && wsRef.current === ws) {
                 reconnectTimer.current = setTimeout(connect, 3000);
             }
         };
@@ -89,7 +101,7 @@ export function useDootaskWebSocket({
         };
 
         wsRef.current = ws;
-    }, [serverUrl, token, dialogId]);
+    }, [serverUrl, token, dialogId, enabled]);
 
     useEffect(() => {
         unmountedRef.current = false;
@@ -98,7 +110,11 @@ export function useDootaskWebSocket({
             unmountedRef.current = true;
             if (reconnectTimer.current !== undefined) clearTimeout(reconnectTimer.current);
             if (heartbeatTimer.current !== undefined) clearInterval(heartbeatTimer.current);
-            wsRef.current?.close();
+            if (wsRef.current) {
+                wsRef.current.onclose = null;
+                wsRef.current.close();
+                wsRef.current = null;
+            }
         };
     }, [connect]);
 }

@@ -115,10 +115,9 @@ export const ChatInput = React.memo(({ onSendText, onSendImage, replyTo, onCance
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.divider,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: theme.colors.header.background,
         paddingHorizontal: theme.margins.sm,
+        paddingTop: theme.margins.xs,
     },
     replyBar: {
         flexDirection: 'row',

@@ -428,7 +428,7 @@ export default function DooTaskDetail() {
         try {
             const res = await dootaskFetchTaskDialog(profile.serverUrl, profile.token, task.id);
             if (res.ret === 1 && res.data?.dialog_id) {
-                router.push(`/dootask/chat/${res.data.dialog_id}`);
+                router.push(`/dootask/chat/${res.data.dialog_id}?taskName=${encodeURIComponent(task.name)}`);
             } else {
                 setError(res.msg || t('dootask.errorLoadChat'));
             }
@@ -677,9 +677,6 @@ export default function DooTaskDetail() {
                             </Text>
                         </View>
                     ))}
-                    <Text style={[styles.logFooter, { color: theme.colors.textSecondary }]}>
-                        {t('dootask.viewFullLogs')}
-                    </Text>
                 </View>
             ) : null}
 
@@ -810,5 +807,4 @@ const styles = StyleSheet.create((_theme) => ({
     logRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
     logDetail: { ...Typography.default(), fontSize: 13, flex: 1 },
     logTime: { ...Typography.default(), fontSize: 12, flexShrink: 0 },
-    logFooter: { ...Typography.default(), fontSize: 12, textAlign: 'center', marginTop: 4 },
 }));

@@ -21,6 +21,7 @@ interface ChatHeaderViewProps {
     isConnecting?: boolean;
     flavor?: string | null;
     sessionIcon?: string | null;
+    headerRight?: () => React.ReactNode;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -33,6 +34,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     isConnecting = false,
     flavor,
     sessionIcon,
+    headerRight,
 }) => {
     const { theme } = useUnistyles();
     const navigation = useNavigation();
@@ -97,7 +99,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     </View>
                 )}
 
-                {avatarId && onAvatarPress && (
+                {headerRight ? headerRight() : avatarId && onAvatarPress ? (
                     <Pressable
                         onPress={onAvatarPress}
                         hitSlop={15}
@@ -111,7 +113,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             sessionIcon={sessionIcon}
                         />
                     </Pressable>
-                )}
+                ) : null}
                 </View>
             </View>
         </View>

@@ -103,6 +103,7 @@ interface StorageState {
     dootaskFilters: DooTaskFilters;
     dootaskPager: DooTaskPager;
     dootaskUserCache: Record<number, string>;
+    dootaskUserAvatars: Record<number, string | null>;
     dootaskTaskDetailCache: Record<number, { task: DooTaskItem; content: string | null }>;
     dootaskProjectsFetchedAt: number | null;
     dootaskUserCacheFetchedAt: number | null;
@@ -355,6 +356,7 @@ export const storage = create<StorageState>()((set, get) => {
         dootaskFilters: { status: 'uncompleted' },
         dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
         dootaskUserCache: _cachedUsers.cache,
+        dootaskUserAvatars: {},
         dootaskTaskDetailCache: {},
         dootaskProjectsFetchedAt: _cachedProjects.fetchedAt,
         dootaskUserCacheFetchedAt: _cachedUsers.fetchedAt,
@@ -1320,6 +1322,7 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskProjects: [],
                 dootaskProjectsFetchedAt: null,
                 dootaskUserCache: {},
+                dootaskUserAvatars: {},
                 dootaskUserCacheFetchedAt: null,
                 dootaskTaskDetailCache: {},
             }));
@@ -1438,8 +1441,12 @@ export const storage = create<StorageState>()((set, get) => {
                 if (!cur || `${cur.serverUrl}|${cur.userId}|${cur.token}` !== profileKey) return get().dootaskUserCache; // account switched
                 if (res.ret === 1 && Array.isArray(res.data)) {
                     const newEntries: Record<number, string> = {};
+                    const newAvatars: Record<number, string | null> = {};
                     for (const u of res.data) {
-                        if (u.userid) newEntries[u.userid] = u.nickname || '';
+                        if (u.userid) {
+                            newEntries[u.userid] = u.nickname || '';
+                            newAvatars[u.userid] = u.userimg || null;
+                        }
                     }
                     // When expired, strip requested IDs from old cache before merging
                     // so IDs not returned by API don't retain stale values
@@ -1448,9 +1455,10 @@ export const storage = create<StorageState>()((set, get) => {
                         ? Object.fromEntries(Object.entries(oldCache).filter(([id]) => !missingIds.includes(Number(id))))
                         : oldCache;
                     const merged = { ...base, ...newEntries };
+                    const mergedAvatars = { ...get().dootaskUserAvatars, ...newAvatars };
                     const now = Date.now();
                     saveDooTaskUserCache(merged, now);
-                    set((state) => ({ ...state, dootaskUserCache: merged, dootaskUserCacheFetchedAt: now }));
+                    set((state) => ({ ...state, dootaskUserCache: merged, dootaskUserAvatars: mergedAvatars, dootaskUserCacheFetchedAt: now }));
                     return merged;
                 }
             } catch { /* silent */ }
@@ -1479,6 +1487,7 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskFilters: { status: 'uncompleted' },
                 dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
                 dootaskUserCache: {},
+                dootaskUserAvatars: {},
                 dootaskTaskDetailCache: {},
                 dootaskProjectsFetchedAt: null,
                 dootaskUserCacheFetchedAt: null,
@@ -1758,6 +1767,10 @@ export function useDootaskFilters(): DooTaskFilters {
 
 export function useDootaskUserCache(): Record<number, string> {
     return storage(useShallow((s) => s.dootaskUserCache));
+}
+
+export function useDootaskUserAvatars(): Record<number, string | null> {
+    return storage(useShallow((s) => s.dootaskUserAvatars));
 }
 
 export function useDootaskTaskDetailCache(taskId: number) {

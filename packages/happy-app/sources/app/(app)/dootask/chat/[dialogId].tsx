@@ -1,9 +1,12 @@
 import * as React from 'react';
-import { View, ActivityIndicator, Text, KeyboardAvoidingView, Platform } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { View, Text } from 'react-native';
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import { storage, useDootaskProfile, useDootaskUserCache } from '@/sync/storage';
+import { Image } from 'expo-image';
+import { ChatHeaderView } from '@/components/ChatHeaderView';
+import { AgentContentView } from '@/components/AgentContentView';
+import { storage, useDootaskProfile, useDootaskUserCache, useDootaskUserAvatars } from '@/sync/storage';
 import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage } from '@/sync/dootask/api';
 import { useDootaskWebSocket } from '@/hooks/useDootaskWebSocket';
 import { ChatMessageList } from '@/components/dootask/ChatMessageList';
@@ -13,20 +16,33 @@ import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
 import type { DooTaskDialogMsg } from '@/sync/dootask/types';
 
+function dedupeMessagesById(list: DooTaskDialogMsg[]): DooTaskDialogMsg[] {
+    const seen = new Set<number>();
+    const deduped: DooTaskDialogMsg[] = [];
+    for (const msg of list) {
+        if (seen.has(msg.id)) continue;
+        seen.add(msg.id);
+        deduped.push(msg);
+    }
+    return deduped;
+}
+
 export default React.memo(function DooTaskChat() {
-    const { dialogId } = useLocalSearchParams<{ dialogId: string }>();
+    const { dialogId, taskName } = useLocalSearchParams<{ dialogId: string; taskName?: string }>();
     const { theme } = useUnistyles();
+    const router = useRouter();
     const profile = useDootaskProfile();
     const userCache = useDootaskUserCache();
+    const userAvatars = useDootaskUserAvatars();
     const id = Number(dialogId);
 
     // Message state
     const [messages, setMessages] = React.useState<DooTaskDialogMsg[]>([]);
-    const [loading, setLoading] = React.useState(true);
     const [loadingMore, setLoadingMore] = React.useState(false);
     const [hasMore, setHasMore] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [sending, setSending] = React.useState(false);
+    const [wsEnabled, setWsEnabled] = React.useState(false);
 
     // Ref for messages (used by handleLoadMore to avoid dependency on messages array)
     const messagesRef = React.useRef(messages);
@@ -43,7 +59,10 @@ export default React.memo(function DooTaskChat() {
     const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
 
-    // Collect all image URLs from messages for the viewer
+    // Collect all image URLs from messages for the viewer.
+    // Use a ref so handleImagePress doesn't depend on imageUrls identity,
+    // which would defeat React.memo on ChatMessageList.
+    const imageUrlsRef = React.useRef<{ uri: string }[]>([]);
     const imageUrls = React.useMemo(() => {
         const urls: { uri: string }[] = [];
         for (const msg of messages) {
@@ -55,6 +74,7 @@ export default React.memo(function DooTaskChat() {
                 }
             }
         }
+        imageUrlsRef.current = urls;
         return urls;
     }, [messages, profile?.serverUrl]);
 
@@ -68,9 +88,8 @@ export default React.memo(function DooTaskChat() {
             });
             if (res.ret === 1 && res.data?.list) {
                 const list: DooTaskDialogMsg[] = res.data.list;
-                // API returns oldest-first, we need newest-first for inverted FlatList
-                const reversed = [...list].reverse();
-                setMessages(reversed);
+                // API returns newest-first, which is what inverted FlatList needs
+                setMessages(dedupeMessagesById(list));
                 setHasMore(list.length >= 50);
                 // Fetch user names
                 const userIds = [...new Set(list.map(m => m.userid))];
@@ -81,7 +100,7 @@ export default React.memo(function DooTaskChat() {
         } catch (e) {
             setError(e instanceof Error ? e.message : t('dootask.errorLoadChat'));
         } finally {
-            setLoading(false);
+            setWsEnabled(true);
         }
     }, [profile, id]);
 
@@ -105,9 +124,14 @@ export default React.memo(function DooTaskChat() {
                 if (list.length === 0) {
                     setHasMore(false);
                 } else {
-                    const reversed = [...list].reverse();
-                    setMessages(prev => [...prev, ...reversed]);
-                    setHasMore(list.length >= 50);
+                    const prev = messagesRef.current;
+                    const merged = dedupeMessagesById([...prev, ...list]);
+                    const hasNewMessages = merged.length > prev.length;
+                    if (hasNewMessages) {
+                        setMessages(merged);
+                        messagesRef.current = merged;
+                    }
+                    setHasMore(hasNewMessages && list.length >= 50);
                     const userIds = [...new Set(list.map(m => m.userid))];
                     if (userIds.length > 0) storage.getState().fetchDootaskUsers(userIds);
                 }
@@ -117,11 +141,13 @@ export default React.memo(function DooTaskChat() {
         }
     }, [profile, id, loadingMore, hasMore]);
 
-    // WebSocket for real-time
+    // WebSocket for real-time — only connect after initial REST fetch completes
+    // to prevent WS messages from being overwritten by setMessages()
     useDootaskWebSocket({
         serverUrl: profile?.serverUrl || '',
         token: profile?.token || '',
         dialogId: id,
+        enabled: wsEnabled,
         onMessage: React.useCallback((msg: DooTaskDialogMsg) => {
             setMessages(prev => {
                 // Avoid duplicates
@@ -198,60 +224,74 @@ export default React.memo(function DooTaskChat() {
         setMenuVisible(true);
     }, [userCache]);
 
-    // Image press -> open viewer
+    // Render ChatHeaderView directly (same style as SessionView)
+    // Right side: DooTask icon (task dialogs show a task icon, matching DooTask web)
+    const header = React.useMemo(() => (
+        <ChatHeaderView
+            title={t('dootask.taskChat')}
+            subtitle={taskName}
+            onBackPress={() => router.back()}
+            headerRight={() => (
+                <View style={styles.headerIconButton}>
+                    <Image
+                        source={require('@/assets/images/icon-dootask.png')}
+                        style={{ width: 28, height: 28 }}
+                        contentFit="contain"
+                    />
+                </View>
+            )}
+        />
+    ), [taskName, router]);
+
+    // Image press -> open viewer (uses ref to avoid dependency on imageUrls)
     const handleImagePress = React.useCallback((url: string) => {
-        const idx = imageUrls.findIndex(img => img.uri === url);
+        const idx = imageUrlsRef.current.findIndex(img => img.uri === url);
         setImageViewerIndex(idx >= 0 ? idx : 0);
         setImageViewerVisible(true);
-    }, [imageUrls]);
+    }, []);
 
-    if (loading) {
-        return (
-            <>
-                <Stack.Screen options={{ title: t('dootask.chatTitle') }} />
-                <ActivityIndicator style={{ flex: 1 }} />
-            </>
-        );
-    }
+    const content = !(error && messages.length === 0) ? (
+        <ChatMessageList
+            messages={messages}
+            currentUserId={profile?.userId || 0}
+            userNames={userCache}
+            userAvatars={userAvatars}
+            onLoadMore={handleLoadMore}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
+            onMessageLongPress={handleMessageLongPress}
+            onImagePress={handleImagePress}
+            serverUrl={profile?.serverUrl || ''}
+        />
+    ) : null;
 
-    if (error && messages.length === 0) {
-        return (
-            <>
-                <Stack.Screen options={{ title: t('dootask.chatTitle') }} />
-                <View style={styles.center}>
-                    <Text style={{ color: theme.colors.textDestructive }}>{error}</Text>
-                </View>
-            </>
-        );
-    }
+    const placeholder = error && messages.length === 0 ? (
+        <View style={styles.center}>
+            <Text style={{ color: theme.colors.textDestructive }}>{error}</Text>
+        </View>
+    ) : null;
+
+    const input = (
+        <ChatInput
+            onSendText={handleSendText}
+            onSendImage={handleSendImage}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            sending={sending}
+        />
+    );
 
     return (
         <>
-            <Stack.Screen options={{ title: t('dootask.chatTitle') }} />
-            <KeyboardAvoidingView
-                style={{ flex: 1, backgroundColor: theme.colors.surface }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-            >
-                <ChatMessageList
-                    messages={messages}
-                    currentUserId={profile?.userId || 0}
-                    userNames={userCache}
-                    onLoadMore={handleLoadMore}
-                    loadingMore={loadingMore}
-                    hasMore={hasMore}
-                    onMessageLongPress={handleMessageLongPress}
-                    onImagePress={handleImagePress}
-                    serverUrl={profile?.serverUrl || ''}
+            <Stack.Screen options={{ headerShown: false }} />
+            {header}
+            <View style={[styles.body, { backgroundColor: theme.colors.surface }]}>
+                <AgentContentView
+                    content={content}
+                    placeholder={placeholder}
+                    input={input}
                 />
-                <ChatInput
-                    onSendText={handleSendText}
-                    onSendImage={handleSendImage}
-                    replyTo={replyTo}
-                    onCancelReply={() => setReplyTo(null)}
-                    sending={sending}
-                />
-            </KeyboardAvoidingView>
+            </View>
             <ActionMenuModal
                 visible={menuVisible}
                 items={menuItems}
@@ -270,9 +310,18 @@ export default React.memo(function DooTaskChat() {
 // --- Styles ---
 
 const styles = StyleSheet.create((_theme) => ({
+    body: {
+        flex: 1,
+    },
     center: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    headerIconButton: {
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 }));

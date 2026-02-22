@@ -10,6 +10,7 @@ type ChatMessageListProps = {
     messages: DooTaskDialogMsg[];
     currentUserId: number;
     userNames: Record<number, string>;
+    userAvatars: Record<number, string | null>;
     onLoadMore: () => void;
     loadingMore: boolean;
     hasMore: boolean;
@@ -17,6 +18,13 @@ type ChatMessageListProps = {
     onImagePress: (url: string) => void;
     serverUrl: string;
 };
+
+/** Resolve a potentially relative avatar URL to an absolute one. */
+function resolveAvatarUrl(avatarPath: string | null | undefined, serverUrl: string): string | null {
+    if (!avatarPath) return null;
+    if (avatarPath.startsWith('http')) return avatarPath;
+    return serverUrl.replace(/\/+$/, '') + '/' + avatarPath.replace(/^\/+/, '');
+}
 
 /**
  * Inverted FlatList that renders a scrollable chat message list with date separators.
@@ -27,6 +35,7 @@ export const ChatMessageList = React.memo(({
     messages,
     currentUserId,
     userNames,
+    userAvatars,
     onLoadMore,
     loadingMore,
     hasMore,
@@ -60,15 +69,30 @@ export const ChatMessageList = React.memo(({
         const nextDate = nextMsg ? nextMsg.created_at.substring(0, 10) : null;
         const showDateSeparator = !nextDate || nextDate !== currentDate;
 
+        // Avatar grouping: show avatar on the FIRST message of a sender group (reading top-to-bottom).
+        // In inverted FlatList, "above" = index + 1. Show avatar when the message above is
+        // from a different user or doesn't exist, OR when a date separator breaks the group.
+        const showAvatar = !nextMsg || nextMsg.userid !== item.userid || nextMsg.type === 'notice' || showDateSeparator;
+
+        // Spacing rule:
+        // - Compact spacing for consecutive messages from the same sender (same date block)
+        // - Larger spacing when a new sender group starts
+        const isConsecutiveSameSender =
+            !!nextMsg &&
+            nextMsg.userid === item.userid &&
+            nextMsg.type !== 'notice' &&
+            item.type !== 'notice' &&
+            !showDateSeparator;
+
         // Resolve reply message
         const replyMsg = item.reply_id ? replyMsgMap.get(item.reply_id) ?? null : null;
         const replySenderName = replyMsg ? userNames[replyMsg.userid] : undefined;
 
         return (
-            <View>
+            <View style={isConsecutiveSameSender ? styles.itemWithoutAvatar : styles.itemWithAvatar}>
                 {showDateSeparator && (
                     <View style={styles.dateSeparator}>
-                        <Text style={[styles.dateText, { color: theme.colors.textSecondary }]}>
+                        <Text style={[styles.dateText, { color: theme.colors.textSecondary, backgroundColor: theme.colors.header.background }]}>
                             {currentDate}
                         </Text>
                     </View>
@@ -77,6 +101,8 @@ export const ChatMessageList = React.memo(({
                     msg={item}
                     currentUserId={currentUserId}
                     senderName={userNames[item.userid]}
+                    avatarUrl={resolveAvatarUrl(userAvatars[item.userid], serverUrl)}
+                    showAvatar={showAvatar}
                     replyMsg={replyMsg}
                     replySenderName={replySenderName}
                     onImagePress={onImagePress}
@@ -85,7 +111,7 @@ export const ChatMessageList = React.memo(({
                 />
             </View>
         );
-    }, [messages, currentUserId, userNames, replyMsgMap, onImagePress, onMessageLongPress, serverUrl, theme]);
+    }, [messages, currentUserId, userNames, userAvatars, replyMsgMap, onImagePress, onMessageLongPress, serverUrl, theme]);
 
     const keyExtractor = React.useCallback((msg: DooTaskDialogMsg) => msg.id.toString(), []);
 
@@ -106,45 +132,60 @@ export const ChatMessageList = React.memo(({
         </View>
     ), [theme]);
 
+    // Force FlatList to re-render when avatar data loads asynchronously
+    const extraData = React.useMemo(() => ({ userAvatars, userNames }), [userAvatars, userNames]);
+
     return (
         <FlatList
             data={messages}
             inverted={true}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
+            extraData={extraData}
             onEndReached={handleEndReached}
             onEndReachedThreshold={0.3}
             ListFooterComponent={listFooter}
             ListEmptyComponent={listEmpty}
             contentContainerStyle={styles.contentContainer}
+            initialNumToRender={50}
+            maxToRenderPerBatch={50}
+            windowSize={11}
         />
     );
 });
 
 // --- Styles ---
 
-const styles = StyleSheet.create((_theme) => ({
+const styles = StyleSheet.create((theme) => ({
     contentContainer: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingVertical: theme.margins.sm,
+    },
+    itemWithAvatar: {
+        marginBottom: 22,
+    },
+    itemWithoutAvatar: {
+        marginBottom: 10,
     },
     dateSeparator: {
         alignItems: 'center',
-        marginVertical: 8,
+        marginVertical: theme.margins.lg,
     },
     dateText: {
         ...Typography.default(),
         fontSize: 12,
+        paddingHorizontal: theme.margins.md,
+        paddingVertical: theme.margins.xs,
+        borderRadius: 999,
     },
     loadingFooter: {
-        paddingVertical: 12,
+        paddingVertical: theme.margins.lg,
         alignItems: 'center',
     },
     emptyContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 32,
+        paddingVertical: theme.margins.xxl,
     },
     emptyText: {
         ...Typography.default(),
