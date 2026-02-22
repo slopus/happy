@@ -287,6 +287,7 @@ export const en = {
         errorSendMessage: 'Failed to send message',
         unsupportedMessage: 'Unsupported message type. Please use DooTask client to view.',
         chatEmpty: 'No messages yet',
+        aiAssistant: 'AI Assistant',
     },
 
     settingsAppearance: {

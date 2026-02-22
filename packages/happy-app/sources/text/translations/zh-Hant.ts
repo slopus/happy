@@ -288,6 +288,7 @@ export const zhHant: TranslationStructure = {
         errorSendMessage: '發送訊息失敗',
         unsupportedMessage: '目前客戶端不支援此類訊息，請使用 DooTask 客戶端查看。',
         chatEmpty: '暫無訊息',
+        aiAssistant: 'AI 助手',
     },
 
     settingsAppearance: {

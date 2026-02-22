@@ -319,6 +319,7 @@ export const ja: TranslationStructure = {
         errorSendMessage: 'メッセージの送信に失敗しました',
         unsupportedMessage: 'このメッセージタイプはサポートされていません。DooTaskクライアントでご確認ください。',
         chatEmpty: 'メッセージはありません',
+        aiAssistant: 'AIアシスタント',
     },
 
     settingsAppearance: {

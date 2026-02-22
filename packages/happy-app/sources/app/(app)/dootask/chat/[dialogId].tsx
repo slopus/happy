@@ -219,7 +219,7 @@ export default React.memo(function DooTaskChat() {
                 onPress: () => {
                     setReplyTo({
                         msg,
-                        senderName: userCache[msg.userid] || String(msg.userid),
+                        senderName: msg.userid === -1 ? t('dootask.aiAssistant') : (userCache[msg.userid] || String(msg.userid)),
                     });
                 },
             },

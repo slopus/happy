@@ -9,6 +9,11 @@ import { Typography } from '@/constants/Typography';
 import { HtmlContent } from '@/components/dootask/HtmlContent';
 import type { DooTaskDialogMsg } from '@/sync/dootask/types';
 
+// --- AI Assistant ---
+
+const AI_ASSISTANT_USERID = -1;
+const AI_AVATAR_COLOR = '#7C4DFF';
+
 // --- Constants ---
 
 const AVATAR_SIZE = 36;
@@ -51,6 +56,108 @@ function resolveUrl(raw: string, serverUrl: string): string {
     const resolved = raw.replace(/\{\{RemoteURL\}\}/g, base);
     if (resolved.startsWith('http') || resolved.startsWith('//')) return resolved;
     return base + resolved.replace(/^\/+/, '');
+}
+
+/**
+ * Simple markdown-to-HTML converter for DooTask AI assistant messages.
+ * Handles common patterns: headers, bold, italic, links, lists, code blocks,
+ * blockquotes, and DooTask-specific :::ai-action{...}::: directives.
+ */
+function markdownToHtml(md: string): string {
+    let text = md;
+
+    // Process :::ai-action{...}::: directives — show status labels
+    text = text.replace(/:::ai-action\{([^}]+)\}:::/g, (_match, attrs: string) => {
+        const params: Record<string, string> = {};
+        attrs.replace(/(\w+)="([^"]+)"/g, (_m: string, key: string, value: string) => {
+            params[key] = value;
+            return '';
+        });
+        const status = params.status || '';
+        if (status === 'applied') return '<span style="color:#4CAF50;font-style:italic">✓ Adopted</span>';
+        if (status === 'dismissed') return '<span style="color:#999;font-style:italic">✗ Dismissed</span>';
+        // Active (no status) — hide interactive buttons in mobile
+        return '';
+    });
+
+    // Process :::reasoning ... ::: blocks
+    text = text.replace(/:::\s*reasoning\s*\n([\s\S]*?):::/g, (_match, content: string) => {
+        return `\n<blockquote><em>Thinking...</em>\n${content.trim()}</blockquote>\n`;
+    });
+
+    // Remove empty reasoning blocks
+    text = text.replace(/:::\s*reasoning\s*[\r\n]*\s*:::/g, '');
+
+    // Code blocks (```lang\n...\n```)
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang: string, code: string) => {
+        const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const langLabel = lang ? `<div style="font-size:12px;color:#888;margin-bottom:4px">${lang}</div>` : '';
+        return `\n<pre>${langLabel}<code>${escaped}</code></pre>\n`;
+    });
+
+    // Inline code (`code`)
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Images ![alt](url) — before links to avoid conflict
+    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+
+    // Links [text](url)
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+    // Headers (must be at start of line)
+    text = text.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
+    text = text.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
+    text = text.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+    text = text.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+    text = text.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+    text = text.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+
+    // Bold + italic
+    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    // Bold
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    text = text.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>');
+
+    // Strikethrough
+    text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
+
+    // Horizontal rules
+    text = text.replace(/^---+$/gm, '<hr>');
+
+    // Blockquotes (consecutive lines)
+    text = text.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+    // Merge consecutive blockquotes
+    text = text.replace(/<\/blockquote>\n<blockquote>/g, '\n');
+
+    // Unordered lists
+    text = text.replace(/((?:^[-*+]\s+.+$\n?)+)/gm, (block) => {
+        const items = block.replace(/^[-*+]\s+(.+)$/gm, '<li>$1</li>').trim();
+        return `<ul>${items}</ul>`;
+    });
+
+    // Ordered lists
+    text = text.replace(/((?:^\d+\.\s+.+$\n?)+)/gm, (block) => {
+        const items = block.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>').trim();
+        return `<ol>${items}</ol>`;
+    });
+
+    // Double newlines -> paragraph breaks
+    text = text.replace(/\n\n+/g, '</p><p>');
+
+    // Single newlines -> <br> (but not inside pre/code blocks or after block elements)
+    text = text.replace(/(?<!\n)<\/p><p>(?!\n)/g, '</p><p>');
+    text = text.replace(/([^>\n])\n([^<\n])/g, '$1<br>$2');
+
+    // Wrap in paragraph
+    text = '<p>' + text + '</p>';
+
+    // Clean up: remove paragraphs around block elements
+    text = text.replace(/<p>\s*(<(?:h[1-6]|pre|ul|ol|blockquote|hr|div)[^>]*>)/g, '$1');
+    text = text.replace(/(<\/(?:h[1-6]|pre|ul|ol|blockquote|hr|div)>)\s*<\/p>/g, '$1');
+    text = text.replace(/<p>\s*<\/p>/g, '');
+
+    return text;
 }
 
 /** Replace {{RemoteURL}} placeholders in HTML content so images and links resolve correctly. */
@@ -110,6 +217,14 @@ const COMPLEX_HTML_RE = /<(table|img|pre|code|ul|ol|li|h[1-6]|iframe|video|audio
 
 function TextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTaskDialogMsg; theme: any; serverUrl: string; onImagePress?: (url: string) => void }) {
     const text = getMsgText(msg);
+
+    // Markdown messages (from AI assistant): convert to HTML and render rich content
+    const isMd = typeof msg.msg === 'object' && msg.msg?.type === 'md';
+    if (isMd) {
+        const html = markdownToHtml(text);
+        return <HtmlContent html={resolveContentUrls(html, serverUrl)} theme={theme} onImagePress={onImagePress} />;
+    }
+
     const isHtml = (typeof msg.msg === 'object' && msg.msg?.type === 'html') || /<[^>]+>/.test(text);
     // Only use WebView for complex HTML (tables, code blocks, images, lists, etc.)
     // Simple HTML (br, p, b, i, a, span) is stripped and rendered natively for instant display
@@ -177,8 +292,8 @@ function FileContent({ msg, serverUrl, theme }: { msg: DooTaskDialogMsg; serverU
 export const ChatBubble = React.memo(({
     msg,
     currentUserId,
-    senderName,
-    avatarUrl,
+    senderName: _senderName,
+    avatarUrl: _avatarUrl,
     showAvatar,
     replyMsg,
     replySenderName,
@@ -187,7 +302,10 @@ export const ChatBubble = React.memo(({
     serverUrl,
 }: ChatBubbleProps) => {
     const { theme } = useUnistyles();
+    const isAiAssistant = msg.userid === AI_ASSISTANT_USERID;
     const isSelf = msg.userid === currentUserId;
+    const senderName = isAiAssistant ? t('dootask.aiAssistant') : _senderName;
+    const avatarUrl = isAiAssistant ? null : _avatarUrl;
     const time = formatTime(msg.created_at);
 
     // Notice messages: centered, no layout change
@@ -262,7 +380,7 @@ export const ChatBubble = React.memo(({
 
     // --- Others' messages: Slack-style flat layout ---
     const initial = (senderName || '?')[0].toUpperCase();
-    const avatarBg = getAvatarColor(msg.userid);
+    const avatarBg = isAiAssistant ? AI_AVATAR_COLOR : getAvatarColor(msg.userid);
 
     return (
         <Pressable
@@ -272,7 +390,11 @@ export const ChatBubble = React.memo(({
             {/* Avatar column */}
             <View style={styles.avatarColumn}>
                 {showAvatar ? (
-                    avatarUrl ? (
+                    isAiAssistant ? (
+                        <View style={[styles.avatarPlaceholder, { backgroundColor: AI_AVATAR_COLOR }]}>
+                            <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+                        </View>
+                    ) : avatarUrl ? (
                         <Image
                             source={{ uri: avatarUrl }}
                             style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2 }}

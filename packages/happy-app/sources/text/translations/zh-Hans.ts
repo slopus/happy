@@ -289,6 +289,7 @@ export const zhHans: TranslationStructure = {
         errorSendMessage: '发送消息失败',
         unsupportedMessage: '当前客户端不支持此类消息，请使用 DooTask 客户端查看。',
         chatEmpty: '暂无消息',
+        aiAssistant: 'AI 助手',
     },
 
     settingsAppearance: {

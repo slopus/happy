@@ -6,6 +6,8 @@ import { Typography } from '@/constants/Typography';
 import { ChatBubble } from './ChatBubble';
 import type { DooTaskDialogMsg } from '@/sync/dootask/types';
 
+const AI_ASSISTANT_USERID = -1;
+
 type ChatMessageListProps = {
     messages: DooTaskDialogMsg[];
     currentUserId: number;
@@ -88,7 +90,9 @@ export const ChatMessageList = React.memo(({
 
         // Resolve reply message
         const replyMsg = item.reply_id ? replyMsgMap.get(item.reply_id) ?? null : null;
-        const replySenderName = replyMsg ? userNames[replyMsg.userid] : undefined;
+        const replySenderName = replyMsg
+            ? (replyMsg.userid === AI_ASSISTANT_USERID ? t('dootask.aiAssistant') : userNames[replyMsg.userid])
+            : undefined;
 
         return (
             <View style={isConsecutiveSameSender ? styles.itemWithoutAvatar : styles.itemWithAvatar}>
