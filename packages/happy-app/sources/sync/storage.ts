@@ -356,7 +356,7 @@ export const storage = create<StorageState>()((set, get) => {
         dootaskFilters: { status: 'uncompleted' },
         dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
         dootaskUserCache: _cachedUsers.cache,
-        dootaskUserAvatars: {},
+        dootaskUserAvatars: _cachedUsers.avatars,
         dootaskTaskDetailCache: {},
         dootaskProjectsFetchedAt: _cachedProjects.fetchedAt,
         dootaskUserCacheFetchedAt: _cachedUsers.fetchedAt,
@@ -1457,7 +1457,7 @@ export const storage = create<StorageState>()((set, get) => {
                     const merged = { ...base, ...newEntries };
                     const mergedAvatars = { ...get().dootaskUserAvatars, ...newAvatars };
                     const now = Date.now();
-                    saveDooTaskUserCache(merged, now);
+                    saveDooTaskUserCache(merged, mergedAvatars, now);
                     set((state) => ({ ...state, dootaskUserCache: merged, dootaskUserAvatars: mergedAvatars, dootaskUserCacheFetchedAt: now }));
                     return merged;
                 }
