@@ -118,7 +118,7 @@ document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 </body></html>`;
 
     return (
-        <View style={{ height, minHeight: 50 }}>
+        <View style={{ height, minHeight: 50, alignSelf: 'stretch' as const }}>
             <WebView
                 source={{ html: wrappedHtml }}
                 style={{ flex: 1, backgroundColor: 'transparent' }}
@@ -142,5 +142,5 @@ document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 });
 
 const styles = StyleSheet.create((_theme) => ({
-    htmlContainer: { minHeight: 20 },
+    htmlContainer: { minHeight: 20, alignSelf: 'stretch' as const },
 }));
