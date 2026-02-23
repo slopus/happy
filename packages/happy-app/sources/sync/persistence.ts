@@ -223,6 +223,7 @@ export function retrieveTempText(id: string): string | null {
 }
 
 const SESSION_LAST_VIEWED_KEY = 'session-last-viewed-at';
+const BROWSER_LAST_PATHS_KEY = 'browser-last-paths-v1';
 
 export function loadSessionLastViewedAt(): Map<string, number> {
     const raw = mmkv.getString(SESSION_LAST_VIEWED_KEY);
@@ -239,6 +240,33 @@ export function loadSessionLastViewedAt(): Map<string, number> {
 
 export function saveSessionLastViewedAt(map: Map<string, number>) {
     mmkv.set(SESSION_LAST_VIEWED_KEY, JSON.stringify(Object.fromEntries(map)));
+}
+
+export function loadBrowserLastPaths(): Record<string, string> {
+    const raw = mmkv.getString(BROWSER_LAST_PATHS_KEY);
+    if (!raw) return {};
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return {};
+        return parsed as Record<string, string>;
+    } catch {
+        return {};
+    }
+}
+
+export function loadBrowserLastPath(rootPath: string): string | null {
+    if (!rootPath) return null;
+    const map = loadBrowserLastPaths();
+    const value = map[rootPath];
+    if (typeof value !== 'string' || value.length === 0) return null;
+    return value;
+}
+
+export function saveBrowserLastPath(rootPath: string, path: string): void {
+    if (!rootPath || !path) return;
+    const map = loadBrowserLastPaths();
+    map[rootPath] = path;
+    mmkv.set(BROWSER_LAST_PATHS_KEY, JSON.stringify(map));
 }
 
 export function loadDooTaskProfile(): DooTaskProfile | null {

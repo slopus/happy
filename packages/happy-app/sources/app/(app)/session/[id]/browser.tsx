@@ -13,6 +13,7 @@ import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
 import { t } from '@/text';
+import { loadBrowserLastPath, saveBrowserLastPath } from '@/sync/persistence';
 
 interface DirectoryEntry {
     name: string;
@@ -66,7 +67,7 @@ export default function BrowserScreen() {
     const [isSearching, setIsSearching] = React.useState(false);
     const searchInputRef = React.useRef<TextInput>(null);
 
-    const loadDirectory = React.useCallback(async (path: string, silent?: boolean) => {
+    const loadDirectory = React.useCallback(async (path: string, silent?: boolean): Promise<boolean> => {
         if (!silent) setIsLoading(true);
         setError(null);
         try {
@@ -74,18 +75,41 @@ export default function BrowserScreen() {
             if (response.success && response.entries) {
                 setEntries(response.entries);
                 setCurrentPath(path);
+                if (rootPath && path.startsWith(rootPath)) {
+                    saveBrowserLastPath(rootPath, path);
+                }
+                return true;
             } else {
                 setError(response.error || t('browser.failedToLoad'));
+                return false;
             }
         } catch (e) {
             setError(t('browser.failedToLoad'));
+            return false;
         } finally {
             if (!silent) setIsLoading(false);
         }
-    }, [sessionId]);
+    }, [sessionId, rootPath]);
 
     React.useEffect(() => {
-        loadDirectory(rootPath);
+        let cancelled = false;
+
+        const loadInitialDirectory = async () => {
+            if (!rootPath) return;
+
+            const cachedPath = loadBrowserLastPath(rootPath);
+            const initialPath = cachedPath && cachedPath.startsWith(rootPath) ? cachedPath : rootPath;
+            const ok = await loadDirectory(initialPath);
+            if (!ok && !cancelled && initialPath !== rootPath) {
+                await loadDirectory(rootPath);
+            }
+        };
+
+        loadInitialDirectory();
+
+        return () => {
+            cancelled = true;
+        };
     }, [rootPath, loadDirectory]);
 
     // Refresh silently when screen is focused (after returning from file view)
