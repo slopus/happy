@@ -11,6 +11,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -69,7 +71,11 @@ export default function PathPickerScreen() {
     const inputRef = useRef<MultiTextInputHandle>(null);
     const recentMachinePaths = useSetting('recentMachinePaths');
 
-    const [customPath, setCustomPath] = useState(params.selectedPath || '');
+    const [customPath, setCustomPath] = useState(() => {
+        if (!params.selectedPath) return '';
+        const m = machines.find(m => m.id === params.machineId);
+        return formatPathRelativeToHome(params.selectedPath, m?.metadata?.homeDir);
+    });
 
     // Get the selected machine
     const machine = useMemo(() => {
@@ -121,8 +127,11 @@ export default function PathPickerScreen() {
     }, [sessions, params.machineId, recentMachinePaths]);
 
 
+    const homeDir = machine?.metadata?.homeDir;
+
     const handleSelectPath = React.useCallback(() => {
-        const pathToUse = customPath.trim() || machine?.metadata?.homeDir || '/home';
+        const rawPath = customPath.trim() || machine?.metadata?.homeDir || '/home';
+        const pathToUse = resolveAbsolutePath(rawPath, homeDir);
         // Pass path back via navigation params (main's pattern, received by new/index.tsx)
         const state = navigation.getState();
         const previousRoute = state?.routes?.[state.index - 1];
@@ -133,7 +142,7 @@ export default function PathPickerScreen() {
             } as never);
         }
         router.back();
-    }, [customPath, router, machine, navigation]);
+    }, [customPath, router, machine, navigation, homeDir]);
 
     if (!machine) {
         return (
@@ -212,7 +221,7 @@ export default function PathPickerScreen() {
                                         ref={inputRef}
                                         value={customPath}
                                         onChangeText={setCustomPath}
-                                        placeholder="Enter path (e.g. /home/user/projects)"
+                                        placeholder="Enter path (e.g. ~/projects)"
                                         maxHeight={76}
                                         paddingTop={8}
                                         paddingBottom={8}
@@ -227,13 +236,14 @@ export default function PathPickerScreen() {
                         {recentPaths.length > 0 && (
                             <ItemGroup title="Recent Paths">
                                 {recentPaths.map((path, index) => {
-                                    const isSelected = customPath.trim() === path;
+                                    const displayPath = formatPathRelativeToHome(path, homeDir);
+                                    const isSelected = customPath.trim() === displayPath || customPath.trim() === path;
                                     const isLast = index === recentPaths.length - 1;
 
                                     return (
                                         <Item
                                             key={path}
-                                            title={path}
+                                            title={displayPath}
                                             leftElement={
                                                 <Ionicons
                                                     name="folder-outline"
@@ -242,7 +252,7 @@ export default function PathPickerScreen() {
                                                 />
                                             }
                                             onPress={() => {
-                                                setCustomPath(path);
+                                                setCustomPath(displayPath);
                                                 setTimeout(() => inputRef.current?.focus(), 50);
                                             }}
                                             selected={isSelected}
@@ -258,15 +268,16 @@ export default function PathPickerScreen() {
                         {recentPaths.length === 0 && (
                             <ItemGroup title="Suggested Paths">
                                 {(() => {
-                                    const homeDir = machine.metadata?.homeDir || '/home';
+                                    const machineHomeDir = machine.metadata?.homeDir || '/home';
                                     const suggestedPaths = [
-                                        homeDir,
-                                        `${homeDir}/projects`,
-                                        `${homeDir}/Documents`,
-                                        `${homeDir}/Desktop`
+                                        '~',
+                                        '~/projects',
+                                        '~/Documents',
+                                        '~/Desktop'
                                     ];
                                     return suggestedPaths.map((path, index) => {
-                                        const isSelected = customPath.trim() === path;
+                                        const isSelected = customPath.trim() === path
+                                            || customPath.trim() === resolveAbsolutePath(path, machineHomeDir);
 
                                         return (
                                             <Item

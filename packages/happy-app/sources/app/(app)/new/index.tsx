@@ -1294,7 +1294,7 @@ function NewSessionWizard() {
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
-                                currentPath={selectedPath}
+                                currentPath={formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)}
                                 onPathClick={handlePathClick}
                                 images={images}
                                 onImagesChange={(newImages) => {
@@ -2028,7 +2028,7 @@ function NewSessionWizard() {
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}
-                            currentPath={selectedPath}
+                            currentPath={formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)}
                             onPathClick={handleAgentInputPathClick}
                             profileId={selectedProfileId}
                             onProfileClick={handleAgentInputProfileClick}
