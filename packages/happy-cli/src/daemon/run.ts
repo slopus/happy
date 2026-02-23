@@ -497,14 +497,19 @@ export async function startDaemon(): Promise<void> {
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
           // For now, we ignore it - each spawn creates a new session
+          // Build clean environment for child process
+          const childEnv = {
+            ...process.env,
+            ...extraEnv
+          };
+          // Remove CLAUDECODE to prevent nested session detection when spawning Claude CLI
+          delete childEnv.CLAUDECODE;
+
           const happyProcess = spawnHappyCLI(args, {
             cwd: directory,
             detached: true,  // Sessions stay alive when daemon stops
             stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
-            env: {
-              ...process.env,
-              ...extraEnv
-            }
+            env: childEnv
           });
 
           // Log output for debugging

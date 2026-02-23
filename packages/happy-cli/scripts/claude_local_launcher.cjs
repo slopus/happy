@@ -67,6 +67,9 @@ global.fetch = function(...args) {
 Object.defineProperty(global.fetch, 'name', { value: 'fetch' });
 Object.defineProperty(global.fetch, 'length', { value: originalFetch.length });
 
+// Remove CLAUDECODE to prevent nested session detection when spawning Claude CLI
+delete process.env.CLAUDECODE;
+
 // Import global Claude Code CLI
 const { getClaudeCliPath, runClaudeCli } = require('./claude_version_utils.cjs');
 
