@@ -181,11 +181,15 @@ export default React.memo(function DooTaskChat() {
                 if (prev.some(m => m.id === msg.id)) return prev;
                 return [msg, ...prev];
             });
-            // If WS delivers a message from us, clean up any matching pending
+            // If WS delivers a message from us, clean up the oldest matching pending
             // (including 'error' — WS proves the message succeeded even if HTTP failed).
+            // Search backwards: pending array is newest-first, oldest = last index = FIFO order.
             if (msg.userid === (profile?.userId || 0)) {
                 setPendingMessages(prev => {
-                    const idx = prev.findIndex(p => p.type === msg.type);
+                    let idx = -1;
+                    for (let i = prev.length - 1; i >= 0; i--) {
+                        if (prev[i].type === msg.type) { idx = i; break; }
+                    }
                     if (idx === -1) return prev;
                     retryFnsRef.current.delete(prev[idx]._pendingId);
                     return prev.filter((_, i) => i !== idx);
