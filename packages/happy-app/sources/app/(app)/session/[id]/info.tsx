@@ -11,6 +11,8 @@ import { useSession, useIsDataReady, storage } from '@/sync/storage';
 import { generateCopyTitle, getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 import { sessionKill, sessionDelete, machineForkClaudeSession, machineForkGeminiSession, machineForkCodexSession, machineSpawnNewSession, sessionUpdateSummary, sessionUpdateMetadataFields } from '@/sync/ops';
 import { isWorktreeSession, getWorktreeInfo, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree, getLocalBranches, getCurrentBranch } from '@/utils/worktreeOps';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
@@ -87,7 +89,7 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (!session) return;
         try {
             await Clipboard.setStringAsync(session.id);
-            Modal.alert(t('common.success'), t('sessionInfo.happySessionIdCopied'));
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
         }
@@ -97,7 +99,7 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (!session?.metadata) return;
         try {
             await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
-            Modal.alert(t('common.success'), t('sessionInfo.metadataCopied'));
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
         }
@@ -108,7 +110,7 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (!claudeSessionId) return;
         try {
             await Clipboard.setStringAsync(claudeSessionId);
-            Modal.alert(t('common.success'), t('sessionInfo.claudeCodeSessionIdCopied'));
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopyClaudeCodeSessionId'));
         }
@@ -119,7 +121,7 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (!codexSessionId) return;
         try {
             await Clipboard.setStringAsync(codexSessionId);
-            Modal.alert(t('common.success'), t('sessionInfo.codexSessionIdCopied'));
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopyCodexSessionId'));
         }
@@ -129,7 +131,7 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (!geminiSessionId) return;
         try {
             await Clipboard.setStringAsync(geminiSessionId);
-            Modal.alert(t('common.success'), t('sessionInfo.geminiSessionIdCopied'));
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopyGeminiSessionId'));
         }

@@ -9,6 +9,8 @@ import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { Modal } from '@/modal';
+import { hapticsLight } from '@/components/haptics';
+import { showToast } from '@/components/Toast';
 import { sync } from '@/sync/sync';
 import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
 import { Switch } from '@/components/Switch';
@@ -39,7 +41,7 @@ export default function DevScreen() {
             const validation = validateServerUrl(newUrl);
             if (validation.valid) {
                 setServerUrl(newUrl);
-                Modal.alert('Success', 'Server URL updated. Please restart the app for changes to take effect.');
+                hapticsLight(); showToast('Server URL updated. Please restart the app.');
             } else {
                 Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
             }
@@ -54,7 +56,7 @@ export default function DevScreen() {
         );
         if (confirmed) {
             console.log('Cache cleared');
-            Modal.alert('Success', 'Cache has been cleared');
+            hapticsLight(); showToast('Cache has been cleared');
         }
     };
 
@@ -298,7 +300,7 @@ export default function DevScreen() {
                         // (setting to 0 triggers first-install logic that auto-marks as read)
                         const latest = getLatestVersion();
                         setLastViewedVersion(Math.max(0, latest - 1));
-                        Modal.alert('Done', 'Changelog reset. Restart app to see the banner.');
+                        hapticsLight(); showToast('Changelog reset. Restart to see banner.');
                     }}
                 />
                 <Item

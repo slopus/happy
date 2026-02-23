@@ -12,8 +12,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import * as Clipboard from 'expo-clipboard';
-import { Modal } from '@/modal';
-import { t } from '@/text';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export interface ItemProps {
@@ -166,7 +166,7 @@ export const Item = React.memo<ItemProps>((props) => {
         
         try {
             await Clipboard.setStringAsync(textToCopy);
-            Modal.alert(t('common.copied'), t('items.copiedToClipboard', { label: title }));
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             console.error('Failed to copy:', error);
         }

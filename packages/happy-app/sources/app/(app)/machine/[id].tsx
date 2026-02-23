@@ -10,6 +10,8 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
+import { hapticsLight } from '@/components/haptics';
+import { showToast } from '@/components/Toast';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { sync } from '@/sync/sync';
@@ -152,7 +154,7 @@ export default function MachineDetailScreen() {
                         setIsStoppingDaemon(true);
                         try {
                             const result = await machineStopDaemon(machineId!);
-                            Modal.alert('Daemon Stopped', result.message);
+                            hapticsLight(); showToast(result.message);
                             // Refresh to get updated metadata
                             await sync.refreshMachines();
                         } catch (error) {
@@ -202,7 +204,7 @@ export default function MachineDetailScreen() {
                     machine.metadataVersion
                 );
                 
-                Modal.alert(t('common.success'), 'Machine renamed successfully');
+                hapticsLight(); showToast('Machine renamed successfully');
             } catch (error) {
                 Modal.alert(
                     'Error',

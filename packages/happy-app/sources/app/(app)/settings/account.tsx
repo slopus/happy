@@ -4,6 +4,8 @@ import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 import { Typography } from '@/constants/Typography';
 import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
 import { Item } from '@/components/Item';
@@ -84,7 +86,7 @@ export default React.memo(() => {
             await Clipboard.setStringAsync(formattedSecret);
             setCopiedRecently(true);
             setTimeout(() => setCopiedRecently(false), 2000);
-            Modal.alert(t('common.success'), t('settingsAccount.secretKeyCopied'));
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             Modal.alert(t('common.error'), t('settingsAccount.secretKeyCopyFailed'));
         }

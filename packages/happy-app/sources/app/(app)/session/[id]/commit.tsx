@@ -16,8 +16,9 @@ import { FileIcon } from '@/components/FileIcon';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
 import * as Clipboard from 'expo-clipboard';
-import { Modal } from '@/modal';
 import { t } from '@/text';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 
 interface CommitDetail {
     hash: string;
@@ -155,7 +156,7 @@ export default function CommitScreen() {
                 label: t('commits.copyHash'),
                 onPress: async () => {
                     await Clipboard.setStringAsync(commitDetail.hash);
-                    Modal.alert(t('common.success'), t('common.copied'));
+                    hapticsLight(); showCopiedToast();
                 },
             },
             {
@@ -165,7 +166,7 @@ export default function CommitScreen() {
                         ? `${commitDetail.title}\n\n${commitDetail.body}`
                         : commitDetail.title;
                     await Clipboard.setStringAsync(message);
-                    Modal.alert(t('common.success'), t('common.copied'));
+                    hapticsLight(); showCopiedToast();
                 },
             },
         ];

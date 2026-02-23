@@ -9,6 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { encodeHex } from '@/encryption/hex';
 import { sessionReadFile, sessionWriteFile } from '@/sync/ops';
 import { Modal } from '@/modal';
+import { hapticsLight } from '@/components/haptics';
+import { showToast } from '@/components/Toast';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { CodeEditor, type CodeEditorHandle } from '@/components/CodeEditor';
@@ -269,7 +271,7 @@ export default function EditScreen() {
                     const savedHashBuffer = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
                     setOriginalHash(encodeHex(new Uint8Array(savedHashBuffer)).toLowerCase());
                 }
-                Modal.alert(t('common.success'), t('files.saved'));
+                hapticsLight(); showToast(t('files.saved'));
             } else {
                 Modal.alert(t('common.error'), response.error || t('files.saveFailed'));
             }

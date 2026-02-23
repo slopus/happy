@@ -8,6 +8,8 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 import { Ionicons } from '@expo/vector-icons';
 
 // Header button width constants
@@ -36,7 +38,7 @@ export default function TextSelectionScreen() {
 
         try {
             await Clipboard.setStringAsync(fullText);
-            Modal.alert(t('textSelection.textCopied'));
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             Modal.alert(t('common.error'), t('textSelection.failedToCopy'));
         }

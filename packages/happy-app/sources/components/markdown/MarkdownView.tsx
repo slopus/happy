@@ -13,6 +13,8 @@ import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 
@@ -180,7 +182,7 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     const copyCode = React.useCallback(async () => {
         try {
             await Clipboard.setStringAsync(props.content);
-            Modal.alert(t('common.success'), t('markdown.codeCopied'), [{ text: t('common.ok'), style: 'cancel' }]);
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             console.error('Failed to copy code:', error);
             Modal.alert(t('common.error'), t('markdown.copyFailed'), [{ text: t('common.ok'), style: 'cancel' }]);

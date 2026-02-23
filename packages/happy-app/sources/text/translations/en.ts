@@ -264,6 +264,7 @@ export const en: TranslationStructure = {
         dueDate: 'Due Date',
         description: 'Description',
         project: 'Project',
+        column: 'List',
         connectFirst: 'Connect DooTask in Settings to get started',
         reconnect: 'Reconnect DooTask',
         tokenExpired: 'Session expired. Please reconnect.',

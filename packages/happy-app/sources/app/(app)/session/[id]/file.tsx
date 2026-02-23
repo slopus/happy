@@ -18,6 +18,8 @@ import { FileIcon } from '@/components/FileIcon';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { storeTempText } from '@/sync/persistence';
 import * as Clipboard from 'expo-clipboard';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { shellEscape } from '@/utils/shellEscape';
 
@@ -138,14 +140,14 @@ export default function FileScreen() {
                 label: t('files.copyRelativePath'),
                 onPress: async () => {
                     await Clipboard.setStringAsync(relativePath);
-                    Modal.alert(t('common.success'), t('common.copied'));
+                    hapticsLight(); showCopiedToast();
                 },
             },
             {
                 label: t('files.copyFileName'),
                 onPress: async () => {
                     await Clipboard.setStringAsync(fileName);
-                    Modal.alert(t('common.success'), t('common.copied'));
+                    hapticsLight(); showCopiedToast();
                 },
             },
             {
@@ -602,7 +604,7 @@ export default function FileScreen() {
                         onLongPress={async () => {
                             try {
                                 await Clipboard.setStringAsync(filePath);
-                                Modal.alert(t('common.success'), t('common.copied'));
+                                hapticsLight(); showCopiedToast();
                             } catch { /* ignore */ }
                         }}
                     >

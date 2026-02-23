@@ -8,6 +8,8 @@ import { authAccountApprove } from '@/auth/authAccountApprove';
 import { useQRScanner } from '@/hooks/useQRScanner';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { hapticsLight } from '@/components/haptics';
+import { showToast } from '@/components/Toast';
 import { sync } from '@/sync/sync';
 
 const URL_REGEX = /^https?:\/\//i;
@@ -32,7 +34,7 @@ export function useUnifiedScanner() {
                 responseV2Bundle.set(sync.encryption.contentDataKey, 1);
                 const responseV2 = encryptBox(responseV2Bundle, publicKey);
                 await authApprove(auth.credentials.token, publicKey, responseV1, responseV2);
-                Modal.alert(t('common.success'), t('modals.terminalConnectedSuccessfully'), [{ text: t('common.ok') }]);
+                hapticsLight(); showToast(t('modals.terminalConnectedSuccessfully'));
                 return true;
             } catch (e) {
                 console.error(e);
@@ -52,7 +54,7 @@ export function useUnifiedScanner() {
                 const publicKey = decodeBase64(tail, 'base64url');
                 const response = encryptBox(decodeBase64(auth.credentials.secret, 'base64url'), publicKey);
                 await authAccountApprove(auth.credentials.token, publicKey, response);
-                Modal.alert(t('common.success'), t('modals.deviceLinkedSuccessfully'), [{ text: t('common.ok') }]);
+                hapticsLight(); showToast(t('modals.deviceLinkedSuccessfully'));
                 return true;
             } catch (e) {
                 console.error(e);

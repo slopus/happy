@@ -17,6 +17,9 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { getSessionName } from '@/utils/sessionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import * as Clipboard from 'expo-clipboard';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 import type { DooTaskItem, DooTaskFile } from '@/sync/dootask/types';
 
 /**
@@ -63,13 +66,19 @@ function buildDooTaskPrompt(task: DooTaskItem): string {
     return `Here's a task from DooTask.\nTask ID: ${task.id}\nTitle: ${task.name}`;
 }
 
-function DetailField({ label, value, color, theme }: {
-    label: string; value: string; color?: string; theme: any;
+function DetailField({ label, value, color, theme, onLongPress }: {
+    label: string; value: string; color?: string; theme: any; onLongPress?: () => void;
 }) {
     return (
         <View style={styles.field}>
             <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
-            <Text style={[styles.fieldValue, { color: color || theme.colors.text }]}>{value}</Text>
+            {onLongPress ? (
+                <Pressable onLongPress={onLongPress} style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <Text style={[styles.fieldValue, { color: color || theme.colors.text }]}>{value}</Text>
+                </Pressable>
+            ) : (
+                <Text style={[styles.fieldValue, { color: color || theme.colors.text }]}>{value}</Text>
+            )}
         </View>
     );
 }
@@ -490,15 +499,27 @@ export default function DooTaskDetail() {
         },
     ], [handleStartAiSession, handleOpenChat, handleStatusPress, handleRefresh]);
 
+    const headerTitle = React.useCallback(() => (
+        <Pressable onLongPress={() => { Clipboard.setStringAsync(taskId!); hapticsLight(); showCopiedToast(); }} style={{ alignItems: 'center', justifyContent: 'center' }}>
+            <Text numberOfLines={1} style={[styles.headerTitle, { color: theme.colors.header.tint }]}>
+                {t('dootask.taskDetail')}
+            </Text>
+            <Text numberOfLines={1} style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
+                #{taskId}
+            </Text>
+        </Pressable>
+    ), [taskId, theme]);
+
     if (loading) {
-        return <ActivityIndicator style={{ flex: 1 }} />;
+        return (<><Stack.Screen options={{ headerTitle }} /><ActivityIndicator style={{ flex: 1 }} /></>);
     }
 
     if (error || !task) {
         return (
+            <><Stack.Screen options={{ headerTitle }} />
             <View style={styles.empty}>
                 <Text style={{ color: theme.colors.textDestructive }}>{error || t('dootask.taskNotFound')}</Text>
-            </View>
+            </View></>
         );
     }
 
@@ -515,6 +536,7 @@ export default function DooTaskDetail() {
         <>
         <Stack.Screen
             options={{
+                headerTitle,
                 headerRight: () => (
                     <Pressable
                         onPress={() => setMenuVisible(true)}
@@ -530,10 +552,15 @@ export default function DooTaskDetail() {
             style={{ backgroundColor: theme.colors.surface }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         >
-            <Text style={[styles.title, { color: theme.colors.text }]}>{task.name}</Text>
+            <Pressable onLongPress={() => { Clipboard.setStringAsync(task.name); hapticsLight(); showCopiedToast(); }}>
+                <Text style={[styles.title, { color: theme.colors.text }]}>{task.name}</Text>
+            </Pressable>
 
             <View style={styles.fieldGroup}>
-                <DetailField label={t('dootask.project')} value={task.project_name} theme={theme} />
+                <DetailField label={t('dootask.project')} value={task.project_name} theme={theme} onLongPress={() => { Clipboard.setStringAsync(task.project_name); hapticsLight(); showCopiedToast(); }} />
+                {task.column_name ? (
+                    <DetailField label={t('dootask.column')} value={task.column_name} theme={theme} onLongPress={() => { Clipboard.setStringAsync(task.column_name!); hapticsLight(); showCopiedToast(); }} />
+                ) : null}
                 <View style={styles.field}>
                     <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>{t('dootask.status')}</Text>
                     <Pressable onPress={handleStatusPress} disabled={statusLoading}>
@@ -842,6 +869,8 @@ const styles = StyleSheet.create((_theme) => ({
     container: { padding: 20, gap: 16 },
     empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     title: { ...Typography.default('semiBold'), fontSize: 20 },
+    headerTitle: { ...Typography.default('semiBold'), fontSize: 17 },
+    headerSubtitle: { ...Typography.default(), fontSize: 12, marginTop: -2 },
     fieldGroup: { gap: 12 },
     field: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     fieldLabel: { ...Typography.default(), fontSize: 14, flexShrink: 0, marginRight: 12 },

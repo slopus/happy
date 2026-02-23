@@ -7,6 +7,8 @@ import { ItemList } from '@/components/ItemList';
 import { Item } from '@/components/Item';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 
 export default function LogsScreen() {
     const [logs, setLogs] = React.useState<string[]>([]);
@@ -60,7 +62,7 @@ export default function LogsScreen() {
 
         const allLogs = logs.join('\n');
         await Clipboard.setStringAsync(allLogs);
-        Modal.alert('Copied', `${logs.length} log entries copied to clipboard`);
+        hapticsLight(); showCopiedToast();
     };
 
     const handleAddTestLog = () => {

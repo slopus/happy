@@ -10,6 +10,8 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import { config } from '@/config';
 
@@ -25,7 +27,7 @@ function JsonViewer({ title, data, defaultExpanded = false }: JsonViewerProps) {
     const handleCopy = async () => {
         try {
             await Clipboard.setStringAsync(JSON.stringify(data, null, 2));
-            Modal.alert('Copied', 'JSON data copied to clipboard');
+            hapticsLight(); showCopiedToast();
         } catch (error) {
             Modal.alert('Error', 'Failed to copy to clipboard');
         }

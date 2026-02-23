@@ -250,6 +250,7 @@ export const zhHans: TranslationStructure = {
         dueDate: '截止日期',
         description: '描述',
         project: '项目',
+        column: '列表',
         connectFirst: '请在设置中连接 DooTask 以开始使用',
         reconnect: '重新连接 DooTask',
         tokenExpired: '会话已过期，请重新连接。',
