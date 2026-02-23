@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable, Keyboard } from 'react-native';
 import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
@@ -533,6 +533,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Settings modal state: 'model' shows model picker, 'permission' shows permission picker, false = closed
     const [showSettings, setShowSettings] = React.useState<'model' | 'permission' | false>(false);
+
+    // Dismiss keyboard when settings overlay opens
+    React.useEffect(() => {
+        if (showSettings) {
+            Keyboard.dismiss();
+        }
+    }, [showSettings]);
 
     // Handle settings button press (gear icon → model selection)
     const handleSettingsPress = React.useCallback(() => {
