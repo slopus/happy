@@ -59,7 +59,7 @@ function getFileIcon(ext: string): string {
 }
 
 function buildDooTaskPrompt(task: DooTaskItem): string {
-    return `Help me with a DooTask task.\nTask ID: ${task.id}\nTitle: ${task.name}`;
+    return `Here's a task from DooTask.\nTask ID: ${task.id}\nTitle: ${task.name}`;
 }
 
 function DetailField({ label, value, color, theme }: {
