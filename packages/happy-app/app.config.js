@@ -35,6 +35,10 @@ export default {
                 usesNonExemptEncryption: false
             },
             infoPlist: {
+                // App UI text is localized in JS; declare supported native locales
+                // so iOS system menus (Copy/Look Up/Translate) can render in Chinese.
+                CFBundleAllowMixedLocalizations: true,
+                CFBundleLocalizations: ["en", "zh-Hans", "zh-Hant", "ja"],
                 NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.",
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
                 NSBonjourServices: ["_http._tcp", "_https._tcp"]
