@@ -23,7 +23,6 @@ type MessageContextMenuProps = {
     actions: ContextMenuAction[];
     onEmojiSelect: (symbol: string) => void;
     onClose: () => void;
-    children?: React.ReactNode;
 };
 
 export function MessageContextMenu({
@@ -33,7 +32,6 @@ export function MessageContextMenu({
     actions,
     onEmojiSelect,
     onClose,
-    children,
 }: MessageContextMenuProps) {
     const { theme } = useUnistyles();
     const { height: screenH } = useWindowDimensions();
@@ -83,11 +81,6 @@ export function MessageContextMenu({
                                 <Text style={menuStyles.emojiText}>{emoji}</Text>
                             </Pressable>
                         ))}
-                    </View>
-
-                    {/* Message preview */}
-                    <View style={menuStyles.messagePreview}>
-                        {children}
                     </View>
 
                     {/* Action list */}
@@ -154,9 +147,6 @@ const menuStyles = StyleSheet.create((theme) => ({
     },
     emojiText: {
         fontSize: 24,
-    },
-    messagePreview: {
-        // Message is rendered by parent via children prop
     },
     actionList: {
         borderRadius: 14,

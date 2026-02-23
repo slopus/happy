@@ -440,10 +440,6 @@ export default React.memo(function DooTaskChat() {
         }
     }, [profile]);
 
-    const handleEmojiPress = React.useCallback((msgId: number, symbol: string) => {
-        handleEmojiToggle(msgId, symbol);
-    }, [handleEmojiToggle]);
-
     // Render ChatHeaderView directly (same style as SessionView)
     // Right side: DooTask icon (task dialogs show a task icon, matching DooTask web)
     const header = React.useMemo(() => (
@@ -493,7 +489,7 @@ export default React.memo(function DooTaskChat() {
             hasMore={hasMore}
             onMessageLongPress={handleMessageLongPress}
             onImagePress={handleImagePress}
-            onEmojiPress={handleEmojiPress}
+            onEmojiPress={handleEmojiToggle}
             onRetry={handleRetry}
             serverUrl={profile?.serverUrl || ''}
         />

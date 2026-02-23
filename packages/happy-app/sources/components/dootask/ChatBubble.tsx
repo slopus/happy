@@ -627,6 +627,8 @@ export const ChatBubble = React.memo(({
             break;
         case 'meeting':
         case 'template':
+        case 'vote':
+        case 'word-chain':
         default:
             content = (
                 <Text style={[styles.unsupportedText, { color: theme.colors.textSecondary }]}>
