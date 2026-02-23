@@ -314,7 +314,7 @@ type ChatBubbleProps = {
 /** Check if HTML contains complex elements that need WebView rendering. */
 const COMPLEX_HTML_RE = /<(table|img|pre|code|ul|ol|li|h[1-6]|iframe|video|audio|blockquote|div\s+class|\.tox-checklist)/i;
 
-function TextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTaskDialogMsg; theme: any; serverUrl: string; onImagePress?: (url: string) => void }) {
+export function TextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTaskDialogMsg; theme: any; serverUrl: string; onImagePress?: (url: string) => void }) {
     const text = getMsgText(msg);
 
     // Markdown messages: render as native components (Text/View) for proper flex layout

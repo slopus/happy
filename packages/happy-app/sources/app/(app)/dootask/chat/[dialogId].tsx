@@ -11,11 +11,12 @@ import { storage, useDootaskProfile, useDootaskUserCache, useDootaskUserAvatars 
 import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage, dootaskSendFileByUri, dootaskToggleEmoji } from '@/sync/dootask/api';
 import { useDootaskWebSocket } from '@/hooks/useDootaskWebSocket';
 import { ChatMessageList } from '@/components/dootask/ChatMessageList';
-import { thumbRestore } from '@/components/dootask/ChatBubble';
+import { thumbRestore, TextContent } from '@/components/dootask/ChatBubble';
 import { ChatInput } from '@/components/dootask/ChatInput';
 import { ImageViewer } from '@/components/ImageViewer';
-import { MessageContextMenu, ContextMenuAction } from '@/components/dootask/MessageContextMenu';
+import { MessageContextMenu, ContextMenuAction, MessagePreview } from '@/components/dootask/MessageContextMenu';
 import type { DooTaskDialogMsg, PendingMessage, DisplayMessage } from '@/sync/dootask/types';
+import { generateMockMessages, MOCK_USER_NAMES, MOCK_USER_AVATARS } from '@/components/dootask/__dev__/mockChatMessages';
 
 function dedupeMessagesById(list: DooTaskDialogMsg[]): DooTaskDialogMsg[] {
     const seen = new Set<number>();
@@ -41,7 +42,8 @@ export default React.memo(function DooTaskChat() {
     const profile = useDootaskProfile();
     const userCache = useDootaskUserCache();
     const userAvatars = useDootaskUserAvatars();
-    const id = Number(dialogId);
+    const isMock = dialogId === 'mock';
+    const id = isMock ? 0 : Number(dialogId);
 
     // Message state
     const [messages, setMessages] = React.useState<DooTaskDialogMsg[]>([]);
@@ -75,6 +77,7 @@ export default React.memo(function DooTaskChat() {
     const [contextMenu, setContextMenu] = React.useState<{
         msg: DooTaskDialogMsg;
         actions: ContextMenuAction[];
+        preview: MessagePreview;
         y: number;
         height: number;
     } | null>(null);
@@ -113,6 +116,13 @@ export default React.memo(function DooTaskChat() {
     // Initial fetch
     const fetchMessages = React.useCallback(async () => {
         if (!profile) return;
+        // Mock mode: load generated preview data, skip API/WS
+        if (isMock) {
+            setMessages(generateMockMessages(profile.userId));
+            setHasMore(false);
+            setLoading(false);
+            return;
+        }
         try {
             const res = await dootaskFetchDialogMessages(profile.serverUrl, profile.token, {
                 dialog_id: id,
@@ -135,7 +145,7 @@ export default React.memo(function DooTaskChat() {
             setLoading(false);
             setWsEnabled(true);
         }
-    }, [profile, id]);
+    }, [profile, id, isMock]);
 
     React.useEffect(() => {
         fetchMessages();
@@ -389,21 +399,19 @@ export default React.memo(function DooTaskChat() {
 
     // Long press context menu -> reply / copy / emoji
     const handleMessageLongPress = React.useCallback((msg: DooTaskDialogMsg, layout?: { y: number; height: number }) => {
+        const isSelf = msg.userid === (profile?.userId || 0);
+        const senderName = msg.userid === -1 ? t('dootask.aiAssistant') : (userCache[msg.userid] || String(msg.userid));
         const actions: ContextMenuAction[] = [
             {
                 label: t('dootask.reply'),
                 icon: 'arrow-undo',
-                onPress: () => {
-                    setReplyTo({
-                        msg,
-                        senderName: msg.userid === -1 ? t('dootask.aiAssistant') : (userCache[msg.userid] || String(msg.userid)),
-                    });
-                },
+                onPress: () => { setReplyTo({ msg, senderName }); },
             },
         ];
         const rawText = typeof msg.msg === 'string' ? msg.msg : (msg.msg?.text || '');
+        let plainText = '';
         if (rawText) {
-            const plainText = rawText
+            plainText = rawText
                 .replace(/<br\s*\/?>/gi, '\n')
                 .replace(/<\/p>/gi, '\n')
                 .replace(/<[^>]+>/g, '')
@@ -419,13 +427,33 @@ export default React.memo(function DooTaskChat() {
                 });
             }
         }
+
+        // Build preview content based on message type
+        let previewContent: React.ReactNode;
+        const hasText = msg.type === 'text' || msg.type === 'longtext';
+        if (hasText) {
+            // Render text/md/html content with full formatting (markdown, bold, etc.)
+            previewContent = <TextContent msg={msg} theme={theme} serverUrl={profile?.serverUrl || ''} />;
+        } else {
+            // Fallback label for non-text types
+            let label = '';
+            switch (msg.type) {
+                case 'image': label = '[Photo]'; break;
+                case 'file': label = msg.msg?.name || '[File]'; break;
+                case 'record': label = t('dootask.voiceMessage'); break;
+                default: label = plainText || '';
+            }
+            previewContent = <Text style={{ color: theme.colors.text, fontSize: 15 }}>{label}</Text>;
+        }
+
         setContextMenu({
             msg,
             actions,
+            preview: { content: previewContent, senderName: isSelf ? undefined : senderName, isSelf },
             y: layout?.y ?? 200,
             height: layout?.height ?? 60,
         });
-    }, [userCache]);
+    }, [userCache, profile?.userId, theme]);
 
     // Emoji toggle handler
     const handleEmojiToggle = React.useCallback(async (msgId: number, symbol: string) => {
@@ -477,12 +505,16 @@ export default React.memo(function DooTaskChat() {
         setImageViewerVisible(true);
     }, []);
 
+    // In mock mode, merge mock user info with real caches
+    const effectiveUserNames = isMock ? { ...userCache, ...MOCK_USER_NAMES } : userCache;
+    const effectiveUserAvatars = isMock ? { ...userAvatars, ...MOCK_USER_AVATARS } : userAvatars;
+
     const content = !(error && messages.length === 0) ? (
         <ChatMessageList
             messages={displayMessages}
             currentUserId={profile?.userId || 0}
-            userNames={userCache}
-            userAvatars={userAvatars}
+            userNames={effectiveUserNames}
+            userAvatars={effectiveUserAvatars}
             onLoadMore={handleLoadMore}
             loading={loading}
             loadingMore={loadingMore}
@@ -527,6 +559,7 @@ export default React.memo(function DooTaskChat() {
                 messageY={contextMenu?.y ?? 0}
                 messageHeight={contextMenu?.height ?? 0}
                 actions={contextMenu?.actions ?? []}
+                preview={contextMenu?.preview}
                 onEmojiSelect={(symbol) => {
                     if (contextMenu?.msg) handleEmojiToggle(contextMenu.msg.id, symbol);
                 }}
