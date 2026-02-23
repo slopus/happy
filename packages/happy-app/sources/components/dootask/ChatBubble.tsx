@@ -302,7 +302,7 @@ type ChatBubbleProps = {
     replyMsg?: DooTaskDialogMsg | null;
     replySenderName?: string;
     onImagePress?: (url: string) => void;
-    onLongPress?: (msg: DooTaskDialogMsg) => void;
+    onLongPress?: (msg: DooTaskDialogMsg, layout?: { y: number; height: number }) => void;
     onEmojiPress?: (msgId: number, symbol: string) => void;
     serverUrl: string;
     pending?: PendingMessageStatus;
@@ -572,6 +572,7 @@ export const ChatBubble = React.memo(({
     const time = formatTime(msg.created_at);
     const emojiCount = msg.type === 'text' ? getEmojiCount(getMsgText(msg)) : 0;
     const isLargeEmoji = emojiCount > 0;
+    const bubbleRef = React.useRef<View>(null);
 
     // Notice messages: centered, no layout change
     if (msg.type === 'notice') {
@@ -664,21 +665,27 @@ export const ChatBubble = React.memo(({
         }
 
         return (
-            <Pressable
-                onLongPress={pending ? undefined : () => onLongPress?.(msg)}
-                style={[styles.selfBand, { backgroundColor: isLargeEmoji ? 'transparent' : theme.colors.surfaceHigh }, pending === 'error' && { opacity: 0.7 }]}
-            >
-                <View style={styles.selfContent}>
-                    {replyBlock}
-                    {content}
-                    <EmojiReactionsRow emoji={msg.emoji} msgId={msg.id} currentUserId={currentUserId} theme={theme} onEmojiPress={onEmojiPress} />
-                    {statusRow ?? (time ? (
-                        <Text style={[styles.selfTime, { color: theme.colors.textSecondary }]}>
-                            {time}{msg.modify > 0 ? ` (${t('dootask.edited')})` : ''}
-                        </Text>
-                    ) : null)}
-                </View>
-            </Pressable>
+            <View ref={bubbleRef}>
+                <Pressable
+                    onLongPress={pending ? undefined : () => {
+                        bubbleRef.current?.measureInWindow((_x, y, _w, h) => {
+                            onLongPress?.(msg, { y, height: h });
+                        });
+                    }}
+                    style={[styles.selfBand, { backgroundColor: isLargeEmoji ? 'transparent' : theme.colors.surfaceHigh }, pending === 'error' && { opacity: 0.7 }]}
+                >
+                    <View style={styles.selfContent}>
+                        {replyBlock}
+                        {content}
+                        <EmojiReactionsRow emoji={msg.emoji} msgId={msg.id} currentUserId={currentUserId} theme={theme} onEmojiPress={onEmojiPress} />
+                        {statusRow ?? (time ? (
+                            <Text style={[styles.selfTime, { color: theme.colors.textSecondary }]}>
+                                {time}{msg.modify > 0 ? ` (${t('dootask.edited')})` : ''}
+                            </Text>
+                        ) : null)}
+                    </View>
+                </Pressable>
+            </View>
         );
     }
 
@@ -687,52 +694,58 @@ export const ChatBubble = React.memo(({
     const avatarBg = isAiAssistant ? AI_AVATAR_COLOR : getAvatarColor(msg.userid);
 
     return (
-        <Pressable
-            onLongPress={() => onLongPress?.(msg)}
-            style={styles.otherRow}
-        >
-            {/* Avatar column */}
-            <View style={styles.avatarColumn}>
-                {showAvatar ? (
-                    isAiAssistant ? (
-                        <View style={[styles.avatarPlaceholder, { backgroundColor: AI_AVATAR_COLOR }]}>
-                            <Ionicons name="sparkles" size={18} color="#FFFFFF" />
-                        </View>
-                    ) : avatarUrl ? (
-                        <Image
-                            source={{ uri: avatarUrl }}
-                            style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2 }}
-                        />
-                    ) : (
-                        <View style={[styles.avatarPlaceholder, { backgroundColor: avatarBg }]}>
-                            <Text style={styles.avatarInitial}>{initial}</Text>
-                        </View>
-                    )
-                ) : null}
-            </View>
+        <View ref={bubbleRef}>
+            <Pressable
+                onLongPress={() => {
+                    bubbleRef.current?.measureInWindow((_x, y, _w, h) => {
+                        onLongPress?.(msg, { y, height: h });
+                    });
+                }}
+                style={styles.otherRow}
+            >
+                {/* Avatar column */}
+                <View style={styles.avatarColumn}>
+                    {showAvatar ? (
+                        isAiAssistant ? (
+                            <View style={[styles.avatarPlaceholder, { backgroundColor: AI_AVATAR_COLOR }]}>
+                                <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+                            </View>
+                        ) : avatarUrl ? (
+                            <Image
+                                source={{ uri: avatarUrl }}
+                                style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2 }}
+                            />
+                        ) : (
+                            <View style={[styles.avatarPlaceholder, { backgroundColor: avatarBg }]}>
+                                <Text style={styles.avatarInitial}>{initial}</Text>
+                            </View>
+                        )
+                    ) : null}
+                </View>
 
-            {/* Content column */}
-            <View style={styles.otherContent}>
-                {/* Header: name + time (only on first message of a group) */}
-                {showAvatar && (
-                    <View style={styles.headerRow}>
-                        {senderName ? (
-                            <Text style={[styles.senderName, { color: avatarBg }]}>
-                                {senderName}
-                            </Text>
-                        ) : null}
-                        {time ? (
-                            <Text style={[styles.headerTime, { color: theme.colors.textSecondary }]}>
-                                {time}{msg.modify > 0 ? ` (${t('dootask.edited')})` : ''}
-                            </Text>
-                        ) : null}
-                    </View>
-                )}
-                {replyBlock}
-                {content}
-                <EmojiReactionsRow emoji={msg.emoji} msgId={msg.id} currentUserId={currentUserId} theme={theme} onEmojiPress={onEmojiPress} />
-            </View>
-        </Pressable>
+                {/* Content column */}
+                <View style={styles.otherContent}>
+                    {/* Header: name + time (only on first message of a group) */}
+                    {showAvatar && (
+                        <View style={styles.headerRow}>
+                            {senderName ? (
+                                <Text style={[styles.senderName, { color: avatarBg }]}>
+                                    {senderName}
+                                </Text>
+                            ) : null}
+                            {time ? (
+                                <Text style={[styles.headerTime, { color: theme.colors.textSecondary }]}>
+                                    {time}{msg.modify > 0 ? ` (${t('dootask.edited')})` : ''}
+                                </Text>
+                            ) : null}
+                        </View>
+                    )}
+                    {replyBlock}
+                    {content}
+                    <EmojiReactionsRow emoji={msg.emoji} msgId={msg.id} currentUserId={currentUserId} theme={theme} onEmojiPress={onEmojiPress} />
+                </View>
+            </Pressable>
+        </View>
     );
 });
 

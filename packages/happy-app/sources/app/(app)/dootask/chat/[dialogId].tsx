@@ -8,14 +8,13 @@ import * as Clipboard from 'expo-clipboard';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { AgentContentView } from '@/components/AgentContentView';
 import { storage, useDootaskProfile, useDootaskUserCache, useDootaskUserAvatars } from '@/sync/storage';
-import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage, dootaskSendFileByUri } from '@/sync/dootask/api';
+import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage, dootaskSendFileByUri, dootaskToggleEmoji } from '@/sync/dootask/api';
 import { useDootaskWebSocket } from '@/hooks/useDootaskWebSocket';
 import { ChatMessageList } from '@/components/dootask/ChatMessageList';
 import { thumbRestore } from '@/components/dootask/ChatBubble';
 import { ChatInput } from '@/components/dootask/ChatInput';
 import { ImageViewer } from '@/components/ImageViewer';
-import { ActionMenuModal } from '@/components/ActionMenuModal';
-import type { ActionMenuItem } from '@/components/ActionMenu';
+import { MessageContextMenu, ContextMenuAction } from '@/components/dootask/MessageContextMenu';
 import type { DooTaskDialogMsg, PendingMessage, DisplayMessage } from '@/sync/dootask/types';
 
 function dedupeMessagesById(list: DooTaskDialogMsg[]): DooTaskDialogMsg[] {
@@ -72,9 +71,13 @@ export default React.memo(function DooTaskChat() {
     // Reply state
     const [replyTo, setReplyTo] = React.useState<{ msg: DooTaskDialogMsg; senderName: string } | null>(null);
 
-    // Long-press menu
-    const [menuVisible, setMenuVisible] = React.useState(false);
-    const [menuItems, setMenuItems] = React.useState<ActionMenuItem[]>([]);
+    // Long-press context menu
+    const [contextMenu, setContextMenu] = React.useState<{
+        msg: DooTaskDialogMsg;
+        actions: ContextMenuAction[];
+        y: number;
+        height: number;
+    } | null>(null);
 
     // Image viewer
     const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
@@ -384,11 +387,12 @@ export default React.memo(function DooTaskChat() {
         if (fn) fn();
     }, []);
 
-    // Long press menu -> reply / copy
-    const handleMessageLongPress = React.useCallback((msg: DooTaskDialogMsg) => {
-        const items: ActionMenuItem[] = [
+    // Long press context menu -> reply / copy / emoji
+    const handleMessageLongPress = React.useCallback((msg: DooTaskDialogMsg, layout?: { y: number; height: number }) => {
+        const actions: ContextMenuAction[] = [
             {
                 label: t('dootask.reply'),
+                icon: 'arrow-undo',
                 onPress: () => {
                     setReplyTo({
                         msg,
@@ -397,7 +401,6 @@ export default React.memo(function DooTaskChat() {
                 },
             },
         ];
-        // Extract copyable text from the message
         const rawText = typeof msg.msg === 'string' ? msg.msg : (msg.msg?.text || '');
         if (rawText) {
             const plainText = rawText
@@ -409,15 +412,37 @@ export default React.memo(function DooTaskChat() {
                 .replace(/\n{3,}/g, '\n\n')
                 .trim();
             if (plainText) {
-                items.push({
+                actions.push({
                     label: t('dootask.copyMessage'),
+                    icon: 'copy-outline',
                     onPress: () => { Clipboard.setStringAsync(plainText); },
                 });
             }
         }
-        setMenuItems(items);
-        setMenuVisible(true);
+        setContextMenu({
+            msg,
+            actions,
+            y: layout?.y ?? 200,
+            height: layout?.height ?? 60,
+        });
     }, [userCache]);
+
+    // Emoji toggle handler
+    const handleEmojiToggle = React.useCallback(async (msgId: number, symbol: string) => {
+        if (!profile) return;
+        try {
+            const res = await dootaskToggleEmoji(profile.serverUrl, profile.token, { msg_id: msgId, symbol });
+            if (res.ret === 1 && res.data) {
+                setMessages(prev => prev.map(m => m.id === res.data.id ? { ...m, emoji: res.data.emoji } : m));
+            }
+        } catch {
+            // Silent fail — WS update will sync eventually
+        }
+    }, [profile]);
+
+    const handleEmojiPress = React.useCallback((msgId: number, symbol: string) => {
+        handleEmojiToggle(msgId, symbol);
+    }, [handleEmojiToggle]);
 
     // Render ChatHeaderView directly (same style as SessionView)
     // Right side: DooTask icon (task dialogs show a task icon, matching DooTask web)
@@ -468,6 +493,7 @@ export default React.memo(function DooTaskChat() {
             hasMore={hasMore}
             onMessageLongPress={handleMessageLongPress}
             onImagePress={handleImagePress}
+            onEmojiPress={handleEmojiPress}
             onRetry={handleRetry}
             serverUrl={profile?.serverUrl || ''}
         />
@@ -500,10 +526,15 @@ export default React.memo(function DooTaskChat() {
                     input={input}
                 />
             </View>
-            <ActionMenuModal
-                visible={menuVisible}
-                items={menuItems}
-                onClose={() => setMenuVisible(false)}
+            <MessageContextMenu
+                visible={contextMenu !== null}
+                messageY={contextMenu?.y ?? 0}
+                messageHeight={contextMenu?.height ?? 0}
+                actions={contextMenu?.actions ?? []}
+                onEmojiSelect={(symbol) => {
+                    if (contextMenu?.msg) handleEmojiToggle(contextMenu.msg.id, symbol);
+                }}
+                onClose={() => setContextMenu(null)}
             />
             <ImageViewer
                 images={viewerImages}

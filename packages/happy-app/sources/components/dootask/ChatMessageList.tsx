@@ -48,7 +48,7 @@ type ChatMessageListProps = {
     loadingMore: boolean;
     loading?: boolean;
     hasMore: boolean;
-    onMessageLongPress: (msg: DooTaskDialogMsg) => void;
+    onMessageLongPress: (msg: DooTaskDialogMsg, layout?: { y: number; height: number }) => void;
     onImagePress: (url: string) => void;
     onEmojiPress?: (msgId: number, symbol: string) => void;
     onRetry?: (pendingId: string) => void;
