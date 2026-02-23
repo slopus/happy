@@ -285,7 +285,7 @@ export const zhHans: TranslationStructure = {
         errorUpdateStatus: '更新状态失败',
         taskNotFound: '未找到任务',
         // Chat
-        taskChat: '任务聊天',
+        taskChat: '任务讨论',
         chatTitle: '聊天',
         sendMessage: '发送',
         typeMessage: '输入消息...',

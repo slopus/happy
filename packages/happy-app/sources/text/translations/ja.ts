@@ -315,7 +315,7 @@ export const ja: TranslationStructure = {
         errorUpdateStatus: 'ステータスの更新に失敗しました',
         taskNotFound: 'タスクが見つかりません',
         // Chat
-        taskChat: 'タスクチャット',
+        taskChat: 'タスクディスカッション',
         chatTitle: 'チャット',
         sendMessage: '送信',
         typeMessage: 'メッセージを入力...',

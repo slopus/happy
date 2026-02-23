@@ -247,7 +247,7 @@ export const ru: TranslationStructure = {
         errorUpdateStatus: 'Не удалось обновить статус',
         taskNotFound: 'Задача не найдена',
         // Chat
-        taskChat: 'Task Chat',
+        taskChat: 'Task Discussion',
         chatTitle: 'Chat',
         sendMessage: 'Send',
         typeMessage: 'Type a message...',

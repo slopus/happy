@@ -312,7 +312,7 @@ export const it: TranslationStructure = {
         errorUpdateStatus: 'Impossibile aggiornare lo stato',
         taskNotFound: 'Task non trovato',
         // Chat
-        taskChat: 'Task Chat',
+        taskChat: 'Task Discussion',
         chatTitle: 'Chat',
         sendMessage: 'Send',
         typeMessage: 'Type a message...',

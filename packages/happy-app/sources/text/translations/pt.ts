@@ -283,7 +283,7 @@ export const pt: TranslationStructure = {
         errorUpdateStatus: 'Falha ao atualizar status',
         taskNotFound: 'Tarefa não encontrada',
         // Chat
-        taskChat: 'Task Chat',
+        taskChat: 'Task Discussion',
         chatTitle: 'Chat',
         sendMessage: 'Send',
         typeMessage: 'Type a message...',

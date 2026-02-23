@@ -284,7 +284,7 @@ export const zhHant: TranslationStructure = {
         errorUpdateStatus: '更新狀態失敗',
         taskNotFound: '找不到任務',
         // Chat
-        taskChat: '任務聊天',
+        taskChat: '任務討論',
         chatTitle: '聊天',
         sendMessage: '發送',
         typeMessage: '輸入訊息...',

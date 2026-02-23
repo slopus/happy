@@ -38,6 +38,7 @@ export type DooTaskItem = {
     sub_num?: number;
     sub_complete?: number;
     msg_num?: number;
+    dialog_id?: number;
 };
 
 export type DooTaskFile = {

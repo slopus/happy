@@ -7,11 +7,13 @@ import { StyleSheet } from 'react-native-unistyles';
 export type HtmlContentProps = {
     html: string;
     theme: any;
+    selectable?: boolean;
+    maxImageWidth?: number;
     onImagePress?: (url: string) => void;
     onImagesFound?: (urls: string[]) => void;
 };
 
-export const HtmlContent = React.memo(({ html, theme, onImagePress, onImagesFound }: HtmlContentProps) => {
+export const HtmlContent = React.memo(({ html, theme, selectable, maxImageWidth, onImagePress, onImagesFound }: HtmlContentProps) => {
     const [height, setHeight] = React.useState(100);
     const containerRef = React.useRef<any>(null);
 
@@ -42,9 +44,9 @@ export const HtmlContent = React.memo(({ html, theme, onImagePress, onImagesFoun
             <View style={styles.htmlContainer}>
                 {/* @ts-ignore - Web only */}
                 <style dangerouslySetInnerHTML={{ __html: `
-                    .dootask-html-content { color: ${theme.colors.text}; font-size: 14px; line-height: 1.6; word-break: break-word; -webkit-user-select: none; user-select: none; }
+                    .dootask-html-content { color: ${theme.colors.text}; font-size: 14px; line-height: 1.6; word-break: break-word;${selectable ? '' : ' -webkit-user-select: none; user-select: none;'} }
                     .dootask-html-content p { margin: 0.3em 0; }
-                    .dootask-html-content img { max-width: 100%; height: auto; border-radius: 4px; cursor: pointer; }
+                    .dootask-html-content img { max-width: ${maxImageWidth ? `${maxImageWidth}px` : '100%'}; height: auto; border-radius: 4px; cursor: pointer; }
                     .dootask-html-content a { color: #0A84FF; }
                     .dootask-html-content pre, .dootask-html-content code { background: ${theme.colors.surfaceHighest || '#2a2a2a'}; border-radius: 4px; padding: 2px 4px; font-size: 13px; }
                     .dootask-html-content pre { padding: 14px; margin: 7px 0; overflow-x: auto; }
@@ -75,9 +77,9 @@ export const HtmlContent = React.memo(({ html, theme, onImagePress, onImagesFoun
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <style>
-body { margin: 0; padding: 0; color: ${theme.colors.text}; font-size: 14px; line-height: 1.6; background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; word-break: break-word; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body { margin: 0; padding: 0; color: ${theme.colors.text}; font-size: 14px; line-height: 1.6; background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; word-break: break-word;${selectable ? '' : ' -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;'} }
 p { margin: 0.3em 0; }
-img { max-width: 100%; height: auto; border-radius: 4px; cursor: pointer; }
+img { max-width: ${maxImageWidth ? `${maxImageWidth}px` : '100%'}; height: auto; border-radius: 4px; cursor: pointer; }
 a { color: #0A84FF; }
 pre, code { background: ${theme.colors.surfaceHighest || '#2a2a2a'}; border-radius: 4px; padding: 2px 4px; font-size: 13px; }
 pre { padding: 14px; margin: 7px 0; overflow-x: auto; }
@@ -113,7 +115,7 @@ document.addEventListener('click', function(e) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'imagePress', url: el.src }));
     }
 });
-document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+${selectable ? '' : "document.addEventListener('contextmenu', function(e) { e.preventDefault(); });"}
 </script>
 </body></html>`;
 

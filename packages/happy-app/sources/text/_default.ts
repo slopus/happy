@@ -283,7 +283,7 @@ export const en = {
         errorUpdateStatus: 'Failed to update status',
         taskNotFound: 'Task not found',
         // Chat
-        taskChat: 'Task Chat',
+        taskChat: 'Task Discussion',
         chatTitle: 'Chat',
         sendMessage: 'Send',
         typeMessage: 'Type a message...',

@@ -294,7 +294,7 @@ export const pl: TranslationStructure = {
         errorUpdateStatus: 'Nie udało się zaktualizować statusu',
         taskNotFound: 'Nie znaleziono zadania',
         // Chat
-        taskChat: 'Task Chat',
+        taskChat: 'Task Discussion',
         chatTitle: 'Chat',
         sendMessage: 'Send',
         typeMessage: 'Type a message...',

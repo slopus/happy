@@ -64,7 +64,7 @@ class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
     private static readonly SESSION_READY_TIMEOUT_MS = 10000;
     // Per-session pacing for websocket new-message updates to avoid autoscroll race.
-    private static readonly NEW_MESSAGE_PROCESS_INTERVAL_MS = 500;
+    private static readonly NEW_MESSAGE_PROCESS_INTERVAL_MS = 800;
 
     encryption!: Encryption;
     serverID!: string;

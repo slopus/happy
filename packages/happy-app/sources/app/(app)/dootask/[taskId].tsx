@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, I
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HtmlContent } from '@/components/dootask/HtmlContent';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
@@ -98,6 +99,7 @@ export default function DooTaskDetail() {
     const { taskId } = useLocalSearchParams<{ taskId: string }>();
     const router = useRouter();
     const { theme } = useUnistyles();
+    const insets = useSafeAreaInsets();
     const profile = useDootaskProfile();
     const userCache = useDootaskUserCache();
     const id = Number(taskId);
@@ -436,6 +438,11 @@ export default function DooTaskDetail() {
 
     const handleOpenChat = React.useCallback(async () => {
         if (!profile || !task || chatLoading) return;
+        // Use dialog_id from task detail if available, otherwise fetch it
+        if (task.dialog_id) {
+            router.push(`/dootask/chat/${task.dialog_id}?taskName=${encodeURIComponent(task.name)}`);
+            return;
+        }
         setChatLoading(true);
         try {
             const res = await dootaskFetchTaskDialog(profile.serverUrl, profile.token, task.id);
@@ -624,7 +631,7 @@ export default function DooTaskDetail() {
                     <Text style={[styles.descLabel, { color: theme.colors.textSecondary }]}>
                         {t('dootask.description')}
                     </Text>
-                    <HtmlContent html={taskContent} theme={theme} onImagePress={handleImagePress} onImagesFound={handleImagesFound} />
+                    <HtmlContent html={taskContent} theme={theme} selectable onImagePress={handleImagePress} onImagesFound={handleImagesFound} />
                 </View>
             ) : task.desc ? (
                 <View style={styles.descSection}>
@@ -737,31 +744,6 @@ export default function DooTaskDetail() {
                 </View>
             ) : null}
 
-            <View style={styles.buttonGroup}>
-                <Pressable
-                    style={[styles.chatButton, { borderColor: theme.colors.divider }]}
-                    onPress={handleOpenChat}
-                    disabled={chatLoading}
-                >
-                    {chatLoading ? (
-                        <ActivityIndicator size="small" />
-                    ) : (
-                        <Text style={[styles.aiButtonText, { color: theme.colors.text }]}>
-                            {t('dootask.taskChat')}{task.msg_num ? ` (${task.msg_num})` : ''}
-                        </Text>
-                    )}
-                </Pressable>
-
-                <Pressable
-                    style={[styles.aiButton, { backgroundColor: theme.colors.button.primary.background }]}
-                    onPress={handleStartAiSession}
-                >
-                    <Text style={[styles.aiButtonText, { color: theme.colors.button.primary.tint }]}>
-                        {t('dootask.startAiSession')}
-                    </Text>
-                </Pressable>
-            </View>
-
             <ImageViewer
                 images={contentImages}
                 initialIndex={imageViewerIndex}
@@ -769,6 +751,35 @@ export default function DooTaskDetail() {
                 onClose={() => setImageViewerVisible(false)}
             />
         </ScrollView>
+        <View style={[styles.bottomBar, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.divider, paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <Pressable
+                style={[styles.chatButton, { borderColor: theme.colors.divider, flex: 1 }]}
+                onPress={handleOpenChat}
+                disabled={chatLoading}
+            >
+                {chatLoading ? (
+                    <ActivityIndicator size="small" />
+                ) : (
+                    <View style={styles.bottomButtonInner}>
+                        <Ionicons name="chatbubbles-outline" size={17} color={theme.colors.text} />
+                        <Text style={[styles.bottomButtonText, { color: theme.colors.text }]} numberOfLines={1}>
+                            {t('dootask.taskChat')}{task.msg_num ? ` (${task.msg_num})` : ''}
+                        </Text>
+                    </View>
+                )}
+            </Pressable>
+            <Pressable
+                style={[styles.aiButton, { flex: 1, backgroundColor: theme.colors.button.primary.background }]}
+                onPress={handleStartAiSession}
+            >
+                <View style={styles.bottomButtonInner}>
+                    <Ionicons name="sparkles" size={17} color={theme.colors.button.primary.tint} />
+                    <Text style={[styles.bottomButtonText, { color: theme.colors.button.primary.tint }]} numberOfLines={1}>
+                        {t('dootask.startAiSession')}
+                    </Text>
+                </View>
+            </Pressable>
+        </View>
         <ActionMenuModal
             visible={menuVisible}
             items={menuItems}
@@ -880,14 +891,21 @@ const styles = StyleSheet.create((_theme) => ({
     descSection: { gap: 6 },
     descLabel: { ...Typography.default('semiBold'), fontSize: 14 },
     descText: { ...Typography.default(), fontSize: 14, lineHeight: 20 },
-    buttonGroup: { gap: 16 },
+    bottomBar: {
+        flexDirection: 'row',
+        gap: 10,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        borderTopWidth: StyleSheet.hairlineWidth,
+    },
     aiButton: {
-        height: 48,
+        height: 44,
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    aiButtonText: { ...Typography.default('semiBold'), fontSize: 16 },
+    bottomButtonInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    bottomButtonText: { ...Typography.default('semiBold'), fontSize: 15, flexShrink: 1 },
     section: { gap: 8 },
     sectionTitle: { ...Typography.default('semiBold'), fontSize: 14 },
     tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -907,7 +925,7 @@ const styles = StyleSheet.create((_theme) => ({
     sessionTitle: { ...Typography.default('semiBold'), fontSize: 14 },
     sessionMeta: { ...Typography.default(), fontSize: 12 },
     chatButton: {
-        height: 48,
+        height: 44,
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',

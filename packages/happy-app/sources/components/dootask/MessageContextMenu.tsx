@@ -1,14 +1,16 @@
 import * as React from 'react';
-import { View, Text, Modal, Pressable, ScrollView, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, Modal, Pressable, useWindowDimensions, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const QUICK_EMOJIS = ['❤️', '👍', '👎', '🔥', '🥳', '👏', '😁'];
+const FADE_IN_MS = 200;
+const FADE_OUT_MS = 150;
 
 export type ContextMenuAction = {
     label: string;
@@ -45,127 +47,137 @@ export function MessageContextMenu({
     const { height: screenH } = useWindowDimensions();
     const insets = useSafeAreaInsets();
 
+    // Two-phase show/hide: fade content first, then unmount Modal.
+    const [modalVisible, setModalVisible] = React.useState(false);
+    const opacity = useSharedValue(0);
+
+    // Snapshot content props so they stay stable during fade-out
+    // (parent sets contextMenu=null immediately on close, emptying props)
+    const snapshotRef = React.useRef<{
+        actions: ContextMenuAction[];
+        preview?: MessagePreview;
+        onEmojiSelect: (symbol: string) => void;
+        onClose: () => void;
+        topY: number;
+    }>({ actions: [], onEmojiSelect: () => {}, onClose: () => {}, topY: 0 });
+
     React.useEffect(() => {
-        if (visible && Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (visible) {
+            setModalVisible(true);
+            opacity.value = withTiming(1, { duration: FADE_IN_MS });
+            if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }
+        } else if (modalVisible) {
+            opacity.value = withTiming(0, { duration: FADE_OUT_MS });
+            const timer = setTimeout(() => setModalVisible(false), FADE_OUT_MS);
+            return () => clearTimeout(timer);
         }
     }, [visible]);
 
-    if (!visible) return null;
+    const animatedStyle = useAnimatedStyle(() => ({
+        opacity: opacity.value,
+    }));
 
-    // Calculate vertical position — try to anchor near the message,
-    // but always keep the entire menu within screen safe area.
+    // Calculate position and snapshot when open
     const EMOJI_BAR_H = 52;
-    const PREVIEW_H = preview ? 104 : 0; // maxHeight 80 + padding 20 + sender ~4
-    const ACTION_ITEM_H = 48;
-    const ACTIONS_H = actions.length * ACTION_ITEM_H + 16;
     const GAP = 8;
-    const GAPS = GAP + (preview ? GAP : 0) + GAP; // between emoji/preview/actions
-    const TOTAL_H = EMOJI_BAR_H + PREVIEW_H + ACTIONS_H + GAPS;
-    const EXTRA = 8; // small extra margin beyond safe area
+    const EXTRA = 8;
     const safeTop = insets.top + EXTRA;
     const safeBottom = insets.bottom + EXTRA;
-    const availableH = screenH - safeTop - safeBottom;
 
-    // Start with emoji bar above the message position
-    let topY = messageY - EMOJI_BAR_H - GAP;
-    // Push up if overflowing bottom
-    if (topY + TOTAL_H > screenH - safeBottom) {
-        topY = screenH - safeBottom - TOTAL_H;
+    if (visible) {
+        // Snapshot all content props while menu is open
+        snapshotRef.current = { actions, preview, onEmojiSelect, onClose, topY: 0 };
+
+        const PREVIEW_H = preview ? 104 : 0;
+        const ACTION_ITEM_H = 48;
+        const ACTIONS_H = actions.length * ACTION_ITEM_H + 16;
+        const GAPS = GAP + (preview ? GAP : 0) + GAP;
+        const TOTAL_H = EMOJI_BAR_H + PREVIEW_H + ACTIONS_H + GAPS;
+
+        let topY = messageY - EMOJI_BAR_H - GAP;
+        if (topY + TOTAL_H > screenH - safeBottom) {
+            topY = screenH - safeBottom - TOTAL_H;
+        }
+        if (topY < safeTop) topY = safeTop;
+        snapshotRef.current.topY = topY;
     }
-    // Push down if overflowing top
-    if (topY < safeTop) topY = safeTop;
 
-    // If total content exceeds available space, cap and enable scrolling
-    const needsScroll = TOTAL_H > availableH;
-    const containerMaxH = needsScroll ? availableH : undefined;
-
-    const menuContent = (
-        <>
-            {/* Emoji quick bar */}
-            <View style={[menuStyles.emojiBar, { backgroundColor: theme.colors.surface }]}>
-                {QUICK_EMOJIS.map((emoji) => (
-                    <Pressable
-                        key={emoji}
-                        onPress={() => { onEmojiSelect(emoji); onClose(); }}
-                        style={menuStyles.emojiButton}
-                    >
-                        <Text style={menuStyles.emojiText}>{emoji}</Text>
-                    </Pressable>
-                ))}
-            </View>
-
-            {/* Message preview */}
-            {preview ? (
-                <View style={[
-                    menuStyles.previewCard,
-                    {
-                        backgroundColor: preview.isSelf ? theme.colors.surfaceHigh : theme.colors.surface,
-                        alignSelf: preview.isSelf ? 'flex-end' : 'flex-start',
-                    },
-                ]}>
-                    {preview.senderName && !preview.isSelf ? (
-                        <Text style={[menuStyles.previewSender, { color: theme.colors.textLink }]} numberOfLines={1}>
-                            {preview.senderName}
-                        </Text>
-                    ) : null}
-                    <View style={menuStyles.previewContent}>
-                        {preview.content}
-                    </View>
-                </View>
-            ) : null}
-
-            {/* Action list */}
-            <View style={[menuStyles.actionList, { backgroundColor: theme.colors.surface }]}>
-                {actions.map((action, i) => (
-                    <Pressable
-                        key={action.label}
-                        onPress={() => { action.onPress(); onClose(); }}
-                        style={({ pressed }) => [
-                            menuStyles.actionItem,
-                            pressed && { backgroundColor: theme.colors.surfaceHigh },
-                            i < actions.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
-                        ]}
-                    >
-                        <Text style={[
-                            menuStyles.actionLabel,
-                            { color: action.destructive ? theme.colors.textDestructive : theme.colors.text },
-                        ]}>
-                            {action.label}
-                        </Text>
-                        {action.icon ? (
-                            <Ionicons
-                                name={action.icon as any}
-                                size={20}
-                                color={action.destructive ? theme.colors.textDestructive : theme.colors.textSecondary}
-                            />
-                        ) : null}
-                    </Pressable>
-                ))}
-            </View>
-        </>
-    );
+    // Always read from snapshot for rendering (stable during fade-out)
+    const snap = snapshotRef.current;
 
     return (
-        <Modal transparent visible animationType="none" onRequestClose={onClose}>
-            <View style={menuStyles.overlay}>
-                {/* Blur backdrop */}
-                <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose}>
+        <Modal transparent visible={modalVisible} animationType="none" onRequestClose={snap.onClose}>
+            <Animated.View style={[menuStyles.overlay, animatedStyle]}>
+                <Pressable style={StyleSheet.absoluteFillObject} onPress={snap.onClose}>
                     <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFillObject} />
                 </Pressable>
 
-                <Animated.View
-                    entering={FadeIn.duration(200)}
-                    exiting={FadeOut.duration(150)}
-                    style={[menuStyles.container, { top: topY, maxHeight: containerMaxH }]}
-                >
-                    {needsScroll ? (
-                        <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-                            {menuContent}
-                        </ScrollView>
-                    ) : menuContent}
-                </Animated.View>
-            </View>
+                <View style={[menuStyles.container, { top: snap.topY }]}>
+                    {/* Emoji quick bar */}
+                    <View style={[menuStyles.emojiBar, { backgroundColor: theme.colors.surface }]}>
+                        {QUICK_EMOJIS.map((emoji) => (
+                            <Pressable
+                                key={emoji}
+                                onPress={() => { snap.onEmojiSelect(emoji); snap.onClose(); }}
+                                style={menuStyles.emojiButton}
+                            >
+                                <Text style={menuStyles.emojiText}>{emoji}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+
+                    {/* Message preview */}
+                    {snap.preview ? (
+                        <View style={[
+                            menuStyles.previewCard,
+                            {
+                                backgroundColor: snap.preview.isSelf ? theme.colors.surfaceHigh : theme.colors.surface,
+                                alignSelf: snap.preview.isSelf ? 'flex-end' : 'flex-start',
+                            },
+                        ]}>
+                            {snap.preview.senderName && !snap.preview.isSelf ? (
+                                <Text style={[menuStyles.previewSender, { color: theme.colors.textLink }]} numberOfLines={1}>
+                                    {snap.preview.senderName}
+                                </Text>
+                            ) : null}
+                            <View style={menuStyles.previewContent}>
+                                {snap.preview.content}
+                            </View>
+                        </View>
+                    ) : null}
+
+                    {/* Action list */}
+                    <View style={[menuStyles.actionList, { backgroundColor: theme.colors.surface }]}>
+                        {snap.actions.map((action, i) => (
+                            <Pressable
+                                key={action.label}
+                                onPress={() => { action.onPress(); snap.onClose(); }}
+                                style={({ pressed }) => [
+                                    menuStyles.actionItem,
+                                    pressed && { backgroundColor: theme.colors.surfaceHigh },
+                                    i < snap.actions.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
+                                ]}
+                            >
+                                <Text style={[
+                                    menuStyles.actionLabel,
+                                    { color: action.destructive ? theme.colors.textDestructive : theme.colors.text },
+                                ]}>
+                                    {action.label}
+                                </Text>
+                                {action.icon ? (
+                                    <Ionicons
+                                        name={action.icon as any}
+                                        size={20}
+                                        color={action.destructive ? theme.colors.textDestructive : theme.colors.textSecondary}
+                                    />
+                                ) : null}
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
+            </Animated.View>
         </Modal>
     );
 }

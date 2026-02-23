@@ -61,6 +61,43 @@ function getEmojiCount(text: string): number {
 }
 const EMOJI_SIZES = [0, 36, 32, 28]; // index = count
 
+/** Scale dimensions to fit within maxW x maxH, preserving aspect ratio (mirrors DooTask's scaleToScale). */
+function scaleToFit(width: number, height: number, maxW: number, maxH: number = maxW): { width: number; height: number } {
+    if (width <= 0 || height <= 0) return { width, height };
+    let w = width, h = height;
+    if (w / h >= maxW / maxH) {
+        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+    } else {
+        if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
+    }
+    return { width: w, height: h };
+}
+
+/**
+ * Pre-process HTML to add inline width/height styles to <img> tags (mirrors DooTask's formatTextMsg).
+ * Extracts width/height attributes, scales to max size, and injects inline styles so
+ * the WebView reserves space before images load — preventing layout shifts.
+ */
+function formatHtmlImages(html: string): string {
+    return html.replace(/<img\s[^>]*>/gi, (imgTag) => {
+        const srcMatch = imgTag.match(/\ssrc=(["'])([^'"]*)\1/i);
+        const widthMatch = imgTag.match(/\swidth=(["'])([^'"]*)\1/i);
+        const heightMatch = imgTag.match(/\sheight=(["'])([^'"]*)\1/i);
+        const w = widthMatch ? parseInt(widthMatch[2], 10) : 0;
+        const h = heightMatch ? parseInt(heightMatch[2], 10) : 0;
+        if (!w || !h || !srcMatch) return imgTag;
+        // Emoticon images use smaller max size
+        const isEmoticon = srcMatch[2].indexOf('emoticon') > -1;
+        const maxSize = isEmoticon ? 150 : 220;
+        const scaled = scaleToFit(w, h, maxSize);
+        // Add inline style and preserve original dimensions
+        return imgTag
+            .replace(/\swidth=/i, ' original-width=')
+            .replace(/\sheight=/i, ' original-height=')
+            .replace(/<img\s/i, `<img style="width:${scaled.width}px;height:${scaled.height}px" `);
+    });
+}
+
 /** Replace DooTask's {{RemoteURL}} placeholder and resolve relative paths to absolute URLs. */
 function resolveUrl(raw: string, serverUrl: string): string {
     const base = serverUrl.replace(/\/+$/, '') + '/';
@@ -217,7 +254,7 @@ function MarkdownContent({ text, theme, serverUrl, onImagePress }: {
                 const imgUrl = resolveUrl(img[2].replace(/\{\{RemoteURL\}\}/g, serverUrl.replace(/\/+$/, '') + '/'), serverUrl);
                 elements.push(
                     <Pressable key={ki++} onPress={() => onImagePress?.(imgUrl)} style={{ marginVertical: 4 }}>
-                        <Image source={{ uri: imgUrl }} style={{ width: 260, height: 180, borderRadius: 8 }} contentFit="cover" />
+                        <Image source={{ uri: imgUrl }} style={{ width: 220, height: 165, borderRadius: 8 }} contentFit="cover" />
                     </Pressable>,
                 );
                 continue;
@@ -328,7 +365,7 @@ export function TextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooT
     // Only use WebView for complex HTML (tables, code blocks, images, lists, etc.)
     // Simple HTML (br, p, b, i, a, span) is stripped and rendered natively for instant display
     if (isHtml && COMPLEX_HTML_RE.test(text)) {
-        return <HtmlContent html={resolveContentUrls(text, serverUrl)} theme={theme} onImagePress={onImagePress} />;
+        return <HtmlContent html={formatHtmlImages(resolveContentUrls(text, serverUrl))} theme={theme} maxImageWidth={220} onImagePress={onImagePress} />;
     }
     return (
         <Text style={[styles.msgText, { color: theme.colors.text }]}>
@@ -341,11 +378,14 @@ function ImageContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDia
     const imageUrl = getMsgImageUrl(msg, serverUrl);
     // File-upload image: has path/url/thumb
     if (imageUrl) {
+        const imgW = msg.msg?.width;
+        const imgH = msg.msg?.height;
+        const scaled = (imgW && imgH) ? scaleToFit(imgW, imgH, 220) : { width: 220, height: 165 };
         return (
             <Pressable onPress={() => onImagePress?.(imageUrl)} style={styles.imageWrapper}>
                 <Image
                     source={{ uri: imageUrl }}
-                    style={{ width: 260, height: 180, borderRadius: 8 }}
+                    style={{ width: scaled.width, height: scaled.height, borderRadius: 8 }}
                     contentFit="cover"
                 />
             </Pressable>
@@ -354,7 +394,7 @@ function ImageContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDia
     // Text-with-embedded-images: msg.msg.text contains <img> tags (DooTask classifies these as type='image')
     const text = getMsgText(msg);
     if (text) {
-        return <HtmlContent html={resolveContentUrls(text, serverUrl)} theme={theme} onImagePress={onImagePress} />;
+        return <HtmlContent html={formatHtmlImages(resolveContentUrls(text, serverUrl))} theme={theme} maxImageWidth={220} onImagePress={onImagePress} />;
     }
     return null;
 }
@@ -366,11 +406,9 @@ function FileContent({ msg, serverUrl, theme, onImagePress, isSelf }: { msg: Doo
 
     // Sub-type: image (DooTask reassigns ext [jpg,jpeg,webp,png,gif] → msg.msg.type = 'img')
     if (msgData.type === 'img' && fileUrl) {
-        const w = msgData.width || 260;
-        const h = msgData.height || 180;
-        const ratio = Math.min(260 / w, 260 / h, 1);
-        const displayW = Math.round(w * ratio);
-        const displayH = Math.round(h * ratio);
+        const scaled = scaleToFit(msgData.width || 220, msgData.height || 165, 220);
+        const displayW = scaled.width;
+        const displayH = scaled.height;
         return (
             <Pressable onPress={() => onImagePress?.(fileUrl)} style={styles.imageWrapper}>
                 <Image
@@ -384,11 +422,9 @@ function FileContent({ msg, serverUrl, theme, onImagePress, isSelf }: { msg: Doo
 
     // Sub-type: video (mp4 with dimensions)
     if (msgData.ext === 'mp4' && msgData.width > 0 && msgData.height > 0) {
-        const w = msgData.width;
-        const h = msgData.height;
-        const ratio = Math.min(260 / w, 260 / h, 1);
-        const displayW = Math.round(w * ratio);
-        const displayH = Math.round(h * ratio);
+        const scaled = scaleToFit(msgData.width, msgData.height, 220);
+        const displayW = scaled.width;
+        const displayH = scaled.height;
         const thumbUrl = msgData.thumb ? resolveUrl(msgData.thumb, serverUrl) : null;
         return (
             <Pressable

@@ -13,7 +13,7 @@ import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { DialogDetailModal } from '@/components/dootask/DialogDetailModal';
 import { useDootaskWebSocket } from '@/hooks/useDootaskWebSocket';
 import { ChatMessageList } from '@/components/dootask/ChatMessageList';
-import { thumbRestore, TextContent } from '@/components/dootask/ChatBubble';
+import { thumbRestore } from '@/components/dootask/ChatBubble';
 import { ChatInput } from '@/components/dootask/ChatInput';
 import { ImageViewer } from '@/components/ImageViewer';
 import { MessageContextMenu, ContextMenuAction, MessagePreview } from '@/components/dootask/MessageContextMenu';
@@ -189,6 +189,19 @@ export default React.memo(function DooTaskChat() {
                     avatar: res.data.avatar || null,
                     owner_id: res.data.owner_id || 0,
                 });
+            }
+        }).catch(() => {});
+        return () => { stale = true; };
+    }, [profile, id, isMock]);
+
+    // Fetch dialog members for header count
+    React.useEffect(() => {
+        if (!profile || isMock) return;
+        let stale = false;
+        dootaskFetchDialogUsers(profile.serverUrl, profile.token, id).then(res => {
+            if (stale) return;
+            if (res.ret === 1 && Array.isArray(res.data)) {
+                setDialogMembers(res.data);
             }
         }).catch(() => {});
         return () => { stale = true; };
@@ -471,23 +484,23 @@ export default React.memo(function DooTaskChat() {
             }
         }
 
-        // Build preview content based on message type
-        let previewContent: React.ReactNode;
-        const hasText = msg.type === 'text' || msg.type === 'longtext';
-        if (hasText) {
-            // Render text/md/html content with full formatting (markdown, bold, etc.)
-            previewContent = <TextContent msg={msg} theme={theme} serverUrl={profile?.serverUrl || ''} />;
-        } else {
-            // Fallback label for non-text types
-            let label = '';
-            switch (msg.type) {
-                case 'image': label = '[Photo]'; break;
-                case 'file': label = msg.msg?.name || '[File]'; break;
-                case 'record': label = t('dootask.voiceMessage'); break;
-                default: label = plainText || '';
-            }
-            previewContent = <Text style={{ color: theme.colors.text, fontSize: 15 }}>{label}</Text>;
+        // Build preview content — always plain text to avoid WebView layout issues
+        let previewLabel = '';
+        switch (msg.type) {
+            case 'text':
+            case 'longtext':
+                previewLabel = plainText || '';
+                break;
+            case 'image': previewLabel = plainText || '[Photo]'; break;
+            case 'file': previewLabel = msg.msg?.name || '[File]'; break;
+            case 'record': previewLabel = t('dootask.voiceMessage'); break;
+            default: previewLabel = plainText || '';
         }
+        const previewContent = (
+            <Text style={{ color: theme.colors.text, fontSize: 15, lineHeight: 22 }} numberOfLines={3}>
+                {previewLabel}
+            </Text>
+        );
 
         setContextMenu({
             msg,
@@ -513,7 +526,8 @@ export default React.memo(function DooTaskChat() {
 
     const handleOpenDetail = React.useCallback(async () => {
         detailModalRef.current?.present();
-        if (!profile || dialogMembersLoading) return;
+        // Members already loaded on mount; only re-fetch if empty
+        if (!profile || dialogMembersLoading || dialogMembers.length > 0) return;
         const requestId = id;
         setDialogMembersLoading(true);
         try {
@@ -527,7 +541,7 @@ export default React.memo(function DooTaskChat() {
                 setDialogMembersLoading(false);
             }
         }
-    }, [profile, id, dialogMembersLoading]);
+    }, [profile, id, dialogMembersLoading, dialogMembers.length]);
 
     // Render ChatHeaderView directly (same style as SessionView)
     // Right side: DooTask icon / dialog avatar (tappable to open detail modal)
@@ -539,9 +553,13 @@ export default React.memo(function DooTaskChat() {
         return base + resolved.replace(/^\/+/, '');
     }, [dialogInfo?.avatar, profile?.serverUrl]);
 
+    const chatTitle = dialogMembers.length > 0
+        ? `${t('dootask.taskChat')} (${dialogMembers.length})`
+        : t('dootask.taskChat');
+
     const header = React.useMemo(() => (
         <ChatHeaderView
-            title={t('dootask.taskChat')}
+            title={chatTitle}
             subtitle={taskName}
             onBackPress={() => router.back()}
             headerRight={() => (
@@ -562,7 +580,7 @@ export default React.memo(function DooTaskChat() {
                 </Pressable>
             )}
         />
-    ), [taskName, router, resolvedDialogAvatar, handleOpenDetail]);
+    ), [chatTitle, taskName, router, resolvedDialogAvatar, handleOpenDetail]);
 
     // Image press -> open viewer
     // For file-upload images: show all file images as a gallery
