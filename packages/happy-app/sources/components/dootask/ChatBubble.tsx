@@ -356,11 +356,67 @@ function ImageContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDia
     return null;
 }
 
-function FileContent({ msg, serverUrl, theme, onImagePress: _onImagePress }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any; onImagePress?: (url: string) => void }) {
-    const fileName = msg.msg?.name || '';
-    const fileSize = msg.msg?.size ? formatFileSize(msg.msg.size) : '';
-    const filePath = msg.msg?.path || msg.msg?.url || '';
+function FileContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any; onImagePress?: (url: string) => void }) {
+    const msgData = msg.msg || {};
+    const filePath = msgData.path || msgData.url || '';
     const fileUrl = filePath ? resolveUrl(filePath, serverUrl) : null;
+
+    // Sub-type: image (DooTask reassigns ext [jpg,jpeg,webp,png,gif] → msg.msg.type = 'img')
+    if (msgData.type === 'img' && fileUrl) {
+        const w = msgData.width || 260;
+        const h = msgData.height || 180;
+        const ratio = Math.min(260 / w, 260 / h, 1);
+        const displayW = Math.round(w * ratio);
+        const displayH = Math.round(h * ratio);
+        return (
+            <Pressable onPress={() => onImagePress?.(fileUrl)} style={styles.imageWrapper}>
+                <Image
+                    source={{ uri: msgData.thumb ? resolveUrl(msgData.thumb, serverUrl) : fileUrl }}
+                    style={{ width: displayW, height: displayH, borderRadius: 8 }}
+                    contentFit="cover"
+                />
+            </Pressable>
+        );
+    }
+
+    // Sub-type: video (mp4 with dimensions)
+    if (msgData.ext === 'mp4' && msgData.width > 0 && msgData.height > 0) {
+        const w = msgData.width;
+        const h = msgData.height;
+        const ratio = Math.min(260 / w, 260 / h, 1);
+        const displayW = Math.round(w * ratio);
+        const displayH = Math.round(h * ratio);
+        const thumbUrl = msgData.thumb ? resolveUrl(msgData.thumb, serverUrl) : null;
+        return (
+            <Pressable
+                onPress={() => { if (fileUrl) WebBrowser.openBrowserAsync(fileUrl); }}
+                style={styles.imageWrapper}
+            >
+                {thumbUrl ? (
+                    <View>
+                        <Image source={{ uri: thumbUrl }} style={{ width: displayW, height: displayH, borderRadius: 8 }} contentFit="cover" />
+                        <View style={{ position: 'absolute', top: 0, left: 0, width: displayW, height: displayH, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+                            <Ionicons name="play-circle" size={48} color="rgba(255,255,255,0.85)" />
+                        </View>
+                    </View>
+                ) : (
+                    <View style={[styles.fileCard, { backgroundColor: theme.colors.surfaceHigh }]}>
+                        <View style={[styles.fileIconCircle, { backgroundColor: theme.colors.surfaceHighest }]}>
+                            <Ionicons name="videocam-outline" size={20} color={theme.colors.textSecondary} />
+                        </View>
+                        <View style={styles.fileInfo}>
+                            <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>{msgData.name || 'Video'}</Text>
+                            {msgData.size ? <Text style={[styles.fileSize, { color: theme.colors.textSecondary }]}>{formatFileSize(msgData.size)}</Text> : null}
+                        </View>
+                    </View>
+                )}
+            </Pressable>
+        );
+    }
+
+    // Generic file (existing behavior)
+    const fileName = msgData.name || '';
+    const fileSize = msgData.size ? formatFileSize(msgData.size) : '';
     return (
         <Pressable
             style={[styles.fileCard, { backgroundColor: theme.colors.surfaceHigh }]}
@@ -370,14 +426,8 @@ function FileContent({ msg, serverUrl, theme, onImagePress: _onImagePress }: { m
                 <Ionicons name="document-outline" size={20} color={theme.colors.textSecondary} />
             </View>
             <View style={styles.fileInfo}>
-                <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>
-                    {fileName}
-                </Text>
-                {fileSize ? (
-                    <Text style={[styles.fileSize, { color: theme.colors.textSecondary }]}>
-                        {fileSize}
-                    </Text>
-                ) : null}
+                <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>{fileName}</Text>
+                {fileSize ? <Text style={[styles.fileSize, { color: theme.colors.textSecondary }]}>{fileSize}</Text> : null}
             </View>
         </Pressable>
     );
@@ -668,7 +718,6 @@ const styles = StyleSheet.create((theme) => ({
     imageWrapper: {
         marginTop: theme.margins.xs,
     },
-
     // --- File card ---
     fileCard: {
         flexDirection: 'row',
