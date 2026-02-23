@@ -651,11 +651,14 @@ class Sync {
             // Decrypt agent state using session-specific encryption
             let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
 
-            // Put it all together
+            const existingSession = storage.getState().sessions[session.id];
+
+            // Put it all together.
+            // Keep local thinking state during refresh to avoid online<->thinking flicker.
             const processedSession = {
                 ...session,
-                thinking: false,
-                thinkingAt: 0,
+                thinking: existingSession?.thinking ?? false,
+                thinkingAt: existingSession?.thinkingAt ?? 0,
                 metadata,
                 agentState
             };
