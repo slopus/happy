@@ -5,7 +5,7 @@ import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
-import type { ApiEphemeralActivityUpdate } from './apiTypes';
+import type { ApiEphemeralActivityUpdate, ApiUpdateContainer } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
@@ -63,6 +63,8 @@ function markSessionViewed(sessionId: string) {
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
     private static readonly SESSION_READY_TIMEOUT_MS = 10000;
+    // Per-session pacing for websocket new-message updates to avoid autoscroll race.
+    private static readonly NEW_MESSAGE_PROCESS_INTERVAL_MS = 500;
 
     encryption!: Encryption;
     serverID!: string;
@@ -73,6 +75,9 @@ class Sync {
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
     private messageSyncTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+    private sessionMessageUpdateQueues = new Map<string, ApiUpdateContainer[]>();
+    private sessionMessageQueueRunning = new Set<string>();
+    private sessionMessageQueueTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -1837,77 +1842,7 @@ class Sync {
         console.log(`🔄 Sync: Validated update type: ${updateData.body.t}`);
 
         if (updateData.body.t === 'new-message') {
-
-            // Get encryption
-            const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
-            if (!encryption) { // Should never happen
-                console.error(`Session ${updateData.body.sid} not found`);
-                this.fetchSessions(); // Just fetch sessions again
-                return;
-            }
-
-            // Decrypt message
-            let lastMessage: NormalizedMessage | null = null;
-            if (updateData.body.message) {
-                const decrypted = await encryption.decryptMessage(updateData.body.message);
-                if (decrypted) {
-                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-
-                    // Check for task lifecycle events to update thinking state
-                    // This ensures UI updates even if volatile activity updates are lost
-                    const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
-                    const contentType = rawContent?.content?.type;
-                    const dataType = rawContent?.content?.data?.type;
-                    
-                    // Debug logging to trace lifecycle events
-                    if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {
-                        console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
-                    }
-                    
-                    const isTaskComplete = 
-                        ((contentType === 'acp' || contentType === 'codex') && 
-                            (dataType === 'task_complete' || dataType === 'turn_aborted'));
-                    
-                    const isTaskStarted = 
-                        ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
-                    
-                    if (isTaskComplete || isTaskStarted) {
-                        console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
-                    }
-
-                    // Update session
-                    const session = storage.getState().sessions[updateData.body.sid];
-                    if (session) {
-                        this.applySessions([{
-                            ...session,
-                            updatedAt: updateData.createdAt,
-                            seq: updateData.seq,
-                            // Update thinking state based on task lifecycle events
-                            ...(isTaskComplete ? { thinking: false } : {}),
-                            ...(isTaskStarted ? { thinking: true } : {})
-                        }])
-                    } else {
-                        // Fetch sessions again if we don't have this session
-                        this.fetchSessions();
-                    }
-
-                    // Update messages
-                    if (lastMessage) {
-                        console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
-                        this.applyMessages(updateData.body.sid, [lastMessage]);
-                        let hasMutableTool = false;
-                        if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
-                            hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
-                        }
-                        if (hasMutableTool) {
-                            gitStatusSync.invalidate(updateData.body.sid);
-                        }
-                    }
-                }
-            }
-
-            // Ping session
-            this.onSessionVisible(updateData.body.sid);
+            this.enqueueSessionMessageUpdate(updateData);
 
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
@@ -2358,6 +2293,141 @@ class Sync {
 
             log.log(`🤖 Deleted OpenClaw machine ${machineId} from storage`);
         }
+    }
+
+    private enqueueSessionMessageUpdate = (updateData: ApiUpdateContainer) => {
+        if (updateData.body.t !== 'new-message') {
+            return;
+        }
+        const sid = updateData.body.sid;
+        const queue = this.sessionMessageUpdateQueues.get(sid);
+        if (queue) {
+            queue.push(updateData);
+        } else {
+            this.sessionMessageUpdateQueues.set(sid, [updateData]);
+        }
+        if (!this.sessionMessageQueueRunning.has(sid)) {
+            void this.processSessionMessageQueue(sid);
+        }
+    }
+
+    private processSessionMessageQueue = async (sessionId: string) => {
+        if (this.sessionMessageQueueRunning.has(sessionId)) {
+            return;
+        }
+        this.sessionMessageQueueRunning.add(sessionId);
+        try {
+            while (true) {
+                const queue = this.sessionMessageUpdateQueues.get(sessionId);
+                const next = queue?.shift();
+                if (!next) {
+                    this.sessionMessageUpdateQueues.delete(sessionId);
+                    break;
+                }
+                await this.applyNewMessageUpdate(next);
+
+                if ((queue?.length ?? 0) > 0) {
+                    await new Promise<void>((resolve) => {
+                        const existingTimer = this.sessionMessageQueueTimers.get(sessionId);
+                        if (existingTimer) {
+                            clearTimeout(existingTimer);
+                        }
+                        const timer = setTimeout(() => {
+                            this.sessionMessageQueueTimers.delete(sessionId);
+                            resolve();
+                        }, Sync.NEW_MESSAGE_PROCESS_INTERVAL_MS);
+                        this.sessionMessageQueueTimers.set(sessionId, timer);
+                    });
+                }
+            }
+        } finally {
+            this.sessionMessageQueueRunning.delete(sessionId);
+            const timer = this.sessionMessageQueueTimers.get(sessionId);
+            if (timer) {
+                clearTimeout(timer);
+                this.sessionMessageQueueTimers.delete(sessionId);
+            }
+            if ((this.sessionMessageUpdateQueues.get(sessionId)?.length ?? 0) > 0) {
+                void this.processSessionMessageQueue(sessionId);
+            }
+        }
+    }
+
+    private applyNewMessageUpdate = async (updateData: ApiUpdateContainer) => {
+        if (updateData.body.t !== 'new-message') {
+            return;
+        }
+
+        // Get encryption
+        const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+        if (!encryption) { // Should never happen
+            console.error(`Session ${updateData.body.sid} not found`);
+            this.fetchSessions(); // Just fetch sessions again
+            return;
+        }
+
+        // Decrypt message
+        let lastMessage: NormalizedMessage | null = null;
+        if (updateData.body.message) {
+            const decrypted = await encryption.decryptMessage(updateData.body.message);
+            if (decrypted) {
+                lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+
+                // Check for task lifecycle events to update thinking state
+                // This ensures UI updates even if volatile activity updates are lost
+                const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
+                const contentType = rawContent?.content?.type;
+                const dataType = rawContent?.content?.data?.type;
+
+                // Debug logging to trace lifecycle events
+                if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {
+                    console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
+                }
+
+                const isTaskComplete =
+                    ((contentType === 'acp' || contentType === 'codex') &&
+                        (dataType === 'task_complete' || dataType === 'turn_aborted'));
+
+                const isTaskStarted =
+                    ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
+
+                if (isTaskComplete || isTaskStarted) {
+                    console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
+                }
+
+                // Update session
+                const session = storage.getState().sessions[updateData.body.sid];
+                if (session) {
+                    this.applySessions([{
+                        ...session,
+                        updatedAt: updateData.createdAt,
+                        seq: updateData.seq,
+                        // Update thinking state based on task lifecycle events
+                        ...(isTaskComplete ? { thinking: false } : {}),
+                        ...(isTaskStarted ? { thinking: true } : {})
+                    }]);
+                } else {
+                    // Fetch sessions again if we don't have this session
+                    this.fetchSessions();
+                }
+
+                // Update messages
+                if (lastMessage) {
+                    console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
+                    this.applyMessages(updateData.body.sid, [lastMessage]);
+                    let hasMutableTool = false;
+                    if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
+                        hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
+                    }
+                    if (hasMutableTool) {
+                        gitStatusSync.invalidate(updateData.body.sid);
+                    }
+                }
+            }
+        }
+
+        // Ping session
+        this.onSessionVisible(updateData.body.sid);
     }
 
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
