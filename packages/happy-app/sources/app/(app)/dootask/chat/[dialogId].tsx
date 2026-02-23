@@ -178,30 +178,9 @@ export default React.memo(function DooTaskChat() {
         enabled: wsEnabled,
         onMessage: React.useCallback((msg: DooTaskDialogMsg) => {
             setMessages(prev => {
-                // Avoid duplicates
                 if (prev.some(m => m.id === msg.id)) return prev;
-                return [msg, ...prev]; // prepend (newest-first)
+                return [msg, ...prev];
             });
-            // Auto-remove matching pending message (FIFO: oldest sending match)
-            // Pending array is newest-first (head-insert), so oldest = last index.
-            // Search backwards to find the oldest match.
-            setPendingMessages(prev => {
-                if (prev.length === 0) return prev;
-                let idx = -1;
-                for (let i = prev.length - 1; i >= 0; i--) {
-                    const p = prev[i];
-                    if (p.userid === msg.userid && p.type === msg.type && (p._pending === 'sending' || p._pending === 'sending-quiet')) {
-                        idx = i;
-                        break;
-                    }
-                }
-                if (idx === -1) return prev;
-                retryFnsRef.current.delete(prev[idx]._pendingId);
-                const next = [...prev];
-                next.splice(idx, 1);
-                return next;
-            });
-            // Fetch user name if needed
             if (msg.userid) storage.getState().fetchDootaskUsers([msg.userid]);
         }, []),
         onMessageUpdate: React.useCallback((msg: DooTaskDialogMsg) => {
@@ -276,9 +255,13 @@ export default React.memo(function DooTaskChat() {
                     return;
                 }
                 clearTimeout(quietTimer); timers.delete(quietTimer);
-                // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
-                const safetyTimer = setTimeout(() => { timers.delete(safetyTimer); removePending(pending._pendingId); }, 30000);
-                timers.add(safetyTimer);
+                // Upgrade: replace pending with real message from API response
+                const realMsg: DooTaskDialogMsg = res.data;
+                removePending(pending._pendingId);
+                setMessages(prev => {
+                    if (prev.some(m => m.id === realMsg.id)) return prev;
+                    return [realMsg, ...prev];
+                });
             } catch (e) {
                 clearTimeout(quietTimer); timers.delete(quietTimer);
                 markPendingError(pending._pendingId, e instanceof Error ? e.message : t('dootask.errorSendMessage'));
@@ -314,9 +297,13 @@ export default React.memo(function DooTaskChat() {
                     markPendingError(pending._pendingId, res.msg || t('dootask.errorSendMessage'));
                     return;
                 }
-                // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
-                const st = setTimeout(() => { pendingTimersRef.current.delete(st); removePending(pending._pendingId); }, 30000);
-                pendingTimersRef.current.add(st);
+                // Upgrade: replace pending with real message from API response
+                const realMsg: DooTaskDialogMsg = res.data;
+                removePending(pending._pendingId);
+                setMessages(prev => {
+                    if (prev.some(m => m.id === realMsg.id)) return prev;
+                    return [realMsg, ...prev];
+                });
             } catch (e) {
                 markPendingError(pending._pendingId, e instanceof Error ? e.message : t('dootask.errorSendMessage'));
             }
@@ -353,9 +340,13 @@ export default React.memo(function DooTaskChat() {
                     markPendingError(pending._pendingId, res.msg || t('dootask.errorSendMessage'));
                     return;
                 }
-                // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
-                const st = setTimeout(() => { pendingTimersRef.current.delete(st); removePending(pending._pendingId); }, 30000);
-                pendingTimersRef.current.add(st);
+                // Upgrade: replace pending with real message from API response
+                const realMsg: DooTaskDialogMsg = res.data;
+                removePending(pending._pendingId);
+                setMessages(prev => {
+                    if (prev.some(m => m.id === realMsg.id)) return prev;
+                    return [realMsg, ...prev];
+                });
             } catch (e) {
                 markPendingError(pending._pendingId, e instanceof Error ? e.message : t('dootask.errorSendMessage'));
             }
