@@ -8,6 +8,7 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { HtmlContent } from '@/components/dootask/HtmlContent';
 import type { DooTaskDialogMsg, PendingMessageStatus, EmojiReaction } from '@/sync/dootask/types';
+import { useDootaskAudioPlayer } from '@/hooks/useAudioPlayer';
 
 // --- AI Assistant ---
 
@@ -450,6 +451,60 @@ function LongtextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTask
     );
 }
 
+function RecordContent({ msg, serverUrl, theme }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any }) {
+    const duration = msg.msg?.duration || 0; // milliseconds
+    const seconds = Math.max(1, Math.round(duration / 1000));
+    const audioUrl = msg.msg?.path ? resolveUrl(msg.msg.path, serverUrl) : '';
+    const transcript = msg.msg?.text || '';
+    const barWidth = Math.min(200, Math.max(80, 80 + seconds * 3));
+
+    const { isPlaying, toggle } = useDootaskAudioPlayer(msg.id, audioUrl);
+
+    return (
+        <View>
+            <Pressable
+                onPress={audioUrl ? toggle : undefined}
+                style={[voiceStyles.bar, { width: barWidth, backgroundColor: theme.colors.surfaceHigh }]}
+            >
+                <Ionicons
+                    name={isPlaying ? 'volume-high' : 'volume-medium'}
+                    size={18}
+                    color={theme.colors.text}
+                />
+                <Text style={[voiceStyles.duration, { color: theme.colors.text }]}>
+                    {seconds}″
+                </Text>
+            </Pressable>
+            {transcript ? (
+                <Text style={[voiceStyles.transcript, { color: theme.colors.textSecondary }]} numberOfLines={3}>
+                    {transcript}
+                </Text>
+            ) : null}
+        </View>
+    );
+}
+
+const voiceStyles = StyleSheet.create({
+    bar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 16,
+        marginTop: 2,
+    },
+    duration: {
+        ...Typography.default(),
+        fontSize: 14,
+    },
+    transcript: {
+        ...Typography.default(),
+        fontSize: 13,
+        marginTop: 4,
+    },
+});
+
 // --- Emoji Reactions ---
 
 function EmojiReactionsRow({ emoji, msgId, currentUserId, theme, onEmojiPress }: {
@@ -567,6 +622,8 @@ export const ChatBubble = React.memo(({
             content = <LongtextContent msg={msg} theme={theme} serverUrl={serverUrl} onImagePress={onImagePress} />;
             break;
         case 'record':
+            content = <RecordContent msg={msg} serverUrl={serverUrl} theme={theme} />;
+            break;
         case 'meeting':
         case 'template':
         default:
