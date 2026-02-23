@@ -12,6 +12,16 @@ import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 import { layout } from './layout';
 
+const LOCAL_COMMAND_STDOUT_PATTERN = /^<local-command-stdout>[\s\S]*<\/local-command-stdout>$/;
+
+function isCompactionMarkerText(text: string): boolean {
+    return LOCAL_COMMAND_STDOUT_PATTERN.test(text.trim());
+}
+
+function shouldHideMessageInChatList(message: Message): boolean {
+    return message.kind === 'user-text' && isCompactionMarkerText(message.displayText ?? message.text);
+}
+
 export const ChatList = React.memo((props: { session: Session; onFillInput?: (text: string, allOptions?: string[]) => void; onLoadMore?: () => void }) => {
     const { messages, hasMore } = useSessionMessages(props.session.id);
     return (
@@ -52,12 +62,16 @@ const ChatListInternal = React.memo((props: {
 }) => {
     const { theme } = useUnistyles();
     const flatListRef = useRef<FlatList>(null);
+    const visibleMessages = React.useMemo(
+        () => props.messages.filter((message) => !shouldHideMessageInChatList(message)),
+        [props.messages]
+    );
 
     // Track if scroll-to-bottom button should be visible
     const [showScrollButton, setShowScrollButton] = useState(false);
 
     // Track the newest message timestamp when button became visible (for unread count)
-    const lastSeenTimestampRef = useRef<number>(props.messages[0]?.createdAt ?? 0);
+    const lastSeenTimestampRef = useRef<number>(visibleMessages[0]?.createdAt ?? 0);
 
     // Prevent duplicate load-more calls
     const isLoadingMoreRef = useRef(false);
@@ -65,7 +79,7 @@ const ChatListInternal = React.memo((props: {
     // Calculate unread count: count messages newer than the last seen timestamp
     let unreadCount = 0;
     if (showScrollButton) {
-        for (const msg of props.messages) {
+        for (const msg of visibleMessages) {
             if (msg.createdAt > lastSeenTimestampRef.current) {
                 unreadCount++;
             } else {
@@ -93,11 +107,11 @@ const ChatListInternal = React.memo((props: {
         setShowScrollButton(prev => {
             // When button becomes visible, record newest message timestamp
             if (shouldShow && !prev) {
-                lastSeenTimestampRef.current = props.messages[0]?.createdAt ?? 0;
+                lastSeenTimestampRef.current = visibleMessages[0]?.createdAt ?? 0;
             }
             return shouldShow;
         });
-    }, [props.messages]);
+    }, [visibleMessages]);
 
     // Scroll to bottom when button is pressed
     const handleScrollToBottom = useCallback(() => {
@@ -131,7 +145,7 @@ const ChatListInternal = React.memo((props: {
         <View style={{ flex: 1 }}>
             <FlatList
                 ref={flatListRef}
-                data={props.messages}
+                data={visibleMessages}
                 inverted={true}
                 keyExtractor={keyExtractor}
                 maintainVisibleContentPosition={{
