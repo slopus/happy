@@ -7,7 +7,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { HtmlContent } from '@/components/dootask/HtmlContent';
-import type { DooTaskDialogMsg, PendingMessageStatus } from '@/sync/dootask/types';
+import type { DooTaskDialogMsg, PendingMessageStatus, EmojiReaction } from '@/sync/dootask/types';
 
 // --- AI Assistant ---
 
@@ -302,6 +302,7 @@ type ChatBubbleProps = {
     replySenderName?: string;
     onImagePress?: (url: string) => void;
     onLongPress?: (msg: DooTaskDialogMsg) => void;
+    onEmojiPress?: (msgId: number, symbol: string) => void;
     serverUrl: string;
     pending?: PendingMessageStatus;
     onRetry?: () => void;
@@ -449,6 +450,48 @@ function LongtextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTask
     );
 }
 
+// --- Emoji Reactions ---
+
+function EmojiReactionsRow({ emoji, msgId, currentUserId, theme, onEmojiPress }: {
+    emoji: EmojiReaction[];
+    msgId: number;
+    currentUserId: number;
+    theme: any;
+    onEmojiPress?: (msgId: number, symbol: string) => void;
+}) {
+    if (!emoji || emoji.length === 0) return null;
+    return (
+        <View style={emojiStyles.row}>
+            {emoji.map((e) => {
+                const isMine = e.userids.includes(currentUserId);
+                return (
+                    <Pressable
+                        key={e.symbol}
+                        onPress={() => onEmojiPress?.(msgId, e.symbol)}
+                        style={[
+                            emojiStyles.pill,
+                            { backgroundColor: isMine ? theme.colors.textLink + '20' : theme.colors.surfaceHigh },
+                            isMine && { borderColor: theme.colors.textLink, borderWidth: 1 },
+                        ]}
+                    >
+                        <Text style={emojiStyles.pillEmoji}>{e.symbol}</Text>
+                        <Text style={[emojiStyles.pillCount, { color: isMine ? theme.colors.textLink : theme.colors.textSecondary }]}>
+                            {e.userids.length}
+                        </Text>
+                    </Pressable>
+                );
+            })}
+        </View>
+    );
+}
+
+const emojiStyles = StyleSheet.create({
+    row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+    pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+    pillEmoji: { fontSize: 14 },
+    pillCount: { ...Typography.default(), fontSize: 12 },
+});
+
 // --- Component ---
 
 export const ChatBubble = React.memo(({
@@ -461,6 +504,7 @@ export const ChatBubble = React.memo(({
     replySenderName,
     onImagePress,
     onLongPress,
+    onEmojiPress,
     serverUrl,
     pending,
     onRetry,
@@ -570,6 +614,7 @@ export const ChatBubble = React.memo(({
                 <View style={styles.selfContent}>
                     {replyBlock}
                     {content}
+                    <EmojiReactionsRow emoji={msg.emoji} msgId={msg.id} currentUserId={currentUserId} theme={theme} onEmojiPress={onEmojiPress} />
                     {statusRow ?? (time ? (
                         <Text style={[styles.selfTime, { color: theme.colors.textSecondary }]}>
                             {time}{msg.modify > 0 ? ` (${t('dootask.edited')})` : ''}
@@ -628,6 +673,7 @@ export const ChatBubble = React.memo(({
                 )}
                 {replyBlock}
                 {content}
+                <EmojiReactionsRow emoji={msg.emoji} msgId={msg.id} currentUserId={currentUserId} theme={theme} onEmojiPress={onEmojiPress} />
             </View>
         </Pressable>
     );

@@ -50,6 +50,7 @@ type ChatMessageListProps = {
     hasMore: boolean;
     onMessageLongPress: (msg: DooTaskDialogMsg) => void;
     onImagePress: (url: string) => void;
+    onEmojiPress?: (msgId: number, symbol: string) => void;
     onRetry?: (pendingId: string) => void;
     serverUrl: string;
 };
@@ -79,6 +80,7 @@ export const ChatMessageList = React.memo(({
     hasMore,
     onMessageLongPress,
     onImagePress,
+    onEmojiPress,
     onRetry,
     serverUrl,
 }: ChatMessageListProps) => {
@@ -157,13 +159,14 @@ export const ChatMessageList = React.memo(({
                     replySenderName={replySenderName}
                     onImagePress={onImagePress}
                     onLongPress={onMessageLongPress}
+                    onEmojiPress={onEmojiPress}
                     serverUrl={serverUrl}
                     pending={pending ? item._pending : undefined}
                     onRetry={pending ? () => onRetry?.(item._pendingId) : undefined}
                 />
             </View>
         );
-    }, [messages, currentUserId, userNames, userAvatars, replyMsgMap, onImagePress, onMessageLongPress, onRetry, serverUrl, theme]);
+    }, [messages, currentUserId, userNames, userAvatars, replyMsgMap, onImagePress, onMessageLongPress, onEmojiPress, onRetry, serverUrl, theme]);
 
     const keyExtractor = React.useCallback((msg: DisplayMessage) =>
         isPending(msg) ? msg._pendingId : msg.id.toString()
