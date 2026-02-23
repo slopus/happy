@@ -4,6 +4,7 @@ import { useRoute } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
+import { CodeEditor } from '@/components/CodeEditor';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import { sessionReadFile, sessionBash, sessionWriteFile } from '@/sync/ops';
@@ -436,6 +437,11 @@ export default function FileScreen() {
     }, [diffContent, fileContent]);
 
     const language = getFileLanguage(filePath);
+    const editorLanguage = language || 'plaintext';
+    const useReadOnlyCodeEditor = displayMode === 'file' && !!fileContent?.content;
+    const handleReadOnlyEditorChange = React.useCallback(() => {
+        // Viewer mode only: ignore edits.
+    }, []);
 
     // Handle long press to open text selection screen
     const handleLongPress = React.useCallback((content: string) => {
@@ -671,27 +677,60 @@ export default function FileScreen() {
             )}
             
             {/* Content display */}
-            <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={wordWrap ? { padding: 16 } : { paddingVertical: 16 }}
-                showsVerticalScrollIndicator={true}
-            >
+            {useReadOnlyCodeEditor ? (
+                <View style={{ flex: 1 }}>
+                    <CodeEditor
+                        value={fileContent?.content || ''}
+                        onChangeText={handleReadOnlyEditorChange}
+                        language={editorLanguage}
+                        bottomPadding={12}
+                        readOnly
+                    />
+                </View>
+            ) : (
                 <ScrollView
-                    horizontal={!wordWrap}
-                    scrollEnabled={!wordWrap}
-                    showsHorizontalScrollIndicator={!wordWrap}
-                    contentContainerStyle={wordWrap ? undefined : { paddingHorizontal: 16 }}
+                    style={{ flex: 1 }}
+                    contentContainerStyle={wordWrap ? { padding: 16 } : { paddingVertical: 16 }}
+                    showsVerticalScrollIndicator={true}
                 >
-                    {Platform.OS !== 'web' && currentContent ? (
-                        <GestureDetector gesture={longPressGesture}>
-                            <View>
+                    <ScrollView
+                        horizontal={!wordWrap}
+                        scrollEnabled={!wordWrap}
+                        showsHorizontalScrollIndicator={!wordWrap}
+                        contentContainerStyle={wordWrap ? undefined : { paddingHorizontal: 16 }}
+                    >
+                        {Platform.OS !== 'web' && currentContent ? (
+                            <GestureDetector gesture={longPressGesture}>
+                                <View>
+                                    {displayMode === 'diff' && diffContent ? (
+                                        <DiffDisplay diffContent={diffContent} />
+                                    ) : displayMode === 'file' && fileContent?.content ? (
+                                        <SimpleSyntaxHighlighter
+                                            code={fileContent.content}
+                                            language={language}
+                                            selectable={false}
+                                        />
+                                    ) : displayMode === 'file' && fileContent && !fileContent.content ? (
+                                        <Text style={{
+                                            fontSize: 16,
+                                            color: theme.colors.textSecondary,
+                                            fontStyle: 'italic',
+                                            ...Typography.default()
+                                        }}>
+                                            {t('files.fileEmpty')}
+                                        </Text>
+                                    ) : null}
+                                </View>
+                            </GestureDetector>
+                        ) : (
+                            <>
                                 {displayMode === 'diff' && diffContent ? (
                                     <DiffDisplay diffContent={diffContent} />
                                 ) : displayMode === 'file' && fileContent?.content ? (
                                     <SimpleSyntaxHighlighter
                                         code={fileContent.content}
                                         language={language}
-                                        selectable={false}
+                                        selectable={true}
                                     />
                                 ) : displayMode === 'file' && fileContent && !fileContent.content ? (
                                     <Text style={{
@@ -702,42 +741,21 @@ export default function FileScreen() {
                                     }}>
                                         {t('files.fileEmpty')}
                                     </Text>
+                                ) : !diffContent && !fileContent?.content ? (
+                                    <Text style={{
+                                        fontSize: 16,
+                                        color: theme.colors.textSecondary,
+                                        fontStyle: 'italic',
+                                        ...Typography.default()
+                                    }}>
+                                        {t('files.noChanges')}
+                                    </Text>
                                 ) : null}
-                            </View>
-                        </GestureDetector>
-                    ) : (
-                        <>
-                            {displayMode === 'diff' && diffContent ? (
-                                <DiffDisplay diffContent={diffContent} />
-                            ) : displayMode === 'file' && fileContent?.content ? (
-                                <SimpleSyntaxHighlighter
-                                    code={fileContent.content}
-                                    language={language}
-                                    selectable={true}
-                                />
-                            ) : displayMode === 'file' && fileContent && !fileContent.content ? (
-                                <Text style={{
-                                    fontSize: 16,
-                                    color: theme.colors.textSecondary,
-                                    fontStyle: 'italic',
-                                    ...Typography.default()
-                                }}>
-                                    {t('files.fileEmpty')}
-                                </Text>
-                            ) : !diffContent && !fileContent?.content ? (
-                                <Text style={{
-                                    fontSize: 16,
-                                    color: theme.colors.textSecondary,
-                                    fontStyle: 'italic',
-                                    ...Typography.default()
-                                }}>
-                                    {t('files.noChanges')}
-                                </Text>
-                            ) : null}
-                        </>
-                    )}
+                            </>
+                        )}
+                    </ScrollView>
                 </ScrollView>
-            </ScrollView>
+            )}
         </View>
     );
 }

@@ -14,6 +14,7 @@ interface CodeEditorProps {
     onChangeText: (text: string) => void;
     bottomPadding?: number;
     language?: string;
+    readOnly?: boolean;
 }
 
 export interface CodeEditorHandle {
@@ -26,6 +27,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(({
     onChangeText,
     bottomPadding = 16,
     language = 'plaintext',
+    readOnly = false,
 }, ref) => {
     const { rt } = useUnistyles();
     const iframeRef = React.useRef<HTMLIFrameElement>(null);
@@ -41,6 +43,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(({
         initialLanguage: language,
         initialTheme: themeMode,
         initialBottomPadding: bottomPadding,
+        initialReadOnly: readOnly,
         monacoBaseCandidates,
     }), []);
 
@@ -118,6 +121,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(({
     React.useEffect(() => {
         postCommand({ type: 'setBottomPadding', bottomPadding });
     }, [bottomPadding, postCommand]);
+
+    React.useEffect(() => {
+        postCommand({ type: 'setReadOnly', readOnly });
+    }, [postCommand, readOnly]);
 
     React.useImperativeHandle(ref, () => ({
         focus: () => {

@@ -3,6 +3,7 @@ export type EditorCommand =
     | { type: 'setLanguage'; language: string }
     | { type: 'setTheme'; theme: 'light' | 'dark' }
     | { type: 'setBottomPadding'; bottomPadding: number }
+    | { type: 'setReadOnly'; readOnly: boolean }
     | { type: 'focus' }
     | { type: 'blur' };
 
@@ -65,6 +66,7 @@ export function buildEditorHtml(args: {
     initialLanguage: string;
     initialTheme: 'light' | 'dark';
     initialBottomPadding: number;
+    initialReadOnly: boolean;
     monacoBaseCandidates: string[];
 }) {
     const {
@@ -72,6 +74,7 @@ export function buildEditorHtml(args: {
         initialLanguage,
         initialTheme,
         initialBottomPadding,
+        initialReadOnly,
         monacoBaseCandidates,
     } = args;
     const safeLanguage = JSON.stringify(initialLanguage);
@@ -135,6 +138,7 @@ export function buildEditorHtml(args: {
         var initialLanguage = ${safeLanguage};
         var initialTheme = ${safeTheme};
         var initialBottomPadding = ${safeBottomPadding};
+        var initialReadOnly = ${initialReadOnly ? 'true' : 'false'};
         var monacoBaseCandidates = ${safeMonacoBaseCandidates};
 
         var editor = null;
@@ -173,6 +177,7 @@ export function buildEditorHtml(args: {
           root.style.display = 'none';
           fallback.style.display = 'block';
           fallback.value = initialValue;
+          fallback.readOnly = !!initialReadOnly;
           setFallbackTheme(initialTheme);
           fallback.addEventListener('input', function () {
             post({ type: 'change', value: fallback.value });
@@ -197,6 +202,16 @@ export function buildEditorHtml(args: {
               editor.updateOptions({ padding: { top: 12, bottom: padding } });
             } else {
               fallback.style.paddingBottom = padding + 'px';
+            }
+            return;
+          }
+
+          if (command.type === 'setReadOnly') {
+            initialReadOnly = !!command.readOnly;
+            if (editor) {
+              editor.updateOptions({ readOnly: initialReadOnly });
+            } else {
+              fallback.readOnly = initialReadOnly;
             }
             return;
           }
@@ -319,6 +334,7 @@ export function buildEditorHtml(args: {
                 value: initialValue,
                 language: initialLanguage || 'plaintext',
                 theme: initialTheme === 'dark' ? 'happy-dark' : 'happy-light',
+                readOnly: !!initialReadOnly,
                 automaticLayout: true,
                 minimap: { enabled: false },
                 lineNumbers: 'on',
