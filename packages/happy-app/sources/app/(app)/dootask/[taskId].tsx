@@ -58,66 +58,8 @@ function getFileIcon(ext: string): string {
     return 'document-outline';
 }
 
-function buildDooTaskPrompt(
-    task: DooTaskItem,
-    subTasks: DooTaskItem[],
-    files: DooTaskFile[],
-    userCache: Record<number, string>,
-): string {
-    const parts: string[] = ['Help me with a DooTask task.', ''];
-
-    // Task header
-    const status = parseFlowItem(task.flow_item_name).name;
-    const priority = task.p_name || '';
-    const resolveName = (u: { userid: number; nickname: string }) =>
-        userCache[u.userid] || u.nickname || '';
-    const assignees = task.task_user
-        ?.filter(u => u.owner)
-        .map(resolveName)
-        .filter(Boolean)
-        .join(', ') || '';
-    const assists = task.task_user
-        ?.filter(u => !u.owner)
-        .map(resolveName)
-        .filter(Boolean)
-        .join(', ') || '';
-
-    parts.push('## Task');
-    parts.push(`- Task ID: ${task.id}`);
-    parts.push(`- Title: ${task.name}`);
-    parts.push(`- Project: ${task.project_name}`);
-    if (status) parts.push(`- Status: ${status}`);
-    if (priority) parts.push(`- Priority: ${priority}`);
-    if (assignees) parts.push(`- Assignees: ${assignees}`);
-    if (assists) parts.push(`- Collaborators: ${assists}`);
-
-    // Description
-    if (task.desc) {
-        parts.push('');
-        parts.push('## Description');
-        parts.push(task.desc);
-    }
-
-    // Sub-tasks
-    if (subTasks.length > 0) {
-        parts.push('');
-        parts.push('## Sub-tasks');
-        for (const sub of subTasks) {
-            const check = sub.complete_at ? 'x' : ' ';
-            parts.push(`- [${check}] ${sub.name}`);
-        }
-    }
-
-    // Attachments
-    if (files.length > 0) {
-        parts.push('');
-        parts.push('## Attachments');
-        for (const f of files) {
-            parts.push(`- ${f.name}`);
-        }
-    }
-
-    return parts.join('\n');
+function buildDooTaskPrompt(task: DooTaskItem): string {
+    return `Help me with a DooTask task.\nTask ID: ${task.id}\nTitle: ${task.name}`;
 }
 
 function DetailField({ label, value, color, theme }: {
@@ -442,7 +384,7 @@ export default function DooTaskDetail() {
         if (!profile || !task) return;
 
         const dataId = storeTempData({
-            prompt: buildDooTaskPrompt(task, subTasks, taskFiles, userCache),
+            prompt: buildDooTaskPrompt(task),
             sessionTitle: `DooTask: ${task.name}`,
             sessionIcon: 'dootask',
             mcpServers: [{
