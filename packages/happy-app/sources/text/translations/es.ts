@@ -215,7 +215,7 @@ export const es: TranslationStructure = {
             `${name} está ${status === 'online' ? 'en línea' : 'desconectado'}`,
         featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
             `${feature} ${enabled ? 'habilitada' : 'deshabilitada'}`,
-        dootaskConnected: ({ username }: { username: string }) => `Connected as ${username}`,
+        dootaskConnected: ({ username }: { username: string }) => `Connected as @${username}`,
         connectDootask: 'Connect DooTask',
     },
 

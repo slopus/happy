@@ -247,7 +247,7 @@ export const ja: TranslationStructure = {
             `${name}は${status === 'online' ? 'オンライン' : 'オフライン'}です`,
         featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
             `${feature}を${enabled ? '有効' : '無効'}にしました`,
-        dootaskConnected: ({ username }: { username: string }) => `Connected as ${username}`,
+        dootaskConnected: ({ username }: { username: string }) => `Connected as @${username}`,
         connectDootask: 'Connect DooTask',
     },
 

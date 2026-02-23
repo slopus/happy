@@ -216,7 +216,7 @@ export const zhHant: TranslationStructure = {
             `${name} ${status === 'online' ? '線上' : '離線'}`,
         featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
             `${feature} 已${enabled ? '啟用' : '停用'}`,
-        dootaskConnected: ({ username }: { username: string }) => `Connected as ${username}`,
+        dootaskConnected: ({ username }: { username: string }) => `Connected as @${username}`,
         connectDootask: 'Connect DooTask',
     },
 

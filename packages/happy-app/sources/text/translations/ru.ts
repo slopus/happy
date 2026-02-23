@@ -179,7 +179,7 @@ export const ru: TranslationStructure = {
             `${name} ${status === 'online' ? 'online' : 'offline'}`,
         featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
             `${feature} ${enabled ? 'включена' : 'отключена'}`,
-        dootaskConnected: ({ username }: { username: string }) => `Connected as ${username}`,
+        dootaskConnected: ({ username }: { username: string }) => `Connected as @${username}`,
         connectDootask: 'Connect DooTask',
     },
 
