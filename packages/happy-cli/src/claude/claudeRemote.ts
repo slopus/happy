@@ -117,6 +117,11 @@ export async function claudeRemote(opts: {
         cwd: opts.path,
         resume: startFrom ?? undefined,
         mcpServers: opts.mcpServers,
+        // IMPORTANT: Use mapToClaudeMode() to translate all 7 PermissionModes to the 4
+        // modes the Claude SDK understands. Do NOT use a ternary like
+        // `=== "plan" ? "plan" : "default"` — that would silently reset bypassPermissions
+        // and acceptEdits to "default", breaking autonomous agent workflows.
+        // See: packages/happy-cli/src/claude/utils/permissionMode.ts
         permissionMode: mapToClaudeMode(initial.mode.permissionMode),
         model: initial.mode.model,
         fallbackModel: initial.mode.fallbackModel,
