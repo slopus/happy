@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
@@ -58,107 +58,192 @@ function resolveUrl(raw: string, serverUrl: string): string {
     return base + resolved.replace(/^\/+/, '');
 }
 
-/**
- * Simple markdown-to-HTML converter for DooTask AI assistant messages.
- * Handles common patterns: headers, bold, italic, links, lists, code blocks,
- * blockquotes, and DooTask-specific :::ai-action{...}::: directives.
- */
-function markdownToHtml(md: string): string {
-    let text = md;
+// --- Native Markdown Renderer ---
+// Renders markdown as native React Native components (Text/View) so they
+// naturally participate in flex layout — right-aligning in self-message bubbles,
+// sizing to content, and rendering instantly without WebView overhead.
 
-    // Process :::ai-action{...}::: directives — show status labels
-    text = text.replace(/:::ai-action\{([^}]+)\}:::/g, (_match, attrs: string) => {
-        const params: Record<string, string> = {};
-        attrs.replace(/(\w+)="([^"]+)"/g, (_m: string, key: string, value: string) => {
-            params[key] = value;
-            return '';
-        });
-        const status = params.status || '';
-        if (status === 'applied') return '<span style="color:#4CAF50;font-style:italic">✓ Adopted</span>';
-        if (status === 'dismissed') return '<span style="color:#999;font-style:italic">✗ Dismissed</span>';
-        // Active (no status) — hide interactive buttons in mobile
+const HEADER_SIZES = [24, 20, 18, 16, 15, 14]; // h1–h6
+const MONO_FONT = Platform.select({ ios: 'Menlo', default: 'monospace' });
+
+/** Parse inline markdown (bold, italic, code, links, strikethrough) into Text elements */
+function renderInline(text: string, theme: any, keyPrefix: string = ''): React.ReactNode {
+    const parts: React.ReactNode[] = [];
+    let remaining = text;
+    let idx = 0;
+
+    // Order matters: bold-italic before bold before italic, image before link
+    const re = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|(?<!\*)\*([^*\n]+?)\*(?!\*)|`([^`]+?)`|!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|~~(.+?)~~)/;
+
+    while (remaining) {
+        const match = remaining.match(re);
+        if (!match || match.index === undefined) {
+            if (remaining) parts.push(remaining);
+            break;
+        }
+        if (match.index > 0) {
+            parts.push(remaining.substring(0, match.index));
+        }
+        const key = `${keyPrefix}-${idx++}`;
+        if (match[2]) {
+            parts.push(<Text key={key} style={{ fontWeight: '700', fontStyle: 'italic' }}>{renderInline(match[2], theme, key)}</Text>);
+        } else if (match[3]) {
+            parts.push(<Text key={key} style={{ fontWeight: '700' }}>{renderInline(match[3], theme, key)}</Text>);
+        } else if (match[4]) {
+            parts.push(<Text key={key} style={{ fontStyle: 'italic' }}>{renderInline(match[4], theme, key)}</Text>);
+        } else if (match[5]) {
+            parts.push(<Text key={key} style={{ fontFamily: MONO_FONT, backgroundColor: theme.colors.surfaceHighest || '#2a2a2a', fontSize: 13 }}>{match[5]}</Text>);
+        } else if (match[6] !== undefined && match[7]) {
+            // ![alt](url) — inline image reference, show as link text
+            parts.push(<Text key={key} style={{ color: '#0A84FF' }}>{match[6] || 'image'}</Text>);
+        } else if (match[8] && match[9]) {
+            parts.push(<Text key={key} style={{ color: '#0A84FF' }}>{match[8]}</Text>);
+        } else if (match[10]) {
+            parts.push(<Text key={key} style={{ textDecorationLine: 'line-through' as const }}>{match[10]}</Text>);
+        }
+        remaining = remaining.substring(match.index + match[0].length);
+    }
+    return parts.length === 1 ? parts[0] : <>{parts}</>;
+}
+
+/** Render markdown text as native React Native components */
+function MarkdownContent({ text, theme, serverUrl, onImagePress }: {
+    text: string; theme: any; serverUrl: string; onImagePress?: (url: string) => void;
+}) {
+    const elements: React.ReactNode[] = [];
+    let processed = text;
+
+    // Strip DooTask :::ai-action{...}::: directives — extract status labels
+    processed = processed.replace(/:::ai-action\{([^}]+)\}:::/g, (_m, attrs: string) => {
+        if (/status="applied"/.test(attrs)) return '\u2713 Adopted';
+        if (/status="dismissed"/.test(attrs)) return '\u2717 Dismissed';
         return '';
     });
 
-    // Process :::reasoning ... ::: blocks
-    text = text.replace(/:::\s*reasoning\s*\n([\s\S]*?):::/g, (_match, content: string) => {
-        return `\n<blockquote><em>Thinking...</em>\n${content.trim()}</blockquote>\n`;
-    });
+    // Strip :::reasoning...:::  blocks (AI thinking — not useful in mobile)
+    processed = processed.replace(/:::\s*reasoning\s*\n?([\s\S]*?):::/g, '');
+    processed = processed.replace(/:::\s*reasoning\s*[\r\n]*\s*:::/g, '');
 
-    // Remove empty reasoning blocks
-    text = text.replace(/:::\s*reasoning\s*[\r\n]*\s*:::/g, '');
+    // Split into code-block vs text segments
+    type Block = { type: 'code'; lang: string; content: string } | { type: 'text'; content: string };
+    const blocks: Block[] = [];
+    const codeRe = /```(\w*)\n?([\s\S]*?)```/g;
+    let lastIdx = 0;
+    let cm;
+    while ((cm = codeRe.exec(processed)) !== null) {
+        if (cm.index > lastIdx) blocks.push({ type: 'text', content: processed.substring(lastIdx, cm.index) });
+        blocks.push({ type: 'code', lang: cm[1], content: cm[2].trimEnd() });
+        lastIdx = cm.index + cm[0].length;
+    }
+    if (lastIdx < processed.length) blocks.push({ type: 'text', content: processed.substring(lastIdx) });
 
-    // Code blocks (```lang\n...\n```)
-    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang: string, code: string) => {
-        const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const langLabel = lang ? `<div style="font-size:12px;color:#888;margin-bottom:4px">${lang}</div>` : '';
-        return `\n<pre>${langLabel}<code>${escaped}</code></pre>\n`;
-    });
+    let ki = 0;
+    for (const block of blocks) {
+        if (block.type === 'code') {
+            elements.push(
+                <View key={ki++} style={mdStyles.codeBlock(theme)}>
+                    {block.lang ? <Text style={mdStyles.codeLang(theme)}>{block.lang}</Text> : null}
+                    <Text style={mdStyles.codeText(theme)}>{block.content}</Text>
+                </View>,
+            );
+            continue;
+        }
 
-    // Inline code (`code`)
-    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+        const lines = block.content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (!line.trim()) {
+                if (i > 0 && i < lines.length - 1) elements.push(<View key={ki++} style={{ height: 6 }} />);
+                continue;
+            }
 
-    // Images ![alt](url) — before links to avoid conflict
-    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+            // Header
+            const hm = line.match(/^(#{1,6})\s+(.+)$/);
+            if (hm) {
+                const level = hm[1].length;
+                elements.push(
+                    <Text key={ki++} style={[styles.msgText, { color: theme.colors.text, fontSize: HEADER_SIZES[level - 1], fontWeight: '700', lineHeight: HEADER_SIZES[level - 1] * 1.4 }]}>
+                        {renderInline(hm[2], theme, `h${ki}`)}
+                    </Text>,
+                );
+                continue;
+            }
 
-    // Links [text](url)
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+            // Horizontal rule
+            if (/^---+$/.test(line.trim())) {
+                elements.push(<View key={ki++} style={{ height: 1, backgroundColor: theme.colors.divider || '#333', marginVertical: 8 }} />);
+                continue;
+            }
 
-    // Headers (must be at start of line)
-    text = text.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
-    text = text.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
-    text = text.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
-    text = text.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
-    text = text.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
-    text = text.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+            // Blockquote
+            const bq = line.match(/^>\s+(.+)$/);
+            if (bq) {
+                elements.push(
+                    <View key={ki++} style={{ borderLeftWidth: 3, borderLeftColor: theme.colors.divider || '#333', paddingLeft: 8, marginVertical: 2 }}>
+                        <Text style={[styles.msgText, { color: theme.colors.textSecondary }]}>{renderInline(bq[1], theme, `q${ki}`)}</Text>
+                    </View>,
+                );
+                continue;
+            }
 
-    // Bold + italic
-    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    // Bold
-    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // Italic
-    text = text.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>');
+            // Unordered list
+            const ul = line.match(/^[-*+]\s+(.+)$/);
+            if (ul) {
+                elements.push(<Text key={ki++} style={[styles.msgText, { color: theme.colors.text }]}>{'  \u2022 '}{renderInline(ul[1], theme, `u${ki}`)}</Text>);
+                continue;
+            }
 
-    // Strikethrough
-    text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
+            // Ordered list
+            const ol = line.match(/^(\d+)\.\s+(.+)$/);
+            if (ol) {
+                elements.push(<Text key={ki++} style={[styles.msgText, { color: theme.colors.text }]}>{`  ${ol[1]}. `}{renderInline(ol[2], theme, `o${ki}`)}</Text>);
+                continue;
+            }
 
-    // Horizontal rules
-    text = text.replace(/^---+$/gm, '<hr>');
+            // Image on its own line
+            const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
+            if (img) {
+                const imgUrl = resolveUrl(img[2].replace(/\{\{RemoteURL\}\}/g, serverUrl.replace(/\/+$/, '') + '/'), serverUrl);
+                elements.push(
+                    <Pressable key={ki++} onPress={() => onImagePress?.(imgUrl)} style={{ marginVertical: 4 }}>
+                        <Image source={{ uri: imgUrl }} style={{ width: 260, height: 180, borderRadius: 8 }} contentFit="cover" />
+                    </Pressable>,
+                );
+                continue;
+            }
 
-    // Blockquotes (consecutive lines)
-    text = text.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
-    // Merge consecutive blockquotes
-    text = text.replace(/<\/blockquote>\n<blockquote>/g, '\n');
+            // Regular text
+            elements.push(<Text key={ki++} style={[styles.msgText, { color: theme.colors.text }]}>{renderInline(line, theme, `t${ki}`)}</Text>);
+        }
+    }
 
-    // Unordered lists
-    text = text.replace(/((?:^[-*+]\s+.+$\n?)+)/gm, (block) => {
-        const items = block.replace(/^[-*+]\s+(.+)$/gm, '<li>$1</li>').trim();
-        return `<ul>${items}</ul>`;
-    });
-
-    // Ordered lists
-    text = text.replace(/((?:^\d+\.\s+.+$\n?)+)/gm, (block) => {
-        const items = block.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>').trim();
-        return `<ol>${items}</ol>`;
-    });
-
-    // Double newlines -> paragraph breaks
-    text = text.replace(/\n\n+/g, '</p><p>');
-
-    // Single newlines -> <br> (but not inside pre/code blocks or after block elements)
-    text = text.replace(/(?<!\n)<\/p><p>(?!\n)/g, '</p><p>');
-    text = text.replace(/([^>\n])\n([^<\n])/g, '$1<br>$2');
-
-    // Wrap in paragraph
-    text = '<p>' + text + '</p>';
-
-    // Clean up: remove paragraphs around block elements
-    text = text.replace(/<p>\s*(<(?:h[1-6]|pre|ul|ol|blockquote|hr|div)[^>]*>)/g, '$1');
-    text = text.replace(/(<\/(?:h[1-6]|pre|ul|ol|blockquote|hr|div)>)\s*<\/p>/g, '$1');
-    text = text.replace(/<p>\s*<\/p>/g, '');
-
-    return text;
+    if (elements.length === 0) {
+        return <Text style={[styles.msgText, { color: theme.colors.text }]}>{text}</Text>;
+    }
+    if (elements.length === 1) return <>{elements}</>;
+    return <View>{elements}</View>;
 }
+
+// Inline style helpers for MarkdownContent (can't use StyleSheet.create for dynamic theme)
+const mdStyles = {
+    codeBlock: (theme: any) => ({
+        backgroundColor: theme.colors.surfaceHighest || '#2a2a2a',
+        borderRadius: 4,
+        padding: 12,
+        marginVertical: 4,
+    }),
+    codeLang: (theme: any) => ({
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        marginBottom: 4,
+    }),
+    codeText: (theme: any) => ({
+        fontFamily: MONO_FONT,
+        fontSize: 13,
+        color: theme.colors.text,
+        lineHeight: 18,
+    }),
+} as const;
 
 /** Replace {{RemoteURL}} placeholders in HTML content so images and links resolve correctly. */
 export function resolveContentUrls(html: string, serverUrl: string): string {
@@ -218,11 +303,10 @@ const COMPLEX_HTML_RE = /<(table|img|pre|code|ul|ol|li|h[1-6]|iframe|video|audio
 function TextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTaskDialogMsg; theme: any; serverUrl: string; onImagePress?: (url: string) => void }) {
     const text = getMsgText(msg);
 
-    // Markdown messages (from AI assistant): convert to HTML and render rich content
+    // Markdown messages: render as native components (Text/View) for proper flex layout
     const isMd = typeof msg.msg === 'object' && msg.msg?.type === 'md';
     if (isMd) {
-        const html = markdownToHtml(text);
-        return <HtmlContent html={resolveContentUrls(html, serverUrl)} theme={theme} onImagePress={onImagePress} />;
+        return <MarkdownContent text={text} theme={theme} serverUrl={serverUrl} onImagePress={onImagePress} />;
     }
 
     const isHtml = (typeof msg.msg === 'object' && msg.msg?.type === 'html') || /<[^>]+>/.test(text);
