@@ -302,6 +302,9 @@ export const pl: TranslationStructure = {
         takePhoto: 'Zrób zdjęcie',
         chooseFromAlbum: 'Wybierz z albumu',
         chooseFromFile: 'Wybierz plik',
+        sending: 'Wysyłanie...',
+        sendFailed: 'Niepowodzenie',
+        retry: 'Ponów',
     },
 
     settingsAppearance: {

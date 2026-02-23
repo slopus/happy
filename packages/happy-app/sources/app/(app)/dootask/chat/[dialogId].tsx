@@ -16,7 +16,7 @@ import { ChatInput } from '@/components/dootask/ChatInput';
 import { ImageViewer } from '@/components/ImageViewer';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
-import type { DooTaskDialogMsg } from '@/sync/dootask/types';
+import type { DooTaskDialogMsg, PendingMessage, DisplayMessage } from '@/sync/dootask/types';
 
 function dedupeMessagesById(list: DooTaskDialogMsg[]): DooTaskDialogMsg[] {
     const seen = new Set<number>();
@@ -27,6 +27,10 @@ function dedupeMessagesById(list: DooTaskDialogMsg[]): DooTaskDialogMsg[] {
         deduped.push(msg);
     }
     return deduped;
+}
+
+function nowTimestamp(): string {
+    return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
 export default React.memo(function DooTaskChat() {
@@ -44,8 +48,20 @@ export default React.memo(function DooTaskChat() {
     const [loadingMore, setLoadingMore] = React.useState(false);
     const [hasMore, setHasMore] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
-    const [sending, setSending] = React.useState(false);
     const [wsEnabled, setWsEnabled] = React.useState(false);
+
+    // Optimistic pending messages
+    const [pendingMessages, setPendingMessages] = React.useState<PendingMessage[]>([]);
+    const retryFnsRef = React.useRef<Map<string, () => void>>(new Map());
+    const pendingIdCounter = React.useRef(0);
+    const pendingTimersRef = React.useRef(new Set<ReturnType<typeof setTimeout>>());
+
+    // Clean up all pending timers on unmount
+    React.useEffect(() => {
+        return () => {
+            for (const id of pendingTimersRef.current) clearTimeout(id);
+        };
+    }, []);
 
     // Ref for messages (used by handleLoadMore to avoid dependency on messages array)
     const messagesRef = React.useRef(messages);
@@ -82,6 +98,12 @@ export default React.memo(function DooTaskChat() {
         fileImageUrlsRef.current = urls;
         return urls;
     }, [messages, profile?.serverUrl]);
+
+    // Merge pending + real messages for display (pending at front = bottom of inverted list)
+    const displayMessages: DisplayMessage[] = React.useMemo(
+        () => [...pendingMessages, ...messages],
+        [pendingMessages, messages],
+    );
 
     // Initial fetch
     const fetchMessages = React.useCallback(async () => {
@@ -160,6 +182,20 @@ export default React.memo(function DooTaskChat() {
                 if (prev.some(m => m.id === msg.id)) return prev;
                 return [msg, ...prev]; // prepend (newest-first)
             });
+            // Auto-remove matching pending message (FIFO: oldest sending match)
+            setPendingMessages(prev => {
+                if (prev.length === 0) return prev;
+                const idx = prev.findIndex(p =>
+                    p.userid === msg.userid &&
+                    p.type === msg.type &&
+                    (p._pending === 'sending' || p._pending === 'sending-quiet'),
+                );
+                if (idx === -1) return prev;
+                retryFnsRef.current.delete(prev[idx]._pendingId);
+                const next = [...prev];
+                next.splice(idx, 1);
+                return next;
+            });
             // Fetch user name if needed
             if (msg.userid) storage.getState().fetchDootaskUsers([msg.userid]);
         }, []),
@@ -171,70 +207,170 @@ export default React.memo(function DooTaskChat() {
         }, []),
     });
 
-    // Send text
-    const handleSendText = React.useCallback(async (text: string) => {
-        if (!profile || sending) return;
-        setSending(true);
-        try {
-            const res = await dootaskSendTextMessage(profile.serverUrl, profile.token, {
-                dialog_id: id,
-                text,
-                reply_id: replyTo?.msg.id,
-            });
-            if (res.ret !== 1) {
-                setError(res.msg || t('dootask.errorSendMessage'));
-            }
-            setReplyTo(null);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : t('dootask.errorSendMessage'));
-        } finally {
-            setSending(false);
-        }
-    }, [profile, id, replyTo, sending]);
+    // --- Optimistic send helpers ---
 
-    // Send image
-    const handleSendImage = React.useCallback(async (base64DataUri: string) => {
-        if (!profile || sending) return;
-        setSending(true);
-        try {
-            const res = await dootaskSendFileMessage(profile.serverUrl, profile.token, {
-                dialog_id: id,
-                image64: base64DataUri,
-                reply_id: replyTo?.msg.id,
-            });
-            if (res.ret !== 1) {
-                setError(res.msg || t('dootask.errorSendMessage'));
-            }
-            setReplyTo(null);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : t('dootask.errorSendMessage'));
-        } finally {
-            setSending(false);
-        }
-    }, [profile, id, replyTo, sending]);
+    const createPending = React.useCallback((type: 'text' | 'image' | 'file', msg: any): PendingMessage => {
+        const pendingId = `pending-${++pendingIdCounter.current}-${Date.now()}`;
+        return {
+            _pendingId: pendingId,
+            _pending: type === 'text' ? 'sending-quiet' : 'sending',
+            dialog_id: id,
+            userid: profile?.userId || 0,
+            type,
+            msg,
+            reply_id: replyTo?.msg.id ?? null,
+            created_at: nowTimestamp(),
+        };
+    }, [id, profile?.userId, replyTo]);
 
-    // Send file by URI
-    const handleSendFile = React.useCallback(async (file: { uri: string; name: string; mimeType: string }) => {
-        if (!profile || sending) return;
-        setSending(true);
-        try {
-            const res = await dootaskSendFileByUri(profile.serverUrl, profile.token, {
-                dialog_id: id,
-                fileUri: file.uri,
-                fileName: file.name,
-                mimeType: file.mimeType,
-                reply_id: replyTo?.msg.id,
-            });
-            if (res.ret !== 1) {
-                setError(res.msg || t('dootask.errorSendMessage'));
+    const markPendingError = React.useCallback((pendingId: string, errorMsg: string) => {
+        setPendingMessages(prev =>
+            prev.map(m => m._pendingId === pendingId
+                ? { ...m, _pending: 'error' as const, _errorMsg: errorMsg }
+                : m,
+            ),
+        );
+    }, []);
+
+    const removePending = React.useCallback((pendingId: string) => {
+        setPendingMessages(prev => prev.filter(m => m._pendingId !== pendingId));
+        retryFnsRef.current.delete(pendingId);
+    }, []);
+
+    // Send text (optimistic — quiet for 2s, then show spinner)
+    const handleSendText = React.useCallback((text: string) => {
+        if (!profile) return;
+        const pending = createPending('text', text);
+        const replyId = replyTo?.msg.id;
+        setPendingMessages(prev => [pending, ...prev]);
+        setReplyTo(null);
+
+        // After 2s, upgrade 'sending-quiet' → 'sending' to show spinner
+        const timers = pendingTimersRef.current;
+        const quietTimer = setTimeout(() => {
+            timers.delete(quietTimer);
+            setPendingMessages(prev =>
+                prev.map(m => m._pendingId === pending._pendingId && m._pending === 'sending-quiet'
+                    ? { ...m, _pending: 'sending' as const }
+                    : m,
+                ),
+            );
+        }, 2000);
+        timers.add(quietTimer);
+
+        const doSend = async () => {
+            try {
+                const res = await dootaskSendTextMessage(profile.serverUrl, profile.token, {
+                    dialog_id: id,
+                    text,
+                    reply_id: replyId,
+                });
+                if (res.ret !== 1) {
+                    clearTimeout(quietTimer); timers.delete(quietTimer);
+                    markPendingError(pending._pendingId, res.msg || t('dootask.errorSendMessage'));
+                    return;
+                }
+                clearTimeout(quietTimer); timers.delete(quietTimer);
+                // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
+                const safetyTimer = setTimeout(() => { timers.delete(safetyTimer); removePending(pending._pendingId); }, 5000);
+                timers.add(safetyTimer);
+            } catch (e) {
+                clearTimeout(quietTimer); timers.delete(quietTimer);
+                markPendingError(pending._pendingId, e instanceof Error ? e.message : t('dootask.errorSendMessage'));
             }
-            setReplyTo(null);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : t('dootask.errorSendMessage'));
-        } finally {
-            setSending(false);
-        }
-    }, [profile, id, replyTo, sending]);
+        };
+
+        retryFnsRef.current.set(pending._pendingId, () => {
+            setPendingMessages(prev =>
+                prev.map(m => m._pendingId === pending._pendingId ? { ...m, _pending: 'sending' as const } : m),
+            );
+            doSend();
+        });
+
+        doSend();
+    }, [profile, id, replyTo, createPending, markPendingError, removePending]);
+
+    // Send image (optimistic)
+    const handleSendImage = React.useCallback((base64DataUri: string) => {
+        if (!profile) return;
+        const pending = createPending('image', base64DataUri);
+        const replyId = replyTo?.msg.id;
+        setPendingMessages(prev => [pending, ...prev]);
+        setReplyTo(null);
+
+        const doSend = async () => {
+            try {
+                const res = await dootaskSendFileMessage(profile.serverUrl, profile.token, {
+                    dialog_id: id,
+                    image64: base64DataUri,
+                    reply_id: replyId,
+                });
+                if (res.ret !== 1) {
+                    markPendingError(pending._pendingId, res.msg || t('dootask.errorSendMessage'));
+                    return;
+                }
+                // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
+                const st = setTimeout(() => { pendingTimersRef.current.delete(st); removePending(pending._pendingId); }, 5000);
+                pendingTimersRef.current.add(st);
+            } catch (e) {
+                markPendingError(pending._pendingId, e instanceof Error ? e.message : t('dootask.errorSendMessage'));
+            }
+        };
+
+        retryFnsRef.current.set(pending._pendingId, () => {
+            setPendingMessages(prev =>
+                prev.map(m => m._pendingId === pending._pendingId ? { ...m, _pending: 'sending' as const } : m),
+            );
+            doSend();
+        });
+
+        doSend();
+    }, [profile, id, replyTo, createPending, markPendingError, removePending]);
+
+    // Send file (optimistic)
+    const handleSendFile = React.useCallback((file: { uri: string; name: string; mimeType: string }) => {
+        if (!profile) return;
+        const pending = createPending('file', file);
+        const replyId = replyTo?.msg.id;
+        setPendingMessages(prev => [pending, ...prev]);
+        setReplyTo(null);
+
+        const doSend = async () => {
+            try {
+                const res = await dootaskSendFileByUri(profile.serverUrl, profile.token, {
+                    dialog_id: id,
+                    fileUri: file.uri,
+                    fileName: file.name,
+                    mimeType: file.mimeType,
+                    reply_id: replyId,
+                });
+                if (res.ret !== 1) {
+                    markPendingError(pending._pendingId, res.msg || t('dootask.errorSendMessage'));
+                    return;
+                }
+                // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
+                const st = setTimeout(() => { pendingTimersRef.current.delete(st); removePending(pending._pendingId); }, 5000);
+                pendingTimersRef.current.add(st);
+            } catch (e) {
+                markPendingError(pending._pendingId, e instanceof Error ? e.message : t('dootask.errorSendMessage'));
+            }
+        };
+
+        retryFnsRef.current.set(pending._pendingId, () => {
+            setPendingMessages(prev =>
+                prev.map(m => m._pendingId === pending._pendingId ? { ...m, _pending: 'sending' as const } : m),
+            );
+            doSend();
+        });
+
+        doSend();
+    }, [profile, id, replyTo, createPending, markPendingError, removePending]);
+
+    // Retry a failed pending message
+    const handleRetry = React.useCallback((pendingId: string) => {
+        const fn = retryFnsRef.current.get(pendingId);
+        if (fn) fn();
+    }, []);
 
     // Long press menu -> reply / copy
     const handleMessageLongPress = React.useCallback((msg: DooTaskDialogMsg) => {
@@ -310,7 +446,7 @@ export default React.memo(function DooTaskChat() {
 
     const content = !(error && messages.length === 0) ? (
         <ChatMessageList
-            messages={messages}
+            messages={displayMessages}
             currentUserId={profile?.userId || 0}
             userNames={userCache}
             userAvatars={userAvatars}
@@ -320,6 +456,7 @@ export default React.memo(function DooTaskChat() {
             hasMore={hasMore}
             onMessageLongPress={handleMessageLongPress}
             onImagePress={handleImagePress}
+            onRetry={handleRetry}
             serverUrl={profile?.serverUrl || ''}
         />
     ) : null;
@@ -337,7 +474,6 @@ export default React.memo(function DooTaskChat() {
             onSendFile={handleSendFile}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
-            sending={sending}
         />
     );
 

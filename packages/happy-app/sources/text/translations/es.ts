@@ -291,6 +291,9 @@ export const es: TranslationStructure = {
         takePhoto: 'Tomar foto',
         chooseFromAlbum: 'Elegir del álbum',
         chooseFromFile: 'Elegir archivo',
+        sending: 'Enviando...',
+        sendFailed: 'Error',
+        retry: 'Reintentar',
     },
 
     settingsAppearance: {

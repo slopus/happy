@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,7 +7,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { HtmlContent } from '@/components/dootask/HtmlContent';
-import type { DooTaskDialogMsg } from '@/sync/dootask/types';
+import type { DooTaskDialogMsg, PendingMessageStatus } from '@/sync/dootask/types';
 
 // --- AI Assistant ---
 
@@ -293,6 +293,8 @@ type ChatBubbleProps = {
     onImagePress?: (url: string) => void;
     onLongPress?: (msg: DooTaskDialogMsg) => void;
     serverUrl: string;
+    pending?: PendingMessageStatus;
+    onRetry?: () => void;
 };
 
 // --- Content Renderers ---
@@ -384,6 +386,8 @@ export const ChatBubble = React.memo(({
     onImagePress,
     onLongPress,
     serverUrl,
+    pending,
+    onRetry,
 }: ChatBubbleProps) => {
     const { theme } = useUnistyles();
     const isAiAssistant = msg.userid === AI_ASSISTANT_USERID;
@@ -444,19 +448,45 @@ export const ChatBubble = React.memo(({
 
     // --- Self messages: right-aligned with subtle background band ---
     if (isSelf) {
+        let statusRow: React.ReactNode = null;
+        if (pending === 'sending') {
+            statusRow = (
+                <View style={styles.pendingRow}>
+                    <ActivityIndicator size="small" color={theme.colors.textSecondary} style={{ width: 12, height: 12, transform: [{ scale: 0.6 }] }} />
+                    <Text style={[styles.pendingText, { color: theme.colors.textSecondary }]}>
+                        {t('dootask.sending')}
+                    </Text>
+                </View>
+            );
+        } else if (pending === 'error') {
+            statusRow = (
+                <View style={styles.pendingRow}>
+                    <Ionicons name="alert-circle" size={13} color={theme.colors.textDestructive} />
+                    <Text style={[styles.pendingText, { color: theme.colors.textDestructive }]}>
+                        {t('dootask.sendFailed')}
+                    </Text>
+                    <Pressable onPress={onRetry} hitSlop={8}>
+                        <Text style={[styles.retryText, { color: theme.colors.textLink }]}>
+                            {t('dootask.retry')}
+                        </Text>
+                    </Pressable>
+                </View>
+            );
+        }
+
         return (
             <Pressable
-                onLongPress={() => onLongPress?.(msg)}
-                style={[styles.selfBand, { backgroundColor: theme.colors.surfaceHigh }]}
+                onLongPress={pending ? undefined : () => onLongPress?.(msg)}
+                style={[styles.selfBand, { backgroundColor: theme.colors.surfaceHigh }, pending === 'error' && { opacity: 0.7 }]}
             >
                 <View style={styles.selfContent}>
                     {replyBlock}
                     {content}
-                    {time ? (
+                    {statusRow ?? (time ? (
                         <Text style={[styles.selfTime, { color: theme.colors.textSecondary }]}>
                             {time}
                         </Text>
-                    ) : null}
+                    ) : null)}
                 </View>
             </Pressable>
         );
@@ -648,5 +678,22 @@ const styles = StyleSheet.create((theme) => ({
     unsupportedText: {
         ...Typography.default('italic'),
         fontSize: 13,
+    },
+
+    // --- Pending status ---
+    pendingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 4,
+    },
+    pendingText: {
+        ...Typography.default(),
+        fontSize: 11,
+    },
+    retryText: {
+        ...Typography.default('semiBold'),
+        fontSize: 11,
+        marginLeft: 4,
     },
 }));

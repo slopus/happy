@@ -17,7 +17,6 @@ type ChatInputProps = {
     onSendFile?: (file: { uri: string; name: string; mimeType: string }) => void;
     replyTo?: { msg: DooTaskDialogMsg; senderName: string } | null;
     onCancelReply?: () => void;
-    sending?: boolean;
 };
 
 function getPreviewText(msg: DooTaskDialogMsg): string {
@@ -28,20 +27,20 @@ function getPreviewText(msg: DooTaskDialogMsg): string {
     return '[Message]';
 }
 
-export const ChatInput = React.memo(({ onSendText, onSendImage, onSendFile, replyTo, onCancelReply, sending }: ChatInputProps) => {
+export const ChatInput = React.memo(({ onSendText, onSendImage, onSendFile, replyTo, onCancelReply }: ChatInputProps) => {
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const [text, setText] = React.useState('');
     const [menuVisible, setMenuVisible] = React.useState(false);
 
-    const canSend = text.trim().length > 0 && !sending;
+    const canSend = text.trim().length > 0;
 
     const handleSend = React.useCallback(() => {
         const trimmed = text.trim();
-        if (!trimmed || sending) return;
+        if (!trimmed) return;
         onSendText(trimmed);
         setText('');
-    }, [text, sending, onSendText]);
+    }, [text, onSendText]);
 
     const handlePickFromCamera = React.useCallback(async () => {
         try {

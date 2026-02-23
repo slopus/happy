@@ -323,6 +323,9 @@ export const ja: TranslationStructure = {
         takePhoto: '写真を撮る',
         chooseFromAlbum: 'アルバムから選択',
         chooseFromFile: 'ファイルから選択',
+        sending: '送信中...',
+        sendFailed: '送信失敗',
+        retry: '再試行',
     },
 
     settingsAppearance: {

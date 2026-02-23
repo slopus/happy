@@ -293,6 +293,9 @@ export const zhHans: TranslationStructure = {
         takePhoto: '拍照',
         chooseFromAlbum: '从相册选择',
         chooseFromFile: '从文件选择',
+        sending: '发送中...',
+        sendFailed: '发送失败',
+        retry: '重试',
     },
 
     settingsAppearance: {

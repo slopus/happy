@@ -291,6 +291,9 @@ export const ca: TranslationStructure = {
         takePhoto: 'Fer foto',
         chooseFromAlbum: "Triar de l'àlbum",
         chooseFromFile: 'Triar fitxer',
+        sending: 'Enviant...',
+        sendFailed: 'Error',
+        retry: 'Reintentar',
     },
 
     settingsAppearance: {

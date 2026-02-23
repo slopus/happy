@@ -255,6 +255,9 @@ export const ru: TranslationStructure = {
         takePhoto: 'Сделать фото',
         chooseFromAlbum: 'Выбрать из альбома',
         chooseFromFile: 'Выбрать файл',
+        sending: 'Отправка...',
+        sendFailed: 'Ошибка',
+        retry: 'Повторить',
     },
 
     settingsAppearance: {

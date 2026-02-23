@@ -292,6 +292,9 @@ export const zhHant: TranslationStructure = {
         takePhoto: '拍照',
         chooseFromAlbum: '從相簿選擇',
         chooseFromFile: '從檔案選擇',
+        sending: '傳送中...',
+        sendFailed: '傳送失敗',
+        retry: '重試',
     },
 
     settingsAppearance: {

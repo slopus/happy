@@ -320,6 +320,9 @@ export const it: TranslationStructure = {
         takePhoto: 'Scatta foto',
         chooseFromAlbum: "Scegli dall'album",
         chooseFromFile: 'Scegli file',
+        sending: 'Invio...',
+        sendFailed: 'Non riuscito',
+        retry: 'Riprova',
     },
 
     settingsAppearance: {

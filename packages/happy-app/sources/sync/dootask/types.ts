@@ -80,6 +80,22 @@ export type DooTaskDialogMsg = {
     forward_num: number;
 };
 
+export type PendingMessageStatus = 'sending' | 'sending-quiet' | 'error';
+
+export type PendingMessage = {
+    _pendingId: string;
+    _pending: PendingMessageStatus;
+    _errorMsg?: string;
+    dialog_id: number;
+    userid: number;
+    type: 'text' | 'image' | 'file';
+    msg: any;
+    reply_id: number | null;
+    created_at: string;
+};
+
+export type DisplayMessage = DooTaskDialogMsg | PendingMessage;
+
 export type DooTaskDialog = {
     id: number;
     name: string;

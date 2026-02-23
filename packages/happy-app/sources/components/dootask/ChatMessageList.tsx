@@ -4,12 +4,43 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { ChatBubble } from './ChatBubble';
-import type { DooTaskDialogMsg } from '@/sync/dootask/types';
+import type { DooTaskDialogMsg, DisplayMessage, PendingMessage } from '@/sync/dootask/types';
 
 const AI_ASSISTANT_USERID = -1;
 
+function isPending(msg: DisplayMessage): msg is PendingMessage {
+    return '_pendingId' in msg;
+}
+
+/** Convert a PendingMessage into a DooTaskDialogMsg shape so ChatBubble renderers work unchanged. */
+function buildFakeDooTaskMsg(pending: PendingMessage): DooTaskDialogMsg {
+    let msg: any;
+    if (pending.type === 'text') {
+        msg = { text: pending.msg, type: 'md' };
+    } else if (pending.type === 'image') {
+        msg = { url: pending.msg }; // base64 data URI works as Image source
+    } else {
+        msg = { name: pending.msg.name, size: 0 };
+    }
+    return {
+        id: 0,
+        dialog_id: pending.dialog_id,
+        userid: pending.userid,
+        type: pending.type,
+        msg,
+        reply_id: pending.reply_id,
+        reply_num: 0,
+        created_at: pending.created_at,
+        emoji: {},
+        bot: 0,
+        modify: 0,
+        forward_id: null,
+        forward_num: 0,
+    };
+}
+
 type ChatMessageListProps = {
-    messages: DooTaskDialogMsg[];
+    messages: DisplayMessage[];
     currentUserId: number;
     userNames: Record<number, string>;
     userAvatars: Record<number, string | null>;
@@ -19,6 +50,7 @@ type ChatMessageListProps = {
     hasMore: boolean;
     onMessageLongPress: (msg: DooTaskDialogMsg) => void;
     onImagePress: (url: string) => void;
+    onRetry?: (pendingId: string) => void;
     serverUrl: string;
 };
 
@@ -47,6 +79,7 @@ export const ChatMessageList = React.memo(({
     hasMore,
     onMessageLongPress,
     onImagePress,
+    onRetry,
     serverUrl,
 }: ChatMessageListProps) => {
     const { theme } = useUnistyles();
@@ -55,7 +88,9 @@ export const ChatMessageList = React.memo(({
     const replyMsgMap = React.useMemo(() => {
         const map = new Map<number, DooTaskDialogMsg>();
         for (const msg of messages) {
-            map.set(msg.id, msg);
+            if (!isPending(msg)) {
+                map.set(msg.id, msg);
+            }
         }
         return map;
     }, [messages]);
@@ -66,24 +101,31 @@ export const ChatMessageList = React.memo(({
         }
     }, [hasMore, loadingMore, onLoadMore]);
 
-    const renderItem = React.useCallback(({ item, index }: { item: DooTaskDialogMsg; index: number }) => {
+    const renderItem = React.useCallback(({ item, index }: { item: DisplayMessage; index: number }) => {
+        const pending = isPending(item);
+        const bubbleMsg = pending ? buildFakeDooTaskMsg(item) : item;
+        // 'sending-quiet' behaves like a real message for layout purposes (no forced avatar/spacing)
+        const isQuietPending = pending && item._pending === 'sending-quiet';
+        const isVisiblePending = pending && !isQuietPending;
+
         // Date separator logic:
         // Since the list is inverted, the NEXT item in the array (index + 1) appears ABOVE in the UI.
         // We show a date separator above the current bubble when the date differs from the next item.
         const currentDate = item.created_at.substring(0, 10); // YYYY-MM-DD
         const nextMsg = index < messages.length - 1 ? messages[index + 1] : null;
         const nextDate = nextMsg ? nextMsg.created_at.substring(0, 10) : null;
-        const showDateSeparator = !nextDate || nextDate !== currentDate;
+        const showDateSeparator = !pending && (!nextDate || nextDate !== currentDate);
 
         // Avatar grouping: show avatar on the FIRST message of a sender group (reading top-to-bottom).
         // In inverted FlatList, "above" = index + 1. Show avatar when the message above is
         // from a different user or doesn't exist, OR when a date separator breaks the group.
-        const showAvatar = !nextMsg || nextMsg.userid !== item.userid || nextMsg.type === 'notice' || showDateSeparator;
+        const showAvatar = isVisiblePending || !nextMsg || nextMsg.userid !== item.userid || nextMsg.type === 'notice' || showDateSeparator;
 
         // Spacing rule:
         // - Compact spacing for consecutive messages from the same sender (same date block)
         // - Larger spacing when a new sender group starts
         const isConsecutiveSameSender =
+            !isVisiblePending &&
             !!nextMsg &&
             nextMsg.userid === item.userid &&
             nextMsg.type !== 'notice' &&
@@ -106,7 +148,7 @@ export const ChatMessageList = React.memo(({
                     </View>
                 )}
                 <ChatBubble
-                    msg={item}
+                    msg={bubbleMsg}
                     currentUserId={currentUserId}
                     senderName={userNames[item.userid]}
                     avatarUrl={resolveAvatarUrl(userAvatars[item.userid], serverUrl)}
@@ -116,12 +158,16 @@ export const ChatMessageList = React.memo(({
                     onImagePress={onImagePress}
                     onLongPress={onMessageLongPress}
                     serverUrl={serverUrl}
+                    pending={pending ? item._pending : undefined}
+                    onRetry={pending ? () => onRetry?.(item._pendingId) : undefined}
                 />
             </View>
         );
-    }, [messages, currentUserId, userNames, userAvatars, replyMsgMap, onImagePress, onMessageLongPress, serverUrl, theme]);
+    }, [messages, currentUserId, userNames, userAvatars, replyMsgMap, onImagePress, onMessageLongPress, onRetry, serverUrl, theme]);
 
-    const keyExtractor = React.useCallback((msg: DooTaskDialogMsg) => msg.id.toString(), []);
+    const keyExtractor = React.useCallback((msg: DisplayMessage) =>
+        isPending(msg) ? msg._pendingId : msg.id.toString()
+    , []);
 
     const listFooter = React.useMemo(() => {
         if (!loadingMore) return null;

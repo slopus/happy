@@ -291,6 +291,9 @@ export const pt: TranslationStructure = {
         takePhoto: 'Tirar foto',
         chooseFromAlbum: 'Escolher do álbum',
         chooseFromFile: 'Escolher arquivo',
+        sending: 'Enviando...',
+        sendFailed: 'Falha',
+        retry: 'Tentar novamente',
     },
 
     settingsAppearance: {

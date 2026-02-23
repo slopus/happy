@@ -291,6 +291,9 @@ export const en = {
         takePhoto: 'Take Photo',
         chooseFromAlbum: 'Choose from Album',
         chooseFromFile: 'Choose File',
+        sending: 'Sending...',
+        sendFailed: 'Failed',
+        retry: 'Retry',
     },
 
     settingsAppearance: {
