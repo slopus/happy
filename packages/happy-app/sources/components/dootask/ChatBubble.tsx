@@ -54,7 +54,7 @@ function stripHtml(html: string): string {
 function resolveUrl(raw: string, serverUrl: string): string {
     const base = serverUrl.replace(/\/+$/, '') + '/';
     const resolved = raw.replace(/\{\{RemoteURL\}\}/g, base);
-    if (resolved.startsWith('http') || resolved.startsWith('//')) return resolved;
+    if (resolved.startsWith('http') || resolved.startsWith('//') || resolved.startsWith('data:')) return resolved;
     return base + resolved.replace(/^\/+/, '');
 }
 

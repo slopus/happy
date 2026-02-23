@@ -183,13 +183,18 @@ export default React.memo(function DooTaskChat() {
                 return [msg, ...prev]; // prepend (newest-first)
             });
             // Auto-remove matching pending message (FIFO: oldest sending match)
+            // Pending array is newest-first (head-insert), so oldest = last index.
+            // Search backwards to find the oldest match.
             setPendingMessages(prev => {
                 if (prev.length === 0) return prev;
-                const idx = prev.findIndex(p =>
-                    p.userid === msg.userid &&
-                    p.type === msg.type &&
-                    (p._pending === 'sending' || p._pending === 'sending-quiet'),
-                );
+                let idx = -1;
+                for (let i = prev.length - 1; i >= 0; i--) {
+                    const p = prev[i];
+                    if (p.userid === msg.userid && p.type === msg.type && (p._pending === 'sending' || p._pending === 'sending-quiet')) {
+                        idx = i;
+                        break;
+                    }
+                }
                 if (idx === -1) return prev;
                 retryFnsRef.current.delete(prev[idx]._pendingId);
                 const next = [...prev];
@@ -272,7 +277,7 @@ export default React.memo(function DooTaskChat() {
                 }
                 clearTimeout(quietTimer); timers.delete(quietTimer);
                 // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
-                const safetyTimer = setTimeout(() => { timers.delete(safetyTimer); removePending(pending._pendingId); }, 5000);
+                const safetyTimer = setTimeout(() => { timers.delete(safetyTimer); removePending(pending._pendingId); }, 30000);
                 timers.add(safetyTimer);
             } catch (e) {
                 clearTimeout(quietTimer); timers.delete(quietTimer);
@@ -310,7 +315,7 @@ export default React.memo(function DooTaskChat() {
                     return;
                 }
                 // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
-                const st = setTimeout(() => { pendingTimersRef.current.delete(st); removePending(pending._pendingId); }, 5000);
+                const st = setTimeout(() => { pendingTimersRef.current.delete(st); removePending(pending._pendingId); }, 30000);
                 pendingTimersRef.current.add(st);
             } catch (e) {
                 markPendingError(pending._pendingId, e instanceof Error ? e.message : t('dootask.errorSendMessage'));
@@ -349,7 +354,7 @@ export default React.memo(function DooTaskChat() {
                     return;
                 }
                 // Don't remove immediately — let WS auto-cleanup swap pending → real in one render
-                const st = setTimeout(() => { pendingTimersRef.current.delete(st); removePending(pending._pendingId); }, 5000);
+                const st = setTimeout(() => { pendingTimersRef.current.delete(st); removePending(pending._pendingId); }, 30000);
                 pendingTimersRef.current.add(st);
             } catch (e) {
                 markPendingError(pending._pendingId, e instanceof Error ? e.message : t('dootask.errorSendMessage'));
