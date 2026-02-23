@@ -211,7 +211,7 @@ export async function dootaskFetchTaskFiles(serverUrl: string, token: string, ta
     return response.json();
 }
 
-export async function dootaskUpdateTask(serverUrl: string, token: string, params: { task_id: number; flow_item_id?: number; complete_at?: string | boolean }): Promise<DooTaskResponse> {
+export async function dootaskUpdateTask(serverUrl: string, token: string, params: { task_id: number; flow_item_id?: number; complete_at?: string | boolean; owner?: number[]; times?: [string, string] }): Promise<DooTaskResponse> {
     const url = validateServerUrl(serverUrl);
     const response = await fetch(`${url}/api/project/task/update`, {
         method: 'POST',

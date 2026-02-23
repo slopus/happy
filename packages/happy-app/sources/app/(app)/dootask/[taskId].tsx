@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Alert, Modal, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { HtmlContent } from '@/components/dootask/HtmlContent';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
@@ -204,7 +205,7 @@ export default function DooTaskDetail() {
         try {
             await fetchData();
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('dootask.errorRefresh'));
+            Alert.alert(t('dootask.refresh'), e instanceof Error ? e.message : t('dootask.errorRefresh'));
         } finally {
             setRefreshing(false);
         }
@@ -216,7 +217,7 @@ export default function DooTaskDetail() {
         try {
             const res = await dootaskFetchTaskFlow(profile.serverUrl, profile.token, task.id);
             if (res.ret !== 1 || !res.data) {
-                setError(res.msg || t('dootask.errorLoadWorkflow'));
+                Alert.alert(t('dootask.changeStatus'), res.msg || t('dootask.errorLoadWorkflow'));
                 return;
             }
 
@@ -230,6 +231,10 @@ export default function DooTaskDetail() {
             if (turns.length === 0) {
                 // No workflow — offer complete/uncomplete toggle
                 const willComplete = !task.complete_at;
+                // DooTask API expects a date string (YYYY-MM-DD HH:mm:ss) to complete, or false to uncomplete
+                const completeValue: string | false = willComplete
+                    ? new Date().toISOString().slice(0, 19).replace('T', ' ')
+                    : false;
                 items = [{
                     label: willComplete ? t('dootask.completed') : t('dootask.uncompleted'),
                     color: willComplete ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start,
@@ -237,15 +242,15 @@ export default function DooTaskDetail() {
                         try {
                             const updateRes = await dootaskUpdateTask(profile.serverUrl, profile.token, {
                                 task_id: task.id,
-                                complete_at: willComplete,
+                                complete_at: completeValue,
                             });
                             if (updateRes.ret === 1) {
                                 await fetchData();
                             } else {
-                                setError(updateRes.msg || t('dootask.errorUpdateStatus'));
+                                Alert.alert(t('dootask.changeStatus'), updateRes.msg || t('dootask.errorUpdateStatus'));
                             }
                         } catch (e) {
-                            setError(e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
+                            Alert.alert(t('dootask.changeStatus'), e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
                         }
                     },
                 }];
@@ -270,10 +275,10 @@ export default function DooTaskDetail() {
                                 if (updateRes.ret === 1) {
                                     await fetchData();
                                 } else {
-                                    setError(updateRes.msg || t('dootask.errorUpdateStatus'));
+                                    Alert.alert(t('dootask.changeStatus'), updateRes.msg || t('dootask.errorUpdateStatus'));
                                 }
                             } catch (e) {
-                                setError(e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
+                                Alert.alert(t('dootask.changeStatus'), e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
                             }
                         },
                     }));
@@ -287,7 +292,7 @@ export default function DooTaskDetail() {
             setStatusMenuItems(items);
             setStatusMenuVisible(true);
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('dootask.errorLoadWorkflow'));
+            Alert.alert(t('dootask.changeStatus'), e instanceof Error ? e.message : t('dootask.errorLoadWorkflow'));
         } finally {
             setStatusLoading(false);
         }
@@ -299,7 +304,7 @@ export default function DooTaskDetail() {
         try {
             const res = await dootaskFetchTaskFlow(profile.serverUrl, profile.token, subTask.id);
             if (res.ret !== 1 || !res.data) {
-                setError(res.msg || t('dootask.errorLoadWorkflow'));
+                Alert.alert(t('dootask.changeStatus'), res.msg || t('dootask.errorLoadWorkflow'));
                 return;
             }
 
@@ -312,6 +317,9 @@ export default function DooTaskDetail() {
 
             if (turns.length === 0) {
                 const willComplete = !subTask.complete_at;
+                const completeValue: string | false = willComplete
+                    ? new Date().toISOString().slice(0, 19).replace('T', ' ')
+                    : false;
                 items = [{
                     label: willComplete ? t('dootask.completed') : t('dootask.uncompleted'),
                     color: willComplete ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start,
@@ -319,12 +327,12 @@ export default function DooTaskDetail() {
                         try {
                             const updateRes = await dootaskUpdateTask(profile.serverUrl, profile.token, {
                                 task_id: subTask.id,
-                                complete_at: willComplete,
+                                complete_at: completeValue,
                             });
                             if (updateRes.ret === 1) await fetchData();
-                            else setError(updateRes.msg || t('dootask.errorUpdateStatus'));
+                            else Alert.alert(t('dootask.changeStatus'), updateRes.msg || t('dootask.errorUpdateStatus'));
                         } catch (e) {
-                            setError(e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
+                            Alert.alert(t('dootask.changeStatus'), e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
                         }
                     },
                 }];
@@ -344,9 +352,9 @@ export default function DooTaskDetail() {
                                     flow_item_id: item.id,
                                 });
                                 if (updateRes.ret === 1) await fetchData();
-                                else setError(updateRes.msg || t('dootask.errorUpdateStatus'));
+                                else Alert.alert(t('dootask.changeStatus'), updateRes.msg || t('dootask.errorUpdateStatus'));
                             } catch (e) {
-                                setError(e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
+                                Alert.alert(t('dootask.changeStatus'), e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
                             }
                         },
                     }));
@@ -357,11 +365,65 @@ export default function DooTaskDetail() {
             setSubStatusTitle(`${t('dootask.subTasks')}：${subTask.name}`);
             setSubStatusMenuVisible(true);
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('dootask.errorLoadWorkflow'));
+            Alert.alert(t('dootask.changeStatus'), e instanceof Error ? e.message : t('dootask.errorLoadWorkflow'));
         } finally {
             setSubStatusLoading(null);
         }
     }, [profile, subStatusLoading, fetchData]);
+
+    // Claim task modal state
+    const [claimModalVisible, setClaimModalVisible] = React.useState(false);
+    const [claimStartDate, setClaimStartDate] = React.useState(new Date());
+    const [claimEndDate, setClaimEndDate] = React.useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        return d;
+    });
+    const [claimLoading, setClaimLoading] = React.useState(false);
+    // Android picker state (Android shows dialogs one at a time)
+    const [androidPicker, setAndroidPicker] = React.useState<{ field: 'start' | 'end'; mode: 'date' | 'time' } | null>(null);
+
+    const handleOpenClaimModal = React.useCallback(() => {
+        if (!task) return;
+        // Pre-fill from task times if available
+        const now = new Date();
+        setClaimStartDate(task.start_at ? new Date(task.start_at) : now);
+        const defaultEnd = new Date(now);
+        defaultEnd.setDate(defaultEnd.getDate() + 7);
+        setClaimEndDate(task.end_at ? new Date(task.end_at) : defaultEnd);
+        setClaimModalVisible(true);
+    }, [task]);
+
+    const handleClaimConfirm = React.useCallback(async () => {
+        if (!profile || !task || claimLoading) return;
+        if (claimEndDate <= claimStartDate) {
+            Alert.alert(t('dootask.claimTask'), t('dootask.claimTimeRequired'));
+            return;
+        }
+        const fmt = (d: Date) => d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0') + ' ' +
+            String(d.getHours()).padStart(2, '0') + ':' +
+            String(d.getMinutes()).padStart(2, '0');
+        setClaimLoading(true);
+        try {
+            const res = await dootaskUpdateTask(profile.serverUrl, profile.token, {
+                task_id: task.id,
+                owner: [profile.userId],
+                times: [fmt(claimStartDate), fmt(claimEndDate)],
+            });
+            if (res.ret === 1) {
+                setClaimModalVisible(false);
+                await fetchData();
+            } else {
+                Alert.alert(t('dootask.claimTask'), res.msg || t('dootask.errorUpdateStatus'));
+            }
+        } catch (e) {
+            Alert.alert(t('dootask.claimTask'), e instanceof Error ? e.message : t('dootask.errorUpdateStatus'));
+        } finally {
+            setClaimLoading(false);
+        }
+    }, [profile, task, claimLoading, claimStartDate, claimEndDate, fetchData]);
 
     const handleOpenChat = React.useCallback(async () => {
         if (!profile || !task || chatLoading) return;
@@ -371,10 +433,10 @@ export default function DooTaskDetail() {
             if (res.ret === 1 && res.data?.dialog_id) {
                 router.push(`/dootask/chat/${res.data.dialog_id}?taskName=${encodeURIComponent(task.name)}`);
             } else {
-                setError(res.msg || t('dootask.errorLoadChat'));
+                Alert.alert(t('dootask.taskChat'), res.msg || t('dootask.errorLoadChat'));
             }
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('dootask.errorLoadChat'));
+            Alert.alert(t('dootask.taskChat'), e instanceof Error ? e.message : t('dootask.errorLoadChat'));
         } finally {
             setChatLoading(false);
         }
@@ -440,8 +502,10 @@ export default function DooTaskDetail() {
         );
     }
 
-    const ownerNames = (task.task_user || []).filter((u) => u.owner === 1).map((u) => userCache[u.userid] || String(u.userid)).reverse();
+    const owners = (task.task_user || []).filter((u) => u.owner === 1);
+    const ownerNames = owners.map((u) => userCache[u.userid] || String(u.userid)).reverse();
     const assistantNames = (task.task_user || []).filter((u) => u.owner === 0).map((u) => userCache[u.userid] || String(u.userid)).reverse();
+    const hasNoOwner = task.task_user !== undefined && owners.length === 0;
     const flow = task.flow_item_name ? parseFlowItem(task.flow_item_name) : null;
     const flowColor = flow ? getFlowColor(flow.status, flow.color) : '';
     const isCompleted = !!task.complete_at;
@@ -512,6 +576,21 @@ export default function DooTaskDetail() {
                     />
                 ) : null}
             </View>
+
+            {/* Claim task banner when no owner */}
+            {hasNoOwner && (
+                <Pressable
+                    onPress={handleOpenClaimModal}
+                    style={[styles.claimBanner, { backgroundColor: '#FF9500' + '18', borderColor: '#FF9500' + '40' }]}
+                >
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.claimText, { color: '#FF9500' }]}>{t('dootask.noOwner')}</Text>
+                    </View>
+                    <View style={[styles.claimButton, { backgroundColor: '#FF9500' }]}>
+                        <Text style={styles.claimButtonText}>{t('dootask.claimTask')}</Text>
+                    </View>
+                </Pressable>
+            )}
 
             {taskContent ? (
                 <View style={styles.descSection}>
@@ -681,6 +760,80 @@ export default function DooTaskDetail() {
             onClose={() => setSubStatusMenuVisible(false)}
             title={subStatusTitle}
         />
+
+        {/* Claim task modal with time pickers */}
+        <Modal visible={claimModalVisible} transparent animationType="fade" onRequestClose={() => setClaimModalVisible(false)}>
+            <Pressable style={styles.claimModalOverlay} onPress={() => setClaimModalVisible(false)}>
+                <Pressable style={[styles.claimModalContent, { backgroundColor: theme.colors.surface }]} onPress={() => {}}>
+                    <Text style={[styles.claimModalTitle, { color: theme.colors.text }]}>{t('dootask.claimTask')}</Text>
+
+                    {/* Start time */}
+                    <View style={styles.claimTimeRow}>
+                        <Text style={[styles.claimTimeLabel, { color: theme.colors.textSecondary }]}>{t('dootask.claimStartTime')}</Text>
+                        {Platform.OS === 'ios' ? (
+                            <DateTimePicker value={claimStartDate} mode="datetime" display="compact" onChange={(_, d) => d && setClaimStartDate(d)} />
+                        ) : (
+                            <Pressable onPress={() => setAndroidPicker({ field: 'start', mode: 'date' })}>
+                                <Text style={[styles.claimTimeValue, { color: theme.colors.text }]}>
+                                    {claimStartDate.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                            </Pressable>
+                        )}
+                    </View>
+
+                    {/* End time */}
+                    <View style={styles.claimTimeRow}>
+                        <Text style={[styles.claimTimeLabel, { color: theme.colors.textSecondary }]}>{t('dootask.claimEndTime')}</Text>
+                        {Platform.OS === 'ios' ? (
+                            <DateTimePicker value={claimEndDate} mode="datetime" display="compact" minimumDate={claimStartDate} onChange={(_, d) => d && setClaimEndDate(d)} />
+                        ) : (
+                            <Pressable onPress={() => setAndroidPicker({ field: 'end', mode: 'date' })}>
+                                <Text style={[styles.claimTimeValue, { color: theme.colors.text }]}>
+                                    {claimEndDate.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                            </Pressable>
+                        )}
+                    </View>
+
+                    {/* Android date/time picker dialogs */}
+                    {Platform.OS === 'android' && androidPicker && (
+                        <DateTimePicker
+                            value={androidPicker.field === 'start' ? claimStartDate : claimEndDate}
+                            mode={androidPicker.mode}
+                            minimumDate={androidPicker.field === 'end' && androidPicker.mode === 'date' ? claimStartDate : undefined}
+                            onChange={(_, d) => {
+                                if (!d) { setAndroidPicker(null); return; }
+                                const setter = androidPicker.field === 'start' ? setClaimStartDate : setClaimEndDate;
+                                if (androidPicker.mode === 'date') {
+                                    // After picking date, show time picker
+                                    const prev = androidPicker.field === 'start' ? claimStartDate : claimEndDate;
+                                    d.setHours(prev.getHours(), prev.getMinutes());
+                                    setter(d);
+                                    setAndroidPicker({ field: androidPicker.field, mode: 'time' });
+                                } else {
+                                    setter(d);
+                                    setAndroidPicker(null);
+                                }
+                            }}
+                        />
+                    )}
+
+                    {/* Action buttons */}
+                    <View style={styles.claimModalButtons}>
+                        <Pressable style={[styles.claimModalBtn, { backgroundColor: theme.colors.surfaceHigh }]} onPress={() => setClaimModalVisible(false)}>
+                            <Text style={[styles.claimModalBtnText, { color: theme.colors.textSecondary }]}>{t('dootask.claimCancel')}</Text>
+                        </Pressable>
+                        <Pressable style={[styles.claimModalBtn, { backgroundColor: '#FF9500' }]} onPress={handleClaimConfirm} disabled={claimLoading}>
+                            {claimLoading ? (
+                                <ActivityIndicator size="small" color="#fff" style={{ transform: [{ scale: 0.7 }] }} />
+                            ) : (
+                                <Text style={[styles.claimModalBtnText, { color: '#fff' }]}>{t('dootask.claimConfirm')}</Text>
+                            )}
+                        </Pressable>
+                    </View>
+                </Pressable>
+            </Pressable>
+        </Modal>
         </>
     );
 }
@@ -730,5 +883,77 @@ const styles = StyleSheet.create((_theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
+    },
+    claimBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: _theme.margins.lg,
+        paddingVertical: _theme.margins.md,
+        borderRadius: _theme.borderRadius.md,
+        borderWidth: 1,
+        gap: _theme.margins.md,
+    },
+    claimText: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+    },
+    claimButton: {
+        paddingHorizontal: _theme.margins.md,
+        paddingVertical: 6,
+        borderRadius: 6,
+        minWidth: 72,
+        alignItems: 'center',
+    },
+    claimButtonText: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+        color: '#fff',
+    },
+    claimModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+    },
+    claimModalContent: {
+        width: '100%',
+        borderRadius: 14,
+        padding: 20,
+        gap: 16,
+    },
+    claimModalTitle: {
+        ...Typography.default('semiBold'),
+        fontSize: 17,
+        textAlign: 'center',
+    },
+    claimTimeRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    claimTimeLabel: {
+        ...Typography.default(),
+        fontSize: 14,
+    },
+    claimTimeValue: {
+        ...Typography.default('semiBold'),
+        fontSize: 14,
+    },
+    claimModalButtons: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 4,
+    },
+    claimModalBtn: {
+        flex: 1,
+        height: 40,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    claimModalBtnText: {
+        ...Typography.default('semiBold'),
+        fontSize: 15,
     },
 }));

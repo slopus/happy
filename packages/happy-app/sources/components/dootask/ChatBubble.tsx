@@ -359,7 +359,7 @@ function ImageContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDia
     return null;
 }
 
-function FileContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any; onImagePress?: (url: string) => void }) {
+function FileContent({ msg, serverUrl, theme, onImagePress, isSelf }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any; onImagePress?: (url: string) => void; isSelf?: boolean }) {
     const msgData = msg.msg || {};
     const filePath = msgData.path || msgData.url || '';
     const fileUrl = filePath ? resolveUrl(filePath, serverUrl) : null;
@@ -403,8 +403,8 @@ function FileContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDial
                         </View>
                     </View>
                 ) : (
-                    <View style={[styles.fileCard, { backgroundColor: theme.colors.surfaceHigh }]}>
-                        <View style={[styles.fileIconCircle, { backgroundColor: theme.colors.surfaceHighest }]}>
+                    <View style={[styles.fileCard, { backgroundColor: isSelf ? theme.colors.surfaceHighest : theme.colors.surfaceHigh }]}>
+                        <View style={[styles.fileIconCircle, { backgroundColor: isSelf ? theme.colors.surfaceHigh : theme.colors.surfaceHighest }]}>
                             <Ionicons name="videocam-outline" size={20} color={theme.colors.textSecondary} />
                         </View>
                         <View style={styles.fileInfo}>
@@ -422,10 +422,10 @@ function FileContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDial
     const fileSize = msgData.size ? formatFileSize(msgData.size) : '';
     return (
         <Pressable
-            style={[styles.fileCard, { backgroundColor: theme.colors.surfaceHigh }]}
+            style={[styles.fileCard, { backgroundColor: isSelf ? theme.colors.surfaceHighest : theme.colors.surfaceHigh }]}
             onPress={() => { if (fileUrl) WebBrowser.openBrowserAsync(fileUrl); }}
         >
-            <View style={[styles.fileIconCircle, { backgroundColor: theme.colors.surfaceHighest }]}>
+            <View style={[styles.fileIconCircle, { backgroundColor: isSelf ? theme.colors.surfaceHigh : theme.colors.surfaceHighest }]}>
                 <Ionicons name="document-outline" size={20} color={theme.colors.textSecondary} />
             </View>
             <View style={styles.fileInfo}>
@@ -621,7 +621,7 @@ export const ChatBubble = React.memo(({
             content = <ImageContent msg={msg} serverUrl={serverUrl} theme={theme} onImagePress={onImagePress} />;
             break;
         case 'file':
-            content = <FileContent msg={msg} serverUrl={serverUrl} theme={theme} onImagePress={onImagePress} />;
+            content = <FileContent msg={msg} serverUrl={serverUrl} theme={theme} onImagePress={onImagePress} isSelf={isSelf} />;
             break;
         case 'longtext':
             content = <LongtextContent msg={msg} theme={theme} serverUrl={serverUrl} onImagePress={onImagePress} />;

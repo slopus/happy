@@ -1,10 +1,14 @@
 import * as React from 'react';
-import { View, Text, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { ChatBubble } from './ChatBubble';
 import type { DooTaskDialogMsg, DisplayMessage, PendingMessage } from '@/sync/dootask/types';
+
+// Threshold in pixels for showing the scroll-to-bottom button
+const SCROLL_THRESHOLD = 100;
 
 const AI_ASSISTANT_USERID = -1;
 
@@ -87,6 +91,39 @@ export const ChatMessageList = React.memo(({
     serverUrl,
 }: ChatMessageListProps) => {
     const { theme } = useUnistyles();
+    const flatListRef = React.useRef<FlatList>(null);
+
+    // Scroll-to-bottom button visibility
+    const [showScrollButton, setShowScrollButton] = React.useState(false);
+    // Track the newest message created_at when button became visible (for unread count)
+    const lastSeenCreatedAtRef = React.useRef<string>(messages[0]?.created_at ?? '');
+
+    // Calculate unread count: only messages newer than when button appeared
+    let unreadCount = 0;
+    if (showScrollButton) {
+        for (const msg of messages) {
+            if (msg.created_at > lastSeenCreatedAtRef.current) {
+                unreadCount++;
+            } else {
+                break; // messages sorted newest-first
+            }
+        }
+    }
+
+    const handleScroll = React.useCallback((event: any) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        const shouldShow = offsetY > SCROLL_THRESHOLD;
+        setShowScrollButton(prev => {
+            if (shouldShow && !prev) {
+                lastSeenCreatedAtRef.current = messages[0]?.created_at ?? '';
+            }
+            return shouldShow;
+        });
+    }, [messages]);
+
+    const handleScrollToBottom = React.useCallback(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }, []);
 
     // Build a map from message id -> message for resolving reply_id references
     const replyMsgMap = React.useMemo(() => {
@@ -147,7 +184,7 @@ export const ChatMessageList = React.memo(({
                 {showDateSeparator && (
                     <View style={styles.dateSeparator}>
                         <Text style={[styles.dateText, { color: theme.colors.textSecondary, backgroundColor: theme.colors.header.background }]}>
-                            {currentDate}
+                            {currentDate.startsWith(new Date().getFullYear().toString()) ? currentDate.substring(5) : currentDate}
                         </Text>
                     </View>
                 )}
@@ -200,27 +237,77 @@ export const ChatMessageList = React.memo(({
     const extraData = React.useMemo(() => ({ userAvatars, userNames, userDisabledAt }), [userAvatars, userNames, userDisabledAt]);
 
     return (
-        <FlatList
-            data={messages}
-            inverted={true}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
-            extraData={extraData}
-            onEndReached={handleEndReached}
-            onEndReachedThreshold={0.3}
-            ListFooterComponent={listFooter}
-            ListEmptyComponent={listEmpty}
-            contentContainerStyle={styles.contentContainer}
-            initialNumToRender={50}
-            maxToRenderPerBatch={50}
-            windowSize={11}
-        />
+        <View style={styles.wrapper}>
+            <FlatList
+                ref={flatListRef}
+                data={messages}
+                inverted={true}
+                keyExtractor={keyExtractor}
+                renderItem={renderItem}
+                extraData={extraData}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                onEndReached={handleEndReached}
+                onEndReachedThreshold={0.3}
+                ListFooterComponent={listFooter}
+                ListEmptyComponent={listEmpty}
+                contentContainerStyle={styles.contentContainer}
+                initialNumToRender={50}
+                maxToRenderPerBatch={50}
+                windowSize={11}
+            />
+
+            {/* Scroll to bottom button */}
+            {showScrollButton && (
+                <View pointerEvents="box-none" style={{ position: 'absolute', bottom: 16, right: 16 }}>
+                    <Pressable
+                        onPress={handleScrollToBottom}
+                        style={{
+                            backgroundColor: theme.colors.surfaceHighest,
+                            borderRadius: 20,
+                            width: 40,
+                            height: 40,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            shadowColor: theme.colors.shadow.color,
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: theme.colors.shadow.opacity,
+                            shadowRadius: 4,
+                            elevation: 4,
+                        }}
+                    >
+                        <Ionicons name="chevron-down" size={24} color={theme.colors.text} />
+                        {unreadCount > 0 && (
+                            <View style={{
+                                position: 'absolute',
+                                top: -4,
+                                right: -4,
+                                backgroundColor: theme.colors.status.connected,
+                                borderRadius: 10,
+                                minWidth: 20,
+                                height: 20,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                paddingHorizontal: 4,
+                            }}>
+                                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                </Text>
+                            </View>
+                        )}
+                    </Pressable>
+                </View>
+            )}
+        </View>
     );
 });
 
 // --- Styles ---
 
 const styles = StyleSheet.create((theme) => ({
+    wrapper: {
+        flex: 1,
+    },
     contentContainer: {
         paddingVertical: theme.margins.sm,
         flexGrow: 1,
