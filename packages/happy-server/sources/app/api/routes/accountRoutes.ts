@@ -198,7 +198,7 @@ export function accountRoutes(app: Fastify) {
                 accountId: string;
                 sessionId?: string | null;
                 key?: { in: string[] };
-                createdAt?: {
+                updatedAt?: {
                     gte?: Date;
                     lte?: Date;
                 };
@@ -225,12 +225,12 @@ export function accountRoutes(app: Fastify) {
             }
 
             if (startTime || endTime) {
-                where.createdAt = {};
+                where.updatedAt = {};
                 if (startTime) {
-                    where.createdAt.gte = new Date(startTime * 1000);
+                    where.updatedAt.gte = new Date(startTime * 1000);
                 }
                 if (endTime) {
-                    where.createdAt.lte = new Date(endTime * 1000);
+                    where.updatedAt.lte = new Date(endTime * 1000);
                 }
             }
 
@@ -238,7 +238,7 @@ export function accountRoutes(app: Fastify) {
             const reports = await db.usageReport.findMany({
                 where,
                 orderBy: {
-                    createdAt: 'desc'
+                    updatedAt: 'desc'
                 }
             });
 
@@ -252,7 +252,7 @@ export function accountRoutes(app: Fastify) {
 
             for (const report of reports) {
                 const data = report.data as PrismaJson.UsageReportData;
-                const date = new Date(report.createdAt);
+                const date = new Date(report.updatedAt);
 
                 // Calculate timestamp based on groupBy
                 let timestamp: number;
