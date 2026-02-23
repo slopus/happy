@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Alert, Modal, Platform } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -506,16 +507,45 @@ export default function DooTaskDetail() {
         },
     ], [handleStartAiSession, handleOpenChat, handleStatusPress, handleRefresh]);
 
+    const [scrolledPastTitle, setScrolledPastTitle] = React.useState(false);
+    const handleScroll = React.useCallback((e: any) => {
+        const y = e.nativeEvent.contentOffset.y;
+        setScrolledPastTitle(prev => {
+            const next = y > 100;
+            return prev === next ? prev : next;
+        });
+    }, []);
+
+    // Fade-out → swap text → fade-in for smooth subtitle transition
+    const subtitleOpacity = useSharedValue(1);
+    const targetSubtitle = scrolledPastTitle && task ? task.name : `#${taskId}`;
+    const [displayedSubtitle, setDisplayedSubtitle] = React.useState(targetSubtitle);
+
+    React.useEffect(() => {
+        if (targetSubtitle === displayedSubtitle) return;
+        subtitleOpacity.value = withTiming(0, { duration: 120 });
+        const timer = setTimeout(() => {
+            setDisplayedSubtitle(targetSubtitle);
+            subtitleOpacity.value = withTiming(1, { duration: 160 });
+        }, 120);
+        return () => clearTimeout(timer);
+    }, [targetSubtitle]);
+
+    const subtitleAnimStyle = useAnimatedStyle(() => ({ opacity: subtitleOpacity.value }));
+
     const headerTitle = React.useCallback(() => (
-        <Pressable onLongPress={() => { Clipboard.setStringAsync(taskId!); hapticsLight(); showCopiedToast(); }} style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <Pressable onLongPress={() => { Clipboard.setStringAsync(taskId!); hapticsLight(); showCopiedToast(); }} style={{ alignItems: 'center', justifyContent: 'center', maxWidth: 220 }}>
             <Text numberOfLines={1} style={[styles.headerTitle, { color: theme.colors.header.tint }]}>
                 {t('dootask.taskDetail')}
             </Text>
-            <Text numberOfLines={1} style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
-                #{taskId}
-            </Text>
+            <Animated.Text
+                numberOfLines={1}
+                style={[styles.headerSubtitle, { color: theme.colors.textSecondary }, subtitleAnimStyle]}
+            >
+                {displayedSubtitle}
+            </Animated.Text>
         </Pressable>
-    ), [taskId, theme]);
+    ), [taskId, theme, displayedSubtitle, subtitleAnimStyle]);
 
     if (loading) {
         return (<><Stack.Screen options={{ headerTitle }} /><ActivityIndicator style={{ flex: 1 }} /></>);
@@ -558,6 +588,8 @@ export default function DooTaskDetail() {
             contentContainerStyle={styles.container}
             style={{ backgroundColor: theme.colors.surface }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
         >
             <Pressable onLongPress={() => { Clipboard.setStringAsync(task.name); hapticsLight(); showCopiedToast(); }}>
                 <Text style={[styles.title, { color: theme.colors.text }]}>{task.name}</Text>
@@ -881,7 +913,7 @@ const styles = StyleSheet.create((_theme) => ({
     empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     title: { ...Typography.default('semiBold'), fontSize: 20 },
     headerTitle: { ...Typography.default('semiBold'), fontSize: 17 },
-    headerSubtitle: { ...Typography.default(), fontSize: 12, marginTop: -2 },
+    headerSubtitle: { ...Typography.default(), fontSize: 12, lineHeight: 16, marginTop: -2 },
     fieldGroup: { gap: 12 },
     field: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     fieldLabel: { ...Typography.default(), fontSize: 14, flexShrink: 0, marginRight: 12 },
