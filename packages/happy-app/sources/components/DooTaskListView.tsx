@@ -478,6 +478,14 @@ const TaskCard = React.memo(({ item, projectName, columnName, userCache, flavors
                         </Text>
                     </View>
                 ) : null}
+                {item.msg_num && item.msg_num > 0 ? (
+                    <View style={styles.subCountBadge}>
+                        <Ionicons name="chatbubble-outline" size={11} color={theme.colors.textSecondary} />
+                        <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+                            {item.msg_num}
+                        </Text>
+                    </View>
+                ) : null}
             </View>
             {hasTime || hasAssignees || (flavors && flavors.length > 0) ? (
                 <View style={styles.cardBottom}>

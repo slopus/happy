@@ -747,7 +747,7 @@ export default function DooTaskDetail() {
                         <ActivityIndicator size="small" />
                     ) : (
                         <Text style={[styles.aiButtonText, { color: theme.colors.text }]}>
-                            {t('dootask.taskChat')}
+                            {t('dootask.taskChat')}{task.msg_num ? ` (${task.msg_num})` : ''}
                         </Text>
                     )}
                 </Pressable>

@@ -37,6 +37,7 @@ export type DooTaskItem = {
     task_tag?: Array<{ id: number; name: string; color: string }>;
     sub_num?: number;
     sub_complete?: number;
+    msg_num?: number;
 };
 
 export type DooTaskFile = {
