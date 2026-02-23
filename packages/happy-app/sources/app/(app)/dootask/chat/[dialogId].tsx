@@ -30,7 +30,9 @@ function dedupeMessagesById(list: DooTaskDialogMsg[]): DooTaskDialogMsg[] {
 }
 
 function nowTimestamp(): string {
-    return new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export default React.memo(function DooTaskChat() {
