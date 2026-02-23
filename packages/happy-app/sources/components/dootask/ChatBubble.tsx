@@ -575,11 +575,13 @@ export const ChatBubble = React.memo(({
     const bubbleRef = React.useRef<View>(null);
 
     // Notice messages: centered, no layout change
+    // DooTask stores notice text in msg.notice (not msg.text)
     if (msg.type === 'notice') {
+        const noticeText = msg.msg?.notice || getMsgText(msg);
         return (
             <View style={styles.noticeContainer}>
                 <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>
-                    {stripHtml(getMsgText(msg))}
+                    {stripHtml(noticeText)}
                 </Text>
             </View>
         );
