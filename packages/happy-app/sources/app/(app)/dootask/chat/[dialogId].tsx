@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -7,15 +7,17 @@ import { Image } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { AgentContentView } from '@/components/AgentContentView';
-import { storage, useDootaskProfile, useDootaskUserCache, useDootaskUserAvatars } from '@/sync/storage';
-import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage, dootaskSendFileByUri, dootaskToggleEmoji } from '@/sync/dootask/api';
+import { storage, useDootaskProfile, useDootaskUserCache, useDootaskUserAvatars, useDootaskUserDisabledAt } from '@/sync/storage';
+import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage, dootaskSendFileByUri, dootaskToggleEmoji, dootaskFetchDialogOne, dootaskFetchDialogUsers } from '@/sync/dootask/api';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
+import { DialogDetailModal } from '@/components/dootask/DialogDetailModal';
 import { useDootaskWebSocket } from '@/hooks/useDootaskWebSocket';
 import { ChatMessageList } from '@/components/dootask/ChatMessageList';
 import { thumbRestore, TextContent } from '@/components/dootask/ChatBubble';
 import { ChatInput } from '@/components/dootask/ChatInput';
 import { ImageViewer } from '@/components/ImageViewer';
 import { MessageContextMenu, ContextMenuAction, MessagePreview } from '@/components/dootask/MessageContextMenu';
-import type { DooTaskDialogMsg, PendingMessage, DisplayMessage } from '@/sync/dootask/types';
+import type { DooTaskDialogMsg, PendingMessage, DisplayMessage, DooTaskDialog, DooTaskDialogUser } from '@/sync/dootask/types';
 import { generateMockMessages, MOCK_USER_NAMES, MOCK_USER_AVATARS } from '@/components/dootask/__dev__/mockChatMessages';
 
 function dedupeMessagesById(list: DooTaskDialogMsg[]): DooTaskDialogMsg[] {
@@ -42,8 +44,11 @@ export default React.memo(function DooTaskChat() {
     const profile = useDootaskProfile();
     const userCache = useDootaskUserCache();
     const userAvatars = useDootaskUserAvatars();
+    const userDisabledAt = useDootaskUserDisabledAt();
     const isMock = dialogId === 'mock';
     const id = isMock ? 0 : Number(dialogId);
+    const idRef = React.useRef(id);
+    idRef.current = id;
 
     // Message state
     const [messages, setMessages] = React.useState<DooTaskDialogMsg[]>([]);
@@ -52,6 +57,19 @@ export default React.memo(function DooTaskChat() {
     const [hasMore, setHasMore] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [wsEnabled, setWsEnabled] = React.useState(false);
+
+    // Dialog detail state — reset when dialogId changes
+    const [dialogInfo, setDialogInfo] = React.useState<DooTaskDialog | null>(null);
+    const [dialogMembers, setDialogMembers] = React.useState<DooTaskDialogUser[]>([]);
+    const [dialogMembersLoading, setDialogMembersLoading] = React.useState(false);
+    const detailModalRef = React.useRef<BottomSheetModal>(null);
+
+    React.useEffect(() => {
+        setDialogInfo(null);
+        setDialogMembers([]);
+        setDialogMembersLoading(false);
+        detailModalRef.current?.dismiss();
+    }, [id]);
 
     // Optimistic pending messages
     const [pendingMessages, setPendingMessages] = React.useState<PendingMessage[]>([]);
@@ -116,6 +134,7 @@ export default React.memo(function DooTaskChat() {
     // Initial fetch
     const fetchMessages = React.useCallback(async () => {
         if (!profile) return;
+        const requestId = id;
         // Mock mode: load generated preview data, skip API/WS
         if (isMock) {
             setMessages(generateMockMessages(profile.userId));
@@ -128,6 +147,7 @@ export default React.memo(function DooTaskChat() {
                 dialog_id: id,
                 take: 50,
             });
+            if (requestId !== idRef.current) return;
             if (res.ret === 1 && res.data?.list) {
                 const list: DooTaskDialogMsg[] = res.data.list;
                 // API returns newest-first, which is what inverted FlatList needs
@@ -140,16 +160,39 @@ export default React.memo(function DooTaskChat() {
                 setError(res.msg || t('dootask.errorLoadChat'));
             }
         } catch (e) {
+            if (requestId !== idRef.current) return;
             setError(e instanceof Error ? e.message : t('dootask.errorLoadChat'));
         } finally {
-            setLoading(false);
-            setWsEnabled(true);
+            if (requestId === idRef.current) {
+                setLoading(false);
+                setWsEnabled(true);
+            }
         }
     }, [profile, id, isMock]);
 
     React.useEffect(() => {
         fetchMessages();
     }, [fetchMessages]);
+
+    // Fetch dialog info for header icon
+    React.useEffect(() => {
+        if (!profile || isMock) return;
+        let stale = false;
+        dootaskFetchDialogOne(profile.serverUrl, profile.token, id).then(res => {
+            if (stale) return;
+            if (res.ret === 1 && res.data) {
+                setDialogInfo({
+                    id: res.data.id,
+                    name: res.data.name,
+                    type: res.data.type,
+                    group_type: res.data.group_type,
+                    avatar: res.data.avatar || null,
+                    owner_id: res.data.owner_id || 0,
+                });
+            }
+        }).catch(() => {});
+        return () => { stale = true; };
+    }, [profile, id, isMock]);
 
     // Load older messages
     const handleLoadMore = React.useCallback(async () => {
@@ -468,24 +511,58 @@ export default React.memo(function DooTaskChat() {
         }
     }, [profile]);
 
+    const handleOpenDetail = React.useCallback(async () => {
+        detailModalRef.current?.present();
+        if (!profile || dialogMembersLoading) return;
+        const requestId = id;
+        setDialogMembersLoading(true);
+        try {
+            const res = await dootaskFetchDialogUsers(profile.serverUrl, profile.token, id);
+            if (requestId !== idRef.current) return;
+            if (res.ret === 1 && Array.isArray(res.data)) {
+                setDialogMembers(res.data);
+            }
+        } catch {} finally {
+            if (requestId === idRef.current) {
+                setDialogMembersLoading(false);
+            }
+        }
+    }, [profile, id, dialogMembersLoading]);
+
     // Render ChatHeaderView directly (same style as SessionView)
-    // Right side: DooTask icon (task dialogs show a task icon, matching DooTask web)
+    // Right side: DooTask icon / dialog avatar (tappable to open detail modal)
+    const resolvedDialogAvatar = React.useMemo(() => {
+        if (!dialogInfo?.avatar || !profile?.serverUrl) return null;
+        const base = profile.serverUrl.replace(/\/+$/, '') + '/';
+        const resolved = dialogInfo.avatar.replace(/\{\{RemoteURL\}\}/g, base);
+        if (resolved.startsWith('http') || resolved.startsWith('//')) return resolved;
+        return base + resolved.replace(/^\/+/, '');
+    }, [dialogInfo?.avatar, profile?.serverUrl]);
+
     const header = React.useMemo(() => (
         <ChatHeaderView
             title={t('dootask.taskChat')}
             subtitle={taskName}
             onBackPress={() => router.back()}
             headerRight={() => (
-                <View style={styles.headerIconButton}>
-                    <Image
-                        source={require('@/assets/images/icon-dootask.png')}
-                        style={{ width: 28, height: 28 }}
-                        contentFit="contain"
-                    />
-                </View>
+                <Pressable style={styles.headerIconButton} onPress={handleOpenDetail}>
+                    {resolvedDialogAvatar ? (
+                        <Image
+                            source={{ uri: resolvedDialogAvatar }}
+                            style={{ width: 28, height: 28, borderRadius: 14 }}
+                            contentFit="cover"
+                        />
+                    ) : (
+                        <Image
+                            source={require('@/assets/images/icon-dootask.png')}
+                            style={{ width: 28, height: 28 }}
+                            contentFit="contain"
+                        />
+                    )}
+                </Pressable>
             )}
         />
-    ), [taskName, router]);
+    ), [taskName, router, resolvedDialogAvatar, handleOpenDetail]);
 
     // Image press -> open viewer
     // For file-upload images: show all file images as a gallery
@@ -508,6 +585,7 @@ export default React.memo(function DooTaskChat() {
     // In mock mode, merge mock user info with real caches
     const effectiveUserNames = isMock ? { ...userCache, ...MOCK_USER_NAMES } : userCache;
     const effectiveUserAvatars = isMock ? { ...userAvatars, ...MOCK_USER_AVATARS } : userAvatars;
+    const effectiveUserDisabledAt = isMock ? {} : userDisabledAt;
 
     const content = !(error && messages.length === 0) ? (
         <ChatMessageList
@@ -515,6 +593,7 @@ export default React.memo(function DooTaskChat() {
             currentUserId={profile?.userId || 0}
             userNames={effectiveUserNames}
             userAvatars={effectiveUserAvatars}
+            userDisabledAt={effectiveUserDisabledAt}
             onLoadMore={handleLoadMore}
             loading={loading}
             loadingMore={loadingMore}
@@ -570,6 +649,16 @@ export default React.memo(function DooTaskChat() {
                 initialIndex={imageViewerIndex}
                 visible={imageViewerVisible}
                 onClose={() => setImageViewerVisible(false)}
+            />
+            <DialogDetailModal
+                ref={detailModalRef}
+                dialogName={dialogInfo?.name || taskName || ''}
+                dialogId={id}
+                groupType={dialogInfo?.group_type || ''}
+                ownerId={dialogInfo?.owner_id || 0}
+                members={dialogMembers}
+                loading={dialogMembersLoading}
+                serverUrl={profile?.serverUrl || ''}
             />
         </>
     );

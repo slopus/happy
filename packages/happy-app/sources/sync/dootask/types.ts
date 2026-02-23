@@ -103,4 +103,17 @@ export type DooTaskDialog = {
     name: string;
     type: string;
     group_type: string;
+    avatar: string | null;
+    owner_id: number;
+};
+
+export type DooTaskDialogUser = {
+    userid: number;
+    nickname: string;
+    userimg: string | null;
+    profession: string | null;
+    department: string | null;
+    bot: number;
+    online: boolean;
+    disable_at: string | null;
 };

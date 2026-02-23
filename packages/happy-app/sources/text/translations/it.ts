@@ -326,6 +326,17 @@ export const it: TranslationStructure = {
         viewDetails: 'View Details',
         edited: 'edited',
         voiceMessage: 'Voice message',
+        dialogName: 'Nome del gruppo',
+        dialogId: 'ID del gruppo',
+        groupType: 'Tipo di gruppo',
+        searchMembers: 'Cerca membri',
+        groupOwner: 'Proprietario',
+        groupTypeAll: 'Gruppo di tutti',
+        groupTypeDepartment: 'Gruppo di dipartimento',
+        groupTypeProject: 'Gruppo di progetto',
+        groupTypeTask: 'Gruppo di attività',
+        groupTypeOkr: 'Gruppo OKR',
+        groupTypeUser: 'Gruppo personale',
     },
 
     settingsAppearance: {

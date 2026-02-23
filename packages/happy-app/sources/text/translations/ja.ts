@@ -329,6 +329,17 @@ export const ja: TranslationStructure = {
         viewDetails: '詳細を見る',
         edited: '編集済み',
         voiceMessage: '音声メッセージ',
+        dialogName: 'グループ名',
+        dialogId: 'グループ ID',
+        groupType: 'グループタイプ',
+        searchMembers: 'メンバーを検索',
+        groupOwner: 'オーナー',
+        groupTypeAll: '全員グループ',
+        groupTypeDepartment: '部門グループ',
+        groupTypeProject: 'プロジェクトグループ',
+        groupTypeTask: 'タスクグループ',
+        groupTypeOkr: 'OKR グループ',
+        groupTypeUser: '個人グループ',
     },
 
     settingsAppearance: {

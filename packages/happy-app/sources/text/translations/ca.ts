@@ -297,6 +297,17 @@ export const ca: TranslationStructure = {
         viewDetails: 'View Details',
         edited: 'edited',
         voiceMessage: 'Voice message',
+        dialogName: 'Nom del grup',
+        dialogId: 'ID del grup',
+        groupType: 'Tipus de grup',
+        searchMembers: 'Cercar membres',
+        groupOwner: 'Propietari',
+        groupTypeAll: 'Grup de tots',
+        groupTypeDepartment: 'Grup de departament',
+        groupTypeProject: 'Grup de projecte',
+        groupTypeTask: 'Grup de tasca',
+        groupTypeOkr: 'Grup OKR',
+        groupTypeUser: 'Grup personal',
     },
 
     settingsAppearance: {

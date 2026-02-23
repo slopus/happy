@@ -260,19 +260,19 @@ export function saveDooTaskProfile(profile: DooTaskProfile | null): void {
     }
 }
 
-export function loadDooTaskUserCache(): { cache: Record<number, string>; avatars: Record<number, string | null>; fetchedAt: number | null } {
+export function loadDooTaskUserCache(): { cache: Record<number, string>; avatars: Record<number, string | null>; disabledAt: Record<number, string | null>; fetchedAt: number | null } {
     const raw = mmkv.getString('dootask-user-cache');
-    if (!raw) return { cache: {}, avatars: {}, fetchedAt: null };
+    if (!raw) return { cache: {}, avatars: {}, disabledAt: {}, fetchedAt: null };
     try {
         const parsed = JSON.parse(raw);
-        return { cache: parsed.cache || {}, avatars: parsed.avatars || {}, fetchedAt: parsed.fetchedAt ?? null };
+        return { cache: parsed.cache || {}, avatars: parsed.avatars || {}, disabledAt: parsed.disabledAt || {}, fetchedAt: parsed.fetchedAt ?? null };
     } catch {
-        return { cache: {}, avatars: {}, fetchedAt: null };
+        return { cache: {}, avatars: {}, disabledAt: {}, fetchedAt: null };
     }
 }
 
-export function saveDooTaskUserCache(cache: Record<number, string>, avatars: Record<number, string | null>, fetchedAt: number | null): void {
-    mmkv.set('dootask-user-cache', JSON.stringify({ cache, avatars, fetchedAt }));
+export function saveDooTaskUserCache(cache: Record<number, string>, avatars: Record<number, string | null>, disabledAt: Record<number, string | null>, fetchedAt: number | null): void {
+    mmkv.set('dootask-user-cache', JSON.stringify({ cache, avatars, disabledAt, fetchedAt }));
 }
 
 export function clearDooTaskUserCache(): void {

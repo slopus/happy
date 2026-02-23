@@ -104,6 +104,7 @@ interface StorageState {
     dootaskPager: DooTaskPager;
     dootaskUserCache: Record<number, string>;
     dootaskUserAvatars: Record<number, string | null>;
+    dootaskUserDisabledAt: Record<number, string | null>;
     dootaskTaskDetailCache: Record<number, { task: DooTaskItem; content: string | null }>;
     dootaskProjectsFetchedAt: number | null;
     dootaskUserCacheFetchedAt: number | null;
@@ -357,6 +358,7 @@ export const storage = create<StorageState>()((set, get) => {
         dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
         dootaskUserCache: _cachedUsers.cache,
         dootaskUserAvatars: _cachedUsers.avatars,
+        dootaskUserDisabledAt: _cachedUsers.disabledAt,
         dootaskTaskDetailCache: {},
         dootaskProjectsFetchedAt: _cachedProjects.fetchedAt,
         dootaskUserCacheFetchedAt: _cachedUsers.fetchedAt,
@@ -1323,6 +1325,7 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskProjectsFetchedAt: null,
                 dootaskUserCache: {},
                 dootaskUserAvatars: {},
+                dootaskUserDisabledAt: {},
                 dootaskUserCacheFetchedAt: null,
                 dootaskTaskDetailCache: {},
             }));
@@ -1428,12 +1431,13 @@ export const storage = create<StorageState>()((set, get) => {
             if (!dootaskProfile || userIds.length === 0) return dootaskUserCache;
 
             // If cache expired (>10 min), re-fetch all requested IDs; otherwise only missing ones
-            // Also re-fetch users whose avatar is missing from the avatar cache (e.g. after upgrade)
+            // Also re-fetch users whose avatar or disabledAt status is missing from cache (e.g. after upgrade)
             const expired = !dootaskUserCacheFetchedAt || Date.now() - dootaskUserCacheFetchedAt >= 600_000;
             const avatarCache = get().dootaskUserAvatars;
+            const disabledAtCache = get().dootaskUserDisabledAt;
             const missingIds = expired
                 ? userIds
-                : userIds.filter((id) => !(id in dootaskUserCache) || !(id in avatarCache));
+                : userIds.filter((id) => !(id in dootaskUserCache) || !(id in avatarCache) || !(id in disabledAtCache));
             if (missingIds.length === 0) return dootaskUserCache;
 
             const profileKey = `${dootaskProfile.serverUrl}|${dootaskProfile.userId}|${dootaskProfile.token}`;
@@ -1444,10 +1448,12 @@ export const storage = create<StorageState>()((set, get) => {
                 if (res.ret === 1 && Array.isArray(res.data)) {
                     const newEntries: Record<number, string> = {};
                     const newAvatars: Record<number, string | null> = {};
+                    const newDisabledAt: Record<number, string | null> = {};
                     for (const u of res.data) {
                         if (u.userid) {
                             newEntries[u.userid] = u.nickname || '';
                             newAvatars[u.userid] = u.userimg || null;
+                            newDisabledAt[u.userid] = u.disable_at || null;
                         }
                     }
                     // When expired, strip requested IDs from old cache before merging
@@ -1458,9 +1464,10 @@ export const storage = create<StorageState>()((set, get) => {
                         : oldCache;
                     const merged = { ...base, ...newEntries };
                     const mergedAvatars = { ...get().dootaskUserAvatars, ...newAvatars };
+                    const mergedDisabledAt = { ...get().dootaskUserDisabledAt, ...newDisabledAt };
                     const now = Date.now();
-                    saveDooTaskUserCache(merged, mergedAvatars, now);
-                    set((state) => ({ ...state, dootaskUserCache: merged, dootaskUserAvatars: mergedAvatars, dootaskUserCacheFetchedAt: now }));
+                    saveDooTaskUserCache(merged, mergedAvatars, mergedDisabledAt, now);
+                    set((state) => ({ ...state, dootaskUserCache: merged, dootaskUserAvatars: mergedAvatars, dootaskUserDisabledAt: mergedDisabledAt, dootaskUserCacheFetchedAt: now }));
                     return merged;
                 }
             } catch { /* silent */ }
@@ -1490,6 +1497,7 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
                 dootaskUserCache: {},
                 dootaskUserAvatars: {},
+                dootaskUserDisabledAt: {},
                 dootaskTaskDetailCache: {},
                 dootaskProjectsFetchedAt: null,
                 dootaskUserCacheFetchedAt: null,
@@ -1773,6 +1781,10 @@ export function useDootaskUserCache(): Record<number, string> {
 
 export function useDootaskUserAvatars(): Record<number, string | null> {
     return storage(useShallow((s) => s.dootaskUserAvatars));
+}
+
+export function useDootaskUserDisabledAt(): Record<number, string | null> {
+    return storage(useShallow((s) => s.dootaskUserDisabledAt));
 }
 
 export function useDootaskTaskDetailCache(taskId: number) {

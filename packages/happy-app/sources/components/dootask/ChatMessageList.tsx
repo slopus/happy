@@ -44,6 +44,7 @@ type ChatMessageListProps = {
     currentUserId: number;
     userNames: Record<number, string>;
     userAvatars: Record<number, string | null>;
+    userDisabledAt: Record<number, string | null>;
     onLoadMore: () => void;
     loadingMore: boolean;
     loading?: boolean;
@@ -74,6 +75,7 @@ export const ChatMessageList = React.memo(({
     currentUserId,
     userNames,
     userAvatars,
+    userDisabledAt,
     onLoadMore,
     loadingMore,
     loading,
@@ -154,6 +156,7 @@ export const ChatMessageList = React.memo(({
                     currentUserId={currentUserId}
                     senderName={userNames[item.userid]}
                     avatarUrl={resolveAvatarUrl(userAvatars[item.userid], serverUrl)}
+                    disabledAt={userDisabledAt[item.userid]}
                     showAvatar={showAvatar}
                     replyMsg={replyMsg}
                     replySenderName={replySenderName}
@@ -166,7 +169,7 @@ export const ChatMessageList = React.memo(({
                 />
             </View>
         );
-    }, [messages, currentUserId, userNames, userAvatars, replyMsgMap, onImagePress, onMessageLongPress, onEmojiPress, onRetry, serverUrl, theme]);
+    }, [messages, currentUserId, userNames, userAvatars, userDisabledAt, replyMsgMap, onImagePress, onMessageLongPress, onEmojiPress, onRetry, serverUrl, theme]);
 
     const keyExtractor = React.useCallback((msg: DisplayMessage) =>
         isPending(msg) ? msg._pendingId : msg.id.toString()
@@ -194,7 +197,7 @@ export const ChatMessageList = React.memo(({
     ), [loading, theme]);
 
     // Force FlatList to re-render when avatar data loads asynchronously
-    const extraData = React.useMemo(() => ({ userAvatars, userNames }), [userAvatars, userNames]);
+    const extraData = React.useMemo(() => ({ userAvatars, userNames, userDisabledAt }), [userAvatars, userNames, userDisabledAt]);
 
     return (
         <FlatList

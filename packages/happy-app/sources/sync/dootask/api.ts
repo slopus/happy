@@ -232,6 +232,24 @@ export async function dootaskFetchTaskDialog(serverUrl: string, token: string, t
     return response.json();
 }
 
+export async function dootaskFetchDialogOne(serverUrl: string, token: string, dialogId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/dialog/one?dialog_id=${dialogId}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskFetchDialogUsers(serverUrl: string, token: string, dialogId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/dialog/user?dialog_id=${dialogId}&getuser=1`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
 export async function dootaskFetchDialogMessages(serverUrl: string, token: string, params: {
     dialog_id: number;
     prev_id?: number;

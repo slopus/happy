@@ -298,6 +298,17 @@ export const zhHant: TranslationStructure = {
         viewDetails: '查看詳情',
         edited: '已編輯',
         voiceMessage: '語音訊息',
+        dialogName: '群組名稱',
+        dialogId: '群組 ID',
+        groupType: '群組類型',
+        searchMembers: '搜尋成員',
+        groupOwner: '群主',
+        groupTypeAll: '全員群組',
+        groupTypeDepartment: '部門群組',
+        groupTypeProject: '專案群組',
+        groupTypeTask: '任務群組',
+        groupTypeOkr: 'OKR 群組',
+        groupTypeUser: '個人群組',
     },
 
     settingsAppearance: {

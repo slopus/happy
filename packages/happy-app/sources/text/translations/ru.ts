@@ -261,6 +261,17 @@ export const ru: TranslationStructure = {
         viewDetails: 'View Details',
         edited: 'edited',
         voiceMessage: 'Voice message',
+        dialogName: 'Название группы',
+        dialogId: 'ID группы',
+        groupType: 'Тип группы',
+        searchMembers: 'Поиск участников',
+        groupOwner: 'Владелец',
+        groupTypeAll: 'Группа всех участников',
+        groupTypeDepartment: 'Группа отдела',
+        groupTypeProject: 'Группа проекта',
+        groupTypeTask: 'Группа задачи',
+        groupTypeOkr: 'Группа OKR',
+        groupTypeUser: 'Личная группа',
     },
 
     settingsAppearance: {

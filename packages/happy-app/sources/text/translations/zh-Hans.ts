@@ -299,6 +299,17 @@ export const zhHans: TranslationStructure = {
         viewDetails: '查看详情',
         edited: '已编辑',
         voiceMessage: '语音消息',
+        dialogName: '群名',
+        dialogId: '群组 ID',
+        groupType: '群组类型',
+        searchMembers: '搜索成员',
+        groupOwner: '群主',
+        groupTypeAll: '全员群组',
+        groupTypeDepartment: '部门群组',
+        groupTypeProject: '项目群组',
+        groupTypeTask: '任务群组',
+        groupTypeOkr: 'OKR 群组',
+        groupTypeUser: '个人群组',
     },
 
     settingsAppearance: {

@@ -298,6 +298,7 @@ type ChatBubbleProps = {
     currentUserId: number;
     senderName?: string;
     avatarUrl?: string | null;
+    disabledAt?: string | null;
     showAvatar: boolean;
     replyMsg?: DooTaskDialogMsg | null;
     replySenderName?: string;
@@ -554,6 +555,7 @@ export const ChatBubble = React.memo(({
     currentUserId,
     senderName: _senderName,
     avatarUrl: _avatarUrl,
+    disabledAt,
     showAvatar,
     replyMsg,
     replySenderName,
@@ -717,10 +719,10 @@ export const ChatBubble = React.memo(({
                         ) : avatarUrl ? (
                             <Image
                                 source={{ uri: avatarUrl }}
-                                style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2 }}
+                                style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2, opacity: disabledAt ? 0.4 : 1 }}
                             />
                         ) : (
-                            <View style={[styles.avatarPlaceholder, { backgroundColor: avatarBg }]}>
+                            <View style={[styles.avatarPlaceholder, { backgroundColor: avatarBg, opacity: disabledAt ? 0.4 : 1 }]}>
                                 <Text style={styles.avatarInitial}>{initial}</Text>
                             </View>
                         )
