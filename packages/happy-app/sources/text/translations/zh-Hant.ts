@@ -295,6 +295,9 @@ export const zhHant: TranslationStructure = {
         sending: '傳送中...',
         sendFailed: '傳送失敗',
         retry: '重試',
+        viewDetails: '查看詳情',
+        edited: '已編輯',
+        voiceMessage: '語音訊息',
     },
 
     settingsAppearance: {

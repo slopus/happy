@@ -64,16 +64,18 @@ export type DooTaskPager = {
     hasMore: boolean;
 };
 
+export type EmojiReaction = { symbol: string; userids: number[] };
+
 export type DooTaskDialogMsg = {
     id: number;
     dialog_id: number;
     userid: number;
-    type: 'text' | 'image' | 'file' | 'record' | 'notice' | 'meeting' | 'longtext' | 'template';
+    type: 'text' | 'image' | 'file' | 'record' | 'notice' | 'meeting' | 'longtext' | 'template' | 'vote' | 'word-chain';
     msg: any;
     reply_id: number | null;
     reply_num: number;
     created_at: string;
-    emoji: Record<string, any>;
+    emoji: EmojiReaction[];
     bot: number;
     modify: number;
     forward_id: number | null;

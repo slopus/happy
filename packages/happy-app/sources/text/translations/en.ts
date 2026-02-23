@@ -310,6 +310,9 @@ export const en: TranslationStructure = {
         sending: 'Sending...',
         sendFailed: 'Failed',
         retry: 'Retry',
+        viewDetails: 'View Details',
+        edited: 'edited',
+        voiceMessage: 'Voice message',
     },
 
     settingsAppearance: {

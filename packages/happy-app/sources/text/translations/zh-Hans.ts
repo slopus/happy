@@ -296,6 +296,9 @@ export const zhHans: TranslationStructure = {
         sending: '发送中...',
         sendFailed: '发送失败',
         retry: '重试',
+        viewDetails: '查看详情',
+        edited: '已编辑',
+        voiceMessage: '语音消息',
     },
 
     settingsAppearance: {

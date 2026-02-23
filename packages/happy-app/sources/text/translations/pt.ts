@@ -294,6 +294,9 @@ export const pt: TranslationStructure = {
         sending: 'Enviando...',
         sendFailed: 'Falha',
         retry: 'Tentar novamente',
+        viewDetails: 'View Details',
+        edited: 'edited',
+        voiceMessage: 'Voice message',
     },
 
     settingsAppearance: {

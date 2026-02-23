@@ -326,6 +326,9 @@ export const ja: TranslationStructure = {
         sending: '送信中...',
         sendFailed: '送信失敗',
         retry: '再試行',
+        viewDetails: '詳細を見る',
+        edited: '編集済み',
+        voiceMessage: '音声メッセージ',
     },
 
     settingsAppearance: {

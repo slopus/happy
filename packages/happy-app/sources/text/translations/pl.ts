@@ -305,6 +305,9 @@ export const pl: TranslationStructure = {
         sending: 'Wysyłanie...',
         sendFailed: 'Niepowodzenie',
         retry: 'Ponów',
+        viewDetails: 'View Details',
+        edited: 'edited',
+        voiceMessage: 'Voice message',
     },
 
     settingsAppearance: {

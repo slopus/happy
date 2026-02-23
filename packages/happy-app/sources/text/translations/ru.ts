@@ -258,6 +258,9 @@ export const ru: TranslationStructure = {
         sending: 'Отправка...',
         sendFailed: 'Ошибка',
         retry: 'Повторить',
+        viewDetails: 'View Details',
+        edited: 'edited',
+        voiceMessage: 'Voice message',
     },
 
     settingsAppearance: {

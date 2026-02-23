@@ -294,6 +294,9 @@ export const es: TranslationStructure = {
         sending: 'Enviando...',
         sendFailed: 'Error',
         retry: 'Reintentar',
+        viewDetails: 'View Details',
+        edited: 'edited',
+        voiceMessage: 'Voice message',
     },
 
     settingsAppearance: {

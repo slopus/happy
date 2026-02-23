@@ -31,7 +31,7 @@ function buildFakeDooTaskMsg(pending: PendingMessage): DooTaskDialogMsg {
         reply_id: pending.reply_id,
         reply_num: 0,
         created_at: pending.created_at,
-        emoji: {},
+        emoji: [],
         bot: 0,
         modify: 0,
         forward_id: null,

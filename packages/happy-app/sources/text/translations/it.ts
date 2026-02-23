@@ -323,6 +323,9 @@ export const it: TranslationStructure = {
         sending: 'Invio...',
         sendFailed: 'Non riuscito',
         retry: 'Riprova',
+        viewDetails: 'View Details',
+        edited: 'edited',
+        voiceMessage: 'Voice message',
     },
 
     settingsAppearance: {

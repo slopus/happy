@@ -318,3 +318,15 @@ export async function dootaskSendFileByUri(serverUrl: string, token: string, par
     });
     return response.json();
 }
+
+export async function dootaskToggleEmoji(serverUrl: string, token: string, params: {
+    msg_id: number;
+    symbol: string;
+}): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/dialog/msg/emoji?msg_id=${params.msg_id}&symbol=${encodeURIComponent(params.symbol)}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
