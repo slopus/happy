@@ -50,6 +50,16 @@ function stripHtml(html: string): string {
         .trim();
 }
 
+/** Detect if text content is purely 1-3 emoji characters (for large emoji display). */
+const EMOJI_RE = /^(?:\p{Extended_Pictographic}[\u{FE0F}\u{200D}\u{20E3}]*){1,3}$/u;
+function getEmojiCount(text: string): number {
+    const stripped = text.replace(/<\/?p>/gi, '').trim();
+    if (!EMOJI_RE.test(stripped)) return 0;
+    const emojis = [...stripped.matchAll(/\p{Extended_Pictographic}[\u{FE0F}\u{200D}\u{20E3}]*/gu)];
+    return emojis.length;
+}
+const EMOJI_SIZES = [0, 36, 32, 28]; // index = count
+
 /** Replace DooTask's {{RemoteURL}} placeholder and resolve relative paths to absolute URLs. */
 function resolveUrl(raw: string, serverUrl: string): string {
     const base = serverUrl.replace(/\/+$/, '') + '/';
@@ -346,7 +356,7 @@ function ImageContent({ msg, serverUrl, theme, onImagePress }: { msg: DooTaskDia
     return null;
 }
 
-function FileContent({ msg, serverUrl, theme }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any }) {
+function FileContent({ msg, serverUrl, theme, onImagePress: _onImagePress }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any; onImagePress?: (url: string) => void }) {
     const fileName = msg.msg?.name || '';
     const fileSize = msg.msg?.size ? formatFileSize(msg.msg.size) : '';
     const filePath = msg.msg?.path || msg.msg?.url || '';
@@ -373,6 +383,22 @@ function FileContent({ msg, serverUrl, theme }: { msg: DooTaskDialogMsg; serverU
     );
 }
 
+function LongtextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTaskDialogMsg; theme: any; serverUrl: string; onImagePress?: (url: string) => void }) {
+    const fileUrl = msg.msg?.file?.url;
+    return (
+        <View>
+            <TextContent msg={msg} theme={theme} serverUrl={serverUrl} onImagePress={onImagePress} />
+            {fileUrl ? (
+                <Pressable onPress={() => WebBrowser.openBrowserAsync(resolveUrl(fileUrl, serverUrl))} style={{ marginTop: 4 }}>
+                    <Text style={{ ...Typography.default('semiBold'), fontSize: 13, color: theme.colors.textLink }}>
+                        {t('dootask.viewDetails')}
+                    </Text>
+                </Pressable>
+            ) : null}
+        </View>
+    );
+}
+
 // --- Component ---
 
 export const ChatBubble = React.memo(({
@@ -395,6 +421,8 @@ export const ChatBubble = React.memo(({
     const senderName = isAiAssistant ? t('dootask.aiAssistant') : _senderName;
     const avatarUrl = isAiAssistant ? null : _avatarUrl;
     const time = formatTime(msg.created_at);
+    const emojiCount = msg.type === 'text' ? getEmojiCount(getMsgText(msg)) : 0;
+    const isLargeEmoji = emojiCount > 0;
 
     // Notice messages: centered, no layout change
     if (msg.type === 'notice') {
@@ -425,17 +453,27 @@ export const ChatBubble = React.memo(({
     let content: React.ReactNode = null;
     switch (msg.type) {
         case 'text':
-            content = <TextContent msg={msg} theme={theme} serverUrl={serverUrl} onImagePress={onImagePress} />;
+            if (isLargeEmoji) {
+                content = (
+                    <Text style={{ fontSize: EMOJI_SIZES[emojiCount], lineHeight: EMOJI_SIZES[emojiCount] * 1.3 }}>
+                        {getMsgText(msg).replace(/<\/?p>/gi, '').trim()}
+                    </Text>
+                );
+            } else {
+                content = <TextContent msg={msg} theme={theme} serverUrl={serverUrl} onImagePress={onImagePress} />;
+            }
             break;
         case 'image':
             content = <ImageContent msg={msg} serverUrl={serverUrl} theme={theme} onImagePress={onImagePress} />;
             break;
         case 'file':
-            content = <FileContent msg={msg} serverUrl={serverUrl} theme={theme} />;
+            content = <FileContent msg={msg} serverUrl={serverUrl} theme={theme} onImagePress={onImagePress} />;
+            break;
+        case 'longtext':
+            content = <LongtextContent msg={msg} theme={theme} serverUrl={serverUrl} onImagePress={onImagePress} />;
             break;
         case 'record':
         case 'meeting':
-        case 'longtext':
         case 'template':
         default:
             content = (
@@ -477,14 +515,14 @@ export const ChatBubble = React.memo(({
         return (
             <Pressable
                 onLongPress={pending ? undefined : () => onLongPress?.(msg)}
-                style={[styles.selfBand, { backgroundColor: theme.colors.surfaceHigh }, pending === 'error' && { opacity: 0.7 }]}
+                style={[styles.selfBand, { backgroundColor: isLargeEmoji ? 'transparent' : theme.colors.surfaceHigh }, pending === 'error' && { opacity: 0.7 }]}
             >
                 <View style={styles.selfContent}>
                     {replyBlock}
                     {content}
                     {statusRow ?? (time ? (
                         <Text style={[styles.selfTime, { color: theme.colors.textSecondary }]}>
-                            {time}
+                            {time}{msg.modify > 0 ? ` (${t('dootask.edited')})` : ''}
                         </Text>
                     ) : null)}
                 </View>
@@ -533,7 +571,7 @@ export const ChatBubble = React.memo(({
                         ) : null}
                         {time ? (
                             <Text style={[styles.headerTime, { color: theme.colors.textSecondary }]}>
-                                {time}
+                                {time}{msg.modify > 0 ? ` (${t('dootask.edited')})` : ''}
                             </Text>
                         ) : null}
                     </View>
