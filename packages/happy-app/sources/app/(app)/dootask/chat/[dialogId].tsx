@@ -181,14 +181,11 @@ export default React.memo(function DooTaskChat() {
                 if (prev.some(m => m.id === msg.id)) return prev;
                 return [msg, ...prev];
             });
-            // If WS delivers a message from us, clean up any matching sending pending.
-            // This handles the edge case where WS arrives but HTTP fails/times out,
-            // preventing a "real message + error pending" duplicate.
+            // If WS delivers a message from us, clean up any matching pending
+            // (including 'error' — WS proves the message succeeded even if HTTP failed).
             if (msg.userid === (profile?.userId || 0)) {
                 setPendingMessages(prev => {
-                    const idx = prev.findIndex(p =>
-                        p.type === msg.type && (p._pending === 'sending' || p._pending === 'sending-quiet'),
-                    );
+                    const idx = prev.findIndex(p => p.type === msg.type);
                     if (idx === -1) return prev;
                     retryFnsRef.current.delete(prev[idx]._pendingId);
                     return prev.filter((_, i) => i !== idx);
