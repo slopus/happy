@@ -320,6 +320,9 @@ export const ja: TranslationStructure = {
         unsupportedMessage: 'このメッセージタイプはサポートされていません。DooTaskクライアントでご確認ください。',
         chatEmpty: 'メッセージはありません',
         aiAssistant: 'AIアシスタント',
+        takePhoto: '写真を撮る',
+        chooseFromAlbum: 'アルバムから選択',
+        chooseFromFile: 'ファイルから選択',
     },
 
     settingsAppearance: {

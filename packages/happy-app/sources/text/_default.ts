@@ -288,6 +288,9 @@ export const en = {
         unsupportedMessage: 'Unsupported message type. Please use DooTask client to view.',
         chatEmpty: 'No messages yet',
         aiAssistant: 'AI Assistant',
+        takePhoto: 'Take Photo',
+        chooseFromAlbum: 'Choose from Album',
+        chooseFromFile: 'Choose File',
     },
 
     settingsAppearance: {

@@ -317,6 +317,9 @@ export const it: TranslationStructure = {
         unsupportedMessage: 'Unsupported message type. Please use DooTask client to view.',
         chatEmpty: 'No messages yet',
         aiAssistant: 'AI Assistant',
+        takePhoto: 'Scatta foto',
+        chooseFromAlbum: "Scegli dall'album",
+        chooseFromFile: 'Scegli file',
     },
 
     settingsAppearance: {

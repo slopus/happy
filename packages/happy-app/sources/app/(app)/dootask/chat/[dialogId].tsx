@@ -8,7 +8,7 @@ import * as Clipboard from 'expo-clipboard';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { AgentContentView } from '@/components/AgentContentView';
 import { storage, useDootaskProfile, useDootaskUserCache, useDootaskUserAvatars } from '@/sync/storage';
-import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage } from '@/sync/dootask/api';
+import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage, dootaskSendFileByUri } from '@/sync/dootask/api';
 import { useDootaskWebSocket } from '@/hooks/useDootaskWebSocket';
 import { ChatMessageList } from '@/components/dootask/ChatMessageList';
 import { thumbRestore } from '@/components/dootask/ChatBubble';
@@ -213,6 +213,29 @@ export default React.memo(function DooTaskChat() {
         }
     }, [profile, id, replyTo, sending]);
 
+    // Send file by URI
+    const handleSendFile = React.useCallback(async (file: { uri: string; name: string; mimeType: string }) => {
+        if (!profile || sending) return;
+        setSending(true);
+        try {
+            const res = await dootaskSendFileByUri(profile.serverUrl, profile.token, {
+                dialog_id: id,
+                fileUri: file.uri,
+                fileName: file.name,
+                mimeType: file.mimeType,
+                reply_id: replyTo?.msg.id,
+            });
+            if (res.ret !== 1) {
+                setError(res.msg || t('dootask.errorSendMessage'));
+            }
+            setReplyTo(null);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : t('dootask.errorSendMessage'));
+        } finally {
+            setSending(false);
+        }
+    }, [profile, id, replyTo, sending]);
+
     // Long press menu -> reply / copy
     const handleMessageLongPress = React.useCallback((msg: DooTaskDialogMsg) => {
         const items: ActionMenuItem[] = [
@@ -311,6 +334,7 @@ export default React.memo(function DooTaskChat() {
         <ChatInput
             onSendText={handleSendText}
             onSendImage={handleSendImage}
+            onSendFile={handleSendFile}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
             sending={sending}

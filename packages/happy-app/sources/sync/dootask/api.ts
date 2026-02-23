@@ -290,3 +290,31 @@ export async function dootaskSendFileMessage(serverUrl: string, token: string, p
     });
     return response.json();
 }
+
+/** Send a file (any type) by URI via the DooTask sendfile endpoint. */
+export async function dootaskSendFileByUri(serverUrl: string, token: string, params: {
+    dialog_id: number;
+    fileUri: string;
+    fileName: string;
+    mimeType: string;
+    reply_id?: number;
+}): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const headers: Record<string, string> = {};
+    if (token) headers['dootask-token'] = token;
+    const formData = new FormData();
+    formData.append('dialog_id', String(params.dialog_id));
+    // React Native FormData accepts { uri, name, type } objects for file uploads
+    formData.append('files', {
+        uri: params.fileUri,
+        name: params.fileName,
+        type: params.mimeType,
+    } as any);
+    if (params.reply_id) formData.append('reply_id', String(params.reply_id));
+    const response = await fetch(`${url}/api/dialog/msg/sendfile`, {
+        method: 'POST',
+        headers,
+        body: formData,
+    });
+    return response.json();
+}

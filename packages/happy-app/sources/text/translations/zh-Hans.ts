@@ -290,6 +290,9 @@ export const zhHans: TranslationStructure = {
         unsupportedMessage: '当前客户端不支持此类消息，请使用 DooTask 客户端查看。',
         chatEmpty: '暂无消息',
         aiAssistant: 'AI 助手',
+        takePhoto: '拍照',
+        chooseFromAlbum: '从相册选择',
+        chooseFromFile: '从文件选择',
     },
 
     settingsAppearance: {

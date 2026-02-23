@@ -288,6 +288,9 @@ export const ca: TranslationStructure = {
         unsupportedMessage: 'Unsupported message type. Please use DooTask client to view.',
         chatEmpty: 'No messages yet',
         aiAssistant: 'AI Assistant',
+        takePhoto: 'Fer foto',
+        chooseFromAlbum: "Triar de l'àlbum",
+        chooseFromFile: 'Triar fitxer',
     },
 
     settingsAppearance: {

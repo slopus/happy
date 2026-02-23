@@ -252,6 +252,9 @@ export const ru: TranslationStructure = {
         unsupportedMessage: 'Unsupported message type. Please use DooTask client to view.',
         chatEmpty: 'No messages yet',
         aiAssistant: 'AI Assistant',
+        takePhoto: 'Сделать фото',
+        chooseFromAlbum: 'Выбрать из альбома',
+        chooseFromFile: 'Выбрать файл',
     },
 
     settingsAppearance: {
