@@ -406,6 +406,7 @@ export const zhHans: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            kimi: 'Kimi',
         },
         model: {
             title: '模型',
@@ -433,6 +434,16 @@ export const zhHans: TranslationStructure = {
         },
         geminiPermissionMode: {
             title: 'GEMINI 权限模式',
+            default: '默认',
+            readOnly: '只读',
+            safeYolo: '安全 YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: '只读',
+            badgeSafeYolo: '安全 YOLO',
+            badgeYolo: 'YOLO',
+        },
+        kimiPermissionMode: {
+            title: 'KIMI 权限模式',
             default: '默认',
             readOnly: '只读',
             safeYolo: '安全 YOLO',

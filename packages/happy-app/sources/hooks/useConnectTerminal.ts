@@ -25,27 +25,39 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             Modal.alert(t('common.error'), t('modals.invalidAuthUrl'), [{ text: t('common.ok') }]);
             return false;
         }
-        
+
+        if (!auth.credentials?.secret || !auth.credentials?.token) {
+            console.error('[ConnectTerminal] Missing auth credentials');
+            Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [{ text: t('common.ok') }]);
+            return false;
+        }
+
+        if (!sync.encryption?.contentDataKey) {
+            console.error('[ConnectTerminal] Encryption not initialized');
+            Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [{ text: t('common.ok') }]);
+            return false;
+        }
+
         setIsLoading(true);
         try {
             const tail = url.slice('happy://terminal?'.length);
             const publicKey = decodeBase64(tail, 'base64url');
-            const responseV1 = encryptBox(decodeBase64(auth.credentials!.secret, 'base64url'), publicKey);
+            const responseV1 = encryptBox(decodeBase64(auth.credentials.secret, 'base64url'), publicKey);
             let responseV2Bundle = new Uint8Array(sync.encryption.contentDataKey.length + 1);
             responseV2Bundle[0] = 0;
             responseV2Bundle.set(sync.encryption.contentDataKey, 1);
             const responseV2 = encryptBox(responseV2Bundle, publicKey);
-            await authApprove(auth.credentials!.token, publicKey, responseV1, responseV2);
-            
+            await authApprove(auth.credentials.token, publicKey, responseV1, responseV2);
+
             Modal.alert(t('common.success'), t('modals.terminalConnectedSuccessfully'), [
-                { 
-                    text: t('common.ok'), 
+                {
+                    text: t('common.ok'),
                     onPress: () => options?.onSuccess?.()
                 }
             ]);
             return true;
         } catch (e) {
-            console.error(e);
+            console.error('[ConnectTerminal] Error:', e);
             Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [{ text: t('common.ok') }]);
             options?.onError?.(e);
             return false;
