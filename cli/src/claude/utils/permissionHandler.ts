@@ -14,6 +14,7 @@ import { Session } from "../session";
 import { getToolName } from "./getToolName";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
+import { mapToClaudeMode } from "./permissionMode";
 import { delay } from "@/utils/time";
 
 interface PermissionResponse {
@@ -57,7 +58,7 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
-        this.permissionMode = mode;
+        this.permissionMode = mapToClaudeMode(mode);
     }
 
     /**
