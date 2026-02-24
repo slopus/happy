@@ -5,7 +5,7 @@ import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { getSessionName, getSessionDefaultName, getSessionCustomName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -178,11 +178,18 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default(),
     },
     swipeAction: {
-        width: 112,
+        width: 80,
         height: '100%',
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: theme.colors.status.error,
+    },
+    swipeActionRename: {
+        width: 80,
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.textSecondary,
     },
     swipeActionText: {
         marginTop: 4,
@@ -367,6 +374,27 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         );
     }, [performArchive]);
 
+    const defaultName = getSessionDefaultName(session);
+    const customName = getSessionCustomName(session);
+
+    const handleRename = React.useCallback(async () => {
+        const newName = await Modal.prompt(
+            t('sessionInfo.renameSession'),
+            t('sessionInfo.renameSessionPrompt'),
+            {
+                placeholder: defaultName,
+                defaultValue: customName || '',
+                confirmText: t('common.rename'),
+                cancelText: t('common.cancel'),
+                maxLength: 100
+            }
+        );
+
+        if (newName !== null) {
+            storage.getState().updateSessionCustomName(session.id, newName || null);
+        }
+    }, [session.id, customName, defaultName]);
+
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
@@ -470,16 +498,30 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     }
 
     const renderRightActions = () => (
-        <Pressable
-            style={styles.swipeAction}
-            onPress={handleArchive}
-            disabled={archivingSession}
-        >
-            <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.swipeActionText} numberOfLines={2}>
-                {t('sessionInfo.archiveSession')}
-            </Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row' }}>
+            <Pressable
+                style={styles.swipeActionRename}
+                onPress={() => {
+                    swipeableRef.current?.close();
+                    handleRename();
+                }}
+            >
+                <Ionicons name="pencil-outline" size={20} color="#FFFFFF" />
+                <Text style={styles.swipeActionText} numberOfLines={2}>
+                    {t('sessionInfo.renameSession')}
+                </Text>
+            </Pressable>
+            <Pressable
+                style={styles.swipeAction}
+                onPress={handleArchive}
+                disabled={archivingSession}
+            >
+                <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
+                <Text style={styles.swipeActionText} numberOfLines={2}>
+                    {t('sessionInfo.archiveSession')}
+                </Text>
+            </Pressable>
+        </View>
     );
 
     return (

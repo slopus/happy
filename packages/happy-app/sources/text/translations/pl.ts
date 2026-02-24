@@ -386,6 +386,8 @@ export const pl: TranslationStructure = {
         deleteSessionWarning: 'Ta operacja jest nieodwracalna. Wszystkie wiadomości i dane powiązane z tą sesją zostaną trwale usunięte.',
         failedToDeleteSession: 'Nie udało się usunąć sesji',
         sessionDeleted: 'Sesja została pomyślnie usunięta',
+        renameSession: 'Zmień nazwę sesji',
+        renameSessionPrompt: 'Wprowadź nową nazwę dla tej sesji',
     },
 
     components: {

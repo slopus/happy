@@ -144,6 +144,7 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                         autoFocus={Platform.OS === 'web'}
                         onSubmitEditing={handleConfirm}
                         returnKeyType="done"
+                        maxLength={config.maxLength}
                     />
                 </View>
                 

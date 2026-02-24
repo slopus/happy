@@ -73,13 +73,21 @@ export function useSessionStatus(session: Session): SessionStatus {
 }
 
 /**
- * Extracts a display name from a session's metadata path.
- * Returns the last segment of the path, or 'unknown' if no path is available.
+ * Returns the custom name for a session, or null if not set.
  */
-export function getSessionName(session: Session): string {
+export function getSessionCustomName(session: Session): string | null {
+    return session.customName || null;
+}
+
+/**
+ * Returns the default display name for a session (ignoring any custom name).
+ * Uses summary text if available, otherwise falls back to the last path segment.
+ */
+export function getSessionDefaultName(session: Session): string {
     if (session.metadata?.summary) {
         return session.metadata.summary.text;
-    } else if (session.metadata) {
+    }
+    if (session.metadata) {
         const segments = session.metadata.path.split('/').filter(Boolean);
         const lastSegment = segments.pop();
         if (!lastSegment) {
@@ -88,6 +96,14 @@ export function getSessionName(session: Session): string {
         return lastSegment;
     }
     return t('status.unknown');
+}
+
+/**
+ * Returns the display name for a session.
+ * Checks custom name first, then falls back to the default name.
+ */
+export function getSessionName(session: Session): string {
+    return getSessionCustomName(session) || getSessionDefaultName(session);
 }
 
 /**

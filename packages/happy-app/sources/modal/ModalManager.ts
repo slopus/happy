@@ -150,10 +150,11 @@ class ModalManagerClass implements IModal {
             cancelText?: string;
             confirmText?: string;
             inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
+            maxLength?: number;
         }
     ): Promise<string | null> {
-        if (Platform.OS === 'ios' && !options?.inputType) {
-            // Use native Alert.prompt on iOS (only supports basic text input)
+        if (Platform.OS === 'ios' && !options?.inputType && !options?.maxLength) {
+            // Use native Alert.prompt on iOS (only supports basic text input, no maxLength)
             return new Promise<string | null>((resolve) => {
                 // @ts-ignore - Alert.prompt is iOS only
                 Alert.prompt(
@@ -190,7 +191,8 @@ class ModalManagerClass implements IModal {
                 defaultValue: options?.defaultValue,
                 cancelText: options?.cancelText,
                 confirmText: options?.confirmText,
-                inputType: options?.inputType
+                inputType: options?.inputType,
+                maxLength: options?.maxLength
             } as Omit<ModalConfig, 'id'>);
 
             return new Promise<string | null>((resolve) => {
