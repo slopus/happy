@@ -4,6 +4,42 @@ import { db } from "@/storage/db";
 import { buildUsageEphemeral, eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 
+function toFiniteNumber(value: unknown): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return null;
+    }
+    return value;
+}
+
+function mergeUsageMetricMaps(
+    previous: Record<string, unknown> | undefined,
+    incoming: Record<string, unknown>,
+): { total: number; [key: string]: number } {
+    const merged: Record<string, number> = {};
+
+    if (previous && typeof previous === 'object') {
+        for (const [key, value] of Object.entries(previous)) {
+            const num = toFiniteNumber(value);
+            if (num !== null) {
+                merged[key] = num;
+            }
+        }
+    }
+
+    for (const [key, value] of Object.entries(incoming)) {
+        const num = toFiniteNumber(value);
+        if (num !== null) {
+            merged[key] = (merged[key] || 0) + num;
+        }
+    }
+
+    if (typeof merged.total !== 'number') {
+        merged.total = 0;
+    }
+
+    return merged as { total: number; [key: string]: number };
+}
+
 export function usageHandler(userId: string, socket: Socket) {
     const receiveUsageLock = new AsyncLock();
     socket.on('usage-report', async (data: any, callback?: (response: any) => void) => {
@@ -61,20 +97,35 @@ export function usageHandler(userId: string, socket: Socket) {
                     }
 
                     // Prepare usage data
-                    const usageData: PrismaJson.UsageReportData = {
+                    let usageData: PrismaJson.UsageReportData = {
                         tokens,
                         cost
                     };
 
+                    const uniqueWhere = {
+                        accountId_sessionId_key: {
+                            accountId: userId,
+                            sessionId: sessionId || null,
+                            key,
+                        }
+                    };
+
+                    const existing = await db.usageReport.findUnique({
+                        where: uniqueWhere,
+                        select: { data: true }
+                    });
+
+                    if (existing) {
+                        const previousData = existing.data as PrismaJson.UsageReportData;
+                        usageData = {
+                            tokens: mergeUsageMetricMaps(previousData?.tokens as Record<string, unknown> | undefined, tokens),
+                            cost: mergeUsageMetricMaps(previousData?.cost as Record<string, unknown> | undefined, cost),
+                        };
+                    }
+
                     // Upsert the usage report
                     const report = await db.usageReport.upsert({
-                        where: {
-                            accountId_sessionId_key: {
-                                accountId: userId,
-                                sessionId: sessionId || null,
-                                key
-                            }
-                        },
+                        where: uniqueWhere,
                         update: {
                             data: usageData,
                             updatedAt: new Date()
