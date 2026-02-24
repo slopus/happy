@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,6 +7,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
+import { MultiTextInput } from '@/components/MultiTextInput';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
 import type { DooTaskDialogMsg } from '@/sync/dootask/types';
@@ -136,15 +137,15 @@ export const ChatInput = React.memo(({ onSendText, onSendImage, onSendFile, repl
                     </View>
                 </Pressable>
                 <View style={[styles.inputGroup, { backgroundColor: theme.colors.surfaceHighest }]}>
-                    <TextInput
-                        style={styles.textInput}
+                    <MultiTextInput
+                        style={{ flex: 1, paddingVertical: 6 }}
                         value={text}
                         onChangeText={setText}
                         placeholder={t('dootask.typeMessage')}
-                        placeholderTextColor={theme.colors.input.placeholder}
-                        multiline
-                        numberOfLines={5}
-                        textAlignVertical="center"
+                        maxHeight={120}
+                        paddingTop={6}
+                        paddingBottom={6}
+                        lineHeight={20}
                     />
                     <Pressable
                         onPress={handleSend}
@@ -253,17 +254,5 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 15,
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    textInput: {
-        flex: 1,
-        minHeight: 44,
-        maxHeight: 120,
-        paddingHorizontal: 0,
-        paddingTop: 12,
-        paddingBottom: 12,
-        fontSize: 15,
-        lineHeight: 20,
-        color: theme.colors.input.text,
-        ...Typography.default(),
     },
 }));

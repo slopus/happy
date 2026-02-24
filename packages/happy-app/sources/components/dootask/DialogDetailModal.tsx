@@ -1,7 +1,9 @@
 import * as React from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { BottomSheetModal, BottomSheetFlatList, BottomSheetTextInput, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+
+const SheetTextInput = Platform.OS === 'web' ? TextInput : BottomSheetTextInput;
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -113,8 +115,8 @@ export const DialogDetailModal = React.memo(React.forwardRef<BottomSheetModal, D
             {/* Search */}
             <View style={[sheetStyles.searchContainer, { backgroundColor: theme.colors.surfaceHigh, borderColor: theme.colors.divider }]}>
                 <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
-                <BottomSheetTextInput
-                    style={[sheetStyles.searchInput, { color: theme.colors.text }]}
+                <SheetTextInput
+                    style={[sheetStyles.searchInput, { color: theme.colors.text }, Platform.OS === 'web' && { outlineStyle: 'none', outline: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any]}
                     placeholder={t('dootask.searchMembers')}
                     placeholderTextColor={theme.colors.textSecondary}
                     value={search}

@@ -190,7 +190,7 @@ export default React.memo(function DooTaskConnectPage() {
                     <View style={styles.fieldRow}>
                         <Text style={styles.fieldLabel}>{t('dootask.serverUrl')}</Text>
                         <TextInput
-                            style={styles.fieldInput}
+                            style={[styles.fieldInput, Platform.OS === 'web' && { outlineStyle: 'none', outline: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any]}
                             value={serverUrl}
                             onChangeText={setServerUrl}
                             placeholder="https://your-dootask-server.com"
@@ -206,7 +206,7 @@ export default React.memo(function DooTaskConnectPage() {
                     <View style={styles.fieldRow}>
                         <Text style={styles.fieldLabel}>{t('dootask.email')}</Text>
                         <TextInput
-                            style={styles.fieldInput}
+                            style={[styles.fieldInput, Platform.OS === 'web' && { outlineStyle: 'none', outline: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any]}
                             value={email}
                             onChangeText={setEmail}
                             placeholder="your@email.com"
@@ -222,7 +222,7 @@ export default React.memo(function DooTaskConnectPage() {
                     <View style={styles.fieldRow}>
                         <Text style={styles.fieldLabel}>{t('dootask.password')}</Text>
                         <TextInput
-                            style={styles.fieldInput}
+                            style={[styles.fieldInput, Platform.OS === 'web' && { outlineStyle: 'none', outline: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any]}
                             value={password}
                             onChangeText={setPassword}
                             placeholder={t('dootask.password')}
@@ -241,7 +241,7 @@ export default React.memo(function DooTaskConnectPage() {
                             <Text style={styles.fieldLabel}>{t('dootask.captchaRequired')}</Text>
                             <View style={styles.captchaRow}>
                                 <TextInput
-                                    style={[styles.fieldInput, styles.captchaInput]}
+                                    style={[styles.fieldInput, styles.captchaInput, Platform.OS === 'web' && { outlineStyle: 'none', outline: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any]}
                                     value={code}
                                     onChangeText={setCode}
                                     placeholder={t('dootask.captchaPlaceholder')}

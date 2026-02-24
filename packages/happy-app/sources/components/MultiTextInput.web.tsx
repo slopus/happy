@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View } from 'react-native';
+import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import TextareaAutosize from 'react-textarea-autosize';
 import { Typography } from '@/constants/Typography';
@@ -37,6 +37,7 @@ interface MultiTextInputProps {
     paddingLeft?: number;
     paddingRight?: number;
     lineHeight?: number;
+    style?: StyleProp<ViewStyle>;
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
@@ -172,7 +173,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     }), [onChangeText, onStateChange, onSelectionChange]);
 
     return (
-        <View style={{ width: '100%' }}>
+        <View style={[{ width: '100%' }, props.style]}>
             <TextareaAutosize
                 ref={textareaRef}
                 style={{

@@ -17,6 +17,7 @@ import { thumbRestore } from '@/components/dootask/ChatBubble';
 import { ChatInput } from '@/components/dootask/ChatInput';
 import { ImageViewer } from '@/components/ImageViewer';
 import { MessageContextMenu, ContextMenuAction, MessagePreview } from '@/components/dootask/MessageContextMenu';
+import { layout } from '@/components/layout';
 import type { DooTaskDialogMsg, PendingMessage, DisplayMessage, DooTaskDialog, DooTaskDialogUser } from '@/sync/dootask/types';
 import { generateMockMessages, MOCK_USER_NAMES, MOCK_USER_AVATARS } from '@/components/dootask/__dev__/mockChatMessages';
 
@@ -644,7 +645,7 @@ export default React.memo(function DooTaskChat() {
         <>
             <Stack.Screen options={{ headerShown: false }} />
             {header}
-            <View style={[styles.body, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.body, { backgroundColor: theme.colors.surface, maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }]}>
                 <AgentContentView
                     content={content}
                     placeholder={placeholder}

@@ -22,6 +22,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import { hapticsLight } from '@/components/haptics';
 import { showCopiedToast } from '@/components/Toast';
+import { layout } from '@/components/layout';
 import type { DooTaskItem, DooTaskFile } from '@/sync/dootask/types';
 
 /**
@@ -138,7 +139,10 @@ export default function DooTaskDetail() {
     const [chatLoading, setChatLoading] = React.useState(false);
 
     const handleImagesFound = React.useCallback((urls: string[]) => {
-        setContentImages(urls.map((uri) => ({ uri })));
+        setContentImages(prev => {
+            if (urls.length === prev.length && urls.every((u, i) => u === prev[i].uri)) return prev;
+            return urls.map((uri) => ({ uri }));
+        });
     }, []);
 
     const handleImagePress = React.useCallback((url: string) => {
@@ -584,6 +588,7 @@ export default function DooTaskDetail() {
                 ),
             }}
         />
+        <View style={{ flex: 1, maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
         <ScrollView
             contentContainerStyle={styles.container}
             style={{ backgroundColor: theme.colors.surface }}
@@ -811,6 +816,7 @@ export default function DooTaskDetail() {
                     </Text>
                 </View>
             </Pressable>
+        </View>
         </View>
         <ActionMenuModal
             visible={menuVisible}

@@ -1,10 +1,12 @@
 import * as React from 'react';
-import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl, TextInput } from 'react-native';
+import { View, Text, FlatList, Pressable, ActivityIndicator, RefreshControl, TextInput, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { BottomSheetModal, BottomSheetFlatList, BottomSheetTextInput, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+
+const SheetTextInput = Platform.OS === 'web' ? TextInput : BottomSheetTextInput;
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile, useDootaskProjects, useDootaskUserCache } from '@/sync/storage';
@@ -267,11 +269,11 @@ const FilterPanelModal = React.memo(React.forwardRef<BottomSheetModal, FilterPan
             </View>
             {showSearch ? (
                 <View style={styles.pickerSearch}>
-                    <BottomSheetTextInput
+                    <SheetTextInput
                         style={[styles.pickerSearchInput, {
                             color: theme.colors.text,
                             backgroundColor: theme.colors.groupped.background,
-                        }]}
+                        }, Platform.OS === 'web' && { outlineStyle: 'none', outline: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any]}
                         placeholder={t('dootask.searchProjects')}
                         placeholderTextColor={theme.colors.textSecondary}
                         value={searchQuery}
@@ -367,7 +369,7 @@ const FilterBar = React.memo(({ onRefreshTasks }: FilterBarProps) => {
             <View style={[styles.searchBox, { backgroundColor: theme.colors.surface }]}>
                 <Ionicons name="search" size={16} color={theme.colors.textSecondary} />
                 <TextInput
-                    style={[styles.searchInput, { color: theme.colors.text }]}
+                    style={[styles.searchInput, { color: theme.colors.text }, Platform.OS === 'web' && { outlineStyle: 'none', outline: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any]}
                     placeholder={t('dootask.searchPlaceholder')}
                     placeholderTextColor={theme.colors.textSecondary}
                     value={searchText}
