@@ -875,28 +875,14 @@ export class TmuxUtilities {
                 logger.warn(`[TMUX] Shell did not show a prompt within timeout, sending command anyway`);
             }
 
-            // Send the command text and Enter key separately for reliability.
-            // Using -l (literal) for the command text prevents tmux from interpreting
-            // special characters in the command as key names.
-            const sendTextArgs = ['send-keys', '-l', fullCommand];
-            const textResult = await this.executeTmuxCommand(sendTextArgs, sessionName, windowName);
-            logger.debug(`[TMUX] send-keys -l result: rc=${textResult?.returncode}, stderr=${textResult?.stderr}`);
-
-            // Small delay between text and Enter to ensure text is fully received
-            await new Promise(resolve => setTimeout(resolve, 50));
-
-            const sendEnterArgs = ['send-keys', 'Enter'];
-            const sendResult = await this.executeTmuxCommand(sendEnterArgs, sessionName, windowName);
-            logger.debug(`[TMUX] send-keys Enter result: rc=${sendResult?.returncode}, stderr=${sendResult?.stderr}`);
+            // Send command text with -l (literal) to prevent tmux from interpreting
+            // shell operators like >> as key names, then send Enter separately.
+            await this.executeTmuxCommand(['send-keys', '-l', fullCommand], sessionName, windowName);
+            const sendResult = await this.executeTmuxCommand(['send-keys', 'Enter'], sessionName, windowName);
 
             if (!sendResult || sendResult.returncode !== 0) {
                 logger.warn(`[TMUX] Failed to send Enter to window: ${sendResult?.stderr}`);
             }
-
-            // Verify command was sent by capturing pane content
-            await new Promise(resolve => setTimeout(resolve, 200));
-            const verifyResult = await this.executeTmuxCommand(['capture-pane', '-p'], sessionName, windowName);
-            logger.debug(`[TMUX] Pane content after send-keys:\n${verifyResult?.stdout}`);
 
             logger.debug(`[TMUX] Spawned command in tmux session ${sessionName}, window ${windowName}, PID ${panePid}`);
 
