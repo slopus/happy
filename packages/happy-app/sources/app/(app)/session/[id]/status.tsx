@@ -206,11 +206,12 @@ export default function StatusScreen() {
     }, [sessionId, gitCommand, commandCwd, loadStatus]);
 
     // Navigate to file diff viewer
-    const handleFilePress = React.useCallback((file: GitFileStatus) => {
+    const handleFilePress = React.useCallback((file: GitFileStatus, staged?: boolean) => {
         const encodedPath = btoa(
             new TextEncoder().encode(file.fullPath).reduce((s, b) => s + String.fromCharCode(b), '')
         );
-        router.push(`/session/${sessionId}/file?path=${encodedPath}`);
+        const stagedParam = staged ? '&staged=1' : '';
+        router.push(`/session/${sessionId}/file?path=${encodedPath}${stagedParam}`);
     }, [router, sessionId]);
 
     // Long press menu
@@ -399,7 +400,7 @@ export default function StatusScreen() {
                                         subtitle={renderFileSubtitle(file)}
                                         icon={<FileIcon fileName={file.fileName} size={32} />}
                                         rightElement={renderRightElement(file, true)}
-                                        onPress={() => handleFilePress(file)}
+                                        onPress={() => handleFilePress(file, true)}
                                         onLongPress={() => handleLongPress(file, true)}
                                         showChevron={true}
                                         showDivider={index < gitStatus.stagedFiles.length - 1 || gitStatus.unstagedFiles.length > 0}

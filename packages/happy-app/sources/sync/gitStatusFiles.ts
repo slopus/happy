@@ -61,7 +61,7 @@ export async function getGitStatusFiles(sessionId: string, cwd?: string): Promis
 
         // Get combined diff statistics for both staged and unstaged changes
         const diffStatResult = await sessionBash(sessionId, {
-            command: `${gitPrefix} diff --numstat HEAD && echo "---STAGED---" && ${gitPrefix} diff --cached --numstat`,
+            command: `${gitPrefix} diff --numstat && echo "---STAGED---" && ${gitPrefix} diff --cached --numstat`,
             cwd: commandCwd,
             timeout: 10000
         });

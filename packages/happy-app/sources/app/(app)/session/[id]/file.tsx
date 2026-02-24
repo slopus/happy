@@ -101,6 +101,7 @@ export default function FileScreen() {
     const encodedPath = searchParams.path as string;
     const ref = searchParams.ref as string | undefined;
     const preferredView = searchParams.view as 'file' | 'diff' | undefined;
+    const isStaged = searchParams.staged === '1';
     const requestedLine = parsePositiveInt(searchParams.line);
     const requestedColumn = parsePositiveInt(searchParams.column);
     let filePath = '';
@@ -331,7 +332,9 @@ export default function FileScreen() {
                         const escapedPath = shellEscape(repoRelativePath);
                         const diffCommand = ref
                             ? `git diff --no-ext-diff ${shellEscape(`${ref}~1`)} ${shellEscape(ref)} -- ${escapedPath}`
-                            : `git diff --no-ext-diff -- ${escapedPath}`;
+                            : isStaged
+                                ? `git diff --cached --no-ext-diff -- ${escapedPath}`
+                                : `git diff --no-ext-diff -- ${escapedPath}`;
                         const diffResponse = await sessionBash(sessionId, {
                             command: diffCommand,
                             cwd: sessionPath,
@@ -427,7 +430,7 @@ export default function FileScreen() {
         return () => {
             isCancelled = true;
         };
-    }, [sessionId, filePath, ref, isBinaryFile]);
+    }, [sessionId, filePath, ref, isStaged, isBinaryFile]);
 
     // Show error modal if there's an error
     React.useEffect(() => {

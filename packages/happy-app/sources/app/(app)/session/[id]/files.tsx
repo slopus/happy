@@ -258,10 +258,11 @@ export default function FilesScreen() {
         }
     }, [searchQuery, gitStatusFiles, sessionId]);
 
-    const handleFilePress = React.useCallback((file: GitFileStatus | FileItem) => {
+    const handleFilePress = React.useCallback((file: GitFileStatus | FileItem, staged?: boolean) => {
         // Navigate to file viewer with the file path (base64 encoded for special characters)
         const encodedPath = btoa(new TextEncoder().encode(file.fullPath).reduce((s, b) => s + String.fromCharCode(b), ''));
-        router.push(`/session/${sessionId}/file?path=${encodedPath}`);
+        const stagedParam = staged ? '&staged=1' : '';
+        router.push(`/session/${sessionId}/file?path=${encodedPath}${stagedParam}`);
     }, [router, sessionId]);
 
     const renderFileIcon = (file: GitFileStatus) => {
@@ -581,7 +582,7 @@ export default function FilesScreen() {
                                         subtitle={renderFileSubtitle(file)}
                                         icon={renderFileIcon(file)}
                                         rightElement={renderRightElement(file, true)}
-                                        onPress={() => handleFilePress(file)}
+                                        onPress={() => handleFilePress(file, true)}
                                         onLongPress={() => handleLongPress(file, true)}
                                         showChevron={true}
                                         showDivider={index < gitStatusFiles.stagedFiles.length - 1 || gitStatusFiles.unstagedFiles.length > 0}
