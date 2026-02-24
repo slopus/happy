@@ -79,6 +79,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
         backgroundColor: theme.colors.surface,
     },
+    sessionItemCompact: {
+        height: 56,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        backgroundColor: theme.colors.surface,
+    },
     sessionItemContainer: {
         marginHorizontal: 16,
         marginBottom: 1,
@@ -126,6 +133,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '500',
         flex: 1,
         ...Typography.default('semiBold'),
+    },
+    sessionTitleCompact: {
+        fontSize: 15,
+        flex: 1,
+        ...Typography.default('regular'),
     },
     sessionTitleConnected: {
         color: theme.colors.text,
@@ -340,6 +352,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
+    const compactSessionView = useSetting('compactSessionView');
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -375,7 +388,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const itemContent = (
         <Pressable
             style={[
-                styles.sessionItem,
+                compactSessionView ? styles.sessionItemCompact : styles.sessionItem,
                 selected && styles.sessionItemSelected,
                 isSingle ? styles.sessionItemSingle :
                     isFirst ? styles.sessionItemFirst :
@@ -392,49 +405,55 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 }
             }}
         >
-            <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} sessionIcon={session.metadata?.sessionIcon} />
-                {session.draft && (
-                    <View style={styles.draftIconContainer}>
-                        <Ionicons
-                            name="create-outline"
-                            size={12}
-                            style={styles.draftIconOverlay}
-                        />
-                    </View>
-                )}
-            </View>
-            <View style={styles.sessionContent}>
+            {!compactSessionView && (
+                <View style={styles.avatarContainer}>
+                    <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} sessionIcon={session.metadata?.sessionIcon} />
+                    {session.draft && (
+                        <View style={styles.draftIconContainer}>
+                            <Ionicons
+                                name="create-outline"
+                                size={12}
+                                style={styles.draftIconOverlay}
+                            />
+                        </View>
+                    )}
+                </View>
+            )}
+            <View style={[styles.sessionContent, compactSessionView && { marginLeft: 0 }]}>
                 {/* Title line */}
                 <View style={styles.sessionTitleRow}>
                     {sessionStatus.hasUnreadCompletion && (
                         <View style={styles.unreadDot} />
                     )}
                     <Text style={[
-                        styles.sessionTitle,
+                        compactSessionView ? styles.sessionTitleCompact : styles.sessionTitle,
                         sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                    ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
+                    ]} numberOfLines={compactSessionView ? 2 : 1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
                         {sessionName}
                     </Text>
                 </View>
 
-                {/* Subtitle line */}
-                <Text style={styles.sessionSubtitle} numberOfLines={1}>
-                    {sessionSubtitle}
-                </Text>
+                {!compactSessionView && (
+                    <>
+                        {/* Subtitle line */}
+                        <Text style={styles.sessionSubtitle} numberOfLines={1}>
+                            {sessionSubtitle}
+                        </Text>
 
-                {/* Status line with dot */}
-                <View style={styles.statusRow}>
-                    <View style={styles.statusDotContainer}>
-                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
-                    </View>
-                    <Text style={[
-                        styles.statusText,
-                        { color: sessionStatus.statusColor }
-                    ]}>
-                        {sessionStatus.statusText}
-                    </Text>
-                </View>
+                        {/* Status line with dot */}
+                        <View style={styles.statusRow}>
+                            <View style={styles.statusDotContainer}>
+                                <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                            </View>
+                            <Text style={[
+                                styles.statusText,
+                                { color: sessionStatus.statusColor }
+                            ]}>
+                                {sessionStatus.statusText}
+                            </Text>
+                        </View>
+                    </>
+                )}
             </View>
         </Pressable>
     );
