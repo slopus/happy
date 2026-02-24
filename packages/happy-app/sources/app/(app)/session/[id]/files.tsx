@@ -2,7 +2,7 @@ import * as React from 'react';
 import { View, ActivityIndicator, Platform, TextInput, Pressable } from 'react-native';
 import { t } from '@/text';
 import { useRoute } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
@@ -351,6 +351,18 @@ export default function FilesScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+            <Stack.Screen
+                options={{
+                    headerRight: () => (
+                        <Pressable
+                            onPress={() => router.push(`/session/${sessionId}/commits`)}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                            <Octicons name="git-commit" size={20} color={theme.colors.header.tint} />
+                        </Pressable>
+                    ),
+                }}
+            />
 
             {/* Search Input - Always Visible */}
             <View style={{
