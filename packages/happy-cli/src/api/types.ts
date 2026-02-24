@@ -171,7 +171,7 @@ export interface ClientToServerEvents {
       total: number
       [key: string]: number
     }
-  }) => void
+  }, callback?: (response: { success: boolean; error?: string }) => void) => void
 }
 
 /**

@@ -658,6 +658,14 @@ export class ApiSessionClient extends EventEmitter {
             sessionId: this.sessionId,
             tokens: report.tokens,
             cost: report.cost,
+        }, (response) => {
+            if (!response?.success) {
+                logger.debug('[SOCKET] Usage report rejected by server', {
+                    key: report.key,
+                    sessionId: this.sessionId,
+                    error: response?.error || 'unknown error',
+                });
+            }
         });
     }
 

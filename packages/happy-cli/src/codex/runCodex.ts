@@ -700,14 +700,31 @@ export async function runCodex(opts: {
 
                 // Persist token usage to server for statistics
                 const info = tokenData as import('../codex/appserver/types').TokenUsageInfo;
-                if (info.total_tokens && info.total_tokens > 0) {
+                const usageFromLastEvent = (lastUsage && typeof lastUsage === 'object')
+                    ? lastUsage as Record<string, unknown>
+                    : {};
+                const toTokenCount = (value: unknown): number => {
+                    return (typeof value === 'number' && Number.isFinite(value) && value > 0) ? value : 0;
+                };
+                const inputTokens = toTokenCount(info.input_tokens ?? usageFromLastEvent.input_tokens);
+                const outputTokens = toTokenCount(info.output_tokens ?? usageFromLastEvent.output_tokens);
+                const reasoningTokens = toTokenCount(info.reasoning_tokens ?? usageFromLastEvent.reasoning_tokens);
+                const cacheCreationTokens = toTokenCount(usageFromLastEvent.cache_creation_input_tokens);
+                const cacheReadTokens = toTokenCount(usageFromLastEvent.cache_read_input_tokens);
+                const explicitTotalTokens = toTokenCount(info.total_tokens);
+                const derivedTotalTokens = inputTokens + outputTokens + reasoningTokens + cacheCreationTokens + cacheReadTokens;
+                const totalTokens = explicitTotalTokens > 0 ? explicitTotalTokens : derivedTotalTokens;
+
+                if (totalTokens > 0) {
                     session.sendUsageReport({
                         key: 'codex-session',
                         tokens: {
-                            total: info.total_tokens,
-                            input: info.input_tokens ?? 0,
-                            output: info.output_tokens ?? 0,
-                            reasoning: info.reasoning_tokens ?? 0,
+                            total: totalTokens,
+                            input: inputTokens,
+                            output: outputTokens,
+                            reasoning: reasoningTokens,
+                            cache_creation: cacheCreationTokens,
+                            cache_read: cacheReadTokens,
                         },
                         cost: { total: 0 },
                     });
