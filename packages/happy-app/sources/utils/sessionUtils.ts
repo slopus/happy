@@ -20,6 +20,10 @@ export interface SessionStatus {
 function hasUnreadCompletion(session: Session): boolean {
     const taskCompleted = session.agentState?.taskCompleted;
     if (!taskCompleted) return false;
+    // Don't show for archived sessions
+    if (!session.active) return false;
+    // Don't show if older than 7 days
+    if (Date.now() - taskCompleted > 7 * 24 * 60 * 60 * 1000) return false;
     const lastViewed = sessionLastViewedAt.get(session.id) ?? 0;
     return taskCompleted > lastViewed;
 }
