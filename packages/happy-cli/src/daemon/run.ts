@@ -458,7 +458,7 @@ export async function startDaemon(): Promise<void> {
               throw new Error('Tmux window created but no PID returned');
             }
 
-            // Create a tracked session for tmux windows - now we have the real PID!
+            // Create a tracked session for tmux windows
             const trackedSession: TrackedSession = {
               startedBy: 'daemon',
               pid: tmuxResult.pid, // Shell PID from tmux #{pane_pid}

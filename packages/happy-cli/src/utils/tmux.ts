@@ -786,7 +786,14 @@ export class TmuxUtilities {
 
             // Create new window in session with command and environment variables
             // IMPORTANT: Don't manually add -t here - executeTmuxCommand handles it via parameters
-            const createWindowArgs = ['new-window', '-n', windowName];
+            const createWindowArgs = ['new-window'];
+
+            // Add -P flag to print the pane info immediately (must come before other options)
+            createWindowArgs.push('-P');
+            createWindowArgs.push('-F', '#{pane_pid}');
+
+            // Add window name
+            createWindowArgs.push('-n', windowName);
 
             // Add working directory if specified
             if (options.cwd) {
@@ -826,10 +833,6 @@ export class TmuxUtilities {
 
             // Add the command to run in the window (runs immediately when window is created)
             createWindowArgs.push(fullCommand);
-
-            // Add -P flag to print the pane PID immediately
-            createWindowArgs.push('-P');
-            createWindowArgs.push('-F', '#{pane_pid}');
 
             // Create window with command and get PID immediately
             const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
