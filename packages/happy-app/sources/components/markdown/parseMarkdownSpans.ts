@@ -1,7 +1,18 @@
 import type { MarkdownSpan } from "./parseMarkdown";
 
-// Updated pattern to handle nested markdown and asterisks
-const pattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))/g;
+// Supports bold/italic/code and markdown links.
+// Link URL pattern allows balanced single-level parentheses inside URLs
+// so paths like /(app)/session/[id]/file.tsx are parsed correctly.
+const pattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(((?:[^()]+|\([^()]*\))*)\))?)|(`(.*?)(?:`|$))/g;
+
+function normalizeMarkdownLinkUrl(rawUrl: string): string {
+    const trimmed = rawUrl.trim();
+    // CommonMark supports angle-bracket link destinations: [text](<url>)
+    if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
+        return trimmed.slice(1, -1).trim();
+    }
+    return trimmed;
+}
 
 export function parseMarkdownSpans(markdown: string, header: boolean) {
     const spans: MarkdownSpan[] = [];
@@ -32,7 +43,12 @@ export function parseMarkdownSpans(markdown: string, header: boolean) {
         } else if (match[5]) {
             // Link - handle incomplete links (no URL part)
             if (match[7]) {
-                spans.push({ styles: [], text: match[6], url: match[7] });
+                const normalizedUrl = normalizeMarkdownLinkUrl(match[7]);
+                if (normalizedUrl) {
+                    spans.push({ styles: [], text: match[6], url: normalizedUrl });
+                } else {
+                    spans.push({ styles: [], text: `[${match[6]}]`, url: null });
+                }
             } else {
                 // If no URL part, treat as plain text with brackets
                 spans.push({ styles: [], text: `[${match[6]}]`, url: null });

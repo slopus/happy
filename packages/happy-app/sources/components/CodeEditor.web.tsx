@@ -15,6 +15,8 @@ interface CodeEditorProps {
     bottomPadding?: number;
     language?: string;
     readOnly?: boolean;
+    revealLine?: number;
+    revealColumn?: number;
 }
 
 export interface CodeEditorHandle {
@@ -28,6 +30,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(({
     bottomPadding = 16,
     language = 'plaintext',
     readOnly = false,
+    revealLine,
+    revealColumn,
 }, ref) => {
     const { rt } = useUnistyles();
     const iframeRef = React.useRef<HTMLIFrameElement>(null);
@@ -125,6 +129,15 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(({
     React.useEffect(() => {
         postCommand({ type: 'setReadOnly', readOnly });
     }, [postCommand, readOnly]);
+
+    React.useEffect(() => {
+        if (!revealLine || !Number.isFinite(revealLine) || revealLine < 1) return;
+        const line = Math.floor(revealLine);
+        const column = revealColumn && Number.isFinite(revealColumn) && revealColumn > 0
+            ? Math.floor(revealColumn)
+            : undefined;
+        postCommand({ type: 'revealPosition', line, column });
+    }, [postCommand, revealLine, revealColumn]);
 
     React.useImperativeHandle(ref, () => ({
         focus: () => {

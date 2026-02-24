@@ -37,6 +37,12 @@ interface FileContent {
     isBinary: boolean;
 }
 
+function parsePositiveInt(value: string | string[] | undefined): number | undefined {
+    if (typeof value !== 'string') return undefined;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 // Diff display component
 const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
     const { theme } = useUnistyles();
@@ -94,6 +100,9 @@ export default function FileScreen() {
     const searchParams = useLocalSearchParams();
     const encodedPath = searchParams.path as string;
     const ref = searchParams.ref as string | undefined;
+    const preferredView = searchParams.view as 'file' | 'diff' | undefined;
+    const requestedLine = parsePositiveInt(searchParams.line);
+    const requestedColumn = parsePositiveInt(searchParams.column);
     let filePath = '';
     
     // Decode base64 path with error handling (UTF-8 safe)
@@ -429,12 +438,16 @@ export default function FileScreen() {
 
     // Set default display mode based on diff availability
     React.useEffect(() => {
-        if (diffContent) {
+        if (preferredView === 'file' && fileContent && !fileContent.isBinary) {
+            setDisplayMode('file');
+        } else if (preferredView === 'diff' && diffContent) {
+            setDisplayMode('diff');
+        } else if (diffContent) {
             setDisplayMode('diff');
         } else if (fileContent) {
             setDisplayMode('file');
         }
-    }, [diffContent, fileContent]);
+    }, [diffContent, fileContent, preferredView]);
 
     const language = getFileLanguage(filePath);
     const editorLanguage = language || 'plaintext';
@@ -685,6 +698,8 @@ export default function FileScreen() {
                         language={editorLanguage}
                         bottomPadding={12}
                         readOnly
+                        revealLine={requestedLine}
+                        revealColumn={requestedColumn}
                     />
                 </View>
             ) : (

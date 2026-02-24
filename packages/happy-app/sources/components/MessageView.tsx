@@ -50,10 +50,28 @@ function RenderBlock(props: {
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
-      return <UserTextBlock message={props.message} sessionId={props.sessionId} isNewestMessage={props.isNewestMessage} onFillInput={props.onFillInput} />;
+      return (
+        <UserTextBlock
+          message={props.message}
+          sessionId={props.sessionId}
+          sessionWorkingDirectory={props.metadata?.path ?? null}
+          sessionHomeDirectory={props.metadata?.homeDir ?? null}
+          isNewestMessage={props.isNewestMessage}
+          onFillInput={props.onFillInput}
+        />
+      );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} isNewestMessage={props.isNewestMessage} onFillInput={props.onFillInput} />;
+      return (
+        <AgentTextBlock
+          message={props.message}
+          sessionId={props.sessionId}
+          sessionWorkingDirectory={props.metadata?.path ?? null}
+          sessionHomeDirectory={props.metadata?.homeDir ?? null}
+          isNewestMessage={props.isNewestMessage}
+          onFillInput={props.onFillInput}
+        />
+      );
 
     case 'tool-call':
       return <ToolCallBlock
@@ -77,6 +95,8 @@ function RenderBlock(props: {
 function UserTextBlock(props: {
   message: UserTextMessage;
   sessionId: string;
+  sessionWorkingDirectory?: string | null;
+  sessionHomeDirectory?: string | null;
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
 }) {
@@ -146,6 +166,9 @@ function UserTextBlock(props: {
         )}
         <MarkdownView
           markdown={props.message.displayText || props.message.text}
+          sessionId={props.sessionId}
+          sessionWorkingDirectory={props.sessionWorkingDirectory}
+          sessionHomeDirectory={props.sessionHomeDirectory}
           onOptionPress={handleOptionPress}
           onOptionLongPress={handleOptionLongPress}
           optionsLoadingState={optionsLoadingState}
@@ -158,6 +181,8 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  sessionWorkingDirectory?: string | null;
+  sessionHomeDirectory?: string | null;
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
 }) {
@@ -200,6 +225,9 @@ function AgentTextBlock(props: {
     <View style={[styles.agentMessageContainer, props.message.isThinking && { opacity: 0.3 }]}>
       <MarkdownView
         markdown={props.message.text}
+        sessionId={props.sessionId}
+        sessionWorkingDirectory={props.sessionWorkingDirectory}
+        sessionHomeDirectory={props.sessionHomeDirectory}
         onOptionPress={handleOptionPress}
         onOptionLongPress={handleOptionLongPress}
         optionsLoadingState={optionsLoadingState}

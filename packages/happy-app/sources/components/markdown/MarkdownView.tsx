@@ -1,4 +1,5 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
+import { resolveMarkdownLink } from './markdownLinkUtils';
 import { Link } from 'expo-router';
 import * as React from 'react';
 import { Pressable, ScrollView, View, Platform, ActivityIndicator } from 'react-native';
@@ -33,6 +34,9 @@ export const MarkdownView = React.memo((props: {
     onOptionPress?: (option: Option, allOptions: string[]) => void;
     onOptionLongPress?: (option: Option, allOptions: string[]) => void;
     optionsLoadingState?: OptionsLoadingState;
+    sessionId?: string;
+    sessionWorkingDirectory?: string | null;
+    sessionHomeDirectory?: string | null;
 }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
 
@@ -44,6 +48,11 @@ export const MarkdownView = React.memo((props: {
     const markdownCopyV2 = useLocalSetting('markdownCopyV2');
     const selectable = Platform.OS === 'web' || !markdownCopyV2;
     const router = useRouter();
+    const linkContext = React.useMemo(() => ({
+        sessionId: props.sessionId,
+        sessionWorkingDirectory: props.sessionWorkingDirectory ?? null,
+        sessionHomeDirectory: props.sessionHomeDirectory ?? null,
+    }), [props.sessionId, props.sessionWorkingDirectory, props.sessionHomeDirectory]);
 
     const handleLongPress = React.useCallback(() => {
         try {
@@ -91,7 +100,11 @@ export const MarkdownView = React.memo((props: {
 
     // For web or when markdownCopyV2 is disabled, render everything normally
     if (!markdownCopyV2 || Platform.OS === 'web') {
-        return renderContent();
+        return (
+            <MarkdownLinkContext.Provider value={linkContext}>
+                {renderContent()}
+            </MarkdownLinkContext.Provider>
+        );
     }
 
     // For mobile with markdownCopyV2 enabled, we need to render options blocks OUTSIDE
@@ -137,11 +150,19 @@ export const MarkdownView = React.memo((props: {
     flushNonOptionsGroup();
 
     return (
-        <View style={{ width: '100%' }}>
-            {elements}
-        </View>
+        <MarkdownLinkContext.Provider value={linkContext}>
+            <View style={{ width: '100%' }}>
+                {elements}
+            </View>
+        </MarkdownLinkContext.Provider>
     );
 });
+
+const MarkdownLinkContext = React.createContext<{
+    sessionId?: string;
+    sessionWorkingDirectory?: string | null;
+    sessionHomeDirectory?: string | null;
+}>({});
 
 function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
     return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
@@ -335,6 +356,7 @@ function RenderOptionsBlock(props: {
 }
 
 function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, isHeader?: boolean, disableCodeLineHeight?: boolean }) {
+    const linkContext = React.useContext(MarkdownLinkContext);
     return (<>
         {props.spans.map((span, index) => {
             const spanStyles = span.styles.map((s) => {
@@ -344,7 +366,22 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, isHeader?:
                 return (style as any)[s];
             });
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, spanStyles]}>{span.text}</Link>
+                const link = resolveMarkdownLink({
+                    rawUrl: span.url,
+                    sessionId: linkContext.sessionId,
+                    sessionWorkingDirectory: linkContext.sessionWorkingDirectory,
+                    sessionHomeDirectory: linkContext.sessionHomeDirectory,
+                });
+                return (
+                    <Link
+                        key={index}
+                        href={link.href as any}
+                        target={link.target}
+                        style={[style.link, spanStyles]}
+                    >
+                        {span.text}
+                    </Link>
+                );
             } else {
                 return <Text key={index} selectable style={[props.baseStyle, spanStyles]}>{span.text}</Text>
             }

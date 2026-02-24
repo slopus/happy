@@ -4,6 +4,7 @@ export type EditorCommand =
     | { type: 'setTheme'; theme: 'light' | 'dark' }
     | { type: 'setBottomPadding'; bottomPadding: number }
     | { type: 'setReadOnly'; readOnly: boolean }
+    | { type: 'revealPosition'; line: number; column?: number }
     | { type: 'focus' }
     | { type: 'blur' };
 
@@ -127,6 +128,22 @@ export function buildEditorHtml(args: {
       .monaco-editor .iPadShowKeyboard .codicon {
         font-size: 13px !important;
       }
+      .monaco-editor .happy-target-line-dark {
+        background: #ff8a0038;
+      }
+      .monaco-editor .happy-target-line-light {
+        background: #ff6a0026;
+      }
+      .monaco-editor .happy-target-line-gutter-dark {
+        border-left: 3px solid #ff9f1a;
+        background: #ff8a0040;
+        margin-left: 2px;
+      }
+      .monaco-editor .happy-target-line-gutter-light {
+        border-left: 3px solid #d9480f;
+        background: #ff6a002e;
+        margin-left: 2px;
+      }
     </style>
   </head>
   <body>
@@ -145,6 +162,8 @@ export function buildEditorHtml(args: {
         var fallback = document.getElementById('fallback');
         var root = document.getElementById('root');
         var suppressChanges = false;
+        var pinnedLineNumber = 0;
+        var pinnedLineDecorationIds = [];
 
         function decodeBase64Utf8(str) {
           var binary = atob(str);
@@ -185,11 +204,80 @@ export function buildEditorHtml(args: {
           post({ type: 'ready', value: fallback.value });
         }
 
+        function clampNumber(value, min, max) {
+          return Math.min(max, Math.max(min, value));
+        }
+
+        function updatePinnedLineDecoration(lineNumber) {
+          if (!editor || !window.monaco) return;
+          var model = editor.getModel();
+          if (!model) return;
+
+          var lineCount = Math.max(1, model.getLineCount());
+          var clampedLine = clampNumber(Math.max(1, Math.floor(Number(lineNumber) || 1)), 1, lineCount);
+          pinnedLineNumber = clampedLine;
+
+          var lineClassName = initialTheme === 'dark' ? 'happy-target-line-dark' : 'happy-target-line-light';
+          var gutterClassName = initialTheme === 'dark' ? 'happy-target-line-gutter-dark' : 'happy-target-line-gutter-light';
+
+          pinnedLineDecorationIds = editor.deltaDecorations(pinnedLineDecorationIds, [{
+            range: new window.monaco.Range(clampedLine, 1, clampedLine, 1),
+            options: {
+              isWholeLine: true,
+              className: lineClassName,
+              linesDecorationsClassName: gutterClassName,
+            },
+          }]);
+        }
+
+        function refreshPinnedLineDecoration() {
+          if (!editor || pinnedLineNumber < 1) return;
+          updatePinnedLineDecoration(pinnedLineNumber);
+        }
+
+        function revealPosition(line, column) {
+          var targetLine = Math.max(1, Math.floor(Number(line) || 1));
+          var targetColumn = Math.max(1, Math.floor(Number(column) || 1));
+
+          if (editor) {
+            var model = editor.getModel();
+            if (!model) return;
+            var lineCount = Math.max(1, model.getLineCount());
+            targetLine = clampNumber(targetLine, 1, lineCount);
+            var maxColumn = Math.max(1, model.getLineMaxColumn(targetLine));
+            targetColumn = clampNumber(targetColumn, 1, maxColumn);
+            editor.revealPositionInCenter({ lineNumber: targetLine, column: targetColumn });
+            editor.setPosition({ lineNumber: targetLine, column: targetColumn });
+            updatePinnedLineDecoration(targetLine);
+            return;
+          }
+
+          var text = fallback.value || '';
+          var lines = text.split('\\n');
+          targetLine = clampNumber(targetLine, 1, Math.max(1, lines.length));
+          var lineText = lines[targetLine - 1] || '';
+          targetColumn = clampNumber(targetColumn, 1, Math.max(1, lineText.length + 1));
+
+          var offset = 0;
+          for (var i = 0; i < targetLine - 1; i++) {
+            offset += (lines[i] || '').length + 1;
+          }
+          offset += targetColumn - 1;
+          offset = clampNumber(offset, 0, text.length);
+
+          var computedStyle = window.getComputedStyle(fallback);
+          var lineHeight = parseFloat(computedStyle.lineHeight || '20') || 20;
+          var targetTop = Math.max(0, (targetLine - 1) * lineHeight - fallback.clientHeight / 2 + lineHeight / 2);
+          fallback.scrollTop = targetTop;
+          fallback.setSelectionRange(offset, offset);
+        }
+
         function applyCommand(command) {
           if (command.type === 'setTheme') {
             initialTheme = command.theme;
             if (editor && window.monaco) {
               window.monaco.editor.setTheme(command.theme === 'dark' ? 'happy-dark' : 'happy-light');
+              refreshPinnedLineDecoration();
             } else {
               setFallbackTheme(command.theme);
             }
@@ -237,6 +325,11 @@ export function buildEditorHtml(args: {
                 window.monaco.editor.setModelLanguage(model, command.language || 'plaintext');
               }
             }
+            return;
+          }
+
+          if (command.type === 'revealPosition') {
+            revealPosition(command.line, command.column);
             return;
           }
 

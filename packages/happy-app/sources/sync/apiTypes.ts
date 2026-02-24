@@ -229,23 +229,17 @@ export const ApiEphemeralActivityUpdateSchema = z.object({
     thinking: z.boolean(),
 });
 
+const usageMetricMapSchema = z.object({
+    total: z.number(),
+}).catchall(z.number());
+
 export const ApiEphemeralUsageUpdateSchema = z.object({
     type: z.literal('usage'),
     id: z.string(),
     key: z.string(),
     timestamp: z.number(),
-    tokens: z.object({
-        total: z.number(),
-        input: z.number(),
-        output: z.number(),
-        cache_creation: z.number(),
-        cache_read: z.number(),
-    }),
-    cost: z.object({
-        total: z.number(),
-        input: z.number(),
-        output: z.number(),
-    }),
+    tokens: usageMetricMapSchema,
+    cost: usageMetricMapSchema,
 });
 
 export const ApiEphemeralMessageSyncingSchema = z.object({
