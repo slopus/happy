@@ -412,11 +412,24 @@ export async function startDaemon(): Promise<void> {
 
           const tmux = getTmuxUtilities(tmuxSessionName);
 
-          // Construct command for the CLI
-          const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+
+          // TODO TEMPORARY: Log spawned process output to temp file for debugging tmux sessions
+          // Remove this after we understand why spawned processes fail in tmux
+          const tmpLogFile = `/tmp/happy-spawn-tmux-${Date.now()}.log`;
+
+          // CRITICAL: Use absolute path to happy binary instead of relying on PATH
+          // The daemon knows exactly where happy is installed, so we don't need to resolve via shell PATH
+          // This is more reliable than 'happy' command which requires PATH to be set
+          const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
+
+          // CRITICAL: The tmux window we created is already an interactive login shell
+          // (no command passed to new-window), so it already has all shell config loaded
+          // (Prezto modules, .zshrc, aliases, etc.) - just like pressing F2 in byobu
+          // We just send the command directly - don't wrap in another shell!
+          // Add --dangerously-skip-permissions to make spawned process non-interactive for auth
+          const fullCommand = `node ${happyBinPath} ${agent} --happy-starting-mode remote --started-by daemon --dangerously-skip-permissions > ${tmpLogFile} 2>&1`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -451,7 +464,8 @@ export async function startDaemon(): Promise<void> {
           }, tmuxEnv);  // Pass complete environment for tmux session
 
           if (tmuxResult.success) {
-            logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`);
+            logger.debug(`[DAEMON RUN] Successfully spawned in tmux: session=${tmuxResult.sessionId}, window=${windowName}, PID: ${tmuxResult.pid}`);
+            logger.debug(`[DAEMON RUN] Tmux spawned process output at: ${tmpLogFile}`);  // TODO TEMPORARY: Remove after debugging
 
             // Validate we got a PID from tmux
             if (!tmuxResult.pid) {
@@ -474,14 +488,28 @@ export async function startDaemon(): Promise<void> {
             tokenToTrackedSession.set(spawnToken, trackedSession);
 
             // Wait for webhook to populate session with happySessionId (exact same as regular flow)
-            logger.debug(`[DAEMON RUN] Waiting for session webhook via token for tmux PID ${tmuxResult.pid}`);
+            logger.debug(`[DAEMON RUN] Waiting for session webhook via token: session=${tmuxResult.sessionId}, window=${windowName}`);
 
             return new Promise((resolve) => {
               // Set timeout for webhook (same as regular flow)
-              const timeout = setTimeout(() => {
+              const timeout = setTimeout(async () => {
                 tokenToAwaiter.delete(spawnToken);
                 tokenToTrackedSession.delete(spawnToken);
-                logger.debug(`[DAEMON RUN] Session webhook timeout for token ${spawnToken} (tmux PID ${tmuxResult.pid})`);
+                logger.debug(`[DAEMON RUN] Session webhook timeout: session=${tmuxResult.sessionId}, window=${windowName}, token=${spawnToken}`);
+
+                // TODO TEMPORARY: Read and log spawned process output for debugging
+                // Remove this debug logging after understanding why spawned process fails
+                try {
+                  const logContent = await fs.readFile(tmpLogFile, 'utf-8');
+                  if (logContent.trim()) {
+                    logger.debug(`[DAEMON RUN] Spawned process output from ${tmpLogFile}:\n${logContent}`);
+                  } else {
+                    logger.debug(`[DAEMON RUN] Spawned process output file exists but is empty: ${tmpLogFile}`);
+                  }
+                } catch (err) {
+                  logger.debug(`[DAEMON RUN] Could not read spawned process output: ${err instanceof Error ? err.message : String(err)}`);
+                }
+
                 resolve({
                   type: 'error',
                   errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
@@ -493,7 +521,7 @@ export async function startDaemon(): Promise<void> {
               tokenToAwaiter.set(spawnToken, (completedSession) => {
                 clearTimeout(timeout);
                 tokenToTrackedSession.delete(spawnToken);
-                logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned via token (tmux)`);
+                logger.debug(`[DAEMON RUN] Session webhook resolved: session=${tmuxResult.sessionId}, window=${windowName}, sessionId=${completedSession.happySessionId}`);
                 resolve({
                   type: 'success',
                   sessionId: completedSession.happySessionId!

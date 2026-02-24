@@ -460,6 +460,34 @@ export class TmuxUtilities {
     }
 
     /**
+     * Poll pane content until a shell prompt character appears, indicating
+     * the shell has finished initialization and is ready for input.
+     */
+    private async waitForShellReady(session: string, window: string, timeoutMs: number): Promise<boolean> {
+        const pollInterval = 100;
+        const maxAttempts = Math.ceil(timeoutMs / pollInterval);
+        // Common prompt-ending characters across shells
+        const promptPattern = /[%$#>±❯→]\s*$/m;
+
+        for (let i = 0; i < maxAttempts; i++) {
+            const result = await this.executeTmuxCommand(
+                ['capture-pane', '-p'],
+                session,
+                window
+            );
+            if (result && result.returncode === 0) {
+                const content = result.stdout.trim();
+                if (content.length > 0 && promptPattern.test(content)) {
+                    logger.debug(`[TMUX] Shell ready after ${i * pollInterval}ms`);
+                    return true;
+                }
+            }
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+        return false;
+    }
+
+    /**
      * Execute command with subprocess and return result
      */
     private async executeCommand(cmd: string[]): Promise<TmuxCommandResult | null> {
@@ -784,8 +812,9 @@ export class TmuxUtilities {
             // Build command to execute in the new window
             const fullCommand = args.join(' ');
 
-            // Create new window in session with command and environment variables
-            // IMPORTANT: Don't manually add -t here - executeTmuxCommand handles it via parameters
+            // Create new window in session with environment variables
+            // IMPORTANT: Create window without command, then use send-keys to execute
+            // This allows proper shell initialization (Prezto, .zshrc, aliases, etc.)
             const createWindowArgs = ['new-window'];
 
             // Add -P flag to print the pane info immediately (must come before other options)
@@ -818,34 +847,56 @@ export class TmuxUtilities {
                         continue;
                     }
 
-                    // Escape value for shell safety
-                    // Must escape: backslashes, double quotes, dollar signs, backticks
-                    const escapedValue = value
-                        .replace(/\\/g, '\\\\')   // Backslash first!
-                        .replace(/"/g, '\\"')     // Double quotes
-                        .replace(/\$/g, '\\$')    // Dollar signs
-                        .replace(/`/g, '\\`');    // Backticks
-
-                    createWindowArgs.push('-e', `${key}="${escapedValue}"`);
+                    // No shell escaping needed: spawn() with shell:false passes args
+                    // directly to tmux, which parses -e as NAME=VALUE without a shell.
+                    createWindowArgs.push('-e', `${key}=${value}`);
                 }
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
-            // Add the command to run in the window (runs immediately when window is created)
-            createWindowArgs.push(fullCommand);
-
-            // Create window with command and get PID immediately
+            // Create window WITHOUT command (lets it initialize with full shell config)
             const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
 
             if (!createResult || createResult.returncode !== 0) {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);
             }
 
-            // Extract the PID from the output
+            // Extract the PID from the output (from new-window with -P -F "#{pane_pid}")
             const panePid = parseInt(createResult.stdout.trim());
             if (isNaN(panePid)) {
                 throw new Error(`Failed to extract PID from tmux output: ${createResult.stdout}`);
             }
+
+            // Wait for the shell to fully initialize before sending the command.
+            // A fixed delay is unreliable — instead poll the pane content for a prompt.
+            // Shells display a prompt character (%, $, #, >, ±) when ready for input.
+            const shellReady = await this.waitForShellReady(sessionName, windowName, 5000);
+            if (!shellReady) {
+                logger.warn(`[TMUX] Shell did not show a prompt within timeout, sending command anyway`);
+            }
+
+            // Send the command text and Enter key separately for reliability.
+            // Using -l (literal) for the command text prevents tmux from interpreting
+            // special characters in the command as key names.
+            const sendTextArgs = ['send-keys', '-l', fullCommand];
+            const textResult = await this.executeTmuxCommand(sendTextArgs, sessionName, windowName);
+            logger.debug(`[TMUX] send-keys -l result: rc=${textResult?.returncode}, stderr=${textResult?.stderr}`);
+
+            // Small delay between text and Enter to ensure text is fully received
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            const sendEnterArgs = ['send-keys', 'Enter'];
+            const sendResult = await this.executeTmuxCommand(sendEnterArgs, sessionName, windowName);
+            logger.debug(`[TMUX] send-keys Enter result: rc=${sendResult?.returncode}, stderr=${sendResult?.stderr}`);
+
+            if (!sendResult || sendResult.returncode !== 0) {
+                logger.warn(`[TMUX] Failed to send Enter to window: ${sendResult?.stderr}`);
+            }
+
+            // Verify command was sent by capturing pane content
+            await new Promise(resolve => setTimeout(resolve, 200));
+            const verifyResult = await this.executeTmuxCommand(['capture-pane', '-p'], sessionName, windowName);
+            logger.debug(`[TMUX] Pane content after send-keys:\n${verifyResult?.stdout}`);
 
             logger.debug(`[TMUX] Spawned command in tmux session ${sessionName}, window ${windowName}, PID ${panePid}`);
 

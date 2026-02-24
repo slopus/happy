@@ -108,6 +108,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
         startedFromDaemon: options.startedBy === 'daemon',
         hostPid: process.pid,
+        spawnToken: process.env.HAPPY_SPAWN_TOKEN || undefined,
         startedBy: options.startedBy || 'terminal',
         // Initialize lifecycle state
         lifecycleState: 'running',
