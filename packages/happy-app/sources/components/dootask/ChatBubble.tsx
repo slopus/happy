@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View, Text, Pressable, Platform, ActivityIndicator } from 'react-native';
+import Svg, { Path, G } from 'react-native-svg';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
@@ -488,6 +489,40 @@ function LongtextContent({ msg, theme, serverUrl, onImagePress }: { msg: DooTask
     );
 }
 
+function SpeakerIcon({ isPlaying, size = 18, color = '#000' }: { isPlaying: boolean; size?: number; color?: string }) {
+    const [waveCount, setWaveCount] = React.useState(3);
+
+    React.useEffect(() => {
+        if (!isPlaying) {
+            setWaveCount(3);
+            return;
+        }
+        let count = 1;
+        setWaveCount(1);
+        const interval = setInterval(() => {
+            count = count >= 3 ? 1 : count + 1;
+            setWaveCount(count);
+        }, 300);
+        return () => clearInterval(interval);
+    }, [isPlaying]);
+
+    return (
+        <Svg width={size} height={size} viewBox="0 0 100 100" fill="none">
+            <G fill={color} fillRule="nonzero" transform="translate(50, 50) scale(-1, 1) translate(-50, -50)">
+                {waveCount >= 1 && (
+                    <Path d="M71.2623529,37.1847059 C68.3494117,40.3882353 66.6017647,44.4658823 66.6017647,49.1258823 C66.6017647,54.9511765 69.514706,59.9023529 73.5923529,63.1064706 L85.5335294,51.4564706 L71.2623529,37.1847059 L71.2623529,37.1847059 Z" />
+                )}
+                {waveCount >= 2 && (
+                    <Path d="M52.33,49.1264706 C52.33,40.6794118 55.8252941,32.8158823 61.3594117,26.9905883 L52.9117647,18.8352941 C45.34,26.6988235 40.6794117,37.4758823 40.6794117,49.1264706 C40.6794117,61.9417647 46.2135294,73.5923529 54.9511765,81.4558823 L63.3982353,73.3011765 C56.4076471,67.4758823 52.3294117,58.7376471 52.3294117,49.1264706 L52.33,49.1264706 Z" />
+                )}
+                {waveCount >= 3 && (
+                    <Path d="M26.1164706,49.1264706 C26.1164706,33.3982354 32.5241177,18.8352941 42.7182353,8.35 L34.5629412,0.194117676 C24.0776471,10.9705883 16.7964706,25.2429412 15.0488235,40.9705883 C14.7576471,43.592353 14.4664706,46.2135295 14.4664706,49.1264706 C14.4664706,52.0388235 14.7576471,54.66 15.0488235,57.2817647 C17.0876471,73.8835295 24.6605883,88.7376471 36.3105883,99.8052941 L44.7576471,91.6505883 C33.1070588,80.8741177 26.1164706,66.0194118 26.1164706,49.1264706 Z" />
+                )}
+            </G>
+        </Svg>
+    );
+}
+
 function RecordContent({ msg, serverUrl, theme }: { msg: DooTaskDialogMsg; serverUrl: string; theme: any }) {
     const duration = msg.msg?.duration || 0; // milliseconds
     const seconds = Math.max(1, Math.round(duration / 1000));
@@ -503,11 +538,7 @@ function RecordContent({ msg, serverUrl, theme }: { msg: DooTaskDialogMsg; serve
                 onPress={audioUrl ? toggle : undefined}
                 style={[voiceStyles.bar, { width: barWidth, backgroundColor: theme.colors.surfaceHigh }]}
             >
-                <Ionicons
-                    name={isPlaying ? 'volume-high' : 'volume-medium'}
-                    size={18}
-                    color={theme.colors.text}
-                />
+                <SpeakerIcon isPlaying={isPlaying} size={14} color={theme.colors.text} />
                 <Text style={[voiceStyles.duration, { color: theme.colors.text }]}>
                     {seconds}″
                 </Text>
