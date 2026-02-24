@@ -160,7 +160,8 @@ export const ChatMessageList = React.memo(({
         // Avatar grouping: show avatar on the FIRST message of a sender group (reading top-to-bottom).
         // In inverted FlatList, "above" = index + 1. Show avatar when the message above is
         // from a different user or doesn't exist, OR when a date separator breaks the group.
-        const showAvatar = isVisiblePending || !nextMsg || nextMsg.userid !== item.userid || nextMsg.type === 'notice' || showDateSeparator;
+        const isSystemMsg = (type: string) => type === 'notice' || type === 'tag' || type === 'top' || type === 'todo';
+        const showAvatar = isVisiblePending || !nextMsg || nextMsg.userid !== item.userid || isSystemMsg(nextMsg.type) || showDateSeparator;
 
         // Spacing rule:
         // - Compact spacing for consecutive messages from the same sender (same date block)
@@ -169,8 +170,8 @@ export const ChatMessageList = React.memo(({
             !isVisiblePending &&
             !!nextMsg &&
             nextMsg.userid === item.userid &&
-            nextMsg.type !== 'notice' &&
-            item.type !== 'notice' &&
+            !isSystemMsg(nextMsg.type) &&
+            !isSystemMsg(item.type) &&
             !showDateSeparator;
 
         // Resolve reply message
@@ -203,6 +204,7 @@ export const ChatMessageList = React.memo(({
                     serverUrl={serverUrl}
                     pending={pending ? item._pending : undefined}
                     onRetry={pending ? () => onRetry?.(item._pendingId) : undefined}
+                    userNames={userNames}
                 />
             </View>
         );

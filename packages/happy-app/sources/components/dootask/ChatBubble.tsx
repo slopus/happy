@@ -36,6 +36,24 @@ function getMsgText(msg: DooTaskDialogMsg): string {
     return '';
 }
 
+/** Extract a short description from a message object, for use in tag/top/todo system messages. */
+function getMsgSimpleDesc(data: any): string {
+    if (!data || typeof data !== 'object') return '';
+    switch (data.type) {
+        case 'text':
+        case 'longtext':
+            return stripHtml(data.msg?.text || data.msg?.desc || '').substring(0, 50);
+        case 'file':
+            return data.msg?.name || '[file]';
+        case 'record':
+            return `[${t('dootask.voiceMessage')}]`;
+        case 'image':
+            return '[image]';
+        default:
+            return stripHtml(data.msg?.text || '').substring(0, 50) || `[${data.type || 'message'}]`;
+    }
+}
+
 /** Strip HTML tags from chat message text, converting block elements to newlines. */
 function stripHtml(html: string): string {
     return html
@@ -346,6 +364,7 @@ type ChatBubbleProps = {
     serverUrl: string;
     pending?: PendingMessageStatus;
     onRetry?: () => void;
+    userNames?: Record<number, string>;
 };
 
 // --- Content Renderers ---
@@ -632,6 +651,7 @@ export const ChatBubble = React.memo(({
     serverUrl,
     pending,
     onRetry,
+    userNames,
 }: ChatBubbleProps) => {
     const { theme } = useUnistyles();
     const isAiAssistant = msg.userid === AI_ASSISTANT_USERID;
@@ -651,6 +671,57 @@ export const ChatBubble = React.memo(({
             <View style={styles.noticeContainer}>
                 <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>
                     {stripHtml(noticeText)}
+                </Text>
+            </View>
+        );
+    }
+
+    // Tag / Top / Todo: centered system messages showing action + quoted message
+    if (msg.type === 'tag' || msg.type === 'top' || msg.type === 'todo') {
+        const action = msg.msg?.action;
+        const desc = getMsgSimpleDesc(msg.msg?.data);
+        const actorName = isAiAssistant ? t('dootask.aiAssistant') : (userNames?.[msg.userid] || `#${msg.userid}`);
+
+        let text: string;
+        if (msg.type === 'tag') {
+            text = action === 'remove'
+                ? t('dootask.untagged').replace('{name}', actorName).replace('{desc}', desc)
+                : t('dootask.tagged').replace('{name}', actorName).replace('{desc}', desc);
+        } else if (msg.type === 'top') {
+            text = action === 'remove'
+                ? t('dootask.unpinned').replace('{name}', actorName).replace('{desc}', desc)
+                : t('dootask.pinned').replace('{name}', actorName).replace('{desc}', desc);
+        } else {
+            // todo
+            if (action === 'done') {
+                const doneUserIds: number[] = msg.msg?.done_userids || [];
+                const doneNames = doneUserIds.length > 0
+                    ? doneUserIds.slice(0, 3).map(id => userNames?.[id] || `#${id}`).join(', ')
+                        + (doneUserIds.length > 3 ? ` +${doneUserIds.length - 3}` : '')
+                    : actorName;
+                text = t('dootask.todoDone').replace('{name}', doneNames).replace('{desc}', desc);
+            } else if (action === 'remove') {
+                text = t('dootask.todoRemoved').replace('{name}', actorName).replace('{desc}', desc);
+            } else {
+                text = t('dootask.todoAdded').replace('{name}', actorName).replace('{desc}', desc);
+                const targetStr = msg.msg?.data?.userids;
+                if (targetStr && typeof targetStr === 'string') {
+                    const targetIds = targetStr.split(',').filter(Boolean);
+                    if (targetIds.length > 0) {
+                        const targetNames = targetIds.slice(0, 3)
+                            .map(id => userNames?.[Number(id)] || `#${id}`)
+                            .join(', ')
+                            + (targetIds.length > 3 ? ` +${targetIds.length - 3}` : '');
+                        text += t('dootask.todoTarget').replace('{names}', targetNames);
+                    }
+                }
+            }
+        }
+
+        return (
+            <View style={styles.noticeContainer}>
+                <Text style={[styles.noticeText, { color: theme.colors.textSecondary }]}>
+                    {text}
                 </Text>
             </View>
         );

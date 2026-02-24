@@ -213,6 +213,37 @@ export function generateMockMessages(selfUserId: number): DooTaskDialogMsg[] {
             reply_id: 9021, // replies to other's "Should we deploy" message
         }),
 
+        // --- System: tag (bookmark) ---
+        msg(9029, o, 'tag', {
+            action: 'add',
+            data: { id: 9021, type: 'text', msg: { text: 'Should we deploy today?', type: 'html' } },
+        }),
+
+        // --- System: top (pin) ---
+        msg(9030, s, 'top', {
+            action: 'add',
+            data: { id: 9007, type: 'text', msg: { text: '**Task complete!** Here is a summary:', type: 'md' } },
+        }),
+
+        // --- System: todo (add with targets) ---
+        msg(9031, o, 'todo', {
+            action: 'add',
+            data: { id: 9022, type: 'text', msg: { text: 'Yes, let\'s ship it!', type: 'html' }, userids: `${OTHER_USER_ID}` },
+        }),
+
+        // --- System: todo (done) ---
+        msg(9032, s, 'todo', {
+            action: 'done',
+            data: { id: 9022, type: 'text', msg: { text: 'Yes, let\'s ship it!', type: 'html' } },
+            done_userids: [s, o],
+        }),
+
+        // --- System: unpin ---
+        msg(9033, o, 'top', {
+            action: 'remove',
+            data: { id: 9007, type: 'text', msg: { text: '**Task complete!** Here is a summary:', type: 'md' } },
+        }),
+
         // --- Another notice to close ---
         msg(9027, 0, 'notice', { text: 'Bob joined the group' }),
 
