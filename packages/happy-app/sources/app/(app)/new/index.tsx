@@ -1037,7 +1037,8 @@ function NewSessionWizard() {
     }, [selectedMachineId, selectedPath, router]);
 
     // Session creation
-    const handleCreateSession = React.useCallback(async () => {
+    const handleCreateSession = React.useCallback(async (promptSnapshot?: string) => {
+        const promptToSend = (promptSnapshot ?? sessionPrompt).trim();
         if (!selectedMachineId) {
             Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
             return;
@@ -1140,8 +1141,8 @@ function NewSessionWizard() {
                 }
 
                 // Send initial message if provided
-                if (sessionPrompt.trim() || images.length > 0) {
-                    await sync.sendMessage(result.sessionId, sessionPrompt, undefined, images.length > 0 ? images : undefined);
+                if (promptToSend || images.length > 0) {
+                    await sync.sendMessage(result.sessionId, promptToSend, undefined, images.length > 0 ? images : undefined);
                     clearImages();
                 }
 

@@ -43,7 +43,7 @@ interface AgentInputProps {
     placeholder: string;
     onChangeText: (text: string) => void;
     sessionId?: string;
-    onSend: () => void;
+    onSend: (textSnapshot?: string) => void;
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
     isMicActive?: boolean;
@@ -347,8 +347,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
 
-    const hasText = props.value.trim().length > 0;
-
     // Check if this is a Codex or Gemini session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
@@ -479,12 +477,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         text: props.value,
         selection: { start: 0, end: 0 }
     });
+    const hasText = inputState.text.trim().length > 0 || props.value.trim().length > 0;
 
     // Handle combined text and selection state changes
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
         // console.log('📝 Input state changed:', JSON.stringify(newState));
         setInputState(newState);
     }, []);
+
+    // Keep a latest text snapshot to avoid stale parent-state reads during fast click-after-type sends.
+    const latestTextRef = React.useRef(props.value);
+    React.useEffect(() => {
+        latestTextRef.current = props.value;
+    }, [props.value]);
+    React.useEffect(() => {
+        latestTextRef.current = inputState.text;
+    }, [inputState.text]);
 
     // Use the tracked selection from inputState
     const activeWord = useActiveWord(inputState.text, inputState.selection, props.autocompletePrefixes);
@@ -623,8 +631,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         // Original key handling
         if (Platform.OS === 'web') {
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
-                if (props.value.trim()) {
-                    props.onSend();
+                const textSnapshot = latestTextRef.current;
+                if (textSnapshot.trim()) {
+                    props.onSend(textSnapshot);
                     return true; // Key was handled
                 }
             }
@@ -642,7 +651,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, props.permissionMode, props.onPermissionModeChange]);
 
     const connectionStatusIndicator = props.connectionStatus ? (
         <>
@@ -1519,8 +1528,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         onPress={() => {
                                             hapticsLight();
-                                            if (hasText) {
-                                                props.onSend();
+                                            const textSnapshot = latestTextRef.current;
+                                            if (textSnapshot.trim()) {
+                                                props.onSend(textSnapshot);
                                             } else {
                                                 props.onMicPress?.();
                                             }

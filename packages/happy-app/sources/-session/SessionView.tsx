@@ -697,9 +697,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onModelModeChange={updateModelMode as any}
             metadata={session.metadata}
             connectionStatus={inputConnectionStatus}
-            onSend={async () => {
-                if (message.trim() || images.length > 0) {
-                    const messageToSend = message.trim();
+            onSend={async (textSnapshot) => {
+                const messageToSend = (textSnapshot ?? message).trim();
+                if (messageToSend || images.length > 0) {
 
                     // Handle /duplicate command locally
                     if (messageToSend.toLowerCase() === '/duplicate') {
