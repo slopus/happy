@@ -460,25 +460,25 @@ export class TmuxUtilities {
     }
 
     /**
-     * Poll pane content until a shell prompt character appears, indicating
-     * the shell has finished initialization and is ready for input.
+     * Poll #{pane_current_command} until it reports a shell process,
+     * indicating the shell has finished initialization and is idle at a prompt.
+     * This is prompt-theme-agnostic — works with any custom prompt.
      */
     private async waitForShellReady(session: string, window: string, timeoutMs: number): Promise<boolean> {
         const pollInterval = 100;
         const maxAttempts = Math.ceil(timeoutMs / pollInterval);
-        // Common prompt-ending characters across shells
-        const promptPattern = /[%$#>±❯→]\s*$/m;
+        const knownShells = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh']);
 
         for (let i = 0; i < maxAttempts; i++) {
             const result = await this.executeTmuxCommand(
-                ['capture-pane', '-p'],
+                ['display-message', '-p', '#{pane_current_command}'],
                 session,
                 window
             );
             if (result && result.returncode === 0) {
-                const content = result.stdout.trim();
-                if (content.length > 0 && promptPattern.test(content)) {
-                    logger.debug(`[TMUX] Shell ready after ${i * pollInterval}ms`);
+                const command = result.stdout.trim();
+                if (knownShells.has(command)) {
+                    logger.debug(`[TMUX] Shell ready after ${i * pollInterval}ms (${command})`);
                     return true;
                 }
             }
