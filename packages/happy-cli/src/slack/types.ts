@@ -13,7 +13,7 @@ export const SlackConfigSchema = z.object({
   appToken: z.string().startsWith('xapp-'),
   channelId: z.string(),
   channelName: z.string().optional(),
-  notifyUserId: z.string().optional(),
+  authorizedUserId: z.string(),
   serverUrl: z.string().url().optional(),
   defaultPermissionMode: z.enum([
     'default', 'acceptEdits', 'bypassPermissions', 'plan'

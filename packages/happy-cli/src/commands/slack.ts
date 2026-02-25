@@ -63,7 +63,9 @@ export async function handleSlackCommand(args: string[]): Promise<void> {
 async function handleSlackStart(args: string[]): Promise<void> {
   const slackConfig = await readSlackConfig()
   if (!slackConfig) {
-    console.error(chalk.red('Slack not configured. Run "happy slack setup" first.'))
+    console.error(chalk.red('Slack not configured or missing required fields.'))
+    console.error(chalk.red('Run "slaphappy slack setup" to configure.'))
+    console.error(chalk.gray('Required: botToken, appToken, channelId, authorizedUserId'))
     process.exit(1)
   }
 
@@ -262,12 +264,12 @@ async function handleSlackSetup(): Promise<void> {
   console.log('')
   console.log(chalk.gray('  Fetching workspace members...'))
 
-  let notifyUserId: string | undefined
+  let authorizedUserId: string | undefined
   const members = await fetchWorkspaceMembers(botToken)
 
   if (members.length > 0) {
-    const currentName = existing?.notifyUserId
-      ? members.find((m) => m.id === existing.notifyUserId)?.name
+    const currentName = existing?.authorizedUserId
+      ? members.find((m) => m.id === existing.authorizedUserId)?.name
       : undefined
     const hint = currentName ? ` (current: ${currentName})` : ''
     console.log(chalk.gray(`  ${members.length} members found.${hint} Type to search.`))
@@ -277,7 +279,7 @@ async function handleSlackSetup(): Promise<void> {
       {
         type: 'search',
         name: 'selectedUser',
-        message: 'Mention you on session start (select yourself):',
+        message: 'Select your user (session owner — only you can control the session):',
         source: (term: string | undefined) => {
           const query = (term || '').toLowerCase()
           const filtered = query
@@ -285,17 +287,15 @@ async function handleSlackSetup(): Promise<void> {
                 m.name.toLowerCase().includes(query) ||
                 m.realName.toLowerCase().includes(query))
             : members
-          const results = filtered.map((m) => {
-            const current = m.id === existing?.notifyUserId ? chalk.green(' (current)') : ''
+          return filtered.map((m) => {
+            const current = m.id === existing?.authorizedUserId ? chalk.green(' (current)') : ''
             return { name: `${m.realName} (@${m.name})${current}`, value: m.id }
           })
-          results.push({ name: chalk.gray('  Skip (no mention)'), value: '__skip__' })
-          return results
         },
         pageSize: 15,
       },
     ])
-    notifyUserId = selectedUser === '__skip__' ? undefined : selectedUser
+    authorizedUserId = selectedUser
   } else {
     console.log(chalk.yellow('  Could not fetch members (may need users:read scope).'))
     console.log(chalk.yellow('  Reinstall the app after updating the manifest.'))
@@ -304,12 +304,14 @@ async function handleSlackSetup(): Promise<void> {
       {
         type: 'input',
         name: 'manualUserId',
-        message: existing?.notifyUserId
-          ? `Your Slack Member ID [${existing.notifyUserId}] (optional):`
-          : 'Your Slack Member ID (optional):',
+        message: existing?.authorizedUserId
+          ? `Your Slack Member ID [${existing.authorizedUserId}]:`
+          : 'Your Slack Member ID (required):',
+        default: existing?.authorizedUserId,
+        validate: (input: string) => input.trim() ? true : 'Authorized user ID is required for access control',
       },
     ])
-    notifyUserId = manualUserId || existing?.notifyUserId || undefined
+    authorizedUserId = manualUserId
   }
 
   // --- Server URL (optional) ---
@@ -330,7 +332,7 @@ async function handleSlackSetup(): Promise<void> {
     appToken,
     channelId,
     channelName,
-    ...(notifyUserId ? { notifyUserId } : {}),
+    authorizedUserId: authorizedUserId!,
     ...(serverUrl ? { serverUrl } : {}),
     defaultPermissionMode: 'default',
   }
@@ -380,6 +382,7 @@ async function handleSlackStatus(): Promise<void> {
   if (process.env.HAPPY_SLACK_BOT_TOKEN) envOverrides.push('HAPPY_SLACK_BOT_TOKEN')
   if (process.env.HAPPY_SLACK_APP_TOKEN) envOverrides.push('HAPPY_SLACK_APP_TOKEN')
   if (process.env.HAPPY_SLACK_CHANNEL_ID) envOverrides.push('HAPPY_SLACK_CHANNEL_ID')
+  if (process.env.HAPPY_SLACK_AUTHORIZED_USER_ID) envOverrides.push('HAPPY_SLACK_AUTHORIZED_USER_ID')
 
   if (envOverrides.length > 0) {
     console.log('')
@@ -620,9 +623,10 @@ ${chalk.bold('Options:')}
   --permission-mode <mode>  Permission mode (default, acceptEdits, bypassPermissions)
 
 ${chalk.bold('Environment Variables (override saved config):')}
-  HAPPY_SLACK_BOT_TOKEN     Slack bot token (xoxb-...)
-  HAPPY_SLACK_APP_TOKEN     Slack app-level token (xapp-...)
-  HAPPY_SLACK_CHANNEL_ID    Channel ID to listen on
+  HAPPY_SLACK_BOT_TOKEN          Slack bot token (xoxb-...)
+  HAPPY_SLACK_APP_TOKEN          Slack app-level token (xapp-...)
+  HAPPY_SLACK_CHANNEL_ID         Channel ID to listen on
+  HAPPY_SLACK_AUTHORIZED_USER_ID Your Slack user ID (required, access control)
 
 ${chalk.bold('Examples:')}
   happy slack setup

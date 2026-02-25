@@ -205,9 +205,9 @@ The wizard prompts for the two tokens and validates them against the Slack API (
 
 The wizard fetches all public channels in your workspace (with search). The bot auto-joins the selected channel. If `channels:join` scope is missing, you can `/invite @claude-agent` manually.
 
-#### Step 6: Select Notify User (Optional)
+#### Step 6: Select Session Owner (Required)
 
-Pick a workspace member to @mention when sessions start. Useful for push notifications on your phone. Can be skipped.
+Select yourself from the workspace member list. This user is the **only one** who can send commands and click permission buttons in the session thread. You'll also be @mentioned when the session starts.
 
 #### Step 7: Server URL (Optional)
 
@@ -257,9 +257,9 @@ All config values can be set via environment variables. These **override** `~/.h
 | `HAPPY_SLACK_BOT_TOKEN` | Yes | Slack Bot User OAuth Token (`xoxb-...`) |
 | `HAPPY_SLACK_APP_TOKEN` | Yes | Slack App-Level Token with `connections:write` (`xapp-...`) |
 | `HAPPY_SLACK_CHANNEL_ID` | Yes | Channel ID to post session threads (`C0123456789`) |
-| `HAPPY_SLACK_NOTIFY_USER_ID` | **Strongly recommended** | Your Slack user ID (`U987654321`). See note below. |
+| `HAPPY_SLACK_AUTHORIZED_USER_ID` | **Yes** | Your Slack user ID (`U987654321`). Session owner for access control. |
 
-> **`HAPPY_SLACK_NOTIFY_USER_ID` serves dual purposes:** (1) @mentions you when a session starts, and (2) **restricts session access to only that user**. Thread replies and button clicks from anyone else are silently ignored. If unset, **anyone in the channel can send commands to Claude** — which is a security risk, especially with `bypassPermissions`.
+> **`HAPPY_SLACK_AUTHORIZED_USER_ID` serves dual purposes:** (1) @mentions you when a session starts, and (2) **restricts session access to only that user**. Thread replies and button clicks from anyone else are silently ignored.
 
 If all three required variables are set, `slaphappy slack` works without `~/.happy/slack.json`.
 
@@ -268,7 +268,7 @@ If all three required variables are set, `slaphappy slack` works without `~/.hap
 export HAPPY_SLACK_BOT_TOKEN=xoxb-1234-5678-abcdef
 export HAPPY_SLACK_APP_TOKEN=xapp-1-A0123-9876-xyz
 export HAPPY_SLACK_CHANNEL_ID=C0123456789
-export HAPPY_SLACK_NOTIFY_USER_ID=U987654321  # restricts access to this user only
+export HAPPY_SLACK_AUTHORIZED_USER_ID=U987654321  # restricts access to this user only
 
 slaphappy slack --permission-mode bypassPermissions
 ```
@@ -304,7 +304,7 @@ slaphappy slack --permission-mode bypassPermissions
   "appToken": "xapp-...",
   "channelId": "C0123456789",
   "channelName": "claude-sessions",
-  "notifyUserId": "U987654321",
+  "authorizedUserId": "U987654321",
   "serverUrl": "https://api.cluster-fluster.com",
   "defaultPermissionMode": "default"
 }
@@ -316,7 +316,7 @@ slaphappy slack --permission-mode bypassPermissions
 | `appToken` | string | Yes | App-Level Token (`xapp-...`) |
 | `channelId` | string | Yes | Slack channel ID |
 | `channelName` | string | No | Channel display name (auto-populated) |
-| `notifyUserId` | string | Recommended | Your Slack user ID — @mentions on start **and restricts access to this user only** |
+| `authorizedUserId` | string | **Yes** | Your Slack user ID — @mentions on start **and restricts access to this user only** |
 | `serverUrl` | string | No | Happy Server URL override |
 | `defaultPermissionMode` | enum | No | `default` \| `acceptEdits` \| `bypassPermissions` \| `plan` |
 
@@ -324,8 +324,8 @@ slaphappy slack --permission-mode bypassPermissions
 
 ### Security Considerations
 
-- **Set `notifyUserId`.** Without it, anyone in the channel can control Claude. With it, only the specified user's messages and button clicks are accepted; all others are silently dropped.
-- **Channel access matters even with `notifyUserId`.** Others can still *read* Claude's output. Use a private or restricted channel for sensitive work.
+- **`authorizedUserId` is mandatory.** Only the specified user's messages and button clicks are accepted; all others are silently dropped.
+- **Channel access matters.** Others can still *read* Claude's output even though they can't control it. Use a private or restricted channel for sensitive work.
 - **Permission mode matters.** `bypassPermissions` means any thread reply triggers tool execution without confirmation. Use with caution.
 - **Tokens are stored locally** in `~/.happy/slack.json` with `0600` permissions. They never leave your machine.
 - **Socket Mode** means no inbound webhooks — your machine initiates the WebSocket connection outbound. No public endpoint exposure.

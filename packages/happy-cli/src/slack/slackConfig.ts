@@ -27,7 +27,7 @@ function applyEnvOverrides(config: SlackConfig): SlackConfig {
     botToken: process.env.HAPPY_SLACK_BOT_TOKEN ?? config.botToken,
     appToken: process.env.HAPPY_SLACK_APP_TOKEN ?? config.appToken,
     channelId: process.env.HAPPY_SLACK_CHANNEL_ID ?? config.channelId,
-    notifyUserId: process.env.HAPPY_SLACK_NOTIFY_USER_ID ?? config.notifyUserId,
+    authorizedUserId: process.env.HAPPY_SLACK_AUTHORIZED_USER_ID ?? config.authorizedUserId,
   }
 }
 
@@ -40,13 +40,14 @@ export async function readSlackConfig(): Promise<SlackConfig | null> {
   if (
     process.env.HAPPY_SLACK_BOT_TOKEN &&
     process.env.HAPPY_SLACK_APP_TOKEN &&
-    process.env.HAPPY_SLACK_CHANNEL_ID
+    process.env.HAPPY_SLACK_CHANNEL_ID &&
+    process.env.HAPPY_SLACK_AUTHORIZED_USER_ID
   ) {
     const envOnly: unknown = {
       botToken: process.env.HAPPY_SLACK_BOT_TOKEN,
       appToken: process.env.HAPPY_SLACK_APP_TOKEN,
       channelId: process.env.HAPPY_SLACK_CHANNEL_ID,
-      ...(process.env.HAPPY_SLACK_NOTIFY_USER_ID && { notifyUserId: process.env.HAPPY_SLACK_NOTIFY_USER_ID }),
+      authorizedUserId: process.env.HAPPY_SLACK_AUTHORIZED_USER_ID,
     }
     const result = SlackConfigSchema.safeParse(envOnly)
     if (result.success) {

@@ -314,7 +314,7 @@ export class SlackBridge {
     /** Handle a Block Kit action (button click) from Slack */
     private onSlackAction(actionId: string, value: string, userId: string): void {
         // Authorization check
-        if (this.config.notifyUserId && userId !== this.config.notifyUserId) {
+        if (userId !== this.config.authorizedUserId) {
             logger.debug(`[SlackBridge] Ignored action from unauthorized user ${userId}`)
             return
         }
@@ -382,9 +382,7 @@ export class SlackBridge {
     private async postWelcome(): Promise<void> {
         if (!this._threadTs) return
 
-        const mention = this.config.notifyUserId
-            ? `<@${this.config.notifyUserId}> `
-            : ''
+        const mention = `<@${this.config.authorizedUserId}> `
         const lines = [
             `${mention}:zap: *Session started*`,
             '',
@@ -407,7 +405,7 @@ export class SlackBridge {
     /** Route a Slack thread reply into the session's message queue */
     private onSlackReply(text: string, userId: string, messageTs: string): void {
         // Only the session owner can send commands
-        if (this.config.notifyUserId && userId !== this.config.notifyUserId) {
+        if (userId !== this.config.authorizedUserId) {
             logger.debug(`[SlackBridge] Ignored reply from unauthorized user ${userId}`)
             return
         }
