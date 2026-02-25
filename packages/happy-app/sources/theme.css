@@ -1,3 +1,9 @@
+/* Disable overscroll bounce / pull-to-refresh on the whole page.
+   Prevents scroll-chaining from inner scrollable elements to the body. */
+html, body {
+    overscroll-behavior: none;
+}
+
 /* Theme-aware scrollbar styles using Unistyles CSS variables */
 
 /* Webkit Scrollbars (Chrome, Safari, Edge) */
