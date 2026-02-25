@@ -24,7 +24,9 @@ function hasUnreadCompletion(session: Session): boolean {
     if (!session.active) return false;
     // Don't show if older than 7 days
     if (Date.now() - taskCompleted > 7 * 24 * 60 * 60 * 1000) return false;
-    const lastViewed = sessionLastViewedAt.get(session.id) ?? 0;
+    const localLastViewed = sessionLastViewedAt.get(session.id) ?? 0;
+    const syncedDismissedAt = session.metadata?.completionDismissedAt ?? 0;
+    const lastViewed = Math.max(localLastViewed, syncedDismissedAt);
     return taskCompleted > lastViewed;
 }
 

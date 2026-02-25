@@ -45,6 +45,7 @@ import {
     processUpdateOpenClawMachineEvent,
 } from '../openclaw/storage';
 import { resolveModelSelectionForFlavor } from '@/constants/modelCatalog';
+import { sessionUpdateMetadataFields } from './ops';
 
 type PermissionMode = NonNullable<Session['permissionMode']>;
 
@@ -56,8 +57,29 @@ type PermissionMode = NonNullable<Session['permissionMode']>;
 export const sessionLastViewedAt = loadSessionLastViewedAt();
 
 function markSessionViewed(sessionId: string) {
-    sessionLastViewedAt.set(sessionId, Date.now());
+    const session = storage.getState().sessions[sessionId];
+    // Use max(now, taskCompleted) to handle clock skew between CLI and app
+    const taskCompleted = session?.agentState?.taskCompleted ?? 0;
+    const now = Math.max(Date.now(), taskCompleted);
+
+    // Instant local update (no network latency)
+    sessionLastViewedAt.set(sessionId, now);
     saveSessionLastViewedAt(sessionLastViewedAt);
+
+    // Sync to other devices via metadata (throttled to avoid feedback loops)
+    if (session?.metadata) {
+        const existing = session.metadata.completionDismissedAt ?? 0;
+        if (now - existing > 5000) {
+            sessionUpdateMetadataFields(
+                sessionId,
+                session.metadata,
+                { completionDismissedAt: now },
+                session.metadataVersion
+            ).catch(() => {
+                // Silently ignore - local state already updated, will retry on next view
+            });
+        }
+    }
 }
 
 class Sync {

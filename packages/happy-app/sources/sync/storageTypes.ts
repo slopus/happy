@@ -41,6 +41,7 @@ export const MetadataSchema = z.object({
         extra: z.record(z.unknown()).optional(),
     }).optional(),
     sessionIcon: z.string().optional(),
+    completionDismissedAt: z.number().nullish(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
