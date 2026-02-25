@@ -124,9 +124,9 @@ export function ActionMenu({ items, onClose, title }: ActionMenuProps) {
                             style={({ pressed }) => [
                                 styles.item,
                                 index === items.length - 1 && styles.itemLast,
-                                pressed && !item.selected && { backgroundColor: theme.colors.surfacePressed },
+                                pressed && { backgroundColor: theme.colors.surfacePressed },
                             ]}
-                            onPress={() => !item.selected && handleItemPress(item)}
+                            onPress={() => handleItemPress(item)}
                         >
                             <View style={styles.itemContent}>
                                 <Text
