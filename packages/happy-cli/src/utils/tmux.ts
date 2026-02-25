@@ -781,6 +781,19 @@ export class TmuxUtilities {
                 throw new Error('tmux not available');
             }
 
+            // Verify tmux version >= 3.0 (required for new-window -e flag)
+            const versionResult = await this.executeCommand(['tmux', '-V']);
+            if (versionResult && versionResult.returncode === 0) {
+                const versionMatch = versionResult.stdout.match(/tmux\s+(\d+)\.(\d+)/);
+                if (versionMatch) {
+                    const major = parseInt(versionMatch[1]);
+                    const minor = parseInt(versionMatch[2]);
+                    if (major < 3) {
+                        throw new Error(`tmux ${major}.${minor} is too old — version 3.0+ is required for per-window environment variables (-e flag)`);
+                    }
+                }
+            }
+
             // Handle session name resolution
             // - undefined: Use first existing session or create "happy"
             // - empty string: Use first existing session or create "happy"
@@ -817,7 +830,10 @@ export class TmuxUtilities {
             // This allows proper shell initialization (Prezto, .zshrc, aliases, etc.)
             const createWindowArgs = ['new-window'];
 
-            // Add -P flag to print the pane info immediately (must come before other options)
+            // -d: don't switch focus to the new window (user keeps their current window)
+            createWindowArgs.push('-d');
+
+            // -P -F: print pane PID immediately for tracking
             createWindowArgs.push('-P');
             createWindowArgs.push('-F', '#{pane_pid}');
 
