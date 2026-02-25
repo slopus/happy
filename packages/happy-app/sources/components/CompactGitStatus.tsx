@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
-import { getAddedLines, getRemovedLines, hasMeaningfulLineChanges } from '@/sync/gitStatusUtils';
+import { getAddedLines, getRemovedLines, getUntrackedCount, hasLoadedGitStatus } from '@/sync/gitStatusUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -34,6 +34,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '600',
         color: theme.colors.gitRemovedText,
     },
+    untrackedText: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: theme.colors.gitFileCountText,
+    },
 }));
 
 interface CompactGitStatusProps {
@@ -47,13 +52,21 @@ export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
     const sessionGitStatus = useSessionGitStatus(sessionId);
     const gitStatus = projectGitStatus || sessionGitStatus;
 
-    // Don't render if no git status or no meaningful changes
-    if (!hasMeaningfulLineChanges(gitStatus)) {
+    // Don't render if git status is unavailable.
+    if (!hasLoadedGitStatus(gitStatus)) {
         return null;
     }
 
     const addedLines = getAddedLines(gitStatus);
     const removedLines = getRemovedLines(gitStatus);
+    const untrackedCount = getUntrackedCount(gitStatus);
+    const hasLineChanges = addedLines > 0 || removedLines > 0;
+    const hasUntrackedChanges = untrackedCount > 0;
+
+    // Only show compact badge when there are visible counters.
+    if (!hasLineChanges && !hasUntrackedChanges) {
+        return null;
+    }
 
     return (
         <View style={styles.container}>
@@ -74,6 +87,16 @@ export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
                 {removedLines > 0 && (
                     <Text style={styles.removedText}>
                         -{removedLines}
+                    </Text>
+                )}
+                {hasLineChanges && hasUntrackedChanges && (
+                    <Text style={styles.untrackedText}>
+                        ·
+                    </Text>
+                )}
+                {hasUntrackedChanges && (
+                    <Text style={styles.untrackedText}>
+                        {untrackedCount}
                     </Text>
                 )}
             </View>

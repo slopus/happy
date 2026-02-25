@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { useProjectGitStatusByKey, useSessionProjectGitStatus } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
-import { getAddedLines, getRemovedLines, hasLoadedGitStatus } from '@/sync/gitStatusUtils';
+import { getAddedLines, getRemovedLines, getUntrackedCount, hasLoadedGitStatus } from '@/sync/gitStatusUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -55,6 +55,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '600',
         color: theme.colors.gitRemovedText,
     },
+    untrackedText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: theme.colors.gitFileCountText,
+    },
 }));
 
 interface ProjectGitStatusProps {
@@ -78,12 +83,15 @@ export function ProjectGitStatus({ sessionId, machineId, path }: ProjectGitStatu
 
     const addedLines = getAddedLines(gitStatus);
     const removedLines = getRemovedLines(gitStatus);
+    const untrackedCount = getUntrackedCount(gitStatus);
     const hasLineChanges = addedLines > 0 || removedLines > 0;
+    const hasUntrackedChanges = untrackedCount > 0;
+    const hasAnyChanges = hasLineChanges || hasUntrackedChanges;
 
     return (
         <View style={styles.container}>
             {/* Show total line changes (staged + unstaged) */}
-            {hasLineChanges && (
+            {hasAnyChanges && (
                 <View style={styles.lineChanges}>
                     {addedLines > 0 && (
                         <Text style={styles.addedText}>
@@ -93,6 +101,16 @@ export function ProjectGitStatus({ sessionId, machineId, path }: ProjectGitStatu
                     {removedLines > 0 && (
                         <Text style={styles.removedText}>
                             -{removedLines}
+                        </Text>
+                    )}
+                    {hasLineChanges && hasUntrackedChanges && (
+                        <Text style={styles.untrackedText}>
+                            ·
+                        </Text>
+                    )}
+                    {hasUntrackedChanges && (
+                        <Text style={styles.untrackedText}>
+                            {untrackedCount}
                         </Text>
                     )}
                 </View>

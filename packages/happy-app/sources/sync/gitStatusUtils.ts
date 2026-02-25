@@ -6,6 +6,7 @@ type GitStatusLineFields = Pick<
     'stagedLinesAdded' | 'stagedLinesRemoved' |
     'unstagedLinesAdded' | 'unstagedLinesRemoved'
 >;
+type GitStatusUntrackedFields = Pick<GitStatus, 'untrackedCount'>;
 
 type GitStatusLoadFields = Pick<GitStatus, 'lastUpdatedAt'>;
 type GitStatusMeaningfulFields = Pick<GitStatus, 'lastUpdatedAt' | 'isDirty'> & GitStatusLineFields;
@@ -28,6 +29,13 @@ export function getRemovedLines(status: Partial<GitStatusLineFields> | null | un
 
 export function hasLineChanges(status: Partial<GitStatusLineFields> | null | undefined): boolean {
     return getAddedLines(status) > 0 || getRemovedLines(status) > 0;
+}
+
+export function getUntrackedCount(status: Partial<GitStatusUntrackedFields> | null | undefined): number {
+    if (!status || typeof status.untrackedCount !== 'number') {
+        return 0;
+    }
+    return status.untrackedCount;
 }
 
 export function hasLoadedGitStatus(status: Partial<GitStatusLoadFields> | null | undefined): boolean {
