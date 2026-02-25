@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
 import { createSessionMetadata } from './createSessionMetadata';
 
@@ -70,5 +70,48 @@ describe('createSessionMetadata', () => {
         });
 
         expect(metadata.dangerouslySkipPermissions).toBe(true);
+    });
+
+    describe('spawnToken', () => {
+        const originalSpawnToken = process.env.HAPPY_SPAWN_TOKEN;
+
+        afterEach(() => {
+            if (originalSpawnToken !== undefined) {
+                process.env.HAPPY_SPAWN_TOKEN = originalSpawnToken;
+            } else {
+                delete process.env.HAPPY_SPAWN_TOKEN;
+            }
+        });
+
+        it('sets metadata.spawnToken from HAPPY_SPAWN_TOKEN env var', () => {
+            process.env.HAPPY_SPAWN_TOKEN = 'abc123';
+            const { metadata } = createSessionMetadata({
+                flavor: 'claude',
+                machineId: 'machine-6',
+            });
+
+            expect(metadata.spawnToken).toBe('abc123');
+        });
+
+        it('sets metadata.spawnToken to undefined when env var not set', () => {
+            delete process.env.HAPPY_SPAWN_TOKEN;
+            const { metadata } = createSessionMetadata({
+                flavor: 'claude',
+                machineId: 'machine-7',
+            });
+
+            expect(metadata.spawnToken).toBeUndefined();
+        });
+
+        it('sets metadata.spawnToken to undefined when env var is empty string', () => {
+            process.env.HAPPY_SPAWN_TOKEN = '';
+            const { metadata } = createSessionMetadata({
+                flavor: 'claude',
+                machineId: 'machine-8',
+            });
+
+            // '' || undefined → undefined
+            expect(metadata.spawnToken).toBeUndefined();
+        });
     });
 });

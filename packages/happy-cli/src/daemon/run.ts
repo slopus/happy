@@ -18,6 +18,7 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { readFileSync } from 'fs';
+import { execFile } from 'child_process';
 import { randomBytes } from 'crypto';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
@@ -74,12 +75,22 @@ async function resolveTmuxSessionName(): Promise<string | undefined> {
 
   // If the daemon is running inside a tmux session, prefer that session.
   // The $TMUX env var is set by tmux: "socket_path,server_pid,pane_index"
+  // IMPORTANT: Use execFile directly (not executeTmuxCommand) because
+  // executeTmuxCommand always appends `-t <sessionName>` which would query
+  // the wrong session. Without `-t`, tmux uses the current client from $TMUX.
   if (process.env.TMUX) {
-    const result = await tmux.executeTmuxCommand(['display-message', '-p', '#{session_name}']);
-    if (result && result.returncode === 0 && result.stdout.trim()) {
-      const sessionName = result.stdout.trim();
-      logger.debug(`[DAEMON RUN] Resolved tmux session from daemon's own session: ${sessionName}`);
-      return sessionName;
+    try {
+      const sessionName = await new Promise<string | undefined>((resolve) => {
+        execFile('tmux', ['display-message', '-p', '#{session_name}'], { timeout: 5000 }, (err, stdout) => {
+          resolve(err ? undefined : stdout.trim() || undefined);
+        });
+      });
+      if (sessionName) {
+        logger.debug(`[DAEMON RUN] Resolved tmux session from daemon's own session: ${sessionName}`);
+        return sessionName;
+      }
+    } catch {
+      // Fall through to next priority
     }
   }
 

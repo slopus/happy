@@ -444,8 +444,9 @@ export class TmuxUtilities {
 
             return this.executeCommand(fullCmd);
         } else {
-            // Non-send-keys commands
-            const fullCmd = [...baseCmd, ...cmd];
+            // Non-send-keys commands: insert -t right after the command name
+            // (before positional args like display-message's format string)
+            const fullCmd = [...baseCmd, cmd[0]];
 
             // Add target specification for commands that support it
             if (cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0])) {
@@ -454,6 +455,9 @@ export class TmuxUtilities {
                 if (pane) target += `.${pane}`;
                 fullCmd.push('-t', target);
             }
+
+            // Add remaining arguments (flags and positional args) after -t
+            fullCmd.push(...cmd.slice(1));
 
             return this.executeCommand(fullCmd);
         }

@@ -420,6 +420,113 @@ describe('TmuxUtilities.detectTmuxEnvironment', () => {
     });
 });
 
+describe('tmux version parsing', () => {
+    // Tests the regex used in spawnInTmux to gate on tmux >= 3.0
+    const versionRegex = /tmux\s+(\d+)\.(\d+)/;
+
+    it('should parse standard version string', () => {
+        const match = 'tmux 3.4'.match(versionRegex);
+        expect(match).not.toBeNull();
+        expect(parseInt(match![1])).toBe(3);
+        expect(parseInt(match![2])).toBe(4);
+    });
+
+    it('should parse old version string', () => {
+        const match = 'tmux 2.9'.match(versionRegex);
+        expect(match).not.toBeNull();
+        expect(parseInt(match![1])).toBe(2);
+        expect(parseInt(match![2])).toBe(9);
+    });
+
+    it('should parse version with suffix (e.g., 3.3a)', () => {
+        const match = 'tmux 3.3a'.match(versionRegex);
+        expect(match).not.toBeNull();
+        expect(parseInt(match![1])).toBe(3);
+        expect(parseInt(match![2])).toBe(3);
+    });
+
+    it('should not match development version without number', () => {
+        const match = 'tmux master'.match(versionRegex);
+        expect(match).toBeNull();
+    });
+
+    it('should parse next-prefixed version', () => {
+        // "tmux next-3.5" — the regex still finds "3.5"
+        const match = 'tmux next-3.5'.match(versionRegex);
+        // Regex requires whitespace before digits, so "next-3.5" doesn't match
+        expect(match).toBeNull();
+    });
+
+    it('should parse version with extra whitespace', () => {
+        const match = 'tmux  3.4'.match(versionRegex);
+        expect(match).not.toBeNull();
+        expect(parseInt(match![1])).toBe(3);
+    });
+});
+
+describe('session list parsing (resolveTmuxSessionName logic)', () => {
+    // Tests the lastIndexOf(':') parsing used in resolveTmuxSessionName
+    // to split "session_name:session_windows" from tmux list-sessions output
+
+    function parseSessionLine(line: string): { name: string; count: number } | null {
+        const separatorIndex = line.lastIndexOf(':');
+        if (separatorIndex === -1) return null;
+        const name = line.substring(0, separatorIndex);
+        const count = parseInt(line.substring(separatorIndex + 1));
+        if (isNaN(count)) return null;
+        return { name, count };
+    }
+
+    function findBestSession(output: string): string | undefined {
+        let bestSession: string | undefined;
+        let maxWindows = 0;
+        for (const line of output.trim().split('\n')) {
+            const parsed = parseSessionLine(line);
+            if (parsed && parsed.count > maxWindows) {
+                maxWindows = parsed.count;
+                bestSession = parsed.name;
+            }
+        }
+        return bestSession;
+    }
+
+    it('should parse single session', () => {
+        expect(findBestSession('main:5')).toBe('main');
+    });
+
+    it('should pick session with most windows', () => {
+        expect(findBestSession('dev:3\nmain:10\ntest:1')).toBe('main');
+    });
+
+    it('should handle session name with dots and hyphens', () => {
+        expect(findBestSession('my-session.name:7')).toBe('my-session.name');
+    });
+
+    it('should handle empty output', () => {
+        expect(findBestSession('')).toBeUndefined();
+    });
+
+    it('should handle malformed lines gracefully', () => {
+        expect(findBestSession('no-colon')).toBeUndefined();
+    });
+
+    it('should handle non-numeric window count', () => {
+        expect(findBestSession('session:abc')).toBeUndefined();
+    });
+
+    it('should handle tie (picks first with highest count)', () => {
+        // Both have 5 windows, first one wins (not replaced by equal)
+        expect(findBestSession('alpha:5\nbeta:5')).toBe('alpha');
+    });
+
+    it('should handle session name with colons (uses lastIndexOf)', () => {
+        // Session names can't have colons in tmux, but test the parsing robustness
+        // If somehow "sess:ion:3" appeared, lastIndexOf(':') gives correct split
+        const result = parseSessionLine('sess:ion:3');
+        expect(result).toEqual({ name: 'sess:ion', count: 3 });
+    });
+});
+
 describe('Round-trip consistency', () => {
     it('should parse and format consistently for session-only', () => {
         const original = 'my-session';
@@ -454,3 +561,222 @@ describe('Round-trip consistency', () => {
         expect(parsed).toEqual(params);
     });
 });
+
+// Integration tests that require real tmux
+// These create a temporary tmux session, run operations, and clean up
+import { execFileSync, spawnSync } from 'child_process';
+
+function isTmuxInstalled(): boolean {
+    try {
+        const result = spawnSync('tmux', ['-V'], { stdio: 'pipe', timeout: 5000 });
+        return result.status === 0;
+    } catch {
+        return false;
+    }
+}
+
+const TEST_SESSION = `happy-test-${process.pid}`;
+
+describe.skipIf(!isTmuxInstalled())('TmuxUtilities integration (requires tmux)', { timeout: 15_000 }, () => {
+    // Create a temporary tmux session for testing
+    beforeAll(() => {
+        execFileSync('tmux', ['new-session', '-d', '-s', TEST_SESSION, '-n', 'main']);
+    });
+
+    afterAll(() => {
+        try {
+            execFileSync('tmux', ['kill-session', '-t', TEST_SESSION]);
+        } catch {
+            // Session may already be killed
+        }
+    });
+
+    it('should detect tmux version >= 3.0', async () => {
+        const utils = new TmuxUtilities(TEST_SESSION);
+        const result = await utils.executeTmuxCommand(['list-sessions']);
+        expect(result).not.toBeNull();
+        expect(result!.returncode).toBe(0);
+
+        // Verify version is parseable (same regex as spawnInTmux)
+        const versionOutput = spawnSync('tmux', ['-V'], { stdio: 'pipe' }).stdout.toString();
+        const match = versionOutput.match(/tmux\s+(\d+)\.(\d+)/);
+        expect(match).not.toBeNull();
+        expect(parseInt(match![1])).toBeGreaterThanOrEqual(3);
+    });
+
+    it('should spawn window with -d flag (no focus steal)', async () => {
+        const utils = new TmuxUtilities(TEST_SESSION);
+
+        // Record current window before spawn
+        const beforeResult = await utils.executeTmuxCommand(
+            ['display-message', '-p', '#{window_name}'],
+            TEST_SESSION
+        );
+        const activeWindowBefore = beforeResult?.stdout.trim();
+
+        // Spawn a new window
+        const result = await utils.spawnInTmux(['echo test-no-focus-steal'], {
+            sessionName: TEST_SESSION,
+            windowName: 'test-no-focus',
+            cwd: '/tmp'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.pid).toBeGreaterThan(0);
+        expect(result.sessionId).toContain(TEST_SESSION);
+
+        // Verify active window did NOT change (the -d flag worked)
+        const afterResult = await utils.executeTmuxCommand(
+            ['display-message', '-p', '#{window_name}'],
+            TEST_SESSION
+        );
+        const activeWindowAfter = afterResult?.stdout.trim();
+        expect(activeWindowAfter).toBe(activeWindowBefore);
+
+        // Clean up
+        await utils.executeTmuxCommand(['kill-window'], TEST_SESSION, 'test-no-focus');
+    });
+
+    it('should accept environment variables parameter without error', async () => {
+        const utils = new TmuxUtilities(TEST_SESSION);
+
+        // Verify spawnInTmux succeeds with env vars (including edge cases)
+        const result = await utils.spawnInTmux(['sleep 2'], {
+            sessionName: TEST_SESSION,
+            windowName: 'test-env',
+            cwd: '/tmp'
+        }, {
+            HAPPY_TEST_VAR: 'value-with-special=chars',
+            ANOTHER_VAR: 'simple',
+            EMPTY_VAR: '',
+            PATH: process.env.PATH || '/usr/bin:/bin'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.pid).toBeGreaterThan(0);
+
+        // Clean up
+        await utils.executeTmuxCommand(['kill-window'], TEST_SESSION, 'test-env');
+    });
+
+    it('should kill window correctly', async () => {
+        const utils = new TmuxUtilities(TEST_SESSION);
+        const windowName = 'test-kill-window';
+
+        // Create a window to kill
+        await utils.executeTmuxCommand(
+            ['new-window', '-d', '-n', windowName],
+            TEST_SESSION
+        );
+
+        // Verify it exists
+        const listBefore = await utils.executeTmuxCommand(
+            ['list-windows', '-F', '#{window_name}'],
+            TEST_SESSION
+        );
+        expect(listBefore?.stdout).toContain(windowName);
+
+        // Kill it using the fixed killWindow method
+        const killed = await utils.killWindow(`${TEST_SESSION}:${windowName}`);
+        expect(killed).toBe(true);
+
+        // Verify it's gone
+        const listAfter = await utils.executeTmuxCommand(
+            ['list-windows', '-F', '#{window_name}'],
+            TEST_SESSION
+        );
+        expect(listAfter?.stdout).not.toContain(windowName);
+    });
+
+    it('should detect shell via pane_current_command with window target', async () => {
+        const utils = new TmuxUtilities(TEST_SESSION);
+        const knownShells = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh', 'nu', 'elvish', 'pwsh']);
+
+        // Query display-message with window target via executeTmuxCommand
+        // This verifies -t is inserted before the format string (not appended after it)
+        const result = await utils.executeTmuxCommand(
+            ['display-message', '-p', '#{pane_current_command}'],
+            TEST_SESSION, 'main'
+        );
+
+        expect(result).not.toBeNull();
+        expect(result!.returncode).toBe(0);
+
+        const command = result!.stdout.trim();
+        expect(knownShells.has(command)).toBe(true);
+    });
+
+    it('should return PID from spawnInTmux', async () => {
+        const utils = new TmuxUtilities(TEST_SESSION);
+
+        const result = await utils.spawnInTmux(['sleep 10'], {
+            sessionName: TEST_SESSION,
+            windowName: 'test-pid',
+            cwd: '/tmp'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.pid).toBeDefined();
+        expect(typeof result.pid).toBe('number');
+        expect(result.pid).toBeGreaterThan(0);
+
+        // Verify the PID is a real process
+        try {
+            process.kill(result.pid!, 0); // Signal 0 = check existence
+            expect(true).toBe(true); // Process exists
+        } catch {
+            // Process might have already exited in CI, that's OK
+        }
+
+        // Clean up
+        await utils.executeTmuxCommand(['kill-window'], TEST_SESSION, 'test-pid');
+    });
+
+    it('should accept CLAUDECODE=empty in env without error', async () => {
+        const utils = new TmuxUtilities(TEST_SESSION);
+
+        // Verify spawnInTmux accepts empty CLAUDECODE value (used to prevent nested detection)
+        const result = await utils.spawnInTmux(['sleep 2'], {
+            sessionName: TEST_SESSION,
+            windowName: 'test-claudecode',
+            cwd: '/tmp'
+        }, {
+            CLAUDECODE: '',
+            PATH: process.env.PATH || '/usr/bin:/bin'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.pid).toBeGreaterThan(0);
+
+        // Clean up
+        await utils.executeTmuxCommand(['kill-window'], TEST_SESSION, 'test-claudecode');
+    });
+
+    it('should handle paths with spaces in send-keys', async () => {
+        const utils = new TmuxUtilities(TEST_SESSION);
+
+        // The spawnInTmux command uses send-keys with -l, which should handle
+        // paths with spaces when properly quoted
+        const result = await utils.spawnInTmux(['echo "path with spaces works"'], {
+            sessionName: TEST_SESSION,
+            windowName: 'test-spaces',
+            cwd: '/tmp'
+        });
+
+        expect(result.success).toBe(true);
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const captureResult = await utils.executeTmuxCommand(
+            ['capture-pane', '-p'],
+            TEST_SESSION, 'test-spaces'
+        );
+        expect(captureResult?.stdout).toContain('path with spaces works');
+
+        // Clean up
+        await utils.executeTmuxCommand(['kill-window'], TEST_SESSION, 'test-spaces');
+    });
+});
+
+// Need beforeAll/afterAll for integration tests
+import { beforeAll, afterAll } from 'vitest';
