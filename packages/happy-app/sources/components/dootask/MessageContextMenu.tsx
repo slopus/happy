@@ -7,8 +7,10 @@ import { Typography } from '@/constants/Typography';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { layout } from '@/components/layout';
+import { useIsTablet } from '@/utils/responsive';
 
-const QUICK_EMOJIS = ['❤️', '👍', '👎', '🔥', '🥳', '👏', '😁'];
+const QUICK_EMOJIS = ['❤️', '👍', '👌', '🔥', '🥳', '👏', '😁'];
 const FADE_IN_MS = 200;
 const FADE_OUT_MS = 150;
 
@@ -44,8 +46,14 @@ export function MessageContextMenu({
     onClose,
 }: MessageContextMenuProps) {
     const { theme } = useUnistyles();
-    const { height: screenH } = useWindowDimensions();
+    const { width: windowWidth, height: screenH } = useWindowDimensions();
     const insets = useSafeAreaInsets();
+    const isTablet = useIsTablet();
+
+    // Sidebar width matches SidebarNavigator: permanent drawer on tablet
+    const sidebarWidth = isTablet
+        ? Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360)
+        : 0;
 
     // Two-phase show/hide: fade content first, then unmount Modal.
     const [modalVisible, setModalVisible] = React.useState(false);
@@ -60,6 +68,26 @@ export function MessageContextMenu({
         onClose: () => void;
         topY: number;
     }>({ actions: [], onEmojiSelect: () => {}, onClose: () => {}, topY: 0 });
+
+    // Web: animate backdrop via DOM (outside Animated.View to avoid
+    // Chromium's backdrop-filter + parent opacity:0 rendering bug)
+    const backdropRef = React.useRef<View>(null);
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const el = backdropRef.current as unknown as HTMLElement | null;
+        if (!el) return;
+
+        if (visible) {
+            el.style.backgroundColor = 'rgba(0,0,0,0.4)';
+            el.style.backdropFilter = 'blur(15px)';
+            el.style.setProperty('-webkit-backdrop-filter', 'blur(15px)');
+            el.style.transition = `opacity ${FADE_IN_MS}ms ease`;
+            requestAnimationFrame(() => { el.style.opacity = '1'; });
+        } else if (modalVisible) {
+            el.style.transition = `opacity ${FADE_OUT_MS}ms ease`;
+            el.style.opacity = '0';
+        }
+    }, [visible, modalVisible]);
 
     React.useEffect(() => {
         if (visible) {
@@ -109,72 +137,89 @@ export function MessageContextMenu({
 
     return (
         <Modal transparent visible={modalVisible} animationType="none" onRequestClose={snap.onClose}>
-            <Animated.View style={[menuStyles.overlay, animatedStyle]}>
-                <Pressable style={StyleSheet.absoluteFillObject} onPress={snap.onClose}>
-                    <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFillObject} />
-                </Pressable>
+            {/* Web: backdrop OUTSIDE Animated.View — Chromium won't compute
+                backdrop-filter when an ancestor has animated opacity starting at 0.
+                Rendering it as a sibling with its own CSS transition fixes this. */}
+            {Platform.OS === 'web' && (
+                <View ref={backdropRef} style={[StyleSheet.absoluteFillObject, { opacity: 0 }]}>
+                    <Pressable style={StyleSheet.absoluteFillObject} onPress={snap.onClose} />
+                </View>
+            )}
 
-                <View style={[menuStyles.container, { top: snap.topY }]}>
-                    {/* Emoji quick bar */}
-                    <View style={[menuStyles.emojiBar, { backgroundColor: theme.colors.surface }]}>
-                        {QUICK_EMOJIS.map((emoji) => (
-                            <Pressable
-                                key={emoji}
-                                onPress={() => { snap.onEmojiSelect(emoji); snap.onClose(); }}
-                                style={menuStyles.emojiButton}
-                            >
-                                <Text style={menuStyles.emojiText}>{emoji}</Text>
-                            </Pressable>
-                        ))}
-                    </View>
+            <Animated.View style={[menuStyles.overlay, animatedStyle]} pointerEvents="box-none">
+                {/* Native: backdrop inside Animated.View (BlurView works fine) */}
+                {Platform.OS !== 'web' && (
+                    <Pressable style={StyleSheet.absoluteFillObject} onPress={snap.onClose}>
+                        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFillObject} />
+                    </Pressable>
+                )}
 
-                    {/* Message preview */}
-                    {snap.preview ? (
-                        <View style={[
-                            menuStyles.previewCard,
-                            {
-                                backgroundColor: snap.preview.isSelf ? theme.colors.surfaceHigh : theme.colors.surface,
-                                alignSelf: snap.preview.isSelf ? 'flex-end' : 'flex-start',
-                            },
-                        ]}>
-                            {snap.preview.senderName && !snap.preview.isSelf ? (
-                                <Text style={[menuStyles.previewSender, { color: theme.colors.textLink }]} numberOfLines={1}>
-                                    {snap.preview.senderName}
-                                </Text>
+                {/* Offset for permanent sidebar, then center-constrain like the page */}
+                <View style={{ flex: 1, paddingLeft: sidebarWidth }} pointerEvents="box-none">
+                    <View style={menuStyles.contentWrapper} pointerEvents="box-none">
+                        <View style={[menuStyles.container, { top: snap.topY }]}>
+                            {/* Emoji quick bar */}
+                            <View style={[menuStyles.emojiBar, { backgroundColor: theme.colors.surface }]}>
+                                {QUICK_EMOJIS.map((emoji) => (
+                                    <Pressable
+                                        key={emoji}
+                                        onPress={() => { snap.onEmojiSelect(emoji); snap.onClose(); }}
+                                        style={menuStyles.emojiButton}
+                                    >
+                                        <Text style={menuStyles.emojiText}>{emoji}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+
+                            {/* Message preview */}
+                            {snap.preview ? (
+                                <View style={[
+                                    menuStyles.previewCard,
+                                    {
+                                        backgroundColor: snap.preview.isSelf ? theme.colors.surfaceHigh : theme.colors.surface,
+                                        alignSelf: snap.preview.isSelf ? 'flex-end' : 'flex-start',
+                                    },
+                                ]}>
+                                    {snap.preview.senderName && !snap.preview.isSelf ? (
+                                        <Text style={[menuStyles.previewSender, { color: theme.colors.textLink }]} numberOfLines={1}>
+                                            {snap.preview.senderName}
+                                        </Text>
+                                    ) : null}
+                                    <View style={menuStyles.previewContent}>
+                                        {snap.preview.content}
+                                    </View>
+                                </View>
                             ) : null}
-                            <View style={menuStyles.previewContent}>
-                                {snap.preview.content}
+
+                            {/* Action list */}
+                            <View style={[menuStyles.actionList, { backgroundColor: theme.colors.surface }]}>
+                                {snap.actions.map((action, i) => (
+                                    <Pressable
+                                        key={action.label}
+                                        onPress={() => { action.onPress(); snap.onClose(); }}
+                                        style={({ pressed }) => [
+                                            menuStyles.actionItem,
+                                            pressed && { backgroundColor: theme.colors.surfaceHigh },
+                                            i < snap.actions.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
+                                        ]}
+                                    >
+                                        <Text style={[
+                                            menuStyles.actionLabel,
+                                            { color: action.destructive ? theme.colors.textDestructive : theme.colors.text },
+                                        ]}>
+                                            {action.label}
+                                        </Text>
+                                        {action.icon ? (
+                                            <Ionicons
+                                                name={action.icon as any}
+                                                size={20}
+                                                color={action.destructive ? theme.colors.textDestructive : theme.colors.textSecondary}
+                                            />
+                                        ) : null}
+                                    </Pressable>
+                                ))}
                             </View>
                         </View>
-                    ) : null}
-
-                    {/* Action list */}
-                    <View style={[menuStyles.actionList, { backgroundColor: theme.colors.surface }]}>
-                        {snap.actions.map((action, i) => (
-                            <Pressable
-                                key={action.label}
-                                onPress={() => { action.onPress(); snap.onClose(); }}
-                                style={({ pressed }) => [
-                                    menuStyles.actionItem,
-                                    pressed && { backgroundColor: theme.colors.surfaceHigh },
-                                    i < snap.actions.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
-                                ]}
-                            >
-                                <Text style={[
-                                    menuStyles.actionLabel,
-                                    { color: action.destructive ? theme.colors.textDestructive : theme.colors.text },
-                                ]}>
-                                    {action.label}
-                                </Text>
-                                {action.icon ? (
-                                    <Ionicons
-                                        name={action.icon as any}
-                                        size={20}
-                                        color={action.destructive ? theme.colors.textDestructive : theme.colors.textSecondary}
-                                    />
-                                ) : null}
-                            </Pressable>
-                        ))}
                     </View>
                 </View>
             </Animated.View>
@@ -187,6 +232,12 @@ export function MessageContextMenu({
 const menuStyles = StyleSheet.create((theme) => ({
     overlay: {
         flex: 1,
+    },
+    contentWrapper: {
+        flex: 1,
+        maxWidth: layout.maxWidth,
+        width: '100%',
+        alignSelf: 'center',
     },
     container: {
         position: 'absolute',
