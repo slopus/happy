@@ -469,6 +469,37 @@ function NewSessionWizard() {
         event.target.value = '';
     }, [addImageFromUri]);
 
+    const handlePaste = React.useCallback(async (event: ClipboardEvent) => {
+        if (!canAddMore || !supportsImages) return;
+
+        const items = event.clipboardData?.items;
+        if (!items) return;
+
+        for (const item of Array.from(items)) {
+            if (item.type.startsWith('image/')) {
+                event.preventDefault();
+                const file = item.getAsFile();
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    await addImageFromUri(url, file.type);
+                }
+                break;
+            }
+        }
+    }, [canAddMore, supportsImages, addImageFromUri]);
+
+    // Add paste event listener for images (web only)
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+
+        const pasteListener = (e: Event) => handlePaste(e as ClipboardEvent);
+        document.addEventListener('paste', pasteListener);
+
+        return () => {
+            document.removeEventListener('paste', pasteListener);
+        };
+    }, [handlePaste]);
+
     const handleImageDrop = React.useCallback(async (files: File[]) => {
         if (!canAddMore || !supportsImages) return;
         for (const file of files) {
