@@ -144,7 +144,7 @@ export default function CommitScreen() {
         const encodedPath = btoa(
             new TextEncoder().encode(fullPath).reduce((s, b) => s + String.fromCharCode(b), '')
         );
-        router.push(`/session/${sessionId}/file?path=${encodedPath}&ref=${hash}`);
+        router.push(`/session/${sessionId}/file?path=${encodeURIComponent(encodedPath)}&ref=${hash}`);
     }, [router, sessionId, sessionPath, hash]);
 
     // Action menu

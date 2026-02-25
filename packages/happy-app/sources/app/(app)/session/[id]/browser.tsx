@@ -164,7 +164,7 @@ export default function BrowserScreen() {
             const encodedPath = btoa(
                 new TextEncoder().encode(fullPath).reduce((s, b) => s + String.fromCharCode(b), '')
             );
-            router.push(`/session/${sessionId}/file?path=${encodedPath}`);
+            router.push(`/session/${sessionId}/file?path=${encodeURIComponent(encodedPath)}`);
         }
     }, [currentPath, navigateTo, router, sessionId]);
 
@@ -173,7 +173,7 @@ export default function BrowserScreen() {
         const encodedPath = btoa(
             new TextEncoder().encode(fullPath).reduce((s, b) => s + String.fromCharCode(b), '')
         );
-        router.push(`/session/${sessionId}/file?path=${encodedPath}`);
+        router.push(`/session/${sessionId}/file?path=${encodeURIComponent(encodedPath)}`);
     }, [rootPath, router, sessionId]);
 
     const handleNavigateUp = React.useCallback(() => {

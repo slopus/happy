@@ -260,9 +260,10 @@ export default function FilesScreen() {
 
     const handleFilePress = React.useCallback((file: GitFileStatus | FileItem, staged?: boolean) => {
         // Navigate to file viewer with the file path (base64 encoded for special characters)
+        // encodeURIComponent ensures base64 chars (+, /, =) are URL-safe on web
         const encodedPath = btoa(new TextEncoder().encode(file.fullPath).reduce((s, b) => s + String.fromCharCode(b), ''));
         const stagedParam = staged ? '&staged=1' : '';
-        router.push(`/session/${sessionId}/file?path=${encodedPath}${stagedParam}`);
+        router.push(`/session/${sessionId}/file?path=${encodeURIComponent(encodedPath)}${stagedParam}`);
     }, [router, sessionId]);
 
     const renderFileIcon = (file: GitFileStatus) => {

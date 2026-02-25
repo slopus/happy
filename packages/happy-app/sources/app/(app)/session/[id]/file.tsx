@@ -190,7 +190,7 @@ export default function FileScreen() {
                     const encodedPath = btoa(
                         new TextEncoder().encode(filePath).reduce((s, b) => s + String.fromCharCode(b), '')
                     );
-                    router.push(`/session/${sessionId}/edit?path=${encodedPath}`);
+                    router.push(`/session/${sessionId}/edit?path=${encodeURIComponent(encodedPath)}`);
                 },
             });
         }
@@ -375,7 +375,7 @@ export default function FileScreen() {
                     const response = await sessionReadFile(sessionId, filePath);
 
                     if (!isCancelled) {
-                        if (response.success && response.content) {
+                        if (response && response.success && response.content) {
                             // Decode base64 content to UTF-8 string
                             let decodedContent: string;
                             try {
@@ -409,7 +409,7 @@ export default function FileScreen() {
                                 isBinary
                             });
                         } else {
-                            setError(response.error || 'Failed to read file');
+                            setError(response?.error || 'Failed to read file');
                         }
                     }
                 }
