@@ -1,187 +1,269 @@
-# Happy
+# slaphappy
 
-Code on the go — control AI coding agents from your mobile device.
+Control AI coding agents from anywhere — your phone, Slack, or the terminal.
 
-Free. Open source. Code anywhere.
+Free. Open source. Built on [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+
+> **Fork notice:** This project is a fork of [slopus/happy](https://github.com/slopus/happy) (MIT License).
 
 ## Installation
 
 ```bash
-npm install -g slaphappy
+npm install -g @hiroki_3463/slaphappy
 ```
 
-## Run From Source
-
-From a repo checkout:
+Or run from source:
 
 ```bash
-# repository root
-yarn cli --help
-
-# package directory
+# From the repository root
 yarn cli --help
 ```
 
-## Usage
+## Quick Start
 
 ### Claude (default)
 
 ```bash
-happy
+slaphappy
 ```
 
-This will:
-1. Start a Claude Code session
-2. Display a QR code to connect from your mobile device
-3. Allow real-time session sharing between Claude Code and your mobile app
+1. Starts a Claude Code session
+2. Displays a QR code to connect from your mobile device
+3. Allows real-time session sharing between Claude Code and your phone
 
-### Gemini
+### Slack Integration
 
 ```bash
-happy gemini
+# One-time setup
+slaphappy slack setup
+
+# Start a session
+slaphappy slack
 ```
 
-Start a Gemini CLI session with remote control capabilities.
-
-**First time setup:**
-```bash
-# Authenticate with Google
-happy connect gemini
-```
+Your Claude Code session is now controllable from a Slack thread. Reply in the thread to send input to Claude. Permission requests and questions appear as interactive buttons.
 
 ## Commands
 
 ### Main Commands
 
-- `happy` – Start Claude Code session (default)
-- `happy gemini` – Start Gemini CLI session
-- `happy codex` – Start Codex mode
-- `happy acp` – Start a generic ACP-compatible agent
+| Command | Description |
+|---------|-------------|
+| `slaphappy` | Start Claude Code session (default) |
+| `slaphappy slack` | Start Slack-integrated Claude session |
+| `slaphappy slack setup` | Interactive Slack setup wizard |
+| `slaphappy slack status` | Show Slack config and connection state |
+| `slaphappy gemini` | Start Gemini CLI session |
+| `slaphappy codex` | Start Codex mode |
+| `slaphappy acp` | Start a generic ACP-compatible agent |
 
 ### Utility Commands
 
-- `happy auth` – Manage authentication
-- `happy connect` – Store AI vendor API keys in Happy cloud
-- `happy sandbox` – Configure sandbox runtime restrictions
-- `happy notify` – Send a push notification to your devices
-- `happy daemon` – Manage background service
-- `happy doctor` – System diagnostics & troubleshooting
+| Command | Description |
+|---------|-------------|
+| `slaphappy auth` | Manage authentication |
+| `slaphappy connect` | Store AI vendor API keys |
+| `slaphappy sandbox` | Configure sandbox restrictions |
+| `slaphappy notify` | Send a push notification |
+| `slaphappy daemon` | Manage background service |
+| `slaphappy doctor` | System diagnostics |
 
-### Connect Subcommands
+## Slack Integration
 
-```bash
-happy connect gemini     # Authenticate with Google for Gemini
-happy connect claude     # Authenticate with Anthropic
-happy connect codex      # Authenticate with OpenAI
-happy connect status     # Show connection status for all vendors
+### Overview
+
+The Slack integration creates a real-time bridge between Claude Code and a Slack thread. Each session gets its own thread where you can:
+
+- **Send messages** — Reply in the thread to send input to Claude
+- **Approve/deny tools** — Click buttons to approve or deny permission requests
+- **Answer questions** — Select options when Claude asks via `AskUserQuestion`
+- **Monitor progress** — Emoji reactions show processing state
+
+### Emoji Reactions
+
+| Emoji | Meaning |
+|-------|---------|
+| 👀 | Message received, processing started |
+| ✅ | Claude responded |
+| ⏳ | Processing in progress |
+
+### Setup
+
+#### 1. Create a Slack App
+
+Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From a manifest** → paste:
+
+```json
+{
+  "display_information": {
+    "name": "Claude Agent",
+    "description": "Claude Code remote control via Slack threads",
+    "background_color": "#1a1a2e"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "claude-agent",
+      "always_online": true
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "channels:history",
+        "channels:read",
+        "channels:join",
+        "reactions:write",
+        "reactions:read",
+        "users:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": ["message.channels"]
+    },
+    "socket_mode_enabled": true,
+    "org_deploy_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
 ```
 
-### Gemini Subcommands
+**Required scopes explained:**
+
+| Scope | Purpose |
+|-------|---------|
+| `chat:write` | Post messages and update threads |
+| `channels:history` | Read thread replies |
+| `channels:read` | List and search channels |
+| `channels:join` | Auto-join the configured channel |
+| `reactions:write` | Add 👀/✅ reactions |
+| `reactions:read` | Read existing reactions |
+| `users:read` | List workspace members for owner selection |
+
+#### 2. Get Tokens
+
+- **Bot Token** (`xoxb-`): OAuth & Permissions → Install to Workspace → copy Bot User OAuth Token
+- **App Token** (`xapp-`): Basic Information → App-Level Tokens → Generate (scope: `connections:write`)
+
+#### 3. Run Setup Wizard
 
 ```bash
-happy gemini                      # Start Gemini session
-happy gemini model set <model>    # Set default model
-happy gemini model get            # Show current model
-happy gemini project set <id>     # Set Google Cloud Project ID (for Workspace accounts)
-happy gemini project get          # Show current Google Cloud Project ID
+slaphappy slack setup
 ```
 
-**Available models:** `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+The wizard will prompt for:
+1. **Bot Token** — paste your `xoxb-` token
+2. **App Token** — paste your `xapp-` token
+3. **Channel** — search and select from your workspace channels
+4. **Notification user** — search and select a user (this user becomes the only authorized user for the session)
+5. **Server URL** — optional, defaults to official server
 
-### Generic ACP Commands
+### Usage
 
 ```bash
-happy acp gemini                     # Run built-in Gemini ACP command
-happy acp opencode                   # Run built-in OpenCode ACP command
-happy acp opencode --verbose         # Include raw backend/envelope logs
-happy acp -- custom-agent --flag     # Run any ACP-compatible command directly
+# Start with default permission mode
+slaphappy slack
+
+# Start with auto-approve (questions still require interaction)
+slaphappy slack --permission-mode bypassPermissions
+
+# Start with a specific model
+slaphappy slack --model opus
 ```
 
-### Sandbox Subcommands
+In `bypassPermissions` mode, all tool calls (Bash, Edit, Write, etc.) are auto-approved. The only exception is `AskUserQuestion`, which always renders interactive buttons in Slack so you can select an answer.
 
-```bash
-happy sandbox configure  # Interactive sandbox setup wizard
-happy sandbox status     # Show current sandbox configuration
-happy sandbox disable    # Disable sandboxing
-```
+### Security
+
+- **User allowlist**: Only the user selected during setup can interact with the bot. Messages from other users are silently ignored.
+- **Channel isolation**: The bot only listens in the configured channel.
+- **Session-scoped threads**: Each session creates its own thread. No cross-session interference.
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `missing_scope` error | Reinstall the app in Slack (OAuth & Permissions → Reinstall) |
+| Bot not posting to channel | The bot auto-joins on start. If it fails, manually invite it with `/invite @claude-agent` |
+| Multiple Socket Mode connections warning | Previous sessions may have stale connections. They expire automatically after ~30 seconds |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `HAPPY_SLACK_BOT_TOKEN` | Override bot token (skips config file) |
+| `HAPPY_SLACK_APP_TOKEN` | Override app token |
+| `HAPPY_SLACK_CHANNEL_ID` | Override channel ID |
 
 ## Options
 
 ### Claude Options
 
-- `-m, --model <model>` - Claude model to use (default: sonnet)
-- `-p, --permission-mode <mode>` - Permission mode: auto, default, or plan
-- `--claude-env KEY=VALUE` - Set environment variable for Claude Code
-- `--claude-arg ARG` - Pass additional argument to Claude CLI
+| Option | Description |
+|--------|-------------|
+| `-m, --model <model>` | Claude model to use (default: sonnet) |
+| `-p, --permission-mode <mode>` | Permission mode: default, acceptEdits, bypassPermissions, plan |
+| `--claude-env KEY=VALUE` | Set environment variable for Claude Code |
+| `--claude-arg ARG` | Pass additional argument to Claude CLI |
 
 ### Global Options
 
-- `-h, --help` - Show help
-- `-v, --version` - Show version
-- `--no-sandbox` - Disable sandbox for the current Claude/Codex run
+| Option | Description |
+|--------|-------------|
+| `-h, --help` | Show help |
+| `-v, --version` | Show version |
+| `--no-sandbox` | Disable sandbox for the current run |
 
 ## Environment Variables
 
 ### Happy Configuration
 
-- `HAPPY_SERVER_URL` - Custom server URL (default: https://api.cluster-fluster.com)
-- `HAPPY_WEBAPP_URL` - Custom web app URL (default: https://app.happy.engineering)
-- `HAPPY_HOME_DIR` - Custom home directory for Happy data (default: ~/.happy)
-- `HAPPY_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
-- `HAPPY_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HAPPY_SERVER_URL` | Custom server URL | `https://api.cluster-fluster.com` |
+| `HAPPY_WEBAPP_URL` | Custom web app URL | `https://app.happy.engineering` |
+| `HAPPY_HOME_DIR` | Custom home directory | `~/.happy` |
+| `HAPPY_DISABLE_CAFFEINATE` | Disable macOS sleep prevention | — |
+| `HAPPY_EXPERIMENTAL` | Enable experimental features | — |
 
 ### Gemini Configuration
 
-- `GEMINI_MODEL` - Override default Gemini model
-- `GOOGLE_CLOUD_PROJECT` - Google Cloud Project ID (required for Workspace accounts)
+| Variable | Description |
+|----------|-------------|
+| `GEMINI_MODEL` | Override default Gemini model |
+| `GOOGLE_CLOUD_PROJECT` | Google Cloud Project ID (for Workspace accounts) |
 
-## Gemini Authentication
-
-### Personal Google Account
-
-Personal Gmail accounts work out of the box:
+## Gemini
 
 ```bash
-happy connect gemini
-happy gemini
+# First-time setup
+slaphappy connect gemini
+
+# Start session
+slaphappy gemini
+
+# Model management
+slaphappy gemini model set gemini-2.5-pro
+slaphappy gemini model get
+
+# Google Workspace accounts require a project
+slaphappy gemini project set your-project-id
 ```
 
-### Google Workspace Account
-
-Google Workspace (organization) accounts require a Google Cloud Project:
-
-1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable the Gemini API
-3. Set the project ID:
-
-```bash
-happy gemini project set your-project-id
-```
-
-Or use environment variable:
-```bash
-GOOGLE_CLOUD_PROJECT=your-project-id happy gemini
-```
-
-**Guide:** https://goo.gle/gemini-cli-auth-docs#workspace-gca
-
-## Contributing
-
-Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+Available models: `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
 
 ## Requirements
 
 - Node.js >= 20.0.0
+- Claude CLI installed & logged in (`claude` command in PATH)
+- For Gemini: `npm install -g @google/gemini-cli`
 
-### For Claude
+## Contributing
 
-- Claude CLI installed & logged in (`claude` command available in PATH)
-
-### For Gemini
-
-- Gemini CLI installed (`npm install -g @google/gemini-cli`)
-- Google account authenticated via `happy connect gemini`
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
-MIT
+MIT — Copyright (c) 2024 Happy Coder Contributors

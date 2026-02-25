@@ -1,5 +1,5 @@
 {
-  "name": "slaphappy",
+  "name": "@hiroki_3463/slaphappy",
   "version": "0.14.0-0",
   "description": "Mobile and Web client for Claude Code and Codex",
   "author": "Kirill Dubovitskiy",
@@ -13,10 +13,7 @@
   "repository": "HirokiKobayashi-R/happy",
   "bin": {
     "slaphappy": "./bin/happy.mjs",
-    "slaphappy-mcp": "./bin/happy-mcp.mjs",
-    "happy": "./bin/happy.mjs",
-    "happy-mcp": "./bin/happy-mcp.mjs",
-    "happy-debug": "./bin/happy.mjs"
+    "slaphappy-mcp": "./bin/happy-mcp.mjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -58,8 +55,8 @@
     "bin",
     "scripts",
     "skills",
-    "tools",
-    "package.json"
+    "tools/archives",
+    "tools/licenses"
   ],
   "scripts": {
     "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
@@ -123,6 +120,7 @@
     "ps-list": "^8.1.1",
     "qrcode-terminal": "^0.12.0",
     "react": "^19.2.0",
+    "@slack/bolt": "^4.1.0",
     "socket.io-client": "^4.8.1",
     "tar": "^7.5.2",
     "tmp": "^0.2.5",
