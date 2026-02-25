@@ -43,7 +43,7 @@ export class PermissionHandler {
     private allowedBashLiterals = new Set<string>();
     private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
-    private onPermissionRequestCallback?: (toolCallId: string) => void;
+    private onPermissionRequestCallbacks: ((toolCallId: string, toolName: string, input: unknown) => void)[] = [];
 
     constructor(session: Session) {
         this.session = session;
@@ -51,10 +51,19 @@ export class PermissionHandler {
     }
     
     /**
-     * Set callback to trigger when permission request is made
+     * Add callback to trigger when permission request is made.
+     * Multiple callbacks are supported (additive).
      */
-    setOnPermissionRequest(callback: (toolCallId: string) => void) {
-        this.onPermissionRequestCallback = callback;
+    addOnPermissionRequest(callback: (toolCallId: string, toolName: string, input: unknown) => void): void {
+        this.onPermissionRequestCallbacks.push(callback);
+    }
+
+    /**
+     * Remove a previously registered permission request callback.
+     */
+    removeOnPermissionRequest(callback: (toolCallId: string, toolName: string, input: unknown) => void): void {
+        const idx = this.onPermissionRequestCallbacks.indexOf(callback);
+        if (idx !== -1) this.onPermissionRequestCallbacks.splice(idx, 1);
     }
 
     handleModeChange(mode: PermissionMode) {
@@ -204,9 +213,9 @@ export class PermissionHandler {
                 input
             });
 
-            // Trigger callback to send delayed messages immediately
-            if (this.onPermissionRequestCallback) {
-                this.onPermissionRequestCallback(id);
+            // Trigger callbacks (delayed message release, Slack button posting, etc.)
+            for (const cb of this.onPermissionRequestCallbacks) {
+                cb(id, toolName, input);
             }
             
             // Send push notification
@@ -428,6 +437,61 @@ export class PermissionHandler {
             // Handle the permission response based on tool type
             this.handlePermissionResponse(message, pending);
         });
+    }
+
+    /**
+     * Inject a permission response from an external source (e.g., Slack buttons).
+     * Replicates the logic from setupClientHandler for responses arriving
+     * outside of the normal RPC channel.
+     */
+    injectPermissionResponse(id: string, approved: boolean, reason?: string): boolean {
+        const pending = this.pendingRequests.get(id);
+        if (!pending) {
+            logger.debug(`[PermissionHandler] injectPermissionResponse: request ${id} not found`);
+            return false;
+        }
+
+        const response: PermissionResponse = {
+            id,
+            approved,
+            reason,
+            receivedAt: Date.now(),
+        };
+
+        this.responses.set(id, response);
+        this.pendingRequests.delete(id);
+
+        // Move processed request to completedRequests BEFORE resolving
+        this.session.client.updateAgentState((currentState) => {
+            const request = currentState.requests?.[id];
+            if (!request) return currentState;
+            let r = { ...currentState.requests };
+            delete r[id];
+            return {
+                ...currentState,
+                requests: r,
+                completedRequests: {
+                    ...currentState.completedRequests,
+                    [id]: {
+                        ...request,
+                        completedAt: Date.now(),
+                        status: approved ? 'approved' : 'denied',
+                        reason,
+                    }
+                }
+            };
+        });
+
+        this.handlePermissionResponse(response, pending);
+        return true;
+    }
+
+    /**
+     * Get info about a pending permission request (for external UI rendering).
+     */
+    getPendingRequest(id: string): { toolName: string; input: unknown } | null {
+        const pending = this.pendingRequests.get(id);
+        return pending ? { toolName: pending.toolName, input: pending.input } : null;
     }
 
     /**

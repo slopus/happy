@@ -105,6 +105,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
+    session.permissionHandler = permissionHandler;
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
@@ -112,7 +113,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     );
 
     // Set up callback to release delayed messages when permission is requested
-    permissionHandler.setOnPermissionRequest((toolCallId: string) => {
+    permissionHandler.addOnPermissionRequest((toolCallId: string, _toolName: string, _input: unknown) => {
         messageQueue.releaseToolCall(toolCallId);
     });
 
@@ -129,6 +130,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
 
     function onMessage(message: SDKMessage) {
+        session.emitSDKMessage(message);
 
         // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);

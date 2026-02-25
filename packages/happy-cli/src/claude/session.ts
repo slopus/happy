@@ -4,6 +4,8 @@ import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
+import type { SDKMessage } from "./sdk";
+import type { PermissionHandler } from "./utils/permissionHandler";
 
 export class Session {
     readonly path: string;
@@ -27,9 +29,36 @@ export class Session {
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
-    
+
+    private _permissionHandler: PermissionHandler | null = null;
+    private permissionHandlerReadyCallbacks: ((handler: PermissionHandler) => void)[] = [];
+
+    /** Fires callback immediately if handler already set, otherwise defers until set */
+    onPermissionHandlerReady = (callback: (handler: PermissionHandler) => void): void => {
+        if (this._permissionHandler) {
+            callback(this._permissionHandler);
+        } else {
+            this.permissionHandlerReadyCallbacks.push(callback);
+        }
+    }
+
+    get permissionHandler(): PermissionHandler | null {
+        return this._permissionHandler;
+    }
+
+    set permissionHandler(handler: PermissionHandler | null) {
+        this._permissionHandler = handler;
+        if (handler) {
+            for (const cb of this.permissionHandlerReadyCallbacks) cb(handler);
+            this.permissionHandlerReadyCallbacks = [];
+        }
+    }
+
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
+
+    /** Callbacks to be notified when an SDK message is received */
+    private sdkMessageCallbacks: ((message: SDKMessage) => void)[] = [];
     
     /** Keep alive interval reference for cleanup */
     private keepAliveInterval: NodeJS.Timeout;
@@ -83,6 +112,8 @@ export class Session {
     cleanup = (): void => {
         clearInterval(this.keepAliveInterval);
         this.sessionFoundCallbacks = [];
+        this.sdkMessageCallbacks = [];
+        this.permissionHandlerReadyCallbacks = [];
         logger.debug('[Session] Cleaned up resources');
     }
 
@@ -139,6 +170,30 @@ export class Session {
         if (index !== -1) {
             this.sessionFoundCallbacks.splice(index, 1);
         }
+    }
+
+    /**
+     * Register a callback to be notified when an SDK message is received
+     */
+    addSDKMessageCallback = (callback: (message: SDKMessage) => void): void => {
+        this.sdkMessageCallbacks.push(callback);
+    }
+
+    /**
+     * Remove an SDK message callback
+     */
+    removeSDKMessageCallback = (callback: (message: SDKMessage) => void): void => {
+        const index = this.sdkMessageCallbacks.indexOf(callback);
+        if (index !== -1) {
+            this.sdkMessageCallbacks.splice(index, 1);
+        }
+    }
+
+    /**
+     * Emit an SDK message to all registered callbacks
+     */
+    emitSDKMessage = (message: SDKMessage): void => {
+        for (const cb of this.sdkMessageCallbacks) cb(message);
     }
 
     /**

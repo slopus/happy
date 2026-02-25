@@ -29,7 +29,6 @@ import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { restoreStdin } from '@/utils/restoreStdin';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
-
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
 
@@ -44,6 +43,18 @@ export interface StartOptions {
     noSandbox?: boolean
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** Extension lifecycle hook — called after session infrastructure is created, before main loop */
+    onInit?: (ctx: {
+        sessionId: string
+        workingDirectory: string
+        model: string | undefined
+        messageQueue: MessageQueue2<EnhancedMode>
+        permissionMode: PermissionMode
+        apiSession: { updateMetadata: (fn: (m: any) => any) => void }
+    }) => Promise<{
+        onSessionReady?: (session: Session) => void
+        onCleanup?: (reason?: string) => Promise<void>
+    } | null>
 }
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
@@ -302,6 +313,18 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         disallowedTools: mode.disallowedTools
     }));
 
+    // Extension lifecycle hook
+    const extensionHooks = options.onInit
+        ? await options.onInit({
+            sessionId: response.id,
+            workingDirectory,
+            model: options.model,
+            messageQueue,
+            permissionMode: initialPermissionMode || 'default',
+            apiSession: session,
+        })
+        : null
+
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
@@ -452,6 +475,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     archiveReason: 'User terminated'
                 }));
                 
+                // Extension cleanup
+                await extensionHooks?.onCleanup?.('User terminated');
+
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
@@ -517,6 +543,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         onSessionReady: (sessionInstance) => {
             // Store reference for hook server callback
             currentSession = sessionInstance;
+            extensionHooks?.onSessionReady?.(sessionInstance);
         },
         mcpServers: {
             'happy': {
@@ -532,6 +559,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         jsRuntime: options.jsRuntime,
         startedBy: options.startedBy
     });
+
+    // Extension cleanup
+    await extensionHooks?.onCleanup?.();
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
     // Note: currentSession is set by onSessionReady callback during loop()

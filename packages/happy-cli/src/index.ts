@@ -94,6 +94,18 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'slack') {
+    try {
+      const { handleSlackCommand } = await import('./commands/slack');
+      await handleSlackCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'bye') {
     console.log('Bye!');
     process.exit(0);
@@ -661,6 +673,7 @@ ${chalk.bold('Usage:')}
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
+  happy slack             Slack bot integration (setup, start, status)
   happy attach <session-id>  Attach running Claude Code session to happy
   happy notify            Send push notification
   happy daemon            Manage background service that allows
