@@ -1,4 +1,4 @@
-import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
+import { MarkdownSpan, parseMarkdown, stripSystemTags } from './parseMarkdown';
 import { Link } from 'expo-router';
 import * as React from 'react';
 import { Pressable, ScrollView, View, Platform } from 'react-native';
@@ -37,7 +37,7 @@ export const MarkdownView = React.memo((props: {
 
     const handleLongPress = React.useCallback(() => {
         try {
-            const textId = storeTempText(props.markdown);
+            const textId = storeTempText(stripSystemTags(props.markdown));
             router.push(`/text-selection?textId=${textId}`);
         } catch (error) {
             console.error('Error storing text for selection:', error);
@@ -101,13 +101,13 @@ export const MarkdownView = React.memo((props: {
 });
 
 function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
-    return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
+    return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} selectable={props.selectable} /></Text>;
 }
 
 function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
     const s = (style as any)[`header${props.level}`];
     const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
-    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
+    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} selectable={props.selectable} /></Text>;
 }
 
 function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean }) {
@@ -115,7 +115,7 @@ function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last:
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
+                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} selectable={props.selectable} /></Text>
             ))}
         </View>
     );
@@ -126,7 +126,7 @@ function RenderNumberedListBlock(props: { items: { number: number, spans: Markdo
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} /></Text>
+                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} /></Text>
             ))}
         </View>
     );
@@ -216,13 +216,13 @@ function RenderOptionsBlock(props: {
     );
 }
 
-function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
+function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, selectable?: boolean }) {
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
                 return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
             } else {
-                return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
+                return <Text key={index} selectable={props.selectable ?? false} style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }
         })}
     </>)
