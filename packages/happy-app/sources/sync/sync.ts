@@ -509,9 +509,6 @@ class Sync {
                 timeoutPromise
             ]);
 
-            // Cleanup all mechanisms
-            cleanup();
-
             log.log(`Message send completed via: ${result.type}`);
             log.log(`[SEND_DEBUG][SYNC] race_done sid=${sessionId} localId=${localId} via=${result.type} elapsedMs=${Date.now() - sendStartedAt}`);
 
@@ -519,21 +516,56 @@ class Sync {
             if (result.type === 'send') {
                 if (result.success) {
                     // Server confirmed, add message to local list
+                    cleanup();
                     if (normalizedMessage) {
                         this.applyMessages(sessionId, [normalizedMessage]);
                     }
                     log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=send`);
                     return { success: true, localId };
                 } else {
+                    // Send ack failed, but message might have been delivered.
+                    // The WebSocket push may be in-flight (e.g. async decryption in progress).
+                    // Give Mechanism 2 (storage subscription) a fallback window to confirm delivery
+                    // before returning failure. The subscription is still active since we haven't
+                    // called cleanup() yet.
+                    log.log(`[SEND_DEBUG][SYNC] send_ack_failed sid=${sessionId} localId=${localId} error=${result.error}, waiting for fallback`);
+                    const SEND_FAIL_FALLBACK_MS = 3000;
+                    const fallbackResult = await Promise.race([
+                        messageArrivedPromise,
+                        pollingPromise,
+                        new Promise<RaceResult>(resolve =>
+                            setTimeout(() => resolve({ type: 'timeout' }), SEND_FAIL_FALLBACK_MS)
+                        )
+                    ]);
+                    cleanup();
+
+                    if (fallbackResult.type === 'arrived' || fallbackResult.type === 'polling') {
+                        log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=fallback-${fallbackResult.type} (after send ack failure)`);
+                        return { success: true, localId };
+                    }
+
+                    // Final check: message might have arrived during the fallback window
+                    // but the subscription/polling didn't catch it in time
+                    if (messageExists()) {
+                        log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=fallback-exists (after send ack failure)`);
+                        return { success: true, localId };
+                    }
+
                     log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=send error=${result.error}`);
                     return { success: false, error: result.error, localId };
                 }
             } else if (result.type === 'arrived' || result.type === 'polling') {
                 // Message confirmed in list (either via WebSocket or polling)
+                cleanup();
                 log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=${result.type}`);
                 return { success: true, localId };
             } else {
-                // Timeout
+                // Timeout - do a final check before giving up
+                cleanup();
+                if (messageExists()) {
+                    log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=timeout-exists`);
+                    return { success: true, localId };
+                }
                 log.log(`Message ${localId} not confirmed after ${TOTAL_TIMEOUT_MS}ms, returning failure for retry`);
                 log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=timeout`);
                 return { success: false, error: 'Message send timed out', localId };
