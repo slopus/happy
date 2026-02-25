@@ -33,12 +33,15 @@ export class Session {
     private _permissionHandler: PermissionHandler | null = null;
     private permissionHandlerReadyCallbacks: ((handler: PermissionHandler) => void)[] = [];
 
-    /** Fires callback immediately if handler already set, otherwise defers until set */
+    /**
+     * Register a persistent listener that fires whenever a new PermissionHandler is set.
+     * If a handler is already available, fires immediately AND on future changes.
+     * This ensures Slack bridge re-wires on every mode transition (local→remote→local→remote).
+     */
     onPermissionHandlerReady = (callback: (handler: PermissionHandler) => void): void => {
+        this.permissionHandlerReadyCallbacks.push(callback);
         if (this._permissionHandler) {
             callback(this._permissionHandler);
-        } else {
-            this.permissionHandlerReadyCallbacks.push(callback);
         }
     }
 
@@ -50,7 +53,6 @@ export class Session {
         this._permissionHandler = handler;
         if (handler) {
             for (const cb of this.permissionHandlerReadyCallbacks) cb(handler);
-            this.permissionHandlerReadyCallbacks = [];
         }
     }
 

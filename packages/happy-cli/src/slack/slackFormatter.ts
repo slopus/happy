@@ -254,8 +254,8 @@ function formatResultMessage(message: SDKResultMessage): string[] {
 
     // Don't include message.result — it duplicates the final assistant message
     // that was already posted to the thread.
-    const durationSec = Math.round(message.duration_ms / 1000)
-    const costStr = message.total_cost_usd.toFixed(4)
+    const durationSec = Math.round((message.duration_ms ?? 0) / 1000)
+    const costStr = (message.total_cost_usd ?? 0).toFixed(4)
 
     return [`${statusLabel}\n_${message.num_turns} turns | ${durationSec}s | $${costStr}_`]
 }

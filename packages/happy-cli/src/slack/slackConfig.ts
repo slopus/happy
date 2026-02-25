@@ -7,7 +7,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { configuration } from '@/configuration'
 import { SlackConfigSchema } from '@/slack/types'
@@ -27,6 +27,7 @@ function applyEnvOverrides(config: SlackConfig): SlackConfig {
     botToken: process.env.HAPPY_SLACK_BOT_TOKEN ?? config.botToken,
     appToken: process.env.HAPPY_SLACK_APP_TOKEN ?? config.appToken,
     channelId: process.env.HAPPY_SLACK_CHANNEL_ID ?? config.channelId,
+    notifyUserId: process.env.HAPPY_SLACK_NOTIFY_USER_ID ?? config.notifyUserId,
   }
 }
 
@@ -45,6 +46,7 @@ export async function readSlackConfig(): Promise<SlackConfig | null> {
       botToken: process.env.HAPPY_SLACK_BOT_TOKEN,
       appToken: process.env.HAPPY_SLACK_APP_TOKEN,
       channelId: process.env.HAPPY_SLACK_CHANNEL_ID,
+      ...(process.env.HAPPY_SLACK_NOTIFY_USER_ID && { notifyUserId: process.env.HAPPY_SLACK_NOTIFY_USER_ID }),
     }
     const result = SlackConfigSchema.safeParse(envOnly)
     if (result.success) {
@@ -82,6 +84,5 @@ export async function writeSlackConfig(config: SlackConfig): Promise<void> {
     await mkdir(configuration.happyHomeDir, { recursive: true })
   }
 
-  await writeFile(slackConfigFile, JSON.stringify(config, null, 2))
-  await chmod(slackConfigFile, 0o600)
+  await writeFile(slackConfigFile, JSON.stringify(config, null, 2), { mode: 0o600 })
 }

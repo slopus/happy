@@ -46,6 +46,7 @@ export class SlackBridge {
     private turnCount = 0
     private totalCost = 0
     private processingTs: string | null = null
+    private processingGeneration = 0
     private lastUserMessageTs: string | null = null
 
     private permissionHandler: PermissionHandler | null = null
@@ -159,8 +160,8 @@ export class SlackBridge {
             this.permissionHandler = null
         }
 
-        // Expire any remaining permission buttons
-        for (const [, ts] of this.permissionMessageTs) {
+        // Expire any remaining permission buttons (await to ensure delivery before exit)
+        const expirePromises = [...this.permissionMessageTs.values()].map((ts) =>
             this.router.webClient.chat.update({
                 token: this.config.botToken,
                 channel: this.config.channelId,
@@ -168,7 +169,8 @@ export class SlackBridge {
                 text: 'Session ended',
                 blocks: [{ type: 'context', elements: [{ type: 'mrkdwn', text: ':white_circle: Session ended' }] }],
             }).catch(() => {})
-        }
+        )
+        await Promise.allSettled(expirePromises)
         this.permissionMessageTs.clear()
 
         if (this._threadTs) {
@@ -183,6 +185,11 @@ export class SlackBridge {
      * Must be called after the session's PermissionHandler is available.
      */
     setupPermissionBridge(handler: PermissionHandler): void {
+        // Clean up previous handler's callback (idempotent on mode transitions)
+        if (this.permissionHandler && this.permissionCallback) {
+            this.permissionHandler.removeOnPermissionRequest(this.permissionCallback)
+        }
+
         this.permissionHandler = handler
         this.permissionCallback = (toolCallId, toolName, input) => {
             this.postPermissionRequest(toolCallId, toolName, input)
@@ -285,7 +292,10 @@ export class SlackBridge {
             }),
         }))
 
-        blocks.push({ type: 'actions', elements: buttons })
+        // Slack actions block supports max 5 elements — split into chunks
+        for (let i = 0; i < buttons.length; i += 5) {
+            blocks.push({ type: 'actions', elements: buttons.slice(i, i + 5) })
+        }
 
         // Show option descriptions as context
         const descriptions = question.options
@@ -447,9 +457,15 @@ export class SlackBridge {
         })
     }
 
-    /** Post a processing indicator to the thread */
+    /** Post a processing indicator to the thread (deletes previous one first) */
     private postProcessingIndicator(): void {
         if (!this._threadTs) return
+
+        // Delete previous indicator to avoid stale ones on rapid messages
+        this.deleteProcessingIndicator()
+
+        // Increment generation to detect stale .then() callbacks on rapid messages
+        const gen = ++this.processingGeneration
 
         this.router.webClient.chat.postMessage({
             token: this.config.botToken,
@@ -457,6 +473,17 @@ export class SlackBridge {
             thread_ts: this._threadTs,
             text: ':hourglass_flowing_sand: Processing…',
         }).then((result) => {
+            if (this.processingGeneration !== gen) {
+                // A newer indicator was posted while this one was in-flight — delete this stale one
+                if (result.ts) {
+                    this.router.webClient.chat.delete({
+                        token: this.config.botToken,
+                        channel: this.config.channelId,
+                        ts: result.ts,
+                    }).catch(() => {})
+                }
+                return
+            }
             this.processingTs = result.ts ?? null
         }).catch((err) => {
             logger.debug('[SlackBridge] Failed to post processing indicator: ' + String(err))
