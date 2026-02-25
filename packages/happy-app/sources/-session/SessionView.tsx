@@ -228,7 +228,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
-    const [isSilentRefreshTracking, setIsSilentRefreshTracking] = React.useState(false);
+    const [silentRefreshTrackingKey, setSilentRefreshTrackingKey] = React.useState(0);
     const [silentRefreshPhase, setSilentRefreshPhase] = React.useState<'idle' | 'refreshing' | 'failed'>('idle');
     const latestMessageSnapshotRef = React.useRef({ isLoaded, messages });
     latestMessageSnapshotRef.current = { isLoaded, messages };
@@ -237,7 +237,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const startSilentRefreshTracking = React.useCallback(() => {
         const snapshot = latestMessageSnapshotRef.current;
         if (!snapshot.isLoaded) {
-            setIsSilentRefreshTracking(false);
+            setSilentRefreshTrackingKey(0);
             setSilentRefreshPhase('idle');
             silentRefreshBaselineRef.current = null;
             return;
@@ -247,12 +247,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             isLoaded: snapshot.isLoaded,
             messagesRef: snapshot.messages,
         };
-        setIsSilentRefreshTracking(true);
+        setSilentRefreshTrackingKey((k) => k + 1);
         setSilentRefreshPhase('idle');
     }, []);
 
+    const isTracking = silentRefreshTrackingKey > 0;
+
     React.useEffect(() => {
-        if (!isSilentRefreshTracking) {
+        if (!isTracking) {
             return;
         }
         const baseline = silentRefreshBaselineRef.current;
@@ -260,14 +262,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             return;
         }
         if (messages !== baseline.messagesRef || isLoaded !== baseline.isLoaded) {
-            setIsSilentRefreshTracking(false);
+            setSilentRefreshTrackingKey(0);
             setSilentRefreshPhase('idle');
             silentRefreshBaselineRef.current = null;
         }
-    }, [isSilentRefreshTracking, isLoaded, messages]);
+    }, [isTracking, isLoaded, messages]);
 
     React.useEffect(() => {
-        if (!isSilentRefreshTracking) {
+        if (!isTracking) {
             return;
         }
         const refreshingTimer = setTimeout(() => {
@@ -285,10 +287,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             clearTimeout(refreshingTimer);
             clearTimeout(failedTimer);
         };
-    }, [isSilentRefreshTracking]);
+    }, [isTracking, silentRefreshTrackingKey]);
 
     const handleRetryStatusRefresh = React.useCallback(() => {
         startSilentRefreshTracking();
+        setSilentRefreshPhase('refreshing');
         void sync.refreshSessions().catch(() => {
             // Keep current phase and rely on timeout-based feedback.
         });
@@ -649,7 +652,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             void sync.refreshSessions().catch(() => {
                 // Silent refresh indicator handles delayed feedback if status stays stale.
             });
-            gitStatusSync.getSync(sessionId);
+            gitStatusSync.invalidate(sessionId);
         }, [sessionId, startSilentRefreshTracking])
     );
 
