@@ -15,11 +15,11 @@ import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
+import { startRealtimeSession, stopRealtimeSession, sendDictationNow } from '@/realtime/RealtimeSession';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, usePendingTranscription, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -165,6 +165,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
+    const pendingTranscription = usePendingTranscription();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
 
@@ -205,6 +206,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
+    // Pick up transcribed text from dictation "tap to stop" and fill the input
+    React.useEffect(() => {
+        if (pendingTranscription) {
+            setMessage(prev => prev ? prev + ' ' + pendingTranscription : pendingTranscription);
+            storage.getState().setPendingTranscription(null);
+        }
+    }, [pendingTranscription]);
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -237,27 +246,33 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }), []);
 
 
-    // Handle microphone button press - memoized to prevent button flashing
+    // Handle microphone button press - toggle voice session (assistant or dictation)
     const handleMicrophonePress = React.useCallback(async () => {
         if (realtimeStatus === 'connecting') {
             return; // Prevent actions during transitions
         }
         if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
             try {
-                const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
+                const voiceMode = storage.getState().settings.voiceMode ?? 'assistant';
+                const initialPrompt = voiceMode === 'assistant'
+                    ? voiceHooks.onVoiceStarted(sessionId)
+                    : undefined;
                 await startRealtimeSession(sessionId, initialPrompt);
-                tracking?.capture('voice_session_started', { sessionId });
+                tracking?.capture('voice_session_started', { sessionId, voiceMode });
             } catch (error) {
-                console.error('Failed to start realtime session:', error);
+                console.error('Failed to start voice session:', error);
                 Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
-                tracking?.capture('voice_session_error', { error: error instanceof Error ? error.message : 'Unknown error' });
             }
         } else if (realtimeStatus === 'connected') {
-            await stopRealtimeSession();
-            tracking?.capture('voice_session_stopped');
-
-            // Notify voice assistant about voice session stop
-            voiceHooks.onVoiceStopped();
+            const voiceMode = storage.getState().settings.voiceMode ?? 'assistant';
+            if (voiceMode === 'dictation') {
+                // Send button during dictation → stop + transcribe + send immediately
+                await sendDictationNow();
+            } else {
+                await stopRealtimeSession();
+                voiceHooks.onVoiceStopped();
+            }
+            tracking?.capture('voice_session_stopped', { voiceMode });
         }
     }, [realtimeStatus, sessionId]);
 

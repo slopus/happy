@@ -1,3 +1,16 @@
+// Voice mode selection
+export type VoiceMode = 'assistant' | 'dictation';
+
+// Whisper recording status (used by dictation mode)
+export type RecordingStatus = 'idle' | 'recording' | 'transcribing';
+
+// Whisper recorder interface (used by dictation mode)
+export interface WhisperRecorder {
+    start: () => Promise<void>;
+    stop: () => Promise<string>; // Returns audio file URI
+}
+
+// ElevenLabs types (used by assistant mode)
 export interface VoiceSessionConfig {
     sessionId: string;
     initialContext?: string;

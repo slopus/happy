@@ -272,6 +272,7 @@ export const SettingsSchema = z.object({
     hideInactiveSessions: z.boolean().describe('Hide inactive sessions in the main list'),
     reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
+    voiceMode: z.enum(['assistant', 'dictation']).describe('Voice input mode: assistant (ElevenLabs AI) or dictation (Whisper STT)'),
     voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
     recentMachinePaths: z.array(z.object({
@@ -341,6 +342,7 @@ export const settingsDefaults: Settings = {
     hideInactiveSessions: false,
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
+    voiceMode: 'assistant',
     voiceAssistantLanguage: null,
     preferredLanguage: null,
     recentMachinePaths: [],

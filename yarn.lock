@@ -975,11 +975,11 @@
     livekit-client "^2.11.4"
 
 "@elevenlabs/react-native@^0.5.7":
-  version "0.5.8"
-  resolved "https://registry.yarnpkg.com/@elevenlabs/react-native/-/react-native-0.5.8.tgz#4df65c7d5910be2f6f77ff3953acaeac13cb3b8b"
-  integrity sha512-nrumWFAgu8rQIwt19mSTFSbz3VnxFDRCm2jjtY1p+Cn1i+ldXGpqJov2LQf/JAgBd1gtquuurv0dgDDwlLgHhg==
+  version "0.5.10"
+  resolved "https://registry.yarnpkg.com/@elevenlabs/react-native/-/react-native-0.5.10.tgz#ce17fe5aea79019df3079d5c18df59508edbe141"
+  integrity sha512-WLSswAw68HDpUAjsiIBpEu+1hMdYiBs9rIqpgFWAM+2yQJycoRSo2bq+MHNyR0FKjBe8uh7ji9ZRNb0JdHM/bw==
   dependencies:
-    "@elevenlabs/types" "0.4.0"
+    "@elevenlabs/types" "0.5.0"
 
 "@elevenlabs/react@^0.12.3":
   version "0.12.3"
@@ -992,6 +992,11 @@
   version "0.4.0"
   resolved "https://registry.yarnpkg.com/@elevenlabs/types/-/types-0.4.0.tgz#f5a45ef2b8ed5a304eef9f28ba0da0af8ccdd7c2"
   integrity sha512-6CQb4r9DjepILhLybDxW0h8rvbsR8jPAp74HvFGYuvYdXcQRTkYTD9BQ4PV6VcuC1iqx0UljzJj8js3ADQ8EXw==
+
+"@elevenlabs/types@0.5.0":
+  version "0.5.0"
+  resolved "https://registry.yarnpkg.com/@elevenlabs/types/-/types-0.5.0.tgz#57bebc5216b39b0323b66a5bb6371cf2f8423a6c"
+  integrity sha512-tTawfIkJdOmV1W74yOYFbCXOwz/5sYKtdxVoK8uf5tDdtpZUHerBC25Oc8i7shZQc6QvvIuyV2YtMh37PKYMBA==
 
 "@emnapi/runtime@^1.7.0":
   version "1.8.1"
@@ -2515,6 +2520,13 @@
   version "1.42.2"
   resolved "https://registry.yarnpkg.com/@livekit/protocol/-/protocol-1.42.2.tgz#2932e2cc8f2100b49d3ce154a521cd26b2a95fe2"
   integrity sha512-0jeCwoMJKcwsZICg5S6RZM4xhJoF78qMvQELjACJQn6/VB+jmiySQKOSELTXvPBVafHfEbMlqxUw2UR1jTXs2g==
+  dependencies:
+    "@bufbuild/protobuf" "^1.10.0"
+
+"@livekit/protocol@1.44.0":
+  version "1.44.0"
+  resolved "https://registry.yarnpkg.com/@livekit/protocol/-/protocol-1.44.0.tgz#f94a34690dc7dcf1a808f0095f2e480c471747d9"
+  integrity sha512-/vfhDUGcUKO8Q43r6i+5FrDhl5oZjm/X3U4x2Iciqvgn5C8qbj+57YPcWSJ1kyIZm5Cm6AV2nAPjMm3ETD/iyg==
   dependencies:
     "@bufbuild/protobuf" "^1.10.0"
 
@@ -9759,7 +9771,23 @@ lines-and-columns@^1.1.6:
   resolved "https://registry.yarnpkg.com/lines-and-columns/-/lines-and-columns-1.2.4.tgz#eca284f75d2965079309dc0ad9255abb2ebc1632"
   integrity sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==
 
-livekit-client@^2.11.4, livekit-client@^2.15.4:
+livekit-client@^2.11.4:
+  version "2.17.2"
+  resolved "https://registry.yarnpkg.com/livekit-client/-/livekit-client-2.17.2.tgz#5f4393240fb5ceaca256d297e8bc92f2ac4311b3"
+  integrity sha512-+67y2EtAWZabARlY7kANl/VT1Uu1EJYR5a8qwpT2ub/uBCltsEgEDOxCIMwE9HFR5w+z41HR6GL9hyEvW/y6CQ==
+  dependencies:
+    "@livekit/mutex" "1.1.1"
+    "@livekit/protocol" "1.44.0"
+    events "^3.3.0"
+    jose "^6.1.0"
+    loglevel "^1.9.2"
+    sdp-transform "^2.15.0"
+    ts-debounce "^4.0.0"
+    tslib "2.8.1"
+    typed-emitter "^2.1.0"
+    webrtc-adapter "^9.0.1"
+
+livekit-client@^2.15.4:
   version "2.17.0"
   resolved "https://registry.yarnpkg.com/livekit-client/-/livekit-client-2.17.0.tgz#ece2d782580f36c62debe6d919288e2fee9cdad1"
   integrity sha512-BD1QUS44ancVTBdnAher0aO7DV5holFYH2lYradYT/HgXtn6R8xPyvtDAH3UH40jGcesDo9fEopCFwEdOgrIhg==
@@ -11471,7 +11499,14 @@ qrcode@^1.5.4:
     pngjs "^5.0.0"
     yargs "^15.3.1"
 
-qs@^6.13.1, qs@^6.14.0, qs@^6.14.1:
+qs@^6.13.1:
+  version "6.15.0"
+  resolved "https://registry.yarnpkg.com/qs/-/qs-6.15.0.tgz#db8fd5d1b1d2d6b5b33adaf87429805f1909e7b3"
+  integrity sha512-mAZTtNCeetKMH+pSjrb76NAM8V9a05I9aBZOHztWy/UqcJdQYNsf59vrRKWnojAT9Y+GbIvoTBC++CPHqpDBhQ==
+  dependencies:
+    side-channel "^1.1.0"
+
+qs@^6.14.0, qs@^6.14.1:
   version "6.14.1"
   resolved "https://registry.yarnpkg.com/qs/-/qs-6.14.1.tgz#a41d85b9d3902f31d27861790506294881871159"
   integrity sha512-4EK3+xJl8Ts67nLYNwqw/dsFVnCf+qR7RgXSK9jEEm9unao3njwMDdmsdvoKBKHzxd7tCYz5e5M+SnMjdtXGQQ==
