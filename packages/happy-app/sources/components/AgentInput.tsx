@@ -479,20 +479,24 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     });
     const hasText = inputState.text.trim().length > 0 || props.value.trim().length > 0;
 
-    // Handle combined text and selection state changes
-    const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-        // console.log('📝 Input state changed:', JSON.stringify(newState));
-        setInputState(newState);
-    }, []);
-
     // Keep a latest text snapshot to avoid stale parent-state reads during fast click-after-type sends.
     const latestTextRef = React.useRef(props.value);
     React.useEffect(() => {
         latestTextRef.current = props.value;
     }, [props.value]);
-    React.useEffect(() => {
-        latestTextRef.current = inputState.text;
-    }, [inputState.text]);
+
+    // Keep the latest text in sync immediately so a fast tap on send doesn't use stale state.
+    const handleTextChange = React.useCallback((text: string) => {
+        latestTextRef.current = text;
+        props.onChangeText(text);
+    }, [props.onChangeText]);
+
+    // Handle combined text and selection state changes
+    const handleInputStateChange = React.useCallback((newState: TextInputState) => {
+        // console.log('📝 Input state changed:', JSON.stringify(newState));
+        latestTextRef.current = newState.text;
+        setInputState(newState);
+    }, []);
 
     // Use the tracked selection from inputState
     const activeWord = useActiveWord(inputState.text, inputState.selection, props.autocompletePrefixes);
@@ -1326,7 +1330,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             value={props.value}
                             paddingTop={Platform.OS === 'web' ? 10 : 8}
                             paddingBottom={Platform.OS === 'web' ? 10 : 8}
-                            onChangeText={props.onChangeText}
+                            onChangeText={handleTextChange}
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
@@ -1527,15 +1531,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         })}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         onPress={() => {
-                                            hapticsLight();
                                             const textSnapshot = latestTextRef.current;
                                             if (textSnapshot.trim()) {
+                                                hapticsLight();
                                                 props.onSend(textSnapshot);
-                                            } else {
-                                                props.onMicPress?.();
+                                                return;
+                                            }
+                                            if (props.onMicPress) {
+                                                hapticsLight();
+                                                props.onMicPress();
                                             }
                                         }}
-                                        disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
+                                        accessibilityState={{
+                                            disabled: !!(props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)),
+                                        }}
+                                        disabled={props.isSendDisabled || props.isSending}
                                     >
                                         {props.isSending ? (
                                             <ActivityIndicator

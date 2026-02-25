@@ -33,15 +33,22 @@ export const ChatInput = React.memo(({ onSendText, onSendImage, onSendFile, repl
     const insets = useSafeAreaInsets();
     const [text, setText] = React.useState('');
     const [menuVisible, setMenuVisible] = React.useState(false);
+    const latestTextRef = React.useRef(text);
 
     const canSend = text.trim().length > 0;
 
+    const handleTextChange = React.useCallback((value: string) => {
+        latestTextRef.current = value;
+        setText(value);
+    }, []);
+
     const handleSend = React.useCallback(() => {
-        const trimmed = text.trim();
+        const trimmed = latestTextRef.current.trim();
         if (!trimmed) return;
         onSendText(trimmed);
+        latestTextRef.current = '';
         setText('');
-    }, [text, onSendText]);
+    }, [onSendText]);
 
     const handlePickFromCamera = React.useCallback(async () => {
         try {
@@ -140,7 +147,7 @@ export const ChatInput = React.memo(({ onSendText, onSendImage, onSendFile, repl
                     <MultiTextInput
                         style={{ flex: 1, paddingVertical: 6 }}
                         value={text}
-                        onChangeText={setText}
+                        onChangeText={handleTextChange}
                         placeholder={t('dootask.typeMessage')}
                         maxHeight={120}
                         paddingTop={6}
@@ -149,7 +156,7 @@ export const ChatInput = React.memo(({ onSendText, onSendImage, onSendFile, repl
                     />
                     <Pressable
                         onPress={handleSend}
-                        disabled={!canSend}
+                        accessibilityState={{ disabled: !canSend }}
                         hitSlop={4}
                         style={styles.sendButton}
                     >
