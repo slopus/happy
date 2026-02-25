@@ -5,7 +5,18 @@ import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
  * Base system prompt shared across all configurations
  */
 const BASE_SYSTEM_PROMPT = (() => trimIdent(`
-    ALWAYS when you start a new chat - you must call a tool "mcp__happy__change_title" to set a chat title. When you think chat title is not relevant anymore - call the tool again to change it. When chat name is too generic and you have a change to make it more specific - call the tool again to change it. This title is needed to easily find the chat in the future. Help human.
+    You MUST call the "mcp__happy__change_title" tool to set and maintain an accurate chat title. This title is how the user identifies sessions at a glance across multiple machines and projects. Follow these rules:
+
+    1. IMMEDIATELY on your first response — set a title based on the user's first message.
+    2. Once you understand the real goal — update the title to be more specific (this often applies after the first exchange).
+    3. When the conversation's focus shifts significantly — update the title to reflect the new focus.
+    4. When you complete a major task and move on to something new — update the title.
+
+    Title guidelines:
+    - Keep titles short (under 50 characters) and action-oriented.
+    - Describe WHAT is being done, not WHERE (the project path is shown separately).
+    - Good: "Fix auth token refresh", "Add dark mode toggle", "Debug flaky CI tests"
+    - Bad: "happy-repo", "Working on code", "Helping with project", "Chat"
 `))();
 
 /**
