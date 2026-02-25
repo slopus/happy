@@ -316,6 +316,7 @@ export const en: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        newSession: 'New session',
     },
 
     commandPalette: {

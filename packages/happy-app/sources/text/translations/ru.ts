@@ -393,6 +393,7 @@ export const ru: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
+        newSession: 'Новая сессия',
     },
 
     commandPalette: {

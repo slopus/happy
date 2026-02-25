@@ -5,7 +5,7 @@ import { Text } from '@/components/StyledText';
 import { router, useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome, getOSIconName } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -133,6 +133,35 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
     },
+    machineBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surfaceHighest,
+        paddingHorizontal: 6,
+        height: 18,
+        borderRadius: 4,
+        marginLeft: 8,
+    },
+    machineBadgeText: {
+        fontSize: 10,
+        fontWeight: '500',
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    machineBadgeIcon: {
+        marginRight: 3,
+    },
+    sectionHeaderRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    sectionHeaderMachineText: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 12, default: 12 }),
+        opacity: 0.7,
+    },
     swipeAction: {
         width: 112,
         height: '100%',
@@ -256,10 +285,18 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                     {projectGroup.displayPath}
                                 </Text>
                             </View>
-                            {/* Show git status instead of machine name */}
-                            {firstSession ? (
-                                <ProjectGitStatus sessionId={firstSession.id} />
-                            ) : null}
+                            <View style={styles.sectionHeaderRight}>
+                                {/* Machine name when single machine */}
+                                {projectGroup.machines.size === 1 && (
+                                    <Text style={styles.sectionHeaderMachineText} numberOfLines={1}>
+                                        {Array.from(projectGroup.machines.values())[0]?.machineName}
+                                    </Text>
+                                )}
+                                {/* Git status when available */}
+                                {firstSession ? (
+                                    <ProjectGitStatus sessionId={firstSession.id} />
+                                ) : null}
+                            </View>
                         </View>
 
                         {/* Card with just the sessions */}
@@ -273,6 +310,8 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                             <CompactSessionRow
                                                 key={session.id}
                                                 session={session}
+                                                machineName={machineGroup.machineName}
+                                                showMachineBadge={projectGroup.machines.size > 1}
                                                 selected={selectedSessionId === session.id}
                                                 showBorder={index < machineGroup.sessions.length - 1 ||
                                                     Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
@@ -289,7 +328,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 }
 
 // Compact session row component with status line
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
+const CompactSessionRow = React.memo(({ session, machineName, showMachineBadge, selected, showBorder }: { session: Session; machineName?: string; showMachineBadge?: boolean; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const sessionStatus = useSessionStatus(session);
@@ -393,6 +432,21 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {sessionName}
                     </Text>
+
+                    {/* Machine badge for multi-machine projects */}
+                    {showMachineBadge && machineName && (
+                        <View style={styles.machineBadge}>
+                            <Ionicons
+                                name={getOSIconName(session.metadata?.os) as any}
+                                size={9}
+                                color={styles.machineBadgeText.color}
+                                style={styles.machineBadgeIcon}
+                            />
+                            <Text style={styles.machineBadgeText} numberOfLines={1}>
+                                {machineName}
+                            </Text>
+                        </View>
+                    )}
                 </View>
             </View>
         </Pressable>
