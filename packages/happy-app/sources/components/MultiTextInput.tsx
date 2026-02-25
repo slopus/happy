@@ -58,6 +58,12 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     const selectionRef = React.useRef({ start: 0, end: 0 });
     const inputRef = React.useRef<TextInput>(null);
 
+    // Track latest value in a ref to avoid stale closures in handleSelectionChange.
+    // Without this, onSelectionChange fires with the old useCallback closure (stale `value`),
+    // which can overwrite the correct text with an outdated value.
+    const valueRef = React.useRef(value);
+    valueRef.current = value;
+
     const handleKeyPress = React.useCallback((e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
         if (!onKeyPress) return;
 
@@ -112,9 +118,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         // When text changes, assume cursor moves to end
         const selection = { start: text.length, end: text.length };
         selectionRef.current = selection;
-        
-        console.log('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text, selection }));
-        
+
         onChangeText(text);
         
         if (onStateChange) {
@@ -129,27 +133,28 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         if (e.nativeEvent.selection) {
             const { start, end } = e.nativeEvent.selection;
             const selection = { start, end };
-            
+
             // Only update if selection actually changed
             if (selection.start !== selectionRef.current.start || selection.end !== selectionRef.current.end) {
                 selectionRef.current = selection;
-                console.log('📍 MultiTextInput.native: Selection changed:', JSON.stringify(selection));
-                
+
                 if (onSelectionChange) {
                     onSelectionChange(selection);
                 }
                 if (onStateChange) {
-                    onStateChange({ text: value, selection });
+                    // Use valueRef.current instead of `value` from the closure.
+                    // Native selection change events can fire BEFORE React re-renders with
+                    // the updated value, causing the old closure to send stale text through
+                    // onStateChange, which overwrites the correct text with an empty string.
+                    onStateChange({ text: valueRef.current, selection });
                 }
             }
         }
-    }, [value, onSelectionChange, onStateChange]);
+    }, [onSelectionChange, onStateChange]);
 
     // Imperative handle for direct control
     React.useImperativeHandle(ref, () => ({
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
-            console.log('🎯 MultiTextInput.native: setTextAndSelection:', JSON.stringify({ text, selection }));
-            
             if (inputRef.current) {
                 // Use setNativeProps for direct manipulation
                 inputRef.current.setNativeProps({

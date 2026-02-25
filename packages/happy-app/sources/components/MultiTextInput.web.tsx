@@ -57,6 +57,12 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     const { theme } = useUnistyles();
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
+    // Track latest value in a ref to avoid stale closures in handleSelect.
+    // Without this, onSelect fires with the old useCallback closure (stale `value`),
+    // which can overwrite the correct text with an outdated value via onStateChange.
+    const valueRef = React.useRef(value);
+    valueRef.current = value;
+
     // Convert maxHeight to approximate maxRows (assuming ~24px line height)
     const maxRows = Math.floor(maxHeight / (props.lineHeight ?? 24));
 
@@ -129,18 +135,20 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
 
     const handleSelect = React.useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
         const target = e.target as HTMLTextAreaElement;
-        const selection = { 
-            start: target.selectionStart, 
-            end: target.selectionEnd 
+        const selection = {
+            start: target.selectionStart,
+            end: target.selectionEnd
         };
-        
+
         if (onSelectionChange) {
             onSelectionChange(selection);
         }
         if (onStateChange) {
-            onStateChange({ text: value, selection });
+            // Use valueRef.current instead of `value` from the closure to avoid
+            // sending stale text when the callback fires before React re-renders.
+            onStateChange({ text: valueRef.current, selection });
         }
-    }, [value, onSelectionChange, onStateChange]);
+    }, [onSelectionChange, onStateChange]);
 
     // Imperative handle for direct control
     React.useImperativeHandle(ref, () => ({

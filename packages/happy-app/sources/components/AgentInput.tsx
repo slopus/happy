@@ -486,17 +486,45 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         latestTextRef.current = props.value;
     }, [props.value]);
 
+    // Sync inputState.text when props.value changes externally (e.g., after send clears the input).
+    // Without this, inputState.text retains the old message text because prop changes don't trigger
+    // onStateChange from MultiTextInput, causing hasText to stay true and resolveSendSnapshot()
+    // to return the old text — which makes the send button show an arrow on an empty input and
+    // allows re-sending the previous message.
+    React.useEffect(() => {
+        setInputState(prev => {
+            if (prev.text !== props.value) {
+                return { ...prev, text: props.value };
+            }
+            return prev;
+        });
+    }, [props.value]);
+
     // Keep the latest text in sync immediately so a fast tap on send doesn't use stale state.
     const handleTextChange = React.useCallback((text: string) => {
         latestTextRef.current = text;
         props.onChangeText(text);
     }, [props.onChangeText]);
 
-    // Handle combined text and selection state changes
+    // Handle combined text and selection state changes.
+    // Guards against stale selection-change callbacks (which may carry an outdated text value)
+    // from overwriting correct state set synchronously by handleTextChange.
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-        // console.log('📝 Input state changed:', JSON.stringify(newState));
-        latestTextRef.current = newState.text;
-        setInputState(newState);
+        // Don't let stale callbacks overwrite latestTextRef with empty text
+        if (newState.text || !latestTextRef.current) {
+            latestTextRef.current = newState.text;
+        }
+        // Don't let stale callbacks overwrite non-empty inputState.text with empty text.
+        // When the user legitimately clears text, latestTextRef is already empty
+        // (set by handleTextChange first). When a stale callback fires, latestTextRef
+        // still has the current text, so we can detect the stale case.
+        setInputState(prev => {
+            if (!newState.text && prev.text && latestTextRef.current) {
+                // Stale callback — only update selection, keep the correct text
+                return { ...prev, selection: newState.selection };
+            }
+            return newState;
+        });
     }, []);
 
     const resolveSendSnapshot = React.useCallback((): string => {
