@@ -27,6 +27,7 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, generateCopyTitle, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { log } from '@/log';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -703,6 +704,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onSend={async (textSnapshot) => {
                 const messageToSend = (textSnapshot ?? message).trim();
                 if (messageToSend || images.length > 0) {
+                    const socketStatus = storage.getState().socketStatus;
+                    log.log(`[SEND_DEBUG][UI] tap_send sid=${sessionId} hasText=${messageToSend.length > 0} images=${images.length} isSending=${isSending} socket=${socketStatus}`);
 
                     // Handle /duplicate command locally
                     if (messageToSend.toLowerCase() === '/duplicate') {
@@ -728,6 +731,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
                     try {
                         const result = await sync.sendMessage(sessionId, messageToSend, undefined, imagesToSend, existingLocalId);
+                        log.log(`[SEND_DEBUG][UI] send_result sid=${sessionId} success=${result.success} localId=${result.localId} error=${result.error || 'none'}`);
 
                         if (result.success) {
                             // Clear failed message record and input on success
@@ -739,6 +743,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         } else {
                             // On failure, record localId and content for retry
                             failedMessageRef.current = { localId: result.localId, content: contentForRetry };
+                            log.log(`[SEND_DEBUG][UI] record_retry sid=${sessionId} localId=${result.localId}`);
                         }
                     } finally {
                         setIsSending(false);

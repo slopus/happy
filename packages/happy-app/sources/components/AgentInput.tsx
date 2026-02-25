@@ -21,6 +21,7 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+import { log } from '@/log';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile } from '@/sync/profileUtils';
 import { ImagePreview, LocalImage } from '@/components/ImagePreview';
@@ -498,6 +499,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         setInputState(newState);
     }, []);
 
+    const resolveSendSnapshot = React.useCallback((): string => {
+        const candidates = [latestTextRef.current, inputState.text, props.value];
+        for (const candidate of candidates) {
+            if (candidate.trim().length > 0) {
+                return candidate;
+            }
+        }
+        return latestTextRef.current;
+    }, [inputState.text, props.value]);
+
     // Use the tracked selection from inputState
     const activeWord = useActiveWord(inputState.text, inputState.selection, props.autocompletePrefixes);
     // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
@@ -635,7 +646,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         // Original key handling
         if (Platform.OS === 'web') {
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
-                const textSnapshot = latestTextRef.current;
+                const textSnapshot = resolveSendSnapshot();
                 if (textSnapshot.trim()) {
                     props.onSend(textSnapshot);
                     return true; // Key was handled
@@ -655,7 +666,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, resolveSendSnapshot, props.onSend, props.permissionMode, props.onPermissionModeChange]);
 
     const connectionStatusIndicator = props.connectionStatus ? (
         <>
@@ -1531,7 +1542,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         })}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         onPress={() => {
-                                            const textSnapshot = latestTextRef.current;
+                                            const textSnapshot = resolveSendSnapshot();
+                                            log.log(`[SEND_DEBUG][INPUT] press hasText=${hasText} latestLen=${latestTextRef.current.trim().length} stateLen=${inputState.text.trim().length} propLen=${props.value.trim().length} pickedLen=${textSnapshot.trim().length} mic=${props.onMicPress ? 'yes' : 'no'} disabled=${props.isSendDisabled || props.isSending ? 'yes' : 'no'}`);
                                             if (textSnapshot.trim()) {
                                                 hapticsLight();
                                                 props.onSend(textSnapshot);

@@ -322,6 +322,8 @@ class Sync {
 
         // Use existing localId for retry, or generate new one
         const localId = existingLocalId || randomUUID();
+        const sendStartedAt = Date.now();
+        log.log(`[SEND_DEBUG][SYNC] start sid=${sessionId} localId=${localId} textLen=${text.length} images=${images?.length || 0} existingLocalId=${existingLocalId ? 'yes' : 'no'}`);
 
         // Determine sentFrom based on platform
         let sentFrom: string;
@@ -510,6 +512,7 @@ class Sync {
             cleanup();
 
             log.log(`Message send completed via: ${result.type}`);
+            log.log(`[SEND_DEBUG][SYNC] race_done sid=${sessionId} localId=${localId} via=${result.type} elapsedMs=${Date.now() - sendStartedAt}`);
 
             // Handle result
             if (result.type === 'send') {
@@ -518,21 +521,26 @@ class Sync {
                     if (normalizedMessage) {
                         this.applyMessages(sessionId, [normalizedMessage]);
                     }
+                    log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=send`);
                     return { success: true, localId };
                 } else {
+                    log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=send error=${result.error}`);
                     return { success: false, error: result.error, localId };
                 }
             } else if (result.type === 'arrived' || result.type === 'polling') {
                 // Message confirmed in list (either via WebSocket or polling)
+                log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=${result.type}`);
                 return { success: true, localId };
             } else {
                 // Timeout
                 log.log(`Message ${localId} not confirmed after ${TOTAL_TIMEOUT_MS}ms, returning failure for retry`);
+                log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=timeout`);
                 return { success: false, error: 'Message send timed out', localId };
             }
         } catch (error) {
             cleanup();
             log.log(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=exception error=${error instanceof Error ? error.message : 'Unknown error'}`);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error', localId };
         }
     }
@@ -2675,6 +2683,7 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
 
     // Wire socket status to storage
     apiSocket.onStatusChange((status) => {
+        log.log(`[SEND_DEBUG][SOCKET] status=${status}`);
         storage.getState().setSocketStatus(status);
     });
 
