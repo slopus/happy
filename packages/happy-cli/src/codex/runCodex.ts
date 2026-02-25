@@ -700,21 +700,36 @@ export async function runCodex(opts: {
                 });
 
                 // Persist token usage to server for statistics
-                const info = tokenData as import('../codex/appserver/types').TokenUsageInfo;
-                const usageFromLastEvent = (lastUsage && typeof lastUsage === 'object')
+                // Codex (OpenAI) token_count event structure:
+                //   { total_token_usage: TokenUsage, last_token_usage: TokenUsage, model_context_window }
+                // where TokenUsage = { input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens }
+                //
+                // Key semantic differences from Claude:
+                //   - OpenAI input_tokens INCLUDES cached_input_tokens (Claude's excludes them)
+                //   - OpenAI output_tokens INCLUDES reasoning_output_tokens
+                //   - We normalize to Claude-style breakdown for consistent display
+                const usage = (lastUsage && typeof lastUsage === 'object')
                     ? lastUsage as Record<string, unknown>
                     : {};
                 const toTokenCount = (value: unknown): number => {
                     return (typeof value === 'number' && Number.isFinite(value) && value > 0) ? value : 0;
                 };
-                const inputTokens = toTokenCount(info.input_tokens ?? usageFromLastEvent.input_tokens);
-                const outputTokens = toTokenCount(info.output_tokens ?? usageFromLastEvent.output_tokens);
-                const reasoningTokens = toTokenCount(info.reasoning_tokens ?? usageFromLastEvent.reasoning_tokens);
-                const cacheCreationTokens = toTokenCount(usageFromLastEvent.cache_creation_input_tokens);
-                const cacheReadTokens = toTokenCount(usageFromLastEvent.cache_read_input_tokens);
-                const explicitTotalTokens = toTokenCount(info.total_tokens);
-                const derivedTotalTokens = inputTokens + outputTokens + reasoningTokens + cacheCreationTokens + cacheReadTokens;
-                const totalTokens = explicitTotalTokens > 0 ? explicitTotalTokens : derivedTotalTokens;
+
+                // Extract OpenAI-style fields from last_token_usage (per-request values)
+                const rawInputTokens = toTokenCount(usage.input_tokens);
+                const cachedInputTokens = toTokenCount(usage.cached_input_tokens);
+                const rawOutputTokens = toTokenCount(usage.output_tokens);
+                const reasoningOutputTokens = toTokenCount(usage.reasoning_output_tokens);
+
+                // Normalize to Claude-style breakdown:
+                // - input = uncached input only (for display parity with Claude)
+                // - cache_read = cached input tokens
+                // - output = non-reasoning output
+                // - reasoning = reasoning output tokens
+                // Total remains unchanged: rawInput + rawOutput (no double-counting)
+                const inputTokens = rawInputTokens - cachedInputTokens;
+                const outputTokens = rawOutputTokens - reasoningOutputTokens;
+                const totalTokens = rawInputTokens + rawOutputTokens;
 
                 if (totalTokens > 0) {
                     session.sendUsageReport({
@@ -723,9 +738,9 @@ export async function runCodex(opts: {
                             total: totalTokens,
                             input: inputTokens,
                             output: outputTokens,
-                            reasoning: reasoningTokens,
-                            cache_creation: cacheCreationTokens,
-                            cache_read: cacheReadTokens,
+                            reasoning: reasoningOutputTokens,
+                            cache_creation: 0,
+                            cache_read: cachedInputTokens,
                         },
                         cost: { total: 0 },
                     });

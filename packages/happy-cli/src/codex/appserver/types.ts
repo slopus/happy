@@ -234,12 +234,20 @@ export type EventMsg =
 /** Raw event from Codex (may include unknown event types) */
 export type RawCodexEvent = EventMsg | { type: string; [key: string]: unknown };
 
+/** Per-request or cumulative token usage breakdown from OpenAI */
+export interface TokenUsage {
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  reasoning_output_tokens: number;
+  total_tokens: number;
+}
+
+/** Token usage info from Codex token_count event */
 export interface TokenUsageInfo {
-  total_tokens?: number;
-  input_tokens?: number;
-  output_tokens?: number;
-  reasoning_tokens?: number;
-  context_window?: number;
+  total_token_usage?: TokenUsage;
+  last_token_usage?: TokenUsage;
+  model_context_window?: number | null;
   [key: string]: unknown;
 }
 
