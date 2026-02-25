@@ -27,6 +27,13 @@ let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const REALTIME_MODE_DEBOUNCE_MS = 150;
 
 /**
+ * Tracks session IDs that have been optimistically archived (active set to false locally).
+ * While a session ID is in this set, incoming server updates (activity heartbeats, etc.)
+ * will not overwrite the local `active: false` state, preventing the "disappear → reappear → disappear" flicker.
+ */
+const pendingArchiveSessionIds = new Set<string>();
+
+/**
  * Centralized session online state resolver
  * Returns either "online" (string) or a timestamp (number) for last seen
  */
@@ -413,14 +420,33 @@ export const storage = create<StorageState>()((set, get) => {
                 const existingModelMode = existing?.modelMode;
                 const savedModelMode = savedModelModes[session.id];
                 const existingMessageSyncing = existing?.messageSyncing;
+
+                // If this session has a pending optimistic archive, preserve local active: false
+                // to prevent stale server heartbeats from reverting the archive.
+                // Clear the flag once the server confirms active: false.
+                const isPendingArchive = pendingArchiveSessionIds.has(session.id);
+                if (isPendingArchive && !session.active) {
+                    pendingArchiveSessionIds.delete(session.id);
+                }
+                const resolvedActive = (isPendingArchive && existing && !existing.active && session.active)
+                    ? false
+                    : session.active;
+                const isPreservingArchive = resolvedActive !== session.active;
+                const resolvedPresence = isPreservingArchive
+                    ? resolveSessionOnlineState({ active: false, activeAt: existing!.activeAt })
+                    : presence;
+
                 const mergedSession: Session = {
                     ...session,
+                    // Preserve optimistic archive state
+                    active: resolvedActive,
+                    activeAt: isPreservingArchive ? existing!.activeAt : session.activeAt,
                     // Use existing metadata/agentState if their versions are higher
                     metadata: useExistingMetadata ? existing.metadata : session.metadata,
                     metadataVersion: useExistingMetadata ? existing.metadataVersion : session.metadataVersion,
                     agentState: useExistingAgentState ? existing.agentState : session.agentState,
                     agentStateVersion: useExistingAgentState ? existing.agentStateVersion : session.agentStateVersion,
-                    presence,
+                    presence: resolvedPresence,
                     draft: existingDraft || savedDraft || session.draft || null,
                     permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
                     modelMode: existingModelMode || savedModelMode || session.modelMode || 'default',
@@ -939,6 +965,13 @@ export const storage = create<StorageState>()((set, get) => {
         updateSessionActivity: (sessionId: string, active: boolean) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
+
+            // Track optimistic archive to prevent stale server updates from reverting it
+            if (!active) {
+                pendingArchiveSessionIds.add(sessionId);
+            } else {
+                pendingArchiveSessionIds.delete(sessionId);
+            }
 
             const nextActiveAt = active ? session.activeAt : Math.max(Date.now(), session.activeAt);
             const updatedSession: Session = {
