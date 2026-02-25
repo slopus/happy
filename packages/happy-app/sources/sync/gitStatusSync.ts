@@ -23,6 +23,11 @@ export class GitStatusSync {
     private inFlightFetches = 0;
     private fetchWaiters: Array<() => void> = [];
     private readonly maxConcurrentFetches = 3;
+    // Debounced retry timers for transient RPC/network failures
+    private retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    // Automatic retry attempts per project (for transient failures)
+    private retryAttempts = new Map<string, number>();
+    private readonly maxAutoRetryAttempts = 10;
 
     /**
      * Get project key string for a session
@@ -129,6 +134,59 @@ export class GitStatusSync {
         }
     }
 
+    private clearRetryTimer(projectKey: string): void {
+        const timer = this.retryTimers.get(projectKey);
+        if (!timer) {
+            return;
+        }
+        clearTimeout(timer);
+        this.retryTimers.delete(projectKey);
+    }
+
+    private resetRetryAttempts(projectKey: string): void {
+        this.retryAttempts.delete(projectKey);
+    }
+
+    private scheduleRetry(projectKey: string, delayMs: number = 2500): void {
+        if (this.retryTimers.has(projectKey)) {
+            return;
+        }
+        const attempts = this.retryAttempts.get(projectKey) || 0;
+        if (attempts >= this.maxAutoRetryAttempts) {
+            console.warn(`Git status auto-retry limit reached for ${projectKey} (${this.maxAutoRetryAttempts})`);
+            return;
+        }
+        this.retryAttempts.set(projectKey, attempts + 1);
+        const timer = setTimeout(() => {
+            this.retryTimers.delete(projectKey);
+            const sync = this.projectSyncMap.get(projectKey);
+            if (sync) {
+                sync.invalidate();
+            }
+        }, delayMs);
+        this.retryTimers.set(projectKey, timer);
+    }
+
+    private getGitErrorText(result: {
+        stdout?: string;
+        stderr?: string;
+        error?: string;
+    }): string {
+        return [result.error, result.stderr, result.stdout]
+            .filter((part): part is string => typeof part === 'string' && part.length > 0)
+            .join('\n')
+            .toLowerCase();
+    }
+
+    private isNotGitRepositoryResult(result: {
+        stdout?: string;
+        stderr?: string;
+        error?: string;
+    }): boolean {
+        const text = this.getGitErrorText(result);
+        return text.includes('not a git repository') || text.includes('must be run in a work tree');
+    }
+
     /**
      * Get or create git status sync for a session (creates project-based sync)
      */
@@ -162,6 +220,9 @@ export class GitStatusSync {
         if (!projectKey) {
             return;
         }
+
+        // Explicit invalidation starts a fresh retry cycle.
+        this.resetRetryAttempts(projectKey);
 
         let sync = this.projectSyncMap.get(projectKey);
         if (!sync) {
@@ -197,6 +258,8 @@ export class GitStatusSync {
             
             // Only stop the project sync if no other sessions are using it
             if (!hasOtherSessions) {
+                this.clearRetryTimer(projectKey);
+                this.resetRetryAttempts(projectKey);
                 const sync = this.projectSyncMap.get(projectKey);
                 if (sync) {
                     sync.stop();
@@ -243,14 +306,21 @@ export class GitStatusSync {
                 });
 
                 if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
-                    // Not a git repository, clear any existing status
-                    storage.getState().applyGitStatus(targetSessionId, null);
-
-                    // Also update the project git status
-                    if (metadata.machineId) {
-                        const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
-                        projectManager.updateProjectGitStatus(targetProjectKey, null);
+                    if (this.isNotGitRepositoryResult(gitCheckResult)) {
+                        // Confirmed non-git directory: clear stale status.
+                        storage.getState().applyGitStatus(targetSessionId, null);
+                        if (metadata.machineId) {
+                            const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
+                            projectManager.updateProjectGitStatus(targetProjectKey, null);
+                        }
+                        this.clearRetryTimer(projectKey);
+                        this.resetRetryAttempts(projectKey);
+                        return;
                     }
+
+                    // Transient failure (RPC/network/session hiccup): keep previous status and retry.
+                    console.warn('Transient git check failure, keeping previous git status:', gitCheckResult.error || gitCheckResult.stderr);
+                    this.scheduleRetry(projectKey);
                     return;
                 }
 
@@ -262,8 +332,20 @@ export class GitStatusSync {
                     timeout: 10000
                 });
 
-                if (!statusResult.success) {
-                    console.error('Failed to get git status:', statusResult.error);
+                if (!statusResult.success || statusResult.exitCode !== 0) {
+                    if (this.isNotGitRepositoryResult(statusResult)) {
+                        storage.getState().applyGitStatus(targetSessionId, null);
+                        if (metadata.machineId) {
+                            const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
+                            projectManager.updateProjectGitStatus(targetProjectKey, null);
+                        }
+                        this.clearRetryTimer(projectKey);
+                        this.resetRetryAttempts(projectKey);
+                        return;
+                    }
+
+                    console.warn('Transient git status failure, keeping previous git status:', statusResult.error || statusResult.stderr);
+                    this.scheduleRetry(projectKey);
                     return;
                 }
 
@@ -281,15 +363,35 @@ export class GitStatusSync {
                     timeout: 10000
                 });
 
+                if (!diffStatResult.success || diffStatResult.exitCode !== 0 ||
+                    !stagedDiffStatResult.success || stagedDiffStatResult.exitCode !== 0) {
+                    if (this.isNotGitRepositoryResult(diffStatResult) || this.isNotGitRepositoryResult(stagedDiffStatResult)) {
+                        storage.getState().applyGitStatus(targetSessionId, null);
+                        if (metadata.machineId) {
+                            const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
+                            projectManager.updateProjectGitStatus(targetProjectKey, null);
+                        }
+                        this.clearRetryTimer(projectKey);
+                        this.resetRetryAttempts(projectKey);
+                        return;
+                    }
+
+                    console.warn('Transient git diff-stat failure, keeping previous git status');
+                    this.scheduleRetry(projectKey);
+                    return;
+                }
+
                 // Parse the git status output with diff statistics
                 const gitStatus = this.parseGitStatusV2(
                     statusResult.stdout,
-                    diffStatResult.success ? diffStatResult.stdout : '',
-                    stagedDiffStatResult.success ? stagedDiffStatResult.stdout : ''
+                    diffStatResult.stdout,
+                    stagedDiffStatResult.stdout
                 );
 
                 // Apply to storage (this also updates the project git status via the modified applyGitStatus)
                 storage.getState().applyGitStatus(targetSessionId, gitStatus);
+                this.clearRetryTimer(projectKey);
+                this.resetRetryAttempts(projectKey);
 
                 // Additionally, update the project directly for efficiency
                 if (metadata.machineId) {
@@ -300,7 +402,8 @@ export class GitStatusSync {
 
         } catch (error) {
             console.error('Error fetching git status for project', projectKey, ':', error);
-            // Don't apply error state, just skip this update
+            // Transient unexpected error: keep previous state and retry.
+            this.scheduleRetry(projectKey);
         }
     }
 
