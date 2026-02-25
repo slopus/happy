@@ -594,14 +594,16 @@ const voiceStyles = StyleSheet.create({
 
 // --- Emoji Reactions ---
 
-function EmojiReactionsRow({ emoji, msgId, currentUserId, theme, onEmojiPress }: {
+function EmojiReactionsRow({ emoji, msgId, currentUserId, isSelf, theme, onEmojiPress }: {
     emoji: EmojiReaction[];
     msgId: number;
     currentUserId: number;
+    isSelf?: boolean;
     theme: any;
     onEmojiPress?: (msgId: number, symbol: string) => void;
 }) {
     if (!emoji || emoji.length === 0) return null;
+    const defaultBg = isSelf ? theme.colors.surfaceHighest : theme.colors.surfaceHigh;
     return (
         <View style={emojiStyles.row}>
             {emoji.map((e) => {
@@ -612,8 +614,8 @@ function EmojiReactionsRow({ emoji, msgId, currentUserId, theme, onEmojiPress }:
                         onPress={() => onEmojiPress?.(msgId, e.symbol)}
                         style={[
                             emojiStyles.pill,
-                            { backgroundColor: isMine ? theme.colors.textLink + '20' : theme.colors.surfaceHigh },
-                            isMine && { borderColor: theme.colors.textLink, borderWidth: 1 },
+                            { backgroundColor: isMine ? theme.colors.textLink + '20' : defaultBg },
+                            { borderColor: isMine ? theme.colors.textLink : 'transparent' },
                         ]}
                     >
                         <Text style={emojiStyles.pillEmoji}>{e.symbol}</Text>
@@ -629,7 +631,7 @@ function EmojiReactionsRow({ emoji, msgId, currentUserId, theme, onEmojiPress }:
 
 const emojiStyles = StyleSheet.create({
     row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-    pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+    pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1 },
     pillEmoji: { fontSize: 14 },
     pillCount: { ...Typography.default(), fontSize: 12 },
 });
@@ -821,7 +823,7 @@ export const ChatBubble = React.memo(({
                     <View style={styles.selfContent}>
                         {replyBlock}
                         {content}
-                        <EmojiReactionsRow emoji={msg.emoji} msgId={msg.id} currentUserId={currentUserId} theme={theme} onEmojiPress={onEmojiPress} />
+                        <EmojiReactionsRow emoji={msg.emoji} msgId={msg.id} currentUserId={currentUserId} isSelf theme={theme} onEmojiPress={onEmojiPress} />
                         {statusRow ?? (time ? (
                             <Text style={[styles.selfTime, { color: theme.colors.textSecondary }]}>
                                 {time}{msg.modify > 0 ? ` (${t('dootask.edited')})` : ''}
