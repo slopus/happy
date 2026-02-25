@@ -151,17 +151,17 @@ class ApiSocket {
     /**
      * RPC call for sessions - uses session-specific encryption
      */
-    async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
+    async sessionRPC<R, A>(sessionId: string, method: string, params: A, timeout: number = 30000): Promise<R> {
         const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
-        
-        const result = await this.socket!.emitWithAck('rpc-call', {
+
+        const result = await this.socket!.timeout(timeout).emitWithAck('rpc-call', {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
-        
+
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
@@ -171,13 +171,13 @@ class ApiSocket {
     /**
      * RPC call for machines
      */
-    async machineRPC<R, A>(machineId: string, method: string, params: A): Promise<R> {
+    async machineRPC<R, A>(machineId: string, method: string, params: A, timeout: number = 30000): Promise<R> {
         const machineEncryption = this.encryption!.getMachineEncryption(machineId);
         if (!machineEncryption) {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const result = await this.socket!.timeout(timeout).emitWithAck('rpc-call', {
             method: `${machineId}:${method}`,
             params: await machineEncryption.encryptRaw(params)
         });
@@ -206,11 +206,11 @@ class ApiSocket {
         return true;
     }
 
-    async emitWithAck<T = any>(event: string, data: any): Promise<T> {
+    async emitWithAck<T = any>(event: string, data: any, timeout: number = 30000): Promise<T> {
         if (!this.socket) {
             throw new Error('Socket not connected');
         }
-        return await this.socket.emitWithAck(event, data);
+        return await this.socket.timeout(timeout).emitWithAck(event, data);
     }
 
     //

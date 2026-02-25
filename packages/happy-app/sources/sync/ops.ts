@@ -707,10 +707,13 @@ export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): 
  */
 export async function sessionBash(sessionId: string, request: SessionBashRequest): Promise<SessionBashResponse> {
     try {
+        // RPC timeout = command timeout + 5s buffer for network round-trip
+        const rpcTimeout = (request.timeout || 30000) + 5000;
         const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
             sessionId,
             'bash',
-            request
+            request,
+            rpcTimeout
         );
         return response;
     } catch (error) {

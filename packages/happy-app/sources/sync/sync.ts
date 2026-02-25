@@ -1853,10 +1853,17 @@ class Sync {
                 for (const item of sessionsData) {
                     if (typeof item !== 'string') {
                         this.messagesSync.get(item.id)?.invalidate();
-                        // Also invalidate git status on reconnection
-                        gitStatusSync.invalidate(item.id);
                     }
                 }
+            }
+        });
+
+        // Always refresh git status on ANY socket connect (including recovered connections).
+        // onReconnected skips recovered connections (socket.recovered=true), but git status
+        // local sync state (InvalidateSync, retry counters) may be stuck and needs resetting.
+        apiSocket.onStatusChange((status) => {
+            if (status === 'connected') {
+                gitStatusSync.invalidateForSessions(Object.keys(storage.getState().sessions));
             }
         });
     }
