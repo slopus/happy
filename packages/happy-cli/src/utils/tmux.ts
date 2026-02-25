@@ -467,7 +467,7 @@ export class TmuxUtilities {
     private async waitForShellReady(session: string, window: string, timeoutMs: number): Promise<boolean> {
         const pollInterval = 100;
         const maxAttempts = Math.ceil(timeoutMs / pollInterval);
-        const knownShells = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh']);
+        const knownShells = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh', 'nu', 'elvish', 'pwsh']);
 
         for (let i = 0; i < maxAttempts; i++) {
             const result = await this.executeTmuxCommand(
@@ -934,8 +934,10 @@ export class TmuxUtilities {
                 throw new TmuxSessionIdentifierError(`Window identifier required: ${sessionIdentifier}`);
             }
 
-            const result = await this.executeWinOp('kill-window', [parsed.window], parsed.session);
-            return result;
+            // Pass window via executeTmuxCommand's window parameter so it builds
+            // the correct `-t session:window` target, not a positional argument.
+            const result = await this.executeTmuxCommand(['kill-window'], parsed.session, parsed.window);
+            return result !== null && result.returncode === 0;
         } catch (error) {
             if (error instanceof TmuxSessionIdentifierError) {
                 logger.debug(`[TMUX] Invalid window identifier: ${error.message}`);

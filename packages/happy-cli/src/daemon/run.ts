@@ -415,9 +415,10 @@ export async function startDaemon(): Promise<void> {
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
 
-          // Use absolute path to happy binary — reliable regardless of shell PATH
+          // Use absolute paths for both node and the happy binary — reliable regardless
+          // of shell PATH (NVM, asdf, etc. may not be initialized when send-keys fires)
           const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
-          const fullCommand = `node ${happyBinPath} ${agent} --happy-starting-mode remote --started-by daemon --dangerously-skip-permissions`;
+          const fullCommand = `${process.execPath} ${happyBinPath} ${agent} --happy-starting-mode remote --started-by daemon --dangerously-skip-permissions`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -437,6 +438,12 @@ export async function startDaemon(): Promise<void> {
 
           // Add extra environment variables (these should already be filtered)
           Object.assign(tmuxEnv, extraEnv);
+
+          // Explicitly unset CLAUDECODE even if the tmux server inherited it.
+          // The filter above only skips adding it from process.env, but the tmux
+          // server's global environment may still have it. `-e CLAUDECODE=` overrides
+          // with an empty string, preventing nested session detection.
+          tmuxEnv['CLAUDECODE'] = '';
 
           // Generate a unique token to match the webhook back to this spawn request.
           // The tmux pane PID (#{pane_pid}) is the shell PID, which differs from the
@@ -651,7 +658,8 @@ export async function startDaemon(): Promise<void> {
 
           if (session.tmuxSessionId) {
             // Tmux-spawned session: kill the window (fire-and-forget to keep stopSession synchronous)
-            const tmux = getTmuxUtilities();
+            const parsed = parseTmuxSessionIdentifier(session.tmuxSessionId);
+            const tmux = getTmuxUtilities(parsed.session);
             tmux.killWindow(session.tmuxSessionId).catch((error) => {
               logger.debug(`[DAEMON RUN] Failed to kill tmux window ${session.tmuxSessionId}:`, error);
             });
