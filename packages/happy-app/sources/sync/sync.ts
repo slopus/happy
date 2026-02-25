@@ -100,6 +100,7 @@ class Sync {
     private sessionMessageUpdateQueues = new Map<string, ApiUpdateContainer[]>();
     private sessionMessageQueueRunning = new Set<string>();
     private sessionMessageQueueTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private sessionLastMessageProcessedAt = new Map<string, number>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -2354,21 +2355,27 @@ class Sync {
                     this.sessionMessageUpdateQueues.delete(sessionId);
                     break;
                 }
-                await this.applyNewMessageUpdate(next);
 
-                if ((queue?.length ?? 0) > 0) {
+                // Enforce minimum interval since last processed message
+                const lastProcessedAt = this.sessionLastMessageProcessedAt.get(sessionId) ?? 0;
+                const elapsed = Date.now() - lastProcessedAt;
+                if (elapsed < Sync.NEW_MESSAGE_PROCESS_INTERVAL_MS) {
                     await new Promise<void>((resolve) => {
                         const existingTimer = this.sessionMessageQueueTimers.get(sessionId);
                         if (existingTimer) {
                             clearTimeout(existingTimer);
                         }
+                        const delay = Sync.NEW_MESSAGE_PROCESS_INTERVAL_MS - elapsed;
                         const timer = setTimeout(() => {
                             this.sessionMessageQueueTimers.delete(sessionId);
                             resolve();
-                        }, Sync.NEW_MESSAGE_PROCESS_INTERVAL_MS);
+                        }, delay);
                         this.sessionMessageQueueTimers.set(sessionId, timer);
                     });
                 }
+
+                await this.applyNewMessageUpdate(next);
+                this.sessionLastMessageProcessedAt.set(sessionId, Date.now());
             }
         } finally {
             this.sessionMessageQueueRunning.delete(sessionId);
