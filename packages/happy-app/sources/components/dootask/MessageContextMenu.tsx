@@ -58,6 +58,11 @@ export function MessageContextMenu({
     // Two-phase show/hide: fade content first, then unmount Modal.
     const [modalVisible, setModalVisible] = React.useState(false);
     const opacity = useSharedValue(0);
+    // Ref mirrors modalVisible to avoid stale-closure reads inside the
+    // [visible] effect. Without this, a rapid open→close can read a stale
+    // modalVisible=false and skip the fade-out, leaving the Modal mounted
+    // permanently (invisible overlay blocks all touches → scroll breaks).
+    const modalVisibleRef = React.useRef(false);
 
     // Snapshot content props so they stay stable during fade-out
     // (parent sets contextMenu=null immediately on close, emptying props)
@@ -92,13 +97,17 @@ export function MessageContextMenu({
     React.useEffect(() => {
         if (visible) {
             setModalVisible(true);
+            modalVisibleRef.current = true;
             opacity.value = withTiming(1, { duration: FADE_IN_MS });
             if (Platform.OS !== 'web') {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             }
-        } else if (modalVisible) {
+        } else if (modalVisibleRef.current) {
             opacity.value = withTiming(0, { duration: FADE_OUT_MS });
-            const timer = setTimeout(() => setModalVisible(false), FADE_OUT_MS);
+            const timer = setTimeout(() => {
+                setModalVisible(false);
+                modalVisibleRef.current = false;
+            }, FADE_OUT_MS);
             return () => clearTimeout(timer);
         }
     }, [visible]);
