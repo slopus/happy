@@ -7,6 +7,7 @@ import type { ApprovalPolicy, SandboxMode } from './appserver/types';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
+import { parseClear } from '@/parsers/specialCommands';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
@@ -862,6 +863,31 @@ export async function runCodex(opts: {
             }
 
             if (!message) break;
+
+            // Handle /clear command - reset session
+            if (parseClear(message.message).isClear) {
+                logger.debug('[Codex] /clear command detected - resetting session');
+                messageBuffer.addMessage('Context was reset', 'status');
+                session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
+
+                // Dispose current backend
+                if (backend) { try { await backend.dispose(); } catch { } }
+                backend = null;
+                wasCreated = false;
+                currentModeHash = null;
+                nextResumeFile = null; // Don't resume - start fresh
+
+                // Reset processors
+                permissionHandler.reset();
+                reasoningProcessor.abort();
+                diffProcessor.reset();
+                thinking = false;
+                sendRemoteKeepAlive(thinking);
+
+                // Send ready
+                sendReady();
+                continue;
+            }
 
             // If mode changed, restart with new backend
             if (wasCreated && currentModeHash && message.hash !== currentModeHash) {

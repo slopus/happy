@@ -54,8 +54,12 @@ export const IGNORED_COMMANDS = [
 
 // Default commands always available for all session types
 const DEFAULT_COMMANDS: CommandItem[] = [
-    { command: 'compact', description: 'Compact the conversation history' },
     { command: 'clear', description: 'Clear the conversation' },
+];
+
+// Commands only available for Claude sessions
+const CLAUDE_COMMANDS: CommandItem[] = [
+    { command: 'compact', description: 'Compact the conversation history' },
 ];
 
 // Commands available for sessions with forkable history (Claude, Gemini, Codex)
@@ -92,6 +96,11 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
     }
 
     const commands: CommandItem[] = [...DEFAULT_COMMANDS];
+
+    // Add Claude-specific commands
+    if (session.metadata.claudeSessionId) {
+        commands.push(...CLAUDE_COMMANDS);
+    }
 
     // Add forkable commands for sessions with session history (Claude, Gemini, Codex)
     if (session.metadata.claudeSessionId || session.metadata.flavor === 'gemini' || session.metadata.codexSessionId) {

@@ -28,6 +28,7 @@ import { stopCaffeinate } from '@/utils/caffeinate';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { parseClear } from '@/parsers/specialCommands';
 
 import { createGeminiBackend } from '@/agent/factories/gemini';
 import type { AgentBackend, AgentMessage } from '@/agent';
@@ -1039,6 +1040,34 @@ export async function runGemini(opts: {
 
       if (!message) {
         break;
+      }
+
+      // Handle /clear command - reset session
+      if (parseClear(message.message).isClear) {
+        logger.debug('[Gemini] /clear command detected - resetting session');
+        messageBuffer.addMessage('Context was reset', 'status');
+        session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
+
+        // Dispose current backend
+        if (geminiBackend) {
+          await geminiBackend.dispose();
+          geminiBackend = null;
+        }
+        acpSessionId = null;
+        wasSessionCreated = false;
+        currentModeHash = null;
+
+        // Clear conversation history
+        conversationHistory.clear();
+
+        // Reset processors
+        permissionHandler.reset();
+        reasoningProcessor.abort();
+        thinking = false;
+
+        // Send ready
+        sendReady();
+        continue;
       }
 
       // Track if we need to inject conversation history (after model change)
