@@ -74,7 +74,9 @@ export default {
         web: {
             bundler: "metro",
             output: "single",
-            favicon: "./sources/assets/images/favicon.png"
+            favicon: "./sources/assets/images/favicon.png",
+            backgroundColor: "#F2F2F7",
+            themeColor: "#F2F2F7"
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
