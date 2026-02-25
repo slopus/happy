@@ -90,10 +90,251 @@ slaphappy codex
 
 On your computer, run `slaphappy` instead of `claude` or `slaphappy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
 
+## 💬 Slack Integration (Fork Exclusive)
+
+Control Claude Code directly from a Slack channel. Each CLI session creates a dedicated thread — reply in the thread to send input, and Claude's output appears in real time. No public endpoints required (Socket Mode).
+
+### How It Works
+
+```
+slaphappy slack
+    ↓
+Slack channel: header message posted (🟢 Session active)
+    ↓
+┌─── Slack Thread ─────────────────────────────────────────┐
+│ 🟢 Session: my-project | claude-opus-4-6                 │
+│ Session ID: a1b2c3d4   Turns: 0  Cost: $0.00             │
+│                                                           │
+│ ⚡ Session started. Reply here to send input to Claude.   │
+│                                                           │
+│ You:    "list all TypeScript files"                 👀    │
+│ ⏳ Processing…                                            │
+│ Claude: "Found 42 .ts files: ..."                  ✅    │
+│                                                           │
+│ 🔒 Permission Request: Bash(rm -rf dist/)                 │
+│ [Approve] [Deny]                          ← Block Kit     │
+│                                                           │
+│ You:    "now run the tests"                               │
+│ Claude: "All 450 tests passed."                           │
+└───────────────────────────────────────────────────────────┘
+    ↓
+Session ends → header updates to ✅ Completed
+```
+
+- **1 session = 1 thread** — `slaphappy slack` posts a header message; all I/O happens in that thread
+- **Bidirectional** — Slack replies → Claude input, Claude output → thread posts
+- **Permission requests** — tool calls appear as Approve / Deny buttons (Block Kit interactive messages)
+- **AskUserQuestion** — Claude's multiple-choice questions render as clickable buttons
+- **Reactions** — 👀 on your message when received, ✅ when Claude finishes responding
+- **Processing indicator** — ⏳ "Processing..." message shown while Claude is thinking (auto-deleted on completion)
+- **Header live-updates** — turn count, cost, and status (🟢 active / ✅ completed / ❌ error) update in real time
+- **Socket Mode** — uses WebSocket via Slack's Socket Mode; no public URL or ngrok needed
+- **Singleton connection** — multiple concurrent sessions share one Socket Mode connection, routed by `thread_ts`
+
+---
+
+### Quick Start
+
+```bash
+# 1. Run the interactive setup wizard
+slaphappy slack setup
+
+# 2. Start a Slack-connected Claude session
+slaphappy slack
+
+# 3. Reply in the Slack thread to interact with Claude
+```
+
+---
+
+### Setup Wizard (Step by Step)
+
+`slaphappy slack setup` guides you through the full setup interactively:
+
+#### Step 1: Create a Slack App
+
+Go to [api.slack.com/apps](https://api.slack.com/apps) → **"Create New App"** → **"From a manifest"** → select your workspace → paste the manifest below → **Create**.
+
+The wizard prints this manifest for you, but here it is for reference:
+
+```json
+{
+  "display_information": {
+    "name": "Claude Agent",
+    "description": "Claude Code remote control via Slack threads",
+    "background_color": "#1a1a2e"
+  },
+  "features": {
+    "bot_user": { "display_name": "claude-agent", "always_online": true }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "channels:history",
+        "channels:read",
+        "channels:join",
+        "reactions:write",
+        "reactions:read",
+        "users:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": { "bot_events": ["message.channels"] },
+    "socket_mode_enabled": true,
+    "org_deploy_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
+```
+
+#### Step 2: Install & Get Bot Token
+
+In your app settings → **"OAuth & Permissions"** → **"Install to Workspace"** → copy the **Bot User OAuth Token** (starts with `xoxb-`).
+
+#### Step 3: Generate App-Level Token
+
+**"Basic Information"** → **"App-Level Tokens"** → **"Generate Token"** → name it `socket`, add scope `connections:write` → copy the token (starts with `xapp-`).
+
+#### Step 4: Enter Tokens
+
+The wizard prompts for the two tokens and validates them against the Slack API (`auth.test`).
+
+#### Step 5: Select a Channel
+
+The wizard fetches all public channels in your workspace (with search). The bot auto-joins the selected channel. If `channels:join` scope is missing, you can `/invite @claude-agent` manually.
+
+#### Step 6: Select Notify User (Optional)
+
+Pick a workspace member to @mention when sessions start. Useful for push notifications on your phone. Can be skipped.
+
+#### Step 7: Server URL (Optional)
+
+Custom Happy Server URL (default: `https://api.cluster-fluster.com`). Only needed for self-hosted setups.
+
+Config is saved to `~/.happy/slack.json` with file permissions `0600`. Re-running `slaphappy slack setup` shows current values as defaults — press Enter to keep them.
+
+---
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `slaphappy slack setup` | Interactive setup wizard (create app, enter tokens, pick channel) |
+| `slaphappy slack status` | Show current config with masked tokens and env override status |
+| `slaphappy slack` | Start a Slack-connected Claude session |
+| `slaphappy slack --help` | Show all Slack options |
+
+### CLI Options for `slaphappy slack`
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `--model`, `-m` | Claude model to use | `slaphappy slack -m claude-sonnet-4-6` |
+| `--permission-mode` | Permission handling mode | `slaphappy slack --permission-mode acceptEdits` |
+| `--started-by` | How the session was started | `slaphappy slack --started-by daemon` |
+| `--js-runtime` | JavaScript runtime (`node` or `bun`) | `slaphappy slack --js-runtime bun` |
+
+Any additional flags are passed through to Claude as `claudeArgs`.
+
+### Permission Modes
+
+| Mode | Behavior in Slack |
+|------|-------------------|
+| `default` | Tool calls post Approve/Deny buttons in thread; waits for user click |
+| `acceptEdits` | File edits auto-approved; destructive operations still require approval |
+| `bypassPermissions` | All tool calls auto-approved (no buttons posted) |
+| `plan` | Claude operates in plan-only mode |
+
+---
+
+### Environment Variables
+
+All config values can be set via environment variables. These **override** `~/.happy/slack.json` when present, enabling headless / CI usage without the setup wizard.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `HAPPY_SLACK_BOT_TOKEN` | Yes | Slack Bot User OAuth Token (`xoxb-...`) |
+| `HAPPY_SLACK_APP_TOKEN` | Yes | Slack App-Level Token with `connections:write` (`xapp-...`) |
+| `HAPPY_SLACK_CHANNEL_ID` | Yes | Channel ID to post session threads (`C0123456789`) |
+| `HAPPY_SLACK_NOTIFY_USER_ID` | **Strongly recommended** | Your Slack user ID (`U987654321`). See note below. |
+
+> **`HAPPY_SLACK_NOTIFY_USER_ID` serves dual purposes:** (1) @mentions you when a session starts, and (2) **restricts session access to only that user**. Thread replies and button clicks from anyone else are silently ignored. If unset, **anyone in the channel can send commands to Claude** — which is a security risk, especially with `bypassPermissions`.
+
+If all three required variables are set, `slaphappy slack` works without `~/.happy/slack.json`.
+
+```bash
+# Example: headless CI usage
+export HAPPY_SLACK_BOT_TOKEN=xoxb-1234-5678-abcdef
+export HAPPY_SLACK_APP_TOKEN=xapp-1-A0123-9876-xyz
+export HAPPY_SLACK_CHANNEL_ID=C0123456789
+export HAPPY_SLACK_NOTIFY_USER_ID=U987654321  # restricts access to this user only
+
+slaphappy slack --permission-mode bypassPermissions
+```
+
+`slaphappy slack status` shows which env overrides are active.
+
+---
+
+### Required Slack App Scopes
+
+| Type | Scope | Purpose |
+|------|-------|---------|
+| **Bot** | `chat:write` | Post messages and buttons to threads |
+| **Bot** | `channels:history` | Read thread replies (incoming user messages) |
+| **Bot** | `channels:read` | List channels during setup |
+| **Bot** | `channels:join` | Auto-join the selected channel |
+| **Bot** | `reactions:write` | Add 👀 / ✅ reactions to messages |
+| **Bot** | `reactions:read` | Read reactions |
+| **Bot** | `users:read` | List workspace members during setup |
+| **App-Level** | `connections:write` | Socket Mode WebSocket connection |
+
+**Event subscription:** `message.channels` (receives messages posted in public channels).
+
+---
+
+### Config File
+
+`~/.happy/slack.json` (created by `slaphappy slack setup`):
+
+```json
+{
+  "botToken": "xoxb-...",
+  "appToken": "xapp-...",
+  "channelId": "C0123456789",
+  "channelName": "claude-sessions",
+  "notifyUserId": "U987654321",
+  "serverUrl": "https://api.cluster-fluster.com",
+  "defaultPermissionMode": "default"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `botToken` | string | Yes | Bot User OAuth Token (`xoxb-...`) |
+| `appToken` | string | Yes | App-Level Token (`xapp-...`) |
+| `channelId` | string | Yes | Slack channel ID |
+| `channelName` | string | No | Channel display name (auto-populated) |
+| `notifyUserId` | string | Recommended | Your Slack user ID — @mentions on start **and restricts access to this user only** |
+| `serverUrl` | string | No | Happy Server URL override |
+| `defaultPermissionMode` | enum | No | `default` \| `acceptEdits` \| `bypassPermissions` \| `plan` |
+
+---
+
+### Security Considerations
+
+- **Set `notifyUserId`.** Without it, anyone in the channel can control Claude. With it, only the specified user's messages and button clicks are accepted; all others are silently dropped.
+- **Channel access matters even with `notifyUserId`.** Others can still *read* Claude's output. Use a private or restricted channel for sensitive work.
+- **Permission mode matters.** `bypassPermissions` means any thread reply triggers tool execution without confirmation. Use with caution.
+- **Tokens are stored locally** in `~/.happy/slack.json` with `0600` permissions. They never leave your machine.
+- **Socket Mode** means no inbound webhooks — your machine initiates the WebSocket connection outbound. No public endpoint exposure.
+
 ## 🔥 Why Happy Coder?
 
 - 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk
 - 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors
+- 💬 **Slack integration** - Control Claude Code from a Slack thread (fork exclusive)
 - ⚡ **Switch devices instantly** - Take control from phone or desktop with one keypress
 - 🔐 **End-to-end encrypted** - Your code never leaves your devices unencrypted
 - 🛠️ **Open source** - Audit the code yourself. No telemetry, no tracking
