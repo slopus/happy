@@ -884,8 +884,8 @@ export class TmuxUtilities {
             }
 
             // Wait for the shell to fully initialize before sending the command.
-            // A fixed delay is unreliable — instead poll the pane content for a prompt.
-            // Shells display a prompt character (%, $, #, >, ±) when ready for input.
+            // Polls #{pane_current_command} until it reports a known shell name,
+            // meaning the shell process is idle at a prompt and ready for input.
             const shellReady = await this.waitForShellReady(sessionName, windowName, 5000);
             if (!shellReady) {
                 logger.warn(`[TMUX] Shell did not show a prompt within timeout, sending command anyway`);

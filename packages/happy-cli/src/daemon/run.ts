@@ -415,10 +415,14 @@ export async function startDaemon(): Promise<void> {
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
 
-          // Use absolute paths for both node and the happy binary — reliable regardless
-          // of shell PATH (NVM, asdf, etc. may not be initialized when send-keys fires)
-          const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
-          const fullCommand = `${process.execPath} ${happyBinPath} ${agent} --happy-starting-mode remote --started-by daemon --dangerously-skip-permissions`;
+          // Use absolute paths for both node and the entrypoint — reliable regardless
+          // of shell PATH (NVM, asdf, etc. may not be initialized when send-keys fires).
+          // Point directly at dist/index.mjs to avoid the bin/happy.mjs re-exec wrapper.
+          // Paths are quoted for shell safety since the command is typed via send-keys.
+          const cliPath = join(projectPath(), 'dist', 'index.mjs');
+          const quotedNode = `"${process.execPath}"`;
+          const quotedCli = `"${cliPath}"`;
+          const fullCommand = `${quotedNode} --no-warnings --no-deprecation ${quotedCli} ${agent} --happy-starting-mode remote --started-by daemon --dangerously-skip-permissions`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
