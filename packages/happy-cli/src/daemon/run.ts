@@ -422,7 +422,7 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           const quotedNode = `"${process.execPath}"`;
           const quotedCli = `"${cliPath}"`;
-          const fullCommand = `${quotedNode} --no-warnings --no-deprecation ${quotedCli} ${agent} --happy-starting-mode remote --started-by daemon --dangerously-skip-permissions`;
+          const fullCommand = `${quotedNode} --no-warnings --no-deprecation ${quotedCli} ${agent} --happy-starting-mode remote --started-by daemon`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
