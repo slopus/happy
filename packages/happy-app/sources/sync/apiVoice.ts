@@ -1,7 +1,9 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { getServerUrl } from './serverConfig';
+import { getServerUrl, getWhisperUrl } from './serverConfig';
 import { config } from '@/config';
 import { storage } from './storage';
+
+// ---- ElevenLabs (assistant mode) ----
 
 export interface VoiceTokenResponse {
     allowed: boolean;
@@ -49,4 +51,53 @@ export async function fetchVoiceToken(
     }
 
     return await response.json();
+}
+
+// ---- Whisper (dictation mode) ----
+
+export interface TranscriptionResponse {
+    text: string;
+}
+
+export async function transcribeAudio(audioUri: string): Promise<TranscriptionResponse> {
+    const whisperUrl = getWhisperUrl();
+    console.log('[Whisper] URL:', whisperUrl, 'audioUri:', audioUri?.slice(0, 80));
+
+    const formData = new FormData();
+
+    // Fetch the audio file and create a blob for upload
+    let blob: Blob;
+    try {
+        const response = await fetch(audioUri);
+        blob = await response.blob();
+        console.log('[Whisper] Blob loaded:', blob.size, 'bytes, type:', blob.type);
+    } catch (e) {
+        throw new Error(`Audio blob fetch failed: ${e instanceof Error ? e.message : e}`);
+    }
+
+    if (blob.size === 0) {
+        throw new Error('Recording is empty (0 bytes)');
+    }
+
+    formData.append('file', blob, 'recording.webm');
+    formData.append('model', 'Systran/faster-whisper-base');
+    formData.append('response_format', 'json');
+    formData.append('language', 'en');
+
+    let result: Response;
+    try {
+        result = await fetch(`${whisperUrl}/v1/audio/transcriptions`, {
+            method: 'POST',
+            body: formData,
+        });
+    } catch (e) {
+        throw new Error(`Whisper fetch failed (${whisperUrl}): ${e instanceof Error ? e.message : e}`);
+    }
+
+    if (!result.ok) {
+        const errorText = await result.text();
+        throw new Error(`Transcription failed (${result.status}): ${errorText}`);
+    }
+
+    return await result.json();
 }

@@ -1,7 +1,6 @@
 import * as React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useRealtimeStatus, useRealtimeMode, useSetting } from '@/sync/storage';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,53 +17,94 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
     const { theme } = useUnistyles();
     const realtimeStatus = useRealtimeStatus();
     const realtimeMode = useRealtimeMode();
+    const voiceMode = useSetting('voiceMode');
 
     // Don't render if disconnected
     if (realtimeStatus === 'disconnected') {
         return null;
     }
-    
-    // Check if voice assistant is speaking
-    const isVoiceSpeaking = realtimeMode === 'speaking';
+
+    const isDictation = voiceMode === 'dictation';
+    const isVoiceSpeaking = !isDictation && realtimeMode === 'speaking';
 
     const getStatusInfo = () => {
-        switch (realtimeStatus) {
-            case 'connecting':
-                return {
-                    color: theme.colors.status.connecting,
-                    backgroundColor: theme.colors.surfaceHighest,
-                    isPulsing: true,
-                    text: 'Connecting...',
-                    textColor: theme.colors.text
-                };
-            case 'connected':
-                return {
-                    color: theme.colors.status.connected,
-                    backgroundColor: theme.colors.surfaceHighest,
-                    isPulsing: false,
-                    text: 'Voice Assistant Active',
-                    textColor: theme.colors.text
-                };
-            case 'error':
-                return {
-                    color: theme.colors.status.error,
-                    backgroundColor: theme.colors.surfaceHighest,
-                    isPulsing: false,
-                    text: 'Connection Error',
-                    textColor: theme.colors.text
-                };
-            default:
-                return {
-                    color: theme.colors.status.default,
-                    backgroundColor: theme.colors.surfaceHighest,
-                    isPulsing: false,
-                    text: 'Voice Assistant',
-                    textColor: theme.colors.text
-                };
+        if (isDictation) {
+            // Dictation mode labels
+            switch (realtimeStatus) {
+                case 'connecting':
+                    return {
+                        color: theme.colors.status.connecting,
+                        backgroundColor: theme.colors.surfaceHighest,
+                        isPulsing: true,
+                        text: 'Transcribing...',
+                        textColor: theme.colors.text
+                    };
+                case 'connected':
+                    return {
+                        color: '#ef4444', // red for recording
+                        backgroundColor: theme.colors.surfaceHighest,
+                        isPulsing: true,
+                        text: 'Recording...',
+                        textColor: theme.colors.text
+                    };
+                case 'error':
+                    return {
+                        color: theme.colors.status.error,
+                        backgroundColor: theme.colors.surfaceHighest,
+                        isPulsing: false,
+                        text: 'Transcription Error',
+                        textColor: theme.colors.text
+                    };
+                default:
+                    return {
+                        color: theme.colors.status.default,
+                        backgroundColor: theme.colors.surfaceHighest,
+                        isPulsing: false,
+                        text: 'Voice',
+                        textColor: theme.colors.text
+                    };
+            }
+        } else {
+            // Assistant mode labels
+            switch (realtimeStatus) {
+                case 'connecting':
+                    return {
+                        color: theme.colors.status.connecting,
+                        backgroundColor: theme.colors.surfaceHighest,
+                        isPulsing: true,
+                        text: 'Connecting...',
+                        textColor: theme.colors.text
+                    };
+                case 'connected':
+                    return {
+                        color: theme.colors.status.connected,
+                        backgroundColor: theme.colors.surfaceHighest,
+                        isPulsing: false,
+                        text: 'Voice Assistant Active',
+                        textColor: theme.colors.text
+                    };
+                case 'error':
+                    return {
+                        color: theme.colors.status.error,
+                        backgroundColor: theme.colors.surfaceHighest,
+                        isPulsing: false,
+                        text: 'Connection Error',
+                        textColor: theme.colors.text
+                    };
+                default:
+                    return {
+                        color: theme.colors.status.default,
+                        backgroundColor: theme.colors.surfaceHighest,
+                        isPulsing: false,
+                        text: 'Voice Assistant',
+                        textColor: theme.colors.text
+                    };
+            }
         }
     };
 
     const statusInfo = getStatusInfo();
+    const tapLabel = isDictation ? 'Tap to stop' : 'Tap to end';
 
     const handlePress = async () => {
         if (realtimeStatus === 'connected' || realtimeStatus === 'connecting') {
@@ -118,17 +158,17 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                                 {statusInfo.text}
                             </Text>
                         </View>
-                        
+
                         <View style={styles.rightSection}>
                             {isVoiceSpeaking && (
-                                <VoiceBars 
-                                    isActive={isVoiceSpeaking} 
+                                <VoiceBars
+                                    isActive={isVoiceSpeaking}
                                     color={statusInfo.textColor}
                                     size="small"
                                 />
                             )}
                             <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: isVoiceSpeaking ? 8 : 0 }]}>
-                                Tap to end
+                                {tapLabel}
                             </Text>
                         </View>
                     </View>
@@ -176,15 +216,15 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                             {statusInfo.text}
                         </Text>
                     </View>
-                    
+
                     {isVoiceSpeaking && (
-                        <VoiceBars 
-                            isActive={isVoiceSpeaking} 
+                        <VoiceBars
+                            isActive={isVoiceSpeaking}
                             color={statusInfo.textColor}
                             size="small"
                         />
                     )}
-                    
+
                     <Ionicons
                         name="close"
                         size={14}

@@ -92,6 +92,7 @@ interface StorageState {
     friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     realtimeMode: 'idle' | 'speaking';
+    pendingTranscription: string | null;
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
@@ -111,6 +112,7 @@ interface StorageState {
     applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
+    setPendingTranscription: (text: string | null) => void;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
     clearRealtimeModeDebounce: () => void;
@@ -274,6 +276,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
+        pendingTranscription: null,
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
@@ -390,15 +393,6 @@ export const storage = create<StorageState>()((set, get) => {
                     const currentRealtimeSessionId = getCurrentRealtimeSessionId();
                     const voiceSession = getVoiceSession();
 
-                    // console.log('[REALTIME DEBUG] Permission check:', {
-                    //     currentRealtimeSessionId,
-                    //     sessionId: session.id,
-                    //     match: currentRealtimeSessionId === session.id,
-                    //     hasVoiceSession: !!voiceSession,
-                    //     oldRequests: Object.keys(oldSession?.agentState?.requests || {}),
-                    //     newRequests: Object.keys(newSession.agentState?.requests || {})
-                    // });
-
                     if (currentRealtimeSessionId === session.id && voiceSession) {
                         const oldRequests = oldSession?.agentState?.requests || {};
                         const newRequests = newSession.agentState?.requests || {};
@@ -408,7 +402,6 @@ export const storage = create<StorageState>()((set, get) => {
                             if (!oldRequests[requestId]) {
                                 // This is a NEW permission request
                                 const toolName = request.tool;
-                                // console.log('[REALTIME DEBUG] Sending permission notification for:', toolName);
                                 voiceSession.sendTextMessage(
                                     `Claude is requesting permission to use the ${toolName} tool`
                                 );
@@ -688,6 +681,10 @@ export const storage = create<StorageState>()((set, get) => {
         applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => set((state) => ({
             ...state,
             nativeUpdateStatus: status
+        })),
+        setPendingTranscription: (text: string | null) => set((state) => ({
+            ...state,
+            pendingTranscription: text
         })),
         setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => ({
             ...state,
@@ -1231,6 +1228,10 @@ export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected'
 
 export function useRealtimeMode(): 'idle' | 'speaking' {
     return storage(useShallow((state) => state.realtimeMode));
+}
+
+export function usePendingTranscription(): string | null {
+    return storage(useShallow((state) => state.pendingTranscription));
 }
 
 export function useSocketStatus() {

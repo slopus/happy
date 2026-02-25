@@ -180,6 +180,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'column',
     flexGrow: 1,
     flexBasis: 0,
+    minWidth: 0,
     maxWidth: layout.maxWidth,
   },
   userMessageContainer: {

@@ -558,6 +558,19 @@ export const zhHant: TranslationStructure = {
 
     settingsVoice: {
         // Voice settings screen
+        modeTitle: 'Voice Mode',
+        modeDescription: 'Choose between AI voice assistant or simple speech-to-text dictation.',
+        assistantMode: 'Voice Assistant',
+        assistantModeSubtitle: 'AI-powered bidirectional voice conversation',
+        dictationMode: 'Dictation',
+        dictationModeSubtitle: 'Speech-to-text only, transcribed into chat',
+        whisperTitle: 'Transcription Server',
+        whisperDescription: 'URL of an OpenAI-compatible speech-to-text server for dictation mode.',
+        whisperUrlLabel: 'Server URL',
+        whisperUrlPlaceholder: 'https://whisper.seas.house',
+        whisperUrlSaved: 'Saved',
+        whisperUrlSave: 'Save',
+        whisperUrlReset: 'Reset to default',
         languageTitle: '語言',
         languageDescription: '選擇您希望語音助理互動使用的語言。此設定將在您的所有裝置間同步。',
         preferredLanguage: '偏好語言',
@@ -567,7 +580,7 @@ export const zhHant: TranslationStructure = {
             title: '語言',
             footer: ({ count }: { count: number }) => `${count} 種可用語言`,
             autoDetect: '自動偵測',
-        }
+        },
     },
 
     settingsAccount: {

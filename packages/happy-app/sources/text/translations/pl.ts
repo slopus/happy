@@ -567,6 +567,19 @@ export const pl: TranslationStructure = {
 
     settingsVoice: {
         // Voice settings screen
+        modeTitle: 'Voice Mode',
+        modeDescription: 'Choose between AI voice assistant or simple speech-to-text dictation.',
+        assistantMode: 'Voice Assistant',
+        assistantModeSubtitle: 'AI-powered bidirectional voice conversation',
+        dictationMode: 'Dictation',
+        dictationModeSubtitle: 'Speech-to-text only, transcribed into chat',
+        whisperTitle: 'Transcription Server',
+        whisperDescription: 'URL of an OpenAI-compatible speech-to-text server for dictation mode.',
+        whisperUrlLabel: 'Server URL',
+        whisperUrlPlaceholder: 'https://whisper.seas.house',
+        whisperUrlSaved: 'Saved',
+        whisperUrlSave: 'Save',
+        whisperUrlReset: 'Reset to default',
         languageTitle: 'Język',
         languageDescription: 'Wybierz preferowany język dla interakcji z asystentem głosowym. To ustawienie synchronizuje się na wszystkich Twoich urządzeniach.',
         preferredLanguage: 'Preferowany język',
@@ -576,7 +589,7 @@ export const pl: TranslationStructure = {
             title: 'Języki',
             footer: ({ count }: { count: number }) => `Dostępnych ${count} ${plural({ count, one: 'język', few: 'języki', many: 'języków' })}`,
             autoDetect: 'Automatyczne wykrywanie',
-        }
+        },
     },
 
     settingsAccount: {

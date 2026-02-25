@@ -565,7 +565,20 @@ export const en = {
             title: 'Languages',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'language', plural: 'languages' })} available`,
             autoDetect: 'Auto-detect',
-        }
+        },
+        modeTitle: 'Voice Mode',
+        modeDescription: 'Choose between AI voice assistant (bidirectional conversation) or simple dictation (speech-to-text only).',
+        assistantMode: 'Voice Assistant',
+        assistantModeSubtitle: 'AI-powered bidirectional voice conversation',
+        dictationMode: 'Dictation',
+        dictationModeSubtitle: 'Speech-to-text only, transcribed into chat',
+        whisperTitle: 'Transcription Server',
+        whisperDescription: 'URL of the speech-to-text server for dictation mode. Must support the OpenAI-compatible /v1/audio/transcriptions endpoint.',
+        whisperUrlLabel: 'Server URL',
+        whisperUrlPlaceholder: 'https://whisper.seas.house',
+        whisperUrlSave: 'Save',
+        whisperUrlSaved: 'Saved!',
+        whisperUrlReset: 'Reset to Default',
     },
 
     settingsAccount: {

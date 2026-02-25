@@ -1101,7 +1101,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 <View
                                     style={[
                                         styles.sendButton,
-                                        (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
+                                        (hasText || props.isSending || props.isMicActive || (props.onMicPress && !props.isMicActive))
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
                                     ]}
