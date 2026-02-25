@@ -175,12 +175,16 @@ describe('ApiSessionClient v3 messages API migration', () => {
         vi.restoreAllMocks();
     });
 
-    it('registers core socket handlers and connects', () => {
-        new ApiSessionClient('fake-token', session);
+    it('registers core socket handlers and defers connect until onUserMessage', () => {
+        mockSocket.connected = false;
+        const client = new ApiSessionClient('fake-token', session);
 
         expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('update', expect.any(Function));
+        expect(mockSocket.connect).not.toHaveBeenCalled();
+
+        client.onUserMessage(vi.fn());
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 

@@ -1,15 +1,18 @@
 <div align="center"><img src="/.github/logotype-dark.png" width="400" title="Happy Coder" alt="Happy Coder"/></div>
 
 <h1 align="center">
-  Mobile and Web Client for Claude Code & Codex
+  slaphappy — Mobile and Web Client for Claude Code & Codex
 </h1>
 
 <h4 align="center">
 Use Claude Code or Codex from anywhere with end-to-end encryption.
 </h4>
 
+> **This is a fork of [slopus/happy](https://github.com/slopus/happy) (MIT License).**
+> CLI is published as [`@hiroki_3463/slaphappy`](https://www.npmjs.com/package/@hiroki_3463/slaphappy) with the command name `slaphappy`.
+
 <div align="center">
-  
+
 [📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://happy.engineering/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
 
 </div>
@@ -30,7 +33,7 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g slaphappy
+npm install -g @hiroki_3463/slaphappy
 ```
 
 **Or install from source:**
@@ -64,20 +67,20 @@ yarn release
 ```
 
 <h3 align="center">
-Step 3: Start using `happy` instead of `claude` or `codex`
+Step 3: Start using <code>slaphappy</code> instead of <code>claude</code> or <code>codex</code>
 </h3>
 
 ```bash
 
 # Instead of: claude
-# Use: happy
+# Use: slaphappy
 
-happy
+slaphappy
 
 # Instead of: codex
-# Use: happy codex
+# Use: slaphappy codex
 
-happy codex
+slaphappy codex
 
 ```
 
@@ -85,12 +88,12 @@ happy codex
 
 ## How does it work?
 
-On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
+On your computer, run `slaphappy` instead of `claude` or `slaphappy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
 
 ## 🔥 Why Happy Coder?
 
 - 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk
-- 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors  
+- 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors
 - ⚡ **Switch devices instantly** - Take control from phone or desktop with one keypress
 - 🔐 **End-to-end encrypted** - Your code never leaves your devices unencrypted
 - 🛠️ **Open source** - Audit the code yourself. No telemetry, no tracking
@@ -133,7 +136,7 @@ docker compose up -d
 
 ### Connecting Clients to Your Server
 
-- **CLI:** `HAPPY_SERVER_URL=https://happy-api.example.com happy`
+- **CLI:** `HAPPY_SERVER_URL=https://happy-api.example.com slaphappy`
 - **Mobile:** Tap server icon on login screen to change server
 
 ## 📱 Building the Mobile App
@@ -176,10 +179,11 @@ yarn android:dev
 
 ## 📚 Documentation & Contributing
 
-- **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
+- **[Upstream Documentation](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development setup including iOS, Android, and macOS desktop variant builds
-- **[Edit docs at github.com/slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)** - Help improve our documentation and guides
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+Original work Copyright (c) 2024 Happy Coder Contributors.

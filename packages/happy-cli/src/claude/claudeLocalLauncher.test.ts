@@ -48,6 +48,7 @@ function createSessionDouble() {
         path: '/tmp',
         client: {
             sendClaudeSessionMessage: vi.fn(),
+            closeClaudeSessionTurn: vi.fn(),
             sendSessionEvent: vi.fn(),
             rpcHandlerManager: {
                 registerHandler: vi.fn((name: string, fn: () => Promise<void>) => {
