@@ -65,6 +65,52 @@ async function getProfileEnvironmentVariablesForAgent(
   }
 }
 
+/**
+ * Resolve the best tmux session to spawn windows in.
+ * Priority: daemon's own session > session with most windows > undefined (let spawnInTmux decide).
+ */
+async function resolveTmuxSessionName(): Promise<string | undefined> {
+  const tmux = getTmuxUtilities();
+
+  // If the daemon is running inside a tmux session, prefer that session.
+  // The $TMUX env var is set by tmux: "socket_path,server_pid,pane_index"
+  if (process.env.TMUX) {
+    const result = await tmux.executeTmuxCommand(['display-message', '-p', '#{session_name}']);
+    if (result && result.returncode === 0 && result.stdout.trim()) {
+      const sessionName = result.stdout.trim();
+      logger.debug(`[DAEMON RUN] Resolved tmux session from daemon's own session: ${sessionName}`);
+      return sessionName;
+    }
+  }
+
+  // Otherwise, pick the session with the most windows (heuristic for user's main workspace)
+  const listResult = await tmux.executeTmuxCommand(['list-sessions', '-F', '#{session_name}:#{session_windows}']);
+  if (listResult && listResult.returncode === 0 && listResult.stdout.trim()) {
+    let bestSession: string | undefined;
+    let maxWindows = 0;
+
+    for (const line of listResult.stdout.trim().split('\n')) {
+      const separatorIndex = line.lastIndexOf(':');
+      if (separatorIndex === -1) continue;
+      const name = line.substring(0, separatorIndex);
+      const count = parseInt(line.substring(separatorIndex + 1));
+      if (!isNaN(count) && count > maxWindows) {
+        maxWindows = count;
+        bestSession = name;
+      }
+    }
+
+    if (bestSession) {
+      logger.debug(`[DAEMON RUN] Resolved tmux session by most windows: ${bestSession} (${maxWindows} windows)`);
+      return bestSession;
+    }
+  }
+
+  // Let spawnInTmux handle it (first session or create "happy")
+  logger.debug('[DAEMON RUN] No tmux session resolved, deferring to spawnInTmux default');
+  return undefined;
+}
+
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
   // Control flow is:
@@ -390,24 +436,25 @@ export async function startDaemon(): Promise<void> {
         const tmuxAvailable = await isTmuxAvailable();
         let useTmux = tmuxAvailable;
 
-        // Get tmux session name from environment variables (now set by profile system)
-        // Empty string means "use current/most recent session" (tmux default behavior)
-        // TEMPORARY HARDCODED HACK: Always use "main" session for testing
-        // TODO: Remove this hardcoding and use the profile's TMUX_SESSION_NAME
-        let tmuxSessionName: string | undefined = 'main'; // extraEnv.TMUX_SESSION_NAME;
+        // Resolve tmux session name with priority:
+        // 1. Profile env var TMUX_SESSION_NAME (explicit user choice)
+        // 2. Daemon's own tmux session (if daemon is running inside tmux)
+        // 3. Session with the most windows (heuristic for user's main workspace)
+        // 4. Fall through to spawnInTmux default (first existing session or create "happy")
+        let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
 
-        // If tmux is not available or session name is explicitly undefined, fall back to regular spawning
-        // Note: Empty string is valid (means use current/most recent tmux session)
-        if (!tmuxAvailable || tmuxSessionName === undefined) {
-          useTmux = false;
-          if (tmuxSessionName !== undefined) {
-            logger.debug(`[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`);
-          }
+        if (tmuxSessionName === undefined && tmuxAvailable) {
+          tmuxSessionName = await resolveTmuxSessionName();
         }
 
-        if (useTmux && tmuxSessionName !== undefined) {
+        // If tmux is not available, fall back to regular spawning
+        if (!tmuxAvailable) {
+          useTmux = false;
+        }
+
+        if (useTmux) {
           // Try to spawn in tmux session
-          const sessionDesc = tmuxSessionName || 'current/most recent session';
+          const sessionDesc = tmuxSessionName || 'auto-resolved';
           logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
 
           const tmux = getTmuxUtilities(tmuxSessionName);
