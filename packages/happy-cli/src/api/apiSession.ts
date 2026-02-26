@@ -579,8 +579,7 @@ export class ApiSessionClient extends EventEmitter {
 
         // Check if socket is connected before sending
         if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
-            // TODO: Consider implementing message queue or HTTP fallback for reliability
+            logger.debug('[API] Socket not connected, skipping socket emit (v3 HTTP outbox will deliver):', { type: body.type });
         }
 
         this.socket.emit('message', {
