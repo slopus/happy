@@ -32,6 +32,13 @@ import { t } from '@/text';
 import { dootaskLogin, dootaskGetTokenExpire, dootaskGetCaptcha } from '@/sync/dootask/api';
 import type { DooTaskProfile } from '@/sync/dootask/types';
 
+function ensureHttpsPrefix(url: string): string {
+    const trimmed = url.trim();
+    if (!trimmed) return trimmed;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return 'https://' + trimmed;
+}
+
 export default React.memo(function DooTaskConnectPage() {
     const router = useRouter();
     const { theme } = useUnistyles();
@@ -95,8 +102,12 @@ export default React.memo(function DooTaskConnectPage() {
         setLoading(true);
 
         try {
+            // Auto-prefix https:// if missing
+            const prefixed = ensureHttpsPrefix(serverUrl);
+            if (prefixed !== serverUrl) setServerUrl(prefixed);
+
             // Validate URL format before sending
-            const trimmedUrl = serverUrl.trim().replace(/\/+$/, '');
+            const trimmedUrl = prefixed.trim().replace(/\/+$/, '');
             try {
                 const parsed = new URL(trimmedUrl);
                 if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && parsed.hostname === 'localhost')) {
@@ -193,6 +204,7 @@ export default React.memo(function DooTaskConnectPage() {
                             style={[styles.fieldInput, Platform.OS === 'web' && { outlineStyle: 'none', outline: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any]}
                             value={serverUrl}
                             onChangeText={setServerUrl}
+                            onBlur={() => setServerUrl(ensureHttpsPrefix(serverUrl))}
                             placeholder="https://your-dootask-server.com"
                             placeholderTextColor={theme.colors.textSecondary}
                             autoCapitalize="none"
