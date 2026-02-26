@@ -12,6 +12,25 @@ export const MetadataSchema = z.object({
     os: z.string().optional(),
     model: z.string().optional(),
     reasoningEffort: z.string().optional(),
+    // ACP session configuration metadata
+    models: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string().nullable().optional(),
+    })).optional(),
+    currentModelCode: z.string().optional(),
+    operatingModes: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string().nullable().optional(),
+    })).optional(),
+    currentOperatingModeCode: z.string().optional(),
+    thoughtLevels: z.array(z.object({
+        code: z.string(),
+        value: z.string(),
+        description: z.string().nullable().optional(),
+    })).optional(),
+    currentThoughtLevelCode: z.string().optional(),
     summary: z.object({
         text: z.string(),
         updatedAt: z.number()

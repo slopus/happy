@@ -8,6 +8,8 @@ import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
+import { InvalidateSync } from '@/utils/sync';
+import axios from 'axios';
 import { trimToolUseResult, trimToolResultContent, trimToolUseInput } from './trimToolUseResult';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 
@@ -66,6 +68,10 @@ export class ApiSessionClient extends EventEmitter {
     private encryptionVariant: 'legacy' | 'dataKey';
     /** Maps tool_use_id → tool name for trimming tool results before sending to App */
     private toolIdToName = new Map<string, string>();
+    /** Outbox of encrypted messages awaiting reliable HTTP delivery via v3 API */
+    private pendingOutbox: Array<{ content: string; localId: string }> = [];
+    /** Coalescing sync that flushes the HTTP outbox */
+    private sendSync: InvalidateSync;
 
     constructor(token: string, session: Session) {
         super()
@@ -87,6 +93,9 @@ export class ApiSessionClient extends EventEmitter {
             logger: (msg, data) => logger.debug(msg, data)
         });
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path, this.sessionId);
+
+        // Initialize HTTP outbox sync for reliable message delivery
+        this.sendSync = new InvalidateSync(() => this.flushOutbox());
 
         //
         // Create socket
@@ -150,8 +159,13 @@ export class ApiSessionClient extends EventEmitter {
                     // Try to parse as user message first
                     const userResult = UserMessageSchema.safeParse(body);
                     if (userResult.success) {
-                        // Server already filtered to only our session
-                        if (this.pendingMessageCallback) {
+                        // Skip echoes of our own messages — the scanner sends user
+                        // messages to the server and the server broadcasts them back.
+                        // Without this check the CLI would treat its own echo as an
+                        // incoming app message and switch from local to remote mode.
+                        if (userResult.data.meta?.sentFrom === 'cli') {
+                            logger.debug('[SOCKET] [UPDATE] Ignoring echo of CLI-originated user message');
+                        } else if (this.pendingMessageCallback) {
                             this.pendingMessageCallback(userResult.data);
                         } else {
                             this.pendingMessages.push(userResult.data);
@@ -406,6 +420,47 @@ export class ApiSessionClient extends EventEmitter {
         };
     }
 
+    /**
+     * Flush pending outbox messages to the v3 HTTP API.
+     * Called by sendSync (InvalidateSync) which provides coalescing and retry with backoff.
+     */
+    private async flushOutbox() {
+        if (this.pendingOutbox.length === 0) {
+            return;
+        }
+
+        const batch = this.pendingOutbox.slice();
+        await axios.post(
+            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+            {
+                messages: batch
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 60000
+            }
+        );
+
+        // Only clear after successful response
+        this.pendingOutbox.splice(0, batch.length);
+    }
+
+    /**
+     * Encrypt and enqueue a message for reliable delivery via the v3 HTTP outbox.
+     * This is the parallel reliable path alongside the fast-path socket emit.
+     */
+    private enqueueMessage(content: unknown) {
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        this.pendingOutbox.push({
+            content: encrypted,
+            localId: randomUUID()
+        });
+        this.sendSync.invalidate();
+    }
+
     private postSendProcessing(body: RawJSONLines) {
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -460,23 +515,13 @@ export class ApiSessionClient extends EventEmitter {
      * Send message to session
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
-    sendClaudeSessionMessage(body: RawJSONLines, localId?: string) {
+    sendClaudeSessionMessage(body: RawJSONLines) {
         const content = this.buildMessageContent(body);
 
         logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
 
-        // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send Claude session message. Message will be lost:', { type: body.type });
-            return;
-        }
-
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted,
-            localId: localId ?? undefined
-        });
+        // Deliver via v3 HTTP outbox (sole delivery path — no socket emit to avoid duplicates)
+        this.enqueueMessage(content);
 
         this.postSendProcessing(body);
     }
@@ -522,18 +567,9 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
 
-        // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
-            // TODO: Consider implementing message queue or HTTP fallback for reliability
-        }
-
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        // Deliver via v3 HTTP outbox (sole delivery path — no socket emit to avoid duplicates)
+        this.enqueueMessage(content);
     }
 
     /**
@@ -562,11 +598,8 @@ export class ApiSessionClient extends EventEmitter {
 
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
 
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        // Deliver via v3 HTTP outbox (sole delivery path — no socket emit to avoid duplicates)
+        this.enqueueMessage(content);
     }
 
     /**
@@ -790,6 +823,7 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
+        this.sendSync.stop();
         this.socket.close();
     }
 }

@@ -87,7 +87,7 @@
     "unlink:dev": "node scripts/link-dev.cjs unlink"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.8.0",
+    "@agentclientprotocol/sdk": "^0.14.1",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
@@ -105,6 +105,7 @@
     "expo-server-sdk": "^3.15.0",
     "fastify": "^5.6.2",
     "fastify-type-provider-zod": "4.0.2",
+    "happy-wire": "*",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.5.1",

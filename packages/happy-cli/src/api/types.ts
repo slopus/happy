@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
 
+// Re-export shared wire protocol types from happy-wire
+export type {
+    SessionEnvelope,
+    SessionEvent,
+    SessionRole,
+} from 'happy-wire';
+export { createEnvelope } from 'happy-wire';
+
 /**
  * Permission mode type - includes both Claude and Codex modes
  * Must match MessageMetaSchema.permissionMode enum values
@@ -335,6 +343,25 @@ export type Metadata = {
   os?: string,
   model?: string,
   reasoningEffort?: string,
+  // ACP session configuration metadata
+  models?: Array<{
+    code: string,
+    value: string,
+    description?: string | null,
+  }>,
+  currentModelCode?: string,
+  operatingModes?: Array<{
+    code: string,
+    value: string,
+    description?: string | null,
+  }>,
+  currentOperatingModeCode?: string,
+  thoughtLevels?: Array<{
+    code: string,
+    value: string,
+    description?: string | null,
+  }>,
+  currentThoughtLevelCode?: string,
   summary?: {
     text: string,
     updatedAt: number
