@@ -8,6 +8,8 @@ import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
+import { InvalidateSync } from '@/utils/sync';
+import axios from 'axios';
 import { trimToolUseResult, trimToolResultContent, trimToolUseInput } from './trimToolUseResult';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 
@@ -66,6 +68,10 @@ export class ApiSessionClient extends EventEmitter {
     private encryptionVariant: 'legacy' | 'dataKey';
     /** Maps tool_use_id → tool name for trimming tool results before sending to App */
     private toolIdToName = new Map<string, string>();
+    /** Outbox of encrypted messages awaiting reliable HTTP delivery via v3 API */
+    private pendingOutbox: Array<{ content: string; localId: string }> = [];
+    /** Coalescing sync that flushes the HTTP outbox */
+    private sendSync: InvalidateSync;
 
     constructor(token: string, session: Session) {
         super()
@@ -87,6 +93,9 @@ export class ApiSessionClient extends EventEmitter {
             logger: (msg, data) => logger.debug(msg, data)
         });
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path, this.sessionId);
+
+        // Initialize HTTP outbox sync for reliable message delivery
+        this.sendSync = new InvalidateSync(() => this.flushOutbox());
 
         //
         // Create socket
@@ -406,6 +415,47 @@ export class ApiSessionClient extends EventEmitter {
         };
     }
 
+    /**
+     * Flush pending outbox messages to the v3 HTTP API.
+     * Called by sendSync (InvalidateSync) which provides coalescing and retry with backoff.
+     */
+    private async flushOutbox() {
+        if (this.pendingOutbox.length === 0) {
+            return;
+        }
+
+        const batch = this.pendingOutbox.slice();
+        await axios.post(
+            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+            {
+                messages: batch
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 60000
+            }
+        );
+
+        // Only clear after successful response
+        this.pendingOutbox.splice(0, batch.length);
+    }
+
+    /**
+     * Encrypt and enqueue a message for reliable delivery via the v3 HTTP outbox.
+     * This is the parallel reliable path alongside the fast-path socket emit.
+     */
+    private enqueueMessage(content: unknown) {
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        this.pendingOutbox.push({
+            content: encrypted,
+            localId: randomUUID()
+        });
+        this.sendSync.invalidate();
+    }
+
     private postSendProcessing(body: RawJSONLines) {
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -478,6 +528,9 @@ export class ApiSessionClient extends EventEmitter {
             localId: localId ?? undefined
         });
 
+        // Parallel reliable delivery via v3 HTTP outbox
+        this.enqueueMessage(content);
+
         this.postSendProcessing(body);
     }
 
@@ -534,6 +587,9 @@ export class ApiSessionClient extends EventEmitter {
             sid: this.sessionId,
             message: encrypted
         });
+
+        // Parallel reliable delivery via v3 HTTP outbox
+        this.enqueueMessage(content);
     }
 
     /**
@@ -567,6 +623,9 @@ export class ApiSessionClient extends EventEmitter {
             sid: this.sessionId,
             message: encrypted
         });
+
+        // Parallel reliable delivery via v3 HTTP outbox
+        this.enqueueMessage(content);
     }
 
     /**
@@ -790,6 +849,7 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
+        this.sendSync.stop();
         this.socket.close();
     }
 }
