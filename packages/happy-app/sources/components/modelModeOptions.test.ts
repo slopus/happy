@@ -84,4 +84,34 @@ describe('modelModeOptions', () => {
         expect(resolveCurrentOption(options, ['missing', 'b', 'a'])).toEqual({ key: 'b', name: 'B' });
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
     });
+
+    it('resolves lastUsedPermissionMode for new sessions (regression #648)', () => {
+        const modes = getClaudePermissionModes(translate);
+        const defaultKey = 'default';
+        const bypassKey = 'bypassPermissions';
+
+        // Simulate: user previously set YOLO (bypassPermissions), saved as lastUsedPermissionMode
+        const lastUsedPermissionMode = bypassKey;
+
+        const resolved = resolveCurrentOption(modes, [
+            lastUsedPermissionMode,
+            defaultKey,
+        ]);
+
+        expect(resolved).toBeTruthy();
+        expect(resolved!.key).toBe(bypassKey);
+    });
+
+    it('falls back to default when lastUsedPermissionMode is null', () => {
+        const modes = getClaudePermissionModes(translate);
+        const lastUsedPermissionMode: string | null = null;
+
+        const resolved = resolveCurrentOption(modes, [
+            lastUsedPermissionMode,
+            'default',
+        ].filter((k): k is string => k !== null));
+
+        expect(resolved).toBeTruthy();
+        expect(resolved!.key).toBe('default');
+    });
 });
