@@ -603,7 +603,10 @@ export default function AgentHistoryPage() {
                                     icon={(
                                         <Image
                                             source={agentIcons[entry.agent]}
-                                            style={{ width: 48, height: 48 }}
+                                            style={[
+                                                { width: 48, height: 48 },
+                                                entry.agent === 'codex' && { transform: [{ scale: 0.92 }] }
+                                            ]}
                                             contentFit="contain"
                                             tintColor={entry.agent === 'codex' ? theme.colors.text : undefined}
                                         />
