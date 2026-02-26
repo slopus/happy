@@ -123,7 +123,7 @@ describe('ApiSessionClient v3 outbox', () => {
         expect(() => client.close()).not.toThrow();
     });
 
-    it('should call socket.emit and enqueue via outbox when sending a Claude session message', () => {
+    it('should NOT emit via socket when sending a Claude session message (v3 outbox only)', () => {
         const client = new ApiSessionClient('fake-token', mockSession);
 
         const body = {
@@ -136,32 +136,25 @@ describe('ApiSessionClient v3 outbox', () => {
 
         client.sendClaudeSessionMessage(body as any);
 
-        // Verify socket.emit was called with 'message' event
-        expect(mockSocket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
-            sid: 'test-session-id',
-            message: expect.any(String)
-        }));
+        // Socket emit should NOT be called — messages now go through v3 HTTP outbox only
+        expect(mockSocket.emit).not.toHaveBeenCalledWith('message', expect.anything());
     });
 
-    it('should call socket.emit when sending an agent message', () => {
+    it('should NOT emit via socket when sending an agent message (v3 outbox only)', () => {
         const client = new ApiSessionClient('fake-token', mockSession);
 
         client.sendAgentMessage('gemini', { type: 'message', message: 'Hello from Gemini' });
 
-        expect(mockSocket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
-            sid: 'test-session-id',
-            message: expect.any(String)
-        }));
+        // Socket emit should NOT be called — messages now go through v3 HTTP outbox only
+        expect(mockSocket.emit).not.toHaveBeenCalledWith('message', expect.anything());
     });
 
-    it('should call socket.emit when sending a codex message', () => {
+    it('should NOT emit via socket when sending a codex message (v3 outbox only)', () => {
         const client = new ApiSessionClient('fake-token', mockSession);
 
         client.sendCodexMessage({ type: 'message', text: 'Hello from Codex' });
 
-        expect(mockSocket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
-            sid: 'test-session-id',
-            message: expect.any(String)
-        }));
+        // Socket emit should NOT be called — messages now go through v3 HTTP outbox only
+        expect(mockSocket.emit).not.toHaveBeenCalledWith('message', expect.anything());
     });
 });

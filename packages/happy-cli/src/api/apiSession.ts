@@ -159,8 +159,13 @@ export class ApiSessionClient extends EventEmitter {
                     // Try to parse as user message first
                     const userResult = UserMessageSchema.safeParse(body);
                     if (userResult.success) {
-                        // Server already filtered to only our session
-                        if (this.pendingMessageCallback) {
+                        // Skip echoes of our own messages — the scanner sends user
+                        // messages to the server and the server broadcasts them back.
+                        // Without this check the CLI would treat its own echo as an
+                        // incoming app message and switch from local to remote mode.
+                        if (userResult.data.meta?.sentFrom === 'cli') {
+                            logger.debug('[SOCKET] [UPDATE] Ignoring echo of CLI-originated user message');
+                        } else if (this.pendingMessageCallback) {
                             this.pendingMessageCallback(userResult.data);
                         } else {
                             this.pendingMessages.push(userResult.data);
@@ -510,25 +515,12 @@ export class ApiSessionClient extends EventEmitter {
      * Send message to session
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
-    sendClaudeSessionMessage(body: RawJSONLines, localId?: string) {
+    sendClaudeSessionMessage(body: RawJSONLines) {
         const content = this.buildMessageContent(body);
 
         logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
 
-        // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send Claude session message. Message will be lost:', { type: body.type });
-            return;
-        }
-
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted,
-            localId: localId ?? undefined
-        });
-
-        // Parallel reliable delivery via v3 HTTP outbox
+        // Deliver via v3 HTTP outbox (sole delivery path — no socket emit to avoid duplicates)
         this.enqueueMessage(content);
 
         this.postSendProcessing(body);
@@ -575,19 +567,8 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
 
-        // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, skipping socket emit (v3 HTTP outbox will deliver):', { type: body.type });
-        }
-
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
-
-        // Parallel reliable delivery via v3 HTTP outbox
+        // Deliver via v3 HTTP outbox (sole delivery path — no socket emit to avoid duplicates)
         this.enqueueMessage(content);
     }
 
@@ -617,13 +598,7 @@ export class ApiSessionClient extends EventEmitter {
 
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
 
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
-
-        // Parallel reliable delivery via v3 HTTP outbox
+        // Deliver via v3 HTTP outbox (sole delivery path — no socket emit to avoid duplicates)
         this.enqueueMessage(content);
     }
 

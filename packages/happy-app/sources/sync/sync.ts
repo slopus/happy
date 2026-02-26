@@ -1709,6 +1709,14 @@ class Sync {
         }
 
         storage.getState().applyMessagesLoaded(sessionId);
+
+        // Update pagination: v3 fetches forward from afterSeq, so after the
+        // initial load (from seq=0) all messages are present → no older to load.
+        const sessionState = storage.getState().sessionMessages[sessionId];
+        if (sessionState && sessionState.oldestSeq === null) {
+            storage.getState().setSessionPagination(sessionId, 1, false);
+        }
+
         log.log(`💬 fetchMessagesV3 completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
     }
 
@@ -1837,14 +1845,27 @@ class Sync {
             const incomingSeq = updateData.body.message?.seq;
             const currentLastSeq = this.sessionLastSeq.get(sid);
 
-            if (currentLastSeq !== undefined && incomingSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-                // Fast path: seq is contiguous, apply directly and bump seq
-                this.sessionLastSeq.set(sid, incomingSeq);
-                this.enqueueSessionMessageUpdate(updateData);
+            if (currentLastSeq !== undefined && incomingSeq !== undefined) {
+                if (incomingSeq <= currentLastSeq) {
+                    // Already seen this seq (e.g. echo of our own send), just apply for dedup
+                    this.enqueueSessionMessageUpdate(updateData);
+                } else if (incomingSeq === currentLastSeq + 1) {
+                    // Fast path: seq is contiguous, apply directly and bump seq
+                    this.sessionLastSeq.set(sid, incomingSeq);
+                    this.enqueueSessionMessageUpdate(updateData);
+                } else {
+                    // Gap detected: trigger v3 re-fetch for consistency
+                    this.sessionLastSeq.set(sid, incomingSeq);
+                    this.enqueueSessionMessageUpdate(updateData);
+                    this.invalidateMessagesSync(sid);
+                }
             } else {
-                // Gap detected or first message: trigger v3 re-fetch for consistency
-                this.enqueueSessionMessageUpdate(updateData); // Still apply what we got
-                this.invalidateMessagesSync(sid); // And fetch any gaps
+                // First message or no seq tracking yet
+                if (incomingSeq !== undefined) {
+                    this.sessionLastSeq.set(sid, incomingSeq);
+                }
+                this.enqueueSessionMessageUpdate(updateData);
+                this.invalidateMessagesSync(sid);
             }
 
         } else if (updateData.body.t === 'new-session') {

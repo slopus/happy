@@ -653,6 +653,12 @@ export const storage = create<StorageState>()((set, get) => {
                 // Merge messages
                 const mergedMessagesMap = { ...existingSession.messagesMap };
                 processedMessages.forEach(message => {
+                    // Dedup: if a server message arrives with a localId, remove any
+                    // optimistic message that was stored with id === localId
+                    const localId = 'localId' in message ? message.localId : null;
+                    if (localId && message.id !== localId && mergedMessagesMap[localId]) {
+                        delete mergedMessagesMap[localId];
+                    }
                     mergedMessagesMap[message.id] = message;
                 });
 
