@@ -31,7 +31,7 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
-    onReady: () => void,
+    onReady: () => void | Promise<void>,
     isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
@@ -123,7 +123,9 @@ export async function claudeRemote(opts: {
         customSystemPrompt: initial.mode.customSystemPrompt ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt : undefined,
         appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
-        disallowedTools: initial.mode.disallowedTools,
+        disallowedTools: mapToClaudeMode(initial.mode.permissionMode) === 'bypassPermissions'
+            ? [...(initial.mode.disallowedTools || []), 'AskUserQuestion']
+            : initial.mode.disallowedTools,
         canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal }) => opts.canCallTool(toolName, input, mode, options),
         executable: opts.jsRuntime ?? 'node',
         abort: opts.signal,
@@ -155,10 +157,18 @@ export async function claudeRemote(opts: {
         },
     });
 
-    // Start the loop
+    // Start the loop.
+    // Forward all messages for sync immediately as they arrive from stdout,
+    // regardless of whether the for-await loop is blocked (e.g., at nextMessage).
+    // This ensures messages from YOLO-mode auto-continuations are synced even
+    // when the loop is waiting for user input after a result message.
     const response = query({
         prompt: messages,
         options: sdkOptions,
+        onMessageReceived: (message) => {
+            logger.debugLargeJson(`[claudeRemote] onMessageReceived ${message.type}`, message);
+            opts.onMessage(message);
+        },
     });
 
     updateThinking(true);
@@ -166,10 +176,8 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
-            logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
-
-            // Handle messages
-            opts.onMessage(message);
+            // NOTE: opts.onMessage is already called via onMessageReceived above.
+            // This loop handles only control flow decisions (result, init, abort).
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
@@ -192,7 +200,7 @@ export async function claudeRemote(opts: {
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                logger.debug('[claudeRemote] Result received');
 
                 // Send completion messages
                 if (isCompactCommand) {
@@ -203,8 +211,8 @@ export async function claudeRemote(opts: {
                     isCompactCommand = false;
                 }
 
-                // Send ready event
-                opts.onReady();
+                // Send ready event (flush queued messages before signaling turn end)
+                await opts.onReady();
 
                 // Push next message
                 const next = await opts.nextMessage();
