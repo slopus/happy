@@ -505,9 +505,12 @@ const style = StyleSheet.create((theme) => ({
         borderRadius: 8,
         overflow: 'hidden',
         maxWidth: '100%',
+        flexGrow: 0,
+        flexShrink: 1,
     },
     tableScrollView: {
         flexGrow: 0,
+        flexShrink: 1,
     },
     tableContent: {
         flexDirection: 'row',
