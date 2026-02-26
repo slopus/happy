@@ -806,11 +806,12 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * Wait for both the HTTP outbox and socket buffer to flush.
+     * Routes through sendSync to avoid concurrent flushOutbox() calls.
      */
     async flush(): Promise<void> {
-        // Drain HTTP outbox first — this is the primary delivery path
+        // Drain HTTP outbox through sendSync (serialized, no concurrent splice races)
         try {
-            await this.flushOutbox();
+            await this.sendSync.invalidateAndAwait();
         } catch (error) {
             logger.debug('[API] flush: outbox flush failed, some messages may be lost:', error);
         }
@@ -831,9 +832,10 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
-        // Drain any pending outbox messages before shutting down
+        // Drain pending outbox through sendSync (serialized — avoids concurrent
+        // flushOutbox() calls that could splice the wrong messages).
         try {
-            await this.flushOutbox();
+            await this.sendSync.invalidateAndAwait();
         } catch (error) {
             logger.debug('[API] close: final outbox flush failed:', error);
         }

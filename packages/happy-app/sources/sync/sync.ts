@@ -1828,10 +1828,10 @@ class Sync {
                     this.invalidateMessagesSync(sid);
                 }
             } else {
-                // First message or no seq tracking yet
-                if (incomingSeq !== undefined) {
-                    this.sessionLastSeq.set(sid, incomingSeq);
-                }
+                // First message or no seq tracking yet — do NOT set the cursor
+                // here. Let fetchMessagesV3 start from seq 0 and pull the full
+                // history. Setting it to a high incoming seq would cause the
+                // fetch to skip all earlier messages.
                 this.enqueueSessionMessageUpdate(updateData);
                 this.invalidateMessagesSync(sid);
             }
