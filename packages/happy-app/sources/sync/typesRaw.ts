@@ -539,6 +539,7 @@ function normalizeSessionEnvelope(
     // Session protocol requires turn id on all agent-originated envelopes.
     // Drop malformed agent events without turn to avoid attaching stray messages.
     if (envelope.role === 'agent' && !envelope.turn) {
+        console.warn(`[normalizeSessionEnvelope] Dropping agent envelope without turn: ev.t=${envelope.ev.t}, id=${envelope.id}`);
         return null;
     }
 
@@ -592,10 +593,6 @@ function normalizeSessionEnvelope(
 
     if (envelope.ev.t === 'text') {
         if (envelope.role === 'user') {
-            if (!isSessionProtocolSendEnabled()) {
-                return null;
-            }
-
             return {
                 id: messageId,
                 localId,
@@ -716,18 +713,11 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
     if (!parsed.success) {
-        console.error('=== VALIDATION ERROR ===');
-        console.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
-        console.error('Raw message:', JSON.stringify(raw, null, 2));
-        console.error('=== END ERROR ===');
+        console.warn(`[normalizeRawMessage] Zod validation failed for message ${id}:`, parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', '));
         return null;
     }
     raw = parsed.data;
     if (raw.role === 'user') {
-        if (isSessionProtocolSendEnabled()) {
-            return null;
-        }
-
         return {
             id,
             localId,
@@ -749,12 +739,12 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     if (raw.role === 'agent') {
         if (raw.content.type === 'output') {
 
-            // Skip Meta messages
+            // Skip Meta messages (expected — not rendered)
             if (raw.content.data.isMeta) {
                 return null;
             }
 
-            // Skip compact summary messages
+            // Skip compact summary messages (expected — not rendered)
             if (raw.content.data.isCompactSummary) {
                 return null;
             }
@@ -762,6 +752,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             // Handle Assistant messages (including sidechains)
             if (raw.content.data.type === 'assistant') {
                 if (!raw.content.data.uuid) {
+                    console.warn(`[normalizeRawMessage] Dropping assistant message ${id}: missing uuid`);
                     return null;
                 }
                 let content: NormalizedAgentContent[] = [];

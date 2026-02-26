@@ -1603,7 +1603,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
-        it('drops modern user session envelopes when send flag is disabled', () => {
+        it('normalizes modern user session envelopes regardless of send flag', () => {
             const normalized = normalizeRawMessage('db-modern-user-flag-off-1', null, 1, {
                 role: 'session',
                 content: {
@@ -1614,7 +1614,14 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 }
             } as any);
 
-            expect(normalized).toBeNull();
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('user');
+            if (normalized && normalized.role === 'user') {
+                expect(normalized.content).toEqual({
+                    type: 'text',
+                    text: 'modern user envelope'
+                });
+            }
         });
 
         it('uses modern user session envelopes for user content when send flag is enabled', () => {
@@ -1640,7 +1647,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
-        it('drops legacy user text envelopes when send flag is enabled', () => {
+        it('normalizes legacy user text envelopes regardless of send flag', () => {
             process.env.ENABLE_SESSION_PROTOCOL_SEND = 'true';
 
             const normalized = normalizeRawMessage('db-user-legacy-flag-on', null, 1, {
@@ -1651,7 +1658,14 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 }
             } as any);
 
-            expect(normalized).toBeNull();
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('user');
+            if (normalized && normalized.role === 'user') {
+                expect(normalized.content).toEqual({
+                    type: 'text',
+                    text: 'legacy user protocol'
+                });
+            }
         });
 
         it('normalizes service events to visible agent text', () => {

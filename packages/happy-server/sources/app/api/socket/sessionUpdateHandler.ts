@@ -26,6 +26,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 where: { id: sid, accountId: userId }
             });
             if (!session) {
+                if (callback) {
+                    callback({ result: 'error' });
+                }
                 return;
             }
 
