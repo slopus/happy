@@ -32,6 +32,7 @@ import { parseClear } from '@/parsers/specialCommands';
 
 import { createGeminiBackend } from '@/agent/factories/gemini';
 import type { AgentBackend, AgentMessage } from '@/agent';
+import { handleConfigMetadataEvent } from '@/agent/acp/sessionUpdateHandlers';
 import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
@@ -934,6 +935,10 @@ export async function runGemini(opts: {
         break;
 
       case 'event':
+        // Handle ACP config metadata events (mode, model, thought level switching)
+        if (handleConfigMetadataEvent(msg.name, msg.payload, session.updateMetadata.bind(session))) {
+          break;
+        }
         // Handle thinking events - process through ReasoningProcessor like Codex
         if (msg.name === 'thinking') {
           const thinkingPayload = msg.payload as { text?: string } | undefined;

@@ -11,6 +11,13 @@
 import type { AgentMessage } from '../core';
 import type { TransportHandler } from '../transport';
 import { logger } from '@/ui/logger';
+import {
+    extractConfigOptionsFromPayload,
+    extractCurrentModeIdFromPayload,
+    extractModeStateFromPayload,
+    extractModelStateFromPayload,
+    mergeAcpSessionConfigIntoMetadata,
+} from './sessionConfigMetadata';
 
 /**
  * Default timeout for idle detection after message chunks (ms)
@@ -555,4 +562,54 @@ export function handleThinkingUpdate(
   });
 
   return { handled: true };
+}
+
+/**
+ * Handle ACP config metadata events (config_options_update, modes_update,
+ * models_update, current_mode_update, available_commands).
+ *
+ * Call this from the 'event' case in any run*.ts message handler.
+ * Returns true if the event was handled (consumed).
+ */
+export function handleConfigMetadataEvent(
+    eventName: string,
+    payload: unknown,
+    updateMetadata: (handler: (metadata: any) => any) => void,
+): boolean {
+    if (eventName === 'config_options_update') {
+        const configOptions = extractConfigOptionsFromPayload(payload);
+        if (configOptions) {
+            updateMetadata((m) => mergeAcpSessionConfigIntoMetadata(m, { configOptions }));
+        }
+        return true;
+    }
+    if (eventName === 'modes_update') {
+        const modes = extractModeStateFromPayload(payload);
+        if (modes) {
+            updateMetadata((m) => mergeAcpSessionConfigIntoMetadata(m, { modes }));
+        }
+        return true;
+    }
+    if (eventName === 'models_update') {
+        const models = extractModelStateFromPayload(payload);
+        if (models) {
+            updateMetadata((m) => mergeAcpSessionConfigIntoMetadata(m, { models }));
+        }
+        return true;
+    }
+    if (eventName === 'current_mode_update') {
+        const currentModeId = extractCurrentModeIdFromPayload(payload);
+        if (currentModeId) {
+            updateMetadata((m) => mergeAcpSessionConfigIntoMetadata(m, { currentModeId }));
+        }
+        return true;
+    }
+    if (eventName === 'available_commands') {
+        const commands = payload as { name: string; description?: string }[] | undefined;
+        if (Array.isArray(commands)) {
+            updateMetadata((m) => ({ ...m, slashCommands: commands.map(c => c.name) }));
+        }
+        return true;
+    }
+    return false;
 }

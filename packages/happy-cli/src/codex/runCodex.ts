@@ -34,6 +34,7 @@ import { downloadImage } from '@/utils/downloadImage';
 import type { ImageContent } from '@/api/types';
 import type { SendPromptOptions } from '@/agent/core';
 import type { AgentMessage } from '@/agent/core';
+import { handleConfigMetadataEvent } from '@/agent/acp/sessionUpdateHandlers';
 import { findCodexSessionFile } from './utils/codexSessionReader';
 
 type ReadyEventOptions = {
@@ -749,6 +750,10 @@ export async function runCodex(opts: {
             }
 
             case 'event': {
+                // Handle ACP config metadata events (mode, model, thought level switching)
+                if (handleConfigMetadataEvent(msg.name, msg.payload, session.updateMetadata.bind(session))) {
+                    break;
+                }
                 // Handle reasoning events through processors
                 if (msg.name === 'reasoning_delta') {
                     const payload = msg.payload as { delta: string };
