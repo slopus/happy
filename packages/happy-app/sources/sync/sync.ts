@@ -26,6 +26,7 @@ import { getServerUrl } from './serverConfig';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
+import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
@@ -109,6 +110,8 @@ class Sync {
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     /** Per-session last-known seq for v3 incremental fetch */
     private sessionLastSeq = new Map<string, number>();
+    /** Per-session lock to serialize fetchMessagesV3 and websocket message application */
+    private sessionMessageLocks = new Map<string, AsyncLock>();
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
     private settingsSync: InvalidateSync;
@@ -1644,6 +1647,15 @@ class Sync {
         return normalizedMessages;
     }
 
+    private getSessionMessageLock(sessionId: string): AsyncLock {
+        let lock = this.sessionMessageLocks.get(sessionId);
+        if (!lock) {
+            lock = new AsyncLock();
+            this.sessionMessageLocks.set(sessionId, lock);
+        }
+        return lock;
+    }
+
     private fetchMessagesV3 = async (sessionId: string) => {
         if (!this.credentials) return;
 
@@ -1653,93 +1665,98 @@ class Sync {
             throw new Error(`Session encryption not ready for ${sessionId}`);
         }
 
-        const currentCursor = this.sessionLastSeq.get(sessionId);
-        if (currentCursor === undefined) {
-            // Bootstrap with latest page only to avoid loading very large histories at once.
-            // v3 with no after_seq/before_seq returns latest messages in desc order.
-            const API_ENDPOINT = getServerUrl();
-            const response = await fetch(
-                `${API_ENDPOINT}/v3/sessions/${sessionId}/messages?limit=${Sync.INITIAL_MESSAGES_LIMIT}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.credentials.token}`
+        const lock = this.getSessionMessageLock(sessionId);
+        await lock.inLock(async () => {
+            const currentCursor = this.sessionLastSeq.get(sessionId);
+            if (currentCursor === undefined) {
+                // Bootstrap with latest page only to avoid loading very large histories at once.
+                // v3 with no after_seq/before_seq returns latest messages in desc order.
+                const API_ENDPOINT = getServerUrl();
+                const response = await fetch(
+                    `${API_ENDPOINT}/v3/sessions/${sessionId}/messages?limit=${Sync.INITIAL_MESSAGES_LIMIT}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.credentials.token}`
+                        }
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch initial messages: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const apiMessages = data.messages as ApiMessage[];
+                const hasMoreOlder: boolean = data.hasMore ?? false;
+
+                if (apiMessages.length > 0) {
+                    const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption);
+                    this.applyMessages(sessionId, normalizedMessages);
+
+                    const maxSeq = Math.max(...apiMessages.map((m) => m.seq));
+                    this.sessionLastSeq.set(sessionId, Math.max(this.sessionLastSeq.get(sessionId) ?? 0, maxSeq));
+                } else {
+                    if (!this.sessionLastSeq.has(sessionId)) {
+                        this.sessionLastSeq.set(sessionId, 0);
                     }
                 }
-            );
 
-            if (!response.ok) {
-                throw new Error(`Failed to fetch initial messages: ${response.status}`);
+                storage.getState().applyMessagesLoaded(sessionId);
+
+                const minSeq = apiMessages.length > 0
+                    ? Math.min(...apiMessages.map((m) => m.seq))
+                    : null;
+                storage.getState().setSessionPagination(sessionId, minSeq, hasMoreOlder);
+
+                log.log(`💬 fetchMessagesV3 bootstrap completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
+                return;
             }
 
-            const data = await response.json();
-            const apiMessages = data.messages as ApiMessage[];
-            const hasMoreOlder: boolean = data.hasMore ?? false;
+            let afterSeq = currentCursor;
+            let hasMore = true;
 
-            if (apiMessages.length > 0) {
-                const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption);
-                this.applyMessages(sessionId, normalizedMessages);
+            while (hasMore) {
+                const API_ENDPOINT = getServerUrl();
+                const response = await fetch(
+                    `${API_ENDPOINT}/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.credentials.token}`
+                        }
+                    }
+                );
 
-                const maxSeq = Math.max(...apiMessages.map((m) => m.seq));
-                this.sessionLastSeq.set(sessionId, maxSeq);
-            } else {
-                this.sessionLastSeq.set(sessionId, 0);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch v3 messages: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const messages = data.messages as ApiMessage[];
+                hasMore = data.hasMore ?? false;
+
+                if (messages.length > 0) {
+                    const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, messages, encryption);
+                    this.applyMessages(sessionId, normalizedMessages);
+
+                    const maxSeq = Math.max(...messages.map((m: any) => m.seq));
+                    this.sessionLastSeq.set(sessionId, Math.max(this.sessionLastSeq.get(sessionId) ?? 0, maxSeq));
+                    afterSeq = maxSeq;
+                } else {
+                    hasMore = false;
+                }
             }
 
             storage.getState().applyMessagesLoaded(sessionId);
 
-            const minSeq = apiMessages.length > 0
-                ? Math.min(...apiMessages.map((m) => m.seq))
-                : null;
-            storage.getState().setSessionPagination(sessionId, minSeq, hasMoreOlder);
-
-            log.log(`💬 fetchMessagesV3 bootstrap completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
-            return;
-        }
-
-        let afterSeq = currentCursor;
-        let hasMore = true;
-
-        while (hasMore) {
-            const API_ENDPOINT = getServerUrl();
-            const response = await fetch(
-                `${API_ENDPOINT}/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.credentials.token}`
-                    }
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch v3 messages: ${response.status}`);
+            // If we got here, cursor-based incremental sync is active and older pagination
+            // state should already be established by the initial bootstrap load.
+            const sessionState = storage.getState().sessionMessages[sessionId];
+            if (sessionState && sessionState.oldestSeq === null) {
+                storage.getState().setSessionPagination(sessionId, 1, false);
             }
 
-            const data = await response.json();
-            const messages = data.messages as ApiMessage[];
-            hasMore = data.hasMore ?? false;
-
-            if (messages.length > 0) {
-                const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, messages, encryption);
-                this.applyMessages(sessionId, normalizedMessages);
-
-                const maxSeq = Math.max(...messages.map((m: any) => m.seq));
-                this.sessionLastSeq.set(sessionId, maxSeq);
-                afterSeq = maxSeq;
-            } else {
-                hasMore = false;
-            }
-        }
-
-        storage.getState().applyMessagesLoaded(sessionId);
-
-        // If we got here, cursor-based incremental sync is active and older pagination
-        // state should already be established by the initial bootstrap load.
-        const sessionState = storage.getState().sessionMessages[sessionId];
-        if (sessionState && sessionState.oldestSeq === null) {
-            storage.getState().setSessionPagination(sessionId, 1, false);
-        }
-
-        log.log(`💬 fetchMessagesV3 completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
+            log.log(`💬 fetchMessagesV3 completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
+        });
     }
 
     fetchOlderMessages = async (sessionId: string) => {
@@ -1920,6 +1937,11 @@ class Sync {
 
             // Clear any cached git status
             gitStatusSync.clearForSession(sessionId);
+
+            // Clear message sync state
+            this.messagesSync.delete(sessionId);
+            this.sessionLastSeq.delete(sessionId);
+            this.sessionMessageLocks.delete(sessionId);
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
@@ -2422,16 +2444,20 @@ class Sync {
             return;
         }
 
+        const sid = updateData.body.sid;
+
         // Get encryption
-        const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+        const encryption = this.encryption.getSessionEncryption(sid);
         if (!encryption) { // Should never happen
-            console.error(`Session ${updateData.body.sid} not found`);
+            console.error(`Session ${sid} not found`);
             this.fetchSessions(); // Just fetch sessions again
             return;
         }
 
-        // Decrypt message
+        // Decrypt message (outside lock — idempotent and potentially slow)
         let lastMessage: NormalizedMessage | null = null;
+        let isTaskComplete = false;
+        let isTaskStarted = false;
         if (updateData.body.message) {
             const decrypted = await encryption.decryptMessage(updateData.body.message);
             if (decrypted) {
@@ -2448,50 +2474,55 @@ class Sync {
                     console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
                 }
 
-                const isTaskComplete =
+                isTaskComplete =
                     ((contentType === 'acp' || contentType === 'codex') &&
                         (dataType === 'task_complete' || dataType === 'turn_aborted'));
 
-                const isTaskStarted =
+                isTaskStarted =
                     ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
 
                 if (isTaskComplete || isTaskStarted) {
                     console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
                 }
+            }
+        }
 
-                // Update session
-                const session = storage.getState().sessions[updateData.body.sid];
+        // Apply to storage under lock (serialized with fetchMessagesV3)
+        const hasDecryptedContent = lastMessage !== null || isTaskComplete || isTaskStarted;
+        if (hasDecryptedContent) {
+            const lock = this.getSessionMessageLock(sid);
+            await lock.inLock(() => {
+                // Update session metadata (updatedAt, seq, thinking state)
+                const session = storage.getState().sessions[sid];
                 if (session) {
                     this.applySessions([{
                         ...session,
                         updatedAt: updateData.createdAt,
                         seq: updateData.seq,
-                        // Update thinking state based on task lifecycle events
                         ...(isTaskComplete ? { thinking: false } : {}),
                         ...(isTaskStarted ? { thinking: true } : {})
                     }]);
                 } else {
-                    // Fetch sessions again if we don't have this session
                     this.fetchSessions();
                 }
 
                 // Update messages
                 if (lastMessage) {
                     console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
-                    this.applyMessages(updateData.body.sid, [lastMessage]);
+                    this.applyMessages(sid, [lastMessage]);
                     let hasMutableTool = false;
                     if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
-                        hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
+                        hasMutableTool = storage.getState().isMutableToolCall(sid, lastMessage.content[0].tool_use_id);
                     }
                     if (hasMutableTool) {
-                        gitStatusSync.invalidate(updateData.body.sid);
+                        gitStatusSync.invalidate(sid);
                     }
                 }
-            }
+            });
         }
 
         // Ping session
-        this.onSessionVisible(updateData.body.sid);
+        this.onSessionVisible(sid);
     }
 
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
