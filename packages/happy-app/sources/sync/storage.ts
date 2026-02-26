@@ -57,6 +57,7 @@ interface SessionMessages {
     isLoaded: boolean;
     oldestSeq: number | null;
     hasMore: boolean;
+    fetchVersion: number; // Monotonically increasing counter bumped on every fetch completion
 }
 
 // Machine type is now imported from storageTypes - represents persisted machine data
@@ -522,6 +523,7 @@ export const storage = create<StorageState>()((set, get) => {
                         isLoaded: existingSessionMessages.isLoaded,
                         oldestSeq: existingSessionMessages.oldestSeq,
                         hasMore: existingSessionMessages.hasMore,
+                        fetchVersion: existingSessionMessages.fetchVersion,
                     };
 
                     // IMPORTANT: Copy latestUsage from reducerState to Session for immediate availability
@@ -631,6 +633,7 @@ export const storage = create<StorageState>()((set, get) => {
                     isLoaded: false,
                     oldestSeq: null,
                     hasMore: true,
+                    fetchVersion: 0,
                 };
 
                 // Get the session's agentState if available
@@ -757,6 +760,7 @@ export const storage = create<StorageState>()((set, get) => {
                             isLoaded: true,
                             oldestSeq: null,
                             hasMore: true,
+                            fetchVersion: 1,
                         } satisfies SessionMessages
                     }
                 };
@@ -767,7 +771,8 @@ export const storage = create<StorageState>()((set, get) => {
                         ...state.sessionMessages,
                         [sessionId]: {
                             ...existingSession,
-                            isLoaded: true
+                            isLoaded: true,
+                            fetchVersion: (existingSession.fetchVersion ?? 0) + 1,
                         } satisfies SessionMessages
                     }
                 };
@@ -1555,13 +1560,14 @@ export function useSession(id: string): Session | null {
 
 const emptyArray: unknown[] = [];
 
-export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean, hasMore: boolean } {
+export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean, hasMore: boolean, fetchVersion: number } {
     return storage(useShallow((state) => {
         const session = state.sessionMessages[sessionId];
         return {
             messages: session?.messages ?? emptyArray,
             isLoaded: session?.isLoaded ?? false,
             hasMore: session?.hasMore ?? true,
+            fetchVersion: session?.fetchVersion ?? 0,
         };
     }));
 }

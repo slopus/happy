@@ -213,7 +213,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
-    const { messages, isLoaded } = useSessionMessages(sessionId);
+    const { messages, isLoaded, fetchVersion } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
 
     // Check if CLI version is outdated and not already acknowledged
@@ -231,9 +231,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const [silentRefreshTrackingKey, setSilentRefreshTrackingKey] = React.useState(0);
     const [silentRefreshPhase, setSilentRefreshPhase] = React.useState<'idle' | 'refreshing' | 'failed'>('idle');
-    const latestMessageSnapshotRef = React.useRef({ isLoaded, messages });
-    latestMessageSnapshotRef.current = { isLoaded, messages };
-    const silentRefreshBaselineRef = React.useRef<{ isLoaded: boolean; messagesRef: typeof messages } | null>(null);
+    const latestMessageSnapshotRef = React.useRef({ isLoaded, messages, fetchVersion });
+    latestMessageSnapshotRef.current = { isLoaded, messages, fetchVersion };
+    const silentRefreshBaselineRef = React.useRef<{ isLoaded: boolean; messagesRef: typeof messages; fetchVersion: number } | null>(null);
 
     const startSilentRefreshTracking = React.useCallback(() => {
         const snapshot = latestMessageSnapshotRef.current;
@@ -247,6 +247,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         silentRefreshBaselineRef.current = {
             isLoaded: snapshot.isLoaded,
             messagesRef: snapshot.messages,
+            fetchVersion: snapshot.fetchVersion,
         };
         setSilentRefreshTrackingKey((k) => k + 1);
         setSilentRefreshPhase('idle');
@@ -262,12 +263,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         if (!baseline) {
             return;
         }
-        if (messages !== baseline.messagesRef || isLoaded !== baseline.isLoaded) {
+        if (messages !== baseline.messagesRef || isLoaded !== baseline.isLoaded || fetchVersion !== baseline.fetchVersion) {
             setSilentRefreshTrackingKey(0);
             setSilentRefreshPhase('idle');
             silentRefreshBaselineRef.current = null;
         }
-    }, [isTracking, isLoaded, messages]);
+    }, [isTracking, isLoaded, messages, fetchVersion]);
 
     React.useEffect(() => {
         if (!isTracking) {
