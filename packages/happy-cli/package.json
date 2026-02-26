@@ -87,7 +87,7 @@
     "unlink:dev": "node scripts/link-dev.cjs unlink"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.8.0",
+    "@agentclientprotocol/sdk": "^0.14.1",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
