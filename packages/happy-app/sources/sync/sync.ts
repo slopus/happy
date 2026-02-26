@@ -102,6 +102,8 @@ class Sync {
     private sessionMessageQueueTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private sessionLastMessageProcessedAt = new Map<string, number>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
+    /** Per-session last-known seq for v3 incremental fetch */
+    private sessionLastSeq = new Map<string, number>();
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
     private settingsSync: InvalidateSync;
@@ -242,7 +244,7 @@ class Sync {
     onSessionVisible = (sessionId: string, userInitiated: boolean = false) => {
         let ex = this.messagesSync.get(sessionId);
         if (!ex) {
-            ex = new InvalidateSync(() => this.fetchMessages(sessionId));
+            ex = new InvalidateSync(() => this.fetchMessagesV3(sessionId));
             this.messagesSync.set(sessionId, ex);
         }
         ex.invalidate();
@@ -282,7 +284,7 @@ class Sync {
     private invalidateMessagesSync = (sessionId: string) => {
         let ex = this.messagesSync.get(sessionId);
         if (!ex) {
-            ex = new InvalidateSync(() => this.fetchMessages(sessionId));
+            ex = new InvalidateSync(() => this.fetchMessagesV3(sessionId));
             this.messagesSync.set(sessionId, ex);
         }
         ex.invalidate();
@@ -397,183 +399,55 @@ class Sync {
             log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
         }
 
-        // Send message with three parallel mechanisms:
-        // 1. Server direct response (emitWithAck)
-        // 2. WebSocket push monitoring (storage.subscribe)
-        // 3. Polling fallback (invalidateMessagesSync every 5s)
-        // Plus a total timeout of 30s
-
-        const POLLING_INTERVAL_MS = 5000;
-        const TOTAL_TIMEOUT_MS = 30000;
-
-        // Cancellation flag and cleanup
-        let cancelled = false;
-        let unsubscribe: (() => void) | null = null;
-        let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-        const cleanup = () => {
-            cancelled = true;
-            if (unsubscribe) {
-                unsubscribe();
-                unsubscribe = null;
-            }
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-                timeoutId = null;
-            }
-        };
-
-        // Helper to check if message exists in storage
-        const messageExists = (): boolean => {
-            const sessionMessages = storage.getState().sessionMessages[sessionId];
-            return sessionMessages?.messages.some(
-                (msg) => 'localId' in msg && msg.localId === localId
-            ) ?? false;
-        };
-
-        type RaceResult =
-            | { type: 'send'; success: true }
-            | { type: 'send'; success: false; error: string }
-            | { type: 'arrived' }
-            | { type: 'polling' }
-            | { type: 'timeout' };
-
+        // Send via v3 HTTP API
         try {
-            // Mechanism 1: Server direct response
-            const sendPromise: Promise<RaceResult> = apiSocket.emitWithAck<{ result: string; messageId?: string; seq?: number; error?: string }>('message', {
-                sid: sessionId,
-                message: encryptedRawRecord,
-                localId,
-                sentFrom,
-                permissionMode: permissionMode || 'default'
-            }).then(res => {
-                if (res.result === 'success') {
-                    return { type: 'send' as const, success: true as const };
-                } else {
-                    return { type: 'send' as const, success: false as const, error: res.error || 'Send failed' };
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(
+                `${API_ENDPOINT}/v3/sessions/${sessionId}/messages`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        messages: [{
+                            content: encryptedRawRecord,
+                            localId
+                        }]
+                    })
                 }
-            }).catch(err => {
-                return { type: 'send' as const, success: false as const, error: err instanceof Error ? err.message : 'Send failed' };
-            });
+            );
 
-            // Mechanism 2: WebSocket push monitoring
-            const messageArrivedPromise: Promise<RaceResult> = new Promise((resolve) => {
-                // Check if message already exists
-                if (messageExists()) {
-                    resolve({ type: 'arrived' });
-                    return;
-                }
-                // Subscribe to storage changes
-                const unsub = storage.subscribe(() => {
-                    if (messageExists()) {
-                        unsub(); // Stop listening immediately
-                        resolve({ type: 'arrived' });
-                    }
-                });
-                unsubscribe = unsub;
-            });
-
-            // Mechanism 3: Polling fallback
-            const pollingPromise: Promise<RaceResult> = (async () => {
-                while (!cancelled) {
-                    await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_MS));
-                    if (cancelled) break;
-
-                    // Trigger refresh
-                    this.invalidateMessagesSync(sessionId);
-
-                    // Wait a bit for sync to complete
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    if (cancelled) break;
-
-                    if (messageExists()) {
-                        log.log(`Message ${localId} found via polling`);
-                        return { type: 'polling' as const };
-                    }
-                    log.log(`Polling: message ${localId} not found yet`);
-                }
-                // If cancelled, return a result that won't be used (race already completed)
-                return { type: 'timeout' as const };
-            })();
-
-            // Total timeout
-            const timeoutPromise: Promise<RaceResult> = new Promise((resolve) => {
-                timeoutId = setTimeout(() => resolve({ type: 'timeout' }), TOTAL_TIMEOUT_MS);
-            });
-
-            // Race all mechanisms
-            const result = await Promise.race([
-                sendPromise,
-                messageArrivedPromise,
-                pollingPromise,
-                timeoutPromise
-            ]);
-
-            log.log(`Message send completed via: ${result.type}`);
-            log.log(`[SEND_DEBUG][SYNC] race_done sid=${sessionId} localId=${localId} via=${result.type} elapsedMs=${Date.now() - sendStartedAt}`);
-
-            // Handle result
-            if (result.type === 'send') {
-                if (result.success) {
-                    // Server confirmed, add message to local list
-                    cleanup();
-                    if (normalizedMessage) {
-                        this.applyMessages(sessionId, [normalizedMessage]);
-                    }
-                    log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=send`);
-                    return { success: true, localId };
-                } else {
-                    // Send ack failed, but message might have been delivered.
-                    // The WebSocket push may be in-flight (e.g. async decryption in progress).
-                    // Give Mechanism 2 (storage subscription) a fallback window to confirm delivery
-                    // before returning failure. The subscription is still active since we haven't
-                    // called cleanup() yet.
-                    log.log(`[SEND_DEBUG][SYNC] send_ack_failed sid=${sessionId} localId=${localId} error=${result.error}, waiting for fallback`);
-                    const SEND_FAIL_FALLBACK_MS = 3000;
-                    const fallbackResult = await Promise.race([
-                        messageArrivedPromise,
-                        pollingPromise,
-                        new Promise<RaceResult>(resolve =>
-                            setTimeout(() => resolve({ type: 'timeout' }), SEND_FAIL_FALLBACK_MS)
-                        )
-                    ]);
-                    cleanup();
-
-                    if (fallbackResult.type === 'arrived' || fallbackResult.type === 'polling') {
-                        log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=fallback-${fallbackResult.type} (after send ack failure)`);
-                        return { success: true, localId };
-                    }
-
-                    // Final check: message might have arrived during the fallback window
-                    // but the subscription/polling didn't catch it in time
-                    if (messageExists()) {
-                        log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=fallback-exists (after send ack failure)`);
-                        return { success: true, localId };
-                    }
-
-                    log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=send error=${result.error}`);
-                    return { success: false, error: result.error, localId };
-                }
-            } else if (result.type === 'arrived' || result.type === 'polling') {
-                // Message confirmed in list (either via WebSocket or polling)
-                cleanup();
-                log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=${result.type}`);
-                return { success: true, localId };
-            } else {
-                // Timeout - do a final check before giving up
-                cleanup();
-                if (messageExists()) {
-                    log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=timeout-exists`);
-                    return { success: true, localId };
-                }
-                log.log(`Message ${localId} not confirmed after ${TOTAL_TIMEOUT_MS}ms, returning failure for retry`);
-                log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=timeout`);
-                return { success: false, error: 'Message send timed out', localId };
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => 'Unknown error');
+                log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=v3-http status=${response.status} error=${errorText}`);
+                return { success: false, error: `Send failed: ${response.status}`, localId };
             }
+
+            // Apply optimistic message to local storage
+            if (normalizedMessage) {
+                this.applyMessages(sessionId, [normalizedMessage]);
+            }
+
+            // Update seq tracking from response (advisory — don't fail if JSON is malformed)
+            try {
+                const responseData = await response.json();
+                if (responseData.messages?.length > 0) {
+                    const maxSeq = Math.max(...responseData.messages.map((m: any) => m.seq));
+                    const currentSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+                    if (maxSeq > currentSeq) {
+                        this.sessionLastSeq.set(sessionId, maxSeq);
+                    }
+                }
+            } catch {
+                // Seq tracking is best-effort; v3 re-fetch will resync if needed
+            }
+
+            log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=v3-http elapsedMs=${Date.now() - sendStartedAt}`);
+            return { success: true, localId };
         } catch (error) {
-            cleanup();
-            log.log(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=exception error=${error instanceof Error ? error.message : 'Unknown error'}`);
+            log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=v3-exception error=${error instanceof Error ? error.message : 'Unknown error'}`);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error', localId };
         }
     }
@@ -1791,6 +1665,53 @@ class Sync {
         log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${normalizedMessages.length} messages`);
     }
 
+    private fetchMessagesV3 = async (sessionId: string) => {
+        if (!this.credentials) return;
+
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            log.log(`💬 fetchMessagesV3: Session encryption not ready for ${sessionId}, will retry`);
+            throw new Error(`Session encryption not ready for ${sessionId}`);
+        }
+
+        let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+        let hasMore = true;
+
+        while (hasMore) {
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(
+                `${API_ENDPOINT}/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch v3 messages: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const messages = data.messages as ApiMessage[];
+            hasMore = data.hasMore ?? false;
+
+            if (messages.length > 0) {
+                const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, messages, encryption);
+                this.applyMessages(sessionId, normalizedMessages);
+
+                const maxSeq = Math.max(...messages.map((m: any) => m.seq));
+                this.sessionLastSeq.set(sessionId, maxSeq);
+                afterSeq = maxSeq;
+            } else {
+                hasMore = false;
+            }
+        }
+
+        storage.getState().applyMessagesLoaded(sessionId);
+        log.log(`💬 fetchMessagesV3 completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
+    }
+
     fetchOlderMessages = async (sessionId: string) => {
         const sessionState = storage.getState().sessionMessages[sessionId];
         if (!sessionState || !sessionState.hasMore || sessionState.oldestSeq === null) {
@@ -1912,7 +1833,19 @@ class Sync {
         console.log(`🔄 Sync: Validated update type: ${updateData.body.t}`);
 
         if (updateData.body.t === 'new-message') {
-            this.enqueueSessionMessageUpdate(updateData);
+            const sid = updateData.body.sid;
+            const incomingSeq = updateData.body.message?.seq;
+            const currentLastSeq = this.sessionLastSeq.get(sid);
+
+            if (currentLastSeq !== undefined && incomingSeq !== undefined && incomingSeq === currentLastSeq + 1) {
+                // Fast path: seq is contiguous, apply directly and bump seq
+                this.sessionLastSeq.set(sid, incomingSeq);
+                this.enqueueSessionMessageUpdate(updateData);
+            } else {
+                // Gap detected or first message: trigger v3 re-fetch for consistency
+                this.enqueueSessionMessageUpdate(updateData); // Still apply what we got
+                this.invalidateMessagesSync(sid); // And fetch any gaps
+            }
 
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
