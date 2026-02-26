@@ -6,7 +6,8 @@
             "packages/happy-app",
             "packages/happy-cli",
             "packages/happy-server",
-            "packages/happy-voice"
+            "packages/happy-voice",
+            "packages/happy-wire"
         ],
         "nohoist": [
             "**/zod",
