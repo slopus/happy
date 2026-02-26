@@ -65,8 +65,8 @@ On your computer, run `happy` instead of `claude` or `happy codex` instead of `c
 
 ## 📦 Project Components
 
-- **[happy-cli](https://github.com/slopus/happy-cli)** - Command-line interface for Claude Code and Codex
-- **[happy-server](https://github.com/slopus/happy-server)** - Backend server for encrypted sync
+- **[happy-cli](https://github.com/slopus/happy/tree/main/packages/happy-cli)** - Command-line interface for Claude Code and Codex
+- **[happy-server](https://github.com/slopus/happy/tree/main/packages/happy-server)** - Backend server for encrypted sync
 - **happy-coder** - This mobile client (you are here)
 
 ## 🏠 Who We Are
