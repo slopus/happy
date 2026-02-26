@@ -343,6 +343,25 @@ export type Metadata = {
   os?: string,
   model?: string,
   reasoningEffort?: string,
+  // ACP session configuration metadata
+  models?: Array<{
+    code: string,
+    value: string,
+    description?: string | null,
+  }>,
+  currentModelCode?: string,
+  operatingModes?: Array<{
+    code: string,
+    value: string,
+    description?: string | null,
+  }>,
+  currentOperatingModeCode?: string,
+  thoughtLevels?: Array<{
+    code: string,
+    value: string,
+    description?: string | null,
+  }>,
+  currentThoughtLevelCode?: string,
   summary?: {
     text: string,
     updatedAt: number
