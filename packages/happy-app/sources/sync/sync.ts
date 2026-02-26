@@ -1632,39 +1632,6 @@ class Sync {
         return normalizedMessages;
     }
 
-    private fetchMessages = async (sessionId: string) => {
-        log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
-
-        // Get encryption - may not be ready yet if session was just created
-        // Throwing an error triggers backoff retry in InvalidateSync
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) {
-            log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
-            throw new Error(`Session encryption not ready for ${sessionId}`);
-        }
-
-        // Request
-        const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages`);
-        const data = await response.json();
-        const apiMessages = data.messages as ApiMessage[];
-        const hasMore: boolean = data.hasMore ?? false;
-
-        // Decrypt and normalize
-        const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption);
-
-        // Apply to storage
-        this.applyMessages(sessionId, normalizedMessages);
-        storage.getState().applyMessagesLoaded(sessionId);
-
-        // Track pagination cursor: find the minimum seq from the API response
-        const minSeq = apiMessages.length > 0
-            ? Math.min(...apiMessages.map(m => m.seq))
-            : null;
-        storage.getState().setSessionPagination(sessionId, minSeq, hasMore);
-
-        log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${normalizedMessages.length} messages`);
-    }
-
     private fetchMessagesV3 = async (sessionId: string) => {
         if (!this.credentials) return;
 
