@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
 
+// Re-export shared wire protocol types from happy-wire
+export type {
+    SessionEnvelope,
+    SessionEvent,
+    SessionRole,
+} from 'happy-wire';
+export { createEnvelope } from 'happy-wire';
+
 /**
  * Permission mode type - includes both Claude and Codex modes
  * Must match MessageMetaSchema.permissionMode enum values
