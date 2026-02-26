@@ -109,5 +109,11 @@ main().catch((e) => {
     console.error(e);
     process.exit(1);
 }).then(() => {
+    // NOTE(logical): Calling `process.exit(0)` on the normal path can forcefully terminate the process
+    // and may skip/interrupt pending async cleanup that relies on the event loop draining. It also
+    // makes the process lifetime depend on whether `awaitShutdown()` resolves unexpectedly.
+    // Suggested hardening: avoid explicit exit on success and let shutdown flow/event-loop decide.
+    // Related: I didn't find an existing PR/commit specifically addressing this in local git history.
+    // Suggested search keywords in PRs: "main.ts process.exit(0)", "awaitShutdown process.exit".
     process.exit(0);
 });
