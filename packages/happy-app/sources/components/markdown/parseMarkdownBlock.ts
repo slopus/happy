@@ -1,14 +1,30 @@
 import type { MarkdownBlock } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
 
+// Split a pipe-delimited table row into cells, stripping only the leading/trailing
+// empty strings caused by outer pipes while preserving interior empty cells.
+function splitTableRow(line: string): string[] {
+    let cells = line.trim().split('|').map(cell => cell.trim());
+    if (cells.length > 0 && cells[0] === '') cells = cells.slice(1);
+    if (cells.length > 0 && cells[cells.length - 1] === '') cells = cells.slice(0, -1);
+    return cells;
+}
+
 function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock | null; nextIndex: number } {
     let index = startIndex;
     const tableLines: string[] = [];
 
-    // Collect consecutive lines that contain pipe characters to identify potential table rows
-    while (index < lines.length && lines[index].includes('|')) {
-        tableLines.push(lines[index]);
-        index++;
+    // Collect consecutive lines that contain pipe characters, skipping blank lines
+    // that LLMs often insert between table rows
+    while (index < lines.length) {
+        if (lines[index].includes('|')) {
+            tableLines.push(lines[index]);
+            index++;
+        } else if (lines[index].trim() === '') {
+            index++;
+        } else {
+            break;
+        }
     }
 
     if (tableLines.length < 2) {
@@ -23,31 +39,18 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract header cells from the first line, filtering out empty cells that may result from leading/trailing pipes
-    const headerLine = tableLines[0].trim();
-    const headers = headerLine
-        .split('|')
-        .map(cell => cell.trim())
-        .filter(cell => cell.length > 0);
+    const headers = splitTableRow(tableLines[0]);
 
     if (headers.length === 0) {
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract data rows from remaining lines (skipping the separator line), preserving valid cell content
+    // Extract data rows from remaining lines (skipping the separator line)
     const rows: string[][] = [];
     for (let i = 2; i < tableLines.length; i++) {
-        const rowLine = tableLines[i].trim();
-        if (rowLine.startsWith('|')) {
-            const rowCells = rowLine
-                .split('|')
-                .map(cell => cell.trim())
-                .filter(cell => cell.length > 0);
-
-            // Include rows that contain actual content, filtering out empty rows
-            if (rowCells.length > 0) {
-                rows.push(rowCells);
-            }
+        const rowCells = splitTableRow(tableLines[i]);
+        if (rowCells.length > 0) {
+            rows.push(rowCells);
         }
     }
 
