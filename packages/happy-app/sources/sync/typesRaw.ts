@@ -661,7 +661,7 @@ function normalizePlanUpdateMessage(
 function normalizeSessionEnvelope(
     envelope: SessionEnvelope,
     localId: string | null,
-    createdAt: number,
+    _createdAt: number, // Unused — envelope.time is the canonical timestamp. Kept for upstream signature compat.
     meta: MessageMeta | undefined,
 ): NormalizedMessage | null {
     // Session protocol requires turn id on all agent-originated envelopes.
