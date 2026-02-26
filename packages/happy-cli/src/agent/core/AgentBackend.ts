@@ -48,7 +48,7 @@ export interface McpServerConfig {
 export type AgentTransport = 'native-claude' | 'mcp-codex' | 'acp';
 
 /** Agent identifier */
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'claude-acp' | 'codex-acp';
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'kimi' | 'opencode' | 'claude-acp' | 'codex-acp';
 
 /**
  * Configuration for creating an agent backend

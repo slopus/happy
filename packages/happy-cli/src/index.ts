@@ -342,6 +342,45 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'kimi') {
+    // Handle kimi command (dedicated Kimi runner with full feature support)
+    try {
+      const { runKimi } = await import('@/kimi/runKimi');
+
+      // Parse startedBy argument
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        }
+      }
+
+      const {
+        credentials
+      } = await authAndSetupMachineIfNeeded();
+
+      // Auto-start daemon for kimi (same as claude/gemini)
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      await runKimi({credentials, startedBy});
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'acp') {
     try {
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
@@ -634,6 +673,7 @@ ${chalk.bold('Usage:')}
   happy auth              Manage authentication
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
+  happy kimi              Start Kimi mode (ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing

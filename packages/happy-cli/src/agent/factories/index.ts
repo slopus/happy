@@ -15,6 +15,14 @@ export {
   type GeminiBackendResult,
 } from './gemini';
 
+// Kimi factory
+export {
+  createKimiBackend,
+  registerKimiAgent,
+  type KimiBackendOptions,
+  type KimiBackendResult,
+} from './kimi';
+
 // Future factories:
 // export { createCodexBackend, registerCodexAgent, type CodexBackendOptions } from './codex';
 // export { createClaudeBackend, registerClaudeAgent, type ClaudeBackendOptions } from './claude';
