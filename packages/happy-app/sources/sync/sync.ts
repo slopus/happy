@@ -87,6 +87,8 @@ class Sync {
     private static readonly SESSION_READY_TIMEOUT_MS = 10000;
     // Per-session pacing for websocket new-message updates to avoid autoscroll race.
     private static readonly NEW_MESSAGE_PROCESS_INTERVAL_MS = 800;
+    // First load for a session should stay bounded; older history is loaded on demand.
+    private static readonly INITIAL_MESSAGES_LIMIT = 100;
 
     encryption!: Encryption;
     serverID!: string;
@@ -242,6 +244,13 @@ class Sync {
 
 
     onSessionVisible = (sessionId: string, userInitiated: boolean = false) => {
+        // When user navigates into a session, clear the cursor so
+        // fetchMessagesV3 runs a fresh bootstrap (latest 100 messages)
+        // instead of incrementally catching up from a potentially stale cursor.
+        if (userInitiated) {
+            this.sessionLastSeq.delete(sessionId);
+        }
+
         let ex = this.messagesSync.get(sessionId);
         if (!ex) {
             ex = new InvalidateSync(() => this.fetchMessagesV3(sessionId));
@@ -1641,7 +1650,50 @@ class Sync {
             throw new Error(`Session encryption not ready for ${sessionId}`);
         }
 
-        let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+        const currentCursor = this.sessionLastSeq.get(sessionId);
+        if (currentCursor === undefined) {
+            // Bootstrap with latest page only to avoid loading very large histories at once.
+            // v3 with no after_seq/before_seq returns latest messages in desc order.
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(
+                `${API_ENDPOINT}/v3/sessions/${sessionId}/messages?limit=${Sync.INITIAL_MESSAGES_LIMIT}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch initial messages: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const apiMessages = data.messages as ApiMessage[];
+            const hasMoreOlder: boolean = data.hasMore ?? false;
+
+            if (apiMessages.length > 0) {
+                const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption);
+                this.applyMessages(sessionId, normalizedMessages);
+
+                const maxSeq = Math.max(...apiMessages.map((m) => m.seq));
+                this.sessionLastSeq.set(sessionId, maxSeq);
+            } else {
+                this.sessionLastSeq.set(sessionId, 0);
+            }
+
+            storage.getState().applyMessagesLoaded(sessionId);
+
+            const minSeq = apiMessages.length > 0
+                ? Math.min(...apiMessages.map((m) => m.seq))
+                : null;
+            storage.getState().setSessionPagination(sessionId, minSeq, hasMoreOlder);
+
+            log.log(`💬 fetchMessagesV3 bootstrap completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
+            return;
+        }
+
+        let afterSeq = currentCursor;
         let hasMore = true;
 
         while (hasMore) {
@@ -1677,8 +1729,8 @@ class Sync {
 
         storage.getState().applyMessagesLoaded(sessionId);
 
-        // Update pagination: v3 fetches forward from afterSeq, so after the
-        // initial load (from seq=0) all messages are present → no older to load.
+        // If we got here, cursor-based incremental sync is active and older pagination
+        // state should already be established by the initial bootstrap load.
         const sessionState = storage.getState().sessionMessages[sessionId];
         if (sessionState && sessionState.oldestSeq === null) {
             storage.getState().setSessionPagination(sessionId, 1, false);
@@ -1700,7 +1752,20 @@ class Sync {
 
         try {
             const before = sessionState.oldestSeq;
-            const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages?before=${before}&limit=150`);
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(
+                `${API_ENDPOINT}/v3/sessions/${sessionId}/messages?before_seq=${before}&limit=${Sync.INITIAL_MESSAGES_LIMIT}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch older messages: ${response.status}`);
+            }
+
             const data = await response.json();
             const apiMessages = data.messages as ApiMessage[];
             const hasMore: boolean = data.hasMore ?? false;
@@ -1828,10 +1893,8 @@ class Sync {
                     this.invalidateMessagesSync(sid);
                 }
             } else {
-                // First message or no seq tracking yet — do NOT set the cursor
-                // here. Let fetchMessagesV3 start from seq 0 and pull the full
-                // history. Setting it to a high incoming seq would cause the
-                // fetch to skip all earlier messages.
+                // First message or no seq tracking yet — keep cursor unset so
+                // fetchMessagesV3 can run bounded bootstrap (latest page only).
                 this.enqueueSessionMessageUpdate(updateData);
                 this.invalidateMessagesSync(sid);
             }

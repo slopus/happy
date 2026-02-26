@@ -127,12 +127,18 @@ const {
         if (typeof args?.where?.seq?.gt === "number") {
             rows = rows.filter((message) => message.seq > args.where.seq.gt);
         }
+        if (typeof args?.where?.seq?.lt === "number") {
+            rows = rows.filter((message) => message.seq < args.where.seq.lt);
+        }
         if (Array.isArray(args?.where?.localId?.in)) {
             const localIds = new Set(args.where.localId.in);
             rows = rows.filter((message) => localIds.has(message.localId));
         }
         if (args?.orderBy?.seq === "asc") {
             rows.sort((a, b) => a.seq - b.seq);
+        }
+        if (args?.orderBy?.seq === "desc") {
+            rows.sort((a, b) => b.seq - a.seq);
         }
         if (args?.orderBy?.createdAt === "desc") {
             rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -260,7 +266,7 @@ describe("v3SessionRoutes", () => {
         }
     });
 
-    it("reads messages in seq order from the beginning", async () => {
+    it("returns latest messages in desc order when no cursor is provided", async () => {
         seedSession({ id: "session-1", accountId: "user-1" });
         seedMessage({ sessionId: "session-1", seq: 2, localId: "l2", content: { t: "encrypted", c: "b" } });
         seedMessage({ sessionId: "session-1", seq: 1, localId: "l1", content: { t: "encrypted", c: "a" } });
@@ -275,7 +281,7 @@ describe("v3SessionRoutes", () => {
         expect(response.statusCode).toBe(200);
         const body = response.json();
         expect(body.hasMore).toBe(false);
-        expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2]);
+        expect(body.messages.map((message: any) => message.seq)).toEqual([2, 1]);
     });
 
     it("supports cursor pagination with hasMore", async () => {
@@ -313,6 +319,32 @@ describe("v3SessionRoutes", () => {
         expect(body3.hasMore).toBe(false);
     });
 
+    it("supports backward pagination with before_seq", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        for (let seq = 1; seq <= 5; seq += 1) {
+            seedMessage({ sessionId: "session-1", seq, localId: `l${seq}`, content: { t: "encrypted", c: String(seq) } });
+        }
+
+        app = await createApp();
+        const page1 = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?before_seq=5&limit=2",
+            headers: { "x-user-id": "user-1" }
+        });
+        const body1 = page1.json();
+        expect(body1.messages.map((message: any) => message.seq)).toEqual([4, 3]);
+        expect(body1.hasMore).toBe(true);
+
+        const page2 = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?before_seq=3&limit=2",
+            headers: { "x-user-id": "user-1" }
+        });
+        const body2 = page2.json();
+        expect(body2.messages.map((message: any) => message.seq)).toEqual([2, 1]);
+        expect(body2.hasMore).toBe(false);
+    });
+
     it("returns empty results for empty sessions and after_seq beyond latest", async () => {
         seedSession({ id: "session-1", accountId: "user-1" });
         seedMessage({ sessionId: "session-1", seq: 1, localId: "l1", content: { t: "encrypted", c: "a" } });
@@ -347,6 +379,13 @@ describe("v3SessionRoutes", () => {
             headers: { "x-user-id": "owner-user" }
         });
         expect(tooLargeLimit.statusCode).toBe(400);
+
+        const conflictingCursors = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages?after_seq=1&before_seq=2",
+            headers: { "x-user-id": "owner-user" }
+        });
+        expect(conflictingCursors.statusCode).toBe(400);
 
         const unauthorized = await app.inject({
             method: "GET",

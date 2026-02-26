@@ -6,7 +6,8 @@ import { z } from "zod";
 import { type Fastify } from "../types";
 
 const getMessagesQuerySchema = z.object({
-    after_seq: z.coerce.number().int().min(0).default(0),
+    after_seq: z.coerce.number().int().min(0).optional(),
+    before_seq: z.coerce.number().int().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(100)
 });
 
@@ -59,7 +60,11 @@ export function v3SessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
-        const { after_seq, limit } = request.query;
+        const { after_seq, before_seq, limit } = request.query;
+
+        if (after_seq !== undefined && before_seq !== undefined) {
+            return reply.code(400).send({ error: 'Cannot specify both after_seq and before_seq' });
+        }
 
         const session = await db.session.findFirst({
             where: {
@@ -73,12 +78,24 @@ export function v3SessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
+        // Three modes:
+        // 1. after_seq=X  → forward pagination (seq > X, asc)  — incremental sync
+        // 2. before_seq=X → backward pagination (seq < X, desc) — scroll-up / older messages
+        // 3. no params    → latest messages (desc)               — bootstrap
+        const isForward = after_seq !== undefined;
+        const seqFilter = after_seq !== undefined
+            ? { gt: after_seq }
+            : before_seq !== undefined
+                ? { lt: before_seq }
+                : undefined;
+        const orderBy = isForward ? 'asc' as const : 'desc' as const;
+
         const messages = await db.sessionMessage.findMany({
             where: {
                 sessionId,
-                seq: { gt: after_seq }
+                ...(seqFilter ? { seq: seqFilter } : {})
             },
-            orderBy: { seq: 'asc' },
+            orderBy: { seq: orderBy },
             take: limit + 1,
             select: {
                 id: true,

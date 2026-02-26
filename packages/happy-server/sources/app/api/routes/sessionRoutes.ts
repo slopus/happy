@@ -305,6 +305,8 @@ export function sessionRoutes(app: Fastify) {
         }
     });
 
+    // @deprecated Use GET /v3/sessions/:sessionId/messages instead.
+    // v3 supports after_seq (forward), before_seq (backward), and no-params (latest) modes.
     app.get('/v1/sessions/:sessionId/messages', {
         schema: {
             params: z.object({
