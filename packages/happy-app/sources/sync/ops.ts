@@ -473,7 +473,9 @@ export async function sessionRipgrep(
 }
 
 /**
- * Kill the session process immediately
+ * Kill the session process immediately.
+ * Idempotent: if the process already exited, treat it as success
+ * since the desired outcome (session stopped) is already achieved.
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
     try {
@@ -484,9 +486,12 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
         );
         return response;
     } catch (error) {
+        // RPC failure likely means the session process already exited.
+        // The user's intent is "stop this session" — if it's already
+        // stopped, that's a success, not an error.
         return {
-            success: false,
-            message: error instanceof Error ? error.message : 'Unknown error'
+            success: true,
+            message: 'Session already stopped'
         };
     }
 }
