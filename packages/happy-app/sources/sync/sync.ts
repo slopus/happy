@@ -1854,8 +1854,9 @@ class Sync {
                     this.sessionLastSeq.set(sid, incomingSeq);
                     this.enqueueSessionMessageUpdate(updateData);
                 } else {
-                    // Gap detected: trigger v3 re-fetch for consistency
-                    this.sessionLastSeq.set(sid, incomingSeq);
+                    // Gap detected: do NOT bump sessionLastSeq — keep the old
+                    // cursor so fetchMessagesV3 starts from the last known seq
+                    // and fills the gap (current+1..incoming-1).
                     this.enqueueSessionMessageUpdate(updateData);
                     this.invalidateMessagesSync(sid);
                 }
@@ -2512,6 +2513,9 @@ class Sync {
             storage.getState().setSessionMessageSyncing(sessionId, true);
             storage.getState().clearSessionMessages(sessionId);
             this.sessionReceivedMessages.delete(sessionId);
+            // Reset seq cursor so the subsequent re-fetch starts from seq 0
+            // and retrieves all messages, not just those after the old cursor.
+            this.sessionLastSeq.delete(sessionId);
 
             const timeout = setTimeout(() => {
                 this.messageSyncTimeouts.delete(sessionId);
