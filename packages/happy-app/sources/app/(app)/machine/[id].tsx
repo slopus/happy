@@ -31,6 +31,8 @@ import { randomUUID } from 'expo-crypto';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
 import { useShallow } from 'zustand/react/shallow';
+import { FolderPickerSheet } from '@/components/FolderPickerSheet';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -97,6 +99,8 @@ export default function MachineDetailScreen() {
     const [selectedRepos, setSelectedRepos] = useState<SelectedRepo[]>([]);
     const [addDirBranchMenu, setAddDirBranchMenu] = useState<{ visible: boolean; items: ActionMenuItem[] }>({ visible: false, items: [] });
     const addDirBranchResolveRef = useRef<((value: string | undefined) => void) | null>(null);
+    const folderPickerRef = useRef<BottomSheetModal>(null);
+    const folderSelectHandlerRef = useRef<(path: string) => void>(() => {});
     const { width: screenWidth } = useWindowDimensions();
     const registeredRepos = storage(useShallow((state) => state.registeredRepos[machineId!] || [])) as RegisteredRepo[];
 
@@ -359,49 +363,44 @@ export default function MachineDetailScreen() {
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }, []);
 
-    const handleAddRepository = useCallback(async () => {
-        const pathInput = await Modal.prompt(
-            t('machine.addRepository'),
-            undefined,
-            { placeholder: '/path/to/repo' }
-        );
-        if (!pathInput?.trim()) return;
-        const absolutePath = resolveAbsolutePath(pathInput.trim(), machine?.metadata?.homeDir);
-        const gitCheck = await machineBash(machineId!, 'git rev-parse --git-dir', absolutePath);
+    /** Handle folder selected from FolderPickerSheet for "Add Repository" (registers + navigates to repo detail). */
+    const handleFolderSelectedForRepo = useCallback(async (selectedPath: string) => {
+        if (!machineId) return;
+        const gitCheck = await machineBash(machineId, 'git rev-parse --git-dir', selectedPath);
         if (!gitCheck.success) {
             Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
             return;
         }
-        const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
-        // Detect current branch to set as default
-        const branchResult = await machineBash(machineId!, 'git rev-parse --abbrev-ref HEAD', absolutePath);
+        const displayName = selectedPath.split('/').filter(Boolean).pop() || 'repo';
+        const branchResult = await machineBash(machineId, 'git rev-parse --abbrev-ref HEAD', selectedPath);
         const detectedBranch = branchResult.success ? branchResult.stdout.trim() : undefined;
         const newRepo: RegisteredRepo = {
             id: randomUUID(),
-            path: absolutePath,
+            path: selectedPath,
             displayName,
             defaultTargetBranch: detectedBranch,
         };
-        const currentRepos = storage.getState().registeredRepos[machineId!] || [];
+        const currentRepos = storage.getState().registeredRepos[machineId] || [];
         const updatedRepos = [...currentRepos, newRepo];
-        const version = storage.getState().registeredReposVersions[machineId!] ?? -1;
-
-        // Persist to server KV store
+        const version = storage.getState().registeredReposVersions[machineId] ?? -1;
         const credentials = sync.getCredentials();
         if (credentials) {
             try {
-                const newVersion = await saveRegisteredRepos(credentials, machineId!, updatedRepos, version);
-                storage.getState().setRegisteredRepos(machineId!, updatedRepos, newVersion);
+                const newVersion = await saveRegisteredRepos(credentials, machineId, updatedRepos, version);
+                storage.getState().setRegisteredRepos(machineId, updatedRepos, newVersion);
             } catch {
-                // Fallback: save locally even if server write fails
-                storage.getState().setRegisteredRepos(machineId!, updatedRepos, version);
+                storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
             }
         } else {
-            storage.getState().setRegisteredRepos(machineId!, updatedRepos, version);
+            storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
         }
-
         router.push(`/machine/${machineId}/repo/${newRepo.id}` as any);
-    }, [machineId, router, machine?.metadata?.homeDir]);
+    }, [machineId, router]);
+
+    const handleAddRepository = useCallback(() => {
+        folderSelectHandlerRef.current = handleFolderSelectedForRepo;
+        folderPickerRef.current?.present();
+    }, [handleFolderSelectedForRepo]);
 
     /** Save defaultTargetBranch on a registered repo (fire-and-forget). */
     const persistDefaultBranch = useCallback((mId: string, repoId: string, branch: string) => {
@@ -422,31 +421,24 @@ export default function MachineDetailScreen() {
         }
     }, []);
 
-    const handleAddDirectoryForPicker = useCallback(async () => {
+    /** Handle folder selected from FolderPickerSheet for repo picker (registers + selects + branch picker). */
+    const handleFolderSelectedForPicker = useCallback(async (selectedPath: string) => {
         if (!machineId) return;
-        const pathInput = await Modal.prompt(
-            t('newSession.repos.addDirectory'),
-            undefined,
-            { placeholder: '/path/to/repo' }
-        );
-        if (!pathInput?.trim()) return;
-        const absolutePath = resolveAbsolutePath(pathInput.trim(), machine?.metadata?.homeDir);
-        const gitCheck = await machineBash(machineId, 'git rev-parse --git-dir', absolutePath);
+        const gitCheck = await machineBash(machineId, 'git rev-parse --git-dir', selectedPath);
         if (!gitCheck.success) {
             Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
             return;
         }
-        const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
+        const displayName = selectedPath.split('/').filter(Boolean).pop() || 'repo';
 
         // Register the repo permanently (same as handleAddRepository but also select it)
         let repoToSelect: RegisteredRepo;
         const currentRepos = storage.getState().registeredRepos[machineId] || [];
-        // Reuse if already registered (same path)
-        const existing = currentRepos.find(r => r.path === absolutePath);
+        const existing = currentRepos.find(r => r.path === selectedPath);
         if (existing) {
             repoToSelect = existing;
         } else {
-            repoToSelect = { id: randomUUID(), path: absolutePath, displayName };
+            repoToSelect = { id: randomUUID(), path: selectedPath, displayName };
             const updatedRepos = [...currentRepos, repoToSelect];
             const version = storage.getState().registeredReposVersions[machineId] ?? -1;
             const credentials = sync.getCredentials();
@@ -464,9 +456,9 @@ export default function MachineDetailScreen() {
 
         // Fetch current branch, local branches, and remote branches in parallel
         const [currentBranchResult, localResult, remoteResult] = await Promise.all([
-            machineBash(machineId, 'git rev-parse --abbrev-ref HEAD', absolutePath),
-            machineBash(machineId, "git branch --list --format='%(refname:short)'", absolutePath),
-            machineBash(machineId, "git branch -r --format='%(refname:short)'", absolutePath),
+            machineBash(machineId, 'git rev-parse --abbrev-ref HEAD', selectedPath),
+            machineBash(machineId, "git branch --list --format='%(refname:short)'", selectedPath),
+            machineBash(machineId, "git branch -r --format='%(refname:short)'", selectedPath),
         ]);
         const currentBranch = currentBranchResult.success ? currentBranchResult.stdout.trim() : undefined;
         const localBranches = localResult.success && localResult.stdout.trim()
@@ -509,11 +501,15 @@ export default function MachineDetailScreen() {
             setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: finalBranch }]);
             if (finalBranch) persistDefaultBranch(machineId, repoToSelect.id, finalBranch);
         } else {
-            // No branches found, use current branch as fallback
             setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: currentBranch }]);
             if (currentBranch) persistDefaultBranch(machineId, repoToSelect.id, currentBranch);
         }
-    }, [machineId, machine?.metadata?.homeDir]);
+    }, [machineId]);
+
+    const handleAddDirectoryForPicker = useCallback(() => {
+        folderSelectHandlerRef.current = handleFolderSelectedForPicker;
+        folderPickerRef.current?.present();
+    }, [handleFolderSelectedForPicker]);
 
     if (!machine) {
         return (
@@ -849,16 +845,25 @@ export default function MachineDetailScreen() {
 
                 {/* Repositories */}
                 <ItemGroup title={t('machine.repositories')}>
-                    {registeredRepos.map(repo => (
-                        <Item
-                            key={repo.id}
-                            title={repo.displayName}
-                            subtitle={repo.defaultTargetBranch
-                                ? `${repo.path}  ·  ${repo.defaultTargetBranch}`
-                                : repo.path}
-                            onPress={() => router.push(`/machine/${machineId}/repo/${repo.id}` as any)}
-                        />
-                    ))}
+                    {registeredRepos.map(repo => {
+                        const branch = repo.defaultTargetBranch;
+                        const suffix = branch ? ` · ${branch}` : '';
+                        const maxPathLen = 35 - suffix.length;
+                        let displayPath = repo.path;
+                        if (displayPath.length > maxPathLen && maxPathLen > 10) {
+                            const tail = displayPath.slice(-Math.floor(maxPathLen * 0.6));
+                            const head = displayPath.slice(0, maxPathLen - tail.length - 3);
+                            displayPath = head + '...' + tail;
+                        }
+                        return (
+                            <Item
+                                key={repo.id}
+                                title={repo.displayName}
+                                subtitle={displayPath + suffix}
+                                onPress={() => router.push(`/machine/${machineId}/repo/${repo.id}` as any)}
+                            />
+                        );
+                    })}
                     <Item
                         title={t('machine.addRepository')}
                         onPress={handleAddRepository}
@@ -876,6 +881,14 @@ export default function MachineDetailScreen() {
                     addDirBranchResolveRef.current?.(undefined);
                     addDirBranchResolveRef.current = null;
                 }}
+            />
+
+            {/* Folder picker for Add Repository / Add Directory flows */}
+            <FolderPickerSheet
+                ref={folderPickerRef}
+                machineId={machineId!}
+                homeDir={machine?.metadata?.homeDir}
+                onSelect={(path) => folderSelectHandlerRef.current(path)}
             />
         </>
     );

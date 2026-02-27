@@ -45,6 +45,8 @@ import { useImagePicker } from '@/hooks/useImagePicker';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
 import { isModelModeForAgent } from '@/constants/modelCatalog';
+import { FolderPickerSheet } from '@/components/FolderPickerSheet';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -354,6 +356,7 @@ function NewSessionWizard() {
     const [selectedRepos, setSelectedRepos] = React.useState<SelectedRepo[]>([]);
     const [addDirBranchMenu, setAddDirBranchMenu] = React.useState<{ visible: boolean; items: ActionMenuItem[] }>({ visible: false, items: [] });
     const addDirBranchResolveRef = React.useRef<((value: string | undefined) => void) | null>(null);
+    const folderPickerRef = React.useRef<BottomSheetModal>(null);
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
         // Initialize with last used permission mode if valid, otherwise default to 'default'
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
@@ -703,30 +706,24 @@ function NewSessionWizard() {
         }
     }, []);
 
-    const handleAddDirectory = React.useCallback(async () => {
+    /** Handle folder selected from FolderPickerSheet (registers + selects + branch picker). */
+    const handleFolderSelected = React.useCallback(async (selectedPath: string) => {
         if (!selectedMachineId) return;
-        const pathInput = await Modal.prompt(
-            t('newSession.repos.addDirectory'),
-            undefined,
-            { placeholder: '/path/to/repo' }
-        );
-        if (!pathInput?.trim()) return;
-        const absolutePath = resolveAbsolutePath(pathInput.trim(), selectedMachine?.metadata?.homeDir);
-        const gitCheck = await machineBash(selectedMachineId, 'git rev-parse --git-dir', absolutePath);
+        const gitCheck = await machineBash(selectedMachineId, 'git rev-parse --git-dir', selectedPath);
         if (!gitCheck.success) {
             Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
             return;
         }
-        const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
+        const displayName = selectedPath.split('/').filter(Boolean).pop() || 'repo';
 
         // Register the repo permanently so it persists and shows in the picker next time
         let repoToSelect: RegisteredRepo;
         const currentRepos = storage.getState().registeredRepos[selectedMachineId] || [];
-        const existing = currentRepos.find(r => r.path === absolutePath);
+        const existing = currentRepos.find(r => r.path === selectedPath);
         if (existing) {
             repoToSelect = existing;
         } else {
-            repoToSelect = { id: randomUUID(), path: absolutePath, displayName };
+            repoToSelect = { id: randomUUID(), path: selectedPath, displayName };
             const updatedRepos = [...currentRepos, repoToSelect];
             const version = storage.getState().registeredReposVersions[selectedMachineId] ?? -1;
             const credentials = sync.getCredentials();
@@ -744,9 +741,9 @@ function NewSessionWizard() {
 
         // Fetch current branch, local branches, and remote branches in parallel
         const [currentBranchResult, localResult, remoteResult] = await Promise.all([
-            machineBash(selectedMachineId, 'git rev-parse --abbrev-ref HEAD', absolutePath),
-            machineBash(selectedMachineId, "git branch --list --format='%(refname:short)'", absolutePath),
-            machineBash(selectedMachineId, "git branch -r --format='%(refname:short)'", absolutePath),
+            machineBash(selectedMachineId, 'git rev-parse --abbrev-ref HEAD', selectedPath),
+            machineBash(selectedMachineId, "git branch --list --format='%(refname:short)'", selectedPath),
+            machineBash(selectedMachineId, "git branch -r --format='%(refname:short)'", selectedPath),
         ]);
         const currentBranch = currentBranchResult.success ? currentBranchResult.stdout.trim() : undefined;
         const localBranches = localResult.success && localResult.stdout.trim()
@@ -789,11 +786,14 @@ function NewSessionWizard() {
             setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: finalBranch }]);
             if (finalBranch) persistDefaultBranch(selectedMachineId, repoToSelect.id, finalBranch);
         } else {
-            // No branches found, use current branch as fallback
             setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: currentBranch }]);
             if (currentBranch) persistDefaultBranch(selectedMachineId, repoToSelect.id, currentBranch);
         }
-    }, [selectedMachineId, selectedMachine, persistDefaultBranch]);
+    }, [selectedMachineId, persistDefaultBranch]);
+
+    const handleAddDirectory = React.useCallback(() => {
+        folderPickerRef.current?.present();
+    }, []);
 
     // Get recent paths for the selected machine
     // Recent machines computed from sessions (for inline machine selection)
@@ -1554,6 +1554,16 @@ function NewSessionWizard() {
                         addDirBranchResolveRef.current = null;
                     }}
                 />
+
+                {/* Folder picker for Add Directory flow */}
+                {selectedMachineId && (
+                    <FolderPickerSheet
+                        ref={folderPickerRef}
+                        machineId={selectedMachineId}
+                        homeDir={selectedMachine?.metadata?.homeDir}
+                        onSelect={handleFolderSelected}
+                    />
+                )}
             </View>
         );
     }
@@ -2300,6 +2310,16 @@ function NewSessionWizard() {
                         addDirBranchResolveRef.current = null;
                     }}
                 />
+
+                {/* Folder picker for Add Directory flow */}
+                {selectedMachineId && (
+                    <FolderPickerSheet
+                        ref={folderPickerRef}
+                        machineId={selectedMachineId}
+                        homeDir={selectedMachine?.metadata?.homeDir}
+                        onSelect={handleFolderSelected}
+                    />
+                )}
             </Animated.View>
         </View>
     );

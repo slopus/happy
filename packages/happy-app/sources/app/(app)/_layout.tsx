@@ -477,6 +477,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="machine/[id]/repo/script-editor"
+                options={{
+                    headerShown: true,
+                    headerTitle: '',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="openclaw/machine/[id]"
                 options={{
                     headerShown: true,

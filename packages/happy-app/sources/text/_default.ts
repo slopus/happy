@@ -483,6 +483,16 @@ export const en = {
         },
         repos: {
             addDirectory: 'Add directory...',
+            browseDirectory: 'Browse...',
+            folderPicker: {
+                title: 'Select Folder',
+                searchPlaceholder: 'Filter or enter path...',
+                selectCurrent: 'Select This Folder',
+                emptyFolder: 'Empty folder',
+                loadError: 'Failed to load directory',
+                gitRepo: 'Git Repo',
+                selectFile: 'Select File',
+            },
             targetBranch: 'Target Branch',
         },
     },
@@ -1159,7 +1169,10 @@ export const en = {
         devServerScriptFooter: 'Starts a dev server (e.g. npm run dev)',
         files: 'Files',
         copyFiles: 'Copy Files',
+        copyFilesCount: ({ count }: { count: number }) => `${count} files`,
         copyFilesFooter: 'Comma-separated files to copy to worktree (e.g. .env,.env.local)',
+        clearCopyFiles: 'Remove All Selected Files',
+        clearCopyFilesConfirm: 'Remove all selected files from the copy list?',
         removeRepo: 'Remove Repository',
         removeRepoConfirm: 'Remove this repository from your registered repos? The actual repository will not be affected.',
     },
@@ -1374,15 +1387,23 @@ export type Translations = typeof en;
  */
 export type TranslationStructure = {
     readonly [K in keyof Translations]: {
-        readonly [P in keyof Translations[K]]: Translations[K][P] extends string 
-            ? string 
-            : Translations[K][P] extends (...args: any[]) => string 
-                ? Translations[K][P] 
+        readonly [P in keyof Translations[K]]: Translations[K][P] extends string
+            ? string
+            : Translations[K][P] extends (...args: any[]) => string
+                ? Translations[K][P]
                 : Translations[K][P] extends object
                     ? {
                         readonly [Q in keyof Translations[K][P]]: Translations[K][P][Q] extends string
                             ? string
-                            : Translations[K][P][Q]
+                            : Translations[K][P][Q] extends (...args: any[]) => string
+                                ? Translations[K][P][Q]
+                                : Translations[K][P][Q] extends object
+                                    ? {
+                                        readonly [R in keyof Translations[K][P][Q]]: Translations[K][P][Q][R] extends string
+                                            ? string
+                                            : Translations[K][P][Q][R]
+                                      }
+                                    : Translations[K][P][Q]
                       }
                     : Translations[K][P]
     }
