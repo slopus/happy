@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -47,31 +48,64 @@ export interface RunOpenClawOptions {
 }
 
 /**
- * Reads the local OpenClaw config at ~/.openclaw/openclaw.json.
- * Returns the gateway section or null if file doesn't exist / is unparseable.
+ * Query the openclaw CLI binary for a value. Returns trimmed stdout or null on failure.
  */
-function readOpenClawConfig(): { port?: number; mode?: string; bind?: string; auth?: { token?: string } } | null {
+function openclawExec(...args: string[]): string | null {
   try {
-    const configPath = join(os.homedir(), '.openclaw', 'openclaw.json');
+    return execFileSync('openclaw', args, { timeout: 10_000, encoding: 'utf-8' }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the gateway URL from the openclaw binary via `openclaw status --json`.
+ * Falls back to constructing from config get gateway.port.
+ */
+function queryGatewayUrl(): string | null {
+  const statusJson = openclawExec('status', '--json');
+  if (statusJson) {
+    try {
+      const parsed = JSON.parse(statusJson);
+      const url = parsed?.gateway?.url;
+      if (typeof url === 'string' && url.length > 0) return url;
+    } catch { /* fall through */ }
+  }
+
+  // Fallback: query port directly
+  const port = openclawExec('config', 'get', 'gateway.port');
+  if (port && /^\d+$/.test(port)) return `ws://127.0.0.1:${port}`;
+
+  return null;
+}
+
+/**
+ * Get the gateway auth token by reading the openclaw config file directly.
+ * The CLI redacts secrets, so we resolve the config file path via OPENCLAW_CONFIG_PATH
+ * env var, falling back to ~/.openclaw/openclaw.json.
+ */
+function queryGatewayToken(): string | null {
+  try {
+    const configPath = process.env.OPENCLAW_CONFIG_PATH
+      ?? join(os.homedir(), '.openclaw', 'openclaw.json');
     const raw = JSON.parse(readFileSync(configPath, 'utf-8'));
-    return raw?.gateway ?? null;
+    const token = raw?.gateway?.auth?.token;
+    return typeof token === 'string' ? token : null;
   } catch {
     return null;
   }
 }
 
 function resolveGatewayConfig(opts: RunOpenClawOptions): OpenClawGatewayConfig {
-  // Priority: CLI args > env vars > ~/.openclaw/openclaw.json auto-detection
-  const localConfig = readOpenClawConfig();
-
+  // Priority: CLI args > env vars > openclaw binary auto-detection
   const url = opts.gatewayUrl
     ?? process.env.OPENCLAW_GATEWAY_URL
-    ?? (localConfig?.port ? `ws://127.0.0.1:${localConfig.port}` : undefined);
+    ?? queryGatewayUrl();
 
   if (!url) {
     throw new Error(
       'OpenClaw gateway not found. Either:\n'
-      + '  - Run openclaw locally (it writes ~/.openclaw/openclaw.json)\n'
+      + '  - Install and run openclaw locally\n'
       + '  - Set OPENCLAW_GATEWAY_URL env var\n'
       + '  - Pass --gateway-url',
     );
@@ -79,7 +113,7 @@ function resolveGatewayConfig(opts: RunOpenClawOptions): OpenClawGatewayConfig {
 
   const token = opts.gatewayToken
     ?? process.env.OPENCLAW_GATEWAY_TOKEN
-    ?? localConfig?.auth?.token
+    ?? queryGatewayToken()
     ?? undefined;
 
   return {
