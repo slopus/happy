@@ -1,5 +1,4 @@
-import React from 'react';
-import { View, Pressable, Text, ScrollView } from 'react-native';
+import { Pressable, Text, ScrollView } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import type { WorkspaceRepo } from '@/utils/workspaceRepos';

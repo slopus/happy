@@ -19,6 +19,8 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
+import { createWorkspace, type WorkspaceRepoInput } from '@/utils/createWorkspace';
+import { RepoPickerBar, type SelectedRepo } from '@/components/RepoPickerBar';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
@@ -347,6 +349,7 @@ function NewSessionWizard() {
     }, [agentType]);
 
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
+    const [selectedRepos, setSelectedRepos] = React.useState<SelectedRepo[]>([]);
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
         // Initialize with last used permission mode if valid, otherwise default to 'default'
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
@@ -1084,23 +1087,60 @@ function NewSessionWizard() {
         try {
             let actualPath = selectedPath;
             let worktreeBranchName: string | undefined;
+            let workspaceRepos: Array<{ repoId?: string; path: string; basePath: string; branchName: string; targetBranch?: string; displayName?: string }> | undefined;
+            let workspacePath: string | undefined;
+            let repoScripts: Array<{ repoDisplayName: string; worktreePath: string; setupScript?: string; parallelSetup?: boolean; cleanupScript?: string; archiveScript?: string; devServerScript?: string }> | undefined;
 
             // Handle worktree creation
             if (sessionType === 'worktree') {
-                const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
-
-                if (!worktreeResult.success) {
-                    if (worktreeResult.error === 'Not a Git repository') {
-                        Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
-                    } else {
-                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
+                if (selectedRepos.length > 0) {
+                    // Multi-repo workspace creation
+                    const repoInputs: WorkspaceRepoInput[] = selectedRepos.map(sr => ({
+                        repo: sr.repo,
+                        targetBranch: sr.targetBranch,
+                    }));
+                    const wsResult = await createWorkspace(selectedMachineId, repoInputs);
+                    if (!wsResult.success) {
+                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: wsResult.error || 'Unknown error' }));
+                        setIsCreating(false);
+                        return;
                     }
-                    setIsCreating(false);
-                    return;
-                }
+                    // CWD: single repo -> inside repo dir, multi repo -> workspace root
+                    actualPath = wsResult.repos.length === 1
+                        ? wsResult.repos[0].path
+                        : wsResult.workspacePath;
+                    workspaceRepos = wsResult.repos;
+                    workspacePath = wsResult.workspacePath;
 
-                actualPath = worktreeResult.worktreePath;
-                worktreeBranchName = worktreeResult.branchName;
+                    // Build repoScripts from registered repo config
+                    const registeredRepos = storage.getState().registeredRepos[selectedMachineId] || [];
+                    repoScripts = wsResult.repos.map(r => {
+                        const registered = r.repoId ? registeredRepos.find(rr => rr.id === r.repoId) : undefined;
+                        return {
+                            repoDisplayName: r.displayName || '',
+                            worktreePath: r.path,
+                            setupScript: registered?.setupScript,
+                            parallelSetup: registered?.parallelSetup,
+                            cleanupScript: registered?.cleanupScript,
+                            archiveScript: registered?.archiveScript,
+                            devServerScript: registered?.devServerScript,
+                        };
+                    });
+                } else {
+                    // Legacy single-repo worktree
+                    const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
+                    if (!worktreeResult.success) {
+                        if (worktreeResult.error === 'Not a Git repository') {
+                            Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+                        } else {
+                            Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
+                        }
+                        setIsCreating(false);
+                        return;
+                    }
+                    actualPath = worktreeResult.worktreePath;
+                    worktreeBranchName = worktreeResult.branchName;
+                }
             }
 
             // Save settings
@@ -1132,6 +1172,8 @@ function NewSessionWizard() {
                     worktreeBasePath: selectedPath,
                     worktreeBranchName,
                 } : {}),
+                // Pass workspace metadata for multi-repo sessions
+                ...(workspaceRepos ? { workspaceRepos, workspacePath, repoScripts } : {}),
                 // Pass through external MCP servers and session title
                 ...(tempSessionData?.mcpServers ? { mcpServers: tempSessionData.mcpServers } : {}),
                 ...(tempSessionData?.sessionTitle ? { sessionTitle: tempSessionData.sessionTitle } : {}),
@@ -1198,7 +1240,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, images, clearImages, tempSessionData]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, images, clearImages, tempSessionData, selectedRepos]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1304,6 +1346,19 @@ function NewSessionWizard() {
                             />
                         </View>
                     </View>
+
+                    {/* Repo picker for worktree mode */}
+                    {sessionType === 'worktree' && selectedMachineId && (
+                        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+                            <View style={{ maxWidth: layout.maxWidth, width: '100%', paddingHorizontal: screenWidth > 700 ? 16 : 0, alignSelf: 'center' }}>
+                                <RepoPickerBar
+                                    machineId={selectedMachineId}
+                                    selectedRepos={selectedRepos}
+                                    onReposChange={setSelectedRepos}
+                                />
+                            </View>
+                        </View>
+                    )}
 
                     {/* AgentInput with inline chips - sticky at bottom */}
                     <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: safeArea.bottom }}>
