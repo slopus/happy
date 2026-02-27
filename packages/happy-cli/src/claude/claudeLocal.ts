@@ -241,6 +241,8 @@ export async function claudeLocal(opts: {
                 ...process.env,
                 ...opts.claudeEnvVars
             }
+            // Remove CLAUDECODE to prevent nested session detection when spawning Claude CLI
+            delete env.CLAUDECODE
 
             logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
             logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
