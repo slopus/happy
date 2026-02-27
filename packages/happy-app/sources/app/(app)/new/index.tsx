@@ -21,6 +21,8 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { createWorkspace, type WorkspaceRepoInput } from '@/utils/createWorkspace';
 import { RepoPickerBar, type SelectedRepo } from '@/components/RepoPickerBar';
+import type { RegisteredRepo } from '@/utils/workspaceRepos';
+import { saveRegisteredRepos } from '@/sync/repoStore';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
@@ -695,7 +697,34 @@ function NewSessionWizard() {
             return;
         }
         const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
-        setSelectedRepos(prev => [...prev, { repo: { path: absolutePath, displayName } }]);
+
+        // Register the repo permanently so it persists and shows in the picker next time
+        const newRepo: RegisteredRepo = {
+            id: randomUUID(),
+            path: absolutePath,
+            displayName,
+        };
+        const currentRepos = storage.getState().registeredRepos[selectedMachineId] || [];
+        // Skip if already registered (same path)
+        if (currentRepos.some(r => r.path === absolutePath)) {
+            const existing = currentRepos.find(r => r.path === absolutePath)!;
+            setSelectedRepos(prev => [...prev, { repo: existing }]);
+            return;
+        }
+        const updatedRepos = [...currentRepos, newRepo];
+        const version = storage.getState().registeredReposVersions[selectedMachineId] ?? -1;
+        const credentials = sync.getCredentials();
+        if (credentials) {
+            try {
+                const newVersion = await saveRegisteredRepos(credentials, selectedMachineId, updatedRepos, version);
+                storage.getState().setRegisteredRepos(selectedMachineId, updatedRepos, newVersion);
+            } catch {
+                storage.getState().setRegisteredRepos(selectedMachineId, updatedRepos, version);
+            }
+        } else {
+            storage.getState().setRegisteredRepos(selectedMachineId, updatedRepos, version);
+        }
+        setSelectedRepos(prev => [...prev, { repo: newRepo }]);
     }, [selectedMachineId, selectedMachine]);
 
     // Get recent paths for the selected machine

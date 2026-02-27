@@ -410,7 +410,34 @@ export default function MachineDetailScreen() {
             return;
         }
         const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
-        setSelectedRepos(prev => [...prev, { repo: { path: absolutePath, displayName } }]);
+
+        // Register the repo permanently (same as handleAddRepository but also select it)
+        const newRepo: RegisteredRepo = {
+            id: randomUUID(),
+            path: absolutePath,
+            displayName,
+        };
+        const currentRepos = storage.getState().registeredRepos[machineId] || [];
+        // Skip if already registered (same path)
+        if (currentRepos.some(r => r.path === absolutePath)) {
+            const existing = currentRepos.find(r => r.path === absolutePath)!;
+            setSelectedRepos(prev => [...prev, { repo: existing }]);
+            return;
+        }
+        const updatedRepos = [...currentRepos, newRepo];
+        const version = storage.getState().registeredReposVersions[machineId] ?? -1;
+        const credentials = sync.getCredentials();
+        if (credentials) {
+            try {
+                const newVersion = await saveRegisteredRepos(credentials, machineId, updatedRepos, version);
+                storage.getState().setRegisteredRepos(machineId, updatedRepos, newVersion);
+            } catch {
+                storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
+            }
+        } else {
+            storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
+        }
+        setSelectedRepos(prev => [...prev, { repo: newRepo }]);
     }, [machineId, machine?.metadata?.homeDir]);
 
     if (!machine) {
