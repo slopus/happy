@@ -14,7 +14,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
         <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)" />
         <meta name="theme-color" content="#1C1C1E" media="(prefers-color-scheme: dark)" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
         {/*
           Disable body scrolling on web. This makes ScrollView components work closer to how they do on native.
