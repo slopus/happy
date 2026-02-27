@@ -113,10 +113,13 @@ export const SessionView = React.memo((props: { id: string }) => {
                 }} />
             )}
 
-            {/* Header - always shown on desktop/Mac, hidden in landscape mode only on actual phones */}
+            {/* Header - always shown on desktop/Mac, hidden in landscape mode only on actual phones.
+               On web with viewport-fit=cover, use 'fixed' so the header extends behind the
+               status bar (position: absolute is relative to the Stack content area which may
+               start below the safe area). */}
             {!(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') && (
                 <View style={{
-                    position: 'absolute',
+                    position: Platform.OS === 'web' ? 'fixed' as any : 'absolute',
                     top: 0,
                     left: 0,
                     right: 0,

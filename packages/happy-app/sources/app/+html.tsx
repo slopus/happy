@@ -11,11 +11,14 @@ export default function Root({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-        {/* Theme colors — must match header.background (top of viewport). See palette.ts */}
-        <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#1A1A1D" media="(prefers-color-scheme: dark)" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+        {/* Theme color — StatusBarProvider.tsx updates this dynamically to match the app theme. */}
+        <meta id="theme-color" name="theme-color" content="#1A1A1D" />
+        {/* black-translucent: status bar is transparent in PWA mode, web content extends
+            behind it. The app's header paddingTop (safe area inset) fills the space with
+            the correct theme color. This avoids iOS PWA state bugs where the status bar
+            text color gets stuck after switching between home screen apps. */}
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
         {/*
           Disable body scrolling on web. This makes ScrollView components work closer to how they do on native.
