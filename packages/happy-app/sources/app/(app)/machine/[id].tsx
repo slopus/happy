@@ -412,32 +412,53 @@ export default function MachineDetailScreen() {
         const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
 
         // Register the repo permanently (same as handleAddRepository but also select it)
-        const newRepo: RegisteredRepo = {
-            id: randomUUID(),
-            path: absolutePath,
-            displayName,
-        };
+        let repoToSelect: RegisteredRepo;
         const currentRepos = storage.getState().registeredRepos[machineId] || [];
-        // Skip if already registered (same path)
-        if (currentRepos.some(r => r.path === absolutePath)) {
-            const existing = currentRepos.find(r => r.path === absolutePath)!;
-            setSelectedRepos(prev => [...prev, { repo: existing }]);
-            return;
-        }
-        const updatedRepos = [...currentRepos, newRepo];
-        const version = storage.getState().registeredReposVersions[machineId] ?? -1;
-        const credentials = sync.getCredentials();
-        if (credentials) {
-            try {
-                const newVersion = await saveRegisteredRepos(credentials, machineId, updatedRepos, version);
-                storage.getState().setRegisteredRepos(machineId, updatedRepos, newVersion);
-            } catch {
+        // Reuse if already registered (same path)
+        const existing = currentRepos.find(r => r.path === absolutePath);
+        if (existing) {
+            repoToSelect = existing;
+        } else {
+            repoToSelect = { id: randomUUID(), path: absolutePath, displayName };
+            const updatedRepos = [...currentRepos, repoToSelect];
+            const version = storage.getState().registeredReposVersions[machineId] ?? -1;
+            const credentials = sync.getCredentials();
+            if (credentials) {
+                try {
+                    const newVersion = await saveRegisteredRepos(credentials, machineId, updatedRepos, version);
+                    storage.getState().setRegisteredRepos(machineId, updatedRepos, newVersion);
+                } catch {
+                    storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
+                }
+            } else {
                 storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
             }
-        } else {
-            storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
         }
-        setSelectedRepos(prev => [...prev, { repo: newRepo }]);
+
+        // Fetch branches and show picker before adding to selection
+        const branchResult = await machineBash(machineId, "git branch --list --format='%(refname:short)'", absolutePath);
+        const branches = branchResult.success && branchResult.stdout.trim()
+            ? branchResult.stdout.trim().split('\n').filter(Boolean)
+            : [];
+
+        if (branches.length > 0) {
+            const selectedBranch = await new Promise<string | undefined>((resolve) => {
+                Modal.alert(
+                    t('newSession.repos.targetBranch'),
+                    undefined,
+                    [
+                        ...branches.slice(0, 10).map(branch => ({
+                            text: branch,
+                            onPress: () => resolve(branch),
+                        })),
+                        { text: t('common.cancel'), style: 'cancel' as const, onPress: () => resolve(undefined) },
+                    ],
+                );
+            });
+            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: selectedBranch }]);
+        } else {
+            setSelectedRepos(prev => [...prev, { repo: repoToSelect }]);
+        }
     }, [machineId, machine?.metadata?.homeDir]);
 
     if (!machine) {
