@@ -72,6 +72,7 @@ export const zhHant: TranslationStructure = {
         editMachine: '編輯機器',
         deleteMachine: '刪除機器',
         renameMachine: '重新命名機器',
+        renameMachineDescription: '為此機器設定自訂名稱。留空則使用預設主機名稱。',
         machineNamePlaceholder: '機器名稱',
         deleteMachineConfirm: '確定要刪除此機器嗎？',
         deleteMachineConfirmMessage: '此操作無法復原。',

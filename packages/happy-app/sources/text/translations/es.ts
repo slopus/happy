@@ -70,6 +70,7 @@ export const es: TranslationStructure = {
         editMachine: 'Editar máquina',
         deleteMachine: 'Eliminar máquina',
         renameMachine: 'Renombrar máquina',
+        renameMachineDescription: 'Dale un nombre personalizado a esta máquina. Déjalo vacío para usar el nombre de host predeterminado.',
         machineNamePlaceholder: 'Nombre de la máquina',
         deleteMachineConfirm: '¿Estás seguro de que quieres eliminar esta máquina?',
         deleteMachineConfirmMessage: 'Esta acción no se puede deshacer.',

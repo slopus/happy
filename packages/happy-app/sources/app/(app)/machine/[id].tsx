@@ -208,8 +208,8 @@ export default function MachineDetailScreen() {
         if (!machine || !machineId) return;
 
         const newDisplayName = await Modal.prompt(
-            'Rename Machine',
-            'Give this machine a custom name. Leave empty to use the default hostname.',
+            t('openclaw.renameMachine'),
+            t('openclaw.renameMachineDescription'),
             {
                 defaultValue: machine.metadata?.displayName || '',
                 placeholder: machine.metadata?.host || 'Enter machine name',

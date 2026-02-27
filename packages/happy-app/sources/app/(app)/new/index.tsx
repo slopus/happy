@@ -352,7 +352,7 @@ function NewSessionWizard() {
         sync.applySettings({ lastUsedAgent: agentType });
     }, [agentType]);
 
-    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
+    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>(persistedDraft?.sessionType || 'simple');
     const [selectedRepos, setSelectedRepos] = React.useState<SelectedRepo[]>([]);
     const [addDirBranchMenu, setAddDirBranchMenu] = React.useState<{ visible: boolean; items: ActionMenuItem[] }>({ visible: false, items: [] });
     const addDirBranchResolveRef = React.useRef<((value: string | undefined) => void) | null>(null);

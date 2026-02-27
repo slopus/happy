@@ -73,6 +73,7 @@ export const ja: TranslationStructure = {
         editMachine: 'マシンを編集',
         deleteMachine: 'マシンを削除',
         renameMachine: 'マシン名を変更',
+        renameMachineDescription: 'マシンにカスタム名を設定します。空欄にするとデフォルトのホスト名が使用されます。',
         machineNamePlaceholder: 'マシン名',
         deleteMachineConfirm: 'このマシンを削除してもよろしいですか？',
         deleteMachineConfirmMessage: 'この操作は取り消せません。',

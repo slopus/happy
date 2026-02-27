@@ -70,6 +70,7 @@ export const ca: TranslationStructure = {
         editMachine: 'Editar màquina',
         deleteMachine: 'Eliminar màquina',
         renameMachine: 'Canviar nom de la màquina',
+        renameMachineDescription: "Dona un nom personalitzat a aquesta màquina. Deixa'l buit per utilitzar el nom d'amfitrió predeterminat.",
         machineNamePlaceholder: 'Nom de la màquina',
         deleteMachineConfirm: 'Estàs segur que vols eliminar aquesta màquina?',
         deleteMachineConfirmMessage: 'Aquesta acció no es pot desfer.',

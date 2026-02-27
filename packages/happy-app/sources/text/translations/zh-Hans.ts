@@ -72,6 +72,7 @@ export const zhHans: TranslationStructure = {
         editMachine: '编辑机器',
         deleteMachine: '删除机器',
         renameMachine: '重命名机器',
+        renameMachineDescription: '为此机器设置自定义名称。留空则使用默认主机名。',
         machineNamePlaceholder: '机器名称',
         deleteMachineConfirm: '确定要删除此机器吗？',
         deleteMachineConfirmMessage: '此操作无法撤销。',

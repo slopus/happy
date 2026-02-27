@@ -86,6 +86,7 @@ export const en: TranslationStructure = {
         editMachine: 'Edit Machine',
         deleteMachine: 'Delete Machine',
         renameMachine: 'Rename Machine',
+        renameMachineDescription: 'Give this machine a custom name. Leave empty to use the default hostname.',
         machineNamePlaceholder: 'Machine name',
         deleteMachineConfirm: 'Are you sure you want to delete this machine?',
         deleteMachineConfirmMessage: 'This action cannot be undone.',
