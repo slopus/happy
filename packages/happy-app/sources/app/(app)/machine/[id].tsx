@@ -8,7 +8,7 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useMachine, storage } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineBash, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { hapticsLight } from '@/components/haptics';
 import { showToast } from '@/components/Toast';
@@ -25,6 +25,9 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { createWorkspace, type WorkspaceRepoInput } from '@/utils/createWorkspace';
 import { RepoPickerBar, type SelectedRepo } from '@/components/RepoPickerBar';
+import type { RegisteredRepo } from '@/utils/workspaceRepos';
+import { randomUUID } from 'expo-crypto';
+import { useShallow } from 'zustand/react/shallow';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -90,6 +93,7 @@ export default function MachineDetailScreen() {
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
     const [selectedRepos, setSelectedRepos] = useState<SelectedRepo[]>([]);
     const { width: screenWidth } = useWindowDimensions();
+    const registeredRepos = storage(useShallow((state) => state.registeredRepos[machineId!] || [])) as RegisteredRepo[];
 
     // Left: back button (1), Right: edit button (1) - use larger side * 2 for symmetry
     const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
@@ -331,6 +335,31 @@ export default function MachineDetailScreen() {
         if (!session.metadata) return 'unknown path';
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }, []);
+
+    const handleAddRepository = useCallback(async () => {
+        const pathToUse = customPath.trim();
+        if (!pathToUse) {
+            Modal.alert(t('common.error'), t('newSession.noPathSelected'));
+            return;
+        }
+        const absolutePath = resolveAbsolutePath(pathToUse, machine?.metadata?.homeDir);
+        const gitCheck = await machineBash(machineId!, 'git rev-parse --git-dir', absolutePath);
+        if (!gitCheck.success) {
+            Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+            return;
+        }
+        const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
+        const newRepo: RegisteredRepo = {
+            id: randomUUID(),
+            path: absolutePath,
+            displayName,
+        };
+        const currentRepos = storage.getState().registeredRepos[machineId!] || [];
+        const updatedRepos = [...currentRepos, newRepo];
+        const version = storage.getState().registeredReposVersions[machineId!] ?? -1;
+        storage.getState().setRegisteredRepos(machineId!, updatedRepos, version + 1);
+        router.push(`/machine/${machineId}/repo/${newRepo.id}` as any);
+    }, [machineId, customPath, router, machine?.metadata?.homeDir]);
 
     if (!machine) {
         return (
@@ -661,6 +690,22 @@ export default function MachineDetailScreen() {
                             title={t('machine.metadataVersion')}
                             subtitle={String(machine.metadataVersion)}
                         />
+                </ItemGroup>
+
+                {/* Repositories */}
+                <ItemGroup title={t('machine.repositories')}>
+                    {registeredRepos.map(repo => (
+                        <Item
+                            key={repo.id}
+                            title={repo.displayName}
+                            subtitle={repo.path}
+                            onPress={() => router.push(`/machine/${machineId}/repo/${repo.id}` as any)}
+                        />
+                    ))}
+                    <Item
+                        title={t('machine.addRepository')}
+                        onPress={handleAddRepository}
+                    />
                 </ItemGroup>
             </ItemList>
         </>
