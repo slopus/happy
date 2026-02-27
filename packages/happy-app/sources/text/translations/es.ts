@@ -404,6 +404,7 @@ export const es: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            openclaw: 'OpenClaw',
         },
         model: {
             title: 'MODELO',

@@ -65,7 +65,7 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
 
 // Environment variable transformation helper
 // Returns ALL profile environment variables - daemon will use them as-is
-const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' = 'claude') => {
+const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' | 'openclaw' = 'claude') => {
     // getProfileEnvironmentVariables already returns ALL env vars from profile
     // including custom environmentVariables array and provider-specific configs
     return getProfileEnvironmentVariables(profile);
@@ -316,7 +316,7 @@ function NewSessionWizard() {
         }
         return 'anthropic'; // Default to Anthropic
     });
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini' | 'openclaw'>(() => {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
             // Only allow gemini if experiments are enabled
@@ -325,7 +325,7 @@ function NewSessionWizard() {
             }
             return tempSessionData.agentType;
         }
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'openclaw') {
             return lastUsedAgent;
         }
         // Only allow gemini if experiments are enabled
@@ -339,9 +339,10 @@ function NewSessionWizard() {
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
-            // Cycle: claude -> codex -> gemini (if experiments) -> claude
+            // Cycle: claude -> codex -> openclaw -> gemini (if experiments) -> claude
             if (prev === 'claude') return 'codex';
-            if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
+            if (prev === 'codex') return 'openclaw';
+            if (prev === 'openclaw') return experimentsEnabled ? 'gemini' : 'claude';
             return 'claude';
         });
     }, [experimentsEnabled]);
@@ -464,16 +465,17 @@ function NewSessionWizard() {
 
         if (agentAvailable === false) {
             // Current agent not available - find first available
-            const availableAgent: 'claude' | 'codex' | 'gemini' =
+            const availableAgent: 'claude' | 'codex' | 'gemini' | 'openclaw' =
                 cliAvailability.claude === true ? 'claude' :
                 cliAvailability.codex === true ? 'codex' :
+                cliAvailability.openclaw === true ? 'openclaw' :
                 (cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
                 'claude'; // Fallback to claude (will fail at spawn with clear error)
 
             console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
             setAgentType(availableAgent);
         }
-    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
+    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, cliAvailability.openclaw, agentType, experimentsEnabled]);
 
     // Extract all ${VAR} references from profiles to query daemon environment
     const envVarRefs = React.useMemo(() => {
@@ -489,10 +491,15 @@ function NewSessionWizard() {
     const { variables: daemonEnv } = useEnvironmentVariables(selectedMachineId, envVarRefs);
 
     // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
-    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean; gemini: boolean }>({ claude: false, codex: false, gemini: false });
+    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean; gemini: boolean; openclaw: boolean }>({
+        claude: false,
+        codex: false,
+        gemini: false,
+        openclaw: false,
+    });
 
     // Helper to check if CLI warning has been dismissed (checks both global and per-machine)
-    const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex' | 'gemini'): boolean => {
+    const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex' | 'gemini' | 'openclaw'): boolean => {
         // Check global dismissal first
         if (dismissedCLIWarnings.global?.[cli] === true) return true;
         // Check per-machine dismissal
@@ -501,7 +508,7 @@ function NewSessionWizard() {
     }, [selectedMachineId, dismissedCLIWarnings]);
 
     // Unified dismiss handler for all three button types (easy to use correctly, hard to use incorrectly)
-    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex' | 'gemini', type: 'temporary' | 'machine' | 'global') => {
+    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex' | 'gemini' | 'openclaw', type: 'temporary' | 'machine' | 'global') => {
         if (type === 'temporary') {
             // X button: Hide for current session only (not persisted)
             setHiddenBanners(prev => ({ ...prev, [cli]: true }));
@@ -553,7 +560,7 @@ function NewSessionWizard() {
         const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
             .filter(([, supported]) => supported)
             .map(([agent]) => agent);
-        const requiredCLI = supportedCLIs.length === 1 ? supportedCLIs[0] as 'claude' | 'codex' | 'gemini' : null;
+        const requiredCLI = supportedCLIs.length === 1 ? supportedCLIs[0] as 'claude' | 'codex' | 'gemini' | 'openclaw' : null;
 
         if (requiredCLI && cliAvailability[requiredCLI] === false) {
             return {
@@ -678,7 +685,7 @@ function NewSessionWizard() {
                 .map(([agent]) => agent);
 
             if (supportedCLIs.length === 1) {
-                const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini';
+                const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini' | 'openclaw';
                 // Check if this agent is available and allowed
                 const isAvailable = cliAvailability[requiredAgent] !== false;
                 const isAllowed = requiredAgent !== 'gemini' || experimentsEnabled;
@@ -705,7 +712,7 @@ function NewSessionWizard() {
                 }
             }
         }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled, availableModes, agentType]);
+    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, cliAvailability.openclaw, experimentsEnabled, availableModes, agentType]);
 
     // Ensure permission mode is valid for current agent, falling back when needed.
     React.useEffect(() => {
@@ -777,7 +784,7 @@ function NewSessionWizard() {
             name: '',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
+            compatibility: { claude: true, codex: true, gemini: true, openclaw: false },
             isBuiltIn: false,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -1097,6 +1104,7 @@ function NewSessionWizard() {
             cliStatus: includeCLI ? {
                 claude: cliAvailability.claude,
                 codex: cliAvailability.codex,
+                openclaw: cliAvailability.openclaw,
                 ...(experimentsEnabled && { gemini: cliAvailability.gemini }),
             } : undefined,
         };
@@ -1249,6 +1257,14 @@ function NewSessionWizard() {
                                             </Text>
                                             <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
                                                 codex
+                                            </Text>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            <Text style={{ fontSize: 11, color: cliAvailability.openclaw ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                {cliAvailability.openclaw ? '✓' : '✗'}
+                                            </Text>
+                                            <Text style={{ fontSize: 11, color: cliAvailability.openclaw ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                openclaw
                                             </Text>
                                         </View>
                                         {experimentsEnabled && (
@@ -1416,6 +1432,69 @@ function NewSessionWizard() {
                                                 View Installation Guide →
                                             </Text>
                                         </Pressable>
+                                    </View>
+                                </View>
+                            )}
+
+                            {selectedMachineId && cliAvailability.openclaw === false && !isWarningDismissed('openclaw') && !hiddenBanners.openclaw && (
+                                <View style={{
+                                    backgroundColor: theme.colors.box.warning.background,
+                                    borderRadius: 10,
+                                    padding: 12,
+                                    marginBottom: 12,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.box.warning.border,
+                                }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
+                                            <Ionicons name="warning" size={16} color={theme.colors.warning} />
+                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                                OpenClaw Gateway Not Detected
+                                            </Text>
+                                            <View style={{ flex: 1, minWidth: 20 }} />
+                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                Don't show this popup for
+                                            </Text>
+                                            <Pressable
+                                                onPress={() => handleCLIBannerDismiss('openclaw', 'machine')}
+                                                style={{
+                                                    borderRadius: 4,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.textSecondary,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                    this machine
+                                                </Text>
+                                            </Pressable>
+                                            <Pressable
+                                                onPress={() => handleCLIBannerDismiss('openclaw', 'global')}
+                                                style={{
+                                                    borderRadius: 4,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.textSecondary,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                    any machine
+                                                </Text>
+                                            </Pressable>
+                                        </View>
+                                        <Pressable
+                                            onPress={() => handleCLIBannerDismiss('openclaw', 'temporary')}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        >
+                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            Start OpenClaw locally or set OPENCLAW_GATEWAY_URL to your gateway.
+                                        </Text>
                                     </View>
                                 </View>
                             )}

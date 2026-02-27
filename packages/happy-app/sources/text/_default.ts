@@ -403,6 +403,7 @@ export const en = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            openclaw: 'OpenClaw',
         },
         model: {
             title: 'MODEL',

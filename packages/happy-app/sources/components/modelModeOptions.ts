@@ -93,6 +93,13 @@ export function getGeminiModelModes(): ModelMode[] {
     return GEMINI_MODEL_FALLBACKS;
 }
 
+export function getOpenClawPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
@@ -100,7 +107,16 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'gemini') {
         return getGeminiPermissionModes(translate);
     }
+    if (flavor === 'openclaw') {
+        return getOpenClawPermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
+}
+
+export function getOpenClawModelModes(): ModelMode[] {
+    return [
+        { key: 'default', name: 'Default', description: 'Use gateway settings' },
+    ];
 }
 
 export function getHardcodedModelModes(flavor: AgentFlavor, translate: Translate): ModelMode[] {
@@ -109,6 +125,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, translate: Translate
     }
     if (flavor === 'gemini') {
         return getGeminiModelModes();
+    }
+    if (flavor === 'openclaw') {
+        return getOpenClawModelModes();
     }
     return getClaudeModelModes();
 }
@@ -130,7 +149,7 @@ export function getAvailablePermissionModes(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): PermissionMode[] {
-    if (flavor === 'claude' || flavor === 'codex') {
+    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 
@@ -171,6 +190,9 @@ export function getDefaultModelKey(flavor: AgentFlavor): string {
     }
     return 'default';
 }
+
+// OpenClaw uses 'openclaw' for permission mode availability checks
+
 
 export function getDefaultPermissionModeKey(_flavor: AgentFlavor): string {
     return 'default';
