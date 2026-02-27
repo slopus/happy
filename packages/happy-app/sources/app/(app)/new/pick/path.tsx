@@ -150,7 +150,7 @@ export default function PathPickerScreen() {
                 <Stack.Screen
                     options={{
                         headerShown: true,
-                        headerTitle: 'Select Path',
+                        headerTitle: t('wizard.selectPath'),
                         headerBackTitle: t('common.back'),
                         headerRight: () => (
                             <Pressable
@@ -174,7 +174,7 @@ export default function PathPickerScreen() {
                 <View style={styles.container}>
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>
-                            No machine selected
+                            {t('wizard.noMachineSelected')}
                         </Text>
                     </View>
                 </View>
@@ -187,7 +187,7 @@ export default function PathPickerScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: 'Select Path',
+                    headerTitle: t('wizard.selectPath'),
                     headerBackTitle: t('common.back'),
                     headerRight: () => (
                         <Pressable
@@ -214,14 +214,14 @@ export default function PathPickerScreen() {
                     keyboardShouldPersistTaps="handled"
                 >
                     <View style={styles.contentWrapper}>
-                        <ItemGroup title="Enter Path">
+                        <ItemGroup title={t('wizard.enterPath')}>
                             <View style={styles.pathInputContainer}>
                                 <View style={[styles.pathInput, { paddingVertical: 8 }]}>
                                     <MultiTextInput
                                         ref={inputRef}
                                         value={customPath}
                                         onChangeText={setCustomPath}
-                                        placeholder="Enter path (e.g. ~/projects)"
+                                        placeholder={t('wizard.enterPathPlaceholder')}
                                         maxHeight={76}
                                         paddingTop={8}
                                         paddingBottom={8}
@@ -234,7 +234,7 @@ export default function PathPickerScreen() {
                         </ItemGroup>
 
                         {recentPaths.length > 0 && (
-                            <ItemGroup title="Recent Paths">
+                            <ItemGroup title={t('wizard.recentPaths')}>
                                 {recentPaths.map((path, index) => {
                                     const displayPath = formatPathRelativeToHome(path, homeDir);
                                     const isSelected = customPath.trim() === displayPath || customPath.trim() === path;
@@ -266,7 +266,7 @@ export default function PathPickerScreen() {
                         )}
 
                         {recentPaths.length === 0 && (
-                            <ItemGroup title="Suggested Paths">
+                            <ItemGroup title={t('wizard.suggestedPaths')}>
                                 {(() => {
                                     const machineHomeDir = machine.metadata?.homeDir || '/home';
                                     const suggestedPaths = [

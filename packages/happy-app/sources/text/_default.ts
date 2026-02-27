@@ -1419,6 +1419,20 @@ export const en = {
         favoriteDirectories: 'Favorite Directories',
         noRecentDirectories: 'No recent directories',
 
+        // Path picker
+        selectPath: 'Select Path',
+        enterPath: 'Enter Path',
+        enterPathPlaceholder: 'Enter path (e.g. ~/projects)',
+        recentPaths: 'Recent Paths',
+        suggestedPaths: 'Suggested Paths',
+        noMachineSelected: 'No machine selected',
+
+        // Machine picker
+        detectingClis: 'Detecting CLIs...',
+        noClisDetected: 'No CLIs detected',
+        statusOnline: 'online',
+        statusOffline: 'offline',
+
         // Permission mode options
         permDefault: 'Default',
         permDefaultDesc: 'Ask for permissions',

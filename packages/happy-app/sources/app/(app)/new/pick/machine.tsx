@@ -108,14 +108,14 @@ export default function MachinePickerScreen() {
                 <Stack.Screen
                     options={{
                         headerShown: true,
-                        headerTitle: 'Select Machine',
+                        headerTitle: t('wizard.step2Title'),
                         headerBackTitle: t('common.back')
                     }}
                 />
                 <View style={styles.container}>
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>
-                            No machines available
+                            {t('wizard.noMachinesAvailable')}
                         </Text>
                     </View>
                 </View>
@@ -128,7 +128,7 @@ export default function MachinePickerScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: 'Select Machine',
+                    headerTitle: t('wizard.step2Title'),
                     headerBackTitle: t('common.back')
                 }}
             />
@@ -147,14 +147,14 @@ export default function MachinePickerScreen() {
                                     if (!isMachineOnline(machine)) return undefined;
                                     const avail = cliAvailabilityMap[machine.id];
                                     if (!avail) return undefined;
-                                    if (avail.isDetecting) return 'Detecting CLIs...';
+                                    if (avail.isDetecting) return t('wizard.detectingClis');
                                     if (avail.timestamp === 0) return undefined; // detection failed
                                     const installed = [
                                         avail.claude && 'claude',
                                         avail.codex && 'codex',
                                         avail.gemini && 'gemini',
                                     ].filter(Boolean);
-                                    if (installed.length === 0) return 'No CLIs detected';
+                                    if (installed.length === 0) return t('wizard.noClisDetected');
                                     return installed.join(', ');
                                 },
                                 getItemIcon: (machine) => (
@@ -174,7 +174,7 @@ export default function MachinePickerScreen() {
                                 getItemStatus: (machine) => {
                                     const offline = !isMachineOnline(machine);
                                     return {
-                                        text: offline ? 'offline' : 'online',
+                                        text: offline ? t('wizard.statusOffline') : t('wizard.statusOnline'),
                                         color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                                         dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                                         isPulsing: !offline,
@@ -192,10 +192,10 @@ export default function MachinePickerScreen() {
                                     const search = searchText.toLowerCase();
                                     return displayName.includes(search) || host.includes(search);
                                 },
-                                searchPlaceholder: "Type to filter machines...",
-                                recentSectionTitle: "Recent Machines",
-                                favoritesSectionTitle: "Favorite Machines",
-                                noItemsMessage: "No machines available",
+                                searchPlaceholder: t('wizard.filterMachines'),
+                                recentSectionTitle: t('wizard.recentMachines'),
+                                favoritesSectionTitle: t('wizard.favoriteMachines'),
+                                noItemsMessage: t('wizard.noMachinesAvailable'),
                                 showFavorites: false,  // Simpler modal experience - no favorites in modal
                                 showRecent: true,
                                 showSearch: true,
