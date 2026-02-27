@@ -325,7 +325,7 @@ const stylesheet = StyleSheet.create((theme, _rt) => ({
     },
     removeButton: {
         marginLeft: 6,
-        padding: 2,
+        padding: 1,
     },
     removeIcon: {
         // Style-as-data: the color is read imperatively by the component.
