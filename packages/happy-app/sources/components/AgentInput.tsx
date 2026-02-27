@@ -1342,6 +1342,38 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </Text>
                             </Pressable>
                         )}
+                        {/* Path hint (non-clickable) */}
+                        {props.currentPath && !props.onPathClick && (
+                            <View
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 6,
+                                    height: 32,
+                                    gap: 6,
+                                    flexShrink: 1,
+                                    minWidth: 0,
+                                }}
+                            >
+                                <Ionicons
+                                    name="folder-outline"
+                                    size={14}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text
+                                    numberOfLines={1}
+                                    style={{
+                                        fontSize: 13,
+                                        color: theme.colors.textSecondary,
+                                        flexShrink: 1,
+                                        ...Typography.default('regular'),
+                                    }}
+                                >
+                                    {props.currentPath}
+                                </Text>
+                            </View>
+                        )}
                     </View>
                 )}
 
