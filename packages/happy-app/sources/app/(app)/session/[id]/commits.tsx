@@ -256,8 +256,11 @@ export default function CommitsScreen() {
     }, [isLoadingMore, hasMore, commits.length, loadCommits]);
 
     const handleCommitPress = React.useCallback((commit: CommitInfo) => {
-        router.push(`/session/${sessionId}/commit?hash=${commit.hash}`);
-    }, [router, sessionId]);
+        const cwdParam = activeCwd && activeCwd !== sessionPath
+            ? `&cwd=${encodeURIComponent(activeCwd)}`
+            : '';
+        router.push(`/session/${sessionId}/commit?hash=${commit.hash}${cwdParam}`);
+    }, [router, sessionId, activeCwd, sessionPath]);
 
     const renderCommit = React.useCallback(({ item, index }: { item: CommitInfo; index: number }) => (
         <Pressable

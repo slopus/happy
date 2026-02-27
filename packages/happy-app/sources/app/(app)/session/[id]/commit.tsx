@@ -90,6 +90,8 @@ export default function CommitScreen() {
 
     const session = storage.getState().sessions[sessionId];
     const sessionPath = session?.metadata?.path || '';
+    const cwdParam = searchParams.cwd as string | undefined;
+    const repoCwd = cwdParam || sessionPath;
 
     const [commitDetail, setCommitDetail] = React.useState<CommitDetail | null>(null);
     const [files, setFiles] = React.useState<CommitFile[]>([]);
@@ -107,12 +109,12 @@ export default function CommitScreen() {
                 const [infoRes, filesRes] = await Promise.all([
                     sessionBash(sessionId, {
                         command: `git show --format="%H%n%h%n%an%n%ae%n%at%n%s%n%b" --no-patch ${hash}`,
-                        cwd: sessionPath,
+                        cwd: repoCwd,
                         timeout: 10000,
                     }),
                     sessionBash(sessionId, {
                         command: `git diff-tree --no-commit-id -r --numstat ${hash}`,
-                        cwd: sessionPath,
+                        cwd: repoCwd,
                         timeout: 10000,
                     }),
                 ]);
@@ -137,15 +139,15 @@ export default function CommitScreen() {
 
         load();
         return () => { cancelled = true; };
-    }, [sessionId, sessionPath, hash]);
+    }, [sessionId, repoCwd, hash]);
 
     const handleFilePress = React.useCallback((file: CommitFile) => {
-        const fullPath = `${sessionPath}/${file.filePath}`;
+        const fullPath = `${repoCwd}/${file.filePath}`;
         const encodedPath = btoa(
             new TextEncoder().encode(fullPath).reduce((s, b) => s + String.fromCharCode(b), '')
         );
         router.push(`/session/${sessionId}/file?path=${encodeURIComponent(encodedPath)}&ref=${hash}`);
-    }, [router, sessionId, sessionPath, hash]);
+    }, [router, sessionId, repoCwd, hash]);
 
     // Action menu
     const [menuVisible, setMenuVisible] = React.useState(false);
