@@ -1138,6 +1138,7 @@ export const zhHant: TranslationStructure = {
         back: '返回',
         repositories: '儲存庫',
         addRepository: '新增儲存庫',
+        previousSessions: ({ count }: { count: number }) => `歷史工作階段（最近 ${count} 個）`,
     },
 
     repoEdit: {

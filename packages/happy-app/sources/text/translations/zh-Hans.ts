@@ -1139,6 +1139,7 @@ export const zhHans: TranslationStructure = {
         back: '返回',
         repositories: '仓库',
         addRepository: '添加仓库',
+        previousSessions: ({ count }: { count: number }) => `历史会话（最近 ${count} 个）`,
     },
 
     repoEdit: {
