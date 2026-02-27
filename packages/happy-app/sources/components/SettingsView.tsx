@@ -217,7 +217,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     }
                     icon={
                         <Image
-                            source={require('@/assets/images/icon-dootask.png')}
+                            source={require('@/assets/images/icon-dootask-outline.png')}
                             style={{ width: 29, height: 29 }}
                             contentFit="contain"
                         />

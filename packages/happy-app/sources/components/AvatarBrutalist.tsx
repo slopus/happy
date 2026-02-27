@@ -439,6 +439,7 @@ const brutalismImages = [
     require('@/assets/images/brutalist/Brutalism 117.png'),
     require('@/assets/images/brutalist/Brutalism 118.png'),
     require('@/assets/images/brutalist/Specified 1.png'),
+    require('@/assets/images/brutalist/Specified 2.png'),
 ];
 
 const allImages = [...abstractImages, ...bauhausImages, ...brutalismImages];
