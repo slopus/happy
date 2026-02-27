@@ -1,0 +1,3 @@
+# Local overrides
+*.local.jsonc
+*.local.json
