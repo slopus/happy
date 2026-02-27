@@ -491,7 +491,10 @@ export const pl: TranslationStructure = {
             notGitRepo: 'Worktree wymaga repozytorium git',
             failed: ({ error }: { error: string }) => `Nie udało się utworzyć worktree: ${error}`,
             success: 'Worktree został utworzony pomyślnie',
-        }
+        },
+        repos: {
+            addDirectory: 'Dodaj katalog...',
+        },
     },
 
     sessionHistory: {

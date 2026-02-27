@@ -444,7 +444,10 @@ export const ru: TranslationStructure = {
             notGitRepo: 'Worktree требует наличия git репозитория',
             failed: ({ error }: { error: string }) => `Не удалось создать worktree: ${error}`,
             success: 'Worktree успешно создан',
-        }
+        },
+        repos: {
+            addDirectory: 'Добавить каталог...',
+        },
     },
 
     sessionHistory: {
