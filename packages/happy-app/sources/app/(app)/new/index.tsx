@@ -1626,10 +1626,10 @@ function NewSessionWizard() {
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
                                 <Ionicons name="person-outline" size={18} color={theme.colors.text} />
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Profile</Text>
+                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('wizard.step1Title')}</Text>
                             </View>
                             <Text style={styles.sectionDescription}>
-                                Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.
+                                {t('wizard.step1Description')}
                             </Text>
 
                             {/* Missing CLI Installation Banners */}
@@ -1646,11 +1646,11 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
                                             <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                             <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Claude CLI Not Detected
+                                                {t('wizard.cliNotDetected', { name: 'Claude' })}
                                             </Text>
                                             <View style={{ flex: 1, minWidth: 20 }} />
                                             <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
+                                                {t('wizard.dontShowFor')}
                                             </Text>
                                             <Pressable
                                                 onPress={() => handleCLIBannerDismiss('claude', 'machine')}
@@ -1663,7 +1663,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
+                                                    {t('wizard.thisMachine')}
                                                 </Text>
                                             </Pressable>
                                             <Pressable
@@ -1677,7 +1677,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
+                                                    {t('wizard.anyMachine')}
                                                 </Text>
                                             </Pressable>
                                         </View>
@@ -1690,7 +1690,7 @@ function NewSessionWizard() {
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install: npm install -g @anthropic-ai/claude-code •
+                                            {t('wizard.installClaude')} •
                                         </Text>
                                         <Pressable onPress={() => {
                                             if (Platform.OS === 'web') {
@@ -1698,7 +1698,7 @@ function NewSessionWizard() {
                                             }
                                         }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide →
+                                                {t('wizard.viewInstallGuide')}
                                             </Text>
                                         </Pressable>
                                     </View>
@@ -1718,11 +1718,11 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
                                             <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                             <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Codex CLI Not Detected
+                                                {t('wizard.cliNotDetected', { name: 'Codex' })}
                                             </Text>
                                             <View style={{ flex: 1, minWidth: 20 }} />
                                             <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
+                                                {t('wizard.dontShowFor')}
                                             </Text>
                                             <Pressable
                                                 onPress={() => handleCLIBannerDismiss('codex', 'machine')}
@@ -1735,7 +1735,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
+                                                    {t('wizard.thisMachine')}
                                                 </Text>
                                             </Pressable>
                                             <Pressable
@@ -1749,7 +1749,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
+                                                    {t('wizard.anyMachine')}
                                                 </Text>
                                             </Pressable>
                                         </View>
@@ -1762,7 +1762,7 @@ function NewSessionWizard() {
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install: npm install -g codex-cli •
+                                            {t('wizard.installCodex')} •
                                         </Text>
                                         <Pressable onPress={() => {
                                             if (Platform.OS === 'web') {
@@ -1770,7 +1770,7 @@ function NewSessionWizard() {
                                             }
                                         }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide →
+                                                {t('wizard.viewInstallGuide')}
                                             </Text>
                                         </Pressable>
                                     </View>
@@ -1790,11 +1790,11 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
                                             <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                             <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Gemini CLI Not Detected
+                                                {t('wizard.cliNotDetected', { name: 'Gemini' })}
                                             </Text>
                                             <View style={{ flex: 1, minWidth: 20 }} />
                                             <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
+                                                {t('wizard.dontShowFor')}
                                             </Text>
                                             <Pressable
                                                 onPress={() => handleCLIBannerDismiss('gemini', 'machine')}
@@ -1807,7 +1807,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
+                                                    {t('wizard.thisMachine')}
                                                 </Text>
                                             </Pressable>
                                             <Pressable
@@ -1821,7 +1821,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
+                                                    {t('wizard.anyMachine')}
                                                 </Text>
                                             </Pressable>
                                         </View>
@@ -1834,7 +1834,7 @@ function NewSessionWizard() {
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install gemini CLI if available •
+                                            {t('wizard.installGemini')} •
                                         </Text>
                                         <Pressable onPress={() => {
                                             if (Platform.OS === 'web') {
@@ -1842,7 +1842,7 @@ function NewSessionWizard() {
                                             }
                                         }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Gemini Docs →
+                                                {t('wizard.viewGeminiDocs')}
                                             </Text>
                                         </Pressable>
                                     </View>
@@ -1954,7 +1954,7 @@ function NewSessionWizard() {
                                 >
                                     <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
                                     <Text style={styles.addProfileButtonText}>
-                                        Add
+                                        {t('wizard.add')}
                                     </Text>
                                 </Pressable>
                                 <Pressable
@@ -1968,7 +1968,7 @@ function NewSessionWizard() {
                                 >
                                     <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
                                     <Text style={styles.addProfileButtonText}>
-                                        Duplicate
+                                        {t('wizard.duplicate')}
                                     </Text>
                                 </Pressable>
                                 <Pressable
@@ -1982,7 +1982,7 @@ function NewSessionWizard() {
                                 >
                                     <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
                                     <Text style={[styles.addProfileButtonText, { color: theme.colors.deleteAction }]}>
-                                        Delete
+                                        {t('wizard.delete')}
                                     </Text>
                                 </Pressable>
                             </View>
@@ -1992,7 +1992,7 @@ function NewSessionWizard() {
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>2.</Text>
                                     <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('wizard.step2Title')}</Text>
                                 </View>
                             </View>
 
@@ -2037,10 +2037,10 @@ function NewSessionWizard() {
                                         const search = searchText.toLowerCase();
                                         return displayName.includes(search) || host.includes(search);
                                     },
-                                    searchPlaceholder: "Type to filter machines...",
-                                    recentSectionTitle: "Recent Machines",
-                                    favoritesSectionTitle: "Favorite Machines",
-                                    noItemsMessage: "No machines available",
+                                    searchPlaceholder: t('wizard.filterMachines'),
+                                    recentSectionTitle: t('wizard.recentMachines'),
+                                    favoritesSectionTitle: t('wizard.favoriteMachines'),
+                                    noItemsMessage: t('wizard.noMachinesAvailable'),
                                     showFavorites: true,
                                     showRecent: true,
                                     showSearch: true,
@@ -2072,10 +2072,10 @@ function NewSessionWizard() {
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
                                     <Ionicons name="git-branch-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Session Mode</Text>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('wizard.step3Title')}</Text>
                                 </View>
                                 <Text style={styles.sectionDescription}>
-                                    Simple mode works in a single directory. Worktree mode creates isolated git branches for each repository.
+                                    {t('wizard.step3Description')}
                                 </Text>
                                 <View style={{ marginBottom: 12 }}>
                                     <SessionTypeSelector value={sessionType} onChange={setSessionType} />
@@ -2097,7 +2097,7 @@ function NewSessionWizard() {
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
                                     <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>{t('wizard.step4Title')}</Text>
                                 </View>
                             </View>
 
@@ -2145,10 +2145,10 @@ function NewSessionWizard() {
                                         const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
                                         return displayPath.toLowerCase().includes(searchText.toLowerCase());
                                     },
-                                    searchPlaceholder: "Type to filter or enter custom directory...",
-                                    recentSectionTitle: "Recent Directories",
-                                    favoritesSectionTitle: "Favorite Directories",
-                                    noItemsMessage: "No recent directories",
+                                    searchPlaceholder: t('wizard.filterDirectories'),
+                                    recentSectionTitle: t('wizard.recentDirectories'),
+                                    favoritesSectionTitle: t('wizard.favoriteDirectories'),
+                                    noItemsMessage: t('wizard.noRecentDirectories'),
                                     showFavorites: true,
                                     showRecent: true,
                                     showSearch: true,
@@ -2199,22 +2199,22 @@ function NewSessionWizard() {
 
                             {/* Section 5: Permission Mode */}
                             <View ref={permissionSectionRef}>
-                                <Text style={styles.sectionHeader}>5. Permission Mode</Text>
+                                <Text style={styles.sectionHeader}>5. {t('wizard.step5Title')}</Text>
                             </View>
                             <ItemGroup title="">
                                 {(agentType === 'codex'
                                     ? [
-                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                        { value: 'read-only' as PermissionMode, label: 'Read Only', description: 'Read-only mode', icon: 'eye-outline' },
-                                        { value: 'safe-yolo' as PermissionMode, label: 'Safe YOLO', description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-                                        { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'Full access, skip permissions', icon: 'flash-outline' },
+                                        { value: 'default' as PermissionMode, label: t('wizard.permDefault'), description: t('wizard.permDefaultDesc'), icon: 'shield-outline' },
+                                        { value: 'read-only' as PermissionMode, label: t('wizard.permReadOnly'), description: t('wizard.permReadOnlyDesc'), icon: 'eye-outline' },
+                                        { value: 'safe-yolo' as PermissionMode, label: t('wizard.permSafeYolo'), description: t('wizard.permSafeYoloDesc'), icon: 'shield-checkmark-outline' },
+                                        { value: 'yolo' as PermissionMode, label: t('wizard.permYolo'), description: t('wizard.permFullAccess'), icon: 'flash-outline' },
                                     ]
                                     : [
-                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                        { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                        { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                        { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                                        { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'No confirmations at all', icon: 'warning-outline' },
+                                        { value: 'default' as PermissionMode, label: t('wizard.permDefault'), description: t('wizard.permDefaultDesc'), icon: 'shield-outline' },
+                                        { value: 'acceptEdits' as PermissionMode, label: t('wizard.permAcceptEdits'), description: t('wizard.permAcceptEditsDesc'), icon: 'checkmark-outline' },
+                                        { value: 'plan' as PermissionMode, label: t('wizard.permPlan'), description: t('wizard.permPlanDesc'), icon: 'list-outline' },
+                                        { value: 'bypassPermissions' as PermissionMode, label: t('wizard.permBypass'), description: t('wizard.permBypassDesc'), icon: 'flash-outline' },
+                                        { value: 'yolo' as PermissionMode, label: t('wizard.permYolo'), description: t('wizard.permYoloDesc'), icon: 'warning-outline' },
                                     ]
                                 ).map((option, index, array) => (
                                     <Item

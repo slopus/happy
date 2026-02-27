@@ -1379,7 +1379,63 @@ export const en = {
             confirm: 'Delete',
             cancel: 'Cancel',
         },
-    }
+    },
+
+    wizard: {
+        // Variant B new session wizard
+        step1Title: 'Choose AI Profile',
+        step1Description: 'Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.',
+        step2Title: 'Select Machine',
+        step3Title: 'Session Mode',
+        step3Description: 'Simple mode works in a single directory. Worktree mode creates isolated git branches for each repository.',
+        step4Title: 'Select Working Directory',
+        step5Title: 'Permission Mode',
+
+        // CLI detection banners
+        cliNotDetected: ({ name }: { name: string }) => `${name} CLI Not Detected`,
+        dontShowFor: "Don't show this popup for",
+        thisMachine: 'this machine',
+        anyMachine: 'any machine',
+        installClaude: 'Install: npm install -g @anthropic-ai/claude-code',
+        installCodex: 'Install: npm install -g codex-cli',
+        installGemini: 'Install gemini CLI if available',
+        viewInstallGuide: 'View Installation Guide →',
+        viewGeminiDocs: 'View Gemini Docs →',
+
+        // Profile actions
+        add: 'Add',
+        duplicate: 'Duplicate',
+        delete: 'Delete',
+
+        // Machine selector
+        filterMachines: 'Type to filter machines...',
+        recentMachines: 'Recent Machines',
+        favoriteMachines: 'Favorite Machines',
+        noMachinesAvailable: 'No machines available',
+
+        // Directory selector
+        filterDirectories: 'Type to filter or enter custom directory...',
+        recentDirectories: 'Recent Directories',
+        favoriteDirectories: 'Favorite Directories',
+        noRecentDirectories: 'No recent directories',
+
+        // Permission mode options
+        permDefault: 'Default',
+        permDefaultDesc: 'Ask for permissions',
+        permAcceptEdits: 'Accept Edits',
+        permAcceptEditsDesc: 'Auto-approve edits',
+        permPlan: 'Plan',
+        permPlanDesc: 'Plan before executing',
+        permBypass: 'Bypass Permissions',
+        permBypassDesc: 'Skip all permissions',
+        permYolo: 'YOLO',
+        permYoloDesc: 'No confirmations at all',
+        permReadOnly: 'Read Only',
+        permReadOnlyDesc: 'Read-only mode',
+        permSafeYolo: 'Safe YOLO',
+        permSafeYoloDesc: 'Workspace write with approval',
+        permFullAccess: 'Full access, skip permissions',
+    },
 } as const;
 
 export type Translations = typeof en;
