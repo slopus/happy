@@ -59,6 +59,14 @@ export interface TranscriptionResponse {
     text: string;
 }
 
+function filenameForBlob(blob: Blob): string {
+    const t = blob.type;
+    if (t.includes('mp4') || t.includes('m4a') || t.includes('aac')) return 'recording.m4a';
+    if (t.includes('ogg')) return 'recording.ogg';
+    if (t.includes('webm')) return 'recording.webm';
+    return 'recording.bin';
+}
+
 export async function transcribeAudio(audioUri: string): Promise<TranscriptionResponse> {
     const whisperUrl = getWhisperUrl();
     console.log('[Whisper] URL:', whisperUrl, 'audioUri:', audioUri?.slice(0, 80));
@@ -79,7 +87,9 @@ export async function transcribeAudio(audioUri: string): Promise<TranscriptionRe
         throw new Error('Recording is empty (0 bytes)');
     }
 
-    formData.append('file', blob, 'recording.webm');
+    const filename = filenameForBlob(blob);
+    console.log('[Whisper] Upload filename:', filename);
+    formData.append('file', blob, filename);
     formData.append('model', 'Systran/faster-whisper-base');
     formData.append('response_format', 'json');
     formData.append('language', 'en');
