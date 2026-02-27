@@ -193,13 +193,14 @@ export default function FilesScreen() {
 
     // Switch between repos in multi-repo workspace
     const handleRepoSelect = React.useCallback((index: number) => {
+        if (index === selectedRepoIndex) return;
         setSelectedRepoIndex(index);
         setGitStatusFiles(null);
         setSearchResults([]);
         setSearchQuery('');
         initialLoadDone.current = false;
         setIsLoading(true);
-    }, []);
+    }, [selectedRepoIndex]);
 
     // Long press menu
     const handleLongPress = React.useCallback((file: GitFileStatus, staged: boolean) => {

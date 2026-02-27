@@ -193,6 +193,7 @@ export default function CommitsScreen() {
     }, [sessionId, activeCwd]);
 
     const handleRepoSelect = React.useCallback((index: number) => {
+        if (index === selectedRepoIndex) return;
         setSelectedRepoIndex(index);
         // Reset branch state when switching repos since branches differ per repo
         setSelectedBranch('');
@@ -201,7 +202,7 @@ export default function CommitsScreen() {
         setRemoteBranches([]);
         setWorktreeMap({});
         setHasMore(true);
-    }, []);
+    }, [selectedRepoIndex]);
 
     const handleBranchSelect = React.useCallback((branch: string) => {
         setSelectedBranch(branch === currentBranch ? '' : branch);
