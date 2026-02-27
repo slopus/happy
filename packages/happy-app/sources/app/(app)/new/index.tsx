@@ -1503,8 +1503,8 @@ function NewSessionWizard() {
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
-                                currentPath={formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)}
-                                onPathClick={handlePathClick}
+                                currentPath={sessionType === 'worktree' && selectedRepos.length > 0 ? undefined : formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)}
+                                onPathClick={sessionType === 'worktree' && selectedRepos.length > 0 ? undefined : handlePathClick}
                                 images={images}
                                 onImagesChange={(newImages) => {
                                     const currentUris = new Set(newImages.map(img => img.uri));
@@ -2259,8 +2259,8 @@ function NewSessionWizard() {
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}
-                            currentPath={formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)}
-                            onPathClick={handleAgentInputPathClick}
+                            currentPath={sessionType === 'worktree' && selectedRepos.length > 0 ? undefined : formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)}
+                            onPathClick={sessionType === 'worktree' && selectedRepos.length > 0 ? undefined : handleAgentInputPathClick}
                             profileId={selectedProfileId}
                             onProfileClick={handleAgentInputProfileClick}
                             images={images}
