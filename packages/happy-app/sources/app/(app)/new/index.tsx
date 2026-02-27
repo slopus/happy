@@ -2067,10 +2067,36 @@ function NewSessionWizard() {
                                 />
                             </View>
 
-                            {/* Section 3: Working Directory */}
-                            <View ref={pathSectionRef}>
+                            {/* Section 3: Session Mode */}
+                            <View>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
+                                    <Ionicons name="git-branch-outline" size={18} color={theme.colors.text} />
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Session Mode</Text>
+                                </View>
+                                <Text style={styles.sectionDescription}>
+                                    Simple mode works in a single directory. Worktree mode creates isolated git branches for each repository.
+                                </Text>
+                                <View style={{ marginBottom: 12 }}>
+                                    <SessionTypeSelector value={sessionType} onChange={setSessionType} />
+                                    {sessionType === 'worktree' && selectedMachineId && (
+                                        <View style={{ marginTop: 8 }}>
+                                            <RepoPickerBar
+                                                machineId={selectedMachineId}
+                                                selectedRepos={selectedRepos}
+                                                onReposChange={setSelectedRepos}
+                                                onAddDirectory={handleAddDirectory}
+                                            />
+                                        </View>
+                                    )}
+                                </View>
+                            </View>
+
+                            {/* Section 4: Working Directory (hidden when worktree repos selected) */}
+                            {!(sessionType === 'worktree' && selectedRepos.length > 0) && (<React.Fragment>
+                            <View ref={pathSectionRef}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
                                     <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
                                 </View>
@@ -2165,10 +2191,11 @@ function NewSessionWizard() {
                                     context={{ homeDir: selectedMachine?.metadata?.homeDir }}
                                 />
                             </View>
+                            </React.Fragment>)}
 
-                            {/* Section 4: Permission Mode */}
+                            {/* Section 5 (or 4 if directory hidden): Permission Mode */}
                             <View ref={permissionSectionRef}>
-                                <Text style={styles.sectionHeader}>4. Permission Mode</Text>
+                                <Text style={styles.sectionHeader}>{sessionType === 'worktree' && selectedRepos.length > 0 ? '4' : '5'}. Permission Mode</Text>
                             </View>
                             <ItemGroup title="">
                                 {(agentType === 'codex'
@@ -2212,37 +2239,6 @@ function NewSessionWizard() {
                                 ))}
                             </ItemGroup>
 
-                            {/* Section 5: Advanced Options (Collapsible) */}
-                            <Pressable
-                                style={styles.advancedHeader}
-                                onPress={() => setShowAdvanced(!showAdvanced)}
-                            >
-                                <Text style={styles.advancedHeaderText}>Advanced Options</Text>
-                                <Ionicons
-                                    name={showAdvanced ? "chevron-up" : "chevron-down"}
-                                    size={20}
-                                    color={theme.colors.text}
-                                />
-                            </Pressable>
-
-                            {showAdvanced && (
-                                <View style={{ marginBottom: 12 }}>
-                                    <SessionTypeSelector
-                                        value={sessionType}
-                                        onChange={setSessionType}
-                                    />
-                                    {sessionType === 'worktree' && selectedMachineId && (
-                                        <View style={{ marginTop: 8 }}>
-                                            <RepoPickerBar
-                                                machineId={selectedMachineId}
-                                                selectedRepos={selectedRepos}
-                                                onReposChange={setSelectedRepos}
-                                                onAddDirectory={handleAddDirectory}
-                                            />
-                                        </View>
-                                    )}
-                                </View>
-                            )}
                         </View>
                     </View>
                 </View>
