@@ -97,7 +97,7 @@ export default React.memo(function RepoEditScreen() {
                 ? localResult.stdout.trim().split('\n').filter(Boolean)
                 : [];
             const remoteBranches = remoteResult.success && remoteResult.stdout.trim()
-                ? remoteResult.stdout.trim().split('\n').filter(b => b && !b.endsWith('/HEAD'))
+                ? remoteResult.stdout.trim().split('\n').filter(b => b && b.includes('/') && !b.endsWith('/HEAD'))
                 : [];
 
             if (localBranches.length === 0 && remoteBranches.length === 0) {

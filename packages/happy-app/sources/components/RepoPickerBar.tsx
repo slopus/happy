@@ -10,6 +10,7 @@ import { Modal } from '@/modal';
 import type { RegisteredRepo } from '@/utils/workspaceRepos';
 import { ActionMenuModal } from './ActionMenuModal';
 import type { ActionMenuItem } from './ActionMenu';
+import { useShallow } from 'zustand/react/shallow';
 
 // --- Public types ---
 
@@ -54,13 +55,12 @@ export const RepoPickerBar: React.FC<RepoPickerBarProps> = React.memo(
         const [branchMenuVisible, setBranchMenuVisible] = useState(false);
         const [branchMenuItems, setBranchMenuItems] = useState<ActionMenuItem[]>([]);
 
-        // Registered repos for the machine, sorted by lastUsedAt (most recent first)
-        const registeredRepos = useMemo(() => {
-            const repos = storage.getState().registeredRepos[machineId] || [];
-            return [...repos].sort(
-                (a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0),
-            );
-        }, [machineId]);
+        // Registered repos for the machine (reactive), sorted by lastUsedAt (most recent first)
+        const rawRepos = storage(useShallow((state) => state.registeredRepos[machineId] || [])) as RegisteredRepo[];
+        const registeredRepos = useMemo(
+            () => [...rawRepos].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0)),
+            [rawRepos],
+        );
 
         // Set of selected keys for O(1) lookup
         const selectedKeys = useMemo(
@@ -120,7 +120,7 @@ export const RepoPickerBar: React.FC<RepoPickerBarProps> = React.memo(
                         ? localResult.stdout.trim().split('\n').filter(Boolean)
                         : [];
                     const remoteBranches = remoteResult.success && remoteResult.stdout.trim()
-                        ? remoteResult.stdout.trim().split('\n').filter(b => b && !b.endsWith('/HEAD'))
+                        ? remoteResult.stdout.trim().split('\n').filter(b => b && b.includes('/') && !b.endsWith('/HEAD'))
                         : [];
 
                     if (localBranches.length === 0 && remoteBranches.length === 0) {

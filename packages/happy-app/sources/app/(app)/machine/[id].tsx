@@ -439,16 +439,18 @@ export default function MachineDetailScreen() {
             }
         }
 
-        // Fetch local and remote branches in parallel
-        const [localResult, remoteResult] = await Promise.all([
+        // Fetch current branch, local branches, and remote branches in parallel
+        const [currentBranchResult, localResult, remoteResult] = await Promise.all([
+            machineBash(machineId, 'git rev-parse --abbrev-ref HEAD', absolutePath),
             machineBash(machineId, "git branch --list --format='%(refname:short)'", absolutePath),
             machineBash(machineId, "git branch -r --format='%(refname:short)'", absolutePath),
         ]);
+        const currentBranch = currentBranchResult.success ? currentBranchResult.stdout.trim() : undefined;
         const localBranches = localResult.success && localResult.stdout.trim()
             ? localResult.stdout.trim().split('\n').filter(Boolean)
             : [];
         const remoteBranches = remoteResult.success && remoteResult.stdout.trim()
-            ? remoteResult.stdout.trim().split('\n').filter(b => b && !b.endsWith('/HEAD'))
+            ? remoteResult.stdout.trim().split('\n').filter(b => b && b.includes('/') && !b.endsWith('/HEAD'))
             : [];
 
         if (localBranches.length > 0 || remoteBranches.length > 0) {
@@ -457,6 +459,7 @@ export default function MachineDetailScreen() {
                 const localSet = new Set(localBranches);
                 const items: ActionMenuItem[] = localBranches.map(branch => ({
                     label: branch,
+                    selected: branch === currentBranch,
                     onPress: () => {
                         resolve(branch);
                         setAddDirBranchMenu({ visible: false, items: [] });
@@ -479,9 +482,10 @@ export default function MachineDetailScreen() {
                 }
                 setAddDirBranchMenu({ visible: true, items });
             });
-            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: selectedBranch }]);
+            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: selectedBranch ?? currentBranch }]);
         } else {
-            setSelectedRepos(prev => [...prev, { repo: repoToSelect }]);
+            // No branches found, use current branch as fallback
+            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: currentBranch }]);
         }
     }, [machineId, machine?.metadata?.homeDir]);
 
