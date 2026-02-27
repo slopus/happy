@@ -314,6 +314,7 @@ const stylesheet = StyleSheet.create((theme, _rt) => ({
     },
     chipText: {
         fontSize: 13,
+        lineHeight: 18,
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
         maxWidth: 200,
