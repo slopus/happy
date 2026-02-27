@@ -19,4 +19,14 @@ export interface TrackedSession {
   message?: string;
   /** tmux session identifier (format: session:window) */
   tmuxSessionId?: string;
+  /** Per-repo lifecycle scripts for multi-repo workspaces */
+  repoScripts?: Array<{
+    repoDisplayName: string;
+    worktreePath: string;
+    setupScript?: string;
+    parallelSetup?: boolean;
+    cleanupScript?: string;
+    archiveScript?: string;
+    devServerScript?: string;
+  }>;
 }
