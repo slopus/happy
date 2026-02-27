@@ -100,7 +100,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         letterSpacing: -0.41,
     },
     divider: {
-        height: Platform.select({ ios: 0.33, default: 0 }),
+        height: Platform.select({ ios: 0.33, default: 1 }),
         backgroundColor: theme.colors.divider,
     },
     pressablePressed: {

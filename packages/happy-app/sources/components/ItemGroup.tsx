@@ -63,7 +63,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         shadowOffset: { width: 0, height: 0.33 },
         shadowOpacity: theme.colors.shadow.opacity,
         shadowRadius: 0,
-        elevation: 1
+        elevation: 1,
+        borderWidth: 1,
+        borderColor: theme.colors.surfaceHighest,
     },
     footer: {
         paddingTop: Platform.select({ ios: 6, default: 8 }),
