@@ -1,12 +1,12 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput, useWindowDimensions } from 'react-native';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { View, Text, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useMachine, storage } from '@/sync/storage';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons, AntDesign } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineBash, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
@@ -596,9 +596,9 @@ export default function MachineDetailScreen() {
                             }}
                             disabled={isRenamingMachine}
                         >
-                            <Octicons
-                                name="pencil"
-                                size={20}
+                            <AntDesign
+                                name="edit"
+                                size={22}
                                 color={theme.colors.text}
                             />
                         </Pressable>
@@ -643,8 +643,8 @@ export default function MachineDetailScreen() {
                                 </View>
                             )}
                             <View style={styles.pathInputContainer}>
-                                <View style={[styles.pathInput, { paddingVertical: 8 }, hasWorktreeRepos && { opacity: 0.5 }]}>
-                                    <View style={hasWorktreeRepos ? { pointerEvents: 'none' as const } : undefined}>
+                                <View style={[styles.pathInput, { paddingVertical: 8 }]}>
+                                    <View style={hasWorktreeRepos ? { opacity: 0.5, pointerEvents: 'none' as const } : undefined}>
                                         <MultiTextInput
                                             ref={inputRef}
                                             value={hasWorktreeRepos ? '' : customPath}
