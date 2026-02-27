@@ -5,7 +5,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useMachine } from '@/sync/storage';
+import { useSessions, useMachine, storage } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
@@ -23,6 +23,8 @@ import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
+import { createWorkspace, type WorkspaceRepoInput } from '@/utils/createWorkspace';
+import { RepoPickerBar, type SelectedRepo } from '@/components/RepoPickerBar';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -86,6 +88,7 @@ export default function MachineDetailScreen() {
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
+    const [selectedRepos, setSelectedRepos] = useState<SelectedRepo[]>([]);
     const { width: screenWidth } = useWindowDimensions();
 
     // Left: back button (1), Right: edit button (1) - use larger side * 2 for symmetry
@@ -228,23 +231,62 @@ export default function MachineDetailScreen() {
 
             let actualPath = absolutePath;
             let worktreeBranchName: string | undefined;
+            let workspaceRepos: Array<{ repoId?: string; path: string; basePath: string; branchName: string; targetBranch?: string; displayName?: string }> | undefined;
+            let workspacePath: string | undefined;
+            let repoScripts: Array<{ repoDisplayName: string; worktreePath: string; setupScript?: string; parallelSetup?: boolean; cleanupScript?: string; archiveScript?: string; devServerScript?: string }> | undefined;
 
             // Handle worktree creation
             if (sessionType === 'worktree') {
-                const worktreeResult = await createWorktree(machineId, absolutePath);
-
-                if (!worktreeResult.success) {
-                    if (worktreeResult.error === 'Not a Git repository') {
-                        Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
-                    } else {
-                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
+                if (selectedRepos.length > 0) {
+                    // Multi-repo workspace creation
+                    const repoInputs: WorkspaceRepoInput[] = selectedRepos.map(sr => ({
+                        repo: sr.repo,
+                        targetBranch: sr.targetBranch,
+                    }));
+                    const wsResult = await createWorkspace(machineId, repoInputs);
+                    if (!wsResult.success) {
+                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: wsResult.error || 'Unknown error' }));
+                        setIsSpawning(false);
+                        return;
                     }
-                    setIsSpawning(false);
-                    return;
-                }
+                    // CWD: single repo -> inside repo dir, multi repo -> workspace root
+                    actualPath = wsResult.repos.length === 1
+                        ? wsResult.repos[0].path
+                        : wsResult.workspacePath;
+                    workspaceRepos = wsResult.repos;
+                    workspacePath = wsResult.workspacePath;
 
-                actualPath = worktreeResult.worktreePath;
-                worktreeBranchName = worktreeResult.branchName;
+                    // Build repoScripts from registered repo config
+                    const registeredRepos = storage.getState().registeredRepos[machineId] || [];
+                    repoScripts = wsResult.repos.map(r => {
+                        const registered = r.repoId ? registeredRepos.find(rr => rr.id === r.repoId) : undefined;
+                        return {
+                            repoDisplayName: r.displayName || '',
+                            worktreePath: r.path,
+                            setupScript: registered?.setupScript,
+                            parallelSetup: registered?.parallelSetup,
+                            cleanupScript: registered?.cleanupScript,
+                            archiveScript: registered?.archiveScript,
+                            devServerScript: registered?.devServerScript,
+                        };
+                    });
+                } else {
+                    // Legacy single-repo worktree
+                    const worktreeResult = await createWorktree(machineId, absolutePath);
+
+                    if (!worktreeResult.success) {
+                        if (worktreeResult.error === 'Not a Git repository') {
+                            Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+                        } else {
+                            Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
+                        }
+                        setIsSpawning(false);
+                        return;
+                    }
+
+                    actualPath = worktreeResult.worktreePath;
+                    worktreeBranchName = worktreeResult.branchName;
+                }
             }
 
             const result = await machineSpawnNewSession({
@@ -256,6 +298,8 @@ export default function MachineDetailScreen() {
                     worktreeBasePath: absolutePath,
                     worktreeBranchName,
                 } : {}),
+                // Pass workspace metadata for multi-repo sessions
+                ...(workspaceRepos ? { workspaceRepos, workspacePath, repoScripts } : {}),
             });
             switch (result.type) {
                 case 'success':
@@ -408,6 +452,15 @@ export default function MachineDetailScreen() {
                             <View style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 4 }}>
                                 <SessionTypeSelector value={sessionType} onChange={setSessionType} />
                             </View>
+                            {sessionType === 'worktree' && machineId && (
+                                <View style={{ marginHorizontal: 16, marginBottom: 4 }}>
+                                    <RepoPickerBar
+                                        machineId={machineId}
+                                        selectedRepos={selectedRepos}
+                                        onReposChange={setSelectedRepos}
+                                    />
+                                </View>
+                            )}
                             <View style={styles.pathInputContainer}>
                                 <View style={[styles.pathInput, { paddingVertical: 8 }]}>
                                     <MultiTextInput
