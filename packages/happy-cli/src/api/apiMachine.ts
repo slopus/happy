@@ -19,6 +19,8 @@ import { forkCodexSession, forkAndTruncateCodexSession } from '@/codex/utils/cod
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { execSync } from 'node:child_process';
+import { readdirSync, rmdirSync } from 'node:fs';
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -168,7 +170,67 @@ export class ApiMachineClient {
             }
         });
 
-        // Register stop session handler  
+        // Register archive-workspace handler
+        this.rpcHandlerManager.registerHandler('archive-workspace', async (params: any) => {
+            const { workspacePath, repos } = params || {};
+            if (!workspacePath || !repos || !Array.isArray(repos)) {
+                return { success: false, error: 'Missing workspacePath or repos' };
+            }
+
+            const results: Array<{ repo: string; success: boolean; error?: string }> = [];
+
+            for (const repo of repos) {
+                const { worktreePath, basePath, branchName, archiveScript, deleteBranch } = repo;
+                try {
+                    // Run archive script if configured
+                    if (archiveScript) {
+                        logger.info(`[DAEMON] Running archive script in ${worktreePath}...`);
+                        execSync(archiveScript, { cwd: worktreePath, stdio: 'pipe', timeout: 300000 });
+                        logger.info(`[DAEMON] Archive script completed for ${worktreePath}`);
+                    }
+
+                    // Remove worktree
+                    try {
+                        execSync(`git worktree remove --force "${worktreePath}"`, {
+                            cwd: basePath, stdio: 'pipe', timeout: 30000
+                        });
+                    } catch (err: any) {
+                        logger.warn(`[DAEMON] git worktree remove failed: ${err.message}`);
+                    }
+
+                    // Delete branch if requested
+                    if (deleteBranch && branchName) {
+                        try {
+                            execSync(`git branch -D "${branchName}"`, {
+                                cwd: basePath, stdio: 'pipe', timeout: 10000
+                            });
+                        } catch (err: any) {
+                            logger.warn(`[DAEMON] git branch -D failed: ${err.message}`);
+                        }
+                    }
+
+                    results.push({ repo: worktreePath, success: true });
+                } catch (err: any) {
+                    logger.warn(`[DAEMON] Archive failed for ${worktreePath}: ${err.message}`);
+                    results.push({ repo: worktreePath, success: false, error: err.message });
+                }
+            }
+
+            // Clean up workspace directory if empty
+            try {
+                const entries = readdirSync(workspacePath);
+                if (entries.length === 0) {
+                    rmdirSync(workspacePath);
+                    logger.info(`[DAEMON] Removed empty workspace directory: ${workspacePath}`);
+                }
+            } catch {
+                // Ignore — workspace dir might not exist or not be empty
+            }
+
+            return { success: results.every(r => r.success), results };
+        });
+
+        // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
             const { sessionId } = params || {};
 
