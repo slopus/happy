@@ -163,6 +163,25 @@ export interface SpawnSessionOptions {
         url: string;
         headers?: Record<string, string>;
     }>;
+    // Multi-repo workspace
+    workspaceRepos?: Array<{
+        repoId?: string;
+        path: string;
+        basePath: string;
+        branchName: string;
+        targetBranch?: string;
+        displayName?: string;
+    }>;
+    workspacePath?: string;
+    repoScripts?: Array<{
+        repoDisplayName: string;
+        worktreePath: string;
+        setupScript?: string;
+        parallelSetup?: boolean;
+        cleanupScript?: string;
+        archiveScript?: string;
+        devServerScript?: string;
+    }>;
 }
 
 export interface ClaudeSessionIndexEntry {
@@ -213,7 +232,7 @@ export type SessionPreviewMessage = ClaudeSessionPreviewMessage;
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName, mcpServers } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName, mcpServers, workspaceRepos, workspacePath, repoScripts } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -229,10 +248,13 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             worktreeBasePath?: string,
             worktreeBranchName?: string,
             mcpServers?: Array<{ name: string; url: string; headers?: Record<string, string> }>,
+            workspaceRepos?: Array<{ repoId?: string; path: string; basePath: string; branchName: string; targetBranch?: string; displayName?: string }>,
+            workspacePath?: string,
+            repoScripts?: Array<{ repoDisplayName: string; worktreePath: string; setupScript?: string; parallelSetup?: boolean; cleanupScript?: string; archiveScript?: string; devServerScript?: string }>,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName, mcpServers }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeSessionId, sessionTitle, skipForkSession, environmentVariables, worktreeBasePath, worktreeBranchName, mcpServers, workspaceRepos, workspacePath, repoScripts }
         );
         return result;
     } catch (error) {
