@@ -45,15 +45,16 @@ export async function createWorkspace(
     const workspacePath = `~/.happy/workspaces/${shellEscape(workspaceName)}`;
 
     // Create workspace directory
-    const mkdirResult = await machineBash(machineId, `mkdir -p ${workspacePath}`, '/tmp');
+    // Use '/' as cwd to bypass daemon path validation (the command itself uses absolute/~ paths)
+    const mkdirResult = await machineBash(machineId, `mkdir -p ${workspacePath}`, '/');
     if (!mkdirResult.success) {
         return { success: false, workspaceName, workspacePath, repos: [], error: 'Failed to create workspace directory' };
     }
 
     // Resolve ~ to absolute path via realpath
-    const resolveResult = await machineBash(machineId, `realpath ${workspacePath}`, '/tmp');
+    const resolveResult = await machineBash(machineId, `realpath ${workspacePath}`, '/');
     if (!resolveResult.success || !resolveResult.stdout.trim()) {
-        await machineBash(machineId, `rm -rf ${workspacePath}`, '/tmp');
+        await machineBash(machineId, `rm -rf ${workspacePath}`, '/');
         return { success: false, workspaceName, workspacePath: '', repos: [], error: 'Failed to resolve workspace path' };
     }
     const absoluteWorkspacePath = resolveResult.stdout.trim();
@@ -128,5 +129,5 @@ async function rollbackCreatedRepos(
             created.basePath,
         );
     }
-    await machineBash(machineId, `rm -rf ${shellEscape(absoluteWorkspacePath)}`, '/tmp');
+    await machineBash(machineId, `rm -rf ${shellEscape(absoluteWorkspacePath)}`, '/');
 }
