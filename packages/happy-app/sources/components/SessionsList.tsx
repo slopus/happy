@@ -36,7 +36,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'stretch',
-        backgroundColor: '#FF0000', // TEMP: pure red debug
+        backgroundColor: theme.colors.groupped.background,
     },
     contentContainer: {
         flex: 1,
