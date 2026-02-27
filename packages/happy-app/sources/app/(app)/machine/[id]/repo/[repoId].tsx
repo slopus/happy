@@ -12,6 +12,9 @@ import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import type { RegisteredRepo } from '@/utils/workspaceRepos';
+import { machineBash } from '@/sync/ops';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
 
 /**
  * Repo edit settings page.
@@ -37,6 +40,9 @@ export default React.memo(function RepoEditScreen() {
     const [archiveScript, setArchiveScript] = useState(initialRepo?.archiveScript ?? '');
     const [devServerScript, setDevServerScript] = useState(initialRepo?.devServerScript ?? '');
     const [copyFiles, setCopyFiles] = useState(initialRepo?.copyFiles ?? '');
+    const [branchMenuVisible, setBranchMenuVisible] = useState(false);
+    const [branchMenuItems, setBranchMenuItems] = useState<ActionMenuItem[]>([]);
+    const [fetchingBranches, setFetchingBranches] = useState(false);
 
     // Persist updated repo to Zustand + server KV store
     const persistRepo = useCallback(async (updatedFields: Partial<RegisteredRepo>) => {
@@ -77,6 +83,59 @@ export default React.memo(function RepoEditScreen() {
         setter(newValue);
         await persistRepo({ [fieldKey]: newValue || undefined });
     }, [persistRepo]);
+
+    // Edit default target branch via ActionMenuModal with local + remote branches
+    const editDefaultTargetBranch = useCallback(async () => {
+        if (!machineId || !initialRepo?.path) return;
+        setFetchingBranches(true);
+        try {
+            const [localResult, remoteResult] = await Promise.all([
+                machineBash(machineId, "git branch --list --format='%(refname:short)'", initialRepo.path),
+                machineBash(machineId, "git branch -r --format='%(refname:short)'", initialRepo.path),
+            ]);
+            const localBranches = localResult.success && localResult.stdout.trim()
+                ? localResult.stdout.trim().split('\n').filter(Boolean)
+                : [];
+            const remoteBranches = remoteResult.success && remoteResult.stdout.trim()
+                ? remoteResult.stdout.trim().split('\n').filter(b => b && !b.endsWith('/HEAD'))
+                : [];
+
+            if (localBranches.length === 0 && remoteBranches.length === 0) {
+                Modal.alert(t('common.error'), 'No branches found');
+                return;
+            }
+
+            const localSet = new Set(localBranches);
+            const items: ActionMenuItem[] = localBranches.map(branch => ({
+                label: branch,
+                selected: branch === defaultTargetBranch,
+                onPress: () => {
+                    setDefaultTargetBranch(branch);
+                    persistRepo({ defaultTargetBranch: branch });
+                    setBranchMenuVisible(false);
+                },
+            }));
+            for (const remote of remoteBranches) {
+                const shortName = remote.includes('/') ? remote.substring(remote.indexOf('/') + 1) : remote;
+                if (!localSet.has(shortName)) {
+                    items.push({
+                        label: remote,
+                        selected: remote === defaultTargetBranch,
+                        onPress: () => {
+                            setDefaultTargetBranch(remote);
+                            persistRepo({ defaultTargetBranch: remote });
+                            setBranchMenuVisible(false);
+                        },
+                        secondary: true,
+                    });
+                }
+            }
+            setBranchMenuItems(items);
+            setBranchMenuVisible(true);
+        } finally {
+            setFetchingBranches(false);
+        }
+    }, [machineId, initialRepo?.path, defaultTargetBranch, persistRepo]);
 
     // Toggle parallelSetup switch
     const handleToggleParallelSetup = useCallback(async (value: boolean) => {
@@ -138,13 +197,8 @@ export default React.memo(function RepoEditScreen() {
                     <Item
                         title={t('repoEdit.defaultTargetBranch')}
                         detail={defaultTargetBranch || undefined}
-                        onPress={() => editTextField(
-                            t('repoEdit.defaultTargetBranch'),
-                            defaultTargetBranch,
-                            setDefaultTargetBranch,
-                            'defaultTargetBranch',
-                            'main',
-                        )}
+                        loading={fetchingBranches}
+                        onPress={editDefaultTargetBranch}
                     />
                 </ItemGroup>
 
@@ -264,6 +318,14 @@ export default React.memo(function RepoEditScreen() {
                     />
                 </ItemGroup>
             </ItemList>
+
+            {/* Branch picker modal */}
+            <ActionMenuModal
+                visible={branchMenuVisible}
+                title={t('repoEdit.defaultTargetBranch')}
+                items={branchMenuItems}
+                onClose={() => setBranchMenuVisible(false)}
+            />
         </>
     );
 });

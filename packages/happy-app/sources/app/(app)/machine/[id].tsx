@@ -28,6 +28,8 @@ import { RepoPickerBar, type SelectedRepo } from '@/components/RepoPickerBar';
 import type { RegisteredRepo } from '@/utils/workspaceRepos';
 import { saveRegisteredRepos, loadRegisteredRepos } from '@/sync/repoStore';
 import { randomUUID } from 'expo-crypto';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
 import { useShallow } from 'zustand/react/shallow';
 
 const styles = StyleSheet.create((theme) => ({
@@ -93,6 +95,8 @@ export default function MachineDetailScreen() {
     const [showAllPaths, setShowAllPaths] = useState(false);
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
     const [selectedRepos, setSelectedRepos] = useState<SelectedRepo[]>([]);
+    const [addDirBranchMenu, setAddDirBranchMenu] = useState<{ visible: boolean; items: ActionMenuItem[] }>({ visible: false, items: [] });
+    const addDirBranchResolveRef = useRef<((value: string | undefined) => void) | null>(null);
     const { width: screenWidth } = useWindowDimensions();
     const registeredRepos = storage(useShallow((state) => state.registeredRepos[machineId!] || [])) as RegisteredRepo[];
 
@@ -435,25 +439,45 @@ export default function MachineDetailScreen() {
             }
         }
 
-        // Fetch branches and show picker before adding to selection
-        const branchResult = await machineBash(machineId, "git branch --list --format='%(refname:short)'", absolutePath);
-        const branches = branchResult.success && branchResult.stdout.trim()
-            ? branchResult.stdout.trim().split('\n').filter(Boolean)
+        // Fetch local and remote branches in parallel
+        const [localResult, remoteResult] = await Promise.all([
+            machineBash(machineId, "git branch --list --format='%(refname:short)'", absolutePath),
+            machineBash(machineId, "git branch -r --format='%(refname:short)'", absolutePath),
+        ]);
+        const localBranches = localResult.success && localResult.stdout.trim()
+            ? localResult.stdout.trim().split('\n').filter(Boolean)
+            : [];
+        const remoteBranches = remoteResult.success && remoteResult.stdout.trim()
+            ? remoteResult.stdout.trim().split('\n').filter(b => b && !b.endsWith('/HEAD'))
             : [];
 
-        if (branches.length > 0) {
+        if (localBranches.length > 0 || remoteBranches.length > 0) {
             const selectedBranch = await new Promise<string | undefined>((resolve) => {
-                Modal.alert(
-                    t('newSession.repos.targetBranch'),
-                    undefined,
-                    [
-                        ...branches.slice(0, 10).map(branch => ({
-                            text: branch,
-                            onPress: () => resolve(branch),
-                        })),
-                        { text: t('common.cancel'), style: 'cancel' as const, onPress: () => resolve(undefined) },
-                    ],
-                );
+                addDirBranchResolveRef.current = resolve;
+                const localSet = new Set(localBranches);
+                const items: ActionMenuItem[] = localBranches.map(branch => ({
+                    label: branch,
+                    onPress: () => {
+                        resolve(branch);
+                        setAddDirBranchMenu({ visible: false, items: [] });
+                        addDirBranchResolveRef.current = null;
+                    },
+                }));
+                for (const remote of remoteBranches) {
+                    const shortName = remote.includes('/') ? remote.substring(remote.indexOf('/') + 1) : remote;
+                    if (!localSet.has(shortName)) {
+                        items.push({
+                            label: remote,
+                            onPress: () => {
+                                resolve(remote);
+                                setAddDirBranchMenu({ visible: false, items: [] });
+                                addDirBranchResolveRef.current = null;
+                            },
+                            secondary: true,
+                        });
+                    }
+                }
+                setAddDirBranchMenu({ visible: true, items });
             });
             setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: selectedBranch }]);
         } else {
@@ -809,6 +833,18 @@ export default function MachineDetailScreen() {
                     />
                 </ItemGroup>
             </ItemList>
+
+            {/* Branch picker for Add Directory flow */}
+            <ActionMenuModal
+                visible={addDirBranchMenu.visible}
+                title={t('newSession.repos.targetBranch')}
+                items={addDirBranchMenu.items}
+                onClose={() => {
+                    setAddDirBranchMenu({ visible: false, items: [] });
+                    addDirBranchResolveRef.current?.(undefined);
+                    addDirBranchResolveRef.current = null;
+                }}
+            />
         </>
     );
 }

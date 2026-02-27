@@ -352,6 +352,8 @@ function NewSessionWizard() {
 
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const [selectedRepos, setSelectedRepos] = React.useState<SelectedRepo[]>([]);
+    const [addDirBranchMenu, setAddDirBranchMenu] = React.useState<{ visible: boolean; items: ActionMenuItem[] }>({ visible: false, items: [] });
+    const addDirBranchResolveRef = React.useRef<((value: string | undefined) => void) | null>(null);
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
         // Initialize with last used permission mode if valid, otherwise default to 'default'
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
@@ -721,25 +723,45 @@ function NewSessionWizard() {
             }
         }
 
-        // Fetch branches and show picker before adding to selection
-        const branchResult = await machineBash(selectedMachineId, "git branch --list --format='%(refname:short)'", absolutePath);
-        const branches = branchResult.success && branchResult.stdout.trim()
-            ? branchResult.stdout.trim().split('\n').filter(Boolean)
+        // Fetch local and remote branches in parallel
+        const [localResult, remoteResult] = await Promise.all([
+            machineBash(selectedMachineId, "git branch --list --format='%(refname:short)'", absolutePath),
+            machineBash(selectedMachineId, "git branch -r --format='%(refname:short)'", absolutePath),
+        ]);
+        const localBranches = localResult.success && localResult.stdout.trim()
+            ? localResult.stdout.trim().split('\n').filter(Boolean)
+            : [];
+        const remoteBranches = remoteResult.success && remoteResult.stdout.trim()
+            ? remoteResult.stdout.trim().split('\n').filter(b => b && !b.endsWith('/HEAD'))
             : [];
 
-        if (branches.length > 0) {
+        if (localBranches.length > 0 || remoteBranches.length > 0) {
             const selectedBranch = await new Promise<string | undefined>((resolve) => {
-                Modal.alert(
-                    t('newSession.repos.targetBranch'),
-                    undefined,
-                    [
-                        ...branches.slice(0, 10).map(branch => ({
-                            text: branch,
-                            onPress: () => resolve(branch),
-                        })),
-                        { text: t('common.cancel'), style: 'cancel' as const, onPress: () => resolve(undefined) },
-                    ],
-                );
+                addDirBranchResolveRef.current = resolve;
+                const localSet = new Set(localBranches);
+                const items: ActionMenuItem[] = localBranches.map(branch => ({
+                    label: branch,
+                    onPress: () => {
+                        resolve(branch);
+                        setAddDirBranchMenu({ visible: false, items: [] });
+                        addDirBranchResolveRef.current = null;
+                    },
+                }));
+                for (const remote of remoteBranches) {
+                    const shortName = remote.includes('/') ? remote.substring(remote.indexOf('/') + 1) : remote;
+                    if (!localSet.has(shortName)) {
+                        items.push({
+                            label: remote,
+                            onPress: () => {
+                                resolve(remote);
+                                setAddDirBranchMenu({ visible: false, items: [] });
+                                addDirBranchResolveRef.current = null;
+                            },
+                            secondary: true,
+                        });
+                    }
+                }
+                setAddDirBranchMenu({ visible: true, items });
             });
             setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: selectedBranch }]);
         } else {
@@ -1494,6 +1516,18 @@ function NewSessionWizard() {
                     onClose={() => setImagePickerSheetVisible(false)}
                     deferItemPress
                 />
+
+                {/* Branch picker for Add Directory flow */}
+                <ActionMenuModal
+                    visible={addDirBranchMenu.visible}
+                    title={t('newSession.repos.targetBranch')}
+                    items={addDirBranchMenu.items}
+                    onClose={() => {
+                        setAddDirBranchMenu({ visible: false, items: [] });
+                        addDirBranchResolveRef.current?.(undefined);
+                        addDirBranchResolveRef.current = null;
+                    }}
+                />
             </View>
         );
     }
@@ -2227,6 +2261,18 @@ function NewSessionWizard() {
                     items={imagePickerMenuItems}
                     onClose={() => setImagePickerSheetVisible(false)}
                     deferItemPress
+                />
+
+                {/* Branch picker for Add Directory flow */}
+                <ActionMenuModal
+                    visible={addDirBranchMenu.visible}
+                    title={t('newSession.repos.targetBranch')}
+                    items={addDirBranchMenu.items}
+                    onClose={() => {
+                        setAddDirBranchMenu({ visible: false, items: [] });
+                        addDirBranchResolveRef.current?.(undefined);
+                        addDirBranchResolveRef.current = null;
+                    }}
                 />
             </Animated.View>
         </View>
