@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
@@ -26,6 +26,7 @@ import { createWorktree } from '@/utils/createWorktree';
 import { createWorkspace, type WorkspaceRepoInput } from '@/utils/createWorkspace';
 import { RepoPickerBar, type SelectedRepo } from '@/components/RepoPickerBar';
 import type { RegisteredRepo } from '@/utils/workspaceRepos';
+import { saveRegisteredRepos, loadRegisteredRepos } from '@/sync/repoStore';
 import { randomUUID } from 'expo-crypto';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -94,6 +95,18 @@ export default function MachineDetailScreen() {
     const [selectedRepos, setSelectedRepos] = useState<SelectedRepo[]>([]);
     const { width: screenWidth } = useWindowDimensions();
     const registeredRepos = storage(useShallow((state) => state.registeredRepos[machineId!] || [])) as RegisteredRepo[];
+
+    // Load registered repos from server KV store on mount
+    useEffect(() => {
+        if (!machineId) return;
+        const credentials = sync.getCredentials();
+        if (!credentials) return;
+        loadRegisteredRepos(credentials, machineId).then(({ repos, version }) => {
+            if (repos.length > 0) {
+                storage.getState().setRegisteredRepos(machineId, repos, version);
+            }
+        }).catch(() => { /* ignore load errors */ });
+    }, [machineId]);
 
     // Left: back button (1), Right: edit button (1) - use larger side * 2 for symmetry
     const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
@@ -253,17 +266,23 @@ export default function MachineDetailScreen() {
                         setIsSpawning(false);
                         return;
                     }
-                    // CWD: single repo -> inside repo dir, multi repo -> workspace root
-                    actualPath = wsResult.repos.length === 1
-                        ? wsResult.repos[0].path
-                        : wsResult.workspacePath;
                     workspaceRepos = wsResult.repos;
                     workspacePath = wsResult.workspacePath;
 
                     // Build repoScripts from registered repo config
-                    const registeredRepos = storage.getState().registeredRepos[machineId] || [];
+                    const allRegisteredRepos = storage.getState().registeredRepos[machineId] || [];
+
+                    // CWD: single repo -> inside repo dir (+ defaultWorkingDir), multi repo -> workspace root
+                    if (wsResult.repos.length === 1) {
+                        const r = wsResult.repos[0];
+                        const registered = r.repoId ? allRegisteredRepos.find(rr => rr.id === r.repoId) : undefined;
+                        const subdir = registered?.defaultWorkingDir;
+                        actualPath = subdir ? `${r.path}/${subdir}` : r.path;
+                    } else {
+                        actualPath = wsResult.workspacePath;
+                    }
                     repoScripts = wsResult.repos.map(r => {
-                        const registered = r.repoId ? registeredRepos.find(rr => rr.id === r.repoId) : undefined;
+                        const registered = r.repoId ? allRegisteredRepos.find(rr => rr.id === r.repoId) : undefined;
                         return {
                             repoDisplayName: r.displayName || '',
                             worktreePath: r.path,
@@ -357,7 +376,21 @@ export default function MachineDetailScreen() {
         const currentRepos = storage.getState().registeredRepos[machineId!] || [];
         const updatedRepos = [...currentRepos, newRepo];
         const version = storage.getState().registeredReposVersions[machineId!] ?? -1;
-        storage.getState().setRegisteredRepos(machineId!, updatedRepos, version + 1);
+
+        // Persist to server KV store
+        const credentials = sync.getCredentials();
+        if (credentials) {
+            try {
+                const newVersion = await saveRegisteredRepos(credentials, machineId!, updatedRepos, version);
+                storage.getState().setRegisteredRepos(machineId!, updatedRepos, newVersion);
+            } catch {
+                // Fallback: save locally even if server write fails
+                storage.getState().setRegisteredRepos(machineId!, updatedRepos, version);
+            }
+        } else {
+            storage.getState().setRegisteredRepos(machineId!, updatedRepos, version);
+        }
+
         router.push(`/machine/${machineId}/repo/${newRepo.id}` as any);
     }, [machineId, customPath, router, machine?.metadata?.homeDir]);
 

@@ -1105,17 +1105,23 @@ function NewSessionWizard() {
                         setIsCreating(false);
                         return;
                     }
-                    // CWD: single repo -> inside repo dir, multi repo -> workspace root
-                    actualPath = wsResult.repos.length === 1
-                        ? wsResult.repos[0].path
-                        : wsResult.workspacePath;
                     workspaceRepos = wsResult.repos;
                     workspacePath = wsResult.workspacePath;
 
                     // Build repoScripts from registered repo config
-                    const registeredRepos = storage.getState().registeredRepos[selectedMachineId] || [];
+                    const allRegisteredRepos = storage.getState().registeredRepos[selectedMachineId] || [];
+
+                    // CWD: single repo -> inside repo dir (+ defaultWorkingDir), multi repo -> workspace root
+                    if (wsResult.repos.length === 1) {
+                        const r = wsResult.repos[0];
+                        const registered = r.repoId ? allRegisteredRepos.find(rr => rr.id === r.repoId) : undefined;
+                        const subdir = registered?.defaultWorkingDir;
+                        actualPath = subdir ? `${r.path}/${subdir}` : r.path;
+                    } else {
+                        actualPath = wsResult.workspacePath;
+                    }
                     repoScripts = wsResult.repos.map(r => {
-                        const registered = r.repoId ? registeredRepos.find(rr => rr.id === r.repoId) : undefined;
+                        const registered = r.repoId ? allRegisteredRepos.find(rr => rr.id === r.repoId) : undefined;
                         return {
                             repoDisplayName: r.displayName || '',
                             worktreePath: r.path,

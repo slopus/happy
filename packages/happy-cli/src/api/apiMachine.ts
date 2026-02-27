@@ -19,7 +19,7 @@ import { forkCodexSession, forkAndTruncateCodexSession } from '@/codex/utils/cod
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { readdirSync, rmdirSync } from 'node:fs';
 
 interface ServerToDaemonEvents {
@@ -189,19 +189,19 @@ export class ApiMachineClient {
                         logger.info(`[DAEMON] Archive script completed for ${worktreePath}`);
                     }
 
-                    // Remove worktree
+                    // Remove worktree (use execFileSync to avoid shell injection)
                     try {
-                        execSync(`git worktree remove --force "${worktreePath}"`, {
+                        execFileSync('git', ['worktree', 'remove', '--force', worktreePath], {
                             cwd: basePath, stdio: 'pipe', timeout: 30000
                         });
                     } catch (err: any) {
                         logger.warn(`[DAEMON] git worktree remove failed: ${err.message}`);
                     }
 
-                    // Delete branch if requested
+                    // Delete branch if requested (use execFileSync to avoid shell injection)
                     if (deleteBranch && branchName) {
                         try {
-                            execSync(`git branch -D "${branchName}"`, {
+                            execFileSync('git', ['branch', '-D', branchName], {
                                 cwd: basePath, stdio: 'pipe', timeout: 10000
                             });
                         } catch (err: any) {

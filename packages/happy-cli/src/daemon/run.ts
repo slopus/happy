@@ -429,6 +429,10 @@ export async function startDaemon(): Promise<void> {
               }
             });
           }
+
+          // TODO: devServerScript execution — requires long-running process management
+          // (start after setup, track child process, kill on session exit/archive).
+          // Currently the field is defined in types and UI but not executed.
         }
 
         // Check if tmux is available and should be used
