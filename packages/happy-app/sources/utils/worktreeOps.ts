@@ -3,9 +3,11 @@
  * All git commands execute remotely via machineBash.
  */
 
+import { apiSocket } from '@/sync/apiSocket';
 import { machineBash } from '@/sync/ops';
 import type { Metadata } from '@/sync/storageTypes';
 import { shellEscape } from './shellEscape';
+import type { WorkspaceRepo } from '@/utils/workspaceRepos';
 
 /** Validate a git ref name to prevent shell injection */
 function isValidGitRef(name: string): boolean {
@@ -205,4 +207,45 @@ export async function cleanupWorktree(
     }
 
     return { success: true };
+}
+
+interface ArchiveWorkspaceResult {
+    results: Array<{ repo: string; success: boolean; error?: string }>;
+}
+
+interface ArchiveWorkspaceParams {
+    workspacePath: string;
+    repos: Array<{
+        worktreePath: string;
+        basePath: string;
+        branchName: string;
+        archiveScript?: string;
+        deleteBranch: boolean;
+    }>;
+}
+
+/**
+ * Clean up all worktrees in a workspace via daemon RPC.
+ */
+export async function cleanupWorkspace(
+    machineId: string,
+    workspacePath: string,
+    repos: WorkspaceRepo[],
+    deleteBranch: boolean,
+    repoScripts?: Array<{ worktreePath: string; archiveScript?: string }>,
+): Promise<{ success: boolean; errors: string[] }> {
+    // Use archive-workspace RPC to let daemon handle scripts + cleanup
+    const result = await apiSocket.machineRPC<ArchiveWorkspaceResult, ArchiveWorkspaceParams>(machineId, 'archive-workspace', {
+        workspacePath,
+        repos: repos.map((repo, i) => ({
+            worktreePath: repo.path,
+            basePath: repo.basePath,
+            branchName: repo.branchName,
+            archiveScript: repoScripts?.[i]?.archiveScript,
+            deleteBranch,
+        })),
+    });
+
+    const errors = result.results?.filter(r => !r.success).map(r => r.error ?? '') || [];
+    return { success: errors.length === 0, errors };
 }
