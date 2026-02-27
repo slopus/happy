@@ -36,7 +36,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'stretch',
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: '#FF0000', // TEMP: pure red debug
     },
     contentContainer: {
         flex: 1,
@@ -83,6 +83,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginHorizontal: 16,
         marginBottom: 1,
         overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: theme.colors.surfaceHighest,
     },
     sessionItemFirst: {
         borderTopLeftRadius: 12,
@@ -331,7 +333,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     isSingle?: boolean;
 }) => {
     const styles = stylesheet;
-    const sessionStatus = useSessionStatus(session);
+    const { theme } = useUnistyles();
+    const sessionStatus = useSessionStatus(session, theme);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();

@@ -39,6 +39,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         shadowOpacity: theme.colors.shadow.opacity,
         shadowRadius: 0,
         elevation: 1,
+        borderWidth: 1,
+        borderColor: theme.colors.surfaceHighest,
     },
     sectionHeader: {
         paddingTop: 12,
@@ -292,7 +294,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const sessionStatus = useSessionStatus(session);
+    const sessionStatus = useSessionStatus(session, theme);
     const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();

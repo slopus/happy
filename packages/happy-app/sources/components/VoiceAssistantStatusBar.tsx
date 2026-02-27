@@ -41,7 +41,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     };
                 case 'connected':
                     return {
-                        color: '#ef4444', // red for recording
+                        color: theme.colors.red.standard, // red for recording
                         backgroundColor: theme.colors.surfaceHighest,
                         isPulsing: true,
                         text: 'Recording...',

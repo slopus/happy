@@ -125,8 +125,8 @@ function SessionInfoContent({ session }: { session: Session }) {
     const router = useRouter();
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
-    const sessionStatus = useSessionStatus(session);
-    
+    const sessionStatus = useSessionStatus(session, theme);
+
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
@@ -251,7 +251,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         <Item
                             title={t('sessionInfo.cliVersionOutdated')}
                             subtitle={t('sessionInfo.updateCliInstructions')}
-                            icon={<Ionicons name="warning-outline" size={29} color="#FF9500" />}
+                            icon={<Ionicons name="warning-outline" size={29} color={theme.colors.orange.standard} />}
                             showChevron={false}
                             onPress={handleCopyUpdateCommand}
                         />
@@ -263,14 +263,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                     <Item
                         title={t('sessionInfo.happySessionId')}
                         subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}
-                        icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="finger-print-outline" size={29} color={theme.colors.blue.standard} />}
                         onPress={handleCopySessionId}
                     />
                     {session.metadata?.claudeSessionId && (
                         <Item
                             title={t('sessionInfo.claudeCodeSessionId')}
                             subtitle={`${session.metadata.claudeSessionId.substring(0, 8)}...${session.metadata.claudeSessionId.substring(session.metadata.claudeSessionId.length - 8)}`}
-                            icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
+                            icon={<Ionicons name="code-outline" size={29} color={theme.colors.purple.standard} />}
                             onPress={async () => {
                                 try {
                                     await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
@@ -284,25 +284,25 @@ function SessionInfoContent({ session }: { session: Session }) {
                     <Item
                         title={t('sessionInfo.connectionStatus')}
                         detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
-                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
+                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? theme.colors.green.standard : theme.colors.textSecondary} />}
                         showChevron={false}
                     />
                     <Item
                         title={t('sessionInfo.created')}
                         subtitle={formatDate(session.createdAt)}
-                        icon={<Ionicons name="calendar-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="calendar-outline" size={29} color={theme.colors.blue.standard} />}
                         showChevron={false}
                     />
                     <Item
                         title={t('sessionInfo.lastUpdated')}
                         subtitle={formatDate(session.updatedAt)}
-                        icon={<Ionicons name="time-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="time-outline" size={29} color={theme.colors.blue.standard} />}
                         showChevron={false}
                     />
                     <Item
                         title={t('sessionInfo.sequence')}
                         detail={session.seq.toString()}
-                        icon={<Ionicons name="git-commit-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="git-commit-outline" size={29} color={theme.colors.blue.standard} />}
                         showChevron={false}
                     />
                 </ItemGroup>
@@ -313,7 +313,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         <Item
                             title={t('sessionInfo.viewMachine')}
                             subtitle={t('sessionInfo.viewMachineSubtitle')}
-                            icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
+                            icon={<Ionicons name="server-outline" size={29} color={theme.colors.blue.standard} />}
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
@@ -321,7 +321,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         <Item
                             title={t('sessionInfo.archiveSession')}
                             subtitle={t('sessionInfo.archiveSessionSubtitle')}
-                            icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
+                            icon={<Ionicons name="archive-outline" size={29} color={theme.colors.red.standard} />}
                             onPress={handleArchiveSession}
                         />
                     )}
@@ -329,7 +329,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         <Item
                             title={t('sessionInfo.deleteSession')}
                             subtitle={t('sessionInfo.deleteSessionSubtitle')}
-                            icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
+                            icon={<Ionicons name="trash-outline" size={29} color={theme.colors.red.standard} />}
                             onPress={handleDeleteSession}
                         />
                     )}
@@ -341,13 +341,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                         <Item
                             title={t('sessionInfo.host')}
                             subtitle={session.metadata.host}
-                            icon={<Ionicons name="desktop-outline" size={29} color="#5856D6" />}
+                            icon={<Ionicons name="desktop-outline" size={29} color={theme.colors.purple.standard} />}
                             showChevron={false}
                         />
                         <Item
                             title={t('sessionInfo.path')}
                             subtitle={formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
-                            icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
+                            icon={<Ionicons name="folder-outline" size={29} color={theme.colors.purple.standard} />}
                             showChevron={false}
                         />
                         {session.metadata.version && (
@@ -355,7 +355,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 title={t('sessionInfo.cliVersion')}
                                 subtitle={session.metadata.version}
                                 detail={isCliOutdated ? '⚠️' : undefined}
-                                icon={<Ionicons name="git-branch-outline" size={29} color={isCliOutdated ? "#FF9500" : "#5856D6"} />}
+                                icon={<Ionicons name="git-branch-outline" size={29} color={isCliOutdated ? theme.colors.orange.standard : theme.colors.purple.standard} />}
                                 showChevron={false}
                             />
                         )}
@@ -363,7 +363,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             <Item
                                 title={t('sessionInfo.operatingSystem')}
                                 subtitle={formatOSPlatform(session.metadata.os)}
-                                icon={<Ionicons name="hardware-chip-outline" size={29} color="#5856D6" />}
+                                icon={<Ionicons name="hardware-chip-outline" size={29} color={theme.colors.purple.standard} />}
                                 showChevron={false}
                             />
                         )}
@@ -376,13 +376,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 if (flavor === 'gemini') return 'Gemini';
                                 return flavor;
                             })()}
-                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
+                            icon={<Ionicons name="sparkles-outline" size={29} color={theme.colors.purple.standard} />}
                             showChevron={false}
                         />
                         <Item
                             title="Sandbox"
                             subtitle={formatSandboxMetadata(session.metadata.sandbox, session.metadata.homeDir)}
-                            icon={<Ionicons name="shield-outline" size={29} color="#5856D6" />}
+                            icon={<Ionicons name="shield-outline" size={29} color={theme.colors.purple.standard} />}
                             showChevron={false}
                         />
                         <Item
@@ -393,14 +393,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 session.permissionMode,
                                 session.metadata.sandbox,
                             )}
-                            icon={<Ionicons name="warning-outline" size={29} color="#5856D6" />}
+                            icon={<Ionicons name="warning-outline" size={29} color={theme.colors.purple.standard} />}
                             showChevron={false}
                         />
                         {session.metadata.hostPid && (
                             <Item
                                 title={t('sessionInfo.processId')}
                                 subtitle={session.metadata.hostPid.toString()}
-                                icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
+                                icon={<Ionicons name="terminal-outline" size={29} color={theme.colors.purple.standard} />}
                                 showChevron={false}
                             />
                         )}
@@ -408,13 +408,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                             <Item
                                 title={t('sessionInfo.happyHome')}
                                 subtitle={formatPathRelativeToHome(session.metadata.happyHomeDir, session.metadata.homeDir)}
-                                icon={<Ionicons name="home-outline" size={29} color="#5856D6" />}
+                                icon={<Ionicons name="home-outline" size={29} color={theme.colors.purple.standard} />}
                                 showChevron={false}
                             />
                         )}
                         <Item
                             title={t('sessionInfo.copyMetadata')}
-                            icon={<Ionicons name="copy-outline" size={29} color="#007AFF" />}
+                            icon={<Ionicons name="copy-outline" size={29} color={theme.colors.blue.standard} />}
                             onPress={handleCopyMetadata}
                         />
                     </ItemGroup>
@@ -426,14 +426,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                         <Item
                             title={t('sessionInfo.controlledByUser')}
                             detail={session.agentState.controlledByUser ? t('common.yes') : t('common.no')}
-                            icon={<Ionicons name="person-outline" size={29} color="#FF9500" />}
+                            icon={<Ionicons name="person-outline" size={29} color={theme.colors.orange.standard} />}
                             showChevron={false}
                         />
                         {session.agentState.requests && Object.keys(session.agentState.requests).length > 0 && (
                             <Item
                                 title={t('sessionInfo.pendingRequests')}
                                 detail={Object.keys(session.agentState.requests).length.toString()}
-                                icon={<Ionicons name="hourglass-outline" size={29} color="#FF9500" />}
+                                icon={<Ionicons name="hourglass-outline" size={29} color={theme.colors.orange.standard} />}
                                 showChevron={false}
                             />
                         )}
@@ -445,14 +445,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                     <Item
                         title={t('sessionInfo.thinking')}
                         detail={session.thinking ? t('common.yes') : t('common.no')}
-                        icon={<Ionicons name="bulb-outline" size={29} color={session.thinking ? "#FFCC00" : "#8E8E93"} />}
+                        icon={<Ionicons name="bulb-outline" size={29} color={session.thinking ? theme.colors.yellow.standard : theme.colors.textSecondary} />}
                         showChevron={false}
                     />
                     {session.thinking && (
                         <Item
                             title={t('sessionInfo.thinkingSince')}
                             subtitle={formatDate(session.thinkingAt)}
-                            icon={<Ionicons name="timer-outline" size={29} color="#FFCC00" />}
+                            icon={<Ionicons name="timer-outline" size={29} color={theme.colors.yellow.standard} />}
                             showChevron={false}
                         />
                     )}
@@ -465,7 +465,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             <>
                                 <Item
                                     title="Agent State"
-                                    icon={<Ionicons name="code-working-outline" size={29} color="#FF9500" />}
+                                    icon={<Ionicons name="code-working-outline" size={29} color={theme.colors.orange.standard} />}
                                     showChevron={false}
                                 />
                                 <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
@@ -480,7 +480,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             <>
                                 <Item
                                     title="Metadata"
-                                    icon={<Ionicons name="information-circle-outline" size={29} color="#5856D6" />}
+                                    icon={<Ionicons name="information-circle-outline" size={29} color={theme.colors.purple.standard} />}
                                     showChevron={false}
                                 />
                                 <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
@@ -495,7 +495,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             <>
                                 <Item
                                     title="Session Status"
-                                    icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
+                                    icon={<Ionicons name="analytics-outline" size={29} color={theme.colors.blue.standard} />}
                                     showChevron={false}
                                 />
                                 <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
@@ -515,7 +515,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         {/* Full Session Object */}
                         <Item
                             title="Full Session Object"
-                            icon={<Ionicons name="document-text-outline" size={29} color="#34C759" />}
+                            icon={<Ionicons name="document-text-outline" size={29} color={theme.colors.green.standard} />}
                             showChevron={false}
                         />
                         <View style={{ marginHorizontal: 16, marginBottom: 12 }}>

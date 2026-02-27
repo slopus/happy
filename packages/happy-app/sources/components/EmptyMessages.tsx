@@ -87,7 +87,7 @@ export function EmptyMessages({ session }: EmptyMessagesProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const osIcon = getOSIcon(session.metadata?.os);
-    const sessionStatus = useSessionStatus(session);
+    const sessionStatus = useSessionStatus(session, theme);
     const startedTime = formatRelativeTime(session.createdAt);
     
     return (

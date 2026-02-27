@@ -12,8 +12,9 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-        <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#1C1C1E" media="(prefers-color-scheme: dark)" />
+        {/* Theme colors — must match header.background (top of viewport). See palette.ts */}
+        <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#1A1A1D" media="(prefers-color-scheme: dark)" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
         {/*
@@ -31,12 +32,14 @@ export default function Root({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Anti-flicker CSS — raw hex required (runs before React).
+// Light: palette.neutral.gray50 (#ECECF0), Dark: palette.neutral.gray950 (#1A1A1D)
 const responsiveBackground = `
 body {
-  background-color: #F2F2F7;
+  background-color: #ECECF0;
 }
 @media (prefers-color-scheme: dark) {
   body {
-    background-color: #1C1C1E;
+    background-color: #1A1A1D;
   }
 }`;

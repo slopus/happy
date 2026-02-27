@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 interface ToolStatusIndicatorProps {
@@ -15,13 +16,14 @@ export function ToolStatusIndicator({ tool }: ToolStatusIndicatorProps) {
 }
 
 function StatusIndicator({ state }: { state: ToolCall['state'] }) {
+    const { theme } = useUnistyles();
     switch (state) {
         case 'running':
-            return <ActivityIndicator size="small" color="#007AFF" />;
+            return <ActivityIndicator size="small" color={theme.colors.blue.standard} />;
         case 'completed':
-            return <Ionicons name="checkmark-circle" size={22} color="#34C759" />;
+            return <Ionicons name="checkmark-circle" size={22} color={theme.colors.green.standard} />;
         case 'error':
-            return <Ionicons name="close-circle" size={22} color="#FF3B30" />;
+            return <Ionicons name="close-circle" size={22} color={theme.colors.red.standard} />;
         default:
             return null;
     }

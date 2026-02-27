@@ -85,6 +85,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         paddingBottom: 8,
         paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: theme.colors.surfaceHighest,
     },
     innerContainer: {
         width: '100%',
@@ -97,6 +99,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingVertical: 2,
         paddingBottom: 8,
         paddingHorizontal: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.surfaceHighest,
     },
     inputContainer: {
         flexDirection: 'row',

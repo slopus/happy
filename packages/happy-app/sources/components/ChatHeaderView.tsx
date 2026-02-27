@@ -44,7 +44,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background, borderBottomWidth: 1, borderBottomColor: theme.colors.surfaceHighest }]}>
             <View style={styles.contentWrapper}>
                 <View style={[styles.content, { height: headerHeight }]}>
                 <Pressable onPress={handleBackPress} style={styles.backButton} hitSlop={15}>

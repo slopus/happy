@@ -10,7 +10,7 @@ import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useAllMachines, useSetting } from '@/sync/storage';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
 import { storage } from '@/sync/storage';
@@ -39,6 +39,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         shadowOpacity: theme.colors.shadow.opacity,
         shadowRadius: 0,
         elevation: 1,
+        borderWidth: 1,
+        borderColor: theme.colors.surfaceHighest,
     },
     sectionHeader: {
         paddingTop: 12,
@@ -337,7 +339,8 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 // Compact session row component with status line
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
-    const sessionStatus = useSessionStatus(session);
+    const { theme } = useUnistyles();
+    const sessionStatus = useSessionStatus(session, theme);
     const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();

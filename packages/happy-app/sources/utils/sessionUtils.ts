@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { Theme } from '@/theme';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -18,7 +19,7 @@ export interface SessionStatus {
  * Get the current state of a session based on presence and thinking status.
  * Uses centralized session state from storage.ts
  */
-export function useSessionStatus(session: Session): SessionStatus {
+export function useSessionStatus(session: Session, theme: Theme): SessionStatus {
     const isOnline = session.presence === "online";
     const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
 
@@ -32,8 +33,8 @@ export function useSessionStatus(session: Session): SessionStatus {
             isConnected: false,
             statusText: t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) }),
             shouldShowStatus: true,
-            statusColor: '#999',
-            statusDotColor: '#999'
+            statusColor: theme.colors.status.disconnected,
+            statusDotColor: theme.colors.status.disconnected,
         };
     }
 
@@ -44,8 +45,8 @@ export function useSessionStatus(session: Session): SessionStatus {
             isConnected: true,
             statusText: t('status.permissionRequired'),
             shouldShowStatus: true,
-            statusColor: '#FF9500',
-            statusDotColor: '#FF9500',
+            statusColor: theme.colors.orange.standard,
+            statusDotColor: theme.colors.orange.standard,
             isPulsing: true
         };
     }
@@ -56,8 +57,8 @@ export function useSessionStatus(session: Session): SessionStatus {
             isConnected: true,
             statusText: vibingMessage,
             shouldShowStatus: true,
-            statusColor: '#007AFF',
-            statusDotColor: '#007AFF',
+            statusColor: theme.colors.blue.standard,
+            statusDotColor: theme.colors.blue.standard,
             isPulsing: true
         };
     }
@@ -67,8 +68,8 @@ export function useSessionStatus(session: Session): SessionStatus {
         isConnected: true,
         statusText: t('status.online'),
         shouldShowStatus: false,
-        statusColor: '#34C759',
-        statusDotColor: '#34C759'
+        statusColor: theme.colors.status.connected,
+        statusDotColor: theme.colors.status.connected,
     };
 }
 

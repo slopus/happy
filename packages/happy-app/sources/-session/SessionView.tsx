@@ -86,7 +86,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             onAvatarPress: () => router.push(`/session/${sessionId}/info`),
             isConnected: isConnected,
             flavor: session.metadata?.flavor || null,
-            tintColor: isConnected ? '#000' : '#8E8E93'
+            tintColor: isConnected ? theme.colors.text : theme.colors.textSecondary
         };
     }, [session, isDataReady, sessionId, router]);
 
@@ -198,7 +198,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             getDefaultModelKey(flavor),
         ])
     ), [availableModels, session.modelMode, session.metadata?.currentModelCode, flavor]);
-    const sessionStatus = useSessionStatus(session);
+    const sessionStatus = useSessionStatus(session, theme);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
@@ -375,7 +375,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         position: 'absolute',
                         top: 8, // Position at top of content area (padding handled by parent)
                         alignSelf: 'center',
-                        backgroundColor: '#FFF3CD',
+                        backgroundColor: theme.colors.yellow.bg,
                         borderRadius: 100, // Fully rounded pill
                         paddingHorizontal: 14,
                         paddingVertical: 7,
@@ -389,15 +389,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         elevation: 4,
                     }}
                 >
-                    <Ionicons name="warning-outline" size={14} color="#FF9500" style={{ marginRight: 6 }} />
+                    <Ionicons name="warning-outline" size={14} color={theme.colors.orange.standard} style={{ marginRight: 6 }} />
                     <Text style={{
                         fontSize: 12,
-                        color: '#856404',
+                        color: theme.colors.text,
                         fontWeight: '600'
                     }}>
                         {t('sessionInfo.cliVersionOutdated')}
                     </Text>
-                    <Ionicons name="close" size={14} color="#856404" style={{ marginLeft: 8 }} />
+                    <Ionicons name="close" size={14} color={theme.colors.textSecondary} style={{ marginLeft: 8 }} />
                 </Pressable>
             )}
 
@@ -442,7 +442,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         <Ionicons
                             name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
                             size={Platform.select({ ios: 28, default: 24 })}
-                            color="#000"
+                            color={theme.colors.text}
                         />
                     </Pressable>
                 )

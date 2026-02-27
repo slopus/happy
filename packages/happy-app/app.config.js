@@ -42,7 +42,7 @@ export default {
             adaptiveIcon: {
                 foregroundImage: "./sources/assets/images/icon-adaptive.png",
                 monochromeImage: "./sources/assets/images/icon-monochrome.png",
-                backgroundColor: "#18171C"
+                backgroundColor: "#1A1A1D" // palette.neutral.gray950 — build-time, must be raw hex
             },
             permissions: [
                 "android.permission.RECORD_AUDIO",
@@ -75,8 +75,8 @@ export default {
             bundler: "metro",
             output: "single",
             favicon: "./sources/assets/images/favicon.png",
-            backgroundColor: "#F2F2F7",
-            themeColor: "#F2F2F7"
+            backgroundColor: "#ECECF0", // palette.neutral.gray50 — build-time, must be raw hex
+            themeColor: "#FFFFFF"       // palette.neutral.white — matches header.background
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
@@ -134,18 +134,20 @@ export default {
             [
                 'expo-splash-screen',
                 {
+                    // Splash colors — build-time only, must be raw hex
+                    // See palette.ts neutral scale for canonical values
                     ios: {
-                        backgroundColor: "#F2F2F7",
+                        backgroundColor: "#ECECF0", // palette.neutral.gray50
                         dark: {
-                            backgroundColor: "#1C1C1E",
+                            backgroundColor: "#1A1A1D", // palette.neutral.gray950
                         }
                     },
                     android: {
                         image: "./sources/assets/images/splash-android-light.png",
-                        backgroundColor: "#F5F5F5",
+                        backgroundColor: "#ECECF0", // palette.neutral.gray50
                         dark: {
                             image: "./sources/assets/images/splash-android-dark.png",
-                            backgroundColor: "#1e1e1e",
+                            backgroundColor: "#1A1A1D", // palette.neutral.gray950
                         }
                     }
                 }

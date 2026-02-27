@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { palette as P } from './palette';
 
 // Shared spacing, sizing constants (DRY - used by both themes)
 const sharedSpacing = {
@@ -35,27 +36,41 @@ export const lightTheme = {
     colors: {
 
         //
-        // Main colors
+        // Palette — direct chromatic and neutral access
         //
 
-        text: '#000000',
-        textDestructive: Platform.select({ ios: '#FF3B30', default: '#F44336' }),
-        textSecondary: Platform.select({ ios: '#8E8E93', default: '#49454F' }),
-        textLink: '#2BACCC',
-        deleteAction: '#FF6B6B', // Delete/remove button color
-        warningCritical: '#FF3B30',
-        warning: '#8E8E93',
-        success: '#34C759',
-        surface: '#ffffff',
+        red:    { standard: P.red.standard,    soft: P.red.soft,    bg: P.red.bgLight },
+        orange: { standard: P.orange.standard,  soft: P.orange.soft,  bg: P.orange.bgLight },
+        yellow: { standard: P.yellow.standard,  soft: P.yellow.soft,  bg: P.yellow.bgLight },
+        green:  { standard: P.green.standard,   soft: P.green.soft,   bg: P.green.bgLight },
+        cyan:   { standard: P.cyan.standard,    soft: P.cyan.soft,    bg: P.cyan.bgLight },
+        blue:   { standard: P.blue.standard,    soft: P.blue.soft,    bg: P.blue.bgLight },
+        purple: { standard: P.purple.standard,  soft: P.purple.soft,  bg: P.purple.bgLight },
+        pink:   { standard: P.pink.standard,    soft: P.pink.soft,    bg: P.pink.bgLight },
+        neutral: P.neutral,
+
+        //
+        // Semantic tokens — main colors
+        //
+
+        text: P.neutral.black,
+        textDestructive: P.red.standard,
+        textSecondary: Platform.select({ ios: P.neutral.gray400, default: P.neutral.gray700 }),
+        textLink: P.cyan.standard,
+        deleteAction: P.red.soft,
+        warningCritical: P.red.standard,
+        warning: P.neutral.gray400,
+        success: P.green.standard,
+        surface: P.neutral.white,
         surfaceRipple: 'rgba(0, 0, 0, 0.08)',
-        surfacePressed: '#f0f0f2',
-        surfaceSelected: Platform.select({ ios: '#C6C6C8', default: '#eaeaea' }),
-        surfacePressedOverlay: Platform.select({ ios: '#D1D1D6', default: 'transparent' }),
-        surfaceHigh: '#F8F8F8',
-        surfaceHighest: '#f0f0f0',
-        divider: Platform.select({ ios: '#eaeaea', default: '#eaeaea' }),
+        surfacePressed: P.neutral.gray50,
+        surfaceSelected: Platform.select({ ios: P.neutral.gray200, default: P.neutral.gray100 }),
+        surfacePressedOverlay: Platform.select({ ios: P.neutral.gray150 as string, default: 'transparent' }),
+        surfaceHigh: P.neutral.gray75,
+        surfaceHighest: P.neutral.gray50,
+        divider: P.neutral.gray100,
         shadow: {
-            color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),
+            color: Platform.select({ default: P.neutral.black, web: 'rgba(0, 0, 0, 0.1)' }),
             opacity: 0.1,
         },
 
@@ -64,63 +79,63 @@ export const lightTheme = {
         //
 
         groupped: {
-            background: Platform.select({ ios: '#F2F2F7', default: '#F5F5F5' }),
-            chevron: Platform.select({ ios: '#C7C7CC', default: '#49454F' }),
-            sectionTitle: Platform.select({ ios: '#8E8E93', default: '#49454F' }),
+            background: P.neutral.gray50,
+            chevron: Platform.select({ ios: P.neutral.gray200, default: P.neutral.gray700 }),
+            sectionTitle: Platform.select({ ios: P.neutral.gray400, default: P.neutral.gray700 }),
         },
         header: {
-            background: '#ffffff',
-            tint: '#18171C'
+            background: P.neutral.white,
+            tint: P.neutral.gray950,
         },
         switch: {
             track: {
-                active: Platform.select({ ios: '#34C759', default: '#1976D2' }),
-                inactive: '#dddddd',
+                active: Platform.select({ ios: P.green.standard, default: P.blue.standard }),
+                inactive: P.neutral.gray150,
             },
             thumb: {
-                active: '#FFFFFF',
-                inactive: '#767577',
+                active: P.neutral.white,
+                inactive: P.neutral.gray500,
             },
         },
         fab: {
-            background: '#000000',
-            backgroundPressed: '#1a1a1a',
-            icon: '#FFFFFF',
+            background: P.neutral.black,
+            backgroundPressed: P.neutral.gray950,
+            icon: P.neutral.white,
         },
         radio: {
-            active: '#007AFF',
-            inactive: '#C0C0C0',
-            dot: '#007AFF',
+            active: P.blue.standard,
+            inactive: P.neutral.gray200,
+            dot: P.blue.standard,
         },
         modal: {
-            border: 'rgba(0, 0, 0, 0.1)'
+            border: 'rgba(0, 0, 0, 0.1)',
         },
         button: {
             primary: {
-                background: '#000000',
-                tint: '#FFFFFF',
-                disabled: '#C0C0C0',
+                background: P.neutral.black,
+                tint: P.neutral.white,
+                disabled: P.neutral.gray200,
             },
             secondary: {
-                tint: '#666666',
-            }
+                tint: P.neutral.gray600,
+            },
         },
         input: {
-            background: '#F5F5F5',
-            text: '#000000',
-            placeholder: '#999999',
+            background: P.neutral.gray50,
+            text: P.neutral.black,
+            placeholder: P.neutral.gray400,
         },
         box: {
             warning: {
-                background: '#FFF8F0',
-                border: '#FF9500',
-                text: '#FF9500',
+                background: P.orange.bgLight,
+                border: P.orange.standard,
+                text: P.orange.standard,
             },
             error: {
-                background: '#FFF0F0',
-                border: '#FF3B30',
-                text: '#FF3B30',
-            }
+                background: P.red.bgLight,
+                border: P.red.standard,
+                text: P.red.standard,
+            },
         },
 
         //
@@ -128,70 +143,68 @@ export const lightTheme = {
         //
 
         status: {
-            connected: '#34C759',
-            connecting: '#007AFF',
-            disconnected: '#999999',
-            error: '#FF3B30',
-            default: '#8E8E93',
+            connected: P.green.standard,
+            connecting: P.blue.standard,
+            disconnected: P.neutral.gray400,
+            error: P.red.standard,
+            default: P.neutral.gray400,
         },
 
         // Permission mode colors
         permission: {
-            default: '#8E8E93',
-            acceptEdits: '#007AFF',
-            bypass: '#FF9500',
-            plan: '#34C759',
-            readOnly: '#8B8B8D',
-            safeYolo: '#FF6B35',
-            yolo: '#DC143C',
+            default: P.neutral.gray400,
+            acceptEdits: P.blue.standard,
+            bypass: P.orange.standard,
+            plan: P.green.standard,
+            readOnly: P.neutral.gray400,
+            safeYolo: '#FF6B35', // intentional — between orange and red
+            yolo: '#DC143C',     // intentional — crimson, darker than error red
         },
 
         // Permission button colors
         permissionButton: {
             allow: {
-                background: '#34C759',
-                text: '#FFFFFF',
+                background: P.green.standard,
+                text: P.neutral.white,
             },
             deny: {
-                background: '#FF3B30',
-                text: '#FFFFFF',
+                background: P.red.standard,
+                text: P.neutral.white,
             },
             allowAll: {
-                background: '#007AFF',
-                text: '#FFFFFF',
+                background: P.blue.standard,
+                text: P.neutral.white,
             },
             inactive: {
-                background: '#E5E5EA',
-                border: '#D1D1D6',
-                text: '#8E8E93',
+                background: P.neutral.gray100,
+                border: P.neutral.gray150,
+                text: P.neutral.gray400,
             },
             selected: {
-                background: '#F2F2F7',
-                border: '#D1D1D6',
-                text: '#3C3C43',
+                background: P.neutral.gray50,
+                border: P.neutral.gray150,
+                text: P.neutral.gray800,
             },
         },
 
-
-        // Diff view
+        // Diff view (GitHub-derived — specialized for code contrast)
         diff: {
-            outline: '#E0E0E0',
-            success: '#28A745',
-            error: '#DC3545',
-            // Traditional diff colors
+            outline: P.neutral.gray150,
+            success: P.green.standard,
+            error: P.red.standard,
             addedBg: '#E6FFED',
-            addedBorder: '#34D058',
+            addedBorder: P.green.dark,
             addedText: '#24292E',
             removedBg: '#FFEEF0',
             removedBorder: '#D73A49',
             removedText: '#24292E',
-            contextBg: '#F6F8FA',
-            contextText: '#586069',
-            lineNumberBg: '#F6F8FA',
-            lineNumberText: '#959DA5',
-            hunkHeaderBg: '#F1F8FF',
-            hunkHeaderText: '#005CC5',
-            leadingSpaceDot: '#E8E8E8',
+            contextBg: P.neutral.gray50,
+            contextText: P.neutral.gray500,
+            lineNumberBg: P.neutral.gray50,
+            lineNumberText: P.neutral.gray300,
+            hunkHeaderBg: P.blue.bgLight,
+            hunkHeaderText: P.blue.standard,
+            leadingSpaceDot: P.neutral.gray100,
             inlineAddedBg: '#ACFFA6',
             inlineAddedText: '#0A3F0A',
             inlineRemovedBg: '#FFCECB',
@@ -199,15 +212,15 @@ export const lightTheme = {
         },
 
         // Message View colors
-        userMessageBackground: '#f0eee6',
-        userMessageText: '#000000',
-        agentMessageText: '#000000',
-        agentEventText: '#666666',
+        userMessageBackground: '#f0eee6', // warm beige — intentionally non-palette
+        userMessageText: P.neutral.black,
+        agentMessageText: P.neutral.black,
+        agentEventText: P.neutral.gray600,
 
-        // Code/Syntax colors
+        // Code/Syntax colors (VS Code-derived — specialized for readability)
         syntaxKeyword: '#1d4ed8',
         syntaxString: '#059669',
-        syntaxComment: '#6b7280',
+        syntaxComment: P.neutral.gray500,
         syntaxNumber: '#0891b2',
         syntaxFunction: '#9333ea',
         syntaxBracket1: '#ff6b6b',
@@ -215,23 +228,23 @@ export const lightTheme = {
         syntaxBracket3: '#45b7d1',
         syntaxBracket4: '#f7b731',
         syntaxBracket5: '#5f27cd',
-        syntaxDefault: '#374151',
+        syntaxDefault: P.neutral.gray800,
 
         // Git status colors
-        gitBranchText: '#6b7280',
-        gitFileCountText: '#6b7280',
-        gitAddedText: '#22c55e',
-        gitRemovedText: '#ef4444',
+        gitBranchText: P.neutral.gray500,
+        gitFileCountText: P.neutral.gray500,
+        gitAddedText: P.green.standard,
+        gitRemovedText: P.red.standard,
 
         // Terminal/Command colors
         terminal: {
-            background: '#1E1E1E',
-            prompt: '#34C759',
-            command: '#E0E0E0',
-            stdout: '#E0E0E0',
-            stderr: '#FFB86C',
-            error: '#FF5555',
-            emptyOutput: '#6272A4',
+            background: P.neutral.gray950,
+            prompt: P.green.standard,
+            command: P.neutral.gray150,
+            stdout: P.neutral.gray150,
+            stderr: P.orange.soft,
+            error: P.red.dark,
+            emptyOutput: P.neutral.gray500,
         },
 
     },
@@ -244,28 +257,41 @@ export const darkTheme = {
     colors: {
 
         //
-        // Main colors
+        // Palette — direct chromatic and neutral access
         //
 
-        text: '#ffffff',
-        textDestructive: Platform.select({ ios: '#FF453A', default: '#F48FB1' }),
-        textSecondary: Platform.select({ ios: '#8E8E93', default: '#CAC4D0' }),
-        textLink: '#2BACCC',
-        deleteAction: '#FF6B6B', // Delete/remove button color (same in both themes)
-        warningCritical: '#FF453A',
-        warning: '#8E8E93',
-        success: '#32D74B',
-        surface: Platform.select({ ios: '#18171C', default: '#212121' }),
+        red:    { standard: P.red.dark,    soft: P.red.soft,    bg: P.red.bgDark },
+        orange: { standard: P.orange.dark,  soft: P.orange.soft,  bg: P.orange.bgDark },
+        yellow: { standard: P.yellow.dark,  soft: P.yellow.soft,  bg: P.yellow.bgDark },
+        green:  { standard: P.green.dark,   soft: P.green.soft,   bg: P.green.bgDark },
+        cyan:   { standard: P.cyan.dark,    soft: P.cyan.soft,    bg: P.cyan.bgDark },
+        blue:   { standard: P.blue.dark,    soft: P.blue.soft,    bg: P.blue.bgDark },
+        purple: { standard: P.purple.dark,  soft: P.purple.soft,  bg: P.purple.bgDark },
+        pink:   { standard: P.pink.dark,    soft: P.pink.soft,    bg: P.pink.bgDark },
+        neutral: P.neutral,
+
+        //
+        // Semantic tokens — main colors
+        //
+
+        text: P.neutral.white,
+        textDestructive: Platform.select({ ios: P.red.dark as string, default: P.red.soft }),
+        textSecondary: Platform.select({ ios: P.neutral.gray400, default: P.neutral.gray200 }),
+        textLink: P.cyan.standard,
+        deleteAction: P.red.soft,
+        warningCritical: P.red.dark,
+        warning: P.neutral.gray400,
+        success: P.green.dark,
+        surface: P.neutral.gray950,
         surfaceRipple: 'rgba(255, 255, 255, 0.08)',
-        surfacePressed: '#2C2C2E',
-        surfaceSelected: '#2C2C2E',
-        surfacePressedOverlay: Platform.select({ ios: '#2C2C2E', default: 'transparent' }),
-        // iOS dark theme is #1c1c1e for items, and #000 for the background
-        surfaceHigh: Platform.select({ ios: '#2C2C2E', default: '#171717' }),
-        surfaceHighest: Platform.select({ ios: '#38383A', default: '#292929' }),
-        divider: Platform.select({ ios: '#38383A', default: '#292929' }),
+        surfacePressed: P.neutral.gray900,
+        surfaceSelected: P.neutral.gray900,
+        surfacePressedOverlay: Platform.select({ ios: P.neutral.gray900 as string, default: 'transparent' }),
+        surfaceHigh: P.neutral.gray900,
+        surfaceHighest: P.neutral.gray800,
+        divider: Platform.select({ ios: P.neutral.gray800, default: P.neutral.gray900 }),
         shadow: {
-            color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),
+            color: Platform.select({ default: P.neutral.black, web: 'rgba(0, 0, 0, 0.1)' }),
             opacity: 0.1,
         },
 
@@ -274,134 +300,132 @@ export const darkTheme = {
         //
 
         header: {
-            background: Platform.select({ ios: '#18171C', default: '#212121' }),
-            tint: '#ffffff'
+            background: P.neutral.gray950,
+            tint: P.neutral.white,
         },
         switch: {
             track: {
-                active: Platform.select({ ios: '#34C759', default: '#1976D2' }),
-                inactive: '#3a393f',
+                active: Platform.select({ ios: P.green.standard, default: P.blue.standard }),
+                inactive: P.neutral.gray800,
             },
             thumb: {
-                active: '#FFFFFF',
-                inactive: '#767577',
+                active: P.neutral.white,
+                inactive: P.neutral.gray500,
             },
         },
         groupped: {
-            background: Platform.select({ ios: '#1C1C1E', default: '#1e1e1e' }),
-            chevron: Platform.select({ ios: '#48484A', default: '#CAC4D0' }),
-            sectionTitle: Platform.select({ ios: '#8E8E93', default: '#CAC4D0' }),
+            background: P.neutral.gray950,
+            chevron: Platform.select({ ios: P.neutral.gray700, default: P.neutral.gray200 }),
+            sectionTitle: Platform.select({ ios: P.neutral.gray400, default: P.neutral.gray200 }),
         },
         fab: {
-            background: '#FFFFFF',
-            backgroundPressed: '#f0f0f0',
-            icon: '#000000',
+            background: P.neutral.white,
+            backgroundPressed: P.neutral.gray50,
+            icon: P.neutral.black,
         },
         radio: {
-            active: '#0A84FF',
-            inactive: '#48484A',
-            dot: '#0A84FF',
+            active: P.blue.dark,
+            inactive: P.neutral.gray700,
+            dot: P.blue.dark,
         },
         modal: {
-            border: 'rgba(255, 255, 255, 0.1)'
+            border: 'rgba(255, 255, 255, 0.1)',
         },
         button: {
             primary: {
-                background: '#000000',
-                tint: '#FFFFFF',
-                disabled: '#C0C0C0',
+                background: P.neutral.black,
+                tint: P.neutral.white,
+                disabled: P.neutral.gray200,
             },
             secondary: {
-                tint: '#8E8E93',
-            }
+                tint: P.neutral.gray400,
+            },
         },
         input: {
-            background: Platform.select({ ios: '#1C1C1E', default: '#303030' }),
-            text: '#FFFFFF',
-            placeholder: '#8E8E93',
+            background: Platform.select({ ios: P.neutral.gray950, default: P.neutral.gray900 }),
+            text: P.neutral.white,
+            placeholder: P.neutral.gray400,
         },
         box: {
             warning: {
                 background: 'rgba(255, 159, 10, 0.15)',
-                border: '#FF9F0A',
-                text: '#FFAB00',
+                border: P.orange.dark,
+                text: P.orange.soft,
             },
             error: {
                 background: 'rgba(255, 69, 58, 0.15)',
-                border: '#FF453A',
-                text: '#FF6B6B',
-            }
+                border: P.red.dark,
+                text: P.red.soft,
+            },
         },
 
         //
         // App components
         //
 
-        status: { // App Connection Status
-            connected: '#34C759',
-            connecting: '#FFFFFF',
-            disconnected: '#8E8E93',
-            error: '#FF453A',
-            default: '#8E8E93',
+        status: {
+            connected: P.green.standard,
+            connecting: P.neutral.white,
+            disconnected: P.neutral.gray400,
+            error: P.red.dark,
+            default: P.neutral.gray400,
         },
 
         // Permission mode colors
         permission: {
-            default: '#8E8E93',
-            acceptEdits: '#0A84FF',
-            bypass: '#FF9F0A',
-            plan: '#32D74B',
-            readOnly: '#98989D',
-            safeYolo: '#FF7A4C',
-            yolo: '#FF453A',
+            default: P.neutral.gray400,
+            acceptEdits: P.blue.dark,
+            bypass: P.orange.dark,
+            plan: P.green.dark,
+            readOnly: P.neutral.gray400,
+            safeYolo: '#FF7A4C', // intentional — between orange and red
+            yolo: P.red.dark,
         },
 
         // Permission button colors
         permissionButton: {
             allow: {
-                background: '#32D74B',
-                text: '#FFFFFF',
+                background: P.green.dark,
+                text: P.neutral.white,
             },
             deny: {
-                background: '#FF453A',
-                text: '#FFFFFF',
+                background: P.red.dark,
+                text: P.neutral.white,
             },
             allowAll: {
-                background: '#0A84FF',
-                text: '#FFFFFF',
+                background: P.blue.dark,
+                text: P.neutral.white,
             },
             inactive: {
-                background: '#2C2C2E',
-                border: '#38383A',
-                text: '#8E8E93',
+                background: P.neutral.gray900,
+                border: P.neutral.gray800,
+                text: P.neutral.gray400,
             },
             selected: {
-                background: '#1C1C1E',
-                border: '#38383A',
-                text: '#FFFFFF',
+                background: P.neutral.gray950,
+                border: P.neutral.gray800,
+                text: P.neutral.white,
             },
         },
 
-
-        // Diff view
+        // Diff view (GitHub dark — specialized for code contrast)
         diff: {
             outline: '#30363D',
-            success: '#3FB950',
-            error: '#F85149',
-            // Traditional diff colors for dark mode
+            success: P.green.dark,
+            error: P.red.dark,
             addedBg: '#0D2E1F',
-            addedBorder: '#3FB950',
+            addedBorder: P.green.dark,
             addedText: '#C9D1D9',
             removedBg: '#3F1B23',
-            removedBorder: '#F85149',
+            removedBorder: P.red.dark,
             removedText: '#C9D1D9',
-            contextBg: '#161B22',
-            contextText: '#8B949E',
-            lineNumberBg: '#161B22',
-            lineNumberText: '#6E7681',
-            hunkHeaderBg: '#161B22',
-            hunkHeaderText: '#58A6FF',
-            leadingSpaceDot: '#2A2A2A',
+            contextBg: P.neutral.gray950,
+            contextText: P.neutral.gray400,
+            lineNumberBg: P.neutral.gray950,
+            lineNumberText: P.neutral.gray600,
+            hunkHeaderBg: P.neutral.gray950,
+            hunkHeaderText: P.blue.soft,
+            leadingSpaceDot: P.neutral.gray900,
             inlineAddedBg: '#2A5A2A',
             inlineAddedText: '#7AFF7A',
             inlineRemovedBg: '#5A2A2A',
@@ -409,10 +433,10 @@ export const darkTheme = {
         },
 
         // Message View colors
-        userMessageBackground: '#2C2C2E',
-        userMessageText: '#FFFFFF',
-        agentMessageText: '#FFFFFF',
-        agentEventText: '#8E8E93',
+        userMessageBackground: P.neutral.gray900,
+        userMessageText: P.neutral.white,
+        agentMessageText: P.neutral.white,
+        agentEventText: P.neutral.gray400,
 
         // Code/Syntax colors (brighter for dark mode)
         syntaxKeyword: '#569CD6',
@@ -425,23 +449,23 @@ export const darkTheme = {
         syntaxBracket3: '#179FFF',
         syntaxBracket4: '#FF8C00',
         syntaxBracket5: '#00FF00',
-        syntaxDefault: '#D4D4D4',
+        syntaxDefault: P.neutral.gray150,
 
         // Git status colors
-        gitBranchText: '#8E8E93',
-        gitFileCountText: '#8E8E93',
-        gitAddedText: '#34C759',
-        gitRemovedText: '#FF453A',
+        gitBranchText: P.neutral.gray400,
+        gitFileCountText: P.neutral.gray400,
+        gitAddedText: P.green.standard,
+        gitRemovedText: P.red.dark,
 
         // Terminal/Command colors
         terminal: {
-            background: '#1E1E1E',
-            prompt: '#32D74B',
-            command: '#E0E0E0',
-            stdout: '#E0E0E0',
-            stderr: '#FFB86C',
-            error: '#FF6B6B',
-            emptyOutput: '#7B7B93',
+            background: P.neutral.gray950,
+            prompt: P.green.dark,
+            command: P.neutral.gray150,
+            stdout: P.neutral.gray150,
+            stderr: P.orange.soft,
+            error: P.red.soft,
+            emptyOutput: P.neutral.gray500,
         },
 
     },
