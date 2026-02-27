@@ -22,6 +22,7 @@ import { showCopiedToast } from '@/components/Toast';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { FolderPickerSheet } from '@/components/FolderPickerSheet';
 import { storeTempData } from '@/utils/tempDataStore';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 
 /**
  * Repo edit settings page.
@@ -313,7 +314,7 @@ export default React.memo(function RepoEditScreen() {
                     />
                     <Item
                         title={t('repoEdit.repoPath')}
-                        detail={initialRepo.path}
+                        detail={formatPathRelativeToHome(initialRepo.path, homeDir)}
                         onPress={handleCopyPath}
                     />
                     <Item

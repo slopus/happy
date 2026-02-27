@@ -722,7 +722,7 @@ export default function MachineDetailScreen() {
                         const branch = repo.defaultTargetBranch;
                         const suffix = branch ? ` · ${branch}` : '';
                         const maxPathLen = 35 - suffix.length;
-                        let displayPath = repo.path;
+                        let displayPath = formatPathRelativeToHome(repo.path, metadata?.homeDir);
                         if (displayPath.length > maxPathLen && maxPathLen > 10) {
                             const tail = displayPath.slice(-Math.floor(maxPathLen * 0.6));
                             const head = displayPath.slice(0, maxPathLen - tail.length - 3);
