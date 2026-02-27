@@ -89,6 +89,7 @@ export interface Session {
         id: string;
     }>;
     draft?: string | null; // Local draft message, not synced to server
+    customName?: string | null; // Local custom name for display, not synced to server
     permissionMode?: string | null; // Local permission mode key, not synced to server
     modelMode?: string | null; // Local model key, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.

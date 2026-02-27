@@ -10,7 +10,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionCustomNames, saveSessionCustomNames } from "./persistence";
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -118,6 +118,7 @@ interface StorageState {
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: string) => void;
+    updateSessionCustomName: (sessionId: string, customName: string | null) => void;
     updateSessionModelMode: (sessionId: string, mode: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
@@ -251,6 +252,7 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let sessionCustomNames = loadSessionCustomNames();
     return {
         settings,
         settingsVersion: version,
@@ -302,6 +304,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+            const savedCustomNames = Object.keys(state.sessions).length === 0 ? sessionCustomNames : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -316,6 +319,8 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+                const existingCustomName = state.sessions[session.id]?.customName;
+                const savedCustomName = savedCustomNames[session.id];
                 const defaultPermissionMode: PermissionModeKey = isSandboxEnabled(session.metadata) ? 'bypassPermissions' : 'default';
                 const resolvedPermissionMode: PermissionModeKey =
                     (existingPermissionMode && existingPermissionMode !== 'default' ? existingPermissionMode : undefined) ||
@@ -327,7 +332,8 @@ export const storage = create<StorageState>()((set, get) => {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: resolvedPermissionMode
+                    permissionMode: resolvedPermissionMode,
+                    customName: existingCustomName || savedCustomName || session.customName || null
                 };
             });
 
@@ -807,6 +813,44 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
+        updateSessionCustomName: (sessionId: string, customName: string | null) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const normalizedName = customName?.trim() ? customName.trim() : null;
+
+            // Collect all custom names for persistence
+            const allNames: Record<string, string> = {};
+            Object.entries(state.sessions).forEach(([id, sess]) => {
+                if (id === sessionId) {
+                    if (normalizedName) {
+                        allNames[id] = normalizedName;
+                    }
+                } else if (sess.customName) {
+                    allNames[id] = sess.customName;
+                }
+            });
+
+            // Persist custom names
+            saveSessionCustomNames(allNames);
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    customName: normalizedName
+                }
+            };
+
+            // Rebuild sessionListViewData so the UI reflects the new custom name
+            const sessionListViewData = buildSessionListViewData(updatedSessions);
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData
+            };
+        }),
         updateSessionModelMode: (sessionId: string, mode: string) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -930,7 +974,11 @@ export const storage = create<StorageState>()((set, get) => {
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
-            
+
+            const names = loadSessionCustomNames();
+            delete names[sessionId];
+            saveSessionCustomNames(names);
+
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);
             

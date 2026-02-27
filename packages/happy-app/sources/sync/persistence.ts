@@ -188,6 +188,23 @@ export function saveSessionPermissionModes(modes: Record<string, string>) {
     mmkv.set('session-permission-modes', JSON.stringify(modes));
 }
 
+export function loadSessionCustomNames(): Record<string, string> {
+    const names = mmkv.getString('session-custom-names');
+    if (names) {
+        try {
+            return JSON.parse(names);
+        } catch (e) {
+            console.error('Failed to parse session custom names', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionCustomNames(names: Record<string, string>) {
+    mmkv.set('session-custom-names', JSON.stringify(names));
+}
+
 export function loadProfile(): Profile {
     const profile = mmkv.getString('profile');
     if (profile) {

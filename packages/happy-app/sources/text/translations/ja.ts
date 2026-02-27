@@ -407,6 +407,8 @@ export const ja: TranslationStructure = {
         deleteSessionWarning: 'この操作は取り消せません。このセッションに関連するすべてのメッセージとデータが完全に削除されます。',
         failedToDeleteSession: 'セッションの削除に失敗しました',
         sessionDeleted: 'セッションが正常に削除されました',
+        renameSession: 'セッション名を変更',
+        renameSessionPrompt: 'このセッションの新しい名前を入力',
 
     },
 

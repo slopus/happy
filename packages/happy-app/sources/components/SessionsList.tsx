@@ -29,7 +29,6 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { sessionDelete } from '@/sync/ops';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
-
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
