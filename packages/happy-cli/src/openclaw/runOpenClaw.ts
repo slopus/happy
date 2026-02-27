@@ -80,15 +80,22 @@ function queryGatewayUrl(): string | null {
 }
 
 /**
+ * Resolve the openclaw config file path.
+ * Priority: OPENCLAW_CONFIG_PATH > OPENCLAW_STATE_DIR/openclaw.json > ~/.openclaw/openclaw.json
+ */
+function resolveConfigPath(): string {
+  if (process.env.OPENCLAW_CONFIG_PATH) return process.env.OPENCLAW_CONFIG_PATH;
+  const stateDir = process.env.OPENCLAW_STATE_DIR ?? join(os.homedir(), '.openclaw');
+  return join(stateDir, 'openclaw.json');
+}
+
+/**
  * Get the gateway auth token by reading the openclaw config file directly.
- * The CLI redacts secrets, so we resolve the config file path via OPENCLAW_CONFIG_PATH
- * env var, falling back to ~/.openclaw/openclaw.json.
+ * The CLI redacts secrets so there's no way to query the token through the binary.
  */
 function queryGatewayToken(): string | null {
   try {
-    const configPath = process.env.OPENCLAW_CONFIG_PATH
-      ?? join(os.homedir(), '.openclaw', 'openclaw.json');
-    const raw = JSON.parse(readFileSync(configPath, 'utf-8'));
+    const raw = JSON.parse(readFileSync(resolveConfigPath(), 'utf-8'));
     const token = raw?.gateway?.auth?.token;
     return typeof token === 'string' ? token : null;
   } catch {
