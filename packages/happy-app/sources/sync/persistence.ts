@@ -351,6 +351,21 @@ export function saveDooTaskLoginCache(cache: DooTaskLoginCache): void {
     mmkv.set(DOOTASK_LOGIN_CACHE_KEY, JSON.stringify(cache));
 }
 
+export function loadRegisteredReposLocal(): { repos: Record<string, any[]>; versions: Record<string, number> } {
+    const raw = mmkv.getString('registered-repos');
+    if (!raw) return { repos: {}, versions: {} };
+    try {
+        const parsed = JSON.parse(raw);
+        return { repos: parsed.repos || {}, versions: parsed.versions || {} };
+    } catch {
+        return { repos: {}, versions: {} };
+    }
+}
+
+export function saveRegisteredReposLocal(repos: Record<string, any[]>, versions: Record<string, number>): void {
+    mmkv.set('registered-repos', JSON.stringify({ repos, versions }));
+}
+
 export function clearPersistence() {
     mmkv.clearAll();
 }

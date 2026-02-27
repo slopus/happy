@@ -499,6 +499,7 @@ export const en: TranslationStructure = {
         },
         repos: {
             addDirectory: 'Add directory...',
+            targetBranch: 'Target Branch',
         },
     },
 

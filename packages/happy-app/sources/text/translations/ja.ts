@@ -515,6 +515,7 @@ export const ja: TranslationStructure = {
         },
         repos: {
             addDirectory: 'ディレクトリを追加...',
+            targetBranch: 'ターゲットブランチ',
         },
     },
 

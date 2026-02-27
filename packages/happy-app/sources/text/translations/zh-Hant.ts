@@ -484,6 +484,7 @@ export const zhHant: TranslationStructure = {
         },
         repos: {
             addDirectory: '新增目錄...',
+            targetBranch: '目標分支',
         },
     },
 

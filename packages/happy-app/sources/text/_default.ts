@@ -483,6 +483,7 @@ export const en = {
         },
         repos: {
             addDirectory: 'Add directory...',
+            targetBranch: 'Target Branch',
         },
     },
 

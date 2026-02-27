@@ -485,6 +485,7 @@ export const zhHans: TranslationStructure = {
         },
         repos: {
             addDirectory: '添加目录...',
+            targetBranch: '目标分支',
         },
     },
 

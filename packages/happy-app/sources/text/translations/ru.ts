@@ -447,6 +447,7 @@ export const ru: TranslationStructure = {
         },
         repos: {
             addDirectory: 'Добавить каталог...',
+            targetBranch: 'Целевая ветка',
         },
     },
 

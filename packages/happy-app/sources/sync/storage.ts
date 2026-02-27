@@ -9,7 +9,7 @@ import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile, loadDooTaskUserCache, saveDooTaskUserCache, clearDooTaskUserCache, loadDooTaskProjects, saveDooTaskProjects, clearDooTaskProjects } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile, loadDooTaskUserCache, saveDooTaskUserCache, clearDooTaskUserCache, loadDooTaskProjects, saveDooTaskProjects, clearDooTaskProjects, loadRegisteredReposLocal, saveRegisteredReposLocal } from "./persistence";
 import { DooTaskProfile, DooTaskProject, DooTaskItem, DooTaskFilters, DooTaskPager } from './dootask/types';
 import { dootaskFetchProjects, dootaskFetchTasks, dootaskFetchUsersBasic } from './dootask/api';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
@@ -332,6 +332,7 @@ export const storage = create<StorageState>()((set, get) => {
     const _cachedUsers = loadDooTaskUserCache();
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
+    const cachedRepos = loadRegisteredReposLocal();
     return {
         settings,
         settingsVersion: version,
@@ -341,8 +342,8 @@ export const storage = create<StorageState>()((set, get) => {
         machines: {},
         openClawMachines: {},  // Initialize OpenClaw machines
         openClawDirectStatus: {},  // Initialize direct OpenClaw machine status
-        registeredRepos: {},
-        registeredReposVersions: {},
+        registeredRepos: cachedRepos.repos as Record<string, RegisteredRepo[]>,
+        registeredReposVersions: cachedRepos.versions,
         artifacts: {},  // Initialize artifacts
         friends: {},  // Initialize relationships cache
         users: {},  // Initialize global user cache
@@ -1557,10 +1558,12 @@ export const storage = create<StorageState>()((set, get) => {
         },
 
         // Registered repos
-        setRegisteredRepos: (machineId: string, repos: RegisteredRepo[], version: number) => set((state) => ({
-            registeredRepos: { ...state.registeredRepos, [machineId]: repos },
-            registeredReposVersions: { ...state.registeredReposVersions, [machineId]: version },
-        })),
+        setRegisteredRepos: (machineId: string, repos: RegisteredRepo[], version: number) => set((state) => {
+            const updatedRepos = { ...state.registeredRepos, [machineId]: repos };
+            const updatedVersions = { ...state.registeredReposVersions, [machineId]: version };
+            saveRegisteredReposLocal(updatedRepos, updatedVersions);
+            return { registeredRepos: updatedRepos, registeredReposVersions: updatedVersions };
+        }),
     }
 });
 

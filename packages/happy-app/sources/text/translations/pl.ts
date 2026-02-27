@@ -494,6 +494,7 @@ export const pl: TranslationStructure = {
         },
         repos: {
             addDirectory: 'Dodaj katalog...',
+            targetBranch: 'Gałąź docelowa',
         },
     },
 
