@@ -142,6 +142,26 @@ export interface SpawnSessionOptions {
     // Worktree metadata - passed through to CLI for initial metadata creation
     worktreeBasePath?: string;
     worktreeBranchName?: string;
+    // Multi-repo workspace
+    workspaceRepos?: Array<{
+        repoId?: string;
+        path: string;
+        basePath: string;
+        branchName: string;
+        targetBranch?: string;
+        displayName?: string;
+    }>;
+    workspacePath?: string;
+    // Per-repo scripts (daemon executes these)
+    repoScripts?: Array<{
+        repoDisplayName: string;
+        worktreePath: string;
+        setupScript?: string;
+        parallelSetup?: boolean;
+        cleanupScript?: string;
+        archiveScript?: string;
+        devServerScript?: string;
+    }>;
     // Extra MCP servers to inject (e.g., DooTask MCP)
     mcpServers?: Array<{
         name: string;
