@@ -1146,6 +1146,7 @@ export const en = {
         back: 'Back',
         repositories: 'Repositories',
         addRepository: 'Add Repository',
+        previousSessions: ({ count }: { count: number }) => `Previous Sessions (up to ${count} most recent)`,
     },
 
     repoEdit: {

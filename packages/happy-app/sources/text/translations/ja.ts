@@ -1169,6 +1169,7 @@ export const ja: TranslationStructure = {
         back: '戻る',
         repositories: 'リポジトリ',
         addRepository: 'リポジトリを追加',
+        previousSessions: ({ count }: { count: number }) => `過去のセッション（最新${count}件）`,
     },
 
     repoEdit: {

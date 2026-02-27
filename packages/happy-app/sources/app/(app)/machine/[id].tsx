@@ -716,75 +716,36 @@ export default function MachineDetailScreen() {
                     </>
                 )}
 
-                {/* Daemon */}
-                <ItemGroup title={t('machine.daemon')}>
-                        <Item
-                            title={t('machine.status')}
-                            detail={daemonStatus}
-                            detailStyle={{
-                                color: daemonStatus === 'likely alive' ? '#34C759' : '#FF9500'
-                            }}
-                            showChevron={false}
-                        />
-                        <Item
-                            title={t('machine.stopDaemon')}
-                            titleStyle={{ 
-                                color: daemonStatus === 'stopped' ? '#999' : '#FF9500' 
-                            }}
-                            onPress={daemonStatus === 'stopped' ? undefined : handleStopDaemon}
-                            disabled={isStoppingDaemon || daemonStatus === 'stopped'}
-                            rightElement={
-                                isStoppingDaemon ? (
-                                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                                ) : (
-                                    <Ionicons 
-                                        name="stop-circle" 
-                                        size={20} 
-                                        color={daemonStatus === 'stopped' ? '#999' : '#FF9500'} 
-                                    />
-                                )
-                            }
-                        />
-                        {machine.daemonState && (
-                            <>
-                                {machine.daemonState.pid && (
-                                    <Item
-                                        title={t('machine.lastKnownPid')}
-                                        subtitle={String(machine.daemonState.pid)}
-                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
-                                    />
-                                )}
-                                {machine.daemonState.httpPort && (
-                                    <Item
-                                        title={t('machine.lastKnownHttpPort')}
-                                        subtitle={String(machine.daemonState.httpPort)}
-                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
-                                    />
-                                )}
-                                {machine.daemonState.startTime && (
-                                    <Item
-                                        title={t('machine.startedAt')}
-                                        subtitle={new Date(machine.daemonState.startTime).toLocaleString()}
-                                    />
-                                )}
-                                {machine.daemonState.startedWithCliVersion && (
-                                    <Item
-                                        title={t('machine.cliVersion')}
-                                        subtitle={machine.daemonState.startedWithCliVersion}
-                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
-                                    />
-                                )}
-                            </>
-                        )}
-                        <Item
-                            title={t('machine.daemonStateVersion')}
-                            subtitle={String(machine.daemonStateVersion)}
-                        />
+                {/* Repositories */}
+                <ItemGroup title={t('machine.repositories')}>
+                    {registeredRepos.map(repo => {
+                        const branch = repo.defaultTargetBranch;
+                        const suffix = branch ? ` · ${branch}` : '';
+                        const maxPathLen = 35 - suffix.length;
+                        let displayPath = repo.path;
+                        if (displayPath.length > maxPathLen && maxPathLen > 10) {
+                            const tail = displayPath.slice(-Math.floor(maxPathLen * 0.6));
+                            const head = displayPath.slice(0, maxPathLen - tail.length - 3);
+                            displayPath = head + '...' + tail;
+                        }
+                        return (
+                            <Item
+                                key={repo.id}
+                                title={repo.displayName}
+                                subtitle={displayPath + suffix}
+                                onPress={() => router.push(`/machine/${machineId}/repo/${repo.id}` as any)}
+                            />
+                        );
+                    })}
+                    <Item
+                        title={t('machine.addRepository')}
+                        onPress={handleAddRepository}
+                    />
                 </ItemGroup>
 
                 {/* Previous Sessions (debug view) */}
                 {previousSessions.length > 0 && (
-                    <ItemGroup title={'Previous Sessions (up to 5 most recent)'}>
+                    <ItemGroup title={t('machine.previousSessions', { count: 5 })}>
                         {previousSessions.map(session => (
                             <Item
                                 key={session.id}
@@ -843,31 +804,70 @@ export default function MachineDetailScreen() {
                         />
                 </ItemGroup>
 
-                {/* Repositories */}
-                <ItemGroup title={t('machine.repositories')}>
-                    {registeredRepos.map(repo => {
-                        const branch = repo.defaultTargetBranch;
-                        const suffix = branch ? ` · ${branch}` : '';
-                        const maxPathLen = 35 - suffix.length;
-                        let displayPath = repo.path;
-                        if (displayPath.length > maxPathLen && maxPathLen > 10) {
-                            const tail = displayPath.slice(-Math.floor(maxPathLen * 0.6));
-                            const head = displayPath.slice(0, maxPathLen - tail.length - 3);
-                            displayPath = head + '...' + tail;
-                        }
-                        return (
-                            <Item
-                                key={repo.id}
-                                title={repo.displayName}
-                                subtitle={displayPath + suffix}
-                                onPress={() => router.push(`/machine/${machineId}/repo/${repo.id}` as any)}
-                            />
-                        );
-                    })}
-                    <Item
-                        title={t('machine.addRepository')}
-                        onPress={handleAddRepository}
-                    />
+                {/* Daemon */}
+                <ItemGroup title={t('machine.daemon')}>
+                        <Item
+                            title={t('machine.status')}
+                            detail={daemonStatus}
+                            detailStyle={{
+                                color: daemonStatus === 'likely alive' ? '#34C759' : '#FF9500'
+                            }}
+                            showChevron={false}
+                        />
+                        <Item
+                            title={t('machine.stopDaemon')}
+                            titleStyle={{
+                                color: daemonStatus === 'stopped' ? '#999' : '#FF9500'
+                            }}
+                            onPress={daemonStatus === 'stopped' ? undefined : handleStopDaemon}
+                            disabled={isStoppingDaemon || daemonStatus === 'stopped'}
+                            rightElement={
+                                isStoppingDaemon ? (
+                                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                ) : (
+                                    <Ionicons
+                                        name="stop-circle"
+                                        size={20}
+                                        color={daemonStatus === 'stopped' ? '#999' : '#FF9500'}
+                                    />
+                                )
+                            }
+                        />
+                        {machine.daemonState && (
+                            <>
+                                {machine.daemonState.pid && (
+                                    <Item
+                                        title={t('machine.lastKnownPid')}
+                                        subtitle={String(machine.daemonState.pid)}
+                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
+                                    />
+                                )}
+                                {machine.daemonState.httpPort && (
+                                    <Item
+                                        title={t('machine.lastKnownHttpPort')}
+                                        subtitle={String(machine.daemonState.httpPort)}
+                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
+                                    />
+                                )}
+                                {machine.daemonState.startTime && (
+                                    <Item
+                                        title={t('machine.startedAt')}
+                                        subtitle={new Date(machine.daemonState.startTime).toLocaleString()}
+                                    />
+                                )}
+                                {machine.daemonState.startedWithCliVersion && (
+                                    <Item
+                                        title={t('machine.cliVersion')}
+                                        subtitle={machine.daemonState.startedWithCliVersion}
+                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
+                                    />
+                                )}
+                            </>
+                        )}
+                        <Item
+                            title={t('machine.daemonStateVersion')}
+                            subtitle={String(machine.daemonStateVersion)}
+                        />
                 </ItemGroup>
             </ItemList>
 

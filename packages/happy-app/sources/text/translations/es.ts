@@ -1137,6 +1137,7 @@ export const es: TranslationStructure = {
         back: 'Atrás',
         repositories: 'Repositorios',
         addRepository: 'Agregar repositorio',
+        previousSessions: ({ count }: { count: number }) => `Sesiones anteriores (hasta ${count} más recientes)`,
     },
 
     repoEdit: {
