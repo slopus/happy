@@ -2092,8 +2092,7 @@ function NewSessionWizard() {
                                 </View>
                             </View>
 
-                            {/* Section 4: Working Directory (hidden when worktree repos selected) */}
-                            {!(sessionType === 'worktree' && selectedRepos.length > 0) && (<React.Fragment>
+                            {/* Section 4: Working Directory */}
                             <View ref={pathSectionRef}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
@@ -2102,6 +2101,11 @@ function NewSessionWizard() {
                                 </View>
                             </View>
 
+                            {sessionType === 'worktree' && selectedRepos.length > 0 ? (
+                                <Text style={[styles.sectionDescription, { marginBottom: 24 }]}>
+                                    {t('machine.worktreeAutoPath')}
+                                </Text>
+                            ) : (
                             <View style={{ marginBottom: 24 }}>
                                 <SearchableListSelector<string>
                                     config={{
@@ -2191,11 +2195,11 @@ function NewSessionWizard() {
                                     context={{ homeDir: selectedMachine?.metadata?.homeDir }}
                                 />
                             </View>
-                            </React.Fragment>)}
+                            )}
 
-                            {/* Section 5 (or 4 if directory hidden): Permission Mode */}
+                            {/* Section 5: Permission Mode */}
                             <View ref={permissionSectionRef}>
-                                <Text style={styles.sectionHeader}>{sessionType === 'worktree' && selectedRepos.length > 0 ? '4' : '5'}. Permission Mode</Text>
+                                <Text style={styles.sectionHeader}>5. Permission Mode</Text>
                             </View>
                             <ItemGroup title="">
                                 {(agentType === 'codex'
