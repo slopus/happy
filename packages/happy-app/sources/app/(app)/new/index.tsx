@@ -2231,6 +2231,16 @@ function NewSessionWizard() {
                                         value={sessionType}
                                         onChange={setSessionType}
                                     />
+                                    {sessionType === 'worktree' && selectedMachineId && (
+                                        <View style={{ marginTop: 8 }}>
+                                            <RepoPickerBar
+                                                machineId={selectedMachineId}
+                                                selectedRepos={selectedRepos}
+                                                onReposChange={setSelectedRepos}
+                                                onAddDirectory={handleAddDirectory}
+                                            />
+                                        </View>
+                                    )}
                                 </View>
                             )}
                         </View>
