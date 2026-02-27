@@ -14,7 +14,9 @@ import { Modal } from '@/modal';
 import { hapticsLight } from '@/components/haptics';
 import { showCopiedToast } from '@/components/Toast';
 import { sessionKill, sessionDelete, machineForkClaudeSession, machineForkGeminiSession, machineForkCodexSession, machineSpawnNewSession, sessionUpdateSummary, sessionUpdateMetadataFields } from '@/sync/ops';
-import { isWorktreeSession, getWorktreeInfo, pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree, getLocalBranches, getCurrentBranch } from '@/utils/worktreeOps';
+import { pushWorktreeBranch, mergeWorktreeBranch, createWorktreePR, cleanupWorktree, cleanupWorkspace, getLocalBranches, getCurrentBranch } from '@/utils/worktreeOps';
+import { getWorkspaceRepos } from '@/utils/workspaceRepos';
+import { RepoSelector } from '@/components/RepoSelector';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import { ActionMenuItem } from '@/components/ActionMenu';
 import { buildReviewPrompt } from '@/utils/reviewPrompt';
@@ -137,6 +139,17 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, [geminiSessionId]);
 
+    // Worktree state: unified multi-repo + legacy single-repo support
+    const workspaceRepos = getWorkspaceRepos(session.metadata);
+    const [selectedRepoIndex, setSelectedRepoIndex] = React.useState(0);
+    const selectedRepo = workspaceRepos[selectedRepoIndex];
+    const isWorktree = workspaceRepos.length > 0;
+    const isMultiRepo = workspaceRepos.length > 1;
+    const worktreeMachineId = session.metadata?.machineId;
+    const worktreeBranch = selectedRepo?.branchName;
+    const worktreeBasePath = selectedRepo?.basePath;
+    const worktreePath = selectedRepo?.path;
+
     // Use HappyAction for archiving - it handles errors automatically
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const previousActive = storage.getState().sessions[session.id]?.active ?? session.active;
@@ -167,10 +180,8 @@ function SessionInfoContent({ session }: { session: Session }) {
     const [archiveMenuItems, setArchiveMenuItems] = React.useState<ActionMenuItem[]>([]);
 
     const handleArchiveSession = useCallback(() => {
-        const worktreeInfo = getWorktreeInfo(session.metadata);
-        if (worktreeInfo && session.metadata?.machineId) {
-            const machineId = session.metadata.machineId;
-            const { basePath, branchName } = worktreeInfo;
+        if (isWorktree && worktreeMachineId) {
+            const machineId = worktreeMachineId;
             setArchiveMenuItems([
                 {
                     label: t('sessionInfo.worktree.archiveKeepWorktree'),
@@ -180,7 +191,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                     label: t('sessionInfo.worktree.archiveCleanupKeepBranch'),
                     onPress: async () => {
                         setArchiveMenuVisible(false);
-                        try { await cleanupWorktree(machineId, basePath, branchName, false); } catch (e) { console.warn('Worktree cleanup failed:', e); }
+                        try {
+                            if (isMultiRepo && session.metadata?.workspacePath) {
+                                await cleanupWorkspace(machineId, session.metadata.workspacePath, workspaceRepos, false);
+                            } else if (worktreeBasePath && worktreeBranch) {
+                                await cleanupWorktree(machineId, worktreeBasePath, worktreeBranch, false);
+                            }
+                        } catch (e) { console.warn('Worktree cleanup failed:', e); }
                         await performArchive();
                     },
                 },
@@ -189,7 +206,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                     destructive: true,
                     onPress: async () => {
                         setArchiveMenuVisible(false);
-                        try { await cleanupWorktree(machineId, basePath, branchName, true); } catch (e) { console.warn('Worktree cleanup failed:', e); }
+                        try {
+                            if (isMultiRepo && session.metadata?.workspacePath) {
+                                await cleanupWorkspace(machineId, session.metadata.workspacePath, workspaceRepos, true);
+                            } else if (worktreeBasePath && worktreeBranch) {
+                                await cleanupWorktree(machineId, worktreeBasePath, worktreeBranch, true);
+                            }
+                        } catch (e) { console.warn('Worktree cleanup failed:', e); }
                         await performArchive();
                     },
                 },
@@ -209,7 +232,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                 ]
             );
         }
-    }, [performArchive, session.metadata]);
+    }, [performArchive, session.metadata, isWorktree, isMultiRepo, worktreeMachineId, worktreeBasePath, worktreeBranch, workspaceRepos]);
 
     // Use HappyAction for deletion - it handles errors automatically
     const [deletingSession, performDelete] = useHappyAction(async () => {
@@ -377,13 +400,6 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, []);
 
-    // Worktree action handlers
-    const isWorktree = isWorktreeSession(session.metadata);
-    const worktreeMachineId = session.metadata?.machineId;
-    const worktreeBasePath = session.metadata?.worktreeBasePath;
-    const worktreeBranch = session.metadata?.worktreeBranchName;
-    const worktreePath = session.metadata?.path;
-
     const [pushingBranch, handlePushBranch] = useHappyAction(async () => {
         if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
         const confirmed = await Modal.confirm(
@@ -454,12 +470,25 @@ function SessionInfoContent({ session }: { session: Session }) {
                 // Persist PR URL in session metadata
                 if (result.prUrl && session.metadata) {
                     try {
-                        await sessionUpdateMetadataFields(
-                            session.id,
-                            session.metadata,
-                            { worktreePrUrl: result.prUrl },
-                            session.metadataVersion
-                        );
+                        if (isMultiRepo && session.metadata.workspaceRepos) {
+                            // Update the specific repo's prUrl in the workspaceRepos array
+                            const updatedRepos = session.metadata.workspaceRepos.map((r, i) =>
+                                i === selectedRepoIndex ? { ...r, prUrl: result.prUrl } : r
+                            );
+                            await sessionUpdateMetadataFields(
+                                session.id,
+                                session.metadata,
+                                { workspaceRepos: updatedRepos },
+                                session.metadataVersion
+                            );
+                        } else {
+                            await sessionUpdateMetadataFields(
+                                session.id,
+                                session.metadata,
+                                { worktreePrUrl: result.prUrl },
+                                session.metadataVersion
+                            );
+                        }
                     } catch (e) {
                         console.warn('Failed to save PR URL to metadata:', e);
                     }
@@ -472,7 +501,7 @@ function SessionInfoContent({ session }: { session: Session }) {
             setCreatingPR(false);
             Modal.alert(t('common.error'), t('sessionInfo.worktree.createPRFailed'));
         }
-    }, [worktreeMachineId, worktreeBranch, worktreePath, session]);
+    }, [worktreeMachineId, worktreeBranch, worktreePath, session, isMultiRepo, selectedRepoIndex]);
 
     const handleCreatePR = React.useCallback(async () => {
         if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
@@ -521,26 +550,36 @@ function SessionInfoContent({ session }: { session: Session }) {
     const [cleaningUp, setCleaningUp] = React.useState(false);
 
     const doCleanupWorktree = React.useCallback(async (deleteBranch: boolean) => {
-        if (!worktreeMachineId || !worktreeBranch || !worktreeBasePath) return;
+        if (!worktreeMachineId) return;
         setCleaningUp(true);
         try {
-            const result = await cleanupWorktree(worktreeMachineId, worktreeBasePath, worktreeBranch, deleteBranch);
-            if (!result.success) {
-                Modal.alert(t('common.error'), result.error || t('sessionInfo.worktree.cleanupFailed'));
-                return;
-            }
-            if (result.error) {
-                // Partial success (worktree removed but branch deletion failed)
-                Modal.alert(t('common.success'), result.error);
-            } else {
+            if (isMultiRepo && session.metadata?.workspacePath) {
+                const result = await cleanupWorkspace(worktreeMachineId, session.metadata.workspacePath, workspaceRepos, deleteBranch);
+                if (!result.success) {
+                    Modal.alert(t('common.error'), result.errors.join('\n') || t('sessionInfo.worktree.cleanupFailed'));
+                    return;
+                }
                 Modal.alert(t('common.success'), t('sessionInfo.worktree.cleanupSuccess'));
+            } else {
+                if (!worktreeBranch || !worktreeBasePath) return;
+                const result = await cleanupWorktree(worktreeMachineId, worktreeBasePath, worktreeBranch, deleteBranch);
+                if (!result.success) {
+                    Modal.alert(t('common.error'), result.error || t('sessionInfo.worktree.cleanupFailed'));
+                    return;
+                }
+                if (result.error) {
+                    // Partial success (worktree removed but branch deletion failed)
+                    Modal.alert(t('common.success'), result.error);
+                } else {
+                    Modal.alert(t('common.success'), t('sessionInfo.worktree.cleanupSuccess'));
+                }
             }
         } catch (e) {
             Modal.alert(t('common.error'), t('sessionInfo.worktree.cleanupFailed'));
         } finally {
             setCleaningUp(false);
         }
-    }, [worktreeMachineId, worktreeBranch, worktreeBasePath]);
+    }, [worktreeMachineId, worktreeBranch, worktreeBasePath, isMultiRepo, workspaceRepos, session.metadata?.workspacePath]);
 
     const handleCleanupWorktree = React.useCallback(() => {
         setCleanupMenuVisible(true);
@@ -552,7 +591,7 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     const doRequestReview = React.useCallback(async (agentChoice: 'claude' | 'codex' | 'gemini') => {
         if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
-        const prUrl = session.metadata?.worktreePrUrl;
+        const prUrl = selectedRepo?.prUrl;
         if (!prUrl) return;
 
         setRequestingReview(true);
@@ -605,15 +644,15 @@ function SessionInfoContent({ session }: { session: Session }) {
         } finally {
             setRequestingReview(false);
         }
-    }, [worktreeMachineId, worktreeBranch, worktreePath, worktreeBasePath, session, router]);
+    }, [worktreeMachineId, worktreeBranch, worktreePath, worktreeBasePath, session, router, selectedRepo]);
 
     const handleRequestReview = React.useCallback(() => {
-        if (!session.metadata?.worktreePrUrl) {
+        if (!selectedRepo?.prUrl) {
             Modal.alert(t('common.error'), t('sessionInfo.worktree.reviewNoPR'));
             return;
         }
         setReviewMenuVisible(true);
-    }, [session.metadata?.worktreePrUrl]);
+    }, [selectedRepo?.prUrl]);
 
     return (
         <>
@@ -774,6 +813,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                 </ItemGroup>
 
                 {/* Worktree Info & Actions */}
+                {isMultiRepo && (
+                    <RepoSelector
+                        repos={workspaceRepos}
+                        selectedIndex={selectedRepoIndex}
+                        onSelect={setSelectedRepoIndex}
+                    />
+                )}
                 {isWorktree && worktreeBranch && (
                     <ItemGroup title={t('sessionInfo.worktree.title')}>
                         <Item
@@ -790,10 +836,10 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 showChevron={false}
                             />
                         )}
-                        {session.metadata?.worktreePrUrl && (
+                        {selectedRepo?.prUrl && (
                             <Item
                                 title={t('sessionInfo.worktree.prLink')}
-                                subtitle={session.metadata.worktreePrUrl}
+                                subtitle={selectedRepo.prUrl}
                                 icon={<Ionicons name="git-pull-request-outline" size={29} color="#34C759" />}
                                 showChevron={false}
                             />
@@ -818,7 +864,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             loading={creatingPR}
                             disabled={creatingPR}
                         />
-                        {session.metadata?.worktreePrUrl && (
+                        {selectedRepo?.prUrl && (
                             <Item
                                 title={t('sessionInfo.worktree.requestReview')}
                                 subtitle={t('sessionInfo.worktree.requestReviewSubtitle')}
