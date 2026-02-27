@@ -406,7 +406,7 @@ export const knownTools = {
             }).passthrough()).describe('The new todo list')
         }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (Array.isArray(opts.tool.input.todos)) {
+            if (Array.isArray(opts.tool.input?.todos)) {
                 const count = opts.tool.input.todos.length;
                 return t('tools.desc.todoListCount', { count });
             }
