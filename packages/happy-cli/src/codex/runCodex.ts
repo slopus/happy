@@ -6,6 +6,7 @@ import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -33,6 +34,7 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
+import { parseSpecialCommand } from '@/parsers/specialCommands';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -82,6 +84,7 @@ export async function runCodex(opts: {
     //
 
     const sessionTag = randomUUID();
+    const workingDirectory = process.cwd();
 
     // Set backend for offline warnings (before any API calls)
     connectionState.setBackend('Codex');
@@ -122,6 +125,26 @@ export async function runCodex(opts: {
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
+    let thinking = false;
+    let sessionMode: 'local' | 'remote' = opts.startedBy === 'daemon' ? 'remote' : 'local';
+    const applySessionControlState = (targetSession: ApiSessionClient, mode: 'local' | 'remote') => {
+        targetSession.updateAgentState((currentState) => ({
+            ...currentState,
+            controlledByUser: mode === 'local'
+        }));
+        targetSession.keepAlive(thinking, mode);
+    };
+    const switchSessionMode = (nextMode: 'local' | 'remote', reason?: string) => {
+        if (sessionMode === nextMode) {
+            return;
+        }
+        sessionMode = nextMode;
+        if (reason) {
+            logger.debug(`[Codex] Session mode switched to ${nextMode}: ${reason}`);
+        }
+        session.sendSessionEvent({ type: 'switch', mode: nextMode });
+        applySessionControlState(session, nextMode);
+    };
     // Permission handler declared here so it can be updated in onSessionSwap callback
     // (assigned later at line ~385 after client setup)
     let permissionHandler: CodexPermissionHandler;
@@ -137,9 +160,11 @@ export async function runCodex(opts: {
             if (permissionHandler) {
                 permissionHandler.updateSession(newSession);
             }
+            applySessionControlState(newSession, sessionMode);
         }
     });
     session = initialSession;
+    applySessionControlState(session, sessionMode);
 
     // Always report to daemon if it exists (skip if offline)
     if (response) {
@@ -167,6 +192,8 @@ export async function runCodex(opts: {
     let currentModel: string | undefined = undefined;
 
     session.onUserMessage((message) => {
+        switchSessionMode('remote', 'mobile message received');
+
         // Resolve permission mode (accept all modes, will be mapped in switch statement)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
@@ -193,15 +220,26 @@ export async function runCodex(opts: {
         };
         messageQueue.push(message.content.text, enhancedMode);
     });
-    let thinking = false;
+    const enqueueTerminalPrompt = (prompt: string) => {
+        const text = prompt.trim();
+        if (!text) {
+            return;
+        }
+
+        const enhancedMode: EnhancedMode = {
+            permissionMode: currentPermissionMode || 'default',
+            model: currentModel,
+        };
+        messageQueue.push(text, enhancedMode);
+    };
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
     let codexProviderSubagentToSessionSubagent = new Map<string, string>();
-    session.keepAlive(thinking, 'remote');
+    session.keepAlive(thinking, sessionMode);
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
-        session.keepAlive(thinking, 'remote');
+        session.keepAlive(thinking, sessionMode);
     }, 2000);
 
     const sendReady = () => {
@@ -332,11 +370,24 @@ export async function runCodex(opts: {
     const hasTTY = process.stdout.isTTY && process.stdin.isTTY;
     let inkInstance: any = null;
 
-    if (hasTTY) {
+    const setupRemoteUi = () => {
+        if (!hasTTY || inkInstance) {
+            return;
+        }
+
         console.clear();
         inkInstance = render(React.createElement(CodexDisplay, {
             messageBuffer,
             logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+            getSessionMode: () => sessionMode,
+            onSubmitPrompt: enqueueTerminalPrompt,
+            onSwitchToLocal: async () => {
+                if (sessionMode === 'local') {
+                    return;
+                }
+                switchSessionMode('local', 'keyboard shortcut');
+                await handleAbort();
+            },
             onExit: async () => {
                 // Exit the agent
                 logger.debug('[codex]: Exiting agent via Ctrl-C');
@@ -347,15 +398,27 @@ export async function runCodex(opts: {
             exitOnCtrlC: false,
             patchConsole: false
         });
-    }
 
-    if (hasTTY) {
         process.stdin.resume();
         if (process.stdin.isTTY) {
             process.stdin.setRawMode(true);
         }
         process.stdin.setEncoding("utf8");
-    }
+    };
+
+    const teardownRemoteUi = () => {
+        if (!hasTTY) {
+            return;
+        }
+        if (process.stdin.isTTY) {
+            try { process.stdin.setRawMode(false); } catch {}
+        }
+        try { process.stdin.pause(); } catch {}
+        if (inkInstance) {
+            inkInstance.unmount();
+            inkInstance = null;
+        }
+    };
 
     //
     // Start Context 
@@ -404,6 +467,98 @@ export async function runCodex(opts: {
             return null;
         }
     }
+
+    function normalizePath(pathValue: string): string {
+        return resolve(pathValue).replace(/[\\\/]+$/, '');
+    }
+
+    function parseSessionTimestamp(value: unknown): number | null {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return value;
+        }
+        if (typeof value !== 'string') {
+            return null;
+        }
+        const parsed = Date.parse(value);
+        if (Number.isNaN(parsed)) {
+            return null;
+        }
+        return parsed;
+    }
+
+    function findRecentCodexSessionId(cwd: string, referenceTimestampMs: number): string | null {
+        const normalizedCwd = normalizePath(cwd);
+        const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
+        const sessionsRoot = join(codexHomeDir, 'sessions');
+        const windowMs = 2 * 60 * 1000;
+
+        const collectFilesRecursive = (dir: string, acc: string[] = []): string[] => {
+            let entries: fs.Dirent[];
+            try {
+                entries = fs.readdirSync(dir, { withFileTypes: true });
+            } catch {
+                return acc;
+            }
+
+            for (const entry of entries) {
+                const full = join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    collectFilesRecursive(full, acc);
+                    continue;
+                }
+                if (entry.isFile() && full.endsWith('.jsonl')) {
+                    acc.push(full);
+                }
+            }
+            return acc;
+        };
+
+        const files = collectFilesRecursive(sessionsRoot).sort((a, b) => {
+            const mtimeA = fs.statSync(a).mtimeMs;
+            const mtimeB = fs.statSync(b).mtimeMs;
+            return mtimeB - mtimeA;
+        });
+
+        let fallbackSessionId: string | null = null;
+        for (const filePath of files) {
+            let content: string;
+            try {
+                content = fs.readFileSync(filePath, 'utf8');
+            } catch {
+                continue;
+            }
+
+            const lines = content.split('\n');
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    continue;
+                }
+                try {
+                    const parsed = JSON.parse(trimmed) as { type?: string; payload?: Record<string, unknown> };
+                    if (parsed?.type !== 'session_meta' || !parsed.payload) {
+                        continue;
+                    }
+                    const sessionId = typeof parsed.payload.id === 'string' ? parsed.payload.id : null;
+                    const payloadCwd = typeof parsed.payload.cwd === 'string' ? normalizePath(parsed.payload.cwd) : null;
+                    if (!sessionId || payloadCwd !== normalizedCwd) {
+                        continue;
+                    }
+                    if (!fallbackSessionId) {
+                        fallbackSessionId = sessionId;
+                    }
+                    const sessionTimestamp = parseSessionTimestamp(parsed.payload.timestamp);
+                    if (sessionTimestamp !== null && sessionTimestamp >= referenceTimestampMs - windowMs) {
+                        return sessionId;
+                    }
+                } catch {
+                    continue;
+                }
+            }
+        }
+
+        return fallbackSessionId;
+    }
     permissionHandler = new CodexPermissionHandler(session);
     const reasoningProcessor = new ReasoningProcessor((message) => {
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
@@ -451,14 +606,14 @@ export async function runCodex(opts: {
             if (!thinking) {
                 logger.debug('thinking started');
                 thinking = true;
-                session.keepAlive(thinking, 'remote');
+                session.keepAlive(thinking, sessionMode);
             }
         }
         if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
             if (thinking) {
                 logger.debug('thinking completed');
                 thinking = false;
-                session.keepAlive(thinking, 'remote');
+                session.keepAlive(thinking, sessionMode);
             }
             // Reset diff processor on task end or abort
             diffProcessor.reset();
@@ -532,6 +687,113 @@ export async function runCodex(opts: {
             args: ['--url', happyServer.url]
         }
     } as const;
+
+    const escapeTomlString = (value: string): string => value
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
+
+    const escapeTomlLiteralString = (value: string): string => value.replace(/'/g, "''");
+
+    const buildCodexLocalMcpArgs = (): string[] => {
+        const args: string[] = [];
+        for (const [name, server] of Object.entries(mcpServers)) {
+            args.push('-c', `mcp_servers.${name}.command="${escapeTomlString(server.command)}"`);
+            const arrayValue = `[${server.args.map((arg) => `'${escapeTomlLiteralString(arg)}'`).join(',')}]`;
+            args.push('-c', `mcp_servers.${name}.args=${arrayValue}`);
+        }
+        args.push('-c', `developer_instructions="${escapeTomlString(CHANGE_TITLE_INSTRUCTION)}"`);
+        return args;
+    };
+
+    const runCodexLocalInteractive = async (): Promise<'switch' | 'exit'> => {
+        if (sessionMode !== 'local' || !hasTTY) {
+            return 'switch';
+        }
+
+        logger.debug('[Codex] Starting native local Codex mode');
+        const localStartTimestampMs = Date.now();
+        const localArgs = buildCodexLocalMcpArgs();
+        const localAbortController = new AbortController();
+        let shouldSwitchToRemote = false;
+        let exitCode = 0;
+
+        const requestSwitchToRemote = (reason: string) => {
+            if (shouldSwitchToRemote) {
+                return;
+            }
+            shouldSwitchToRemote = true;
+            switchSessionMode('remote', reason);
+            localAbortController.abort();
+        };
+
+        const handleLocalSwitch = async () => {
+            requestSwitchToRemote('switch requested while local');
+        };
+        const handleLocalAbort = async () => {
+            requestSwitchToRemote('abort requested while local');
+        };
+
+        messageQueue.setOnMessage((messageText) => {
+            logger.debug(`[Codex] Local mode interrupted by remote message: ${messageText.slice(0, 80)}`);
+            requestSwitchToRemote('remote message received');
+        });
+        session.rpcHandlerManager.registerHandler('switch', handleLocalSwitch);
+        session.rpcHandlerManager.registerHandler('abort', handleLocalAbort);
+
+        try {
+            await new Promise<void>((resolvePromise, rejectPromise) => {
+                const child = spawn('codex', localArgs, {
+                    cwd: workingDirectory,
+                    env: process.env,
+                    stdio: 'inherit',
+                    signal: localAbortController.signal,
+                    shell: process.platform === 'win32',
+                });
+
+                child.on('error', (error) => {
+                    if (localAbortController.signal.aborted && shouldSwitchToRemote) {
+                        resolvePromise();
+                        return;
+                    }
+                    rejectPromise(error);
+                });
+
+                child.on('exit', (code) => {
+                    exitCode = typeof code === 'number' ? code : 0;
+                    resolvePromise();
+                });
+            });
+        } catch (error) {
+            if (!(localAbortController.signal.aborted && shouldSwitchToRemote)) {
+                throw error;
+            }
+        } finally {
+            messageQueue.setOnMessage(null);
+            session.rpcHandlerManager.registerHandler('switch', async () => {});
+            session.rpcHandlerManager.registerHandler('abort', handleAbort);
+        }
+
+        const detectedSessionId = findRecentCodexSessionId(workingDirectory, localStartTimestampMs);
+        if (detectedSessionId) {
+            storedSessionIdForResume = detectedSessionId;
+            logger.debug(`[Codex] Local mode detected session for resume: ${detectedSessionId}`);
+        } else {
+            logger.debug('[Codex] Local mode could not detect resume session id');
+        }
+
+        if (shouldSwitchToRemote) {
+            return 'switch';
+        }
+
+        if (exitCode !== 0) {
+            logger.debug(`[Codex] Local Codex exited with code ${exitCode}`);
+        }
+        return 'exit';
+    };
+
     let first = true;
 
     try {
@@ -545,6 +807,24 @@ export async function runCodex(opts: {
         let nextExperimentalResume: string | null = null;
 
         while (!shouldExit) {
+            if (sessionMode === 'local') {
+                teardownRemoteUi();
+                const localResult = await runCodexLocalInteractive();
+                if (localResult === 'exit') {
+                    shouldExit = true;
+                    break;
+                }
+
+                setupRemoteUi();
+                // New remote session should start after returning from local mode
+                wasCreated = false;
+                currentModeHash = null;
+                pending = null;
+                nextExperimentalResume = null;
+                continue;
+            }
+
+            setupRemoteUi();
             logActiveHandles('loop-top');
             // Get next batch; respect mode boundaries like Claude
             let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
@@ -568,6 +848,39 @@ export async function runCodex(opts: {
             // Defensive check for TS narrowing
             if (!message) {
                 break;
+            }
+
+            const specialCommand = parseSpecialCommand(message.message);
+            if (specialCommand.type === 'clear') {
+                logger.debug('[Codex] /clear command detected - resetting context');
+                messageBuffer.addMessage('Context was reset', 'status');
+                session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
+
+                client.clearSession();
+                wasCreated = false;
+                first = true;
+                currentModeHash = null;
+                pending = null;
+                nextExperimentalResume = null;
+                storedSessionIdForResume = null;
+
+                permissionHandler.reset();
+                reasoningProcessor.abort();
+                diffProcessor.reset();
+                thinking = false;
+                session.keepAlive(thinking, sessionMode);
+                emitReadyIfIdle({
+                    pending,
+                    queueSize: () => messageQueue.size(),
+                    shouldExit,
+                    sendReady,
+                });
+                continue;
+            }
+
+            if (specialCommand.type === 'compact') {
+                logger.debug('[Codex] /compact command detected');
+                session.sendSessionEvent({ type: 'message', message: 'Compaction started' });
             }
 
             // If a session exists and mode changed, restart on next iteration
@@ -597,7 +910,7 @@ export async function runCodex(opts: {
                 reasoningProcessor.abort();
                 diffProcessor.reset();
                 thinking = false;
-                session.keepAlive(thinking, 'remote');
+                session.keepAlive(thinking, sessionMode);
                 continue;
             }
 
@@ -687,7 +1000,7 @@ export async function runCodex(opts: {
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
                 diffProcessor.reset();
                 thinking = false;
-                session.keepAlive(thinking, 'remote');
+                session.keepAlive(thinking, sessionMode);
                 emitReadyIfIdle({
                     pending,
                     queueSize: () => messageQueue.size(),
