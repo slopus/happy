@@ -469,7 +469,7 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="machine/[machineId]/repo/[repoId]"
+                name="machine/[id]/repo/[repoId]"
                 options={{
                     headerShown: true,
                     headerTitle: t('repoEdit.title'),

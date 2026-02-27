@@ -356,12 +356,13 @@ export default function MachineDetailScreen() {
     }, []);
 
     const handleAddRepository = useCallback(async () => {
-        const pathToUse = customPath.trim();
-        if (!pathToUse) {
-            Modal.alert(t('common.error'), t('newSession.noPathSelected'));
-            return;
-        }
-        const absolutePath = resolveAbsolutePath(pathToUse, machine?.metadata?.homeDir);
+        const pathInput = await Modal.prompt(
+            t('machine.addRepository'),
+            undefined,
+            { placeholder: '/path/to/repo' }
+        );
+        if (!pathInput?.trim()) return;
+        const absolutePath = resolveAbsolutePath(pathInput.trim(), machine?.metadata?.homeDir);
         const gitCheck = await machineBash(machineId!, 'git rev-parse --git-dir', absolutePath);
         if (!gitCheck.success) {
             Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
@@ -392,7 +393,7 @@ export default function MachineDetailScreen() {
         }
 
         router.push(`/machine/${machineId}/repo/${newRepo.id}` as any);
-    }, [machineId, customPath, router, machine?.metadata?.homeDir]);
+    }, [machineId, router, machine?.metadata?.homeDir]);
 
     const handleAddDirectoryForPicker = useCallback(async () => {
         if (!machineId) return;

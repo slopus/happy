@@ -20,7 +20,7 @@ import type { RegisteredRepo } from '@/utils/workspaceRepos';
  */
 export default React.memo(function RepoEditScreen() {
     const { theme } = useUnistyles();
-    const { machineId, repoId } = useLocalSearchParams<{ machineId: string; repoId: string }>();
+    const { id: machineId, repoId } = useLocalSearchParams<{ id: string; repoId: string }>();
     const router = useRouter();
 
     // Load the repo from Zustand store
