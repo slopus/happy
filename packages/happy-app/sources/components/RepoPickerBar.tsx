@@ -18,6 +18,8 @@ interface RepoPickerBarProps {
     machineId: string;
     selectedRepos: SelectedRepo[];
     onReposChange: (repos: SelectedRepo[]) => void;
+    /** Called when user taps "Add directory...". Parent should prompt for a path and add the repo. */
+    onAddDirectory: () => void;
 }
 
 // --- Helpers ---
@@ -36,7 +38,7 @@ const repoKey = (repo: SelectedRepo['repo']): string =>
  * "Add directory..." action so the parent can trigger a directory browser.
  */
 export const RepoPickerBar: React.FC<RepoPickerBarProps> = React.memo(
-    ({ machineId, selectedRepos, onReposChange }) => {
+    ({ machineId, selectedRepos, onReposChange, onAddDirectory }) => {
         // Registered repos for the machine, sorted by lastUsedAt (most recent first)
         const registeredRepos = useMemo(() => {
             const repos = storage.getState().registeredRepos[machineId] || [];
@@ -69,15 +71,6 @@ export const RepoPickerBar: React.FC<RepoPickerBarProps> = React.memo(
             },
             [selectedRepos, onReposChange],
         );
-
-        const handleAddDirectory = useCallback(() => {
-            // Append a placeholder entry – the parent is responsible for replacing
-            // this with an actual path once the user picks a directory.
-            onReposChange([
-                ...selectedRepos,
-                { repo: { path: '', displayName: '' } },
-            ]);
-        }, [selectedRepos, onReposChange]);
 
         return (
             <View style={stylesheet.container}>
@@ -147,7 +140,7 @@ export const RepoPickerBar: React.FC<RepoPickerBarProps> = React.memo(
                     })}
 
                 {/* Add directory action */}
-                <Pressable onPress={handleAddDirectory} style={stylesheet.addChip}>
+                <Pressable onPress={onAddDirectory} style={stylesheet.addChip}>
                     <Ionicons
                         name="add-circle-outline"
                         size={16}

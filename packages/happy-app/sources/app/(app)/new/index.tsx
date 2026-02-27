@@ -14,7 +14,7 @@ import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession, sessionUpdateMetadataFields } from '@/sync/ops';
+import { machineBash, machineSpawnNewSession, sessionUpdateMetadataFields } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
@@ -679,6 +679,24 @@ function NewSessionWizard() {
         if (!selectedMachineId) return null;
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
+
+    const handleAddDirectory = React.useCallback(async () => {
+        if (!selectedMachineId) return;
+        const pathInput = await Modal.prompt(
+            t('newSession.repos.addDirectory'),
+            undefined,
+            { placeholder: '/path/to/repo' }
+        );
+        if (!pathInput?.trim()) return;
+        const absolutePath = resolveAbsolutePath(pathInput.trim(), selectedMachine?.metadata?.homeDir);
+        const gitCheck = await machineBash(selectedMachineId, 'git rev-parse --git-dir', absolutePath);
+        if (!gitCheck.success) {
+            Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+            return;
+        }
+        const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
+        setSelectedRepos(prev => [...prev, { repo: { path: absolutePath, displayName } }]);
+    }, [selectedMachineId, selectedMachine]);
 
     // Get recent paths for the selected machine
     // Recent machines computed from sessions (for inline machine selection)
@@ -1361,6 +1379,7 @@ function NewSessionWizard() {
                                     machineId={selectedMachineId}
                                     selectedRepos={selectedRepos}
                                     onReposChange={setSelectedRepos}
+                                    onAddDirectory={handleAddDirectory}
                                 />
                             </View>
                         </View>

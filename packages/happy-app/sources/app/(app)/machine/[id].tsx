@@ -394,6 +394,24 @@ export default function MachineDetailScreen() {
         router.push(`/machine/${machineId}/repo/${newRepo.id}` as any);
     }, [machineId, customPath, router, machine?.metadata?.homeDir]);
 
+    const handleAddDirectoryForPicker = useCallback(async () => {
+        if (!machineId) return;
+        const pathInput = await Modal.prompt(
+            t('newSession.repos.addDirectory'),
+            undefined,
+            { placeholder: '/path/to/repo' }
+        );
+        if (!pathInput?.trim()) return;
+        const absolutePath = resolveAbsolutePath(pathInput.trim(), machine?.metadata?.homeDir);
+        const gitCheck = await machineBash(machineId, 'git rev-parse --git-dir', absolutePath);
+        if (!gitCheck.success) {
+            Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+            return;
+        }
+        const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
+        setSelectedRepos(prev => [...prev, { repo: { path: absolutePath, displayName } }]);
+    }, [machineId, machine?.metadata?.homeDir]);
+
     if (!machine) {
         return (
             <>
@@ -520,6 +538,7 @@ export default function MachineDetailScreen() {
                                         machineId={machineId}
                                         selectedRepos={selectedRepos}
                                         onReposChange={setSelectedRepos}
+                                        onAddDirectory={handleAddDirectoryForPicker}
                                     />
                                 </View>
                             )}
