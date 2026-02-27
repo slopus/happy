@@ -356,6 +356,16 @@ export type Metadata = {
   worktreeBranchName?: string,
   worktreePrUrl?: string,
   reviewOfSessionId?: string,
+  workspaceRepos?: Array<{
+    repoId?: string;
+    path: string;
+    basePath: string;
+    branchName: string;
+    targetBranch?: string;
+    prUrl?: string;
+    displayName?: string;
+  }>;
+  workspacePath?: string,
 };
 
 export type AgentState = {

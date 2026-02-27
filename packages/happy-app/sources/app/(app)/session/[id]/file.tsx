@@ -23,6 +23,7 @@ import { hapticsLight } from '@/components/haptics';
 import { showCopiedToast } from '@/components/Toast';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { shellEscape } from '@/utils/shellEscape';
+import { getWorkspaceRepos } from '@/utils/workspaceRepos';
 
 function getRepoRelativePath(filePath: string, repoPath: string): string {
     if (repoPath && filePath.startsWith(`${repoPath}/`)) {
@@ -126,6 +127,11 @@ export default function FileScreen() {
 
     const sessionPath = session?.metadata?.path || '';
 
+    // Multi-repo: detect which repo this file belongs to for correct git cwd
+    const workspaceRepos = getWorkspaceRepos(session?.metadata);
+    const fileRepo = workspaceRepos.find(r => filePath.startsWith(r.path + '/'));
+    const gitCwd = fileRepo?.path || sessionPath;
+
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
     const [diffContent, setDiffContent] = React.useState<string | null>(null);
     const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
@@ -136,13 +142,16 @@ export default function FileScreen() {
 
     const fileName = filePath.split('/').pop() || filePath;
 
-    // Relative path for display/copy
+    // Relative path for display/copy (relative to repo, not workspace root)
     const relativePath = React.useMemo(() => {
+        if (gitCwd && filePath.startsWith(gitCwd + '/')) {
+            return filePath.substring(gitCwd.length + 1);
+        }
         if (sessionPath && filePath.startsWith(sessionPath + '/')) {
             return filePath.substring(sessionPath.length + 1);
         }
         return filePath;
-    }, [filePath, sessionPath]);
+    }, [filePath, gitCwd, sessionPath]);
 
     // Menu items
     const menuItems: ActionMenuItem[] = React.useMemo(() => {
@@ -173,7 +182,7 @@ export default function FileScreen() {
         ];
 
         // History: only for non-ref views (viewing current file, not a specific commit)
-        if (!ref && sessionPath) {
+        if (!ref && (gitCwd || sessionPath)) {
             items.push({
                 label: t('files.fileHistory'),
                 onPress: () => {
@@ -196,7 +205,7 @@ export default function FileScreen() {
         }
 
         // Delete: only for non-ref views
-        if (!ref && sessionPath) {
+        if (!ref && (gitCwd || sessionPath)) {
             items.push({
                 label: t('files.deleteFile'),
                 destructive: true,
@@ -210,7 +219,7 @@ export default function FileScreen() {
                     const escapedPath = shellEscape(filePath);
                     const result = await sessionBash(sessionId!, {
                         command: `rm -- ${escapedPath}`,
-                        cwd: sessionPath,
+                        cwd: gitCwd || sessionPath,
                         timeout: 5000,
                     });
                     if (result.success) {
@@ -224,7 +233,7 @@ export default function FileScreen() {
         }
 
         return items;
-    }, [relativePath, fileName, fileContent, diffContent, ref, sessionPath, sessionId, filePath, router]);
+    }, [relativePath, fileName, fileContent, diffContent, ref, sessionPath, gitCwd, sessionId, filePath, router]);
 
     // Determine file language from extension
     const getFileLanguage = React.useCallback((path: string): string | null => {
@@ -326,9 +335,11 @@ export default function FileScreen() {
                 }
                 
                 // Fetch git diff for the file
-                if (sessionPath && sessionId) {
+                // Use repo-specific cwd for multi-repo workspaces
+                const effectiveCwd = gitCwd || sessionPath;
+                if (effectiveCwd && sessionId) {
                     try {
-                        const repoRelativePath = getRepoRelativePath(filePath, sessionPath);
+                        const repoRelativePath = getRepoRelativePath(filePath, effectiveCwd);
                         const escapedPath = shellEscape(repoRelativePath);
                         const diffCommand = ref
                             ? `git diff --no-ext-diff ${shellEscape(`${ref}~1`)} ${shellEscape(ref)} -- ${escapedPath}`
@@ -337,7 +348,7 @@ export default function FileScreen() {
                                 : `git diff --no-ext-diff -- ${escapedPath}`;
                         const diffResponse = await sessionBash(sessionId, {
                             command: diffCommand,
-                            cwd: sessionPath,
+                            cwd: effectiveCwd,
                             timeout: 5000
                         });
 
@@ -349,13 +360,13 @@ export default function FileScreen() {
                     }
                 }
 
-                if (ref && sessionPath && sessionId) {
+                if (ref && effectiveCwd && sessionId) {
                     // For a specific commit ref, use git show to get file content at that revision
-                    const relativePath = getRepoRelativePath(filePath, sessionPath);
+                    const relativePath = getRepoRelativePath(filePath, effectiveCwd);
                     const escapedShowTarget = shellEscape(`${ref}:${relativePath}`);
                     const showResponse = await sessionBash(sessionId, {
                         command: `git show ${escapedShowTarget}`,
-                        cwd: sessionPath,
+                        cwd: effectiveCwd,
                         timeout: 10000,
                     });
 

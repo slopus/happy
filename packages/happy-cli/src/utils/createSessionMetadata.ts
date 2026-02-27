@@ -65,6 +65,20 @@ export interface SessionMetadataResult {
  */
 /** Env vars from daemon take priority; otherwise detect via git */
 function detectWorktreeMetadata(): Partial<Metadata> {
+    // New: multi-repo workspace
+    if (process.env.HAPPY_WORKSPACE_REPOS) {
+        try {
+            const repos = JSON.parse(process.env.HAPPY_WORKSPACE_REPOS);
+            return {
+                isWorktree: true,
+                workspaceRepos: repos,
+                workspacePath: process.env.HAPPY_WORKSPACE_PATH,
+            };
+        } catch {
+            // Fall through to legacy detection
+        }
+    }
+    // Legacy: single-repo worktree (env vars from daemon)
     if (process.env.HAPPY_WORKTREE_BASE_PATH) {
         return {
             isWorktree: true,
@@ -72,6 +86,7 @@ function detectWorktreeMetadata(): Partial<Metadata> {
             worktreeBranchName: process.env.HAPPY_WORKTREE_BRANCH_NAME,
         };
     }
+    // Terminal: git auto-detection
     const info = detectGitWorktree(process.cwd());
     if (info.isWorktree) {
         return {

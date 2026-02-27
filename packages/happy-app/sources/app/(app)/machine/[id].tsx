@@ -1,14 +1,14 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useMachine } from '@/sync/storage';
+import { useSessions, useMachine, storage } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineBash, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { hapticsLight } from '@/components/haptics';
 import { showToast } from '@/components/Toast';
@@ -23,6 +23,16 @@ import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
+import { createWorkspace, type WorkspaceRepoInput } from '@/utils/createWorkspace';
+import { RepoPickerBar, type SelectedRepo } from '@/components/RepoPickerBar';
+import type { RegisteredRepo } from '@/utils/workspaceRepos';
+import { saveRegisteredRepos, loadRegisteredRepos } from '@/sync/repoStore';
+import { randomUUID } from 'expo-crypto';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
+import { useShallow } from 'zustand/react/shallow';
+import { FolderPickerSheet } from '@/components/FolderPickerSheet';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -86,7 +96,25 @@ export default function MachineDetailScreen() {
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
+    const [selectedRepos, setSelectedRepos] = useState<SelectedRepo[]>([]);
+    const [addDirBranchMenu, setAddDirBranchMenu] = useState<{ visible: boolean; items: ActionMenuItem[] }>({ visible: false, items: [] });
+    const addDirBranchResolveRef = useRef<((value: string | undefined) => void) | null>(null);
+    const folderPickerRef = useRef<BottomSheetModal>(null);
+    const folderSelectHandlerRef = useRef<(path: string) => void>(() => {});
     const { width: screenWidth } = useWindowDimensions();
+    const registeredRepos = storage(useShallow((state) => state.registeredRepos[machineId!] || [])) as RegisteredRepo[];
+
+    // Load registered repos from server KV store on mount
+    useEffect(() => {
+        if (!machineId) return;
+        const credentials = sync.getCredentials();
+        if (!credentials) return;
+        loadRegisteredRepos(credentials, machineId).then(({ repos, version }) => {
+            if (repos.length > 0) {
+                storage.getState().setRegisteredRepos(machineId, repos, version);
+            }
+        }).catch(() => { /* ignore load errors */ });
+    }, [machineId]);
 
     // Left: back button (1), Right: edit button (1) - use larger side * 2 for symmetry
     const headerTitleMaxWidth = screenWidth - (HEADER_BUTTON_WIDTH * 2) - HEADER_PADDING - HEADER_CENTER_PADDING;
@@ -228,23 +256,68 @@ export default function MachineDetailScreen() {
 
             let actualPath = absolutePath;
             let worktreeBranchName: string | undefined;
+            let workspaceRepos: Array<{ repoId?: string; path: string; basePath: string; branchName: string; targetBranch?: string; displayName?: string }> | undefined;
+            let workspacePath: string | undefined;
+            let repoScripts: Array<{ repoDisplayName: string; worktreePath: string; setupScript?: string; parallelSetup?: boolean; cleanupScript?: string; archiveScript?: string; devServerScript?: string }> | undefined;
 
             // Handle worktree creation
             if (sessionType === 'worktree') {
-                const worktreeResult = await createWorktree(machineId, absolutePath);
-
-                if (!worktreeResult.success) {
-                    if (worktreeResult.error === 'Not a Git repository') {
-                        Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
-                    } else {
-                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
+                if (selectedRepos.length > 0) {
+                    // Multi-repo workspace creation
+                    const repoInputs: WorkspaceRepoInput[] = selectedRepos.map(sr => ({
+                        repo: sr.repo,
+                        targetBranch: sr.targetBranch,
+                    }));
+                    const wsResult = await createWorkspace(machineId, repoInputs);
+                    if (!wsResult.success) {
+                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: wsResult.error || 'Unknown error' }));
+                        setIsSpawning(false);
+                        return;
                     }
-                    setIsSpawning(false);
-                    return;
-                }
+                    workspaceRepos = wsResult.repos;
+                    workspacePath = wsResult.workspacePath;
 
-                actualPath = worktreeResult.worktreePath;
-                worktreeBranchName = worktreeResult.branchName;
+                    // Build repoScripts from registered repo config
+                    const allRegisteredRepos = storage.getState().registeredRepos[machineId] || [];
+
+                    // CWD: single repo -> inside repo dir (+ defaultWorkingDir), multi repo -> workspace root
+                    if (wsResult.repos.length === 1) {
+                        const r = wsResult.repos[0];
+                        const registered = r.repoId ? allRegisteredRepos.find(rr => rr.id === r.repoId) : undefined;
+                        const subdir = registered?.defaultWorkingDir;
+                        actualPath = subdir ? `${r.path}/${subdir}` : r.path;
+                    } else {
+                        actualPath = wsResult.workspacePath;
+                    }
+                    repoScripts = wsResult.repos.map(r => {
+                        const registered = r.repoId ? allRegisteredRepos.find(rr => rr.id === r.repoId) : undefined;
+                        return {
+                            repoDisplayName: r.displayName || '',
+                            worktreePath: r.path,
+                            setupScript: registered?.setupScript,
+                            parallelSetup: registered?.parallelSetup,
+                            cleanupScript: registered?.cleanupScript,
+                            archiveScript: registered?.archiveScript,
+                            devServerScript: registered?.devServerScript,
+                        };
+                    });
+                } else {
+                    // Legacy single-repo worktree
+                    const worktreeResult = await createWorktree(machineId, absolutePath);
+
+                    if (!worktreeResult.success) {
+                        if (worktreeResult.error === 'Not a Git repository') {
+                            Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+                        } else {
+                            Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
+                        }
+                        setIsSpawning(false);
+                        return;
+                    }
+
+                    actualPath = worktreeResult.worktreePath;
+                    worktreeBranchName = worktreeResult.branchName;
+                }
             }
 
             const result = await machineSpawnNewSession({
@@ -256,6 +329,8 @@ export default function MachineDetailScreen() {
                     worktreeBasePath: absolutePath,
                     worktreeBranchName,
                 } : {}),
+                // Pass workspace metadata for multi-repo sessions
+                ...(workspaceRepos ? { workspaceRepos, workspacePath, repoScripts } : {}),
             });
             switch (result.type) {
                 case 'success':
@@ -287,6 +362,154 @@ export default function MachineDetailScreen() {
         if (!session.metadata) return 'unknown path';
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }, []);
+
+    /** Handle folder selected from FolderPickerSheet for "Add Repository" (registers + navigates to repo detail). */
+    const handleFolderSelectedForRepo = useCallback(async (selectedPath: string) => {
+        if (!machineId) return;
+        const gitCheck = await machineBash(machineId, 'git rev-parse --git-dir', selectedPath);
+        if (!gitCheck.success) {
+            Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+            return;
+        }
+        const displayName = selectedPath.split('/').filter(Boolean).pop() || 'repo';
+        const branchResult = await machineBash(machineId, 'git rev-parse --abbrev-ref HEAD', selectedPath);
+        const detectedBranch = branchResult.success ? branchResult.stdout.trim() : undefined;
+        const newRepo: RegisteredRepo = {
+            id: randomUUID(),
+            path: selectedPath,
+            displayName,
+            defaultTargetBranch: detectedBranch,
+        };
+        const currentRepos = storage.getState().registeredRepos[machineId] || [];
+        const updatedRepos = [...currentRepos, newRepo];
+        const version = storage.getState().registeredReposVersions[machineId] ?? -1;
+        const credentials = sync.getCredentials();
+        if (credentials) {
+            try {
+                const newVersion = await saveRegisteredRepos(credentials, machineId, updatedRepos, version);
+                storage.getState().setRegisteredRepos(machineId, updatedRepos, newVersion);
+            } catch {
+                storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
+            }
+        } else {
+            storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
+        }
+        router.push(`/machine/${machineId}/repo/${newRepo.id}` as any);
+    }, [machineId, router]);
+
+    const handleAddRepository = useCallback(() => {
+        folderSelectHandlerRef.current = handleFolderSelectedForRepo;
+        folderPickerRef.current?.present();
+    }, [handleFolderSelectedForRepo]);
+
+    /** Save defaultTargetBranch on a registered repo (fire-and-forget). */
+    const persistDefaultBranch = useCallback((mId: string, repoId: string, branch: string) => {
+        const latestRepos = storage.getState().registeredRepos[mId] || [];
+        const updatedRepos = latestRepos.map(r =>
+            r.id === repoId ? { ...r, defaultTargetBranch: branch } : r
+        );
+        const ver = storage.getState().registeredReposVersions[mId] ?? -1;
+        const creds = sync.getCredentials();
+        if (creds) {
+            saveRegisteredRepos(creds, mId, updatedRepos, ver).then(nv => {
+                storage.getState().setRegisteredRepos(mId, updatedRepos, nv);
+            }).catch(() => {
+                storage.getState().setRegisteredRepos(mId, updatedRepos, ver);
+            });
+        } else {
+            storage.getState().setRegisteredRepos(mId, updatedRepos, ver);
+        }
+    }, []);
+
+    /** Handle folder selected from FolderPickerSheet for repo picker (registers + selects + branch picker). */
+    const handleFolderSelectedForPicker = useCallback(async (selectedPath: string) => {
+        if (!machineId) return;
+        const gitCheck = await machineBash(machineId, 'git rev-parse --git-dir', selectedPath);
+        if (!gitCheck.success) {
+            Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
+            return;
+        }
+        const displayName = selectedPath.split('/').filter(Boolean).pop() || 'repo';
+
+        // Register the repo permanently (same as handleAddRepository but also select it)
+        let repoToSelect: RegisteredRepo;
+        const currentRepos = storage.getState().registeredRepos[machineId] || [];
+        const existing = currentRepos.find(r => r.path === selectedPath);
+        if (existing) {
+            repoToSelect = existing;
+        } else {
+            repoToSelect = { id: randomUUID(), path: selectedPath, displayName };
+            const updatedRepos = [...currentRepos, repoToSelect];
+            const version = storage.getState().registeredReposVersions[machineId] ?? -1;
+            const credentials = sync.getCredentials();
+            if (credentials) {
+                try {
+                    const newVersion = await saveRegisteredRepos(credentials, machineId, updatedRepos, version);
+                    storage.getState().setRegisteredRepos(machineId, updatedRepos, newVersion);
+                } catch {
+                    storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
+                }
+            } else {
+                storage.getState().setRegisteredRepos(machineId, updatedRepos, version);
+            }
+        }
+
+        // Fetch current branch, local branches, and remote branches in parallel
+        const [currentBranchResult, localResult, remoteResult] = await Promise.all([
+            machineBash(machineId, 'git rev-parse --abbrev-ref HEAD', selectedPath),
+            machineBash(machineId, "git branch --list --format='%(refname:short)'", selectedPath),
+            machineBash(machineId, "git branch -r --format='%(refname:short)'", selectedPath),
+        ]);
+        const currentBranch = currentBranchResult.success ? currentBranchResult.stdout.trim() : undefined;
+        const localBranches = localResult.success && localResult.stdout.trim()
+            ? localResult.stdout.trim().split('\n').filter(Boolean)
+            : [];
+        const remoteBranches = remoteResult.success && remoteResult.stdout.trim()
+            ? remoteResult.stdout.trim().split('\n').filter(b => b && b.includes('/') && !b.endsWith('/HEAD'))
+            : [];
+
+        if (localBranches.length > 0 || remoteBranches.length > 0) {
+            const selectedBranch = await new Promise<string | undefined>((resolve) => {
+                addDirBranchResolveRef.current = resolve;
+                const localSet = new Set(localBranches);
+                const items: ActionMenuItem[] = localBranches.map(branch => ({
+                    label: branch,
+                    selected: branch === currentBranch,
+                    onPress: () => {
+                        resolve(branch);
+                        setAddDirBranchMenu({ visible: false, items: [] });
+                        addDirBranchResolveRef.current = null;
+                    },
+                }));
+                for (const remote of remoteBranches) {
+                    const shortName = remote.includes('/') ? remote.substring(remote.indexOf('/') + 1) : remote;
+                    if (!localSet.has(shortName)) {
+                        items.push({
+                            label: remote,
+                            onPress: () => {
+                                resolve(remote);
+                                setAddDirBranchMenu({ visible: false, items: [] });
+                                addDirBranchResolveRef.current = null;
+                            },
+                            secondary: true,
+                        });
+                    }
+                }
+                setAddDirBranchMenu({ visible: true, items });
+            });
+            const finalBranch = selectedBranch ?? currentBranch;
+            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: finalBranch }]);
+            if (finalBranch) persistDefaultBranch(machineId, repoToSelect.id, finalBranch);
+        } else {
+            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: currentBranch }]);
+            if (currentBranch) persistDefaultBranch(machineId, repoToSelect.id, currentBranch);
+        }
+    }, [machineId]);
+
+    const handleAddDirectoryForPicker = useCallback(() => {
+        folderSelectHandlerRef.current = handleFolderSelectedForPicker;
+        folderPickerRef.current?.present();
+    }, [handleFolderSelectedForPicker]);
 
     if (!machine) {
         return (
@@ -408,6 +631,16 @@ export default function MachineDetailScreen() {
                             <View style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 4 }}>
                                 <SessionTypeSelector value={sessionType} onChange={setSessionType} />
                             </View>
+                            {sessionType === 'worktree' && machineId && (
+                                <View style={{ marginHorizontal: 16, marginTop: 8 }}>
+                                    <RepoPickerBar
+                                        machineId={machineId}
+                                        selectedRepos={selectedRepos}
+                                        onReposChange={setSelectedRepos}
+                                        onAddDirectory={handleAddDirectoryForPicker}
+                                    />
+                                </View>
+                            )}
                             <View style={styles.pathInputContainer}>
                                 <View style={[styles.pathInput, { paddingVertical: 8 }]}>
                                     <MultiTextInput
@@ -609,7 +842,54 @@ export default function MachineDetailScreen() {
                             subtitle={String(machine.metadataVersion)}
                         />
                 </ItemGroup>
+
+                {/* Repositories */}
+                <ItemGroup title={t('machine.repositories')}>
+                    {registeredRepos.map(repo => {
+                        const branch = repo.defaultTargetBranch;
+                        const suffix = branch ? ` · ${branch}` : '';
+                        const maxPathLen = 35 - suffix.length;
+                        let displayPath = repo.path;
+                        if (displayPath.length > maxPathLen && maxPathLen > 10) {
+                            const tail = displayPath.slice(-Math.floor(maxPathLen * 0.6));
+                            const head = displayPath.slice(0, maxPathLen - tail.length - 3);
+                            displayPath = head + '...' + tail;
+                        }
+                        return (
+                            <Item
+                                key={repo.id}
+                                title={repo.displayName}
+                                subtitle={displayPath + suffix}
+                                onPress={() => router.push(`/machine/${machineId}/repo/${repo.id}` as any)}
+                            />
+                        );
+                    })}
+                    <Item
+                        title={t('machine.addRepository')}
+                        onPress={handleAddRepository}
+                    />
+                </ItemGroup>
             </ItemList>
+
+            {/* Branch picker for Add Directory flow */}
+            <ActionMenuModal
+                visible={addDirBranchMenu.visible}
+                title={t('newSession.repos.targetBranch')}
+                items={addDirBranchMenu.items}
+                onClose={() => {
+                    setAddDirBranchMenu({ visible: false, items: [] });
+                    addDirBranchResolveRef.current?.(undefined);
+                    addDirBranchResolveRef.current = null;
+                }}
+            />
+
+            {/* Folder picker for Add Repository / Add Directory flows */}
+            <FolderPickerSheet
+                ref={folderPickerRef}
+                machineId={machineId!}
+                homeDir={machine?.metadata?.homeDir}
+                onSelect={(path) => folderSelectHandlerRef.current(path)}
+            />
         </>
     );
 }

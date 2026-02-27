@@ -50,6 +50,16 @@ export const MetadataSchema = z.object({
     worktreeBranchName: z.string().optional(), // Branch name created for the worktree
     worktreePrUrl: z.string().optional(), // GitHub PR URL for this worktree
     reviewOfSessionId: z.string().optional(), // Links review session to the session being reviewed
+    workspaceRepos: z.array(z.object({
+        repoId: z.string().optional(),
+        path: z.string(),
+        basePath: z.string(),
+        branchName: z.string(),
+        targetBranch: z.string().optional(),
+        prUrl: z.string().optional(),
+        displayName: z.string().optional(),
+    })).optional(),
+    workspacePath: z.string().optional(),
     externalContext: z.object({
         source: z.string(),
         sourceUrl: z.string().optional(),

@@ -11,6 +11,8 @@ import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/pars
 import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2, getTrackingInfoV2 } from './git-parsers/parseStatusV2';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { projectManager, createProjectKey } from './projectManager';
+import { getWorkspaceRepos, WorkspaceRepo } from '@/utils/workspaceRepos';
+import { shellEscape } from '@/utils/shellEscape';
 
 export class GitStatusSync {
     // Map project keys to sync instances
@@ -298,7 +300,25 @@ export class GitStatusSync {
                     return;
                 }
 
-                // First check if we're in a git repository
+                // Multi-repo workspace: aggregate git status across all repos
+                const workspaceRepos = getWorkspaceRepos(metadata);
+                if (workspaceRepos.length > 0) {
+                    const aggregated = await this.fetchMultiRepoGitStatus(targetSessionId, workspaceRepos);
+                    if (aggregated === 'retry') {
+                        this.scheduleRetry(projectKey);
+                        return;
+                    }
+                    storage.getState().applyGitStatus(targetSessionId, aggregated);
+                    this.clearRetryTimer(projectKey);
+                    this.resetRetryAttempts(projectKey);
+                    if (metadata.machineId) {
+                        const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
+                        projectManager.updateProjectGitStatus(targetProjectKey, aggregated);
+                    }
+                    return;
+                }
+
+                // Single-repo path: check if we're in a git repository
                 const gitCheckResult = await sessionBash(targetSessionId, {
                     command: 'git rev-parse --is-inside-work-tree',
                     cwd: metadata.path,
@@ -405,6 +425,100 @@ export class GitStatusSync {
             // Transient unexpected error: keep previous state and retry.
             this.scheduleRetry(projectKey);
         }
+    }
+
+    /**
+     * Fetch and aggregate git status across multiple workspace repos.
+     * Returns aggregated GitStatus, or 'retry' on transient failure.
+     */
+    private async fetchMultiRepoGitStatus(
+        sessionId: string,
+        repos: WorkspaceRepo[],
+    ): Promise<GitStatus | 'retry'> {
+        const statuses: GitStatus[] = [];
+
+        for (const repo of repos) {
+            const repoPath = shellEscape(repo.path);
+            const gitPrefix = `git -C ${repoPath}`;
+
+            const gitCheckResult = await sessionBash(sessionId, {
+                command: `${gitPrefix} rev-parse --is-inside-work-tree`,
+                cwd: '/',
+                timeout: 5000
+            });
+            if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
+                if (this.isNotGitRepositoryResult(gitCheckResult)) continue;
+                return 'retry';
+            }
+
+            const [statusResult, diffResult, stagedDiffResult] = await Promise.all([
+                sessionBash(sessionId, {
+                    command: `${gitPrefix} status --porcelain=v2 --branch --show-stash --untracked-files=all`,
+                    cwd: '/',
+                    timeout: 10000,
+                }),
+                sessionBash(sessionId, {
+                    command: `${gitPrefix} diff --numstat`,
+                    cwd: '/',
+                    timeout: 10000,
+                }),
+                sessionBash(sessionId, {
+                    command: `${gitPrefix} diff --cached --numstat`,
+                    cwd: '/',
+                    timeout: 10000,
+                }),
+            ]);
+
+            if (!statusResult.success || statusResult.exitCode !== 0) {
+                if (this.isNotGitRepositoryResult(statusResult)) continue;
+                return 'retry';
+            }
+            if (!diffResult.success || !stagedDiffResult.success) {
+                if (this.isNotGitRepositoryResult(diffResult) || this.isNotGitRepositoryResult(stagedDiffResult)) continue;
+                return 'retry';
+            }
+
+            statuses.push(this.parseGitStatusV2(
+                statusResult.stdout,
+                diffResult.stdout,
+                stagedDiffResult.stdout,
+            ));
+        }
+
+        if (statuses.length === 0) {
+            return {
+                branch: null, isDirty: false,
+                modifiedCount: 0, untrackedCount: 0, stagedCount: 0,
+                stagedLinesAdded: 0, stagedLinesRemoved: 0,
+                unstagedLinesAdded: 0, unstagedLinesRemoved: 0,
+                linesAdded: 0, linesRemoved: 0, linesChanged: 0,
+                lastUpdatedAt: Date.now(),
+                upstreamBranch: null,
+            };
+        }
+
+        // Use first repo's branch info, aggregate counts
+        const first = statuses[0];
+        const aggregated: GitStatus = {
+            branch: first.branch,
+            upstreamBranch: first.upstreamBranch,
+            aheadCount: first.aheadCount,
+            behindCount: first.behindCount,
+            stashCount: statuses.reduce((s, r) => s + (r.stashCount || 0), 0),
+            isDirty: statuses.some(r => r.isDirty),
+            modifiedCount: statuses.reduce((s, r) => s + r.modifiedCount, 0),
+            untrackedCount: statuses.reduce((s, r) => s + r.untrackedCount, 0),
+            stagedCount: statuses.reduce((s, r) => s + r.stagedCount, 0),
+            stagedLinesAdded: statuses.reduce((s, r) => s + r.stagedLinesAdded, 0),
+            stagedLinesRemoved: statuses.reduce((s, r) => s + r.stagedLinesRemoved, 0),
+            unstagedLinesAdded: statuses.reduce((s, r) => s + r.unstagedLinesAdded, 0),
+            unstagedLinesRemoved: statuses.reduce((s, r) => s + r.unstagedLinesRemoved, 0),
+            linesAdded: statuses.reduce((s, r) => s + r.linesAdded, 0),
+            linesRemoved: statuses.reduce((s, r) => s + r.linesRemoved, 0),
+            linesChanged: statuses.reduce((s, r) => s + r.linesChanged, 0),
+            lastUpdatedAt: Date.now(),
+        };
+        return aggregated;
     }
 
     /**

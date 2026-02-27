@@ -20,6 +20,8 @@ import { FileIcon } from '@/components/FileIcon';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import { ActionMenuItem } from '@/components/ActionMenu';
 import { shellEscape } from '@/utils/shellEscape';
+import { getWorkspaceRepos } from '@/utils/workspaceRepos';
+import { RepoSelector } from '@/components/RepoSelector';
 
 export default function FilesScreen() {
     const route = useRoute();
@@ -41,6 +43,12 @@ export default function FilesScreen() {
     const session = storage.getState().sessions[sessionId];
     const commandCwd = session?.metadata?.path || '';
 
+    // Multi-repo workspace support
+    const workspaceRepos = getWorkspaceRepos(session?.metadata);
+    const [selectedRepoIndex, setSelectedRepoIndex] = React.useState(0);
+    const selectedRepo = workspaceRepos[selectedRepoIndex];
+    const repoBaseCwd = selectedRepo?.path || commandCwd;
+
     const [isOperating, setIsOperating] = React.useState(false);
     const [menuVisible, setMenuVisible] = React.useState(false);
     const [menuItems, setMenuItems] = React.useState<ActionMenuItem[]>([]);
@@ -55,7 +63,7 @@ export default function FilesScreen() {
             if (!silent && !gitStatusFiles) {
                 setIsLoading(true);
             }
-            const result = await getGitStatusFiles(sessionId);
+            const result = await getGitStatusFiles(sessionId, selectedRepo?.path);
             setGitStatusFiles(result);
             // For repos with changes, initial load is done after git status
             if (result && (result.totalStaged > 0 || result.totalUnstaged > 0)) {
@@ -72,7 +80,7 @@ export default function FilesScreen() {
             initialLoadDone.current = true;
             setIsLoading(false);
         }
-    }, [sessionId, gitStatusFiles]);
+    }, [sessionId, gitStatusFiles, selectedRepo?.path]);
 
     // Stage a file
     const handleStageFile = React.useCallback(async (file: GitFileStatus) => {
@@ -81,7 +89,7 @@ export default function FilesScreen() {
             const escapedPath = shellEscape(file.fullPath);
             await sessionBash(sessionId, {
                 command: `git add -- ${escapedPath}`,
-                cwd: commandCwd,
+                cwd: repoBaseCwd,
                 timeout: 10000,
             });
             await loadGitStatusFiles(true);
@@ -90,7 +98,7 @@ export default function FilesScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, commandCwd, loadGitStatusFiles]);
+    }, [sessionId, repoBaseCwd, loadGitStatusFiles]);
 
     // Unstage a file
     const handleUnstageFile = React.useCallback(async (file: GitFileStatus) => {
@@ -99,7 +107,7 @@ export default function FilesScreen() {
             const escapedPath = shellEscape(file.fullPath);
             await sessionBash(sessionId, {
                 command: `git reset HEAD -- ${escapedPath}`,
-                cwd: commandCwd,
+                cwd: repoBaseCwd,
                 timeout: 10000,
             });
             await loadGitStatusFiles(true);
@@ -108,7 +116,7 @@ export default function FilesScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, commandCwd, loadGitStatusFiles]);
+    }, [sessionId, repoBaseCwd, loadGitStatusFiles]);
 
     // Stage all files
     const handleStageAll = React.useCallback(async () => {
@@ -116,7 +124,7 @@ export default function FilesScreen() {
         try {
             await sessionBash(sessionId, {
                 command: 'git add -A',
-                cwd: commandCwd,
+                cwd: repoBaseCwd,
                 timeout: 10000,
             });
             await loadGitStatusFiles(true);
@@ -125,7 +133,7 @@ export default function FilesScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, commandCwd, loadGitStatusFiles]);
+    }, [sessionId, repoBaseCwd, loadGitStatusFiles]);
 
     // Unstage all files
     const handleUnstageAll = React.useCallback(async () => {
@@ -133,7 +141,7 @@ export default function FilesScreen() {
         try {
             await sessionBash(sessionId, {
                 command: 'git reset HEAD',
-                cwd: commandCwd,
+                cwd: repoBaseCwd,
                 timeout: 10000,
             });
             await loadGitStatusFiles(true);
@@ -142,7 +150,7 @@ export default function FilesScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, commandCwd, loadGitStatusFiles]);
+    }, [sessionId, repoBaseCwd, loadGitStatusFiles]);
 
     // Discard changes for a file
     const handleDiscardFile = React.useCallback(async (file: GitFileStatus) => {
@@ -159,19 +167,19 @@ export default function FilesScreen() {
             if (file.status === 'untracked') {
                 await sessionBash(sessionId, {
                     command: `git clean -f -- ${escapedPath}`,
-                    cwd: commandCwd,
+                    cwd: repoBaseCwd,
                     timeout: 10000,
                 });
             } else if (file.isStaged) {
                 await sessionBash(sessionId, {
                     command: `git reset HEAD -- ${escapedPath} && git checkout -- ${escapedPath}`,
-                    cwd: commandCwd,
+                    cwd: repoBaseCwd,
                     timeout: 10000,
                 });
             } else {
                 await sessionBash(sessionId, {
                     command: `git checkout -- ${escapedPath}`,
-                    cwd: commandCwd,
+                    cwd: repoBaseCwd,
                     timeout: 10000,
                 });
             }
@@ -181,7 +189,18 @@ export default function FilesScreen() {
         } finally {
             setIsOperating(false);
         }
-    }, [sessionId, commandCwd, loadGitStatusFiles]);
+    }, [sessionId, repoBaseCwd, loadGitStatusFiles]);
+
+    // Switch between repos in multi-repo workspace
+    const handleRepoSelect = React.useCallback((index: number) => {
+        if (index === selectedRepoIndex) return;
+        setSelectedRepoIndex(index);
+        setGitStatusFiles(null);
+        setSearchResults([]);
+        setSearchQuery('');
+        initialLoadDone.current = false;
+        setIsLoading(true);
+    }, [selectedRepoIndex]);
 
     // Long press menu
     const handleLongPress = React.useCallback((file: GitFileStatus, staged: boolean) => {
@@ -206,12 +225,12 @@ export default function FilesScreen() {
         setMenuVisible(true);
     }, [handleStageFile, handleUnstageFile, handleDiscardFile]);
 
-    // Load on mount
+    // Load on mount and when repo selection changes
     React.useEffect(() => {
         initialLoadDone.current = false;
         loadGitStatusFiles(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId]);
+    }, [sessionId, selectedRepoIndex]);
 
     // Refresh silently when screen is focused (after returning from file view)
     useFocusEffect(
@@ -261,10 +280,15 @@ export default function FilesScreen() {
     const handleFilePress = React.useCallback((file: GitFileStatus | FileItem, staged?: boolean) => {
         // Navigate to file viewer with the file path (base64 encoded for special characters)
         // encodeURIComponent ensures base64 chars (+, /, =) are URL-safe on web
-        const encodedPath = btoa(new TextEncoder().encode(file.fullPath).reduce((s, b) => s + String.fromCharCode(b), ''));
+        // For multi-repo: git status returns paths relative to the repo, but file viewer needs
+        // absolute paths for sessionReadFile. Prepend repo path to make it absolute.
+        const absolutePath = selectedRepo && !file.fullPath.startsWith('/')
+            ? `${repoBaseCwd}/${file.fullPath}`
+            : file.fullPath;
+        const encodedPath = btoa(new TextEncoder().encode(absolutePath).reduce((s, b) => s + String.fromCharCode(b), ''));
         const stagedParam = staged ? '&staged=1' : '';
         router.push(`/session/${sessionId}/file?path=${encodeURIComponent(encodedPath)}${stagedParam}`);
-    }, [router, sessionId]);
+    }, [router, sessionId, selectedRepo, repoBaseCwd]);
 
     const renderFileIcon = (file: GitFileStatus) => {
         return <FileIcon fileName={file.fileName} size={32} />;
@@ -364,6 +388,20 @@ export default function FilesScreen() {
                     ),
                 }}
             />
+
+            {/* Repo Selector for multi-repo workspaces */}
+            {workspaceRepos.length > 1 && (
+                <View style={{
+                    borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                    borderBottomColor: theme.colors.divider,
+                }}>
+                    <RepoSelector
+                        repos={workspaceRepos}
+                        selectedIndex={selectedRepoIndex}
+                        onSelect={handleRepoSelect}
+                    />
+                </View>
+            )}
 
             {/* Search Input - Always Visible */}
             <View style={{

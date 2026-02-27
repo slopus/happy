@@ -7,6 +7,8 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
+import { getWorkspaceRepos } from '@/utils/workspaceRepos';
+import { RepoSelector } from '@/components/RepoSelector';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
@@ -69,6 +71,12 @@ export default function CommitsScreen() {
     const session = storage.getState().sessions[sessionId];
     const sessionPath = session?.metadata?.path || '';
 
+    // Multi-repo workspace support
+    const workspaceRepos = getWorkspaceRepos(session?.metadata);
+    const [selectedRepoIndex, setSelectedRepoIndex] = React.useState(0);
+    const selectedRepo = workspaceRepos[selectedRepoIndex];
+    const repoBaseCwd = selectedRepo?.path || sessionPath;
+
     const [commits, setCommits] = React.useState<CommitInfo[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
     const [isLoadingMore, setIsLoadingMore] = React.useState(false);
@@ -88,29 +96,29 @@ export default function CommitsScreen() {
     // Worktree branch→path mapping
     const [worktreeMap, setWorktreeMap] = React.useState<Record<string, string>>({});
 
-    // Load branches and worktree list on mount
+    // Load branches and worktree list on mount (re-runs when selected repo changes)
     React.useEffect(() => {
         (async () => {
             try {
                 const [localResult, remoteResult, currentResult, worktreeResult] = await Promise.all([
                     sessionBash(sessionId, {
                         command: "git branch --list --format='%(refname:short)'",
-                        cwd: sessionPath,
+                        cwd: repoBaseCwd,
                         timeout: 10000,
                     }),
                     sessionBash(sessionId, {
                         command: "git branch -r --format='%(refname:short)'",
-                        cwd: sessionPath,
+                        cwd: repoBaseCwd,
                         timeout: 10000,
                     }),
                     sessionBash(sessionId, {
                         command: 'git branch --show-current',
-                        cwd: sessionPath,
+                        cwd: repoBaseCwd,
                         timeout: 5000,
                     }),
                     sessionBash(sessionId, {
                         command: 'git worktree list --porcelain',
-                        cwd: sessionPath,
+                        cwd: repoBaseCwd,
                         timeout: 10000,
                     }),
                 ]);
@@ -147,15 +155,15 @@ export default function CommitsScreen() {
                 }
             } catch { /* ignore */ }
         })();
-    }, [sessionId, sessionPath]);
+    }, [sessionId, repoBaseCwd]);
 
     // Resolve the working directory for the active branch
-    // selectedBranch='' means current branch (use sessionPath)
+    // selectedBranch='' means current branch (use repoBaseCwd)
     // Otherwise check if this branch has a worktree
     const activeCwd = React.useMemo(() => {
-        if (!selectedBranch) return sessionPath; // current branch = session's own path
+        if (!selectedBranch) return repoBaseCwd; // current branch = repo's own path
         return worktreeMap[selectedBranch] || null; // null = no worktree for this branch
-    }, [selectedBranch, worktreeMap, sessionPath]);
+    }, [selectedBranch, worktreeMap, repoBaseCwd]);
 
     // Load diff stats when active branch/worktree changes
     React.useEffect(() => {
@@ -184,12 +192,25 @@ export default function CommitsScreen() {
         return () => { cancelled = true; };
     }, [sessionId, activeCwd]);
 
+    const handleRepoSelect = React.useCallback((index: number) => {
+        if (index === selectedRepoIndex) return;
+        setSelectedRepoIndex(index);
+        // Reset branch state when switching repos since branches differ per repo
+        setSelectedBranch('');
+        setCurrentBranch('');
+        setLocalBranches([]);
+        setRemoteBranches([]);
+        setWorktreeMap({});
+        setHasMore(true);
+    }, [selectedRepoIndex]);
+
     const handleBranchSelect = React.useCallback((branch: string) => {
         setSelectedBranch(branch === currentBranch ? '' : branch);
         setHasMore(true);
     }, [currentBranch]);
 
     const loadCommits = React.useCallback(async (offset: number, append: boolean) => {
+        if (!activeCwd) return;
         if (!append) setIsLoading(true);
         else setIsLoadingMore(true);
         setError(null);
@@ -199,7 +220,7 @@ export default function CommitsScreen() {
             const fileArg = fileFilter ? ` -- "${fileFilter}"` : '';
             const response = await sessionBash(sessionId, {
                 command: `git log ${branchArg}--format="%H%n%h%n%an%n%ae%n%at%n%s%n---END---" -${PAGE_SIZE} --skip=${offset}${fileArg}`,
-                cwd: sessionPath,
+                cwd: activeCwd,
                 timeout: 10000,
             });
 
@@ -222,7 +243,7 @@ export default function CommitsScreen() {
             setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [sessionId, sessionPath, fileFilter, selectedBranch]);
+    }, [sessionId, activeCwd, fileFilter, selectedBranch]);
 
     React.useEffect(() => {
         loadCommits(0, false);
@@ -364,30 +385,46 @@ export default function CommitsScreen() {
                 keyExtractor={item => item.hash}
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.3}
-                ListHeaderComponent={!fileFilter && (localBranches.length > 1 || remoteBranches.length > 0) ? (
-                    <Pressable
-                        onPress={() => setBranchMenuVisible(true)}
-                        style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            paddingHorizontal: 16,
-                            paddingVertical: 10,
-                            borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                            borderBottomColor: theme.colors.divider,
-                            backgroundColor: theme.colors.surfaceHigh,
-                        }}
-                    >
-                        <Octicons name="git-branch" size={16} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
-                        <Text style={{
-                            fontSize: 15,
-                            color: theme.colors.text,
-                            flex: 1,
-                            ...Typography.default('semiBold'),
-                        }}>
-                            {selectedBranch || currentBranch || 'HEAD'}
-                        </Text>
-                        <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
-                    </Pressable>
+                ListHeaderComponent={!fileFilter ? (
+                    <View>
+                        {workspaceRepos.length > 1 && (
+                            <View style={{
+                                borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                                borderBottomColor: theme.colors.divider,
+                            }}>
+                                <RepoSelector
+                                    repos={workspaceRepos}
+                                    selectedIndex={selectedRepoIndex}
+                                    onSelect={handleRepoSelect}
+                                />
+                            </View>
+                        )}
+                        {(localBranches.length > 1 || remoteBranches.length > 0) ? (
+                            <Pressable
+                                onPress={() => setBranchMenuVisible(true)}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 10,
+                                    borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                                    borderBottomColor: theme.colors.divider,
+                                    backgroundColor: theme.colors.surfaceHigh,
+                                }}
+                            >
+                                <Octicons name="git-branch" size={16} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
+                                <Text style={{
+                                    fontSize: 15,
+                                    color: theme.colors.text,
+                                    flex: 1,
+                                    ...Typography.default('semiBold'),
+                                }}>
+                                    {selectedBranch || currentBranch || 'HEAD'}
+                                </Text>
+                                <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        ) : null}
+                    </View>
                 ) : null}
                 ListFooterComponent={
                     isLoadingMore ? (

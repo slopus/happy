@@ -65,6 +65,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     centerContent: {
         flex: 1,
+        flexShrink: 0,
         justifyContent: 'center',
     },
     title: {
@@ -93,13 +94,16 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     rightSection: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 1,
         marginLeft: 8,
+        maxWidth: '60%',
     },
     detail: {
         ...Typography.default('regular'),
         color: theme.colors.textSecondary,
         fontSize: 17,
         letterSpacing: -0.41,
+        flexShrink: 1,
     },
     divider: {
         height: Platform.select({ ios: 0.33, default: 0 }),

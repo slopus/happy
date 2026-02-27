@@ -18,6 +18,7 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { readFileSync } from 'fs';
+import { execSync, exec } from 'child_process';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
@@ -354,6 +355,13 @@ export async function startDaemon(): Promise<void> {
         if (options.worktreeBranchName) {
           extraEnv.HAPPY_WORKTREE_BRANCH_NAME = options.worktreeBranchName;
         }
+        // Multi-repo workspace metadata
+        if (options.workspaceRepos && options.workspaceRepos.length > 0) {
+          extraEnv.HAPPY_WORKSPACE_REPOS = JSON.stringify(options.workspaceRepos);
+        }
+        if (options.workspacePath) {
+          extraEnv.HAPPY_WORKSPACE_PATH = options.workspacePath;
+        }
         // Extra MCP servers (e.g., DooTask MCP) - serialized as JSON env var
         if (options.mcpServers && options.mcpServers.length > 0) {
           extraEnv.HAPPY_EXTRA_MCP_SERVERS = JSON.stringify(options.mcpServers);
@@ -391,6 +399,40 @@ export async function startDaemon(): Promise<void> {
             type: 'error',
             errorMessage
           };
+        }
+
+        // Execute setup scripts before spawning AI agent
+        if (options.repoScripts && options.repoScripts.length > 0) {
+          const sequentialScripts = options.repoScripts.filter(s => s.setupScript && !s.parallelSetup);
+          const parallelScripts = options.repoScripts.filter(s => s.setupScript && s.parallelSetup);
+
+          // Run sequential setup scripts first
+          for (const script of sequentialScripts) {
+            logger.info(`[DAEMON] Running setup script for ${script.repoDisplayName}...`);
+            try {
+              execSync(script.setupScript!, { cwd: script.worktreePath, stdio: 'pipe', timeout: 300000 });
+              logger.info(`[DAEMON] Setup script completed for ${script.repoDisplayName}`);
+            } catch (err: any) {
+              logger.warn(`[DAEMON] Setup script failed for ${script.repoDisplayName}: ${err.message}`);
+            }
+          }
+
+          // Start parallel setup scripts (fire and forget)
+          for (const script of parallelScripts) {
+            logger.info(`[DAEMON] Running parallel setup for ${script.repoDisplayName}...`);
+            const child = exec(script.setupScript!, { cwd: script.worktreePath });
+            child.on('exit', (code: number | null) => {
+              if (code === 0) {
+                logger.info(`[DAEMON] Parallel setup completed for ${script.repoDisplayName}`);
+              } else {
+                logger.warn(`[DAEMON] Parallel setup failed for ${script.repoDisplayName} (exit code ${code})`);
+              }
+            });
+          }
+
+          // TODO: devServerScript execution — requires long-running process management
+          // (start after setup, track child process, kill on session exit/archive).
+          // Currently the field is defined in types and UI but not executed.
         }
 
         // Check if tmux is available and should be used
@@ -465,7 +507,8 @@ export async function startDaemon(): Promise<void> {
               directoryCreated,
               message: directoryCreated
                 ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
-                : `Spawned new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
+                : `Spawned new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`,
+              repoScripts: options.repoScripts
             };
 
             // Add to tracking map so webhook can find it later
@@ -573,7 +616,8 @@ export async function startDaemon(): Promise<void> {
             pid: happyProcess.pid,
             childProcess: happyProcess,
             directoryCreated,
-            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
+            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
+            repoScripts: options.repoScripts
           };
 
           pidToTrackedSession.set(happyProcess.pid, trackedSession);
@@ -671,9 +715,38 @@ export async function startDaemon(): Promise<void> {
       return false;
     };
 
+    // Run cleanup scripts for a tracked session if its worktrees have changes
+    const runCleanupScripts = (session: TrackedSession) => {
+      if (!session.repoScripts || session.repoScripts.length === 0) return;
+
+      for (const script of session.repoScripts) {
+        if (!script.cleanupScript) continue;
+        try {
+          const status = execSync('git status --porcelain', {
+            cwd: script.worktreePath, encoding: 'utf-8', timeout: 10000
+          });
+          if (status.trim()) {
+            logger.info(`[DAEMON] Running cleanup script for ${script.repoDisplayName}...`);
+            execSync(script.cleanupScript, {
+              cwd: script.worktreePath, stdio: 'pipe', timeout: 300000
+            });
+            logger.info(`[DAEMON] Cleanup script completed for ${script.repoDisplayName}`);
+          } else {
+            logger.debug(`[DAEMON] No changes in ${script.repoDisplayName}, skipping cleanup`);
+          }
+        } catch (err: any) {
+          logger.warn(`[DAEMON] Cleanup script failed for ${script.repoDisplayName}: ${err.message}`);
+        }
+      }
+    };
+
     // Handle child process exit
     const onChildExited = (pid: number) => {
       logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
+      const session = pidToTrackedSession.get(pid);
+      if (session) {
+        runCleanupScripts(session);
+      }
       pidToTrackedSession.delete(pid);
     };
 
@@ -746,15 +819,15 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
       }
 
-      // Prune stale sessions
+      // Prune stale sessions (and run cleanup scripts for any that had workspace repos)
       for (const [pid, _] of pidToTrackedSession.entries()) {
         try {
           // Check if process is still alive (signal 0 doesn't kill, just checks)
           process.kill(pid, 0);
         } catch (error) {
-          // Process is dead, remove from tracking
+          // Process is dead, run cleanup and remove from tracking
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
-          pidToTrackedSession.delete(pid);
+          onChildExited(pid);
         }
       }
 
