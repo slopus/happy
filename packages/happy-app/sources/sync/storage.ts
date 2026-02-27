@@ -21,6 +21,7 @@ import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import type { OpenClawMachine, OpenClawConnectionStatus } from "../openclaw/types";
+import type { RegisteredRepo } from "@/utils/workspaceRepos";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -85,6 +86,9 @@ interface StorageState {
     machines: Record<string, Machine>;
     openClawMachines: Record<string, OpenClawMachine>;  // OpenClaw machine configurations
     openClawDirectStatus: Record<string, OpenClawConnectionStatus>;  // Last known status for direct OpenClaw machines
+    // Registered repositories per machine (loaded from UserKVStore)
+    registeredRepos: Record<string, RegisteredRepo[]>;
+    registeredReposVersions: Record<string, number>;  // KV versions for optimistic concurrency
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
     friends: Record<string, UserProfile>;  // All relationships (friends, pending, requested, etc.)
     users: Record<string, UserProfile | null>;  // Global user cache, null = 404/failed fetch
@@ -181,6 +185,8 @@ interface StorageState {
     fetchDootaskUsers: (userIds: number[]) => Promise<Record<number, string>>;
     updateDootaskTask: (taskId: number, updates: Partial<DooTaskItem>) => void;
     clearDootaskData: () => void;
+    // Registered repos methods
+    setRegisteredRepos: (machineId: string, repos: RegisteredRepo[], version: number) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -335,6 +341,8 @@ export const storage = create<StorageState>()((set, get) => {
         machines: {},
         openClawMachines: {},  // Initialize OpenClaw machines
         openClawDirectStatus: {},  // Initialize direct OpenClaw machine status
+        registeredRepos: {},
+        registeredReposVersions: {},
         artifacts: {},  // Initialize artifacts
         friends: {},  // Initialize relationships cache
         users: {},  // Initialize global user cache
@@ -1547,6 +1555,12 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskUserCacheFetchedAt: null,
             }));
         },
+
+        // Registered repos
+        setRegisteredRepos: (machineId: string, repos: RegisteredRepo[], version: number) => set((state) => ({
+            registeredRepos: { ...state.registeredRepos, [machineId]: repos },
+            registeredReposVersions: { ...state.registeredReposVersions, [machineId]: version },
+        })),
     }
 });
 
