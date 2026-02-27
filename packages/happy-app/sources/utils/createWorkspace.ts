@@ -112,7 +112,62 @@ export async function createWorkspace(
         });
     }
 
+    // Generate workspace-level CLAUDE.md and AGENTS.md with @import references
+    await generateWorkspaceConfigFiles(machineId, absoluteWorkspacePath, createdRepos);
+
     return { success: true, workspaceName, workspacePath: absoluteWorkspacePath, repos: createdRepos };
+}
+
+/**
+ * Generate workspace-level CLAUDE.md and AGENTS.md files that @import
+ * from each repo's corresponding file. Follows vibe-kanban's pattern:
+ * only creates if the file doesn't already exist, and only if at least
+ * one repo has the source file. Best-effort — failures don't block workspace creation.
+ */
+async function generateWorkspaceConfigFiles(
+    machineId: string,
+    workspacePath: string,
+    repos: WorkspaceRepo[],
+): Promise<void> {
+    const configFiles = ['CLAUDE.md', 'AGENTS.md'];
+
+    for (const configFile of configFiles) {
+        try {
+            // Skip if workspace already has this file
+            const existsResult = await machineBash(
+                machineId,
+                `test -f ${shellEscape(workspacePath + '/' + configFile)}`,
+                '/',
+            );
+            if (existsResult.success) continue;
+
+            // Check which repos have this file
+            const reposWithFile: string[] = [];
+            for (const repo of repos) {
+                if (!repo.displayName) continue;
+                const checkResult = await machineBash(
+                    machineId,
+                    `test -f ${shellEscape(repo.path + '/' + configFile)}`,
+                    '/',
+                );
+                if (checkResult.success) {
+                    reposWithFile.push(repo.displayName);
+                }
+            }
+
+            // Only create if at least one repo has the file
+            if (reposWithFile.length === 0) continue;
+
+            const content = reposWithFile.map(name => `@${name}/${configFile}`).join('\n') + '\n';
+            await machineBash(
+                machineId,
+                `printf '%s' ${shellEscape(content)} > ${shellEscape(workspacePath + '/' + configFile)}`,
+                '/',
+            );
+        } catch {
+            // Best-effort: don't fail workspace creation
+        }
+    }
 }
 
 /** Roll back previously created worktrees and remove workspace directory */
