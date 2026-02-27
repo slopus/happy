@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, Animated, Pressable } from 'react-native';
+import { View, Text, Animated, Pressable, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -814,11 +814,15 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Worktree Info & Actions */}
                 {isMultiRepo && (
-                    <RepoSelector
-                        repos={workspaceRepos}
-                        selectedIndex={selectedRepoIndex}
-                        onSelect={setSelectedRepoIndex}
-                    />
+                    <View style={{ alignItems: 'center' }}>
+                        <View style={{ width: '100%', maxWidth: layout.maxWidth, paddingHorizontal: Platform.select({ ios: 0, default: 4 }), marginHorizontal: Platform.select({ ios: 16, default: 12 }), marginTop: 12 }}>
+                            <RepoSelector
+                                repos={workspaceRepos}
+                                selectedIndex={selectedRepoIndex}
+                                onSelect={setSelectedRepoIndex}
+                            />
+                        </View>
+                    </View>
                 )}
                 {isWorktree && worktreeBranch && (
                     <ItemGroup title={t('sessionInfo.worktree.title')}>
