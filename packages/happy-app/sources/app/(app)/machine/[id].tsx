@@ -63,6 +63,14 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
     },
+    worktreeStartButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        alignSelf: 'flex-end',
+    },
     inlineSendActive: {
         backgroundColor: theme.colors.button.primary.background,
     },
@@ -533,7 +541,8 @@ export default function MachineDetailScreen() {
     const metadata = machine.metadata;
     const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
 
-    const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
+    const hasWorktreeRepos = sessionType === 'worktree' && selectedRepos.length > 0;
+    const spawnButtonDisabled = (!hasWorktreeRepos && !customPath.trim()) || isSpawning || !isMachineOnline(machine!);
 
     return (
         <>
@@ -641,6 +650,32 @@ export default function MachineDetailScreen() {
                                     />
                                 </View>
                             )}
+                            {hasWorktreeRepos ? (
+                                <View style={styles.pathInputContainer}>
+                                    <Pressable
+                                        onPress={() => handleStartSession()}
+                                        disabled={spawnButtonDisabled}
+                                        style={[
+                                            styles.worktreeStartButton,
+                                            spawnButtonDisabled ? styles.inlineSendInactive : styles.inlineSendActive
+                                        ]}
+                                    >
+                                        {isSpawning ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color={theme.colors.textSecondary}
+                                            />
+                                        ) : (
+                                            <Ionicons
+                                                name="play"
+                                                size={16}
+                                                color={spawnButtonDisabled ? theme.colors.textSecondary : theme.colors.button.primary.tint}
+                                                style={{ marginLeft: 1 }}
+                                            />
+                                        )}
+                                    </Pressable>
+                                </View>
+                            ) : (
                             <View style={styles.pathInputContainer}>
                                 <View style={[styles.pathInput, { paddingVertical: 8 }]}>
                                     <MultiTextInput
@@ -677,7 +712,8 @@ export default function MachineDetailScreen() {
                                     </Pressable>
                                 </View>
                             </View>
-                            {pathsToShow.map((path, index) => {
+                            )}
+                            {!hasWorktreeRepos && pathsToShow.map((path, index) => {
                                 const display = formatPathRelativeToHome(path, machine.metadata?.homeDir);
                                 const isSelected = customPath.trim() === display;
                                 const isLast = index === pathsToShow.length - 1;
@@ -699,7 +735,7 @@ export default function MachineDetailScreen() {
                                     />
                                 );
                             })}
-                            {recentPaths.length > 5 && (
+                            {!hasWorktreeRepos && recentPaths.length > 5 && (
                                 <Item
                                     title={showAllPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: recentPaths.length })}
                                     onPress={() => setShowAllPaths(!showAllPaths)}
