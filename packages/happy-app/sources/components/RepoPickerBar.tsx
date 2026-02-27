@@ -301,8 +301,9 @@ const stylesheet = StyleSheet.create((theme, _rt) => ({
     chip: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         paddingHorizontal: 12,
-        paddingVertical: 6,
+        height: 32,
         borderRadius: theme.borderRadius.lg,
         backgroundColor: theme.colors.surfaceHigh,
         borderWidth: 1,
@@ -334,8 +335,9 @@ const stylesheet = StyleSheet.create((theme, _rt) => ({
     addChip: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         paddingHorizontal: 12,
-        paddingVertical: 6,
+        height: 32,
         borderRadius: theme.borderRadius.lg,
         backgroundColor: theme.colors.surfaceHigh,
         gap: 4,
