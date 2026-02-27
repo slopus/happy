@@ -636,7 +636,7 @@ export default function MachineDetailScreen() {
                                 <SessionTypeSelector value={sessionType} onChange={setSessionType} />
                             </View>
                             {sessionType === 'worktree' && machineId && (
-                                <View style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 8 }}>
+                                <View style={{ marginHorizontal: 16, marginTop: 8 }}>
                                     <RepoPickerBar
                                         machineId={machineId}
                                         selectedRepos={selectedRepos}
