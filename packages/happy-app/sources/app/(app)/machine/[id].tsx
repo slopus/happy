@@ -632,11 +632,11 @@ export default function MachineDetailScreen() {
                         )}
                         <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
                         <View style={{ opacity: isMachineOnline(machine) ? 1 : 0.5 }}>
-                            <View style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 4 }}>
+                            <View style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 8 }}>
                                 <SessionTypeSelector value={sessionType} onChange={setSessionType} />
                             </View>
                             {sessionType === 'worktree' && machineId && (
-                                <View style={{ marginHorizontal: 16, marginBottom: 4 }}>
+                                <View style={{ marginHorizontal: 16, marginBottom: 8 }}>
                                     <RepoPickerBar
                                         machineId={machineId}
                                         selectedRepos={selectedRepos}

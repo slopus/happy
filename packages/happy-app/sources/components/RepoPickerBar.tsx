@@ -305,10 +305,11 @@ const stylesheet = StyleSheet.create((theme, _rt) => ({
         paddingVertical: 6,
         borderRadius: theme.borderRadius.lg,
         backgroundColor: theme.colors.surfaceHigh,
+        borderWidth: 1,
+        borderColor: theme.colors.surfaceHigh,
     },
     chipSelected: {
         backgroundColor: theme.colors.surface,
-        borderWidth: 1,
         borderColor: theme.colors.divider,
     },
     chipText: {
