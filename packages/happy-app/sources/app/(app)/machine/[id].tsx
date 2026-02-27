@@ -373,10 +373,14 @@ export default function MachineDetailScreen() {
             return;
         }
         const displayName = absolutePath.split('/').filter(Boolean).pop() || 'repo';
+        // Detect current branch to set as default
+        const branchResult = await machineBash(machineId!, 'git rev-parse --abbrev-ref HEAD', absolutePath);
+        const detectedBranch = branchResult.success ? branchResult.stdout.trim() : undefined;
         const newRepo: RegisteredRepo = {
             id: randomUUID(),
             path: absolutePath,
             displayName,
+            defaultTargetBranch: detectedBranch,
         };
         const currentRepos = storage.getState().registeredRepos[machineId!] || [];
         const updatedRepos = [...currentRepos, newRepo];
@@ -398,6 +402,25 @@ export default function MachineDetailScreen() {
 
         router.push(`/machine/${machineId}/repo/${newRepo.id}` as any);
     }, [machineId, router, machine?.metadata?.homeDir]);
+
+    /** Save defaultTargetBranch on a registered repo (fire-and-forget). */
+    const persistDefaultBranch = useCallback((mId: string, repoId: string, branch: string) => {
+        const latestRepos = storage.getState().registeredRepos[mId] || [];
+        const updatedRepos = latestRepos.map(r =>
+            r.id === repoId ? { ...r, defaultTargetBranch: branch } : r
+        );
+        const ver = storage.getState().registeredReposVersions[mId] ?? -1;
+        const creds = sync.getCredentials();
+        if (creds) {
+            saveRegisteredRepos(creds, mId, updatedRepos, ver).then(nv => {
+                storage.getState().setRegisteredRepos(mId, updatedRepos, nv);
+            }).catch(() => {
+                storage.getState().setRegisteredRepos(mId, updatedRepos, ver);
+            });
+        } else {
+            storage.getState().setRegisteredRepos(mId, updatedRepos, ver);
+        }
+    }, []);
 
     const handleAddDirectoryForPicker = useCallback(async () => {
         if (!machineId) return;
@@ -482,10 +505,13 @@ export default function MachineDetailScreen() {
                 }
                 setAddDirBranchMenu({ visible: true, items });
             });
-            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: selectedBranch ?? currentBranch }]);
+            const finalBranch = selectedBranch ?? currentBranch;
+            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: finalBranch }]);
+            if (finalBranch) persistDefaultBranch(machineId, repoToSelect.id, finalBranch);
         } else {
             // No branches found, use current branch as fallback
             setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: currentBranch }]);
+            if (currentBranch) persistDefaultBranch(machineId, repoToSelect.id, currentBranch);
         }
     }, [machineId, machine?.metadata?.homeDir]);
 
@@ -827,7 +853,9 @@ export default function MachineDetailScreen() {
                         <Item
                             key={repo.id}
                             title={repo.displayName}
-                            subtitle={repo.path}
+                            subtitle={repo.defaultTargetBranch
+                                ? `${repo.path}  ·  ${repo.defaultTargetBranch}`
+                                : repo.path}
                             onPress={() => router.push(`/machine/${machineId}/repo/${repo.id}` as any)}
                         />
                     ))}

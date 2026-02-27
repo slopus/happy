@@ -684,6 +684,25 @@ function NewSessionWizard() {
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
 
+    /** Save defaultTargetBranch on a registered repo (fire-and-forget). */
+    const persistDefaultBranch = React.useCallback((mId: string, repoId: string, branch: string) => {
+        const latestRepos = storage.getState().registeredRepos[mId] || [];
+        const updatedRepos = latestRepos.map(r =>
+            r.id === repoId ? { ...r, defaultTargetBranch: branch } : r
+        );
+        const ver = storage.getState().registeredReposVersions[mId] ?? -1;
+        const creds = sync.getCredentials();
+        if (creds) {
+            saveRegisteredRepos(creds, mId, updatedRepos, ver).then(nv => {
+                storage.getState().setRegisteredRepos(mId, updatedRepos, nv);
+            }).catch(() => {
+                storage.getState().setRegisteredRepos(mId, updatedRepos, ver);
+            });
+        } else {
+            storage.getState().setRegisteredRepos(mId, updatedRepos, ver);
+        }
+    }, []);
+
     const handleAddDirectory = React.useCallback(async () => {
         if (!selectedMachineId) return;
         const pathInput = await Modal.prompt(
@@ -766,12 +785,15 @@ function NewSessionWizard() {
                 }
                 setAddDirBranchMenu({ visible: true, items });
             });
-            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: selectedBranch ?? currentBranch }]);
+            const finalBranch = selectedBranch ?? currentBranch;
+            setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: finalBranch }]);
+            if (finalBranch) persistDefaultBranch(selectedMachineId, repoToSelect.id, finalBranch);
         } else {
             // No branches found, use current branch as fallback
             setSelectedRepos(prev => [...prev, { repo: repoToSelect, targetBranch: currentBranch }]);
+            if (currentBranch) persistDefaultBranch(selectedMachineId, repoToSelect.id, currentBranch);
         }
-    }, [selectedMachineId, selectedMachine]);
+    }, [selectedMachineId, selectedMachine, persistDefaultBranch]);
 
     // Get recent paths for the selected machine
     // Recent machines computed from sessions (for inline machine selection)
