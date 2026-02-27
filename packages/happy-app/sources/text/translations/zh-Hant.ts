@@ -1139,6 +1139,7 @@ export const zhHant: TranslationStructure = {
         back: '返回',
         repositories: '儲存庫',
         addRepository: '新增儲存庫',
+        worktreeAutoPath: '由工作區自動管理',
         previousSessions: ({ count }: { count: number }) => `歷史工作階段（最近 ${count} 個）`,
     },
 

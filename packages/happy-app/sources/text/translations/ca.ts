@@ -1138,6 +1138,7 @@ export const ca: TranslationStructure = {
         back: 'Enrere',
         repositories: 'Repositoris',
         addRepository: 'Afegir repositori',
+        worktreeAutoPath: 'Gestionat automàticament pel workspace',
         previousSessions: ({ count }: { count: number }) => `Sessions anteriors (fins a ${count} més recents)`,
     },
 

@@ -1170,6 +1170,7 @@ export const ja: TranslationStructure = {
         back: '戻る',
         repositories: 'リポジトリ',
         addRepository: 'リポジトリを追加',
+        worktreeAutoPath: 'ワークスペースが自動管理',
         previousSessions: ({ count }: { count: number }) => `過去のセッション（最新${count}件）`,
     },
 

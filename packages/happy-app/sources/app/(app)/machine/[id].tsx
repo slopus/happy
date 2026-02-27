@@ -63,14 +63,6 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    worktreeStartButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
-        alignSelf: 'flex-end',
-    },
     inlineSendActive: {
         backgroundColor: theme.colors.button.primary.background,
     },
@@ -650,44 +642,20 @@ export default function MachineDetailScreen() {
                                     />
                                 </View>
                             )}
-                            {hasWorktreeRepos ? (
-                                <View style={styles.pathInputContainer}>
-                                    <Pressable
-                                        onPress={() => handleStartSession()}
-                                        disabled={spawnButtonDisabled}
-                                        style={[
-                                            styles.worktreeStartButton,
-                                            spawnButtonDisabled ? styles.inlineSendInactive : styles.inlineSendActive
-                                        ]}
-                                    >
-                                        {isSpawning ? (
-                                            <ActivityIndicator
-                                                size="small"
-                                                color={theme.colors.textSecondary}
-                                            />
-                                        ) : (
-                                            <Ionicons
-                                                name="play"
-                                                size={16}
-                                                color={spawnButtonDisabled ? theme.colors.textSecondary : theme.colors.button.primary.tint}
-                                                style={{ marginLeft: 1 }}
-                                            />
-                                        )}
-                                    </Pressable>
-                                </View>
-                            ) : (
                             <View style={styles.pathInputContainer}>
-                                <View style={[styles.pathInput, { paddingVertical: 8 }]}>
-                                    <MultiTextInput
-                                        ref={inputRef}
-                                        value={customPath}
-                                        onChangeText={setCustomPath}
-                                        placeholder={'Enter custom path'}
-                                        maxHeight={76}
-                                        paddingTop={8}
-                                        paddingBottom={8}
-                                        paddingRight={48}
-                                    />
+                                <View style={[styles.pathInput, { paddingVertical: 8 }, hasWorktreeRepos && { opacity: 0.5 }]}>
+                                    <View style={hasWorktreeRepos ? { pointerEvents: 'none' as const } : undefined}>
+                                        <MultiTextInput
+                                            ref={inputRef}
+                                            value={hasWorktreeRepos ? '' : customPath}
+                                            onChangeText={setCustomPath}
+                                            placeholder={hasWorktreeRepos ? t('machine.worktreeAutoPath') : 'Enter custom path'}
+                                            maxHeight={76}
+                                            paddingTop={8}
+                                            paddingBottom={8}
+                                            paddingRight={48}
+                                        />
+                                    </View>
                                     <Pressable
                                         onPress={() => handleStartSession()}
                                         disabled={spawnButtonDisabled}
@@ -712,7 +680,6 @@ export default function MachineDetailScreen() {
                                     </Pressable>
                                 </View>
                             </View>
-                            )}
                             {!hasWorktreeRepos && pathsToShow.map((path, index) => {
                                 const display = formatPathRelativeToHome(path, machine.metadata?.homeDir);
                                 const isSelected = customPath.trim() === display;

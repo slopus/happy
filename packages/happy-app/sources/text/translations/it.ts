@@ -1167,6 +1167,7 @@ export const it: TranslationStructure = {
         back: 'Indietro',
         repositories: 'Repository',
         addRepository: 'Aggiungi repository',
+        worktreeAutoPath: 'Gestito automaticamente dal workspace',
         previousSessions: ({ count }: { count: number }) => `Sessioni precedenti (fino a ${count} più recenti)`,
     },
 

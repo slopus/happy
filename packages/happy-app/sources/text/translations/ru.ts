@@ -1136,6 +1136,7 @@ export const ru: TranslationStructure = {
         back: 'Назад',
         repositories: 'Репозитории',
         addRepository: 'Добавить репозиторий',
+        worktreeAutoPath: 'Путь управляется рабочей средой',
         previousSessions: ({ count }: { count: number }) => `Предыдущие сеансы (до ${count} последних)`,
     },
 
