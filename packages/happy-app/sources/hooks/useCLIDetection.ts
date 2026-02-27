@@ -5,6 +5,7 @@ interface CLIAvailability {
     claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
     codex: boolean | null;
     gemini: boolean | null;
+    kimi: boolean | null;
     isDetecting: boolean; // Explicit loading state
     timestamp: number; // When detection completed
     error?: string; // Detection error message (for debugging)
@@ -37,13 +38,14 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
         claude: null,
         codex: null,
         gemini: null,
+        kimi: null,
         isDetecting: false,
         timestamp: 0,
     });
 
     useEffect(() => {
         if (!machineId) {
-            setAvailability({ claude: null, codex: null, gemini: null, isDetecting: false, timestamp: 0 });
+            setAvailability({ claude: null, codex: null, gemini: null, kimi: null, isDetecting: false, timestamp: 0 });
             return;
         }
 
@@ -71,12 +73,12 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                 if (result.success && result.exitCode === 0) {
                     // Parse output: "claude:true\ncodex:false\ngemini:false"
                     const lines = result.stdout.trim().split('\n');
-                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = {};
+                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean; kimi?: boolean } = {};
 
                     lines.forEach(line => {
                         const [cli, status] = line.split(':');
                         if (cli && status) {
-                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini'] = status.trim() === 'true';
+                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini' | 'kimi'] = status.trim() === 'true';
                         }
                     });
 
@@ -85,6 +87,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                         claude: cliStatus.claude ?? null,
                         codex: cliStatus.codex ?? null,
                         gemini: cliStatus.gemini ?? null,
+                        kimi: cliStatus.kimi ?? null,
                         isDetecting: false,
                         timestamp: Date.now(),
                     });
@@ -95,6 +98,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                         claude: null,
                         codex: null,
                         gemini: null,
+                        kimi: null,
                         isDetecting: false,
                         timestamp: 0,
                         error: `Detection failed: ${result.stderr || 'Unknown error'}`,
@@ -109,6 +113,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                     claude: null,
                     codex: null,
                     gemini: null,
+                    kimi: null,
                     isDetecting: false,
                     timestamp: 0,
                     error: error instanceof Error ? error.message : 'Detection error',

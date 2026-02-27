@@ -414,6 +414,7 @@ export const ru: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            kimi: 'Kimi',
         },
         model: {
             title: 'МОДЕЛЬ',
@@ -441,6 +442,16 @@ export const ru: TranslationStructure = {
         },
         geminiPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
+            default: 'По умолчанию',
+            readOnly: 'Только чтение',
+            safeYolo: 'Безопасный YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Только чтение',
+            badgeSafeYolo: 'Безопасный YOLO',
+            badgeYolo: 'YOLO',
+        },
+        kimiPermissionMode: {
+            title: 'РЕЖИМ РАЗРЕШЕНИЙ KIMI',
             default: 'По умолчанию',
             readOnly: 'Только чтение',
             safeYolo: 'Безопасный YOLO',

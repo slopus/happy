@@ -93,12 +93,32 @@ export function getGeminiModelModes(): ModelMode[] {
     return GEMINI_MODEL_FALLBACKS;
 }
 
+export function getKimiPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.kimiPermissionMode.default'), description: null },
+        { key: 'read-only', name: translate('agentInput.kimiPermissionMode.readOnly'), description: null },
+        { key: 'safe-yolo', name: translate('agentInput.kimiPermissionMode.safeYolo'), description: null },
+        { key: 'yolo', name: translate('agentInput.kimiPermissionMode.yolo'), description: null },
+    ];
+}
+
+export function getKimiModelModes(): ModelMode[] {
+    return [
+        { key: 'kimi-k2-0711-preview', name: 'Kimi K2', description: 'Most capable' },
+        { key: 'kimi-k1.6-preview', name: 'Kimi K1.6', description: 'Fast & capable' },
+        { key: 'kimi-k1.5-preview', name: 'Kimi K1.5', description: 'Fast & efficient' },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
     }
     if (flavor === 'gemini') {
         return getGeminiPermissionModes(translate);
+    }
+    if (flavor === 'kimi') {
+        return getKimiPermissionModes(translate);
     }
     return getClaudePermissionModes(translate);
 }
@@ -109,6 +129,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, translate: Translate
     }
     if (flavor === 'gemini') {
         return getGeminiModelModes();
+    }
+    if (flavor === 'kimi') {
+        return getKimiModelModes();
     }
     return getClaudeModelModes();
 }
@@ -130,7 +153,7 @@ export function getAvailablePermissionModes(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): PermissionMode[] {
-    if (flavor === 'claude' || flavor === 'codex') {
+    if (flavor === 'claude' || flavor === 'codex' || flavor === 'kimi') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 
@@ -168,6 +191,9 @@ export function getDefaultModelKey(flavor: AgentFlavor): string {
     }
     if (flavor === 'gemini') {
         return 'gemini-2.5-pro';
+    }
+    if (flavor === 'kimi') {
+        return 'kimi-k2-0711-preview';
     }
     return 'default';
 }

@@ -9,7 +9,7 @@ export interface NewSessionData {
     prompt?: string;
     machineId?: string;
     path?: string;
-    agentType?: 'claude' | 'codex' | 'gemini';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'kimi';
     sessionType?: 'simple' | 'worktree';
     taskId?: string;
     taskTitle?: string;
