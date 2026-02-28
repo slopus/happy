@@ -24,9 +24,8 @@ type MetadataOption = {
 };
 
 const GEMINI_MODEL_FALLBACKS: ModelMode[] = [
-    { key: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Most capable' },
-    { key: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Fast & efficient' },
-    { key: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', description: 'Fastest' },
+    { key: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', description: 'Most capable' },
+    { key: 'gemini-3.0-flash-preview', name: 'Gemini 3.0 Flash', description: 'Fast & efficient' },
 ];
 
 export function mapMetadataOptions(options?: MetadataOption[] | null): ModeOption[] {
@@ -167,7 +166,7 @@ export function getDefaultModelKey(flavor: AgentFlavor): string {
         return 'gpt-5-codex-high';
     }
     if (flavor === 'gemini') {
-        return 'gemini-2.5-pro';
+        return 'gemini-3.1-pro-preview';
     }
     return 'default';
 }

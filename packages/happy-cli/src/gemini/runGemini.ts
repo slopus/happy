@@ -59,6 +59,10 @@ import { ConversationHistory } from '@/gemini/utils/conversationHistory';
 export async function runGemini(opts: {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
+  initialPrompt?: string;
+  model?: string;
+  dangerouslySkipPermissions?: boolean;
+  resumeSessionId?: string;
 }): Promise<void> {
   //
   // Define session
@@ -883,6 +887,27 @@ export async function runGemini(opts: {
 
   // Note: Backend will be created dynamically in the main loop based on model from first message
   // This allows us to support model changes by recreating the backend
+
+  // If dangerouslySkipPermissions is set, default to 'yolo' permission mode
+  if (opts.dangerouslySkipPermissions) {
+    currentPermissionMode = 'yolo';
+    updatePermissionMode('yolo');
+    logger.debug('[Gemini] Permission mode set to yolo (dangerously-skip-permissions)');
+  }
+
+  // If an initial prompt was provided via CLI, inject it into the message queue
+  if (opts.initialPrompt) {
+    logger.debug(`[Gemini] Injecting initial prompt from CLI (length: ${opts.initialPrompt.length})`);
+    const initialMode: GeminiMode = {
+      permissionMode: currentPermissionMode || 'default',
+      model: opts.model,
+      originalUserMessage: opts.initialPrompt,
+    };
+    // Add change_title instruction for the first message (same as mobile app flow)
+    const fullInitialPrompt = opts.initialPrompt + '\n\n' + CHANGE_TITLE_INSTRUCTION;
+    isFirstMessage = false; // Mark as consumed so onUserMessage doesn't add it again
+    messageQueue.push(fullInitialPrompt, initialMode);
+  }
 
   let first = true;
 

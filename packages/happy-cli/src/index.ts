@@ -131,7 +131,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
     // Handle "happy gemini model set <model>" command
     if (geminiSubcommand === 'model' && args[2] === 'set' && args[3]) {
       const modelName = args[3];
-      const validModels = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+      const validModels = ['gemini-3.1-pro-preview', 'gemini-3.0-flash-preview'];
       
       if (!validModels.includes(modelName)) {
         console.error(`Invalid model: ${modelName}`);
@@ -307,15 +307,31 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
     // Handle gemini command (ACP-based agent)
     try {
       const { runGemini } = await import('@/gemini/runGemini');
-      
-      // Parse startedBy argument
+
+      // Parse gemini-specific arguments
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let geminiModel: string | undefined = undefined;
+      let dangerouslySkipPermissions = false;
+      let resumeSessionId: string | undefined = undefined;
+      const positionalArgs: string[] = [];
+
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--model' && args[i + 1]) {
+          geminiModel = args[++i];
+        } else if (args[i] === '--dangerously-skip-permissions' || args[i] === '--yolo') {
+          dangerouslySkipPermissions = true;
+        } else if (args[i] === '--resume' && args[i + 1]) {
+          resumeSessionId = args[++i];
+        } else if (!args[i].startsWith('-')) {
+          // Collect positional args as initial prompt
+          positionalArgs.push(args[i]);
         }
       }
-      
+
+      const initialPrompt = positionalArgs.length > 0 ? positionalArgs.join(' ') : undefined;
+
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
@@ -333,7 +349,19 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      await runGemini({credentials, startedBy});
+      // If --model is specified, set GEMINI_MODEL env var so the backend picks it up
+      if (geminiModel) {
+        process.env.GEMINI_MODEL = geminiModel;
+      }
+
+      await runGemini({
+        credentials,
+        startedBy,
+        initialPrompt,
+        model: geminiModel,
+        dangerouslySkipPermissions,
+        resumeSessionId,
+      });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
