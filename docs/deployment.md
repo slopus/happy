@@ -40,8 +40,29 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
 - GitHub OAuth/App: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, plus redirect URL/URI.
   - `GITHUB_REDIRECT_URL` is used by the OAuth callback handler.
   - `GITHUB_REDIRECT_URI` is used by the GitHub App initializer.
-- Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/token` in production).
+- Voice: `ELEVENLABS_API_KEY` (required for voice conversations). See [Voice Setup](./voice.md) for full configuration.
 - Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` (enables file logging + dev log endpoint).
+
+## Voice feature setup
+
+To enable voice conversations, you need both server and app configuration:
+
+**Server (required)**
+```bash
+ELEVENLABS_API_KEY=your-api-key
+```
+
+**App (required for builds)**
+```bash
+# Set as EAS secrets or in .env
+EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV=your-dev-agent-id
+EXPO_PUBLIC_ELEVENLABS_AGENT_ID_PROD=your-prod-agent-id
+```
+
+See [docs/voice.md](./voice.md) for detailed setup instructions including:
+- Creating an ElevenLabs Conversational AI agent
+- Configuring agent IDs for different environments
+- Troubleshooting common issues
 
 ## Docker image
 A production Dockerfile is provided at `Dockerfile.server`.
@@ -73,3 +94,4 @@ Use `.env`/`.env.dev` to load local settings when running `yarn workspace happy-
 - Dockerfile: `Dockerfile.server`
 - Kubernetes manifests: `packages/happy-server/deploy`
 - Env usage: `packages/happy-server/sources` (`rg -n "process.env"`)
+
