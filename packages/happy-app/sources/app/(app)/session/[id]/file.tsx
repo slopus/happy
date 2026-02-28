@@ -217,7 +217,13 @@ export default function FileScreen() {
                         // Decode base64 content to UTF-8 string
                         let decodedContent: string;
                         try {
-                            decodedContent = atob(response.content);
+                            // Proper UTF-8 decoding from base64 (fixes Chinese/Unicode character display)
+                            const binaryString = atob(response.content);
+                            const bytes = new Uint8Array(binaryString.length);
+                            for (let i = 0; i < binaryString.length; i++) {
+                                bytes[i] = binaryString.charCodeAt(i);
+                            }
+                            decodedContent = new TextDecoder('utf-8').decode(bytes);
                         } catch (decodeError) {
                             // If base64 decode fails, treat as binary
                             setFileContent({
