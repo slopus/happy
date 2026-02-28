@@ -18,6 +18,12 @@ function getVoiceGatewayUrl() {
     if (!baseUrl) {
         throw new Error('voiceBaseUrl is not configured');
     }
+    if (baseUrl.startsWith('/')) {
+        const origin = (globalThis as { location?: { origin?: unknown } }).location?.origin;
+        if (typeof origin === 'string' && origin) {
+            return `${origin}${baseUrl}`.replace(/\/+$/, '');
+        }
+    }
     return baseUrl.replace(/\/+$/, '');
 }
 
@@ -44,6 +50,8 @@ export async function startHappyVoiceSession(
         throw new Error('profile.id is missing');
     }
 
+    const toolBridgeBaseUrl = process.env.EXPO_PUBLIC_VOICE_TOOL_BRIDGE_BASE_URL || getServerUrl();
+
     const response = await fetch(`${getVoiceGatewayUrl()}/v1/voice/session/start`, {
         method: 'POST',
         headers: getVoiceGatewayHeaders(),
@@ -52,7 +60,7 @@ export async function startHappyVoiceSession(
             sessionId,
             initialContextPayload,
             language,
-            toolBridgeBaseUrl: getServerUrl(),
+            toolBridgeBaseUrl,
             welcomeMessage,
         }),
     });

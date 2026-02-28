@@ -7,9 +7,11 @@ const SERVER_KEY = 'custom-server-url';
 const DEFAULT_SERVER_URL = 'https://api.happy.hitosea.com';
 
 export function getServerUrl(): string {
-    return serverConfigStorage.getString(SERVER_KEY) || 
-           process.env.EXPO_PUBLIC_HAPPY_SERVER_URL || 
-           DEFAULT_SERVER_URL;
+    const configured =
+        serverConfigStorage.getString(SERVER_KEY) ||
+        process.env.EXPO_PUBLIC_HAPPY_SERVER_URL ||
+        DEFAULT_SERVER_URL;
+    return configured;
 }
 
 export function setServerUrl(url: string | null): void {

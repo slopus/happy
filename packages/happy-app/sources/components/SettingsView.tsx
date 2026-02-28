@@ -395,7 +395,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.privacyPolicy')}
                     icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
-                        const url = 'https://github.com/hitosea/happy/blob/main/packages/happy-app/PRIVACY.md';
+                        const url = 'https://github.com/hitosea/happy/blob/next/packages/happy-app/PRIVACY.md';
                         const supported = await Linking.canOpenURL(url);
                         if (supported) {
                             await Linking.openURL(url);
@@ -406,7 +406,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.termsOfService')}
                     icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
-                        const url = 'https://github.com/hitosea/happy/blob/main/TERMS.md';
+                        const url = 'https://github.com/hitosea/happy/blob/next/packages/happy-app/TERMS.md';
                         const supported = await Linking.canOpenURL(url);
                         if (supported) {
                             await Linking.openURL(url);

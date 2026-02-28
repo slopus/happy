@@ -8,6 +8,7 @@ on:
     push:
         branches:
             - main
+            - next
         paths:
             - 'packages/happy-app/**'
             - '.github/workflows/typecheck.yml'

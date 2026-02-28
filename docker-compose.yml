@@ -7,11 +7,15 @@ services:
       - "3030:80"
     restart: unless-stopped
     environment:
+      # API server (separate origin; do not use path reverse proxy)
+      - EXPO_PUBLIC_HAPPY_SERVER_URL=${EXPO_PUBLIC_HAPPY_SERVER_URL:-http://localhost:3031}
       # ElevenLabs
       - EXPO_PUBLIC_ELEVENLABS_AGENT_ID=${ELEVENLABS_AGENT_ID}
       # Voice Gateway
       - EXPO_PUBLIC_VOICE_PROVIDER=${EXPO_PUBLIC_VOICE_PROVIDER:-happy-voice}
       - EXPO_PUBLIC_VOICE_BASE_URL=${EXPO_PUBLIC_VOICE_BASE_URL:-http://localhost:3040}
+      # For docker-compose, happy-voice must call happy-server by container DNS, not host localhost.
+      - EXPO_PUBLIC_VOICE_TOOL_BRIDGE_BASE_URL=${EXPO_PUBLIC_VOICE_TOOL_BRIDGE_BASE_URL:-http://happy-server:3031}
       - EXPO_PUBLIC_VOICE_PUBLIC_KEY=${VOICE_PUBLIC_KEY:-dev-voice-public-key}
 
   happy-server:
@@ -26,6 +30,7 @@ services:
       - NODE_ENV=production
       - PORT=3031
       - HANDY_MASTER_SECRET=${HANDY_MASTER_SECRET}
+      - APP_URL=${APP_URL:-http://localhost:3030}
       # Database
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # Redis

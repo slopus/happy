@@ -2,12 +2,12 @@ name: CLI Smoke Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, next ]
     paths:
       - 'packages/happy-cli/**'
       - '.github/workflows/cli-smoke-test.yml'
   pull_request:
-    branches: [ main ]
+    branches: [ main, next ]
     paths:
       - 'packages/happy-cli/**'
       - '.github/workflows/cli-smoke-test.yml'
@@ -32,7 +32,10 @@ jobs:
         cache-dependency-path: yarn.lock
 
     - name: Install dependencies
-      run: yarn install --immutable
+      run: yarn install --frozen-lockfile
+
+    - name: Build dependency (happy-wire)
+      run: yarn workspace happy-wire build
 
     - name: Build package
       run: yarn workspace happy-next-cli build
@@ -92,7 +95,10 @@ jobs:
         cache-dependency-path: yarn.lock
 
     - name: Install dependencies
-      run: yarn install --immutable
+      run: yarn install --frozen-lockfile
+
+    - name: Build dependency (happy-wire)
+      run: yarn workspace happy-wire build
 
     - name: Build package
       run: yarn workspace happy-next-cli build
