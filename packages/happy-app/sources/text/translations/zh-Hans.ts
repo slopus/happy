@@ -688,7 +688,7 @@ export const zhHans: TranslationStructure = {
         emptyMainScreen: {
             // Used by EmptyMainScreen component
             readyToCode: '准备开始编程？',
-            installCli: '安装 Happy CLI',
+            installCli: '安装 Happy Next CLI',
             runIt: '运行它',
             scanQrCode: '扫描二维码',
             openCamera: '打开相机',

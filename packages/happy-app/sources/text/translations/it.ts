@@ -715,7 +715,7 @@ export const it: TranslationStructure = {
         emptyMainScreen: {
             // Used by EmptyMainScreen component
             readyToCode: 'Pronto a programmare?',
-            installCli: 'Installa la CLI Happy',
+            installCli: 'Installa la CLI Happy Next',
             runIt: 'Avviala',
             scanQrCode: 'Scansiona il codice QR',
             openCamera: 'Apri fotocamera',

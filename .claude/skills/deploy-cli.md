@@ -1,6 +1,6 @@
 ---
 name: deploy-cli
-description: 构建并全局安装 happy-cli，重启 daemon
+description: 构建并全局安装 happy-next-cli，重启 daemon
 ---
 
 # CLI 工具部署
