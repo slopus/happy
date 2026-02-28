@@ -39,5 +39,5 @@ export async function authGetToken(secret: Uint8Array): Promise<string> {
  */
 export function generateAppUrl(secret: Uint8Array): string {
   const secretBase64Url = encodeBase64Url(secret);
-  return `handy://${secretBase64Url}`;
+  return `happy://${secretBase64Url}`;
 }

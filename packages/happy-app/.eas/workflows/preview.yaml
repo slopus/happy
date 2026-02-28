@@ -2,7 +2,7 @@ name: Branch-based Updates
 
 on:
   push:
-    branches: ['main']
+    branches: ['next']
 jobs:
   preview_ota:
     type: update

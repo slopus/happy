@@ -1,5 +1,5 @@
 {
-    "name": "monorepo",
+    "name": "happy-next",
     "private": true,
     "workspaces": {
         "packages": [

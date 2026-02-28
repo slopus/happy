@@ -2,7 +2,7 @@
   "name": "happy-server",
   "version": "0.0.0",
   "repository": "https://github.com/hitosea/happy.git",
-  "author": "Steve Korshakov <steve@korshakov.com>",
+  "author": "Hitosea",
   "license": "MIT",
   "private": true,
   "type": "module",
