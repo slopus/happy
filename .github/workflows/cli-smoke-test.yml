@@ -99,7 +99,9 @@ jobs:
         }
         yarn cache clean
 
-    - name: Install dependencies
+    - name: Install dependencies (skip postinstall on Windows)
+      env:
+        SKIP_HAPPY_WIRE_BUILD: "1"
       run: yarn install --immutable
 
     - name: Build package
