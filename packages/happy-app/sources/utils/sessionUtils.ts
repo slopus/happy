@@ -79,7 +79,12 @@ export function useSessionStatus(session: Session): SessionStatus {
 export function getSessionName(session: Session): string {
     if (session.metadata?.summary) {
         return session.metadata.summary.text;
-    } else if (session.metadata) {
+    }
+    // Active sessions without a title yet — show "New session" instead of the path segment
+    if (session.active && session.metadata) {
+        return t('session.newSession');
+    }
+    if (session.metadata) {
         const segments = session.metadata.path.split('/').filter(Boolean);
         const lastSegment = segments.pop();
         if (!lastSegment) {
@@ -156,6 +161,19 @@ export function isSessionOnline(session: Session): boolean {
  */
 export function isSessionActive(session: Session): boolean {
     return session.active;
+}
+
+/**
+ * Returns an Ionicons icon name for the given OS platform.
+ * Used for at-a-glance machine identification in session lists.
+ */
+export function getOSIconName(os?: string): string {
+    switch (os?.toLowerCase()) {
+        case 'darwin': return 'logo-apple';
+        case 'win32': return 'logo-windows';
+        case 'linux': return 'terminal-outline';
+        default: return 'desktop-outline';
+    }
 }
 
 /**

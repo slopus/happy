@@ -300,6 +300,7 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        newSession: 'New session',
     },
 
     commandPalette: {

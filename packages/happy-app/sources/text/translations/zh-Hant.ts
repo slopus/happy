@@ -302,6 +302,7 @@ export const zhHant: TranslationStructure = {
 
     session: {
         inputPlaceholder: '輸入訊息...',
+        newSession: '新對話',
     },
 
     commandPalette: {
