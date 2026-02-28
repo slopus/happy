@@ -4,6 +4,7 @@ import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/
 import { Server, Socket } from "socket.io";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
+import { db } from "@/storage/db";
 import { decrementWebSocketConnection, incrementWebSocketConnection, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
@@ -72,6 +73,36 @@ export function startSocket(app: Fastify) {
 
         const userId = verified.userId;
         log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
+
+        // For session-scoped connections, verify the session belongs to the user
+        // This is required because account tokens (used by happy-agent) don't have session claims in JWT
+        // We verify ownership via database lookup instead
+        if (clientType === 'session-scoped' && sessionId) {
+            const session = await db.session.findFirst({
+                where: { id: sessionId, accountId: userId },
+                select: { id: true }
+            });
+            if (!session) {
+                log({ module: 'websocket' }, `Session ${sessionId} not found or not owned by user ${userId}`);
+                socket.emit('error', { message: 'Session not found or access denied' });
+                socket.disconnect();
+                return;
+            }
+        }
+
+        // For machine-scoped connections, verify the machine belongs to the user
+        if (clientType === 'machine-scoped' && machineId) {
+            const machine = await db.machine.findFirst({
+                where: { id: machineId, accountId: userId },
+                select: { id: true }
+            });
+            if (!machine) {
+                log({ module: 'websocket' }, `Machine ${machineId} not found or not owned by user ${userId}`);
+                socket.emit('error', { message: 'Machine not found or access denied' });
+                socket.disconnect();
+                return;
+            }
+        }
 
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
