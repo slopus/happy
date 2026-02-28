@@ -24,7 +24,7 @@ import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { isVersionSupported, useLatestCliVersion } from '@/utils/versionUtils';
 import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
@@ -85,7 +85,8 @@ function SessionInfoContent({ session }: { session: Session }) {
     const geminiSessionId = session.metadata?.flavor === 'gemini' ? session.id : undefined;
     
     // Check if CLI version is outdated
-    const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
+    const latestCliVersion = useLatestCliVersion();
+    const isCliOutdated = session.metadata?.version && latestCliVersion && !isVersionSupported(session.metadata.version, latestCliVersion);
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
