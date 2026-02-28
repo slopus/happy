@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { shouldUseSystemFontForCJK, containsCJK } from '@/utils/cjkFontFallback';
 
 interface SimpleSyntaxHighlighterProps {
   code: string;
@@ -293,12 +294,16 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
     }
   };
 
+  // Check if the entire code block contains CJK characters (check once for performance)
+  const hasCJK = shouldUseSystemFontForCJK(code);
+  const baseFontFamily = hasCJK ? undefined : Typography.mono().fontFamily;
+
   return (
     <View>
       <Text 
         selectable={selectable}
         style={{ 
-          fontFamily: Typography.mono().fontFamily,
+          fontFamily: baseFontFamily,
           fontSize: 14,
           lineHeight: 20,
         }}
@@ -309,7 +314,7 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
             selectable={selectable}
             style={{
               color: getColorForType(token.type, token.nestLevel),
-              fontFamily: Typography.mono().fontFamily,
+              fontFamily: baseFontFamily,
               fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type) ? '600' : '400',
             }}
           >
@@ -319,4 +324,4 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
       </Text>
     </View>
   );
-}; 
+};

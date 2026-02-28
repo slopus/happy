@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
+import { shouldUseSystemFontForCJK } from '@/utils/cjkFontFallback';
 
 // Option type for callback
 export type Option = {
@@ -219,10 +220,19 @@ function RenderOptionsBlock(props: {
 function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
     return (<>
         {props.spans.map((span, index) => {
+            // Check if we need to use system font for CJK characters on iOS
+            const useCJKFallback = shouldUseSystemFontForCJK(span.text);
+            const textStyle = useCJKFallback 
+                ? [props.baseStyle, span.styles.map(s => style[s]), { fontFamily: undefined }]
+                : [props.baseStyle, span.styles.map(s => style[s])];
+            
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
+                const linkStyle = useCJKFallback
+                    ? [style.link, span.styles.map(s => style[s]), { fontFamily: undefined }]
+                    : [style.link, span.styles.map(s => style[s])];
+                return <Link key={index} href={span.url as any} target="_blank" style={linkStyle}>{span.text}</Link>
             } else {
-                return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
+                return <Text key={index} selectable style={textStyle}>{span.text}</Text>
             }
         })}
     </>)
@@ -261,7 +271,7 @@ function RenderTableBlock(props: {
                         >
                             {/* Header cell for this column */}
                             <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
-                                <Text style={style.tableHeaderText}>{header}</Text>
+                                <Text style={[style.tableHeaderText, shouldUseSystemFontForCJK(header) && { fontFamily: undefined }]}>{header}</Text>
                             </View>
                             {/* Data cells for this column */}
                             {props.rows.map((row, rowIndex) => (
@@ -272,7 +282,7 @@ function RenderTableBlock(props: {
                                         isLastRow(rowIndex) && style.tableCellLast
                                     ]}
                                 >
-                                    <Text style={style.tableCellText}>{row[colIndex] ?? ''}</Text>
+                                    <Text style={[style.tableCellText, shouldUseSystemFontForCJK(row[colIndex] ?? '') && { fontFamily: undefined }]}>{row[colIndex] ?? ''}</Text>
                                 </View>
                             ))}
                         </View>
