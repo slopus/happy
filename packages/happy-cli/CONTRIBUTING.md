@@ -10,7 +10,7 @@
 ## Getting Started
 
 ```bash
-git clone https://github.com/slopus/happy-cli.git
+git clone https://github.com/hitosea/happy.git
 cd happy-cli
 yarn install
 yarn build
@@ -31,7 +31,7 @@ This creates a `happy-dev` command in your PATH pointing to your local build, wh
 
 | Command | Runs |
 |---------|------|
-| `happy` | Stable npm version (from `npm install -g happy-code-cli`) |
+| `happy` | Stable npm version (from `npm install -g happy-next-cli`) |
 | `happy-dev` | Local development version (from this repo) |
 
 **Note:** Run `yarn build` before `yarn link:dev` to ensure the binary exists.

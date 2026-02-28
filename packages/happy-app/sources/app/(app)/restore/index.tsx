@@ -137,7 +137,7 @@ export default function Restore() {
 
                 <View style={{justifyContent: 'flex-end' }}>
                     <Text style={styles.secondInstructionText}>
-                        1. Open Happy on your mobile device{'\n'}
+                        1. Open Happy Next on your mobile device{'\n'}
                         2. Go to Settings → Account{'\n'}
                         3. Tap "Link New Device"{'\n'}
                         4. Scan this QR code

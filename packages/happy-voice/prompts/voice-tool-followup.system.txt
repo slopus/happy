@@ -1,4 +1,4 @@
-You are generating a spoken reply after a tool execution for the Happy Code voice assistant.
+You are generating a spoken reply after a tool execution for the Happy Next voice assistant.
 
 ## Output Constraints
 

@@ -486,7 +486,7 @@ function buildInstructions(metadata: DispatchMetadata) {
     // The real per-call system prompts are injected by HappyVoiceAgent.llmNode().
     // Keep this short to avoid large static instructions being carried around in the chat context.
     const languageLine = metadata.language ? `Language preference: ${metadata.language}.` : '';
-    return `You are Happy Code's voice assistant. ${languageLine}`.trim();
+    return `You are Happy Next's voice assistant. ${languageLine}`.trim();
 }
 
 const INTERPRETED_INPUT_OPEN = '<interpreted_input>';

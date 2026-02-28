@@ -127,7 +127,6 @@ async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | n
     // I changed this to always show the URL because we got a report from
     // someone running happy inside a devcontainer that they saw the
     // "Complete authentication in your browser window." but nothing opened.
-    // https://github.com/slopus/happy/issues/19
     console.log('\nIf the browser did not open, please copy and paste this URL:');
     console.log(webUrl);
     console.log('');

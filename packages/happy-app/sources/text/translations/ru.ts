@@ -152,7 +152,7 @@ export const ru: TranslationStructure = {
         developer: 'Разработчик',
         developerTools: 'Инструменты разработчика',
         about: 'О программе',
-        aboutFooter: 'Happy Coder — мобильное приложение для работы с Codex и Claude Code. Использует сквозное шифрование, все данные аккаунта хранятся только на вашем устройстве. Не связано с Anthropic.',
+        aboutFooter: 'Happy Next — мобильное приложение для работы с Codex и Claude Code. Использует сквозное шифрование, все данные аккаунта хранятся только на вашем устройстве. Не связано с Anthropic.',
         whatsNew: 'Что нового',
         whatsNewSubtitle: 'Посмотреть последние обновления и улучшения',
         reportIssue: 'Сообщить о проблеме',
@@ -578,7 +578,7 @@ export const ru: TranslationStructure = {
         cliVersionOutdated: 'Требуется обновление CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
-        updateCliInstructions: 'Пожалуйста, выполните npm install -g happy-code-cli@latest',
+        updateCliInstructions: 'Пожалуйста, выполните npm install -g happy-next-cli@latest',
         deleteSession: 'Удалить сессию',
         deleteSessionSubtitle: 'Удалить эту сессию навсегда',
         deleteSessionConfirm: 'Удалить сессию навсегда?',
@@ -1034,7 +1034,7 @@ export const ru: TranslationStructure = {
         invalidConnectionLink: 'Неверная ссылка подключения',
         invalidConnectionLinkDescription: 'Ссылка подключения отсутствует или неверна. Проверьте URL и попробуйте снова.',
         connectTerminal: 'Подключить терминал',
-        terminalRequestDescription: 'Терминал запрашивает подключение к вашему аккаунту Happy Coder. Это позволит терминалу безопасно отправлять и получать сообщения.',
+        terminalRequestDescription: 'Терминал запрашивает подключение к вашему аккаунту Happy Next. Это позволит терминалу безопасно отправлять и получать сообщения.',
         connectionDetails: 'Детали подключения',
         publicKey: 'Публичный ключ',
         encryption: 'Шифрование',
@@ -1111,7 +1111,7 @@ export const ru: TranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'Запуск отключен: машина offline',
-        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy-code-cli@latest`',
+        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy-next-cli@latest`',
         launchNewSessionInDirectory: 'Запустить новую сессию в папке',
         daemon: 'Daemon',
         status: 'Статус',

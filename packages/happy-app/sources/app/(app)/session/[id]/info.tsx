@@ -391,7 +391,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     }, [session]);
 
     const handleCopyUpdateCommand = useCallback(async () => {
-        const updateCommand = 'npm install -g happy-code-cli@latest';
+        const updateCommand = 'npm install -g happy-next-cli@latest';
         try {
             await Clipboard.setStringAsync(updateCommand);
             Modal.alert(t('common.success'), updateCommand);

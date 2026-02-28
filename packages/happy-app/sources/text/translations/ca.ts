@@ -188,7 +188,7 @@ export const ca: TranslationStructure = {
         developer: 'Desenvolupador',
         developerTools: 'Eines de desenvolupador',
         about: 'Quant a',
-        aboutFooter: 'Happy Coder és un client mòbil de Codex i Claude Code. Tot està xifrat punt a punt i el teu compte es guarda només al teu dispositiu. No està afiliat amb Anthropic.',
+        aboutFooter: 'Happy Next és un client mòbil de Codex i Claude Code. Tot està xifrat punt a punt i el teu compte es guarda només al teu dispositiu. No està afiliat amb Anthropic.',
         whatsNew: 'Novetats',
         whatsNewSubtitle: 'Mira les últimes actualitzacions i millores',
         reportIssue: 'Informa d\'un problema',
@@ -625,7 +625,7 @@ export const ca: TranslationStructure = {
         cliVersionOutdated: 'Actualització del CLI requerida',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
-        updateCliInstructions: 'Si us plau executeu npm install -g happy-code-cli@latest',
+        updateCliInstructions: 'Si us plau executeu npm install -g happy-next-cli@latest',
         deleteSession: 'Elimina la sessió',
         deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
         deleteSessionConfirm: 'Eliminar la sessió permanentment?',
@@ -1036,7 +1036,7 @@ export const ca: TranslationStructure = {
         invalidConnectionLink: 'Enllaç de connexió no vàlid',
         invalidConnectionLinkDescription: 'L\'enllaç de connexió falta o no és vàlid. Comprova l\'URL i torna-ho a provar.',
         connectTerminal: 'Connecta el terminal',
-        terminalRequestDescription: 'Un terminal està sol·licitant connectar-se al teu compte de Happy Coder. Això permetrà al terminal enviar i rebre missatges de forma segura.',
+        terminalRequestDescription: 'Un terminal està sol·licitant connectar-se al teu compte de Happy Next. Això permetrà al terminal enviar i rebre missatges de forma segura.',
         connectionDetails: 'Detalls de la connexió',
         publicKey: 'Clau pública',
         encryption: 'Xifratge',
@@ -1113,7 +1113,7 @@ export const ca: TranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'El llançador està desactivat mentre la màquina està fora de línia',
-        offlineHelp: '• Assegura\'t que l\'ordinador estigui en línia\n• Executa `happy daemon status` per diagnosticar\n• Fas servir l\'última versió del CLI? Actualitza amb `npm install -g happy-code-cli@latest`',
+        offlineHelp: '• Assegura\'t que l\'ordinador estigui en línia\n• Executa `happy daemon status` per diagnosticar\n• Fas servir l\'última versió del CLI? Actualitza amb `npm install -g happy-next-cli@latest`',
         launchNewSessionInDirectory: 'Inicia una nova sessió al directori',
         daemon: 'Dimoni',
         status: 'Estat',

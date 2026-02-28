@@ -1,10 +1,10 @@
-# Privacy Policy for Happy Coder
+# Privacy Policy for Happy Next
 
 **Last Updated: January 2025**
 
 ## Overview
 
-Happy Coder is committed to protecting your privacy. This policy explains how we handle your data with our zero-knowledge encryption architecture.
+Happy Next is committed to protecting your privacy. This policy explains how we handle your data with our zero-knowledge encryption architecture.
 
 ## What We Collect
 
@@ -89,11 +89,11 @@ We will notify users of any material changes to this privacy policy through the 
 ## Contact
 
 For privacy concerns or questions:
-- GitHub Issues: https://github.com/slopus/happy-coder/issues
+- GitHub Issues: https://github.com/hitosea/happy/issues
 
 ## Compliance
 
-Happy Coder is designed with privacy by default and complies with:
+Happy Next is designed with privacy by default and complies with:
 - GDPR (General Data Protection Regulation)
 - CCPA (California Consumer Privacy Act)
 - Privacy by Design principles

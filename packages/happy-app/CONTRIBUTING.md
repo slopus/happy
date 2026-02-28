@@ -1,14 +1,14 @@
-# Contributing to Happy
+# Contributing to Happy Next
 
 ## Development Workflow: Build Variants
 
-The Happy app supports three build variants across **iOS, Android, and macOS desktop**, each with separate bundle IDs so all three can be installed simultaneously:
+The Happy Next app supports three build variants across **iOS, Android, and macOS desktop**, each with separate bundle IDs so all three can be installed simultaneously:
 
 | Variant | Bundle ID | App Name | Use Case |
 |---------|-----------|----------|----------|
 | **Development** | `com.hitosea.happy.dev` | Happy (dev) | Local development with hot reload |
 | **Preview** | `com.hitosea.happy.preview` | Happy (preview) | Beta testing & OTA updates before production |
-| **Production** | `com.ex3ndr.happy` | Happy | Public App Store release |
+| **Production** | `com.hitosea.happy` | Happy | Public App Store release |
 
 **Why Preview?**
 - **Development**: Fast iteration, dev server, instant reload
@@ -183,7 +183,7 @@ This controls:
 
 Only **production** variant has deep linking configured:
 
-- **Production**: `https://app.happy.engineering/*`
+- **Production**: `https://github.com/hitosea/happy/*`
 - **Development**: No deep linking
 - **Preview**: No deep linking
 
@@ -291,7 +291,7 @@ const variant = process.env.APP_ENV || 'development';
 const bundleId = {
   development: "com.hitosea.happy.dev",
   preview: "com.hitosea.happy.preview",
-  production: "com.ex3ndr.happy"
+  production: "com.hitosea.happy"
 }[variant];
 ```
 

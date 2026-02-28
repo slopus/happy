@@ -15,7 +15,7 @@ description: 构建并全局安装 happy-cli，重启 daemon
 
 ```bash
 cd /home/coder/workspaces/happy/packages/happy-cli
-rm -f happy-code-cli-*.tgz
+rm -f happy-next-cli-*.tgz
 ```
 
 ### 步骤 2：构建 CLI

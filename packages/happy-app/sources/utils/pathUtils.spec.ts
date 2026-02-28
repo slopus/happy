@@ -167,13 +167,13 @@ describe('pathUtils', () => {
 
         it('should not resolve sibling directory paths that start with metadata path', () => {
             const metadata = {
-                path: '/Users/steve/Develop/slopus/happy',
+                path: '/Users/steve/Develop/hitosea/happy',
                 host: 'localhost',
                 homeDir: '/Users/steve'
             };
             // This should NOT be resolved as it's a sibling directory, not within the metadata path
-            expect(resolvePath('/Users/steve/Develop/slopus/happy-server/sources/types/index.ts', metadata))
-                .toBe('/Users/steve/Develop/slopus/happy-server/sources/types/index.ts');
+            expect(resolvePath('/Users/steve/Develop/hitosea/happy-server/sources/types/index.ts', metadata))
+                .toBe('/Users/steve/Develop/hitosea/happy-server/sources/types/index.ts');
         });
 
         it('should handle edge case where metadata path is a substring of another path', () => {

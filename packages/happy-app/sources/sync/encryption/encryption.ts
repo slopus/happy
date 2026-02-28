@@ -14,13 +14,13 @@ export class Encryption {
     static async create(masterSecret: Uint8Array) {
 
         // Derive content data key to open session and machine records
-        const contentDataKey = await deriveKey(masterSecret, 'Happy EnCoder', ['content']);
+        const contentDataKey = await deriveKey(masterSecret, 'Happy Next EnCoder', ['content']);
 
         // Derive content data key keypair
         const contentKeyPair = sodium.crypto_box_seed_keypair(contentDataKey);
 
         // Derive anonymous ID
-        const anonID = encodeHex((await deriveKey(masterSecret, 'Happy Coder', ['analytics', 'id']))).slice(0, 16).toLowerCase();
+        const anonID = encodeHex((await deriveKey(masterSecret, 'Happy Next', ['analytics', 'id']))).slice(0, 16).toLowerCase();
 
         // Create encryption
         return new Encryption(anonID, masterSecret, contentKeyPair);

@@ -1,4 +1,4 @@
-# Happy
+# Happy Next
 
 Code on the go — control AI coding agents from your mobile device.
 
@@ -7,7 +7,7 @@ Free. Open source. Code anywhere.
 ## Installation
 
 ```bash
-npm install -g happy-code-cli
+npm install -g happy-next-cli
 ```
 
 ## Usage
@@ -93,7 +93,7 @@ happy gemini project get          # Show current Google Cloud Project ID
 ### Happy Configuration
 
 - `HAPPY_SERVER_URL` - Custom server URL (default: https://api.cluster-fluster.com)
-- `HAPPY_WEBAPP_URL` - Custom web app URL (default: https://app.happy.engineering)
+- `HAPPY_WEBAPP_URL` - Custom web app URL (default: https://github.com/hitosea/happy)
 - `HAPPY_HOME_DIR` - Custom home directory for Happy data (default: ~/.happy)
 - `HAPPY_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
 - `HAPPY_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)

@@ -34,7 +34,7 @@ pnpm-lock.yaml
 bun.lock
 claude-docs/
 note/
-happy-coder-*.tgz
+happy-next-cli-*.tgz
 happy-code-*.tgz
 
 # npm auth token (never commit)

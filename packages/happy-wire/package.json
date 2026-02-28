@@ -2,7 +2,7 @@
   "name": "happy-wire",
   "version": "0.1.0",
   "description": "Shared message wire types and Zod schemas for Happy clients and services",
-  "author": "Kirill Dubovitskiy",
+  "author": "Hitosea",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",

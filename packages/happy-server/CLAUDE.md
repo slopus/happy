@@ -5,7 +5,7 @@ This document contains the development guidelines and instructions for the Happy
 ## Project Overview
 
 **Name**: happy-server  
-**Repository**: https://github.com/slopus/happy-server.git  
+**Repository**: https://github.com/hitosea/happy.git  
 **License**: MIT  
 **Language**: TypeScript  
 **Runtime**: Node.js 20  

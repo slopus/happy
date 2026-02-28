@@ -1,13 +1,13 @@
 {
-  "name": "happy-code-cli",
+  "name": "happy-next-cli",
   "version": "0.14.0-dev.19",
   "description": "Mobile and Web client for Claude Code, Codex, and Gemini",
-  "author": "Kirill Dubovitskiy",
+  "author": "Hitosea",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy-cli",
-  "bugs": "https://github.com/slopus/happy-cli/issues",
-  "repository": "slopus/happy-cli",
+  "homepage": "https://github.com/hitosea/happy",
+  "bugs": "https://github.com/hitosea/happy/issues",
+  "repository": "hitosea/happy",
   "bin": {
     "happy": "./bin/happy.mjs",
     "happy-mcp": "./bin/happy-mcp.mjs"

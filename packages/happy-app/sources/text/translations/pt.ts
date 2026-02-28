@@ -188,7 +188,7 @@ export const pt: TranslationStructure = {
         developer: 'Desenvolvedor',
         developerTools: 'Ferramentas de desenvolvedor',
         about: 'Sobre',
-        aboutFooter: 'Happy Coder é um cliente móvel para Codex e Claude Code. É totalmente criptografado ponta a ponta e sua conta é armazenada apenas no seu dispositivo. Não é afiliado à Anthropic.',
+        aboutFooter: 'Happy Next é um cliente móvel para Codex e Claude Code. É totalmente criptografado ponta a ponta e sua conta é armazenada apenas no seu dispositivo. Não é afiliado à Anthropic.',
         whatsNew: 'Novidades',
         whatsNewSubtitle: 'Veja as atualizações e melhorias mais recentes',
         reportIssue: 'Relatar um problema',
@@ -625,7 +625,7 @@ export const pt: TranslationStructure = {
         cliVersionOutdated: 'Atualização do CLI necessária',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versão ${currentVersion} instalada. Atualize para ${requiredVersion} ou posterior`,
-        updateCliInstructions: 'Por favor execute npm install -g happy-code-cli@latest',
+        updateCliInstructions: 'Por favor execute npm install -g happy-next-cli@latest',
         deleteSession: 'Excluir sessão',
         deleteSessionSubtitle: 'Remover permanentemente esta sessão',
         deleteSessionConfirm: 'Excluir sessão permanentemente?',
@@ -1036,7 +1036,7 @@ export const pt: TranslationStructure = {
         invalidConnectionLink: 'Link de conexão inválido',
         invalidConnectionLinkDescription: 'O link de conexão está ausente ou inválido. Verifique a URL e tente novamente.',
         connectTerminal: 'Conectar terminal',
-        terminalRequestDescription: 'Um terminal está solicitando conexão à sua conta Happy Coder. Isso permitirá que o terminal envie e receba mensagens com segurança.',
+        terminalRequestDescription: 'Um terminal está solicitando conexão à sua conta Happy Next. Isso permitirá que o terminal envie e receba mensagens com segurança.',
         connectionDetails: 'Detalhes da conexão',
         publicKey: 'Chave pública',
         encryption: 'Criptografia',
@@ -1113,7 +1113,7 @@ export const pt: TranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'Inicializador desativado enquanto a máquina está offline',
-        offlineHelp: '• Verifique se seu computador está online\n• Execute `happy daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `npm install -g happy-code-cli@latest`',
+        offlineHelp: '• Verifique se seu computador está online\n• Execute `happy daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `npm install -g happy-next-cli@latest`',
         launchNewSessionInDirectory: 'Iniciar nova sessão no diretório',
         daemon: 'Daemon',
         status: 'Status',

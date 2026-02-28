@@ -1,11 +1,11 @@
 {
   "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Happy (preview)",
+  "productName": "Happy Next (preview)",
   "identifier": "com.hitosea.happy.preview",
   "app": {
     "windows": [
       {
-        "title": "Happy (preview)"
+        "title": "Happy Next (preview)"
       }
     ]
   }

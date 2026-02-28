@@ -199,7 +199,7 @@ export const pl: TranslationStructure = {
         developer: 'Deweloper',
         developerTools: 'Narzędzia deweloperskie',
         about: 'O aplikacji',
-        aboutFooter: 'Happy Coder to mobilny klient Codex i Claude Code. Jest w pełni szyfrowany end-to-end, a Twoje konto jest przechowywane tylko na Twoim urządzeniu. Nie jest powiązany z Anthropic.',
+        aboutFooter: 'Happy Next to mobilny klient Codex i Claude Code. Jest w pełni szyfrowany end-to-end, a Twoje konto jest przechowywane tylko na Twoim urządzeniu. Nie jest powiązany z Anthropic.',
         whatsNew: 'Co nowego',
         whatsNewSubtitle: 'Zobacz najnowsze aktualizacje i ulepszenia',
         reportIssue: 'Zgłoś problem',
@@ -636,7 +636,7 @@ export const pl: TranslationStructure = {
         cliVersionOutdated: 'Wymagana aktualizacja CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Zainstalowana wersja ${currentVersion}. Zaktualizuj do ${requiredVersion} lub nowszej`,
-        updateCliInstructions: 'Proszę uruchomić npm install -g happy-code-cli@latest',
+        updateCliInstructions: 'Proszę uruchomić npm install -g happy-next-cli@latest',
         deleteSession: 'Usuń sesję',
         deleteSessionSubtitle: 'Trwale usuń tę sesję',
         deleteSessionConfirm: 'Usunąć sesję na stałe?',
@@ -1046,7 +1046,7 @@ export const pl: TranslationStructure = {
         invalidConnectionLink: 'Nieprawidłowy link połączenia',
         invalidConnectionLinkDescription: 'Link połączenia jest nieprawidłowy lub go brakuje. Sprawdź URL i spróbuj ponownie.',
         connectTerminal: 'Połącz terminal',
-        terminalRequestDescription: 'Terminal żąda połączenia z Twoim kontem Happy Coder. Pozwoli to terminalowi bezpiecznie wysyłać i odbierać wiadomości.',
+        terminalRequestDescription: 'Terminal żąda połączenia z Twoim kontem Happy Next. Pozwoli to terminalowi bezpiecznie wysyłać i odbierać wiadomości.',
         connectionDetails: 'Szczegóły połączenia',
         publicKey: 'Klucz publiczny',
         encryption: 'Szyfrowanie',
@@ -1123,7 +1123,7 @@ export const pl: TranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'Launcher wyłączony, gdy maszyna jest offline',
-        offlineHelp: '• Upewnij się, że komputer jest online\n• Uruchom `happy daemon status`, aby zdiagnozować\n• Czy używasz najnowszej wersji CLI? Zaktualizuj poleceniem `npm install -g happy-code-cli@latest`',
+        offlineHelp: '• Upewnij się, że komputer jest online\n• Uruchom `happy daemon status`, aby zdiagnozować\n• Czy używasz najnowszej wersji CLI? Zaktualizuj poleceniem `npm install -g happy-next-cli@latest`',
         launchNewSessionInDirectory: 'Uruchom nową sesję w katalogu',
         daemon: 'Daemon',
         status: 'Status',

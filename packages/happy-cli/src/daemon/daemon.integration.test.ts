@@ -393,9 +393,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
    * 7. New daemon starts, reads daemon.state.json, sees old version != its compiled version
    * 8. New daemon calls stopDaemon() to kill old daemon, then takes over
    * 
-   * This simulates what happens during `npm upgrade happy-coder`:
+   * This simulates what happens during `npm upgrade happy-next-cli`:
    * - Running daemon has OLD version loaded in memory (configuration.currentCliVersion)
-   * - npm replaces node_modules/happy-coder/ with NEW version files
+   * - npm replaces node_modules/happy-next-cli/ with NEW version files
    * - package.json on disk now has NEW version
    * - Daemon reads package.json, detects mismatch, triggers self-update
    * - Key difference: npm atomically replaces the entire module directory, while
@@ -467,7 +467,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
   // TODO: Add a test to see if a corrupted file will work
   
-  // TODO: Test npm uninstall scenario - daemon should gracefully handle when happy-coder is uninstalled
+  // TODO: Test npm uninstall scenario - daemon should gracefully handle when happy-next-cli is uninstalled
   // Current behavior: daemon tries to spawn new daemon on version mismatch but dist/index.mjs is gone
   // Expected: daemon should detect missing entrypoint and either exit cleanly or at minimum not respawn infinitely
 });

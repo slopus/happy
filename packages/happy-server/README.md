@@ -24,7 +24,7 @@ Your Claude Code clients generate encryption keys locally and use Happy Server a
 
 ## Hosting
 
-**You don't need to self-host!** Our free cloud Happy Server at `happy-api.slopus.com` is just as secure as running your own. Since all data is end-to-end encrypted before it reaches our servers, we literally cannot read your messages even if we wanted to. The encryption happens on your device, and only you have the keys.
+**You don't need to self-host!** Our free cloud Happy Server at `api.happy.hitosea.com` is just as secure as running your own. Since all data is end-to-end encrypted before it reaches our servers, we literally cannot read your messages even if we wanted to. The encryption happens on your device, and only you have the keys.
 
 That said, Happy Server is open source and self-hostable if you prefer running your own infrastructure. The security model is identical whether you use our servers or your own.
 

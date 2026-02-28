@@ -25,7 +25,7 @@ export function versionRoutes(app: Fastify) {
             if (semver.satisfies(version, IOS_UP_TO_DATE)) {
                 reply.send({ updateUrl: null });
             } else {
-                reply.send({ updateUrl: 'https://apps.apple.com/us/app/happy-claude-code-client/id6748571505' });
+                reply.send({ updateUrl: null }); // TODO: fill in App Store URL after publishing
             }
             return;
         }
@@ -35,7 +35,7 @@ export function versionRoutes(app: Fastify) {
             if (semver.satisfies(version, ANDROID_UP_TO_DATE)) {
                 reply.send({ updateUrl: null });
             } else {
-                reply.send({ updateUrl: 'https://play.google.com/store/apps/details?id=com.ex3ndr.happy' });
+                reply.send({ updateUrl: 'https://play.google.com/store/apps/details?id=com.hitosea.happy' });
             }
             return;
         }
