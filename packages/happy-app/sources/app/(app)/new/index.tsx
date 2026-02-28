@@ -1064,7 +1064,9 @@ function NewSessionWizard() {
             } else if (result.type === 'error') {
                 throw new Error(result.errorMessage);
             } else {
-                throw new Error('Session spawning failed - unexpected response.');
+                // This should never happen - log what we actually got for debugging
+                const resultStr = typeof result === 'object' ? JSON.stringify(result) : String(result);
+                throw new Error(`Session spawning returned unexpected response type: ${resultStr}`);
             }
         } catch (error) {
             console.error('Failed to start session', error);
