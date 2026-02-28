@@ -79,6 +79,7 @@ export function getClaudeModelModes(): ModelMode[] {
 
 export function getCodexModelModes(translate: Translate): ModelMode[] {
     return [
+        { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: null },
         { key: 'gpt-5-codex-high', name: translate('agentInput.codexModel.gpt5CodexHigh'), description: null },
         { key: 'gpt-5-codex-medium', name: translate('agentInput.codexModel.gpt5CodexMedium'), description: null },
         { key: 'gpt-5-codex-low', name: translate('agentInput.codexModel.gpt5CodexLow'), description: null },
@@ -164,7 +165,7 @@ export function resolveCurrentOption<T extends ModeOption>(
 
 export function getDefaultModelKey(flavor: AgentFlavor): string {
     if (flavor === 'codex') {
-        return 'gpt-5-codex-high';
+        return 'default';
     }
     if (flavor === 'gemini') {
         return 'gemini-2.5-pro';
