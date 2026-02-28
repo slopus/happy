@@ -360,6 +360,25 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
+        // Build a clean base environment from process.env.
+        // Strip auth-related env vars that weren't explicitly set by the profile or auth layer.
+        // This prevents the daemon's inherited ANTHROPIC_API_KEY from overriding Claude Code's
+        // native OAuth login (Max plan). Without this, users with both a Max plan and a stale
+        // ANTHROPIC_API_KEY in their shell would always get billed via the API key.
+        // See: https://github.com/anthropics/happy-cli/issues/120
+        const authVarsToStrip = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'];
+        const baseEnv: Record<string, string> = {};
+        for (const [key, value] of Object.entries(process.env)) {
+          if (value !== undefined) {
+            // Strip auth vars from inherited env unless the profile explicitly sets them
+            if (authVarsToStrip.includes(key) && !(key in extraEnv)) {
+              logger.debug(`[DAEMON RUN] Stripping inherited ${key} from daemon env (not set by profile) to allow native Claude Code auth`);
+              continue;
+            }
+            baseEnv[key] = value;
+          }
+        }
+
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();
         let useTmux = tmuxAvailable;
@@ -391,19 +410,13 @@ export async function startDaemon(): Promise<void> {
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
 
           // Spawn in tmux with environment variables
-          // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
+          // IMPORTANT: Pass complete environment (baseEnv + extraEnv) because:
           // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
-          // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
+          // 2. Regular spawn uses env: { ...baseEnv, ...extraEnv }
           // 3. tmux needs explicit environment via -e flags to ensure all variables are available
+          // Note: baseEnv already has auth vars stripped if not set by profile (Max plan support)
           const windowName = `happy-${Date.now()}-${agent}`;
-          const tmuxEnv: Record<string, string> = {};
-
-          // Add all daemon environment variables (filtering out undefined)
-          for (const [key, value] of Object.entries(process.env)) {
-            if (value !== undefined) {
-              tmuxEnv[key] = value;
-            }
-          }
+          const tmuxEnv: Record<string, string> = { ...baseEnv };
 
           // Add extra environment variables (these should already be filtered)
           Object.assign(tmuxEnv, extraEnv);
@@ -496,16 +509,16 @@ export async function startDaemon(): Promise<void> {
           ];
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
-          // For now, we ignore it - each spawn creates a new session
-          const happyProcess = spawnHappyCLI(args, {
-            cwd: directory,
-            detached: true,  // Sessions stay alive when daemon stops
-            stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
-            env: {
-              ...process.env,
-              ...extraEnv
-            }
-          });
+           // For now, we ignore it - each spawn creates a new session
+           const happyProcess = spawnHappyCLI(args, {
+             cwd: directory,
+             detached: true,  // Sessions stay alive when daemon stops
+             stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
+             env: {
+               ...baseEnv,
+               ...extraEnv
+             }
+           });
 
           // Log output for debugging
           if (process.env.DEBUG) {

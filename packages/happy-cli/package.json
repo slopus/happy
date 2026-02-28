@@ -132,7 +132,7 @@
     "eslint-config-prettier": "^10",
     "pkgroll": "^2.14.2",
     "release-it": "^19.0.6",
-    "shx": "^0.3.3",
+    "shx": "0.3.3",
     "ts-node": "^10",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",
