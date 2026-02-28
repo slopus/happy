@@ -1,9 +1,9 @@
 # Protocol
 
-This document describes the Happy wire protocol as implemented in `packages/happy-server`. The protocol is intentionally small: JSON over HTTP for reads/actions and Socket.IO for real-time sync. Most payloads are end-to-end encrypted client-side; see `encryption.md` for the encryption boundaries and encoding details. For the full HTTP surface and auth flows, see `api.md`.
+This document describes the Happy Next wire protocol as implemented in `packages/happy-server`. The protocol is intentionally small: JSON over HTTP for reads/actions and Socket.IO for real-time sync. Most payloads are end-to-end encrypted client-side; see `encryption.md` for the encryption boundaries and encoding details. For the full HTTP surface and auth flows, see `api.md`.
 
 ## Transport and versioning
-- HTTP API: JSON requests/responses on `/v1` and `/v2` routes.
+- HTTP API: JSON requests/responses on `/v1`, `/v2`, and `/v3` routes.
 - WebSocket: Socket.IO server at path `/v1/updates` (transports: websocket, polling).
 - CORS: `*` (server-side).
 

@@ -1,6 +1,6 @@
 # Backend Architecture
 
-This document describes the Happy backend structure as implemented in `packages/happy-server`. It focuses on how the server is wired, how data flows through the system, and which subsystems handle which responsibilities.
+This document describes the Happy Next backend structure as implemented in `packages/happy-server`. It focuses on how the server is wired, how data flows through the system, and which subsystems handle which responsibilities.
 
 ## System overview
 
@@ -12,7 +12,7 @@ graph TB
         Daemon[Machine Daemon]
     end
 
-    subgraph "Happy Server"
+    subgraph "Happy Next Server"
         API[Fastify API]
         Socket[Socket.IO]
         Events[Event Router]
@@ -108,7 +108,7 @@ graph LR
         subgraph Routes
             direction TB
             R1[authRoutes]
-            R2[sessionRoutes]
+            R2[sessionRoutes / v3SessionRoutes]
             R3[machinesRoutes]
             R4[artifactsRoutes]
             R5[accessKeysRoutes]
@@ -117,6 +117,7 @@ graph LR
             R8[userRoutes / feedRoutes]
             R9[pushRoutes]
             R10[connectRoutes / voiceRoutes]
+            R11[openclawRoutes / chatRoutes]
         end
     end
 
@@ -128,8 +129,10 @@ graph LR
 
 HTTP routes are organized by domain:
 - Auth (`authRoutes`)
-- Sessions + messages (`sessionRoutes`)
+- Sessions + messages (`sessionRoutes`, `v3SessionRoutes`)
 - Machines (`machinesRoutes`)
+- OpenClaw machines (`openclawRoutes`)
+- Chat uploads (`chatRoutes`)
 - Artifacts (`artifactsRoutes`)
 - Access keys (`accessKeysRoutes`)
 - Key-value store (`kvRoutes`)
@@ -336,7 +339,7 @@ The server uses S3-compatible storage for user assets (e.g., avatars):
 - Public URLs are derived from `S3_PUBLIC_URL`.
 
 ### Redis
-A Redis client is initialized in `main.ts` and pinged at startup. It can be expanded for caching or pub/sub if needed.
+A Redis client is initialized in `main.ts` and pinged at startup. Redis is used by the event bus module for pub/sub across processes.
 
 ## Data confidentiality model
 
@@ -380,7 +383,7 @@ graph TB
 ## Integrations
 - **GitHub**: OAuth connect + webhook verification, optional if env vars are set.
 - **AI vendors**: encrypted token storage for `openai`, `anthropic`, `gemini`.
-- **Voice**: RevenueCat subscription check + ElevenLabs token minting.
+- **Voice**: Voice tool bridge (`/v1/voice/tool-call`) for the separate `happy-voice` LiveKit gateway.
 - **Push tokens**: stored for later notification delivery.
 
 ## Observability

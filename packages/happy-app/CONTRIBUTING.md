@@ -210,11 +210,15 @@ Each app maintains separate authentication and sessions!
 To test with a local Happy server:
 
 ```bash
-npm run start:local-server
+# From repo root (recommended):
+docker-compose up -d
+
+# Then run the app with the local API:
+EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3031 EXPO_PUBLIC_DEBUG=1 npm run start:dev
 ```
 
 This sets:
-- `EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005`
+- `EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3031`
 - `EXPO_PUBLIC_DEBUG=1`
 - Debug logging enabled
 

@@ -1,6 +1,6 @@
 # Deployment
 
-This document describes how to deploy the Happy backend (`packages/happy-server`) and the infrastructure it expects.
+This document describes how to deploy the Happy Next backend (`packages/happy-server`) and the infrastructure it expects.
 
 ## Runtime overview
 - **App server:** Node.js running `tsx ./sources/main.ts` (Fastify + Socket.IO).
@@ -38,16 +38,16 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
 
 **Optional integrations**
 - GitHub OAuth/App: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, plus redirect URL/URI.
-  - `GITHUB_REDIRECT_URL` is used by the OAuth callback handler.
-  - `GITHUB_REDIRECT_URI` is used by the GitHub App initializer.
-- Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/token` in production).
+  - Canonical: `GITHUB_REDIRECT_URL`
+  - Backward-compatible alias: `GITHUB_REDIRECT_URI`
+- Voice: Voice is handled by the separate `happy-voice` service (LiveKit-based). See `docs/self-host.md` for configuration.
 - Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` (enables file logging + dev log endpoint).
 
 ## Docker image
 A production Dockerfile is provided at `Dockerfile.server`.
 
 Key notes:
-- The server defaults to port `3005` (set `PORT` explicitly in container environments).
+- The server code defaults to port `3005` (`PORT` env var). The Dockerfile `EXPOSE`s port `3000`. In the Docker Compose stack, port `3031` is mapped externally. Set `PORT` explicitly to match your environment.
 - The image includes FFmpeg and Python for media processing.
 
 ## Kubernetes manifests
@@ -57,8 +57,8 @@ Example manifests live in `packages/happy-server/deploy`:
 
 The deployment config expects:
 - Prometheus scraping annotations on port `9090`.
-- A secret named `handy-secrets` populated by ExternalSecrets.
-- A service mapping port `3000` to container port `3005`.
+- A secret named `handy-secrets` populated by ExternalSecrets (legacy naming from pre-rebrand).
+- A service mapping port `3000` to the container port. Adjust `PORT` to match.
 
 ## Local dev helpers
 The server package includes scripts for local infrastructure:
@@ -67,6 +67,9 @@ The server package includes scripts for local infrastructure:
 - `yarn workspace happy-server s3` + `s3:init`
 
 Use `.env`/`.env.dev` to load local settings when running `yarn workspace happy-server dev`.
+
+## Docker Compose (recommended)
+For a one-command deployment including all services (Web, API, Voice, Postgres, Redis, MinIO), see [self-host.md](self-host.md).
 
 ## Implementation references
 - Entrypoint: `packages/happy-server/sources/main.ts`

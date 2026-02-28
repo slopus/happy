@@ -4,6 +4,12 @@ This document details how client data is encrypted, how encrypted blobs are stru
 
 For transport and event shapes, see `protocol.md`. For HTTP endpoints, see `api.md`.
 
+## Compatibility / breaking changes
+
+Some client-side encryption identifiers are used as inputs to key derivation. If those identifiers change, the derived keys change, and existing encrypted data will no longer be decryptable by clients using the new identifiers.
+
+Happy Next intentionally changed its client KDF labels as part of the rebrand. Treat this as a **new generation**: do not expect encrypted data created by older clients to be readable by Happy Next (and vice versa).
+
 ## Overview
 
 ```mermaid

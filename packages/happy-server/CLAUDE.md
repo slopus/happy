@@ -1,4 +1,4 @@
-# Handy Server - Development Guidelines
+# Happy Server - Development Guidelines
 
 This document contains the development guidelines and instructions for the Happy Server project. This guide OVERRIDES any default behaviors and MUST be followed exactly.
 
@@ -60,7 +60,6 @@ This document contains the development guidelines and instructions for the Happy
 ├── /app                   # Application entry points
 │   ├── api.ts            # API server setup
 │   └── timeout.ts        # Timeout handling
-├── /apps                  # Applications directory
 │   └── /api              # API server application
 │       └── /routes       # API routes
 ├── /modules              # Reusable modules (non-application logic)
@@ -156,8 +155,8 @@ The project has pending Prisma migrations that need to be applied:
 
 ## API Development
 
-- API server is in `/sources/apps/api`
-- Routes are in `/sources/apps/api/routes`
+- API server is in `/sources/app/api`
+- Routes are in `/sources/app/api/routes`
 - Use Fastify with Zod for type-safe route definitions
 - Always validate inputs using Zod
 - **Idempotency**: Design all operations to be idempotent - clients may retry requests automatically and the backend must handle multiple invocations of the same operation gracefully, producing the same result as a single invocation

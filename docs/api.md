@@ -98,9 +98,23 @@ Auth flows:
 - `GET /v1/friends`
 - `GET /v1/feed`
 
+### Sessions (v3)
+- `GET /v3/sessions/:sessionId/messages` (seq-based cursor pagination with `after` and `limit`)
+- `POST /v3/sessions/:sessionId/messages` (batch write with server-allocated seq numbers)
+
+### OpenClaw machines
+- `GET /v1/openclaw/machines`
+- `POST /v1/openclaw/machines` (create with encrypted metadata)
+- `GET /v1/openclaw/machines/:id`
+- `PUT /v1/openclaw/machines/:id` (versioned update)
+- `DELETE /v1/openclaw/machines/:id`
+
+### Chat
+- `POST /v1/chat/upload-image` (image upload for chat messages)
+
 ### Version and voice
 - `POST /v1/version`
-- `POST /v1/voice/token`
+- `POST /v1/voice/tool-call` (voice tool bridge for the `happy-voice` LiveKit gateway)
 
 ### Dev-only
 - `POST /logs-combined-from-cli-and-mobile-for-simple-ai-debugging` (only if enabled)

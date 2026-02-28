@@ -2,11 +2,13 @@
 
 ## Project Overview
 
-Happy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable remote control and session sharing. It's part of a three-component system:
+Happy CLI (`happy-cli`) is a command-line tool that wraps Claude Code, Codex, and Gemini to enable remote control and session sharing. It's part of a five-component system:
 
-1. **handy-cli** (this project) - CLI wrapper for Claude Code
-2. **handy** - React Native mobile client
-3. **handy-server** - Node.js server with Prisma (hosted at https://api.happy-servers.com/)
+1. **happy-cli** (this project) - CLI wrapper for Claude Code, Codex, and Gemini
+2. **happy-app** - React Native mobile and web client
+3. **happy-server** - Node.js server with Prisma (hosted at https://api.happy.hitosea.com/)
+4. **happy-voice** - LiveKit-based voice gateway
+5. **happy-wire** - Shared wire types and schemas
 
 ## Code Style Preferences
 
@@ -59,23 +61,26 @@ Handles server communication and encryption.
 - Optimistic concurrency control for state updates
 - RPC handler registration for remote procedure calls
 
-### 2. Claude Integration (`/src/claude/`)
-Core Claude Code integration layer.
+### 2. Agent Runners (`/src/claude/`, `/src/codex/`, `/src/gemini/`)
+Provider-specific integration layers for each supported AI agent.
 
+**Claude Code** (`/src/claude/`):
 - **`loop.ts`**: Main control loop managing interactive/remote modes
-- **`types.ts`**: Claude message type definitions with parsers
-
 - **`claudeSdk.ts`**: Direct SDK integration using `@anthropic-ai/claude-code`
-- **`interactive.ts`**: **LIKELY WILL BE DEPRECATED in favor of running through SDK** PTY-based interactive Claude sessions
-- **`watcher.ts`**: File system watcher for Claude session files (for interactive mode snooping)
+- **`mcp/startPermissionServer.ts`**: MCP permission server
 
-- **`mcp/startPermissionServer.ts`**: MCP (Model Context Protocol) permission server
+**Codex** (`/src/codex/`):
+- **`runCodex.ts`**: Codex session runner with ACP backend
+- **`appserver/`**: Alternative `codex app-server` JSON-RPC backend
+
+**Gemini** (`/src/gemini/`):
+- Gemini CLI integration with JSONL session persistence
 
 **Key Features:**
 - Dual mode operation: interactive (terminal) and remote (mobile control)
-- Session persistence and resumption
+- Session persistence and resumption for all three agents
 - Real-time message streaming
-- Permission intercepting via MCP [Permission checking not implemented yet]
+- Permission intercepting via MCP
 
 ### 3. UI Module (`/src/ui/`)
 User interface components.
@@ -120,7 +125,7 @@ User interface components.
 
 ## Security Considerations
 
-- Private keys stored in `~/.handy/access.key` with restricted permissions
+- Private keys stored in `~/.happy/access.key` with restricted permissions
 - All communications encrypted using TweetNaCl
 - Challenge-response authentication prevents replay attacks
 - Session isolation through unique session IDs
@@ -144,7 +149,7 @@ User interface components.
 ./bin/happy.mjs daemon start
 
 # With custom server URL (for local development):
-HAPPY_SERVER_URL=http://localhost:3005 ./bin/happy.mjs daemon start
+HAPPY_SERVER_URL=http://localhost:3031 ./bin/happy.mjs daemon start
 
 # Stop the daemon:
 ./bin/happy.mjs daemon stop
@@ -219,7 +224,7 @@ Lines 7-8: New messages from current interaction
 {"parentUuid":"...","sessionId":"1433467f-ff14-4292-b5b2-2aac77a808f0","message":{"role":"user","content":"what file did we just see?"},...}
 ```
 
-## Implications for handy-cli
+## Implications for happy-cli
 
 When using --resume:
 1. Must handle new session ID in responses

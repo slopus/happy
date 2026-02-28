@@ -1,6 +1,6 @@
 # CLI Architecture
 
-This document describes the Happy CLI (`packages/happy-cli`) and its daemon. The CLI is both an interactive tool and a background session manager that keeps machine state in sync with the server.
+This document describes the Happy Next CLI (`packages/happy-cli`) and its daemon. The CLI is both an interactive tool and a background session manager that keeps machine state in sync with the server.
 
 ## System overview
 
