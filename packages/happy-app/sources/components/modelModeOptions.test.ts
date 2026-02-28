@@ -4,6 +4,7 @@ import {
     getAvailablePermissionModes,
     getCodexModelModes,
     getClaudePermissionModes,
+    getDefaultModelKey,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
@@ -30,6 +31,7 @@ describe('modelModeOptions', () => {
     it('builds codex model fallbacks with translated labels', () => {
         const models = getCodexModelModes(translate);
         expect(models.map((model) => model.key)).toEqual([
+            'default',
             'gpt-5-codex-high',
             'gpt-5-codex-medium',
             'gpt-5-codex-low',
@@ -38,7 +40,7 @@ describe('modelModeOptions', () => {
             'gpt-5-medium',
             'gpt-5-high',
         ]);
-        expect(models[0].name).toBe('tr:agentInput.codexModel.gpt5CodexHigh');
+        expect(models[0].name).toBe('tr:agentInput.codexPermissionMode.default');
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {
@@ -83,5 +85,9 @@ describe('modelModeOptions', () => {
 
         expect(resolveCurrentOption(options, ['missing', 'b', 'a'])).toEqual({ key: 'b', name: 'B' });
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
+    });
+
+    it('uses default model key for codex fallback', () => {
+        expect(getDefaultModelKey('codex')).toBe('default');
     });
 });
