@@ -91,6 +91,14 @@ jobs:
         cache: 'yarn'
         cache-dependency-path: yarn.lock
 
+    - name: Clean yarn cache (Windows)
+      shell: pwsh
+      run: |
+        if (Test-Path node_modules) {
+          Remove-Item -Recurse -Force node_modules
+        }
+        yarn cache clean
+
     - name: Install dependencies
       run: yarn install --immutable
 
