@@ -104,6 +104,9 @@ jobs:
         SKIP_HAPPY_WIRE_BUILD: "1"
       run: yarn install --immutable
 
+    - name: Build happy-wire explicitly on Windows
+      run: yarn workspace @slopus/happy-wire build
+
     - name: Build package
       run: yarn workspace happy-coder build
 
