@@ -208,7 +208,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
         } else if (process.env.GEMINI_MODEL) {
           console.log(`Current model: ${process.env.GEMINI_MODEL} (from GEMINI_MODEL env var)`);
         } else {
-          console.log('Current model: gemini-2.5-pro (default)');
+          console.log('Current model: gemini-3.1-pro-preview (default)');
         }
         process.exit(0);
       } catch (error) {

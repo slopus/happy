@@ -201,6 +201,19 @@ export async function runGemini(opts: {
     }
   }
 
+  // Push available Gemini models to session metadata so the mobile app can display them
+  // (Without this, the app falls back to hardcoded model lists which may be stale)
+  const GEMINI_AVAILABLE_MODELS = [
+    { code: 'gemini-3.1-pro-preview', value: 'Gemini 3.1 Pro', description: 'Most capable' },
+    { code: 'gemini-3.0-flash-preview', value: 'Gemini 3.0 Flash', description: 'Fast & efficient' },
+  ];
+
+  session.updateMetadata((currentMetadata) => ({
+    ...currentMetadata,
+    models: GEMINI_AVAILABLE_MODELS,
+    currentModelCode: opts.model || getInitialGeminiModel(),
+  }));
+
   const messageQueue = new MessageQueue2<GeminiMode>((mode) => hashObject({
     permissionMode: mode.permissionMode,
     model: mode.model,
@@ -440,12 +453,18 @@ export async function runGemini(opts: {
     if (saveToConfig) {
       saveGeminiModelToConfig(model);
     }
-    
+
+    // Update session metadata so mobile app reflects the current model
+    session.updateMetadata((currentMetadata) => ({
+      ...currentMetadata,
+      currentModelCode: model,
+    }));
+
     // Trigger UI update by adding a system message with model info
     // The message will be parsed by UI to extract model name
     if (hasTTY && oldModel !== model) {
       // Add a system message that includes model info - UI will parse it
-      // Format: [MODEL:gemini-2.5-pro] to make it easy to extract
+      // Format: [MODEL:gemini-3.1-pro-preview] to make it easy to extract
       logger.debug(`[gemini] Adding model update message to buffer: [MODEL:${model}]`);
       messageBuffer.addMessage(`[MODEL:${model}]`, 'system');
     } else if (hasTTY) {
@@ -460,7 +479,7 @@ export async function runGemini(opts: {
     // We use a function component that reads displayedModel on each render
     const DisplayComponent = () => {
       // Read displayedModel from closure - it will have latest value on each render
-      const currentModelValue = displayedModel || 'gemini-2.5-pro';
+      const currentModelValue = displayedModel || DEFAULT_GEMINI_MODEL;
       // Don't log on every render to avoid spam - only log when model changes
       return React.createElement(GeminiDisplay, {
         messageBuffer,
@@ -480,7 +499,7 @@ export async function runGemini(opts: {
     });
     
     // Send initial model to UI so it displays correctly from start
-    const initialModelName = displayedModel || 'gemini-2.5-pro';
+    const initialModelName = displayedModel || DEFAULT_GEMINI_MODEL;
     logger.debug(`[gemini] Sending initial model to UI: ${initialModelName}`);
     messageBuffer.addMessage(`[MODEL:${initialModelName}]`, 'system');
   }
@@ -1058,7 +1077,7 @@ export async function runGemini(opts: {
             currentModeHash = message.hash;
             
             // Model info is already shown in status bar via updateDisplayedModel
-            logger.debug(`[gemini] Displaying model in UI: ${displayedModel || 'gemini-2.5-pro'}, displayedModel: ${displayedModel}`);
+            logger.debug(`[gemini] Displaying model in UI: ${displayedModel || DEFAULT_GEMINI_MODEL}, displayedModel: ${displayedModel}`);
           }
         }
         
@@ -1135,7 +1154,7 @@ export async function runGemini(opts: {
                 const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
                 resetTimeMsg = ` Quota resets in ${parts}.`;
               }
-              const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
+              const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-3.0-flash-preview) or wait for quota reset.`;
               messageBuffer.addMessage(quotaMsg, 'status');
               session.sendAgentMessage('gemini', { type: 'message', message: quotaMsg });
               throw promptError; // Don't retry quota errors
@@ -1191,8 +1210,8 @@ export async function runGemini(opts: {
             // Check for 404 error (model not found)
             if (errorCode === 404 || errorDetails.includes('notFound') || errorDetails.includes('404') || 
                 errorMessage.includes('not found') || errorMessage.includes('404')) {
-              const currentModel = displayedModel || 'gemini-2.5-pro';
-              errorMsg = `Model "${currentModel}" not found. Available models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite`;
+              const currentModel = displayedModel || DEFAULT_GEMINI_MODEL;
+              errorMsg = `Model "${currentModel}" not found. Available models: gemini-3.1-pro-preview, gemini-3.0-flash-preview`;
             }
             // Check for empty response / internal error after retries exhausted
             else if (errorCode === -32603 || 
@@ -1217,7 +1236,7 @@ export async function runGemini(opts: {
                 const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
                 resetTimeMsg = ` Quota resets in ${parts}.`;
               }
-              errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
+              errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-3.0-flash-preview) or wait for quota reset.`;
             }
             // Check for authentication error (Google Workspace accounts need project ID)
             else if (errorMessage.includes('Authentication required') || 
