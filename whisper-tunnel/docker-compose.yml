@@ -1,8 +1,26 @@
 services:
+  whisper:
+    image: ghcr.io/speaches-ai/speaches:latest-cuda
+    container_name: whisper-stt
+    restart: unless-stopped
+    environment:
+      - WHISPER__MODEL=Systran/faster-whisper-base
+    volumes:
+      - whisper-models:/home/ubuntu/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
   nginx:
     image: nginx:alpine
     container_name: whisper-tunnel
     restart: unless-stopped
+    depends_on:
+      - whisper
     ports:
       - "443:443"
     volumes:
@@ -10,3 +28,6 @@ services:
       - ./certs:/etc/nginx/certs:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+volumes:
+  whisper-models:
