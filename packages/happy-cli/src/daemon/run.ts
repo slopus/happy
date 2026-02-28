@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import os from 'os';
 import * as tmp from 'tmp';
+import { randomBytes } from 'crypto';
 
 import { ApiClient } from '@/api/api';
 import { TrackedSession } from './types';
@@ -170,6 +171,10 @@ export async function startDaemon(): Promise<void> {
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
 
+    // Token-based session tracking for tmux-spawned sessions (PID doesn't match node process PID)
+    const tokenToTrackedSession = new Map<string, TrackedSession>();
+    const tokenToAwaiter = new Map<string, (session: TrackedSession) => void>();
+
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
 
@@ -177,6 +182,26 @@ export async function startDaemon(): Promise<void> {
     const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
       logger.debugLargeJson(`[DAEMON RUN] Session reported`, sessionMetadata);
 
+      const spawnToken = sessionMetadata.spawnToken;
+
+      // Token-based match: tmux-spawned sessions report a token since PID will differ
+      const tokenSession = spawnToken ? tokenToTrackedSession.get(spawnToken) : undefined;
+      if (tokenSession && tokenSession.startedBy === 'daemon') {
+        tokenSession.happySessionId = sessionId;
+        tokenSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
+        logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata (token match)`);
+
+        // Resolve any awaiter for this token
+        const awaiter = tokenToAwaiter.get(spawnToken!);
+        if (awaiter) {
+          tokenToAwaiter.delete(spawnToken!);
+          awaiter(tokenSession);
+          logger.debug(`[DAEMON RUN] Resolved session awaiter for token ${spawnToken!.substring(0, 8)}...`);
+        }
+        return; // don't fall through to PID-based logic
+      }
+
+      // PID-based match: regular (non-tmux) sessions match on PID
       const pid = sessionMetadata.hostPid;
       if (!pid) {
         logger.debug(`[DAEMON RUN] Session webhook missing hostPid for sessionId: ${sessionId}`);
@@ -281,7 +306,7 @@ export async function startDaemon(): Promise<void> {
             const codexHomeDir = tmp.dirSync();
 
             // Write the token to the temporary directory
-            fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
+            await fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
 
             // Set the environment variable for Codex
             authEnv.CODEX_HOME = codexHomeDir.name;
@@ -398,6 +423,9 @@ export async function startDaemon(): Promise<void> {
           const windowName = `happy-${Date.now()}-${agent}`;
           const tmuxEnv: Record<string, string> = {};
 
+          // Generate a spawn token for reliable session matching (avoids PID mismatch in tmux)
+          const spawnToken = randomBytes(16).toString('hex');
+
           // Add all daemon environment variables (filtering out undefined)
           for (const [key, value] of Object.entries(process.env)) {
             if (value !== undefined) {
@@ -407,6 +435,9 @@ export async function startDaemon(): Promise<void> {
 
           // Add extra environment variables (these should already be filtered)
           Object.assign(tmuxEnv, extraEnv);
+
+          // Add spawn token for session webhook matching
+          tmuxEnv['HAPPY_SPAWN_TOKEN'] = spawnToken;
 
           const tmuxResult = await tmux.spawnInTmux([fullCommand], {
             sessionName: tmuxSessionName,
@@ -433,15 +464,17 @@ export async function startDaemon(): Promise<void> {
                 : `Spawned new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
             };
 
-            // Add to tracking map so webhook can find it later
+            // Add to tracking maps so webhook can find it later
             pidToTrackedSession.set(tmuxResult.pid, trackedSession);
+            tokenToTrackedSession.set(spawnToken, trackedSession);
 
             // Wait for webhook to populate session with happySessionId (exact same as regular flow)
-            logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
+            logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux), token: ${spawnToken.substring(0, 8)}...`);
 
             return new Promise((resolve) => {
               // Set timeout for webhook (same as regular flow)
               const timeout = setTimeout(() => {
+                tokenToAwaiter.delete(spawnToken);
                 pidToAwaiter.delete(tmuxResult.pid!);
                 logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
                 resolve({
@@ -450,9 +483,11 @@ export async function startDaemon(): Promise<void> {
                 });
               }, 15_000); // Same timeout as regular sessions
 
-              // Register awaiter for tmux session (exact same as regular flow)
-              pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
+              // Register awaiter for tmux session using token (token match is more reliable than PID for tmux)
+              tokenToAwaiter.set(spawnToken, (completedSession) => {
                 clearTimeout(timeout);
+                tokenToTrackedSession.delete(spawnToken);
+                pidToTrackedSession.delete(tmuxResult.pid!);
                 logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`);
                 resolve({
                   type: 'success',

@@ -267,7 +267,8 @@ export type Metadata = {
   lifecycleStateSince?: number,
   archivedBy?: string,
   archiveReason?: string,
-  flavor?: string
+  flavor?: string,
+  spawnToken?: string,
   sandbox?: SandboxConfig | null
   dangerouslySkipPermissions?: boolean | null
 };
