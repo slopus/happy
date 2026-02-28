@@ -35,6 +35,25 @@ export const initialMachineMetadata: MachineMetadata = {
   happyLibDir: projectPath()
 };
 
+// Agent command mapping — unified across all spawn paths (tmux and non-tmux)
+const AGENT_COMMAND_MAP = {
+  'claude': 'claude',
+  'codex': 'codex',
+  'gemini': 'gemini'
+} as const;
+
+type AgentType = keyof typeof AGENT_COMMAND_MAP;
+
+/**
+ * Get the CLI command for the given agent type.
+ * Defaults to 'claude' if agent is undefined.
+ * Returns null if agent is an unsupported type.
+ */
+function getAgentCommand(agent?: string): string | null {
+  const resolved = (agent || 'claude') as AgentType;
+  return AGENT_COMMAND_MAP[resolved] || null;
+}
+
 // Get environment variables for a profile, filtered for agent compatibility
 async function getProfileEnvironmentVariablesForAgent(
   profileId: string,
@@ -80,10 +99,16 @@ async function resolveTmuxSessionName(): Promise<string | undefined> {
   // the wrong session. Without `-t`, tmux uses the current client from $TMUX.
   if (process.env.TMUX) {
     try {
-      const sessionName = await new Promise<string | undefined>((resolve) => {
-        execFile('tmux', ['display-message', '-p', '#{session_name}'], { timeout: 5000 }, (err, stdout) => {
+      const sessionName = await new Promise<string | undefined>((resolve, reject) => {
+        const proc = execFile('tmux', ['display-message', '-p', '#{session_name}'], (err, stdout) => {
           resolve(err ? undefined : stdout.trim() || undefined);
         });
+        // Add explicit timeout since execFile's timeout option doesn't reject the promise
+        const timeout = setTimeout(() => {
+          proc.kill();
+          reject(new Error('Tmux session resolution timeout'));
+        }, 5000);
+        proc.on('exit', () => clearTimeout(timeout));
       });
       if (sessionName) {
         logger.debug(`[DAEMON RUN] Resolved tmux session from daemon's own session: ${sessionName}`);
@@ -364,11 +389,15 @@ export async function startDaemon(): Promise<void> {
             const codexHomeDir = tmp.dirSync();
 
             // Write the token to the temporary directory
-            fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
+            await fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
 
             // Set the environment variable for Codex
             authEnv.CODEX_HOME = codexHomeDir.name;
-          } else { // Assuming claude
+          } else if (options.agent === 'gemini') {
+            // Gemini uses Google API key
+            authEnv.GOOGLE_API_KEY = options.token;
+          } else {
+            // Claude (default)
             authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
           }
         }
@@ -471,7 +500,13 @@ export async function startDaemon(): Promise<void> {
           const tmux = getTmuxUtilities(tmuxSessionName);
 
           // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
+          const agent = getAgentCommand(options.agent);
+          if (!agent) {
+            return {
+              type: 'error',
+              errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
+            };
+          }
 
           // Use absolute paths for both node and the entrypoint — reliable regardless
           // of shell PATH (NVM, asdf, etc. may not be initialized when send-keys fires).
@@ -581,23 +616,12 @@ export async function startDaemon(): Promise<void> {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
           // Construct arguments for the CLI - support claude, codex, and gemini
-          let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-              };
+          const agentCommand = getAgentCommand(options.agent);
+          if (!agentCommand) {
+            return {
+              type: 'error',
+              errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
+            };
           }
           const args = [
             agentCommand,
@@ -719,13 +743,30 @@ export async function startDaemon(): Promise<void> {
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
           if (session.tmuxSessionId) {
-            // Tmux-spawned session: kill the window (fire-and-forget to keep stopSession synchronous)
-            const parsed = parseTmuxSessionIdentifier(session.tmuxSessionId);
-            const tmux = getTmuxUtilities(parsed.session);
-            tmux.killWindow(session.tmuxSessionId).catch((error) => {
-              logger.debug(`[DAEMON RUN] Failed to kill tmux window ${session.tmuxSessionId}:`, error);
-            });
-            logger.debug(`[DAEMON RUN] Sent kill to tmux window ${session.tmuxSessionId}`);
+            // Tmux-spawned session: check if the spawned process is still alive
+            // If Claude is still running, kill the window to cleanup. If user already exited,
+            // leave the window alone (it becomes an independent terminal).
+            let processIsAlive = false;
+            try {
+              process.kill(session.pid, 0);  // Signal 0: check without killing
+              processIsAlive = true;
+            } catch (error) {
+              // Process is dead (ESRCH error)
+              processIsAlive = false;
+            }
+
+            if (processIsAlive) {
+              // Process still running: kill the tmux window to terminate it
+              const parsed = parseTmuxSessionIdentifier(session.tmuxSessionId);
+              const tmux = getTmuxUtilities(parsed.session);
+              tmux.killWindow(session.tmuxSessionId).catch((error) => {
+                logger.debug(`[DAEMON RUN] Failed to kill tmux window ${session.tmuxSessionId}:`, error);
+              });
+              logger.debug(`[DAEMON RUN] Process alive, killed tmux window ${session.tmuxSessionId}`);
+            } else {
+              // Process already dead: leave window alone (user is using it as a terminal)
+              logger.debug(`[DAEMON RUN] Process PID ${session.pid} already exited, leaving tmux window ${session.tmuxSessionId} intact`);
+            }
           } else if (session.startedBy === 'daemon' && session.childProcess) {
             try {
               session.childProcess.kill('SIGTERM');
