@@ -237,8 +237,23 @@ export async function claudeLocal(opts: {
             // Prepare environment variables
             // Note: Local mode uses global Claude installation with --session-id flag
             // Launcher only intercepts fetch for thinking state tracking
+            
+            // Strip inherited auth vars unless explicitly set by claudeEnvVars
+            // This prevents unintended authentication using API keys from parent process
+            const authVarsToStrip = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'];
+            const baseEnv: Record<string, string> = {};
+            for (const [key, value] of Object.entries(process.env)) {
+                if (value !== undefined) {
+                    // Skip auth vars unless explicitly provided in claudeEnvVars
+                    if (authVarsToStrip.includes(key) && !(key in (opts.claudeEnvVars || {}))) {
+                        logger.debug(`[ClaudeLocal] Stripping inherited ${key} from env (not set by configuration)`);
+                        continue;
+                    }
+                    baseEnv[key] = value;
+                }
+            }
             const env = {
-                ...process.env,
+                ...baseEnv,
                 ...opts.claudeEnvVars
             }
 
