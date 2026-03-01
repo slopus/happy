@@ -24,3 +24,18 @@ export async function registerPushToken(credentials: AuthCredentials, token: str
         }
     });
 }
+
+export async function resetBadgeCount(credentials: AuthCredentials): Promise<void> {
+    const API_ENDPOINT = getServerUrl();
+    try {
+        await fetch(`${API_ENDPOINT}/v1/badge/reset`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+    } catch {
+        // Best-effort: don't block app lifecycle if server is unreachable
+    }
+}

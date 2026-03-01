@@ -109,4 +109,43 @@ export function pushRoutes(app: Fastify) {
             return reply.code(500).send({ error: 'Failed to get push tokens' });
         }
     });
+
+    // Increment badge count and return new value (called by CLI before sending push)
+    app.post('/v1/badge/increment', {
+        schema: {
+            response: {
+                200: z.object({
+                    badgeCount: z.number()
+                })
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const account = await db.account.update({
+            where: { id: userId },
+            data: { badgeCount: { increment: 1 } },
+            select: { badgeCount: true }
+        });
+        return reply.send({ badgeCount: account.badgeCount });
+    });
+
+    // Reset badge count to zero (called by App when user opens or backgrounds the app)
+    app.post('/v1/badge/reset', {
+        schema: {
+            response: {
+                200: z.object({
+                    success: z.literal(true)
+                })
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        await db.account.update({
+            where: { id: userId },
+            data: { badgeCount: 0 }
+        });
+        return reply.send({ success: true });
+    });
 }

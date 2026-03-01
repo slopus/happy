@@ -38,6 +38,9 @@ model Account {
   /// [ImageRef]
   avatar    Json?
 
+  // Push notification badge counter
+  badgeCount Int @default(0)
+
   Session             Session[]
   AccountPushToken    AccountPushToken[]
   TerminalAuthRequest TerminalAuthRequest[]

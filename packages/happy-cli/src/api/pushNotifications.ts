@@ -122,6 +122,28 @@ export class PushNotificationClient {
     }
 
     /**
+     * Increment the badge count on the server and return the new value
+     */
+    private async incrementBadgeCount(): Promise<number> {
+        try {
+            const response = await axios.post<{ badgeCount: number }>(
+                `${this.baseUrl}/v1/badge/increment`,
+                {},
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            )
+            return response.data.badgeCount
+        } catch (error) {
+            logger.debug('[PUSH] Failed to increment badge count:', error)
+            return 1 // Fallback to 1 if server is unreachable
+        }
+    }
+
+    /**
      * Send a push notification to all registered devices for the user
      * @param title - Notification title
      * @param body - Notification body
@@ -129,15 +151,18 @@ export class PushNotificationClient {
      */
     sendToAllDevices(title: string, body: string, data?: Record<string, any>): void {
         logger.debug(`[PUSH] sendToAllDevices called with title: "${title}", body: "${body}"`);
-        
+
         // Execute async operations without awaiting
         (async () => {
             try {
-                // Fetch all push tokens
-                logger.debug('[PUSH] Fetching push tokens...')
-                const tokens = await this.fetchPushTokens()
-                logger.debug(`[PUSH] Fetched ${tokens.length} push tokens`)
-                
+                // Fetch push tokens and increment badge count in parallel
+                logger.debug('[PUSH] Fetching push tokens and incrementing badge...')
+                const [tokens, badgeCount] = await Promise.all([
+                    this.fetchPushTokens(),
+                    this.incrementBadgeCount()
+                ])
+                logger.debug(`[PUSH] Fetched ${tokens.length} push tokens, badge: ${badgeCount}`)
+
                 // Log token details for debugging
                 tokens.forEach((token, index) => {
                     logger.debug(`[PUSH] Using token ${index + 1}: id=${token.id}`)
@@ -157,7 +182,8 @@ export class PushNotificationClient {
                         body,
                         data,
                         sound: 'default',
-                        priority: 'high'
+                        priority: 'high',
+                        badge: badgeCount
                     }
                 })
 

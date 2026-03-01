@@ -20,6 +20,7 @@ import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
 import { sync, syncRestore } from '@/sync/sync';
+import { resetBadgeCount } from '@/sync/apiPush';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
@@ -220,6 +221,14 @@ export default function RootLayout() {
     React.useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextState) => {
             currentAppState = nextState;
+            // Clear badge when app comes to foreground or goes to background
+            if (nextState === 'active' || nextState === 'background') {
+                Notifications.setBadgeCountAsync(0);
+                const credentials = sync.getCredentials();
+                if (credentials) {
+                    resetBadgeCount(credentials);
+                }
+            }
         });
         return () => {
             subscription.remove();
