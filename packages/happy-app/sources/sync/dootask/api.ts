@@ -364,7 +364,7 @@ export async function dootaskFetchProjectColumns(serverUrl: string, token: strin
 
 export async function dootaskFetchProjectMembers(serverUrl: string, token: string, projectId: number): Promise<DooTaskResponse> {
     const url = validateServerUrl(serverUrl);
-    const response = await fetch(`${url}/api/project/one?project_id=${projectId}&getmember=yes`, {
+    const response = await fetch(`${url}/api/users/search?keys[project_id]=${projectId}&keys[bot]=0&keys[disable]=0&pagesize=100`, {
         method: 'GET',
         headers: buildHeaders(token),
     });

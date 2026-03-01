@@ -255,12 +255,12 @@ export const DooTaskCreateTaskSheet = React.memo(
                 }
 
                 if (memRes.ret === 1) {
-                    const projectData = memRes.data;
-                    const memberList: DooTaskProjectMember[] = (projectData?.project_user || projectData?.projectUser || []).map((m: any) => ({
+                    const rawMembers = memRes.data?.data || memRes.data || [];
+                    const memberList: DooTaskProjectMember[] = (Array.isArray(rawMembers) ? rawMembers : []).map((m: any) => ({
                         userid: m.userid,
                         nickname: m.nickname || `User ${m.userid}`,
                         userimg: m.userimg || null,
-                        owner: m.owner ?? 0,
+                        owner: 0,
                     }));
                     setMembers(memberList);
                 } else {
@@ -424,25 +424,29 @@ export const DooTaskCreateTaskSheet = React.memo(
                         </View>
                     ) : (
                         <>
-                            {/* Project selector */}
-                            <InlinePicker
-                                label={t('dootask.project') + ' *'}
-                                items={projects}
-                                selectedId={selectedProjectId}
-                                onSelect={handleProjectChange}
-                                loading={false}
-                                placeholder={t('dootask.selectProject')}
-                            />
-
-                            {/* Column selector */}
-                            <InlinePicker
-                                label={t('dootask.column') + ' *'}
-                                items={columns}
-                                selectedId={selectedColumnId}
-                                onSelect={setSelectedColumnId}
-                                loading={loadingColumns}
-                                placeholder={t('dootask.selectColumn')}
-                            />
+                            {/* Project & Column selectors (same row) */}
+                            <View style={styles.rowContainer}>
+                                <View style={styles.halfColumn}>
+                                    <InlinePicker
+                                        label={t('dootask.project') + ' *'}
+                                        items={projects}
+                                        selectedId={selectedProjectId}
+                                        onSelect={handleProjectChange}
+                                        loading={false}
+                                        placeholder={t('dootask.selectProject')}
+                                    />
+                                </View>
+                                <View style={styles.halfColumn}>
+                                    <InlinePicker
+                                        label={t('dootask.column') + ' *'}
+                                        items={columns}
+                                        selectedId={selectedColumnId}
+                                        onSelect={setSelectedColumnId}
+                                        loading={loadingColumns}
+                                        placeholder={t('dootask.selectColumn')}
+                                    />
+                                </View>
+                            </View>
 
                             {/* Task name */}
                             <View>
@@ -770,6 +774,13 @@ const styles = StyleSheet.create((_theme) => ({
         paddingHorizontal: 20,
         paddingBottom: 40,
         gap: 16,
+    },
+    rowContainer: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    halfColumn: {
+        flex: 1,
     },
     titleRow: {
         paddingBottom: 12,
