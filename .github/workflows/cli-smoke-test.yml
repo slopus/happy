@@ -96,6 +96,10 @@ jobs:
         SKIP_HAPPY_WIRE_BUILD: "1"
       run: yarn install --immutable
 
+    - name: Build happy-wire (Windows workaround for Yarn workspace bug)
+      shell: bash
+      run: cd packages/happy-wire && yarn build
+
     - name: Build package
       run: yarn workspace happy-coder build
 
