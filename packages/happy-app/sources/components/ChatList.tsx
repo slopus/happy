@@ -42,15 +42,21 @@ const ChatListInternal = React.memo((props: {
     const renderItem = useCallback(({ item }: { item: any }) => (
         <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
     ), [props.metadata, props.sessionId]);
+    
+    // Fix for issue #793: inverted prop causes scroll issues on web
+    // React Native Web renders inverted via transform: scaleY(-1) which breaks scroll
+    // maintainVisibleContentPosition is also not supported on web
+    const isWeb = Platform.OS === 'web';
+    
     return (
         <FlatList
             data={props.messages}
-            inverted={true}
+            inverted={!isWeb}
             keyExtractor={keyExtractor}
-            maintainVisibleContentPosition={{
+            maintainVisibleContentPosition={!isWeb ? {
                 minIndexForVisible: 0,
                 autoscrollToTopThreshold: 10,
-            }}
+            } : undefined}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
             renderItem={renderItem}
