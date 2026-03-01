@@ -33,7 +33,8 @@ export const DooTaskCreateSheet = React.memo(React.forwardRef<BottomSheetModal, 
         return (
             <BottomSheetModal
                 ref={ref}
-                enableDynamicSizing={true}
+                snapPoints={['25%']}
+                enableDynamicSizing={false}
                 backdropComponent={renderBackdrop}
                 backgroundStyle={{ backgroundColor: theme.colors.surface }}
                 handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
