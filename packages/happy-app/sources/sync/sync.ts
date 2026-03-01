@@ -110,6 +110,10 @@ class Sync {
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     /** Per-session last-known seq for v3 incremental fetch */
     private sessionLastSeq = new Map<string, number>();
+    /** Callbacks to run before applying a sent message (keyed by localId).
+     *  Ensures input is cleared before message appears, regardless of whether
+     *  the HTTP response or WebSocket echo arrives first. */
+    private pendingSendCallbacks = new Map<string, () => void>();
     /** Per-session lock to serialize fetchMessagesV3 and websocket message application */
     private sessionMessageLocks = new Map<string, AsyncLock>();
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
@@ -315,7 +319,7 @@ class Sync {
         return systemPrompt;
     }
 
-    async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[], existingLocalId?: string): Promise<{ success: boolean; error?: string; localId: string }> {
+    async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[], existingLocalId?: string, onBeforeApply?: () => void): Promise<{ success: boolean; error?: string; localId: string }> {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -414,6 +418,14 @@ class Sync {
             log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
         }
 
+        // Register onBeforeApply so the WebSocket echo path can also trigger it.
+        // Whichever path (HTTP response or WebSocket) reaches applyMessages first
+        // will invoke and remove the callback, ensuring input clears before the
+        // message appears in the list.
+        if (onBeforeApply) {
+            this.pendingSendCallbacks.set(localId, onBeforeApply);
+        }
+
         // Send via v3 HTTP API
         try {
             const API_ENDPOINT = getServerUrl();
@@ -437,10 +449,18 @@ class Sync {
             if (!response.ok) {
                 const errorText = await response.text().catch(() => 'Unknown error');
                 log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=v3-http status=${response.status} error=${errorText}`);
+                this.pendingSendCallbacks.delete(localId);
                 return { success: false, error: `Send failed: ${response.status}`, localId };
             }
 
-            // Apply optimistic message to local storage
+            // Invoke pending callback if WebSocket echo hasn't already consumed it
+            const pending = this.pendingSendCallbacks.get(localId);
+            if (pending) {
+                this.pendingSendCallbacks.delete(localId);
+                pending();
+            }
+
+            // Apply message to local storage
             if (normalizedMessage) {
                 this.applyMessages(sessionId, [normalizedMessage]);
             }
@@ -463,6 +483,7 @@ class Sync {
             return { success: true, localId };
         } catch (error) {
             log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=v3-exception error=${error instanceof Error ? error.message : 'Unknown error'}`);
+            this.pendingSendCallbacks.delete(localId);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error', localId };
         }
     }
@@ -1736,6 +1757,16 @@ class Sync {
 
                 if (messages.length > 0) {
                     const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, messages, encryption);
+                    // Flush any pending send callbacks for messages in this batch
+                    for (const msg of normalizedMessages) {
+                        if (msg.localId) {
+                            const pending = this.pendingSendCallbacks.get(msg.localId);
+                            if (pending) {
+                                this.pendingSendCallbacks.delete(msg.localId);
+                                pending();
+                            }
+                        }
+                    }
                     this.applyMessages(sessionId, normalizedMessages);
 
                     const maxSeq = Math.max(...messages.map((m: any) => m.seq));
@@ -2513,6 +2544,15 @@ class Sync {
 
                 // Update messages
                 if (lastMessage) {
+                    // If this is an echo of our own send, invoke the pending callback
+                    // (e.g. clear input) before the message appears in the list.
+                    if (lastMessage.localId) {
+                        const pending = this.pendingSendCallbacks.get(lastMessage.localId);
+                        if (pending) {
+                            this.pendingSendCallbacks.delete(lastMessage.localId);
+                            pending();
+                        }
+                    }
                     console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
                     this.applyMessages(sid, [lastMessage]);
                     let hasMutableTool = false;

@@ -732,18 +732,21 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     }
 
                     try {
-                        const result = await sync.sendMessage(sessionId, messageToSend, undefined, imagesToSend, existingLocalId);
+                        const result = await sync.sendMessage(
+                            sessionId, messageToSend, undefined, imagesToSend, existingLocalId,
+                            // Clear input before message appears in the list
+                            () => {
+                                setMessage('');
+                                clearDraft();
+                                clearImages();
+                            }
+                        );
                         log.log(`[SEND_DEBUG][UI] send_result sid=${sessionId} success=${result.success} localId=${result.localId} error=${result.error || 'none'}`);
 
                         if (result.success) {
-                            // Clear failed message record and input on success
                             failedMessageRef.current = null;
-                            setMessage('');
-                            clearDraft();
-                            clearImages();
                             trackMessageSent();
                         } else {
-                            // On failure, record localId and content for retry
                             failedMessageRef.current = { localId: result.localId, content: contentForRetry };
                             log.log(`[SEND_DEBUG][UI] record_retry sid=${sessionId} localId=${result.localId}`);
                         }
