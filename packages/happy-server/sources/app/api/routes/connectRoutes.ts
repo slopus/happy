@@ -48,6 +48,9 @@ export function connectRoutes(app: Fastify) {
     app.get('/v1/connect/github/params', {
         preHandler: app.authenticate,
         schema: {
+            querystring: z.object({
+                callback: z.string().startsWith('happy://').optional()
+            }),
             response: {
                 200: z.object({
                     url: z.string()
@@ -69,7 +72,7 @@ export function connectRoutes(app: Fastify) {
         }
 
         // Generate ephemeral state token (5 minutes TTL)
-        const state = await auth.createGithubToken(request.userId);
+        const state = await auth.createGithubToken(request.userId, request.query.callback);
 
         // Build complete OAuth URL
         const params = new URLSearchParams({
@@ -104,11 +107,12 @@ export function connectRoutes(app: Fastify) {
         }
 
         const userId = tokenData.userId;
+        const baseUrl = tokenData.callback || appUrl;
         const clientId = process.env.GITHUB_CLIENT_ID;
         const clientSecret = process.env.GITHUB_CLIENT_SECRET;
 
         if (!clientId || !clientSecret) {
-            return reply.redirect(`${appUrl}?error=server_config`);
+            return reply.redirect(`${baseUrl}?error=server_config`);
         }
 
         try {
@@ -133,7 +137,7 @@ export function connectRoutes(app: Fastify) {
             };
 
             if (tokenResponseData.error) {
-                return reply.redirect(`${appUrl}?error=${encodeURIComponent(tokenResponseData.error)}`);
+                return reply.redirect(`${baseUrl}?error=${encodeURIComponent(tokenResponseData.error)}`);
             }
 
             const accessToken = tokenResponseData.access_token;
@@ -149,7 +153,7 @@ export function connectRoutes(app: Fastify) {
             const userData = await userResponse.json() as GitHubProfile;
 
             if (!userResponse.ok) {
-                return reply.redirect(`${appUrl}?error=github_user_fetch_failed`);
+                return reply.redirect(`${baseUrl}?error=github_user_fetch_failed`);
             }
 
             // Use the new githubConnect operation
@@ -157,11 +161,11 @@ export function connectRoutes(app: Fastify) {
             await githubConnect(ctx, userData, accessToken!);
 
             // Redirect to app with success
-            return reply.redirect(`${appUrl}?github=connected&user=${encodeURIComponent(userData.login)}`);
+            return reply.redirect(`${baseUrl}?github=connected&user=${encodeURIComponent(userData.login)}`);
 
         } catch (error) {
             log({ module: 'github-oauth' }, `Error in GitHub GET callback: ${error}`);
-            return reply.redirect(`${appUrl}?error=server_error`);
+            return reply.redirect(`${baseUrl}?error=server_error`);
         }
     });
 

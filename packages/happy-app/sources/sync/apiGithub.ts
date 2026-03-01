@@ -23,11 +23,15 @@ export interface AccountProfile {
 /**
  * Get GitHub OAuth parameters from the server
  */
-export async function getGitHubOAuthParams(credentials: AuthCredentials): Promise<GitHubOAuthParams> {
+export async function getGitHubOAuthParams(credentials: AuthCredentials, callback?: string): Promise<GitHubOAuthParams> {
     const API_ENDPOINT = getServerUrl();
-    
+
     return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/connect/github/params`, {
+        const url = new URL(`${API_ENDPOINT}/v1/connect/github/params`);
+        if (callback) {
+            url.searchParams.set('callback', callback);
+        }
+        const response = await fetch(url.toString(), {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,

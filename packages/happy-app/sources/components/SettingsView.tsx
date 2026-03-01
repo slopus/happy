@@ -1,4 +1,5 @@
 import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { Image } from 'expo-image';
 import * as React from 'react';
 import { Text } from '@/components/StyledText';
@@ -78,8 +79,14 @@ export const SettingsView = React.memo(function SettingsView() {
     const isGitHubConnected = !!profile.github;
     // GitHub connection
     const [connectingGitHub, connectGitHub] = useHappyAction(async () => {
-        const params = await getGitHubOAuthParams(auth.credentials!);
-        await Linking.openURL(params.url);
+        if (Platform.OS === 'web') {
+            const params = await getGitHubOAuthParams(auth.credentials!);
+            await Linking.openURL(params.url);
+        } else {
+            const callbackUrl = 'happy://github-callback';
+            const params = await getGitHubOAuthParams(auth.credentials!, callbackUrl);
+            await WebBrowser.openAuthSessionAsync(params.url, callbackUrl);
+        }
     });
 
     // GitHub disconnection

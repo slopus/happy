@@ -16,6 +16,7 @@ interface AuthTokens {
 
 class AuthModule {
     private tokenCache = new Map<string, TokenCacheEntry>();
+    private githubCallbacks = new Map<string, string>();
     private tokens: AuthTokens | null = null;
     
     async init(): Promise<void> {
@@ -148,29 +149,39 @@ class AuthModule {
         };
     }
     
-    async createGithubToken(userId: string): Promise<string> {
+    async createGithubToken(userId: string, callback?: string): Promise<string> {
         if (!this.tokens) {
             throw new Error('Auth module not initialized');
         }
-        
+
         const payload = { user: userId, purpose: 'github-oauth' };
         const token = await this.tokens.githubGenerator.new(payload);
-        
+
+        if (callback) {
+            this.githubCallbacks.set(token, callback);
+        }
+
         return token;
     }
 
-    async verifyGithubToken(token: string): Promise<{ userId: string } | null> {
+    async verifyGithubToken(token: string): Promise<{ userId: string; callback?: string } | null> {
         if (!this.tokens) {
             throw new Error('Auth module not initialized');
         }
-        
+
         try {
             const verified = await this.tokens.githubVerifier.verify(token);
             if (!verified) {
                 return null;
             }
-            
-            return { userId: verified.user as string };
+
+            const callback = this.githubCallbacks.get(token);
+            this.githubCallbacks.delete(token);
+
+            return {
+                userId: verified.user as string,
+                callback
+            };
         } catch (error) {
             log({ module: 'auth', level: 'error' }, `GitHub token verification failed: ${error}`);
             return null;
