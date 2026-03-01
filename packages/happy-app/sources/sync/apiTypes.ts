@@ -68,6 +68,11 @@ export const ApiUpdateAccountSchema = z.object({
     github: GitHubProfileSchema.nullish(),
 });
 
+export const ApiNewMachineSchema = z.object({
+    t: z.literal('new-machine'),
+    machineId: z.string(),
+});
+
 export const ApiUpdateMachineStateSchema = z.object({
     t: z.literal('update-machine'),
     machineId: z.string(),  // Changed from 'id' to 'machineId' for clarity
@@ -185,6 +190,7 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiDeleteSessionSchema,
     ApiUpdateSessionStateSchema,
     ApiUpdateAccountSchema,
+    ApiNewMachineSchema,
     ApiUpdateMachineStateSchema,
     ApiNewArtifactSchema,
     ApiUpdateArtifactSchema,

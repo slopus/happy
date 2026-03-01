@@ -2042,6 +2042,9 @@ class Sync {
                     // Don't crash on settings sync errors, just log
                 }
             }
+        } else if (updateData.body.t === 'new-machine') {
+            // Re-fetch all machines to pick up the newly registered device
+            this.machinesSync.invalidate();
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
@@ -2064,7 +2067,9 @@ class Sync {
             // Get machine-specific encryption (might not exist if machine wasn't initialized)
             const machineEncryption = this.encryption.getMachineEncryption(machineId);
             if (!machineEncryption) {
-                console.error(`Machine encryption not found for ${machineId} - cannot decrypt updates`);
+                // Machine encryption not initialized yet (e.g. machine just registered,
+                // fetchMachines still in progress). Re-fetch to pick up the full state.
+                this.machinesSync.invalidate();
                 return;
             }
 
@@ -2622,6 +2627,9 @@ class Sync {
                     activeAt: updateData.activeAt
                 };
                 storage.getState().applyMachines([updatedMachine]);
+            } else if (updateData.active) {
+                // Machine not in store yet (e.g. just registered) — re-fetch all machines
+                this.machinesSync.invalidate();
             }
         }
 
