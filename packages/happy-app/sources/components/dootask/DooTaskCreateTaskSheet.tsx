@@ -216,7 +216,8 @@ export const DooTaskCreateTaskSheet = React.memo(
                 ]);
 
                 if (colRes.ret === 1) {
-                    const cols: DooTaskColumn[] = (colRes.data || []).map((c: any) => ({
+                    const rawCols = colRes.data?.data || colRes.data || [];
+                    const cols: DooTaskColumn[] = (Array.isArray(rawCols) ? rawCols : []).map((c: any) => ({
                         id: c.id,
                         name: c.name,
                         sort: c.sort ?? 0,
