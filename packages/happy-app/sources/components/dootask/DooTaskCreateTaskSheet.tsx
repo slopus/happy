@@ -25,7 +25,6 @@ import type {
     DooTaskColumn,
     DooTaskPriority,
     DooTaskProjectMember,
-    DooTaskProject,
 } from '@/sync/dootask/types';
 
 const SheetTextInput = Platform.OS === 'web' ? TextInput : BottomSheetTextInput;
