@@ -316,7 +316,6 @@ export const ru: TranslationStructure = {
         creating: 'Создание...',
         createSuccess: 'Успешно создано',
         createFailed: 'Не удалось создать',
-        fieldRequired: 'Это поле обязательно',
         nameTooShort: 'Название должно содержать не менее 2 символов',
         nameTooLong: 'Название слишком длинное',
         noProjects: 'Нет доступных проектов',

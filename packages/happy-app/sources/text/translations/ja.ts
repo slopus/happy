@@ -384,7 +384,6 @@ export const ja: TranslationStructure = {
         creating: '作成中...',
         createSuccess: '作成しました',
         createFailed: '作成に失敗しました',
-        fieldRequired: 'この項目は必須です',
         nameTooShort: '名前は2文字以上必要です',
         nameTooLong: '名前が長すぎます',
         noProjects: '利用可能なプロジェクトがありません',

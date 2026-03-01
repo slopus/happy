@@ -344,13 +344,9 @@ export const DooTaskCreateProjectSheet = React.memo(
                         onPress={handleSubmit}
                         disabled={!isValid || submitting}
                     >
-                        {submitting ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                            <Text style={styles.submitButtonText}>
-                                {t('dootask.addProject')}
-                            </Text>
-                        )}
+                        <Text style={styles.submitButtonText}>
+                            {submitting ? t('dootask.creating') : t('dootask.addProject')}
+                        </Text>
                     </Pressable>
                 </BottomSheetScrollView>
             </BottomSheetModal>

@@ -354,7 +354,6 @@ export const zhHans: TranslationStructure = {
         creating: '创建中...',
         createSuccess: '创建成功',
         createFailed: '创建失败',
-        fieldRequired: '此字段为必填项',
         nameTooShort: '名称至少需要2个字符',
         nameTooLong: '名称过长',
         noProjects: '暂无可用项目',

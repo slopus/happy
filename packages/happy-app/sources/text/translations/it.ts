@@ -381,7 +381,6 @@ export const it: TranslationStructure = {
         creating: 'Creazione in corso...',
         createSuccess: 'Creato con successo',
         createFailed: 'Creazione fallita',
-        fieldRequired: 'Questo campo è obbligatorio',
         nameTooShort: 'Il nome deve avere almeno 2 caratteri',
         nameTooLong: 'Il nome è troppo lungo',
         noProjects: 'Nessun progetto disponibile',

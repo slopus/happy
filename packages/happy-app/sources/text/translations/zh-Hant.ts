@@ -353,7 +353,6 @@ export const zhHant: TranslationStructure = {
         creating: '建立中...',
         createSuccess: '建立成功',
         createFailed: '建立失敗',
-        fieldRequired: '此欄位為必填',
         nameTooShort: '名稱至少需要2個字元',
         nameTooLong: '名稱過長',
         noProjects: '暫無可用專案',

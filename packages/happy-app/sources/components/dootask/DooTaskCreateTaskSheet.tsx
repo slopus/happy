@@ -611,7 +611,13 @@ export const DooTaskCreateTaskSheet = React.memo(
                                                     value={startDate}
                                                     mode="datetime"
                                                     display="compact"
-                                                    onChange={(_, d) => d && setStartDate(d)}
+                                                    onChange={(_, d) => {
+                                                        if (!d) return;
+                                                        setStartDate(d);
+                                                        if (endDate && d >= endDate) {
+                                                            setEndDate(new Date(d.getTime() + 3600000));
+                                                        }
+                                                    }}
                                                 />
                                             ) : (
                                                 <Pressable onPress={() => setAndroidPicker({ field: 'start', mode: 'date' })}>
@@ -659,7 +665,13 @@ export const DooTaskCreateTaskSheet = React.memo(
                                                         setter(d);
                                                         setAndroidPicker({ field: androidPicker.field, mode: 'time' });
                                                     } else {
-                                                        setter(d);
+                                                        // Ensure end date is after start date
+                                                        if (androidPicker.field === 'end' && startDate && d <= startDate) {
+                                                            const corrected = new Date(startDate.getTime() + 3600000); // +1 hour
+                                                            setEndDate(corrected);
+                                                        } else {
+                                                            setter(d);
+                                                        }
                                                         setAndroidPicker(null);
                                                     }
                                                 }}
@@ -714,13 +726,9 @@ export const DooTaskCreateTaskSheet = React.memo(
                                 onPress={handleSubmit}
                                 disabled={!isValid || submitting}
                             >
-                                {submitting ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                    <Text style={styles.submitButtonText}>
-                                        {t('dootask.addTask')}
-                                    </Text>
-                                )}
+                                <Text style={styles.submitButtonText}>
+                                    {submitting ? t('dootask.creating') : t('dootask.addTask')}
+                                </Text>
                             </Pressable>
                         </>
                     )}

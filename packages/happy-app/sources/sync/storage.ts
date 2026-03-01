@@ -1573,6 +1573,8 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskTaskDetailCache: {},
                 dootaskProjectsFetchedAt: null,
                 dootaskUserCacheFetchedAt: null,
+                dootaskLastProjectId: null,
+                dootaskLastColumnId: null,
             }));
         },
 

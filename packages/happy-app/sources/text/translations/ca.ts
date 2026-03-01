@@ -352,7 +352,6 @@ export const ca: TranslationStructure = {
         creating: 'Creant...',
         createSuccess: 'Creat amb èxit',
         createFailed: 'Error en crear',
-        fieldRequired: 'Aquest camp és obligatori',
         nameTooShort: 'El nom ha de tenir almenys 2 caràcters',
         nameTooLong: 'El nom és massa llarg',
         noProjects: 'No hi ha projectes disponibles',
