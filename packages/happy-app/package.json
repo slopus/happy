@@ -138,7 +138,7 @@
     "react-native-diff-view": "^1.1.2",
     "react-native-enriched": "^0.1.2",
     "react-native-gesture-handler": "~2.28.0",
-    "react-native-keyboard-controller": "1.18.5",
+    "react-native-keyboard-controller": "1.20.7",
     "react-native-localize": "^3.5.1",
     "react-native-mmkv": "^3.3.3",
     "react-native-nitro-modules": "0.33.2",
