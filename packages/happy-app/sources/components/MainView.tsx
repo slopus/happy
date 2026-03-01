@@ -22,6 +22,10 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
+import type { BottomSheetModal } from '@gorhom/bottom-sheet';
+import { DooTaskCreateSheet } from './dootask/DooTaskCreateSheet';
+import { DooTaskCreateTaskSheet } from './dootask/DooTaskCreateTaskSheet';
+import { DooTaskCreateProjectSheet } from './dootask/DooTaskCreateProjectSheet';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -175,7 +179,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
 });
 
 // Header right button - varies by tab
-const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
+const HeaderRight = React.memo(({ activeTab, onDootaskCreate }: { activeTab: ActiveTabType; onDootaskCreate?: () => void }) => {
     const router = useRouter();
     const { theme } = useUnistyles();
     const isCustomServer = isUsingCustomServer();
@@ -208,7 +212,11 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     }
 
     if (activeTab === 'dootask') {
-        return <View style={styles.headerButton} />;
+        return (
+            <Pressable onPress={onDootaskCreate} hitSlop={15} style={styles.headerButton}>
+                <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
+            </Pressable>
+        );
     }
 
     if (activeTab === 'settings') {
@@ -249,6 +257,26 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
 
     const handleTabPress = React.useCallback((tab: TabType) => {
         setActiveTab(tab);
+    }, []);
+
+    const [createMenuVisible, setCreateMenuVisible] = React.useState(false);
+    const createTaskSheetRef = React.useRef<BottomSheetModal>(null);
+    const createProjectSheetRef = React.useRef<BottomSheetModal>(null);
+
+    const handleCreatePress = React.useCallback(() => {
+        setCreateMenuVisible(true);
+    }, []);
+
+    const handleCreateMenuClose = React.useCallback(() => {
+        setCreateMenuVisible(false);
+    }, []);
+
+    const handleSelectTask = React.useCallback(() => {
+        createTaskSheetRef.current?.present();
+    }, []);
+
+    const handleSelectProject = React.useCallback(() => {
+        createProjectSheetRef.current?.present();
     }, []);
 
     // Regular phone mode with tabs - define this before any conditional returns
@@ -313,7 +341,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 <View style={{ backgroundColor: theme.colors.groupped.background }}>
                     <Header
                         title={<HeaderTitle activeTab={activeTab as ActiveTabType} />}
-                        headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} />}
+                        headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} onDootaskCreate={handleCreatePress} />}
                         headerLeft={() => <HeaderLogo />}
                         headerShadowVisible={false}
                         headerTransparent={true}
@@ -330,6 +358,18 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 inboxBadgeCount={friendRequests.length}
                 showDootaskTab={showDootaskTab}
             />
+            {showDootaskTab && (
+                <>
+                    <DooTaskCreateSheet
+                        visible={createMenuVisible}
+                        onClose={handleCreateMenuClose}
+                        onSelectTask={handleSelectTask}
+                        onSelectProject={handleSelectProject}
+                    />
+                    <DooTaskCreateTaskSheet ref={createTaskSheetRef} />
+                    <DooTaskCreateProjectSheet ref={createProjectSheetRef} />
+                </>
+            )}
         </>
     );
 });
