@@ -32,9 +32,13 @@ function findWorkspaceRoot() {
 }
 
 const workspaceRoot = findWorkspaceRoot();
-console.log('[postinstall] Building @slopus/happy-wire from workspace root:', workspaceRoot);
+const happyWirePath = path.join(workspaceRoot, 'packages', 'happy-wire');
+console.log('[postinstall] Building @slopus/happy-wire from:', happyWirePath);
 
-execSync('yarn workspace @slopus/happy-wire build', {
-  cwd: workspaceRoot,
+// Don't use "yarn workspace" as it has a bug on Windows where build scripts
+// execute from the wrong directory. Instead, directly run yarn build from
+// the package directory, which works correctly on all platforms.
+execSync('yarn build', {
+  cwd: happyWirePath,
   stdio: 'inherit',
 });
