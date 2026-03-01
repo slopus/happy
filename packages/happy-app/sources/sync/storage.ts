@@ -120,6 +120,8 @@ interface StorageState {
     dootaskTaskDetailCache: Record<number, { task: DooTaskItem; content: string | null }>;
     dootaskProjectsFetchedAt: number | null;
     dootaskUserCacheFetchedAt: number | null;
+    dootaskLastProjectId: number | null;
+    dootaskLastColumnId: number | null;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyOpenClawMachines: (machines: OpenClawMachine[], replace?: boolean) => void;
@@ -182,6 +184,8 @@ interface StorageState {
     fetchDootaskProjects: () => Promise<void>;
     fetchDootaskTasks: (opts?: { refresh?: boolean; loadMore?: boolean }) => Promise<void>;
     setDootaskFilter: (filters: Partial<DooTaskFilters>) => void;
+    setDootaskLastSelection: (projectId: number, columnId: number) => void;
+    refreshDootaskProjects: () => Promise<void>;
     fetchDootaskUsers: (userIds: number[]) => Promise<Record<number, string>>;
     updateDootaskTask: (taskId: number, updates: Partial<DooTaskItem>) => void;
     clearDootaskData: () => void;
@@ -379,6 +383,8 @@ export const storage = create<StorageState>()((set, get) => {
         dootaskTaskDetailCache: {},
         dootaskProjectsFetchedAt: _cachedProjects.fetchedAt,
         dootaskUserCacheFetchedAt: _cachedUsers.fetchedAt,
+        dootaskLastProjectId: null,
+        dootaskLastColumnId: null,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -1407,6 +1413,11 @@ export const storage = create<StorageState>()((set, get) => {
             }
         },
 
+        refreshDootaskProjects: async () => {
+            set((state) => ({ ...state, dootaskProjectsFetchedAt: null }));
+            await get().fetchDootaskProjects();
+        },
+
         fetchDootaskTasks: async (opts) => {
             const { dootaskProfile, dootaskFilters, dootaskPager, dootaskTasks } = get();
             if (!dootaskProfile) return;
@@ -1476,6 +1487,14 @@ export const storage = create<StorageState>()((set, get) => {
             set((state) => ({
                 ...state,
                 dootaskFilters: { ...state.dootaskFilters, ...filters },
+            }));
+        },
+
+        setDootaskLastSelection: (projectId: number, columnId: number) => {
+            set((state) => ({
+                ...state,
+                dootaskLastProjectId: projectId,
+                dootaskLastColumnId: columnId,
             }));
         },
 
@@ -1847,6 +1866,13 @@ export function useDootaskUserAvatars(): Record<number, string | null> {
 
 export function useDootaskUserDisabledAt(): Record<number, string | null> {
     return storage(useShallow((s) => s.dootaskUserDisabledAt));
+}
+
+export function useDootaskLastSelection() {
+    return storage(useShallow((s) => ({
+        projectId: s.dootaskLastProjectId,
+        columnId: s.dootaskLastColumnId,
+    })));
 }
 
 export function useDootaskTaskDetailCache(taskId: number) {
