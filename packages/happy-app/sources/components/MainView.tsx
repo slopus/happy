@@ -22,10 +22,7 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
-import type { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { DooTaskCreateSheet } from './dootask/DooTaskCreateSheet';
-import { DooTaskCreateTaskSheet } from './dootask/DooTaskCreateTaskSheet';
-import { DooTaskCreateProjectSheet } from './dootask/DooTaskCreateProjectSheet';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -260,8 +257,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }, []);
 
     const [createMenuVisible, setCreateMenuVisible] = React.useState(false);
-    const createTaskSheetRef = React.useRef<BottomSheetModal>(null);
-    const createProjectSheetRef = React.useRef<BottomSheetModal>(null);
 
     const handleCreatePress = React.useCallback(() => {
         setCreateMenuVisible(true);
@@ -272,12 +267,12 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }, []);
 
     const handleSelectTask = React.useCallback(() => {
-        createTaskSheetRef.current?.present();
-    }, []);
+        router.push('/dootask/add-task');
+    }, [router]);
 
     const handleSelectProject = React.useCallback(() => {
-        createProjectSheetRef.current?.present();
-    }, []);
+        router.push('/dootask/add-project');
+    }, [router]);
 
     // Regular phone mode with tabs - define this before any conditional returns
     const renderTabContent = React.useCallback(() => {
@@ -359,16 +354,12 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 showDootaskTab={showDootaskTab}
             />
             {showDootaskTab && (
-                <>
-                    <DooTaskCreateSheet
-                        visible={createMenuVisible}
-                        onClose={handleCreateMenuClose}
-                        onSelectTask={handleSelectTask}
-                        onSelectProject={handleSelectProject}
-                    />
-                    <DooTaskCreateTaskSheet ref={createTaskSheetRef} />
-                    <DooTaskCreateProjectSheet ref={createProjectSheetRef} />
-                </>
+                <DooTaskCreateSheet
+                    visible={createMenuVisible}
+                    onClose={handleCreateMenuClose}
+                    onSelectTask={handleSelectTask}
+                    onSelectProject={handleSelectProject}
+                />
             )}
         </>
     );

@@ -326,6 +326,44 @@ export function clearDooTaskProjects(): void {
     mmkv.delete('dootask-projects');
 }
 
+export function loadDooTaskPriorities(): { priorities: Array<{ priority: number; name: string; color: string; days: number; is_default?: number }>; fetchedAt: number | null } {
+    const raw = mmkv.getString('dootask-priorities');
+    if (!raw) return { priorities: [], fetchedAt: null };
+    try {
+        const parsed = JSON.parse(raw);
+        return { priorities: parsed.priorities || [], fetchedAt: parsed.fetchedAt ?? null };
+    } catch {
+        return { priorities: [], fetchedAt: null };
+    }
+}
+
+export function saveDooTaskPriorities(priorities: Array<{ priority: number; name: string; color: string; days: number; is_default?: number }>, fetchedAt: number | null): void {
+    mmkv.set('dootask-priorities', JSON.stringify({ priorities, fetchedAt }));
+}
+
+export function clearDooTaskPriorities(): void {
+    mmkv.delete('dootask-priorities');
+}
+
+export function loadDooTaskColumns(): { columns: Record<number, Array<{ id: number; name: string; sort: number }>>; fetchedAt: Record<number, number> } {
+    const raw = mmkv.getString('dootask-columns');
+    if (!raw) return { columns: {}, fetchedAt: {} };
+    try {
+        const parsed = JSON.parse(raw);
+        return { columns: parsed.columns || {}, fetchedAt: parsed.fetchedAt || {} };
+    } catch {
+        return { columns: {}, fetchedAt: {} };
+    }
+}
+
+export function saveDooTaskColumns(columns: Record<number, Array<{ id: number; name: string; sort: number }>>, fetchedAt: Record<number, number>): void {
+    mmkv.set('dootask-columns', JSON.stringify({ columns, fetchedAt }));
+}
+
+export function clearDooTaskColumns(): void {
+    mmkv.delete('dootask-columns');
+}
+
 const DOOTASK_LOGIN_CACHE_KEY = 'dootask-login-cache';
 
 export interface DooTaskLoginCache {

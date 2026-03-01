@@ -9,9 +9,9 @@ import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile, loadDooTaskUserCache, saveDooTaskUserCache, clearDooTaskUserCache, loadDooTaskProjects, saveDooTaskProjects, clearDooTaskProjects, loadRegisteredReposLocal, saveRegisteredReposLocal } from "./persistence";
-import { DooTaskProfile, DooTaskProject, DooTaskItem, DooTaskFilters, DooTaskPager } from './dootask/types';
-import { dootaskFetchProjects, dootaskFetchTasks, dootaskFetchUsersBasic } from './dootask/api';
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile, loadDooTaskUserCache, saveDooTaskUserCache, clearDooTaskUserCache, loadDooTaskProjects, saveDooTaskProjects, clearDooTaskProjects, loadDooTaskPriorities, saveDooTaskPriorities, clearDooTaskPriorities, loadDooTaskColumns, saveDooTaskColumns, clearDooTaskColumns, loadRegisteredReposLocal, saveRegisteredReposLocal } from "./persistence";
+import { DooTaskProfile, DooTaskProject, DooTaskItem, DooTaskFilters, DooTaskPager, DooTaskPriority, DooTaskColumn } from './dootask/types';
+import { dootaskFetchProjects, dootaskFetchTasks, dootaskFetchUsersBasic, dootaskFetchPriorities, dootaskFetchProjectColumns } from './dootask/api';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import React from "react";
 import { sync } from "./sync";
@@ -122,6 +122,10 @@ interface StorageState {
     dootaskUserCacheFetchedAt: number | null;
     dootaskLastProjectId: number | null;
     dootaskLastColumnId: number | null;
+    dootaskPriorities: DooTaskPriority[];
+    dootaskPrioritiesFetchedAt: number | null;
+    dootaskColumns: Record<number, DooTaskColumn[]>;
+    dootaskColumnsFetchedAt: Record<number, number>;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyOpenClawMachines: (machines: OpenClawMachine[], replace?: boolean) => void;
@@ -186,6 +190,8 @@ interface StorageState {
     setDootaskFilter: (filters: Partial<DooTaskFilters>) => void;
     setDootaskLastSelection: (projectId: number, columnId: number) => void;
     refreshDootaskProjects: () => Promise<void>;
+    fetchDootaskPriorities: () => Promise<void>;
+    fetchDootaskColumns: (projectId: number) => Promise<void>;
     fetchDootaskUsers: (userIds: number[]) => Promise<Record<number, string>>;
     updateDootaskTask: (taskId: number, updates: Partial<DooTaskItem>) => void;
     clearDootaskData: () => void;
@@ -334,6 +340,8 @@ export const storage = create<StorageState>()((set, get) => {
     let sessionDrafts = loadSessionDrafts();
     const _cachedProjects = loadDooTaskProjects();
     const _cachedUsers = loadDooTaskUserCache();
+    const _cachedPriorities = loadDooTaskPriorities();
+    const _cachedColumns = loadDooTaskColumns();
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
     const cachedRepos = loadRegisteredReposLocal();
@@ -385,6 +393,10 @@ export const storage = create<StorageState>()((set, get) => {
         dootaskUserCacheFetchedAt: _cachedUsers.fetchedAt,
         dootaskLastProjectId: null,
         dootaskLastColumnId: null,
+        dootaskPriorities: _cachedPriorities.priorities as DooTaskPriority[],
+        dootaskPrioritiesFetchedAt: _cachedPriorities.fetchedAt,
+        dootaskColumns: _cachedColumns.columns as Record<number, DooTaskColumn[]>,
+        dootaskColumnsFetchedAt: _cachedColumns.fetchedAt,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -1372,6 +1384,8 @@ export const storage = create<StorageState>()((set, get) => {
             saveDooTaskProfile(profile);
             clearDooTaskUserCache();
             clearDooTaskProjects();
+            clearDooTaskPriorities();
+            clearDooTaskColumns();
             set((state) => ({
                 ...state,
                 dootaskProfile: profile,
@@ -1387,14 +1401,16 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskUserDisabledAt: {},
                 dootaskUserCacheFetchedAt: null,
                 dootaskTaskDetailCache: {},
+                dootaskPriorities: [],
+                dootaskPrioritiesFetchedAt: null,
+                dootaskColumns: {},
+                dootaskColumnsFetchedAt: {},
             }));
         },
 
         fetchDootaskProjects: async () => {
-            const { dootaskProfile, dootaskProjectsFetchedAt } = get();
+            const { dootaskProfile } = get();
             if (!dootaskProfile) return;
-            // Skip if fetched within 10 minutes
-            if (dootaskProjectsFetchedAt && Date.now() - dootaskProjectsFetchedAt < 600_000) return;
             const profileKey = `${dootaskProfile.serverUrl}|${dootaskProfile.userId}|${dootaskProfile.token}`;
             try {
                 const res = await dootaskFetchProjects(dootaskProfile.serverUrl, dootaskProfile.token);
@@ -1416,6 +1432,57 @@ export const storage = create<StorageState>()((set, get) => {
         refreshDootaskProjects: async () => {
             set((state) => ({ ...state, dootaskProjectsFetchedAt: null }));
             await get().fetchDootaskProjects();
+        },
+
+        fetchDootaskPriorities: async () => {
+            const { dootaskProfile } = get();
+            if (!dootaskProfile) return;
+            const profileKey = `${dootaskProfile.serverUrl}|${dootaskProfile.userId}|${dootaskProfile.token}`;
+            try {
+                const res = await dootaskFetchPriorities(dootaskProfile.serverUrl, dootaskProfile.token);
+                const cur = get().dootaskProfile;
+                if (!cur || `${cur.serverUrl}|${cur.userId}|${cur.token}` !== profileKey) return;
+                if (res.ret === 1) {
+                    const priorities: DooTaskPriority[] = (res.data || []).map((p: any) => ({
+                        priority: p.priority,
+                        name: p.name,
+                        color: p.color,
+                        days: p.days ?? 0,
+                        is_default: p.is_default,
+                    }));
+                    const now = Date.now();
+                    saveDooTaskPriorities(priorities, now);
+                    set((state) => ({ ...state, dootaskPriorities: priorities, dootaskPrioritiesFetchedAt: now }));
+                }
+            } catch {
+                // silent
+            }
+        },
+
+        fetchDootaskColumns: async (projectId: number) => {
+            const { dootaskProfile } = get();
+            if (!dootaskProfile) return;
+            const profileKey = `${dootaskProfile.serverUrl}|${dootaskProfile.userId}|${dootaskProfile.token}`;
+            try {
+                const res = await dootaskFetchProjectColumns(dootaskProfile.serverUrl, dootaskProfile.token, projectId);
+                const cur = get().dootaskProfile;
+                if (!cur || `${cur.serverUrl}|${cur.userId}|${cur.token}` !== profileKey) return;
+                if (res.ret === 1) {
+                    const rawCols = res.data?.data || res.data || [];
+                    const cols: DooTaskColumn[] = (Array.isArray(rawCols) ? rawCols : []).map((c: any) => ({
+                        id: c.id,
+                        name: c.name,
+                        sort: c.sort ?? 0,
+                    }));
+                    const now = Date.now();
+                    const updatedColumns = { ...get().dootaskColumns, [projectId]: cols };
+                    const updatedFetchedAt = { ...get().dootaskColumnsFetchedAt, [projectId]: now };
+                    saveDooTaskColumns(updatedColumns, updatedFetchedAt);
+                    set((state) => ({ ...state, dootaskColumns: updatedColumns, dootaskColumnsFetchedAt: updatedFetchedAt }));
+                }
+            } catch {
+                // silent
+            }
         },
 
         fetchDootaskTasks: async (opts) => {
@@ -1558,6 +1625,8 @@ export const storage = create<StorageState>()((set, get) => {
             saveDooTaskProfile(null);
             clearDooTaskUserCache();
             clearDooTaskProjects();
+            clearDooTaskPriorities();
+            clearDooTaskColumns();
             set((state) => ({
                 ...state,
                 dootaskProfile: null,
@@ -1575,6 +1644,10 @@ export const storage = create<StorageState>()((set, get) => {
                 dootaskUserCacheFetchedAt: null,
                 dootaskLastProjectId: null,
                 dootaskLastColumnId: null,
+                dootaskPriorities: [],
+                dootaskPrioritiesFetchedAt: null,
+                dootaskColumns: {},
+                dootaskColumnsFetchedAt: {},
             }));
         },
 
@@ -1868,6 +1941,14 @@ export function useDootaskUserAvatars(): Record<number, string | null> {
 
 export function useDootaskUserDisabledAt(): Record<number, string | null> {
     return storage(useShallow((s) => s.dootaskUserDisabledAt));
+}
+
+export function useDootaskPriorities(): DooTaskPriority[] {
+    return storage(useShallow((s) => s.dootaskPriorities));
+}
+
+export function useDootaskColumns(projectId: number | null): DooTaskColumn[] {
+    return storage(useShallow((s) => (projectId != null ? s.dootaskColumns[projectId] : undefined) ?? []));
 }
 
 export function useDootaskLastSelection() {

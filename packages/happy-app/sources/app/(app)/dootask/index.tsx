@@ -1,10 +1,7 @@
 import * as React from 'react';
 import { View, Text, Platform, Pressable } from 'react-native';
-import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { DooTaskListView } from '@/components/DooTaskListView';
 import { DooTaskCreateSheet } from '@/components/dootask/DooTaskCreateSheet';
-import { DooTaskCreateTaskSheet } from '@/components/dootask/DooTaskCreateTaskSheet';
-import { DooTaskCreateProjectSheet } from '@/components/dootask/DooTaskCreateProjectSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
@@ -45,8 +42,6 @@ export default function DooTaskPage() {
     const headerHeight = useHeaderHeight();
 
     const [createMenuVisible, setCreateMenuVisible] = React.useState(false);
-    const createTaskSheetRef = React.useRef<BottomSheetModal>(null);
-    const createProjectSheetRef = React.useRef<BottomSheetModal>(null);
 
     const handleCreatePress = React.useCallback(() => {
         setCreateMenuVisible(true);
@@ -57,24 +52,20 @@ export default function DooTaskPage() {
     }, []);
 
     const handleSelectTask = React.useCallback(() => {
-        createTaskSheetRef.current?.present();
-    }, []);
+        router.push('/dootask/add-task');
+    }, [router]);
 
     const handleSelectProject = React.useCallback(() => {
-        createProjectSheetRef.current?.present();
-    }, []);
+        router.push('/dootask/add-project');
+    }, [router]);
 
-    const createSheets = (
-        <>
-            <DooTaskCreateSheet
-                visible={createMenuVisible}
-                onClose={handleCreateMenuClose}
-                onSelectTask={handleSelectTask}
-                onSelectProject={handleSelectProject}
-            />
-            <DooTaskCreateTaskSheet ref={createTaskSheetRef} />
-            <DooTaskCreateProjectSheet ref={createProjectSheetRef} />
-        </>
+    const createMenu = (
+        <DooTaskCreateSheet
+            visible={createMenuVisible}
+            onClose={handleCreateMenuClose}
+            onSelectTask={handleSelectTask}
+            onSelectProject={handleSelectProject}
+        />
     );
 
     if (!isTablet) {
@@ -108,7 +99,7 @@ export default function DooTaskPage() {
                     </View>
                 </View>
                 <DooTaskListView />
-                {createSheets}
+                {createMenu}
             </View>
         );
     }
@@ -133,7 +124,7 @@ export default function DooTaskPage() {
                 }}
             />
             <DooTaskListView />
-            {createSheets}
+            {createMenu}
         </View>
     );
 }

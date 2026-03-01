@@ -410,6 +410,22 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dootask/add-task"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('dootask.createTask'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="dootask/add-project"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('dootask.createProject'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="dootask/[taskId]"
                 options={{
                     headerShown: true,
