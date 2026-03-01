@@ -20,8 +20,10 @@ import {
     dootaskFetchProjectMembers,
     dootaskFetchPriorities,
     dootaskCreateTask,
+    isTokenExpired,
 } from '@/sync/dootask/api';
 import type {
+    CreateTaskParams,
     DooTaskColumn,
     DooTaskPriority,
     DooTaskProjectMember,
@@ -318,33 +320,21 @@ export const DooTaskCreateTaskSheet = React.memo(
             setError(null);
 
             try {
-                const params: any = {
+                const params: CreateTaskParams = {
                     project_id: selectedProjectId,
                     column_id: selectedColumnId,
                     name: taskName.trim(),
+                    ...(taskContent.trim() ? { content: taskContent.trim() } : {}),
+                    ...(selectedOwners.length > 0 ? { owner: selectedOwners } : {}),
+                    ...(enableTime && startDate && endDate ? { times: [formatDateForApi(startDate), formatDateForApi(endDate)] as [string, string] } : {}),
+                    ...(selectedPriority ? { p_level: selectedPriority.priority, p_name: selectedPriority.name, p_color: selectedPriority.color } : {}),
                 };
-
-                if (taskContent.trim()) {
-                    params.content = taskContent.trim();
-                }
-
-                if (selectedOwners.length > 0) {
-                    params.owner = selectedOwners;
-                }
-
-                if (enableTime && startDate && endDate) {
-                    params.times = [formatDateForApi(startDate), formatDateForApi(endDate)];
-                }
-
-                if (selectedPriority) {
-                    params.p_level = selectedPriority.priority;
-                    params.p_name = selectedPriority.name;
-                    params.p_color = selectedPriority.color;
-                }
 
                 const res = await dootaskCreateTask(profile.serverUrl, profile.token, params);
 
-                if (res.ret === 1) {
+                if (isTokenExpired(res)) {
+                    setError(t('dootask.tokenExpired'));
+                } else if (res.ret === 1) {
                     showToast(t('dootask.createSuccess'));
                     storage.getState().setDootaskLastSelection(selectedProjectId, selectedColumnId);
                     storage.getState().fetchDootaskTasks({ refresh: true });

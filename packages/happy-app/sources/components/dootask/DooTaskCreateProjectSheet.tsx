@@ -13,8 +13,8 @@ import { t } from '@/text';
 import { showToast } from '@/components/Toast';
 import { Switch } from '@/components/Switch';
 import { storage, useDootaskProfile } from '@/sync/storage';
-import { dootaskFetchColumnTemplates, dootaskCreateProject } from '@/sync/dootask/api';
-import type { DooTaskColumnTemplate } from '@/sync/dootask/types';
+import { dootaskFetchColumnTemplates, dootaskCreateProject, isTokenExpired } from '@/sync/dootask/api';
+import type { CreateProjectParams, DooTaskColumnTemplate } from '@/sync/dootask/types';
 
 const SheetTextInput = Platform.OS === 'web' ? TextInput : BottomSheetTextInput;
 
@@ -98,28 +98,18 @@ export const DooTaskCreateProjectSheet = React.memo(
             setError(null);
 
             try {
-                const params: {
-                    name: string;
-                    desc?: string;
-                    columns?: string;
-                    flow?: 'open' | 'close';
-                } = {
+                const params: CreateProjectParams = {
                     name: projectName.trim(),
+                    ...(projectDesc.trim() ? { desc: projectDesc.trim() } : {}),
+                    ...(selectedTemplate ? { columns: selectedTemplate.columns.join(',') } : {}),
+                    flow: workflowEnabled ? 'open' : 'close',
                 };
-
-                if (projectDesc.trim()) {
-                    params.desc = projectDesc.trim();
-                }
-
-                if (selectedTemplate) {
-                    params.columns = selectedTemplate.columns.join(',');
-                }
-
-                params.flow = workflowEnabled ? 'open' : 'close';
 
                 const res = await dootaskCreateProject(profile.serverUrl, profile.token, params);
 
-                if (res.ret === 1) {
+                if (isTokenExpired(res)) {
+                    setError(t('dootask.tokenExpired'));
+                } else if (res.ret === 1) {
                     showToast(t('dootask.createSuccess'));
                     storage.getState().refreshDootaskProjects();
                     (ref as React.RefObject<BottomSheetModal>).current?.dismiss();
