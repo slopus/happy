@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { DatePicker } from '@/components/dootask/DatePicker';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -179,8 +179,8 @@ export default React.memo(function AddTaskPage() {
     // Assignee section expanded
     const [assigneeExpanded, setAssigneeExpanded] = React.useState(false);
 
-    // Android picker state
-    const [androidPicker, setAndroidPicker] = React.useState<{ field: 'start' | 'end'; mode: 'date' | 'time' } | null>(null);
+    // Picker state (cross-platform)
+    const [activePicker, setActivePicker] = React.useState<'start' | 'end' | null>(null);
 
     // Validation
     const isValid = React.useMemo(() => {
@@ -557,26 +557,11 @@ export default React.memo(function AddTaskPage() {
                                         <Text style={[styles.timeLabel, { color: theme.colors.textSecondary }]}>
                                             {t('dootask.startTime')}
                                         </Text>
-                                        {Platform.OS === 'ios' ? (
-                                            <DateTimePicker
-                                                value={startDate}
-                                                mode="datetime"
-                                                display="compact"
-                                                onChange={(_, d) => {
-                                                    if (!d) return;
-                                                    setStartDate(d);
-                                                    if (endDate && d >= endDate) {
-                                                        setEndDate(new Date(d.getTime() + 3600000));
-                                                    }
-                                                }}
-                                            />
-                                        ) : (
-                                            <Pressable onPress={() => setAndroidPicker({ field: 'start', mode: 'date' })}>
-                                                <Text style={[styles.timeValue, { color: theme.colors.text }]}>
-                                                    {formatDateForDisplay(startDate)}
-                                                </Text>
-                                            </Pressable>
-                                        )}
+                                        <Pressable style={styles.timeValueBtn} onPress={() => setActivePicker(activePicker === 'start' ? null : 'start')}>
+                                            <Text style={[styles.timeValue, { color: theme.colors.text }]}>
+                                                {formatDateForDisplay(startDate)}
+                                            </Text>
+                                        </Pressable>
                                     </View>
 
                                     {/* End time */}
@@ -584,48 +569,38 @@ export default React.memo(function AddTaskPage() {
                                         <Text style={[styles.timeLabel, { color: theme.colors.textSecondary }]}>
                                             {t('dootask.endTime')}
                                         </Text>
-                                        {Platform.OS === 'ios' ? (
-                                            <DateTimePicker
-                                                value={endDate}
-                                                mode="datetime"
-                                                display="compact"
-                                                minimumDate={startDate}
-                                                onChange={(_, d) => d && setEndDate(d)}
-                                            />
-                                        ) : (
-                                            <Pressable onPress={() => setAndroidPicker({ field: 'end', mode: 'date' })}>
-                                                <Text style={[styles.timeValue, { color: theme.colors.text }]}>
-                                                    {formatDateForDisplay(endDate)}
-                                                </Text>
-                                            </Pressable>
-                                        )}
+                                        <Pressable style={styles.timeValueBtn} onPress={() => setActivePicker(activePicker === 'end' ? null : 'end')}>
+                                            <Text style={[styles.timeValue, { color: theme.colors.text }]}>
+                                                {formatDateForDisplay(endDate)}
+                                            </Text>
+                                        </Pressable>
                                     </View>
 
-                                    {/* Android date/time picker dialogs */}
-                                    {Platform.OS === 'android' && androidPicker && (
-                                        <DateTimePicker
-                                            value={androidPicker.field === 'start' ? startDate : endDate}
-                                            mode={androidPicker.mode}
-                                            minimumDate={androidPicker.field === 'end' && androidPicker.mode === 'date' ? startDate : undefined}
-                                            onChange={(_, d) => {
-                                                if (!d) { setAndroidPicker(null); return; }
-                                                const setter = androidPicker.field === 'start' ? setStartDate : setEndDate;
-                                                if (androidPicker.mode === 'date') {
-                                                    const prev = androidPicker.field === 'start' ? startDate : endDate;
-                                                    d.setHours(prev!.getHours(), prev!.getMinutes());
-                                                    setter(d);
-                                                    setAndroidPicker({ field: androidPicker.field, mode: 'time' });
-                                                } else {
-                                                    if (androidPicker.field === 'end' && startDate && d <= startDate) {
-                                                        const corrected = new Date(startDate.getTime() + 3600000);
-                                                        setEndDate(corrected);
+                                    {/* Inline date/time picker */}
+                                    {activePicker && (
+                                        <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.divider, paddingTop: 8, marginTop: 8 }}>
+                                            <DatePicker
+                                                key={activePicker}
+                                                date={activePicker === 'start' ? startDate : endDate}
+                                                minDate={activePicker === 'end' ? startDate : undefined}
+                                                onChange={(d) => {
+                                                    if (activePicker === 'start') {
+                                                        setStartDate(d);
+                                                        if (endDate && d >= endDate) {
+                                                            setEndDate(new Date(d.getTime() + 3600000));
+                                                        }
                                                     } else {
-                                                        setter(d);
+                                                        setEndDate(d);
                                                     }
-                                                    setAndroidPicker(null);
-                                                }
-                                            }}
-                                        />
+                                                }}
+                                            />
+                                            <Pressable
+                                                style={[styles.iosPickerDoneBtn, { backgroundColor: theme.colors.button.primary.background }]}
+                                                onPress={() => setActivePicker(null)}
+                                            >
+                                                <Text style={[styles.iosPickerDoneBtnText, { color: theme.colors.button.primary.tint }]}>{t('common.ok')}</Text>
+                                            </Pressable>
+                                        </View>
                                     )}
                                 </View>
                             )}
@@ -885,6 +860,10 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.default(),
         fontSize: 14,
     },
+    timeValueBtn: {
+        paddingVertical: 8,
+        paddingLeft: 12,
+    },
     timeValue: {
         ...Typography.default(),
         fontSize: 14,
@@ -901,6 +880,19 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         textAlign: 'center',
         marginHorizontal: 16,
+    },
+    // iOS picker done button
+    iosPickerDoneBtn: {
+        alignSelf: 'center',
+        paddingHorizontal: 32,
+        paddingVertical: 8,
+        borderRadius: 8,
+        marginTop: 4,
+        marginBottom: 8,
+    },
+    iosPickerDoneBtnText: {
+        ...Typography.default('semiBold'),
+        fontSize: 15,
     },
     // Empty state
     emptyContainer: {

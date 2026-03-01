@@ -1,9 +1,9 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Alert, Modal, Platform } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Image, Alert, BackHandler, Platform, StyleSheet as RNStyleSheet } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, FadeIn, FadeOut } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { DatePicker } from '@/components/dootask/DatePicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HtmlContent } from '@/components/dootask/HtmlContent';
 import { t } from '@/text';
@@ -396,8 +396,17 @@ export default function DooTaskDetail() {
         return d;
     });
     const [claimLoading, setClaimLoading] = React.useState(false);
-    // Android picker state (Android shows dialogs one at a time)
-    const [androidPicker, setAndroidPicker] = React.useState<{ field: 'start' | 'end'; mode: 'date' | 'time' } | null>(null);
+    const [activePicker, setActivePicker] = React.useState<'start' | 'end' | null>(null);
+
+    // Handle Android back button when claim overlay is visible
+    React.useEffect(() => {
+        if (!claimModalVisible || Platform.OS !== 'android') return;
+        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            setClaimModalVisible(false);
+            return true;
+        });
+        return () => sub.remove();
+    }, [claimModalVisible]);
 
     const handleOpenClaimModal = React.useCallback(() => {
         if (!task) return;
@@ -574,7 +583,7 @@ export default function DooTaskDetail() {
     const completedColor = isCompleted ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start;
 
     return (
-        <>
+        <View style={{ flex: 1 }}>
         <Stack.Screen
             options={{
                 headerTitle,
@@ -837,80 +846,77 @@ export default function DooTaskDetail() {
             title={subStatusTitle}
         />
 
-        {/* Claim task modal with time pickers */}
-        <Modal visible={claimModalVisible} transparent animationType="fade" onRequestClose={() => setClaimModalVisible(false)}>
-            <Pressable style={styles.claimModalOverlay} onPress={() => setClaimModalVisible(false)}>
-                <Pressable style={[styles.claimModalContent, { backgroundColor: theme.colors.surface }]} onPress={() => {}}>
-                    <Text style={[styles.claimModalTitle, { color: theme.colors.text }]}>{t('dootask.claimTask')}</Text>
+        {/* Claim task overlay - uses absolute positioning instead of Modal to avoid
+             iOS UIKit UIViewController creation which corrupts UINavigationBar title centering */}
+        {claimModalVisible && (
+            <Animated.View
+                entering={FadeIn.duration(200)}
+                exiting={FadeOut.duration(200)}
+                style={[RNStyleSheet.absoluteFillObject, { zIndex: 999 }]}
+            >
+                <Pressable style={styles.claimModalOverlay} onPress={() => setClaimModalVisible(false)}>
+                    <Pressable style={[styles.claimModalContent, { backgroundColor: theme.colors.surface }]} onPress={() => {}}>
+                        <Text style={[styles.claimModalTitle, { color: theme.colors.text }]}>{t('dootask.claimTask')}</Text>
 
-                    {/* Start time */}
-                    <View style={styles.claimTimeRow}>
-                        <Text style={[styles.claimTimeLabel, { color: theme.colors.textSecondary }]}>{t('dootask.claimStartTime')}</Text>
-                        {Platform.OS === 'ios' ? (
-                            <DateTimePicker value={claimStartDate} mode="datetime" display="compact" onChange={(_, d) => d && setClaimStartDate(d)} />
-                        ) : (
-                            <Pressable onPress={() => setAndroidPicker({ field: 'start', mode: 'date' })}>
+                        {/* Start time */}
+                        <View style={styles.claimTimeRow}>
+                            <Text style={[styles.claimTimeLabel, { color: theme.colors.textSecondary }]}>{t('dootask.claimStartTime')}</Text>
+                            <Pressable style={styles.claimTimeValueBtn} onPress={() => setActivePicker(activePicker === 'start' ? null : 'start')}>
                                 <Text style={[styles.claimTimeValue, { color: theme.colors.text }]}>
                                     {claimStartDate.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                 </Text>
                             </Pressable>
-                        )}
-                    </View>
+                        </View>
 
-                    {/* End time */}
-                    <View style={styles.claimTimeRow}>
-                        <Text style={[styles.claimTimeLabel, { color: theme.colors.textSecondary }]}>{t('dootask.claimEndTime')}</Text>
-                        {Platform.OS === 'ios' ? (
-                            <DateTimePicker value={claimEndDate} mode="datetime" display="compact" minimumDate={claimStartDate} onChange={(_, d) => d && setClaimEndDate(d)} />
-                        ) : (
-                            <Pressable onPress={() => setAndroidPicker({ field: 'end', mode: 'date' })}>
+                        {/* End time */}
+                        <View style={styles.claimTimeRow}>
+                            <Text style={[styles.claimTimeLabel, { color: theme.colors.textSecondary }]}>{t('dootask.claimEndTime')}</Text>
+                            <Pressable style={styles.claimTimeValueBtn} onPress={() => setActivePicker(activePicker === 'end' ? null : 'end')}>
                                 <Text style={[styles.claimTimeValue, { color: theme.colors.text }]}>
                                     {claimEndDate.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                 </Text>
                             </Pressable>
+                        </View>
+
+                        {/* Inline date/time picker */}
+                        {activePicker && (
+                            <View style={{ borderTopWidth: RNStyleSheet.hairlineWidth, borderTopColor: theme.colors.divider, paddingTop: 8 }}>
+                                <DatePicker
+                                    key={activePicker}
+                                    date={activePicker === 'start' ? claimStartDate : claimEndDate}
+                                    minDate={activePicker === 'end' ? claimStartDate : undefined}
+                                    onChange={(d) => {
+                                        const setter = activePicker === 'start' ? setClaimStartDate : setClaimEndDate;
+                                        setter(d);
+                                    }}
+                                />
+                                <Pressable
+                                    style={[styles.claimModalBtn, { backgroundColor: theme.colors.surfaceHigh, alignSelf: 'center', paddingHorizontal: 32 }]}
+                                    onPress={() => setActivePicker(null)}
+                                >
+                                    <Text style={[styles.claimModalBtnText, { color: theme.colors.text }]}>{t('common.ok')}</Text>
+                                </Pressable>
+                            </View>
                         )}
-                    </View>
 
-                    {/* Android date/time picker dialogs */}
-                    {Platform.OS === 'android' && androidPicker && (
-                        <DateTimePicker
-                            value={androidPicker.field === 'start' ? claimStartDate : claimEndDate}
-                            mode={androidPicker.mode}
-                            minimumDate={androidPicker.field === 'end' && androidPicker.mode === 'date' ? claimStartDate : undefined}
-                            onChange={(_, d) => {
-                                if (!d) { setAndroidPicker(null); return; }
-                                const setter = androidPicker.field === 'start' ? setClaimStartDate : setClaimEndDate;
-                                if (androidPicker.mode === 'date') {
-                                    // After picking date, show time picker
-                                    const prev = androidPicker.field === 'start' ? claimStartDate : claimEndDate;
-                                    d.setHours(prev.getHours(), prev.getMinutes());
-                                    setter(d);
-                                    setAndroidPicker({ field: androidPicker.field, mode: 'time' });
-                                } else {
-                                    setter(d);
-                                    setAndroidPicker(null);
-                                }
-                            }}
-                        />
-                    )}
-
-                    {/* Action buttons */}
-                    <View style={styles.claimModalButtons}>
-                        <Pressable style={[styles.claimModalBtn, { backgroundColor: theme.colors.surfaceHigh }]} onPress={() => setClaimModalVisible(false)}>
-                            <Text style={[styles.claimModalBtnText, { color: theme.colors.textSecondary }]}>{t('dootask.claimCancel')}</Text>
-                        </Pressable>
-                        <Pressable style={[styles.claimModalBtn, { backgroundColor: '#FF9500' }]} onPress={handleClaimConfirm} disabled={claimLoading}>
-                            {claimLoading ? (
-                                <ActivityIndicator size="small" color="#fff" style={{ transform: [{ scale: 0.7 }] }} />
-                            ) : (
-                                <Text style={[styles.claimModalBtnText, { color: '#fff' }]}>{t('dootask.claimConfirm')}</Text>
-                            )}
-                        </Pressable>
-                    </View>
+                        {/* Action buttons */}
+                        <View style={styles.claimModalButtons}>
+                            <Pressable style={[styles.claimModalBtn, { backgroundColor: theme.colors.surfaceHigh }]} onPress={() => setClaimModalVisible(false)}>
+                                <Text style={[styles.claimModalBtnText, { color: theme.colors.textSecondary }]}>{t('dootask.claimCancel')}</Text>
+                            </Pressable>
+                            <Pressable style={[styles.claimModalBtn, { backgroundColor: '#FF9500' }]} onPress={handleClaimConfirm} disabled={claimLoading}>
+                                {claimLoading ? (
+                                    <ActivityIndicator size="small" color="#fff" style={{ transform: [{ scale: 0.7 }] }} />
+                                ) : (
+                                    <Text style={[styles.claimModalBtnText, { color: '#fff' }]}>{t('dootask.claimConfirm')}</Text>
+                                )}
+                            </Pressable>
+                        </View>
+                    </Pressable>
                 </Pressable>
-            </Pressable>
-        </Modal>
-        </>
+            </Animated.View>
+        )}
+        </View>
     );
 }
 
@@ -1020,6 +1026,10 @@ const styles = StyleSheet.create((_theme) => ({
     claimTimeLabel: {
         ...Typography.default(),
         fontSize: 14,
+    },
+    claimTimeValueBtn: {
+        paddingVertical: 8,
+        paddingLeft: 12,
     },
     claimTimeValue: {
         ...Typography.default('semiBold'),
