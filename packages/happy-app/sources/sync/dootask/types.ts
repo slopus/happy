@@ -119,3 +119,48 @@ export type DooTaskDialogUser = {
     online: boolean;
     disable_at: string | null;
 };
+
+// --- Create Types ---
+
+export type DooTaskColumn = {
+    id: number;
+    name: string;
+    sort: number;
+};
+
+export type DooTaskPriority = {
+    priority: number;
+    name: string;
+    color: string;
+};
+
+export type DooTaskProjectMember = {
+    userid: number;
+    nickname: string;
+    userimg: string | null;
+    owner: number; // 1=owner, 0=member
+};
+
+export type DooTaskColumnTemplate = {
+    name: string;
+    columns: string[];
+};
+
+export type CreateTaskParams = {
+    project_id: number;
+    column_id: number;
+    name: string;
+    content?: string;
+    owner?: number[];
+    times?: [string, string]; // [start_at, end_at] format: "YYYY-MM-DD HH:mm:ss"
+    p_level?: number;
+    p_name?: string;
+    p_color?: string;
+};
+
+export type CreateProjectParams = {
+    name: string;
+    desc?: string;
+    columns?: string; // comma-separated column names
+    flow?: 'open' | 'close';
+};

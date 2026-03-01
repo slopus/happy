@@ -1,5 +1,7 @@
 // packages/happy-app/sources/sync/dootask/api.ts
 
+import type { CreateTaskParams, CreateProjectParams } from './types';
+
 type LoginParams = {
     serverUrl: string;
     email: string;
@@ -345,6 +347,64 @@ export async function dootaskToggleEmoji(serverUrl: string, token: string, param
     const response = await fetch(`${url}/api/dialog/msg/emoji?msg_id=${params.msg_id}&symbol=${encodeURIComponent(params.symbol)}`, {
         method: 'GET',
         headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+// --- Create ---
+
+export async function dootaskFetchProjectColumns(serverUrl: string, token: string, projectId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/column/lists?project_id=${projectId}`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskFetchProjectMembers(serverUrl: string, token: string, projectId: number): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/one?project_id=${projectId}&getmember=yes`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskFetchPriorities(serverUrl: string, token: string): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/system/priority`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskFetchColumnTemplates(serverUrl: string, token: string): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/system/column/template`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    return response.json();
+}
+
+export async function dootaskCreateTask(serverUrl: string, token: string, params: CreateTaskParams): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/task/add`, {
+        method: 'POST',
+        headers: buildHeaders(token),
+        body: JSON.stringify(params),
+    });
+    return response.json();
+}
+
+export async function dootaskCreateProject(serverUrl: string, token: string, params: CreateProjectParams): Promise<DooTaskResponse> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/project/add`, {
+        method: 'POST',
+        headers: buildHeaders(token),
+        body: JSON.stringify(params),
     });
     return response.json();
 }
