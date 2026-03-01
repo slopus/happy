@@ -444,8 +444,9 @@ export class TmuxUtilities {
 
             return this.executeCommand(fullCmd);
         } else {
-            // Non-send-keys commands
-            const fullCmd = [...baseCmd, ...cmd];
+            // Non-send-keys commands: insert -t right after the command name
+            // (before positional args like display-message's format string)
+            const fullCmd = [...baseCmd, cmd[0]];
 
             // Add target specification for commands that support it
             if (cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0])) {
@@ -455,8 +456,39 @@ export class TmuxUtilities {
                 fullCmd.push('-t', target);
             }
 
+            // Add remaining arguments (flags and positional args) after -t
+            fullCmd.push(...cmd.slice(1));
+
             return this.executeCommand(fullCmd);
         }
+    }
+
+    /**
+     * Poll #{pane_current_command} until it reports a shell process,
+     * indicating the shell has finished initialization and is idle at a prompt.
+     * This is prompt-theme-agnostic — works with any custom prompt.
+     */
+    private async waitForShellReady(session: string, window: string, timeoutMs: number): Promise<boolean> {
+        const pollInterval = 100;
+        const maxAttempts = Math.ceil(timeoutMs / pollInterval);
+        const knownShells = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh', 'nu', 'elvish', 'pwsh']);
+
+        for (let i = 0; i < maxAttempts; i++) {
+            const result = await this.executeTmuxCommand(
+                ['display-message', '-p', '#{pane_current_command}'],
+                session,
+                window
+            );
+            if (result && result.returncode === 0) {
+                const command = result.stdout.trim();
+                if (knownShells.has(command)) {
+                    logger.debug(`[TMUX] Shell ready after ${i * pollInterval}ms (${command})`);
+                    return true;
+                }
+            }
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+        return false;
     }
 
     /**
@@ -753,6 +785,19 @@ export class TmuxUtilities {
                 throw new Error('tmux not available');
             }
 
+            // Verify tmux version >= 3.0 (required for new-window -e flag)
+            const versionResult = await this.executeCommand(['tmux', '-V']);
+            if (versionResult && versionResult.returncode === 0) {
+                const versionMatch = versionResult.stdout.match(/tmux\s+(\d+)\.(\d+)/);
+                if (versionMatch) {
+                    const major = parseInt(versionMatch[1]);
+                    const minor = parseInt(versionMatch[2]);
+                    if (major < 3) {
+                        throw new Error(`tmux ${major}.${minor} is too old — version 3.0+ is required for per-window environment variables (-e flag)`);
+                    }
+                }
+            }
+
             // Handle session name resolution
             // - undefined: Use first existing session or create "happy"
             // - empty string: Use first existing session or create "happy"
@@ -784,9 +829,20 @@ export class TmuxUtilities {
             // Build command to execute in the new window
             const fullCommand = args.join(' ');
 
-            // Create new window in session with command and environment variables
-            // IMPORTANT: Don't manually add -t here - executeTmuxCommand handles it via parameters
-            const createWindowArgs = ['new-window', '-n', windowName];
+            // Create new window in session with environment variables
+            // IMPORTANT: Create window without command, then use send-keys to execute
+            // This allows proper shell initialization (Prezto, .zshrc, aliases, etc.)
+            const createWindowArgs = ['new-window'];
+
+            // -d: don't switch focus to the new window (user keeps their current window)
+            createWindowArgs.push('-d');
+
+            // -P -F: print pane PID immediately for tracking
+            createWindowArgs.push('-P');
+            createWindowArgs.push('-F', '#{pane_pid}');
+
+            // Add window name
+            createWindowArgs.push('-n', windowName);
 
             // Add working directory if specified
             if (options.cwd) {
@@ -811,37 +867,41 @@ export class TmuxUtilities {
                         continue;
                     }
 
-                    // Escape value for shell safety
-                    // Must escape: backslashes, double quotes, dollar signs, backticks
-                    const escapedValue = value
-                        .replace(/\\/g, '\\\\')   // Backslash first!
-                        .replace(/"/g, '\\"')     // Double quotes
-                        .replace(/\$/g, '\\$')    // Dollar signs
-                        .replace(/`/g, '\\`');    // Backticks
-
-                    createWindowArgs.push('-e', `${key}="${escapedValue}"`);
+                    // No shell escaping needed: spawn() with shell:false passes args
+                    // directly to tmux, which parses -e as NAME=VALUE without a shell.
+                    createWindowArgs.push('-e', `${key}=${value}`);
                 }
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
-            // Add the command to run in the window (runs immediately when window is created)
-            createWindowArgs.push(fullCommand);
-
-            // Add -P flag to print the pane PID immediately
-            createWindowArgs.push('-P');
-            createWindowArgs.push('-F', '#{pane_pid}');
-
-            // Create window with command and get PID immediately
+            // Create window WITHOUT command (lets it initialize with full shell config)
             const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
 
             if (!createResult || createResult.returncode !== 0) {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);
             }
 
-            // Extract the PID from the output
+            // Extract the PID from the output (from new-window with -P -F "#{pane_pid}")
             const panePid = parseInt(createResult.stdout.trim());
             if (isNaN(panePid)) {
                 throw new Error(`Failed to extract PID from tmux output: ${createResult.stdout}`);
+            }
+
+            // Wait for the shell to fully initialize before sending the command.
+            // Polls #{pane_current_command} until it reports a known shell name,
+            // meaning the shell process is idle at a prompt and ready for input.
+            const shellReady = await this.waitForShellReady(sessionName, windowName, 5000);
+            if (!shellReady) {
+                logger.warn(`[TMUX] Shell did not show a prompt within timeout, sending command anyway`);
+            }
+
+            // Send command text with -l (literal) to prevent tmux from interpreting
+            // shell operators like >> as key names, then send Enter separately.
+            await this.executeTmuxCommand(['send-keys', '-l', fullCommand], sessionName, windowName);
+            const sendResult = await this.executeTmuxCommand(['send-keys', 'Enter'], sessionName, windowName);
+
+            if (!sendResult || sendResult.returncode !== 0) {
+                logger.warn(`[TMUX] Failed to send Enter to window: ${sendResult?.stderr}`);
             }
 
             logger.debug(`[TMUX] Spawned command in tmux session ${sessionName}, window ${windowName}, PID ${panePid}`);
@@ -894,8 +954,10 @@ export class TmuxUtilities {
                 throw new TmuxSessionIdentifierError(`Window identifier required: ${sessionIdentifier}`);
             }
 
-            const result = await this.executeWinOp('kill-window', [parsed.window], parsed.session);
-            return result;
+            // Pass window via executeTmuxCommand's window parameter so it builds
+            // the correct `-t session:window` target, not a positional argument.
+            const result = await this.executeTmuxCommand(['kill-window'], parsed.session, parsed.window);
+            return result !== null && result.returncode === 0;
         } catch (error) {
             if (error instanceof TmuxSessionIdentifierError) {
                 logger.debug(`[TMUX] Invalid window identifier: ${error.message}`);

@@ -261,6 +261,7 @@ export type Metadata = {
   happyToolsDir: string,
   startedFromDaemon?: boolean,
   hostPid?: number,
+  spawnToken?: string,
   startedBy?: 'daemon' | 'terminal',
   // Lifecycle state management
   lifecycleState?: 'running' | 'archiveRequested' | 'archived' | string,

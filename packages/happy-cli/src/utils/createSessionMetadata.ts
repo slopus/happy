@@ -84,6 +84,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
         startedFromDaemon: opts.startedBy === 'daemon',
         hostPid: process.pid,
+        spawnToken: process.env.HAPPY_SPAWN_TOKEN || undefined,
         startedBy: opts.startedBy || 'terminal',
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),

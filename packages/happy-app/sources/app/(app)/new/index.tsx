@@ -1061,17 +1061,21 @@ function NewSessionWizard() {
                         return 'session'
                     },
                 });
+            } else if (result.type === 'error') {
+                throw new Error(result.errorMessage);
             } else {
-                throw new Error('Session spawning failed - no session ID returned.');
+                throw new Error('Session spawning failed - unexpected response.');
             }
         } catch (error) {
             console.error('Failed to start session', error);
             let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
-            if (error instanceof Error) {
+            if (error instanceof Error && error.message) {
                 if (error.message.includes('timeout')) {
                     errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
                 } else if (error.message.includes('Socket not connected')) {
                     errorMessage = 'Not connected to server. Check your internet connection.';
+                } else {
+                    errorMessage = error.message;
                 }
             }
             Modal.alert(t('common.error'), errorMessage);
