@@ -57,6 +57,14 @@ function getInitials(name: string): string {
     return name.slice(0, 2).toUpperCase();
 }
 
+function resolveAvatarUrl(avatarPath: string | null | undefined, serverUrl: string): string | null {
+    if (!avatarPath) return null;
+    const base = serverUrl.replace(/\/+$/, '') + '/';
+    const resolved = avatarPath.replace(/\{\{RemoteURL\}\}/g, base);
+    if (resolved.startsWith('http') || resolved.startsWith('//')) return resolved;
+    return base + resolved.replace(/^\/+/, '');
+}
+
 // --- Sub-components ---
 
 /**
@@ -186,6 +194,20 @@ export const DooTaskCreateTaskSheet = React.memo(
             );
         }, [selectedProjectId, selectedColumnId, taskName]);
 
+        // Apply priority → time association
+        const applyPriorityTime = React.useCallback((p: DooTaskPriority) => {
+            if (p.days > 0) {
+                const start = new Date();
+                start.setHours(9, 0, 0, 0);
+                const end = new Date();
+                end.setDate(end.getDate() + p.days);
+                end.setHours(18, 0, 0, 0);
+                setStartDate(start);
+                setEndDate(end);
+                setEnableTime(true);
+            }
+        }, []);
+
         // Reset form
         const resetForm = React.useCallback(() => {
             setTaskName('');
@@ -263,15 +285,23 @@ export const DooTaskCreateTaskSheet = React.memo(
                         priority: p.priority,
                         name: p.name,
                         color: p.color,
+                        days: p.days ?? 0,
+                        is_default: p.is_default,
                     }));
                     setPriorities(list);
+                    // Auto-select default priority
+                    const defaultP = list.find((p) => p.is_default === 1) || list[0];
+                    if (defaultP) {
+                        setSelectedPriority(defaultP);
+                        applyPriorityTime(defaultP);
+                    }
                 }
             } catch {
                 // Non-critical, silently fail
             } finally {
                 setLoadingPriorities(false);
             }
-        }, [profile]);
+        }, [profile, applyPriorityTime]);
 
         // On sheet present: initialize
         const handleSheetChange = React.useCallback((index: number) => {
@@ -451,20 +481,6 @@ export const DooTaskCreateTaskSheet = React.memo(
                                     <ActivityIndicator size="small" style={{ alignSelf: 'flex-start', marginTop: 4 }} />
                                 ) : priorities.length > 0 ? (
                                     <View style={styles.priorityRow}>
-                                        {/* No priority option */}
-                                        <Pressable
-                                            style={[
-                                                styles.priorityBlock,
-                                                {
-                                                    backgroundColor: theme.colors.groupped.background,
-                                                    borderColor: !selectedPriority ? theme.colors.button.primary.background : 'transparent',
-                                                    borderWidth: 2,
-                                                },
-                                            ]}
-                                            onPress={() => setSelectedPriority(null)}
-                                        >
-                                            <Ionicons name="remove" size={14} color={theme.colors.textSecondary} />
-                                        </Pressable>
                                         {priorities.map((p) => {
                                             const isSelected = selectedPriority?.priority === p.priority;
                                             return (
@@ -476,14 +492,20 @@ export const DooTaskCreateTaskSheet = React.memo(
                                                             backgroundColor: p.color,
                                                             borderColor: isSelected ? theme.colors.text : 'transparent',
                                                             borderWidth: 2,
-                                                            transform: isSelected ? [{ scale: 1.15 }] : [],
+                                                            transform: isSelected ? [{ scale: 1.05 }] : [],
                                                         },
                                                     ]}
-                                                    onPress={() => setSelectedPriority(p)}
+                                                    onPress={() => {
+                                                        setSelectedPriority(p);
+                                                        applyPriorityTime(p);
+                                                    }}
                                                 >
                                                     <Text style={styles.priorityLabel} numberOfLines={1}>
                                                         {p.name}
                                                     </Text>
+                                                    {p.days > 0 && (
+                                                        <Text style={styles.priorityDays}>{p.days}d</Text>
+                                                    )}
                                                 </Pressable>
                                             );
                                         })}
@@ -550,18 +572,21 @@ export const DooTaskCreateTaskSheet = React.memo(
                                                                 onPress={() => !isDisabled && toggleOwner(member.userid)}
                                                             >
                                                                 {/* Avatar or initials */}
-                                                                {member.userimg ? (
-                                                                    <Image
-                                                                        source={{ uri: member.userimg }}
-                                                                        style={{ width: 28, height: 28, borderRadius: 14 }}
-                                                                    />
-                                                                ) : (
-                                                                    <View style={[styles.initialsCircle, { backgroundColor: theme.colors.button.primary.background + '30' }]}>
-                                                                        <Text style={[styles.initialsText, { color: theme.colors.button.primary.background }]}>
-                                                                            {getInitials(member.nickname)}
-                                                                        </Text>
-                                                                    </View>
-                                                                )}
+                                                                {(() => {
+                                                                    const avatarUrl = profile ? resolveAvatarUrl(member.userimg, profile.serverUrl) : null;
+                                                                    return avatarUrl ? (
+                                                                        <Image
+                                                                            source={{ uri: avatarUrl }}
+                                                                            style={{ width: 28, height: 28, borderRadius: 14 }}
+                                                                        />
+                                                                    ) : (
+                                                                        <View style={[styles.initialsCircle, { backgroundColor: theme.colors.button.primary.background + '30' }]}>
+                                                                            <Text style={[styles.initialsText, { color: theme.colors.button.primary.background }]}>
+                                                                                {getInitials(member.nickname)}
+                                                                            </Text>
+                                                                        </View>
+                                                                    );
+                                                                })()}
                                                                 <Text style={[styles.memberName, { color: theme.colors.text }]} numberOfLines={1}>
                                                                     {member.nickname}
                                                                 </Text>
@@ -826,16 +851,22 @@ const styles = StyleSheet.create((_theme) => ({
         flexWrap: 'wrap',
     },
     priorityBlock: {
-        width: 44,
-        height: 32,
+        flex: 1,
+        minWidth: 60,
+        height: 40,
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
     },
     priorityLabel: {
         color: '#fff',
-        fontSize: 10,
+        fontSize: 12,
         ...Typography.default('semiBold'),
+    },
+    priorityDays: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 10,
+        ...Typography.default(),
     },
     chipsRow: {
         flexDirection: 'row',

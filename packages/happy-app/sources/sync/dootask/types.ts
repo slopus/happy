@@ -132,6 +132,8 @@ export type DooTaskPriority = {
     priority: number;
     name: string;
     color: string;
+    days: number;
+    is_default?: number;
 };
 
 export type DooTaskProjectMember = {
