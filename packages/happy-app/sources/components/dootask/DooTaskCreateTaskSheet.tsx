@@ -30,6 +30,7 @@ import type {
 } from '@/sync/dootask/types';
 
 const SheetTextInput = Platform.OS === 'web' ? TextInput : BottomSheetTextInput;
+const SheetScrollView = Platform.OS === 'web' ? ScrollView : BottomSheetScrollView;
 
 // --- Helpers ---
 
@@ -404,7 +405,7 @@ export const DooTaskCreateTaskSheet = React.memo(
                 backgroundStyle={{ backgroundColor: theme.colors.surface }}
                 handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
             >
-                <BottomSheetScrollView
+                <SheetScrollView
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                 >
@@ -494,9 +495,8 @@ export const DooTaskCreateTaskSheet = React.memo(
                                                         styles.priorityBlock,
                                                         {
                                                             backgroundColor: p.color,
-                                                            borderColor: isSelected ? theme.colors.text : 'transparent',
+                                                            borderColor: isSelected ? theme.colors.text : p.color,
                                                             borderWidth: 2,
-                                                            transform: isSelected ? [{ scale: 1.05 }] : [],
                                                         },
                                                     ]}
                                                     onPress={() => {
@@ -761,7 +761,7 @@ export const DooTaskCreateTaskSheet = React.memo(
                             </Pressable>
                         </>
                     )}
-                </BottomSheetScrollView>
+                </SheetScrollView>
             </BottomSheetModal>
         );
     }),
@@ -825,8 +825,8 @@ const styles = StyleSheet.create((_theme) => ({
         fontSize: 15,
         borderRadius: 10,
         paddingHorizontal: 12,
+        paddingVertical: 0,
         height: 44,
-        padding: 0,
     },
     multilineInput: {
         height: 100,

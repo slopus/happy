@@ -1,5 +1,10 @@
+import * as React from 'react';
 import { View, Text, Platform, Pressable } from 'react-native';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { DooTaskListView } from '@/components/DooTaskListView';
+import { DooTaskCreateSheet } from '@/components/dootask/DooTaskCreateSheet';
+import { DooTaskCreateTaskSheet } from '@/components/dootask/DooTaskCreateTaskSheet';
+import { DooTaskCreateProjectSheet } from '@/components/dootask/DooTaskCreateProjectSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
@@ -39,6 +44,39 @@ export default function DooTaskPage() {
     const router = useRouter();
     const headerHeight = useHeaderHeight();
 
+    const [createMenuVisible, setCreateMenuVisible] = React.useState(false);
+    const createTaskSheetRef = React.useRef<BottomSheetModal>(null);
+    const createProjectSheetRef = React.useRef<BottomSheetModal>(null);
+
+    const handleCreatePress = React.useCallback(() => {
+        setCreateMenuVisible(true);
+    }, []);
+
+    const handleCreateMenuClose = React.useCallback(() => {
+        setCreateMenuVisible(false);
+    }, []);
+
+    const handleSelectTask = React.useCallback(() => {
+        createTaskSheetRef.current?.present();
+    }, []);
+
+    const handleSelectProject = React.useCallback(() => {
+        createProjectSheetRef.current?.present();
+    }, []);
+
+    const createSheets = (
+        <>
+            <DooTaskCreateSheet
+                visible={createMenuVisible}
+                onClose={handleCreateMenuClose}
+                onSelectTask={handleSelectTask}
+                onSelectProject={handleSelectProject}
+            />
+            <DooTaskCreateTaskSheet ref={createTaskSheetRef} />
+            <DooTaskCreateProjectSheet ref={createProjectSheetRef} />
+        </>
+    );
+
     if (!isTablet) {
         return (
             <View style={styles.outerContainer}>
@@ -56,17 +94,46 @@ export default function DooTaskPage() {
                             />
                         </Pressable>
                         <Text style={styles.headerTitle}>{t('tabs.dootask')}</Text>
+                        <View style={{ flex: 1 }} />
+                        <Pressable
+                            onPress={handleCreatePress}
+                            hitSlop={15}
+                        >
+                            <Ionicons
+                                name="add-outline"
+                                size={28}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
                     </View>
                 </View>
                 <DooTaskListView />
+                {createSheets}
             </View>
         );
     }
 
     return (
         <View style={styles.outerContainer}>
-            <Stack.Screen options={{ title: t('tabs.dootask') }} />
+            <Stack.Screen
+                options={{
+                    title: t('tabs.dootask'),
+                    headerRight: () => (
+                        <Pressable
+                            onPress={handleCreatePress}
+                            hitSlop={15}
+                        >
+                            <Ionicons
+                                name="add-outline"
+                                size={24}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    ),
+                }}
+            />
             <DooTaskListView />
+            {createSheets}
         </View>
     );
 }

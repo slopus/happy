@@ -17,6 +17,7 @@ import { dootaskFetchColumnTemplates, dootaskCreateProject, isTokenExpired } fro
 import type { CreateProjectParams, DooTaskColumnTemplate } from '@/sync/dootask/types';
 
 const SheetTextInput = Platform.OS === 'web' ? TextInput : BottomSheetTextInput;
+const SheetScrollView = Platform.OS === 'web' ? ScrollView : BottomSheetScrollView;
 
 // --- Main Component ---
 
@@ -145,7 +146,7 @@ export const DooTaskCreateProjectSheet = React.memo(
                 backgroundStyle={{ backgroundColor: theme.colors.surface }}
                 handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
             >
-                <BottomSheetScrollView
+                <SheetScrollView
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                 >
@@ -348,7 +349,7 @@ export const DooTaskCreateProjectSheet = React.memo(
                             {submitting ? t('dootask.creating') : t('dootask.addProject')}
                         </Text>
                     </Pressable>
-                </BottomSheetScrollView>
+                </SheetScrollView>
             </BottomSheetModal>
         );
     }),
@@ -394,8 +395,8 @@ const styles = StyleSheet.create((_theme) => ({
         fontSize: 15,
         borderRadius: 10,
         paddingHorizontal: 12,
+        paddingVertical: 0,
         height: 44,
-        padding: 0,
     },
     multilineInput: {
         height: 100,
