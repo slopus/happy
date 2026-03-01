@@ -259,12 +259,16 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         setActiveTab(tab);
     }, []);
 
-    const createSheetRef = React.useRef<BottomSheetModal>(null);
+    const [createMenuVisible, setCreateMenuVisible] = React.useState(false);
     const createTaskSheetRef = React.useRef<BottomSheetModal>(null);
     const createProjectSheetRef = React.useRef<BottomSheetModal>(null);
 
     const handleCreatePress = React.useCallback(() => {
-        createSheetRef.current?.present();
+        setCreateMenuVisible(true);
+    }, []);
+
+    const handleCreateMenuClose = React.useCallback(() => {
+        setCreateMenuVisible(false);
     }, []);
 
     const handleSelectTask = React.useCallback(() => {
@@ -357,7 +361,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
             {showDootaskTab && (
                 <>
                     <DooTaskCreateSheet
-                        ref={createSheetRef}
+                        visible={createMenuVisible}
+                        onClose={handleCreateMenuClose}
                         onSelectTask={handleSelectTask}
                         onSelectProject={handleSelectProject}
                     />
