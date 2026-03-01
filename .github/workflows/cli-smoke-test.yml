@@ -92,7 +92,13 @@ jobs:
         cache-dependency-path: yarn.lock
 
     - name: Install dependencies
+      env:
+        SKIP_HAPPY_WIRE_BUILD: "1"
       run: yarn install --immutable
+
+    - name: Build happy-wire
+      shell: bash
+      run: cd packages/happy-wire && yarn build
 
     - name: Build package
       run: yarn workspace happy-coder build

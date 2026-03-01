@@ -30,7 +30,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
+    "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
     "prepublishOnly": "$npm_execpath run build && $npm_execpath run test",
     "release": "npx --no-install release-it"

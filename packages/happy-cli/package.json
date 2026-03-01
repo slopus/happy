@@ -57,7 +57,7 @@
   "scripts": {
     "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
     "typecheck": "tsc --noEmit",
-    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
+    "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
     "start": "$npm_execpath run build && node ./bin/happy.mjs",
     "cli": "tsx src/index.ts",
