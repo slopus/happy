@@ -22,7 +22,7 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
-import { BottomSheetModal } from '@gorhom/bottom-sheet';
+import type { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { DooTaskCreateSheet } from './dootask/DooTaskCreateSheet';
 import { DooTaskCreateTaskSheet } from './dootask/DooTaskCreateTaskSheet';
 import { DooTaskCreateProjectSheet } from './dootask/DooTaskCreateProjectSheet';
