@@ -92,6 +92,8 @@ jobs:
         cache-dependency-path: yarn.lock
 
     - name: Install dependencies
+      env:
+        SKIP_HAPPY_WIRE_BUILD: "1"
       run: yarn install --immutable
 
     - name: Build package
