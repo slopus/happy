@@ -184,8 +184,15 @@ export class MessageQueue2<T> {
         this.queue = [];
         this.closed = false;
 
-        // Clear waiter without calling it since we're not closing
-        this.waiter = null;
+        // Notify waiter so it doesn't hang forever on a promise that never resolves.
+        // Resolving with false tells waitForMessagesAndGetAsString to return null,
+        // which the main loop handles as "no batch, re-check".
+        if (this.waiter) {
+            logger.debug(`[MessageQueue2] reset() notifying waiter`);
+            const waiter = this.waiter;
+            this.waiter = null;
+            waiter(false);
+        }
     }
 
     /**

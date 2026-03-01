@@ -930,6 +930,31 @@ export async function runGemini(opts: {
 
   let first = true;
 
+  /**
+   * Race a promise against the abort signal so long-running awaits
+   * (sendPrompt, waitForResponseComplete) can be interrupted when the user
+   * aborts. Without this the main loop blocks forever on the await while
+   * new messages queue up — causing the deadlock.
+   */
+  function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    function makeAbortError(): Error {
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      return err;
+    }
+    if (signal.aborted) {
+      return Promise.reject(makeAbortError());
+    }
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = () => reject(makeAbortError());
+      signal.addEventListener('abort', onAbort, { once: true });
+      promise.then(
+        (v) => { signal.removeEventListener('abort', onAbort); resolve(v); },
+        (e) => { signal.removeEventListener('abort', onAbort); reject(e); },
+      );
+    });
+  }
+
   try {
     let currentModeHash: string | null = null;
     let pending: { message: string; mode: GeminiMode; isolate: boolean; hash: string } | null = null;
@@ -957,6 +982,10 @@ export async function runGemini(opts: {
       if (!message) {
         break;
       }
+
+      // Capture the current abort signal for this turn so sendPrompt/
+      // waitForResponseComplete can be interrupted when handleAbort fires.
+      const turnSignal = abortController.signal;
 
       // Track if we need to inject conversation history (after model change)
       let injectHistoryContext = false;
@@ -1125,13 +1154,13 @@ export async function runGemini(opts: {
         
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
-            await geminiBackend.sendPrompt(acpSessionId, promptToSend);
+            await withAbort(geminiBackend.sendPrompt(acpSessionId, promptToSend), turnSignal);
             logger.debug('[gemini] Prompt sent successfully');
-            
+
             // Wait for Gemini to finish responding (all chunks received + final idle)
             // This ensures we don't send task_complete until response is truly done
             if (geminiBackend.waitForResponseComplete) {
-              await geminiBackend.waitForResponseComplete(120000);
+              await withAbort(geminiBackend.waitForResponseComplete(120000), turnSignal);
               logger.debug('[gemini] Response complete');
             }
             
