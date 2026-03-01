@@ -5,6 +5,13 @@ import { shutdownSignal } from "@/utils/shutdown";
 import { buildMachineActivityEphemeral, buildSessionActivityEphemeral, eventRouter } from "@/app/events/eventRouter";
 
 export function startTimeout() {
+    // Get timeout values from environment or use defaults
+    const sessionTimeoutMinutes = parseInt(process.env.SESSION_TIMEOUT_MINUTES || '30', 10);
+    const machineTimeoutMinutes = parseInt(process.env.MACHINE_TIMEOUT_MINUTES || '30', 10);
+
+    console.log(`[Timeout] Session timeout: ${sessionTimeoutMinutes} minutes`);
+    console.log(`[Timeout] Machine timeout: ${machineTimeoutMinutes} minutes`);
+
     forever('session-timeout', async () => {
         while (true) {
             // Find timed out sessions
@@ -12,7 +19,7 @@ export function startTimeout() {
                 where: {
                     active: true,
                     lastActiveAt: {
-                        lte: new Date(Date.now() - 1000 * 60 * 10) // 10 minutes
+                        lte: new Date(Date.now() - 1000 * 60 * sessionTimeoutMinutes)
                     }
                 }
             });
@@ -36,7 +43,7 @@ export function startTimeout() {
                 where: {
                     active: true,
                     lastActiveAt: {
-                        lte: new Date(Date.now() - 1000 * 60 * 10) // 10 minutes
+                        lte: new Date(Date.now() - 1000 * 60 * machineTimeoutMinutes)
                     }
                 }
             });
