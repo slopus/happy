@@ -1,15 +1,17 @@
 import * as React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
 import { sessionAllow } from '@/sync/ops';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
+import { Typography } from '@/constants/Typography';
 
 interface QuestionOption {
     label: string;
     description: string;
+    markdown?: string;
 }
 
 interface Question {
@@ -82,7 +84,6 @@ const styles = StyleSheet.create((theme) => ({
         borderColor: theme.colors.textSecondary,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 2,
     },
     radioOuterSelected: {
         borderColor: theme.colors.radio.active,
@@ -101,7 +102,6 @@ const styles = StyleSheet.create((theme) => ({
         borderColor: theme.colors.textSecondary,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 2,
     },
     checkboxOuterSelected: {
         borderColor: theme.colors.radio.active,
@@ -114,11 +114,37 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 14,
         fontWeight: '500',
         color: theme.colors.text,
+        lineHeight: 20
     },
     optionDescription: {
         fontSize: 13,
         color: theme.colors.textSecondary,
         marginTop: 2,
+    },
+    markdownPreview: {
+        marginTop: 8,
+        backgroundColor: theme.colors.surfaceHighest,
+        borderRadius: 6,
+        padding: 10,
+    },
+    markdownPreviewText: {
+        fontFamily: Typography.mono().fontFamily,
+        fontSize: 12,
+        color: theme.colors.text,
+        lineHeight: 18,
+    },
+    otherTextInput: {
+        marginTop: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        borderRadius: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        fontSize: 14,
+        color: theme.colors.text,
+        backgroundColor: theme.colors.surface,
+        minHeight: 36,
+        maxHeight: 120,
     },
     actionsContainer: {
         flexDirection: 'row',
@@ -167,6 +193,7 @@ const styles = StyleSheet.create((theme) => ({
 export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     const { theme } = useUnistyles();
     const [selections, setSelections] = React.useState<Map<number, Set<number>>>(new Map());
+    const [otherTexts, setOtherTexts] = React.useState<Map<number, string>>(new Map());
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [isSubmitted, setIsSubmitted] = React.useState(false);
 
@@ -181,10 +208,19 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
     const isRunning = tool.state === 'running';
     const canInteract = isRunning && !isSubmitted;
 
-    // Check if all questions have at least one selection
-    const allQuestionsAnswered = questions.every((_, qIndex) => {
+    // "Other" is represented as sentinel index = options.length
+    const getOtherIndex = (q: Question) => q.options.length;
+
+    // Check if all questions have at least one valid selection
+    const allQuestionsAnswered = questions.every((q, qIndex) => {
         const selected = selections.get(qIndex);
-        return selected && selected.size > 0;
+        if (!selected || selected.size === 0) return false;
+        // If "Other" is selected, require non-empty text
+        if (selected.has(getOtherIndex(q))) {
+            const text = otherTexts.get(qIndex);
+            if (!text?.trim()) return false;
+        }
+        return true;
     });
 
     const handleOptionToggle = React.useCallback((questionIndex: number, optionIndex: number, multiSelect: boolean) => {
@@ -212,6 +248,14 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         });
     }, [canInteract]);
 
+    const handleOtherTextChange = React.useCallback((questionIndex: number, text: string) => {
+        setOtherTexts(prev => {
+            const newMap = new Map(prev);
+            newMap.set(questionIndex, text);
+            return newMap;
+        });
+    }, []);
+
     const handleSubmit = React.useCallback(async () => {
         if (!sessionId || !allQuestionsAnswered || isSubmitting) return;
 
@@ -228,11 +272,24 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         questions.forEach((q, qIndex) => {
             const selected = selections.get(qIndex);
             if (selected && selected.size > 0) {
-                const selectedLabels = Array.from(selected)
+                const otherIndex = getOtherIndex(q);
+                const hasOther = selected.has(otherIndex);
+                const predefinedLabels = Array.from(selected)
+                    .filter(optIndex => optIndex !== otherIndex)
                     .map(optIndex => q.options[optIndex]?.label)
-                    .filter(Boolean)
-                    .join(', ');
-                answers[q.header] = selectedLabels;
+                    .filter(Boolean);
+
+                if (hasOther) {
+                    const customText = otherTexts.get(qIndex)?.trim() || '';
+                    if (predefinedLabels.length > 0) {
+                        // Multi-select: combine predefined labels with custom text
+                        answers[q.header] = [...predefinedLabels, customText].join(', ');
+                    } else {
+                        answers[q.header] = customText;
+                    }
+                } else {
+                    answers[q.header] = predefinedLabels.join(', ');
+                }
             }
         });
 
@@ -246,7 +303,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         } finally {
             setIsSubmitting(false);
         }
-    }, [sessionId, questions, selections, allQuestionsAnswered, isSubmitting, tool.permission?.id]);
+    }, [sessionId, questions, selections, otherTexts, allQuestionsAnswered, isSubmitting, tool.permission?.id]);
 
     // Show submitted state
     if (isSubmitted || tool.state === 'completed') {
@@ -257,18 +314,31 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
             <ToolSectionView>
                 <View style={styles.submittedContainer}>
                     {questions.map((q, qIndex) => {
-                        // Prefer local state, fall back to persisted answers
+                        // Build display label from local state
                         const selected = selections.get(qIndex);
-                        const selectedLabels = selected && selected.size > 0
-                            ? Array.from(selected)
-                                .map(optIndex => q.options[optIndex]?.label)
-                                .filter(Boolean)
-                                .join(', ')
-                            : persistedAnswers?.[q.header] || '-';
+                        let displayLabel: string;
+                        if (selected && selected.size > 0) {
+                            const otherIndex = getOtherIndex(q);
+                            const hasOther = selected.has(otherIndex);
+                            const predefinedLabels = Array.from(selected)
+                                .filter(i => i !== otherIndex)
+                                .map(i => q.options[i]?.label)
+                                .filter(Boolean);
+                            if (hasOther) {
+                                const customText = otherTexts.get(qIndex)?.trim() || '';
+                                displayLabel = predefinedLabels.length > 0
+                                    ? [...predefinedLabels, customText].join(', ')
+                                    : customText;
+                            } else {
+                                displayLabel = predefinedLabels.join(', ');
+                            }
+                        } else {
+                            displayLabel = persistedAnswers?.[q.header] || '-';
+                        }
                         return (
                             <View key={qIndex} style={styles.submittedItem}>
                                 <Text style={styles.submittedHeader}>{q.header}:</Text>
-                                <Text style={styles.submittedValue}>{selectedLabels}</Text>
+                                <Text style={styles.submittedValue}>{displayLabel}</Text>
                             </View>
                         );
                     })}
@@ -282,6 +352,8 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
             <View style={styles.container}>
                 {questions.map((question, qIndex) => {
                     const selectedOptions = selections.get(qIndex) || new Set();
+                    const otherIndex = getOtherIndex(question);
+                    const isOtherSelected = selectedOptions.has(otherIndex);
 
                     return (
                         <View key={qIndex} style={styles.questionSection}>
@@ -294,43 +366,97 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                                     const isSelected = selectedOptions.has(oIndex);
 
                                     return (
-                                        <TouchableOpacity
-                                            key={oIndex}
-                                            style={[
-                                                styles.optionButton,
-                                                isSelected && styles.optionButtonSelected,
-                                                !canInteract && styles.optionButtonDisabled,
-                                            ]}
-                                            onPress={() => handleOptionToggle(qIndex, oIndex, question.multiSelect)}
-                                            disabled={!canInteract}
-                                            activeOpacity={0.7}
-                                        >
-                                            {question.multiSelect ? (
-                                                <View style={[
-                                                    styles.checkboxOuter,
-                                                    isSelected && styles.checkboxOuterSelected,
-                                                ]}>
-                                                    {isSelected && (
-                                                        <Ionicons name="checkmark" size={14} color="#fff" />
+                                        <View key={oIndex}>
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.optionButton,
+                                                    isSelected && styles.optionButtonSelected,
+                                                    !canInteract && styles.optionButtonDisabled,
+                                                ]}
+                                                onPress={() => handleOptionToggle(qIndex, oIndex, question.multiSelect)}
+                                                disabled={!canInteract}
+                                                activeOpacity={0.7}
+                                            >
+                                                {question.multiSelect ? (
+                                                    <View style={[
+                                                        styles.checkboxOuter,
+                                                        isSelected && styles.checkboxOuterSelected,
+                                                    ]}>
+                                                        {isSelected && (
+                                                            <Ionicons name="checkmark" size={14} color="#fff" />
+                                                        )}
+                                                    </View>
+                                                ) : (
+                                                    <View style={[
+                                                        styles.radioOuter,
+                                                        isSelected && styles.radioOuterSelected,
+                                                    ]}>
+                                                        {isSelected && <View style={styles.radioInner} />}
+                                                    </View>
+                                                )}
+                                                <View style={styles.optionContent}>
+                                                    <Text style={styles.optionLabel}>{option.label}</Text>
+                                                    {option.description && (
+                                                        <Text style={styles.optionDescription}>{option.description}</Text>
                                                     )}
                                                 </View>
-                                            ) : (
-                                                <View style={[
-                                                    styles.radioOuter,
-                                                    isSelected && styles.radioOuterSelected,
-                                                ]}>
-                                                    {isSelected && <View style={styles.radioInner} />}
+                                            </TouchableOpacity>
+                                            {isSelected && option.markdown && (
+                                                <View style={styles.markdownPreview}>
+                                                    <Text style={styles.markdownPreviewText}>{option.markdown}</Text>
                                                 </View>
                                             )}
-                                            <View style={styles.optionContent}>
-                                                <Text style={styles.optionLabel}>{option.label}</Text>
-                                                {option.description && (
-                                                    <Text style={styles.optionDescription}>{option.description}</Text>
-                                                )}
-                                            </View>
-                                        </TouchableOpacity>
+                                        </View>
                                     );
                                 })}
+
+                                {/* "Other" option */}
+                                <View>
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.optionButton,
+                                            isOtherSelected && styles.optionButtonSelected,
+                                            !canInteract && styles.optionButtonDisabled,
+                                        ]}
+                                        onPress={() => handleOptionToggle(qIndex, otherIndex, question.multiSelect)}
+                                        disabled={!canInteract}
+                                        activeOpacity={0.7}
+                                    >
+                                        {question.multiSelect ? (
+                                            <View style={[
+                                                styles.checkboxOuter,
+                                                isOtherSelected && styles.checkboxOuterSelected,
+                                            ]}>
+                                                {isOtherSelected && (
+                                                    <Ionicons name="checkmark" size={14} color="#fff" />
+                                                )}
+                                            </View>
+                                        ) : (
+                                            <View style={[
+                                                styles.radioOuter,
+                                                isOtherSelected && styles.radioOuterSelected,
+                                            ]}>
+                                                {isOtherSelected && <View style={styles.radioInner} />}
+                                            </View>
+                                        )}
+                                        <View style={styles.optionContent}>
+                                            <Text style={styles.optionLabel}>{t('tools.askUserQuestion.other')}</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                    {isOtherSelected && (
+                                        <TextInput
+                                            style={styles.otherTextInput}
+                                            value={otherTexts.get(qIndex) || ''}
+                                            onChangeText={(text) => handleOtherTextChange(qIndex, text)}
+                                            placeholder={t('tools.askUserQuestion.otherPlaceholder')}
+                                            placeholderTextColor={theme.colors.textSecondary}
+                                            multiline
+                                            editable={canInteract}
+                                            autoFocus
+                                            textAlignVertical="top"
+                                        />
+                                    )}
+                                </View>
                             </View>
                         </View>
                     );
