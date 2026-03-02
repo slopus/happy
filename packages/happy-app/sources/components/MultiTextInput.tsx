@@ -38,6 +38,7 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    onImagePaste?: (blob: Blob) => void;
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
@@ -111,8 +112,6 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         const selection = { start: text.length, end: text.length };
         selectionRef.current = selection;
         
-        console.log('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text, selection }));
-        
         onChangeText(text);
         
         if (onStateChange) {
@@ -131,8 +130,6 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
             // Only update if selection actually changed
             if (selection.start !== selectionRef.current.start || selection.end !== selectionRef.current.end) {
                 selectionRef.current = selection;
-                console.log('📍 MultiTextInput.native: Selection changed:', JSON.stringify(selection));
-                
                 if (onSelectionChange) {
                     onSelectionChange(selection);
                 }
@@ -146,8 +143,6 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     // Imperative handle for direct control
     React.useImperativeHandle(ref, () => ({
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
-            console.log('🎯 MultiTextInput.native: setTextAndSelection:', JSON.stringify({ text, selection }));
-            
             if (inputRef.current) {
                 // Use setNativeProps for direct manipulation
                 inputRef.current.setNativeProps({

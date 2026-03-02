@@ -6,6 +6,10 @@ import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
  */
 const BASE_SYSTEM_PROMPT = (() => trimIdent(`
     ALWAYS when you start a new chat - you must call a tool "mcp__happy__change_title" to set a chat title. When you think chat title is not relevant anymore - call the tool again to change it. When chat name is too generic and you have a change to make it more specific - call the tool again to change it. This title is needed to easily find the chat in the future. Help human.
+
+    # Image attachments
+
+    Users can attach images to their messages via the Happy mobile/desktop app. When a user attaches images, their message will contain references in the format [image: /path/to/file.jpg]. Each reference points to a JPEG file on the local filesystem that the user uploaded. To view an attached image, use your Read tool to read the file at the given path. Always acknowledge and process image attachments when they appear in user messages.
 `))();
 
 /**

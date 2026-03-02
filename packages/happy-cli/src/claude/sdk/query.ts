@@ -278,10 +278,8 @@ export function query(config: {
         } = {}
     } = config
 
-    // Set entrypoint if not already set
-    if (!process.env.CLAUDE_CODE_ENTRYPOINT) {
-        process.env.CLAUDE_CODE_ENTRYPOINT = 'sdk-ts'
-    }
+    // Set entrypoint on the spawn env (not process.env, to avoid polluting the parent)
+    // This is set after the env copy is created below
 
     // Build command arguments
     const args = ['--output-format', 'stream-json', '--verbose']
@@ -340,7 +338,15 @@ export function query(config: {
 
     // Spawn Claude Code process
     // Use clean env for global claude to avoid local node_modules/.bin taking precedence
-    const spawnEnv = isCommandOnly ? getCleanEnv() : process.env
+    const spawnEnv = isCommandOnly ? getCleanEnv() : { ...process.env }
+
+    // Strip Claude Code nesting detection vars to prevent "cannot be launched inside
+    // another Claude Code session" error when the daemon is started from within Claude Code
+    delete spawnEnv['CLAUDECODE']
+    delete spawnEnv['CLAUDE_CODE_ENTRYPOINT']
+
+    // Set entrypoint on spawn env (not process.env, to avoid polluting the parent)
+    spawnEnv['CLAUDE_CODE_ENTRYPOINT'] = 'sdk-ts'
     logDebug(`Spawning Claude Code process: ${spawnCommand} ${spawnArgs.join(' ')} (using ${isCommandOnly ? 'clean' : 'normal'} env)`)
 
     const child = spawn(spawnCommand, spawnArgs, {

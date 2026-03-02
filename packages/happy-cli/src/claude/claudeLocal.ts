@@ -242,6 +242,11 @@ export async function claudeLocal(opts: {
                 ...opts.claudeEnvVars
             }
 
+            // Strip Claude Code nesting detection vars to prevent "cannot be launched inside
+            // another Claude Code session" error when the daemon is started from within Claude Code
+            delete env['CLAUDECODE']
+            delete env['CLAUDE_CODE_ENTRYPOINT']
+
             logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
             logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
 

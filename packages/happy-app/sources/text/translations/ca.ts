@@ -301,6 +301,12 @@ export const ca: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Escriu un missatge...',
+        sentImage: 'Imatge enviada',
+        sentImages: ({ count }: { count: number }) => `${count} imatges enviades`,
+        imageLabel: ({ index }: { index: number }) => `Imatge ${index}`,
+        imageUploadFailed: ({ failed, total }: { failed: number; total: number }) => `${failed} de ${total} imatges no s'han pogut pujar`,
+        imageAttached: 'Imatge adjunta',
+        couldNotAttachFile: 'No s\'ha pogut adjuntar aquest fitxer',
     },
 
     commandPalette: {
