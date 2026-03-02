@@ -1005,6 +1005,7 @@ const styles = StyleSheet.create((_theme) => ({
     },
     claimModalContent: {
         width: '100%',
+        maxWidth: 800,
         borderRadius: 14,
         padding: 20,
         gap: 16,
