@@ -251,6 +251,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="qr-code-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/qr-test')}
                 />
+                <Item
+                    title="Session Composer"
+                    subtitle="New session creation screen layout"
+                    icon={<Ionicons name="add-circle-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/session-composer' as any)}
+                />
             </ItemGroup>
 
             {/* Test Features */}

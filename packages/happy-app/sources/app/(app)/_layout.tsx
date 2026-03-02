@@ -275,6 +275,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dev/session-composer"
+                options={{
+                    headerTitle: 'Session Composer',
+                }}
+            />
+            <Stack.Screen
                 name="session/recent"
                 options={{
                     headerShown: true,
