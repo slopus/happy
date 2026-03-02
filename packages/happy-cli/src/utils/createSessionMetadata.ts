@@ -7,8 +7,9 @@
  * @module createSessionMetadata
  */
 
+import { readdirSync } from 'node:fs';
 import os from 'node:os';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 
 import type { AgentState, Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
@@ -63,6 +64,39 @@ export interface SessionMetadataResult {
  * const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
  * ```
  */
+/** Scan immediate subdirectories for git worktrees (workspace root detection). */
+function detectWorkspaceSubdirectories(cwd: string): Partial<Metadata> {
+    try {
+        const entries = readdirSync(cwd, { withFileTypes: true });
+        const repos: Array<{ path: string; basePath: string; branchName: string; displayName: string }> = [];
+
+        for (const entry of entries) {
+            if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+            const subDir = join(cwd, entry.name);
+            const info = detectGitWorktree(subDir);
+            if (info.isWorktree && info.worktreeBasePath && info.worktreeBranchName) {
+                repos.push({
+                    path: subDir,
+                    basePath: info.worktreeBasePath,
+                    branchName: info.worktreeBranchName,
+                    displayName: entry.name,
+                });
+            }
+        }
+
+        if (repos.length > 0) {
+            return {
+                isWorktree: true,
+                workspaceRepos: repos,
+                workspacePath: cwd,
+            };
+        }
+    } catch {
+        // Directory not readable or other error — fall through
+    }
+    return {};
+}
+
 /** Env vars from daemon take priority; otherwise detect via git */
 function detectWorktreeMetadata(): Partial<Metadata> {
     // New: multi-repo workspace
@@ -94,6 +128,11 @@ function detectWorktreeMetadata(): Partial<Metadata> {
             worktreeBasePath: info.worktreeBasePath,
             worktreeBranchName: info.worktreeBranchName,
         };
+    }
+    // Workspace root: scan subdirectories for worktrees
+    const workspaceResult = detectWorkspaceSubdirectories(process.cwd());
+    if (workspaceResult.isWorktree) {
+        return workspaceResult;
     }
     return {};
 }

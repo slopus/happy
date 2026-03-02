@@ -1,5 +1,6 @@
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import { copyFile, mkdir, stat } from 'node:fs/promises';
 
 import { ApiClient } from '@/api/api';
@@ -88,6 +89,33 @@ function detectWorktreeMetadata(cwd: string): Partial<Metadata> {
             worktreeBasePath: info.worktreeBasePath,
             worktreeBranchName: info.worktreeBranchName,
         };
+    }
+    // Workspace root: scan subdirectories for worktrees
+    try {
+        const entries = readdirSync(cwd, { withFileTypes: true });
+        const repos: Array<{ path: string; basePath: string; branchName: string; displayName: string }> = [];
+        for (const entry of entries) {
+            if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+            const subDir = join(cwd, entry.name);
+            const sub = detectGitWorktree(subDir);
+            if (sub.isWorktree && sub.worktreeBasePath && sub.worktreeBranchName) {
+                repos.push({
+                    path: subDir,
+                    basePath: sub.worktreeBasePath,
+                    branchName: sub.worktreeBranchName,
+                    displayName: entry.name,
+                });
+            }
+        }
+        if (repos.length > 0) {
+            return {
+                isWorktree: true,
+                workspaceRepos: repos,
+                workspacePath: cwd,
+            };
+        }
+    } catch {
+        // Directory not readable — fall through
     }
     return {};
 }
