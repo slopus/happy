@@ -22,12 +22,15 @@ import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { RawJSONLinesSchema } from '@/claude/types';
+import { getProjectPath } from '@/claude/utils/path';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -196,6 +199,38 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
+
+    // Send history from resumed session if --resume was used
+    const resumeSessionId = extractResumeSessionId(options.claudeArgs);
+    if (resumeSessionId) {
+        logger.debug(`[START] Detected --resume with session ID: ${resumeSessionId}`);
+        try {
+            const projectDir = getProjectPath(workingDirectory);
+            const sessionFile = join(projectDir, `${resumeSessionId}.jsonl`);
+            logger.debug(`[START] Reading history from: ${sessionFile}`);
+            const fileContent = await readFile(sessionFile, 'utf-8');
+            const lines = fileContent.split('\n');
+            let sentCount = 0;
+            const INTERNAL_EVENTS = new Set(['file-history-snapshot', 'change', 'queue-operation']);
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const message = JSON.parse(line);
+                    if (message.type && INTERNAL_EVENTS.has(message.type)) continue;
+                    const parsed = RawJSONLinesSchema.safeParse(message);
+                    if (parsed.success) {
+                        session.sendClaudeSessionMessage(parsed.data);
+                        sentCount++;
+                    }
+                } catch (e) {
+                    // Skip unparseable lines
+                }
+            }
+            logger.debug(`[START] Sent ${sentCount} history messages from resumed session`);
+        } catch (error) {
+            logger.debug(`[START] Could not load resume history: ${error}`);
+        }
+    }
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
@@ -507,4 +542,23 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Exit with the code from Claude
     process.exit(exitCode);
+}
+
+/**
+ * Extract Claude Code session ID from --resume flag in claudeArgs
+ */
+function extractResumeSessionId(claudeArgs?: string[]): string | null {
+    if (!claudeArgs) return null;
+    for (let i = 0; i < claudeArgs.length; i++) {
+        if (claudeArgs[i] === '--resume' || claudeArgs[i] === '-r') {
+            if (i + 1 < claudeArgs.length) {
+                const nextArg = claudeArgs[i + 1];
+                // UUID-like session IDs contain dashes and don't start with -
+                if (!nextArg.startsWith('-') && nextArg.includes('-')) {
+                    return nextArg;
+                }
+            }
+        }
+    }
+    return null;
 }

@@ -40,8 +40,14 @@ export function getDeviceType(): 'phone' | 'tablet' {
 // Hook to get device type (reactive to dimension changes)
 export function useDeviceType(): 'phone' | 'tablet' {
     const { width, height } = useWindowDimensions();
-    
+
     return useMemo(() => {
+        // On web, use width-based detection (600px threshold)
+        // Diagonal-based detection fails in split-screen / narrow browser windows
+        if (Platform.OS === 'web') {
+            return width >= 600 ? 'tablet' : 'phone';
+        }
+
         const dimensions = calculateDeviceDimensions({
             widthPoints: width,
             heightPoints: height,

@@ -181,7 +181,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
                     textTransform: 'uppercase' as any,
                     color: theme.colors.header.tint,
                     ...Typography.brand(),
-                }}>304.systems</Text>
+                }}>chatai.304</Text>
             </View>
         );
     }

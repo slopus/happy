@@ -132,7 +132,7 @@ export const SidebarView = React.memo(() => {
                             isPulsing={isPulsing}
                             size={8}
                         />
-                        <Text style={[styles.titleText, { WebkitTextStroke: '1.2px' } as any]}>304.systems</Text>
+                        <Text style={[styles.titleText, { WebkitTextStroke: '1.2px' } as any]}>chatai.304</Text>
                     </View>
 
                     {/* Right: add */}

@@ -73,10 +73,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         textAlign: 'right',
     },
     sessionRow: {
-        height: 88,
+        height: 56,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 12,
         backgroundColor: theme.colors.surface,
     },
     sessionRowWithBorder: {
@@ -88,7 +88,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     sessionContent: {
         flex: 1,
-        marginLeft: 16,
+        marginLeft: 10,
         justifyContent: 'center',
     },
     sessionTitleRow: {
@@ -127,8 +127,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     avatarContainer: {
         position: 'relative',
-        width: 48,
-        height: 48,
+        width: 24,
+        height: 24,
     },
     newSessionButton: {
         flexDirection: 'row',
@@ -395,7 +395,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             }}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                <Avatar id={avatarId} size={24} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
             </View>
             <View style={styles.sessionContent}>
                 {/* Title line */}

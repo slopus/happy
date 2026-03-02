@@ -8,6 +8,8 @@ import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
+import { readFile, readdir, stat } from 'fs/promises';
+import { join } from 'path';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -102,14 +104,14 @@ export class ApiMachineClient {
     }: MachineRpcHandlers) {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, claudeResumeSessionId, publicLabel, sessionSummary } = params || {};
             logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, claudeResumeSessionId, publicLabel, sessionSummary });
 
             switch (result.type) {
                 case 'success':
@@ -153,6 +155,49 @@ export class ApiMachineClient {
             }, 100);
 
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
+        });
+
+        // Machine-level file operations (unrestricted path, for Files tab)
+        this.rpcHandlerManager.registerHandler('machine-listDirectory', async (params: any) => {
+            const { path: dirPath } = params || {};
+            if (!dirPath) throw new Error('Path is required');
+
+            const entries = await readdir(dirPath, { withFileTypes: true });
+            const result = await Promise.all(
+                entries.map(async (entry) => {
+                    const fullPath = join(dirPath, entry.name);
+                    let type: 'file' | 'directory' | 'other' = 'other';
+                    let size: number | undefined;
+                    let modified: number | undefined;
+
+                    if (entry.isDirectory()) type = 'directory';
+                    else if (entry.isFile()) type = 'file';
+
+                    try {
+                        const stats = await stat(fullPath);
+                        size = stats.size;
+                        modified = stats.mtime.getTime();
+                    } catch { /* ignore stat errors */ }
+
+                    return { name: entry.name, type, size, modified };
+                })
+            );
+
+            result.sort((a, b) => {
+                if (a.type === 'directory' && b.type !== 'directory') return -1;
+                if (a.type !== 'directory' && b.type === 'directory') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            return { success: true, entries: result };
+        });
+
+        this.rpcHandlerManager.registerHandler('machine-readFile', async (params: any) => {
+            const { path: filePath } = params || {};
+            if (!filePath) throw new Error('Path is required');
+
+            const buffer = await readFile(filePath);
+            return { success: true, content: buffer.toString('base64') };
         });
     }
 

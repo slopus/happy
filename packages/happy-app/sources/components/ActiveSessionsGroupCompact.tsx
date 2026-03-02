@@ -26,13 +26,13 @@ import { HappyError } from '@/utils/errors';
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         backgroundColor: theme.colors.groupped.background,
-        paddingTop: 8,
+        paddingTop: 4,
     },
     projectCard: {
         backgroundColor: theme.colors.surface,
-        marginBottom: 8,
-        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        marginBottom: 4,
+        marginHorizontal: Platform.select({ ios: 12, default: 8 }),
+        borderRadius: Platform.select({ ios: 10, default: 12 }),
         overflow: 'hidden',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 0.33 },
@@ -41,9 +41,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         elevation: 1,
     },
     sectionHeader: {
-        paddingTop: 12,
-        paddingBottom: Platform.select({ ios: 6, default: 8 }),
-        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        paddingTop: 8,
+        paddingBottom: Platform.select({ ios: 4, default: 4 }),
+        paddingHorizontal: Platform.select({ ios: 24, default: 16 }),
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -55,23 +55,26 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginRight: 8,
     },
     sectionHeaderAvatar: {
-        marginRight: 8,
+        marginRight: 6,
     },
     sectionHeaderPath: {
         ...Typography.default('regular'),
         color: theme.colors.groupped.sectionTitle,
-        fontSize: Platform.select({ ios: 13, default: 14 }),
-        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        fontSize: Platform.select({ ios: 12, default: 12 }),
+        lineHeight: Platform.select({ ios: 16, default: 16 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
         flex: 1,
     },
     sessionRow: {
-        height: 56,
+        height: 40,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 10,
         backgroundColor: theme.colors.surface,
+    },
+    avatarContainer: {
+        marginRight: 8,
     },
     sessionRowWithBorder: {
         borderBottomWidth: StyleSheet.hairlineWidth,
@@ -89,7 +92,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
     },
     sessionTitle: {
-        fontSize: 15,
+        fontSize: 13,
         flex: 1,
         ...Typography.default('regular'),
     },
@@ -102,8 +105,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     statusDotContainer: {
         alignItems: 'center',
         justifyContent: 'center',
-        width: 16,
-        height: 16,
+        width: 12,
+        height: 12,
     },
     newSessionButton: {
         flexDirection: 'row',
@@ -249,7 +252,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                             <View style={styles.sectionHeaderLeft}>
                                 {avatarId && (
                                     <View style={styles.sectionHeaderAvatar}>
-                                        <Avatar id={avatarId} size={24} flavor={firstSession?.metadata?.flavor} />
+                                        <Avatar id={avatarId} size={20} flavor={firstSession?.metadata?.flavor} />
                                     </View>
                                 )}
                                 <Text style={styles.sectionHeaderPath}>
@@ -311,6 +314,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         }
     });
 
+    const avatarId = React.useMemo(() => getSessionAvatarId(session), [session]);
+
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
         Modal.alert(
@@ -345,6 +350,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 }
             }}
         >
+            <View style={styles.avatarContainer}>
+                <Avatar id={avatarId} size={20} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+            </View>
             <View style={styles.sessionContent}>
                 {/* Title line with status */}
                 <View style={styles.sessionTitleRow}>
@@ -355,46 +363,46 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             return (
                                 <Ionicons
                                     name="create-outline"
-                                    size={14}
+                                    size={12}
                                     color={theme.colors.textSecondary}
-                                    style={{ marginRight: 8 }}
+                                    style={{ marginRight: 4 }}
                                 />
                             );
                         }
-                        
+
                         // Show status dot only for permission_required/thinking states
                         if (sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking') {
                             return (
-                                <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                                    <StatusDot 
-                                        color={sessionStatus.statusDotColor} 
-                                        isPulsing={sessionStatus.isPulsing} 
+                                <View style={[styles.statusDotContainer, { marginRight: 4 }]}>
+                                    <StatusDot
+                                        color={sessionStatus.statusDotColor}
+                                        isPulsing={sessionStatus.isPulsing}
                                     />
                                 </View>
                             );
                         }
-                        
+
                         // Show grey dot for online without draft
                         if (sessionStatus.state === 'waiting') {
                             return (
-                                <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                                    <StatusDot 
-                                        color={theme.colors.textSecondary} 
-                                        isPulsing={false} 
+                                <View style={[styles.statusDotContainer, { marginRight: 4 }]}>
+                                    <StatusDot
+                                        color={theme.colors.textSecondary}
+                                        isPulsing={false}
                                     />
                                 </View>
                             );
                         }
-                        
+
                         return null;
                     })()}
-                    
+
                     <Text
                         style={[
                             styles.sessionTitle,
                             sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                         ]}
-                        numberOfLines={2}
+                        numberOfLines={1}
                     >
                         {sessionName}
                     </Text>

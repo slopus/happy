@@ -77,10 +77,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     sessionItem: {
-        height: 64,
+        height: 44,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 12,
+        paddingHorizontal: 10,
         backgroundColor: theme.colors.surface,
     },
     sessionItemContainer: {
@@ -106,18 +106,18 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionItemContainerLast: {
         borderBottomLeftRadius: 12,
         borderBottomRightRadius: 12,
-        marginBottom: 12,
+        marginBottom: 8,
     },
     sessionItemContainerSingle: {
         borderRadius: 12,
-        marginBottom: 12,
+        marginBottom: 8,
     },
     sessionItemSelected: {
         backgroundColor: theme.colors.surfaceSelected,
     },
     sessionContent: {
         flex: 1,
-        marginLeft: 10,
+        marginLeft: 8,
         justifyContent: 'center',
     },
     sessionTitleRow: {
@@ -126,7 +126,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 2,
     },
     sessionTitle: {
-        fontSize: 15,
+        fontSize: 13,
         fontWeight: '500',
         flex: 1,
         ...Typography.default('semiBold'),
@@ -138,9 +138,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     sessionSubtitle: {
-        fontSize: 13,
+        fontSize: 11,
         color: theme.colors.textSecondary,
-        marginBottom: 4,
+        marginBottom: 2,
         ...Typography.default(),
     },
     statusRow: {
@@ -155,15 +155,15 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginRight: 4,
     },
     statusText: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '500',
-        lineHeight: 16,
+        lineHeight: 14,
         ...Typography.default(),
     },
     avatarContainer: {
         position: 'relative',
-        width: 36,
-        height: 36,
+        width: 20,
+        height: 20,
     },
     draftIconContainer: {
         position: 'absolute',
@@ -393,6 +393,18 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         }
         // Navigate to the new session
         if (result.type === 'success' && result.sessionId) {
+            // Delete the old archived session since it's been resumed into a new one
+            const oldSessionId = session.id;
+            sessionDelete(oldSessionId).then((deleteResult) => {
+                if (deleteResult.success) {
+                    console.log('[SessionsList] Deleted old archived session after resume:', oldSessionId);
+                } else {
+                    console.log('[SessionsList] Failed to delete old session:', deleteResult.message);
+                }
+            }).catch((e) => {
+                console.log('[SessionsList] Error deleting old session:', e);
+            });
+
             navigateToSession(result.sessionId);
 
             // Re-fetch messages after CLI has had time to load history into DB
@@ -464,7 +476,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 }}
             >
                 <View style={styles.avatarContainer}>
-                    <Avatar id={avatarId} size={36} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                    <Avatar id={avatarId} size={20} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
                     {session.draft && (
                         <View style={styles.draftIconContainer}>
                             <Ionicons

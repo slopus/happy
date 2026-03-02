@@ -333,6 +333,20 @@ const rawRecordSchema = z.preprocess(
                 })).optional(),
             }),
             meta: MessageMetaSchema.optional()
+        }),
+        z.object({
+            role: z.literal('session'),
+            content: z.object({
+                id: z.string(),
+                time: z.number(),
+                role: z.enum(['user', 'agent']),
+                turn: z.string().optional(),
+                subagent: z.string().optional(),
+                ev: z.object({
+                    t: z.string(),
+                }).passthrough(),
+            }),
+            meta: MessageMetaSchema.optional()
         })
     ])
 );
@@ -438,6 +452,71 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             isSidechain: false,
             meta: raw.meta,
         };
+    }
+    if (raw.role === 'session') {
+        const ev = raw.content.ev;
+        const envId = raw.content.id;
+
+        // Convert session protocol text events to agent messages
+        if (ev.t === 'text') {
+            const isThinking = !!(ev as any).thinking;
+            const text = (ev as any).text || '';
+            if (isThinking) {
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'thinking' as const,
+                        thinking: text,
+                        uuid: envId,
+                        parentUUID: null,
+                    }],
+                    meta: raw.meta,
+                };
+            }
+            return {
+                id,
+                localId,
+                createdAt,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'text' as const,
+                    text: text,
+                    uuid: envId,
+                    parentUUID: null,
+                }],
+                meta: raw.meta,
+            };
+        }
+
+        // Convert tool-call-start to tool-call
+        if (ev.t === 'tool-call-start') {
+            const tev = ev as any;
+            return {
+                id,
+                localId,
+                createdAt,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call' as const,
+                    id: tev.call || envId,
+                    name: tev.name || 'unknown',
+                    input: tev.args || {},
+                    description: tev.description || tev.title || null,
+                    uuid: envId,
+                    parentUUID: null,
+                }],
+                meta: raw.meta,
+            };
+        }
+
+        // Skip lifecycle events (turn-start, turn-end, start, stop, tool-call-end, service)
+        return null;
     }
     if (raw.role === 'agent') {
         if (raw.content.type === 'output') {

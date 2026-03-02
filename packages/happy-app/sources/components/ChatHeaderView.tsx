@@ -9,7 +9,7 @@ import { Typography } from '@/constants/Typography';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { layout } from '@/components/layout';
 import { useUnistyles } from 'react-native-unistyles';
-import { useSidebarCollapse } from '@/components/SidebarNavigator';
+import { useSidebarCollapse, useContentMaxWidth } from '@/components/SidebarNavigator';
 
 interface ChatHeaderViewProps {
     title: string;
@@ -55,6 +55,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     const headerHeight = useHeaderHeight();
     const isTablet = useIsTablet();
     const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
+    const expandedMaxWidth = useContentMaxWidth();
 
     const handleBackPress = () => {
         if (onBackPress) {
@@ -67,7 +68,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     return (
         <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
             <View style={styles.contentWrapper}>
-                <View style={[styles.content, { height: headerHeight }]}>
+                <View style={[styles.content, { height: headerHeight, maxWidth: expandedMaxWidth || layout.maxWidth }]}>
                 <Pressable onPress={handleBackPress} style={styles.backButton} hitSlop={15}>
                     <Ionicons
                         name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
@@ -182,7 +183,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: Platform.OS === 'ios' ? 8 : 16,
         width: '100%',
-        maxWidth: layout.headerMaxWidth,
     },
     backButton: {
         marginRight: 8,

@@ -22,6 +22,17 @@ import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import axios from 'axios';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+// Remove Claude Code nesting detection variables
+// When daemon is started from within a Claude Code terminal, these get inherited
+// and cause spawned session processes to fail with "cannot be launched inside another Claude Code session"
+delete process.env.CLAUDECODE;
+delete process.env.CLAUDE_CODE_ENTRYPOINT;
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -388,7 +399,11 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          let fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          if (options.claudeResumeSessionId) {
+            fullCommand += ` --resume ${options.claudeResumeSessionId}`;
+            logger.debug(`[DAEMON RUN] Adding --resume ${options.claudeResumeSessionId} to tmux command`);
+          }
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -495,8 +510,11 @@ export async function startDaemon(): Promise<void> {
             '--started-by', 'daemon'
           ];
 
-          // TODO: In future, sessionId could be used with --resume to continue existing sessions
-          // For now, we ignore it - each spawn creates a new session
+          // Add --resume flag if resuming a Claude Code session
+          if (options.claudeResumeSessionId) {
+            args.push('--resume', options.claudeResumeSessionId);
+            logger.debug(`[DAEMON RUN] Adding --resume ${options.claudeResumeSessionId} to spawn args`);
+          }
           const happyProcess = spawnHappyCLI(args, {
             cwd: directory,
             detached: true,  // Sessions stay alive when daemon stops
@@ -630,10 +648,16 @@ export async function startDaemon(): Promise<void> {
       return false;
     };
 
-    // Handle child process exit
+    // Handle child process exit - deactivate session on server
     const onChildExited = (pid: number) => {
+      const tracked = pidToTrackedSession.get(pid);
       logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
       pidToTrackedSession.delete(pid);
+
+      // Deactivate session on server if we know its Happy session ID
+      if (tracked?.happySessionId) {
+        deactivateSession(credentials.token, tracked.happySessionId).catch(() => {});
+      }
     };
 
     // Start control server
@@ -688,6 +712,13 @@ export async function startDaemon(): Promise<void> {
     // Connect to server
     apiMachine.connect();
 
+    // Cleanup ghost sessions from previous daemon runs
+    // Active sessions on server whose processes are no longer running
+    // Also recovers sessions by re-spawning with --resume
+    cleanupGhostSessions(credentials.token, machineId, spawnSession).catch((error) => {
+      logger.debug(`[DAEMON RUN] Ghost session cleanup failed: ${error}`);
+    });
+
     // Every 60 seconds:
     // 1. Prune stale sessions
     // 2. Check if daemon needs update
@@ -705,15 +736,18 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
       }
 
-      // Prune stale sessions
-      for (const [pid, _] of pidToTrackedSession.entries()) {
+      // Prune stale sessions - deactivate dead ones on server
+      for (const [pid, tracked] of pidToTrackedSession.entries()) {
         try {
           // Check if process is still alive (signal 0 doesn't kill, just checks)
           process.kill(pid, 0);
         } catch (error) {
-          // Process is dead, remove from tracking
+          // Process is dead, remove from tracking and deactivate on server
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
           pidToTrackedSession.delete(pid);
+          if (tracked?.happySessionId) {
+            deactivateSession(credentials.token, tracked.happySessionId).catch(() => {});
+          }
         }
       }
 
@@ -816,5 +850,121 @@ export async function startDaemon(): Promise<void> {
   } catch (error) {
     logger.debug('[DAEMON RUN][FATAL] Failed somewhere unexpectedly - exiting with code 1', error);
     process.exit(1);
+  }
+}
+
+/**
+ * Deactivate a session on the server via HTTP API
+ */
+async function deactivateSession(token: string, sessionId: string): Promise<void> {
+  try {
+    await axios.post(
+      `${configuration.serverUrl}/v1/sessions/${sessionId}/deactivate`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
+    );
+    logger.debug(`[DAEMON RUN] Deactivated session ${sessionId} on server`);
+  } catch (error) {
+    logger.debug(`[DAEMON RUN] Failed to deactivate session ${sessionId}: ${error}`);
+  }
+}
+
+/**
+ * On daemon startup, find and deactivate ghost sessions:
+ * sessions marked active on the server whose CLI processes are all dead.
+ * If ANY session CLI processes are still running (from a previous daemon),
+ * we leave everything alone — the heartbeat prune will handle them.
+ *
+ * After deactivating ghosts, recover previously active sessions by
+ * re-spawning them with --resume using their claudeSessionId.
+ */
+async function cleanupGhostSessions(
+  token: string,
+  machineId: string,
+  spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>
+): Promise<void> {
+  try {
+    // Check if there are any running happy-cli session processes on this machine
+    // (exclude daemon itself — only look for session processes with --happy-starting-mode)
+    let hasRunningSessionProcesses = false;
+    try {
+      const { stdout } = await execAsync(
+        "ps aux | grep 'happy-cli.*--happy-starting-mode' | grep -v grep",
+        { timeout: 5000 }
+      );
+      hasRunningSessionProcesses = stdout.trim().length > 0;
+    } catch {
+      // grep returns exit code 1 when no matches — means no processes running
+      hasRunningSessionProcesses = false;
+    }
+
+    if (hasRunningSessionProcesses) {
+      logger.debug('[DAEMON RUN] Found running session processes from previous daemon, skipping ghost cleanup');
+      return;
+    }
+
+    // No session processes running — fetch active sessions before deactivating
+    const response = await axios.get(
+      `${configuration.serverUrl}/v1/sessions`,
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
+    );
+    const sessions: Array<{ id: string; active: boolean; metadata: any }> = response.data?.sessions || [];
+    const activeSessions = sessions.filter((s: any) => s.active);
+
+    // Collect sessions to recover: those with claudeSessionId and path belonging to this machine
+    const sessionsToRecover: Array<{ claudeSessionId: string; path: string }> = [];
+    for (const session of activeSessions) {
+      const metadata = session.metadata as any;
+      if (metadata?.claudeSessionId && metadata?.path && metadata?.machineId === machineId) {
+        sessionsToRecover.push({
+          claudeSessionId: metadata.claudeSessionId,
+          path: metadata.path
+        });
+      }
+    }
+
+    // Deactivate all ghost sessions
+    let deactivated = 0;
+    for (const session of activeSessions) {
+      try {
+        await axios.post(
+          `${configuration.serverUrl}/v1/sessions/${session.id}/deactivate`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
+        );
+        deactivated++;
+        logger.debug(`[DAEMON RUN] Deactivated ghost session ${session.id}`);
+      } catch (error) {
+        logger.debug(`[DAEMON RUN] Failed to deactivate ghost session ${session.id}: ${error}`);
+      }
+    }
+    if (deactivated > 0) {
+      logger.debug(`[DAEMON RUN] Cleaned up ${deactivated} ghost sessions on startup`);
+    } else {
+      logger.debug('[DAEMON RUN] No ghost sessions to clean up');
+    }
+
+    // Recover sessions by re-spawning with --resume
+    if (sessionsToRecover.length > 0) {
+      logger.debug(`[DAEMON RUN] Recovering ${sessionsToRecover.length} sessions from previous daemon`);
+      for (const session of sessionsToRecover) {
+        try {
+          const result = await spawnSession({
+            directory: session.path,
+            machineId,
+            claudeResumeSessionId: session.claudeSessionId,
+          });
+          if (result.type === 'success') {
+            logger.debug(`[DAEMON RUN] Recovered session ${session.claudeSessionId} in ${session.path}`);
+          } else {
+            logger.debug(`[DAEMON RUN] Failed to recover session ${session.claudeSessionId}: ${result.type}`);
+          }
+        } catch (error) {
+          logger.debug(`[DAEMON RUN] Failed to recover session ${session.claudeSessionId}: ${error}`);
+        }
+      }
+    }
+  } catch (error) {
+    logger.debug(`[DAEMON RUN] Failed to fetch sessions for ghost cleanup: ${error}`);
   }
 }

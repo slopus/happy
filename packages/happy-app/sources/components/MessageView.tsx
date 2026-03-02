@@ -441,7 +441,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'column',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
   },
   userMessageBubble: {
     backgroundColor: theme.colors.userMessageBackground,
@@ -453,14 +453,14 @@ const styles = StyleSheet.create((theme) => ({
     ...(Platform.OS === 'web' ? { wordBreak: 'break-word' as any, overflowWrap: 'break-word' as any } : {}),
   },
   agentMessageContainer: {
-    marginHorizontal: 8,
+    marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 16,
     alignSelf: 'flex-start',
     ...(Platform.OS === 'web' ? { wordBreak: 'break-word' as any, overflowWrap: 'break-word' as any } : {}),
   },
   agentEventContainer: {
-    marginHorizontal: 8,
+    marginHorizontal: 16,
     alignItems: 'center',
     paddingVertical: 8,
   },
@@ -469,7 +469,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 14,
   },
   toolContainer: {
-    marginHorizontal: 8,
+    marginHorizontal: 16,
   },
   debugText: {
     color: theme.colors.agentEventText,
