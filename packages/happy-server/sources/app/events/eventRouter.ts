@@ -201,6 +201,26 @@ export type UpdateEvent = {
     type: 'session-share-revoked';
     sessionId: string;
     shareId: string;
+} | {
+    type: 'public-share-created';
+    sessionId: string;
+    publicShareId: string;
+    token: string;
+    expiresAt: number | null;
+    maxUses: number | null;
+    isConsentRequired: boolean;
+    createdAt: number;
+} | {
+    type: 'public-share-updated';
+    sessionId: string;
+    publicShareId: string;
+    expiresAt: number | null;
+    maxUses: number | null;
+    isConsentRequired: boolean;
+    updatedAt: number;
+} | {
+    type: 'public-share-deleted';
+    sessionId: string;
 };
 
 // === EPHEMERAL EVENT TYPES (Transient) ===
@@ -854,6 +874,72 @@ export function buildSessionShareRevokedUpdate(
             t: 'session-share-revoked',
             sessionId,
             shareId
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildPublicShareCreatedUpdate(publicShare: {
+    id: string;
+    sessionId: string;
+    token: string;
+    expiresAt: Date | null;
+    maxUses: number | null;
+    isConsentRequired: boolean;
+    createdAt: Date;
+}, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'public-share-created',
+            sessionId: publicShare.sessionId,
+            publicShareId: publicShare.id,
+            token: publicShare.token,
+            expiresAt: publicShare.expiresAt?.getTime() ?? null,
+            maxUses: publicShare.maxUses,
+            isConsentRequired: publicShare.isConsentRequired,
+            createdAt: publicShare.createdAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildPublicShareUpdatedUpdate(publicShare: {
+    id: string;
+    sessionId: string;
+    expiresAt: Date | null;
+    maxUses: number | null;
+    isConsentRequired: boolean;
+    updatedAt: Date;
+}, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'public-share-updated',
+            sessionId: publicShare.sessionId,
+            publicShareId: publicShare.id,
+            expiresAt: publicShare.expiresAt?.getTime() ?? null,
+            maxUses: publicShare.maxUses,
+            isConsentRequired: publicShare.isConsentRequired,
+            updatedAt: publicShare.updatedAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildPublicShareDeletedUpdate(
+    sessionId: string,
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'public-share-deleted',
+            sessionId
         },
         createdAt: Date.now()
     };

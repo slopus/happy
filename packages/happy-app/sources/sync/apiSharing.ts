@@ -6,6 +6,11 @@ import {
     SessionShareResponse,
     SessionSharesResponse,
     CreateSessionShareRequest,
+    PublicSessionShare,
+    PublicShareResponse,
+    CreatePublicShareRequest,
+    AccessPublicShareResponse,
+    PublicShareNotFoundError,
     ShareNotFoundError,
     SessionSharingError
 } from './sharingTypes';
@@ -139,5 +144,118 @@ export async function deleteSessionShare(
             }
             throw new Error(`Failed to delete session share: ${response.status}`);
         }
+    });
+}
+
+/**
+ * Get public share info for a session
+ */
+export async function getPublicShare(
+    credentials: AuthCredentials,
+    sessionId: string
+): Promise<PublicSessionShare | null> {
+    const API_ENDPOINT = getServerUrl();
+
+    return await backoff(async () => {
+        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+            }
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return null;
+            }
+            if (response.status === 403) {
+                throw new SessionSharingError('Forbidden');
+            }
+            throw new Error(`Failed to get public share: ${response.status}`);
+        }
+
+        const data: PublicShareResponse = await response.json();
+        return data.publicShare;
+    });
+}
+
+/**
+ * Create or update a public share link for a session
+ */
+export async function createPublicShare(
+    credentials: AuthCredentials,
+    sessionId: string,
+    request: CreatePublicShareRequest & { token: string }
+): Promise<PublicSessionShare> {
+    const API_ENDPOINT = getServerUrl();
+
+    return await backoff(async () => {
+        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(request)
+        });
+
+        if (!response.ok) {
+            if (response.status === 403) {
+                throw new SessionSharingError('Forbidden');
+            }
+            throw new Error(`Failed to create public share: ${response.status}`);
+        }
+
+        const data: PublicShareResponse = await response.json();
+        return data.publicShare;
+    });
+}
+
+/**
+ * Delete public share (disable public link)
+ */
+export async function deletePublicShare(
+    credentials: AuthCredentials,
+    sessionId: string
+): Promise<void> {
+    const API_ENDPOINT = getServerUrl();
+
+    return await backoff(async () => {
+        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+            }
+        });
+
+        if (!response.ok) {
+            if (response.status === 403) {
+                throw new SessionSharingError('Forbidden');
+            }
+            throw new Error(`Failed to delete public share: ${response.status}`);
+        }
+    });
+}
+
+/**
+ * Access a session via a public share token (public endpoint, no auth required)
+ */
+export async function accessPublicShare(
+    serverUrl: string,
+    token: string
+): Promise<AccessPublicShareResponse> {
+    return await backoff(async () => {
+        const response = await fetch(`${serverUrl}/v1/public-share/${token}`, {
+            method: 'GET',
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new PublicShareNotFoundError();
+            }
+            throw new Error(`Failed to access public share: ${response.status}`);
+        }
+
+        return await response.json();
     });
 }
