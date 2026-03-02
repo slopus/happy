@@ -1,6 +1,17 @@
 import * as React from 'react';
 import DateTimePicker, { type DateType } from 'react-native-ui-datepicker';
 import { useUnistyles } from 'react-native-unistyles';
+import { getCurrentLanguage } from '@/text';
+
+const LOCALE_MAP: Record<string, string> = {
+    'zh-Hans': 'zh-cn',
+    'zh-Hant': 'zh-tw',
+};
+
+function getDayjsLocale(): string {
+    const lang = getCurrentLanguage();
+    return LOCALE_MAP[lang] ?? lang;
+}
 
 interface DatePickerProps {
     date: Date;
@@ -11,6 +22,7 @@ interface DatePickerProps {
 
 export const DatePicker = React.memo(function DatePicker({ date, onChange, minDate, timePicker = true }: DatePickerProps) {
     const { theme } = useUnistyles();
+    const locale = getDayjsLocale();
 
     const handleChange = React.useCallback(({ date: d }: { date: DateType }) => {
         if (d instanceof Date) {
@@ -23,14 +35,15 @@ export const DatePicker = React.memo(function DatePicker({ date, onChange, minDa
     return (
         <DateTimePicker
             mode="single"
+            locale={locale}
             date={date}
             onChange={handleChange}
             timePicker={timePicker}
             minDate={minDate}
             styles={{
                 day_label: { color: theme.colors.text },
-                today: { borderColor: theme.colors.button.primary.background, borderWidth: 1, borderRadius: 8 },
-                today_label: { color: theme.colors.button.primary.background },
+                today: {},
+                today_label: { color: theme.colors.button.primary.background, fontWeight: '700' },
                 selected: { backgroundColor: theme.colors.button.primary.background, borderRadius: 8 },
                 selected_label: { color: theme.colors.button.primary.tint },
                 month_selector_label: { color: theme.colors.text },

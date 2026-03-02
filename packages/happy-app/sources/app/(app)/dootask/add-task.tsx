@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
-import { DatePicker } from '@/components/dootask/DatePicker';
+import { DatePickerSheet } from '@/components/dootask/DatePickerSheet';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -179,8 +180,20 @@ export default React.memo(function AddTaskPage() {
     // Assignee section expanded
     const [assigneeExpanded, setAssigneeExpanded] = React.useState(false);
 
-    // Picker state (cross-platform)
-    const [activePicker, setActivePicker] = React.useState<'start' | 'end' | null>(null);
+    // Picker state
+    const datePickerRef = React.useRef<BottomSheetModal>(null);
+    const [activePickerField, setActivePickerField] = React.useState<'start' | 'end'>('start');
+
+    const handlePickerChange = React.useCallback((d: Date) => {
+        if (activePickerField === 'start') {
+            setStartDate(d);
+            if (endDate && d >= endDate) {
+                setEndDate(new Date(d.getTime() + 3600000));
+            }
+        } else {
+            setEndDate(d);
+        }
+    }, [activePickerField, endDate]);
 
     // Validation
     const isValid = React.useMemo(() => {
@@ -409,14 +422,7 @@ export default React.memo(function AddTaskPage() {
                                         return (
                                             <Pressable
                                                 key={p.priority}
-                                                style={[
-                                                    styles.priorityBlock,
-                                                    {
-                                                        backgroundColor: p.color,
-                                                        borderColor: isSelected ? theme.colors.text : p.color,
-                                                        borderWidth: 2,
-                                                    },
-                                                ]}
+                                                style={[styles.priorityBlock, { backgroundColor: p.color }]}
                                                 onPress={() => {
                                                     setSelectedPriority(p);
                                                     applyPriorityTime(p);
@@ -425,9 +431,11 @@ export default React.memo(function AddTaskPage() {
                                                 <Text style={styles.priorityLabel} numberOfLines={1}>
                                                     {p.name}
                                                 </Text>
-                                                {p.days > 0 && (
+                                                {isSelected ? (
+                                                    <Ionicons name="checkmark-circle" size={14} color="rgba(255,255,255,0.9)" />
+                                                ) : p.days > 0 ? (
                                                     <Text style={styles.priorityDays}>{p.days}d</Text>
-                                                )}
+                                                ) : null}
                                             </Pressable>
                                         );
                                     })}
@@ -557,7 +565,7 @@ export default React.memo(function AddTaskPage() {
                                         <Text style={[styles.timeLabel, { color: theme.colors.textSecondary }]}>
                                             {t('dootask.startTime')}
                                         </Text>
-                                        <Pressable style={styles.timeValueBtn} onPress={() => setActivePicker(activePicker === 'start' ? null : 'start')}>
+                                        <Pressable style={styles.timeValueBtn} onPress={() => { setActivePickerField('start'); datePickerRef.current?.present(); }}>
                                             <Text style={[styles.timeValue, { color: theme.colors.text }]}>
                                                 {formatDateForDisplay(startDate)}
                                             </Text>
@@ -569,39 +577,12 @@ export default React.memo(function AddTaskPage() {
                                         <Text style={[styles.timeLabel, { color: theme.colors.textSecondary }]}>
                                             {t('dootask.endTime')}
                                         </Text>
-                                        <Pressable style={styles.timeValueBtn} onPress={() => setActivePicker(activePicker === 'end' ? null : 'end')}>
+                                        <Pressable style={styles.timeValueBtn} onPress={() => { setActivePickerField('end'); datePickerRef.current?.present(); }}>
                                             <Text style={[styles.timeValue, { color: theme.colors.text }]}>
                                                 {formatDateForDisplay(endDate)}
                                             </Text>
                                         </Pressable>
                                     </View>
-
-                                    {/* Inline date/time picker */}
-                                    {activePicker && (
-                                        <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.divider, paddingTop: 8, marginTop: 8 }}>
-                                            <DatePicker
-                                                key={activePicker}
-                                                date={activePicker === 'start' ? startDate : endDate}
-                                                minDate={activePicker === 'end' ? startDate : undefined}
-                                                onChange={(d) => {
-                                                    if (activePicker === 'start') {
-                                                        setStartDate(d);
-                                                        if (endDate && d >= endDate) {
-                                                            setEndDate(new Date(d.getTime() + 3600000));
-                                                        }
-                                                    } else {
-                                                        setEndDate(d);
-                                                    }
-                                                }}
-                                            />
-                                            <Pressable
-                                                style={[styles.iosPickerDoneBtn, { backgroundColor: theme.colors.button.primary.background }]}
-                                                onPress={() => setActivePicker(null)}
-                                            >
-                                                <Text style={[styles.iosPickerDoneBtnText, { color: theme.colors.button.primary.tint }]}>{t('common.ok')}</Text>
-                                            </Pressable>
-                                        </View>
-                                    )}
                                 </View>
                             )}
                         </ItemGroup>
@@ -644,6 +625,15 @@ export default React.memo(function AddTaskPage() {
                     </>
                 )}
             </ScrollView>
+            {enableTime && startDate && endDate && (
+                <DatePickerSheet
+                    ref={datePickerRef}
+                    date={activePickerField === 'start' ? startDate : endDate}
+                    onChange={handlePickerChange}
+                    minDate={activePickerField === 'end' ? startDate : undefined}
+                    title={activePickerField === 'start' ? t('dootask.startTime') : t('dootask.endTime')}
+                />
+            )}
         </KeyboardAvoidingView>
     );
 });
@@ -733,6 +723,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 10,
         marginTop: 4,
         overflow: 'hidden',
+        backgroundColor: theme.colors.surface,
     },
     pickerOption: {
         flexDirection: 'row',
@@ -779,6 +770,7 @@ const styles = StyleSheet.create((theme) => ({
     priorityDays: {
         color: 'rgba(255,255,255,0.7)',
         fontSize: 10,
+        lineHeight: 14,
         ...Typography.default(),
     },
     // Assignee styles
@@ -880,19 +872,6 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         textAlign: 'center',
         marginHorizontal: 16,
-    },
-    // iOS picker done button
-    iosPickerDoneBtn: {
-        alignSelf: 'center',
-        paddingHorizontal: 32,
-        paddingVertical: 8,
-        borderRadius: 8,
-        marginTop: 4,
-        marginBottom: 8,
-    },
-    iosPickerDoneBtnText: {
-        ...Typography.default('semiBold'),
-        fontSize: 15,
     },
     // Empty state
     emptyContainer: {

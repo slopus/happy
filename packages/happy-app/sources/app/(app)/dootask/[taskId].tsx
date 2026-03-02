@@ -3,7 +3,8 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, I
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, FadeIn, FadeOut } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { DatePicker } from '@/components/dootask/DatePicker';
+import { DatePickerSheet } from '@/components/dootask/DatePickerSheet';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HtmlContent } from '@/components/dootask/HtmlContent';
 import { t } from '@/text';
@@ -396,7 +397,16 @@ export default function DooTaskDetail() {
         return d;
     });
     const [claimLoading, setClaimLoading] = React.useState(false);
-    const [activePicker, setActivePicker] = React.useState<'start' | 'end' | null>(null);
+    const datePickerRef = React.useRef<BottomSheetModal>(null);
+    const [activePickerField, setActivePickerField] = React.useState<'start' | 'end'>('start');
+
+    const handleClaimDateChange = React.useCallback((d: Date) => {
+        if (activePickerField === 'start') {
+            setClaimStartDate(d);
+        } else {
+            setClaimEndDate(d);
+        }
+    }, [activePickerField]);
 
     // Handle Android back button when claim overlay is visible
     React.useEffect(() => {
@@ -861,7 +871,7 @@ export default function DooTaskDetail() {
                         {/* Start time */}
                         <View style={styles.claimTimeRow}>
                             <Text style={[styles.claimTimeLabel, { color: theme.colors.textSecondary }]}>{t('dootask.claimStartTime')}</Text>
-                            <Pressable style={styles.claimTimeValueBtn} onPress={() => setActivePicker(activePicker === 'start' ? null : 'start')}>
+                            <Pressable style={styles.claimTimeValueBtn} onPress={() => { setActivePickerField('start'); datePickerRef.current?.present(); }}>
                                 <Text style={[styles.claimTimeValue, { color: theme.colors.text }]}>
                                     {claimStartDate.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                 </Text>
@@ -871,33 +881,12 @@ export default function DooTaskDetail() {
                         {/* End time */}
                         <View style={styles.claimTimeRow}>
                             <Text style={[styles.claimTimeLabel, { color: theme.colors.textSecondary }]}>{t('dootask.claimEndTime')}</Text>
-                            <Pressable style={styles.claimTimeValueBtn} onPress={() => setActivePicker(activePicker === 'end' ? null : 'end')}>
+                            <Pressable style={styles.claimTimeValueBtn} onPress={() => { setActivePickerField('end'); datePickerRef.current?.present(); }}>
                                 <Text style={[styles.claimTimeValue, { color: theme.colors.text }]}>
                                     {claimEndDate.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                 </Text>
                             </Pressable>
                         </View>
-
-                        {/* Inline date/time picker */}
-                        {activePicker && (
-                            <View style={{ borderTopWidth: RNStyleSheet.hairlineWidth, borderTopColor: theme.colors.divider, paddingTop: 8 }}>
-                                <DatePicker
-                                    key={activePicker}
-                                    date={activePicker === 'start' ? claimStartDate : claimEndDate}
-                                    minDate={activePicker === 'end' ? claimStartDate : undefined}
-                                    onChange={(d) => {
-                                        const setter = activePicker === 'start' ? setClaimStartDate : setClaimEndDate;
-                                        setter(d);
-                                    }}
-                                />
-                                <Pressable
-                                    style={[styles.claimModalBtn, { backgroundColor: theme.colors.surfaceHigh, alignSelf: 'center', paddingHorizontal: 32 }]}
-                                    onPress={() => setActivePicker(null)}
-                                >
-                                    <Text style={[styles.claimModalBtnText, { color: theme.colors.text }]}>{t('common.ok')}</Text>
-                                </Pressable>
-                            </View>
-                        )}
 
                         {/* Action buttons */}
                         <View style={styles.claimModalButtons}>
@@ -916,6 +905,13 @@ export default function DooTaskDetail() {
                 </Pressable>
             </Animated.View>
         )}
+        <DatePickerSheet
+            ref={datePickerRef}
+            date={activePickerField === 'start' ? claimStartDate : claimEndDate}
+            onChange={handleClaimDateChange}
+            minDate={activePickerField === 'end' ? claimStartDate : undefined}
+            title={activePickerField === 'start' ? t('dootask.claimStartTime') : t('dootask.claimEndTime')}
+        />
         </View>
     );
 }
