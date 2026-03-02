@@ -46,6 +46,8 @@ export const FABWide = React.memo(({ onPress, onFilesPress }: FABWideProps) => {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
 
+    if (!onFilesPress) return null;
+
     return (
         <View
             style={[
@@ -53,27 +55,15 @@ export const FABWide = React.memo(({ onPress, onFilesPress }: FABWideProps) => {
                 { bottom: safeArea.bottom + 16 }
             ]}
         >
-            {onFilesPress && (
-                <Pressable
-                    style={({ pressed }) => [
-                        styles.button,
-                        pressed && styles.buttonPressed
-                    ]}
-                    onPress={onFilesPress}
-                >
-                    <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
-                    <Text style={styles.text}>{t('tabs.files')}</Text>
-                </Pressable>
-            )}
             <Pressable
                 style={({ pressed }) => [
                     styles.button,
                     pressed && styles.buttonPressed
                 ]}
-                onPress={onPress}
+                onPress={onFilesPress}
             >
-                <Ionicons name="add" size={18} color={theme.colors.text} />
-                <Text style={styles.text}>{t('newSession.title')}</Text>
+                <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
+                <Text style={styles.text}>{t('tabs.files')}</Text>
             </Pressable>
         </View>
     );

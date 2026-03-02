@@ -1,4 +1,4 @@
-import { useSocketStatus, useSettings, useSettingMutable, useAllMachines } from '@/sync/storage';
+import { useSocketStatus } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,11 +12,6 @@ import { MainView } from './MainView';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
-import { useHappyAction } from '@/hooks/useHappyAction';
-import { machineStopDaemon } from '@/sync/ops';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { Modal } from '@/modal';
-import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -90,29 +85,6 @@ export const SidebarView = React.memo(() => {
     const headerHeight = useHeaderHeight();
     const socketStatus = useSocketStatus();
 
-    const settings = useSettings();
-    const [hideInactive, setHideInactive] = useSettingMutable('hideInactiveSessions');
-    const toggleHideInactive = React.useCallback(() => setHideInactive(!hideInactive), [hideInactive]);
-    const allMachines = useAllMachines();
-
-    // Restart daemon action
-    const [restartingDaemon, handleRestartDaemon] = useHappyAction(async () => {
-        const onlineMachines = allMachines.filter(m => isMachineOnline(m));
-        if (onlineMachines.length === 0) {
-            Modal.alert(t('common.error'), 'No online machines found');
-            return;
-        }
-        const confirmed = await Modal.confirm(
-            'Restart Daemon',
-            `Restart daemon on ${onlineMachines.length} machine(s)? Active sessions will be recovered automatically.`,
-            { confirmText: 'Restart', destructive: true }
-        );
-        if (!confirmed) return;
-        for (const machine of onlineMachines) {
-            await machineStopDaemon(machine.id);
-        }
-    });
-
     // Compute connection status color
     const statusColor = (() => {
         switch (socketStatus.status) {
@@ -137,29 +109,18 @@ export const SidebarView = React.memo(() => {
         <>
             <View style={[styles.container, { paddingTop: safeArea.top }]}>
                 <View style={[styles.header, { height: headerHeight }]}>
-                    {/* Left: refresh + eye */}
+                    {/* Left: settings */}
                     <View style={styles.leftGroup}>
                         <Pressable
-                            onPress={handleRestartDaemon}
-                            disabled={restartingDaemon}
+                            onPress={() => router.push('/settings')}
                             hitSlop={10}
                             style={styles.iconButton}
                         >
-                            <Ionicons
-                                name="refresh-outline"
-                                size={20}
-                                color={theme.colors.textSecondary}
-                            />
-                        </Pressable>
-                        <Pressable
-                            onPress={toggleHideInactive}
-                            hitSlop={10}
-                            style={styles.iconButton}
-                        >
-                            <Ionicons
-                                name={hideInactive ? "eye-off-outline" : "eye-outline"}
-                                size={20}
-                                color={theme.colors.textSecondary}
+                            <Image
+                                source={require('@/assets/images/brutalist/Brutalism 9.png')}
+                                contentFit="contain"
+                                style={{ width: 24, height: 24 }}
+                                tintColor={theme.colors.header.tint}
                             />
                         </Pressable>
                     </View>
@@ -174,20 +135,8 @@ export const SidebarView = React.memo(() => {
                         <Text style={[styles.titleText, { WebkitTextStroke: '1.2px' } as any]}>304.systems</Text>
                     </View>
 
-                    {/* Right: settings + add */}
+                    {/* Right: add */}
                     <View style={styles.rightGroup}>
-                        <Pressable
-                            onPress={() => router.push('/settings')}
-                            hitSlop={10}
-                            style={styles.iconButton}
-                        >
-                            <Image
-                                source={require('@/assets/images/brutalist/Brutalism 9.png')}
-                                contentFit="contain"
-                                style={{ width: 24, height: 24 }}
-                                tintColor={theme.colors.header.tint}
-                            />
-                        </Pressable>
                         <Pressable
                             onPress={handleNewSession}
                             hitSlop={10}
