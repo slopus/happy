@@ -816,7 +816,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                 {/* Worktree Info & Actions */}
                 {isMultiRepo && (
                     <View style={{ alignItems: 'center' }}>
-                        <View style={{ width: '100%', maxWidth: layout.maxWidth, paddingHorizontal: Platform.select({ ios: 0, default: 4 }), marginHorizontal: Platform.select({ ios: 16, default: 12 }), marginTop: 12 }}>
+                        <View style={{ width: '100%', maxWidth: layout.maxWidth, paddingHorizontal: Platform.select({ ios: 0, default: 4 }), marginHorizontal: Platform.select({ ios: 16, default: 12 }), marginTop: 20 }}>
                             <RepoSelector
                                 repos={workspaceRepos}
                                 selectedIndex={selectedRepoIndex}
@@ -826,7 +826,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                     </View>
                 )}
                 {isWorktree && worktreeBranch && (
-                    <ItemGroup title={t('sessionInfo.worktree.title')}>
+                    <ItemGroup title={t('sessionInfo.worktree.title')} headerStyle={isMultiRepo ? { paddingTop: 12 } : undefined}>
                         <Item
                             title={t('sessionInfo.worktree.branch')}
                             subtitle={worktreeBranch}
