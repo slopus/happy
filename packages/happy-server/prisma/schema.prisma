@@ -20,16 +20,18 @@ datasource db {
 //
 
 model Account {
-  id              String      @id @default(cuid())
-  publicKey       String      @unique
-  seq             Int         @default(0)
-  feedSeq         BigInt      @default(0)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  settings        String?
-  settingsVersion Int         @default(0)
-  githubUserId    String?     @unique
-  githubUser      GithubUser? @relation(fields: [githubUserId], references: [id])
+  id                  String      @id @default(cuid())
+  publicKey           String      @unique
+  contentPublicKey    Bytes?
+  contentPublicKeySig Bytes?
+  seq                 Int         @default(0)
+  feedSeq             BigInt      @default(0)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  settings            String?
+  settingsVersion     Int         @default(0)
+  githubUserId        String?     @unique
+  githubUser          GithubUser? @relation(fields: [githubUserId], references: [id])
 
   // Profile
   firstName String?
@@ -46,13 +48,17 @@ model Account {
   Machine             Machine[]
   UploadedFile        UploadedFile[]
   ServiceAccountToken ServiceAccountToken[]
-  RelationshipsFrom   UserRelationship[]    @relation("RelationshipsFrom")
-  RelationshipsTo     UserRelationship[]    @relation("RelationshipsTo")
+  RelationshipsFrom   UserRelationship[]       @relation("RelationshipsFrom")
+  RelationshipsTo     UserRelationship[]       @relation("RelationshipsTo")
   Artifact            Artifact[]
   AccessKey           AccessKey[]
   UserFeedItem        UserFeedItem[]
   UserKVStore         UserKVStore[]
   OpenClawMachine     OpenClawMachine[]
+  sharedBySessions    SessionShare[]           @relation("SharedBySessions")
+  sharedWithSessions  SessionShare[]           @relation("SharedWithSessions")
+  publicSessionShares PublicSessionShare[]     @relation("PublicSessionShares")
+  blockedFromShares   PublicShareBlockedUser[]
 }
 
 model TerminalAuthRequest {
@@ -92,23 +98,25 @@ model AccountPushToken {
 //
 
 model Session {
-  id                String           @id @default(cuid())
+  id                String              @id @default(cuid())
   tag               String
   accountId         String
-  account           Account          @relation(fields: [accountId], references: [id])
+  account           Account             @relation(fields: [accountId], references: [id])
   metadata          String
-  metadataVersion   Int              @default(0)
+  metadataVersion   Int                 @default(0)
   agentState        String?
-  agentStateVersion Int              @default(0)
+  agentStateVersion Int                 @default(0)
   dataEncryptionKey Bytes?
-  seq               Int              @default(0)
-  active            Boolean          @default(true)
-  lastActiveAt      DateTime         @default(now())
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  seq               Int                 @default(0)
+  active            Boolean             @default(true)
+  lastActiveAt      DateTime            @default(now())
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
   messages          SessionMessage[]
   usageReports      UsageReport[]
   accessKeys        AccessKey[]
+  shares            SessionShare[]
+  publicShare       PublicSessionShare?
 
   @@unique([accountId, tag])
   @@index([accountId, updatedAt(sort: Desc)])
@@ -400,4 +408,82 @@ model OpenClawMachine {
   updatedAt DateTime @updatedAt
 
   @@index([accountId])
+}
+
+//
+// Session Sharing
+//
+
+enum ShareAccessLevel {
+  view
+  edit
+  admin
+}
+
+model SessionShare {
+  id               String                  @id @default(cuid())
+  sessionId        String
+  session          Session                 @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sharedByUserId   String
+  sharedByUser     Account                 @relation("SharedBySessions", fields: [sharedByUserId], references: [id])
+  sharedWithUserId String
+  sharedWithUser   Account                 @relation("SharedWithSessions", fields: [sharedWithUserId], references: [id])
+  accessLevel      ShareAccessLevel        @default(view)
+  encryptedDataKey Bytes
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  accessLogs       SessionShareAccessLog[]
+
+  @@unique([sessionId, sharedWithUserId])
+  @@index([sharedWithUserId])
+  @@index([sharedByUserId])
+  @@index([sessionId])
+}
+
+model PublicSessionShare {
+  id                String                   @id @default(cuid())
+  sessionId         String                   @unique
+  session           Session                  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdByUserId   String
+  createdByUser     Account                  @relation("PublicSessionShares", fields: [createdByUserId], references: [id])
+  tokenHash         Bytes                    @unique
+  encryptedDataKey  Bytes
+  expiresAt         DateTime?
+  maxUses           Int?
+  useCount          Int                      @default(0)
+  isConsentRequired Boolean                  @default(false)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  accessLogs        PublicShareAccessLog[]
+  blockedUsers      PublicShareBlockedUser[]
+}
+
+model SessionShareAccessLog {
+  id         String       @id @default(cuid())
+  shareId    String
+  share      SessionShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  userId     String?
+  accessedAt DateTime     @default(now())
+}
+
+model PublicShareAccessLog {
+  id            String             @id @default(cuid())
+  publicShareId String
+  publicShare   PublicSessionShare @relation(fields: [publicShareId], references: [id], onDelete: Cascade)
+  userId        String?
+  ipAddress     String?
+  userAgent     String?
+  accessedAt    DateTime           @default(now())
+}
+
+model PublicShareBlockedUser {
+  id            String             @id @default(cuid())
+  publicShareId String
+  publicShare   PublicSessionShare @relation(fields: [publicShareId], references: [id], onDelete: Cascade)
+  userId        String
+  user          Account            @relation(fields: [userId], references: [id])
+  reason        String?
+  blockedAt     DateTime           @default(now())
+
+  @@unique([publicShareId, userId])
 }
