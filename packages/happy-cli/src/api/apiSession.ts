@@ -350,11 +350,21 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
+        // Only mirror real assistant messages with content; skip synthetic error messages (body.message may be absent).
+        const shouldSendLegacyOutputCompatibility = body.type === 'assistant' && body.message != null;
+        if (shouldSendLegacyOutputCompatibility) {
+            this.enqueueLegacyClaudeOutputCompatibility(body, false);
+        }
+
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         for (const envelope of mapped.envelopes) {
             this.sendSessionProtocolMessage(envelope);
         }
+        if (shouldSendLegacyOutputCompatibility && mapped.envelopes.length === 0) {
+            this.sendSync.invalidate();
+        }
+
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
@@ -385,7 +395,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     sendCodexMessage(body: any) {
-        let content = {
+        const content = {
             role: 'agent',
             content: {
                 type: 'codex',
@@ -410,14 +420,45 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content, invalidate);
     }
 
-    sendSessionProtocolMessage(envelope: SessionEnvelope) {
-        if (envelope.role !== 'user') {
-            this.enqueueSessionProtocolEnvelope(envelope);
-            return;
-        }
+    private enqueueLegacyClaudeOutputCompatibility(body: RawJSONLines, invalidate: boolean = true) {
+        const fallbackUuid = (body as { uuid?: unknown }).uuid;
+        const content = {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    ...body,
+                    uuid: typeof fallbackUuid === 'string' && fallbackUuid.length > 0 ? fallbackUuid : randomUUID(),
+                    legacyCompat: true
+                }
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
 
-        if (envelope.ev.t !== 'text') {
-            this.enqueueSessionProtocolEnvelope(envelope);
+        this.enqueueMessage(content, invalidate);
+    }
+
+    private enqueueLegacySessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+        const content = {
+            role: 'agent',
+            content: {
+                type: 'session',
+                data: envelope
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
+
+        this.enqueueMessage(content, invalidate);
+    }
+
+    sendSessionProtocolMessage(envelope: SessionEnvelope) {
+        if (envelope.role === 'agent') {
+            this.enqueueSessionProtocolEnvelope(envelope, false);
+            this.enqueueLegacySessionProtocolEnvelope(envelope, true);
             return;
         }
 
@@ -432,7 +473,7 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
     sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
-        let content = {
+        const content = {
             role: 'agent',
             content: {
                 type: 'acp',
@@ -458,7 +499,7 @@ export class ApiSessionClient extends EventEmitter {
     } | {
         type: 'ready'
     }, id?: string) {
-        let content = {
+        const content = {
             role: 'agent',
             content: {
                 id: id ?? randomUUID(),

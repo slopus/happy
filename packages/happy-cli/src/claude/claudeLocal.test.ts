@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { claudeLocal } from './claudeLocal';
 
 // Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
@@ -314,5 +314,176 @@ describe('claudeLocal --continue handling', () => {
         );
         const spawnedArgs = mockSpawn.mock.calls[0][1];
         expect(spawnedArgs).not.toContain('--dangerously-skip-permissions');
+    });
+});
+
+describe('claudeLocal - environment variable stripping', () => {
+    let onSessionFound: any;
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+        // Reset process.env with test values
+        process.env = {
+            ...originalEnv,
+            ANTHROPIC_API_KEY: 'inherited-api-key',
+            ANTHROPIC_AUTH_TOKEN: 'inherited-auth-token',
+            CLAUDE_CODE_OAUTH_TOKEN: 'inherited-oauth-token',
+            PATH: '/usr/bin',
+            HOME: '/home/user',
+            CUSTOM_VAR: 'custom-value',
+        };
+
+        // Mock spawn to capture the env passed to it
+        mockSpawn.mockReturnValue({
+            stdio: [null, null, null, null],
+            on: vi.fn((event, callback) => {
+                if (event === 'exit') {
+                    process.nextTick(() => callback(0));
+                }
+            }),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            kill: vi.fn(),
+            stdout: { on: vi.fn() },
+            stderr: { on: vi.fn() },
+            stdin: {
+                on: vi.fn(),
+                end: vi.fn()
+            }
+        });
+
+        onSessionFound = vi.fn();
+        vi.clearAllMocks();
+        mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
+        mockWrapCommand.mockResolvedValue('wrapped claude command');
+    });
+
+    afterEach(() => {
+        // Restore original process.env
+        process.env = originalEnv;
+    });
+
+    it('should strip inherited auth vars when not explicitly set in claudeEnvVars', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            claudeEnvVars: { CUSTOM_OVERRIDE: 'override-value' }
+        });
+
+        const spawnCall = mockSpawn.mock.calls[0];
+        const spawnedEnv = spawnCall[2].env;
+
+        // Auth vars should be stripped
+        expect(spawnedEnv.ANTHROPIC_API_KEY).toBeUndefined();
+        expect(spawnedEnv.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+        expect(spawnedEnv.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+
+        // Other vars should pass through
+        expect(spawnedEnv.PATH).toBe('/usr/bin');
+        expect(spawnedEnv.HOME).toBe('/home/user');
+        expect(spawnedEnv.CUSTOM_VAR).toBe('custom-value');
+
+        // Explicitly set vars should be present
+        expect(spawnedEnv.CUSTOM_OVERRIDE).toBe('override-value');
+    });
+
+    it('should preserve auth vars when explicitly set in claudeEnvVars', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            claudeEnvVars: {
+                ANTHROPIC_API_KEY: 'explicit-api-key',
+                ANTHROPIC_AUTH_TOKEN: 'explicit-auth-token'
+            }
+        });
+
+        const spawnCall = mockSpawn.mock.calls[0];
+        const spawnedEnv = spawnCall[2].env;
+
+        // Explicitly set auth vars should be present (from claudeEnvVars)
+        expect(spawnedEnv.ANTHROPIC_API_KEY).toBe('explicit-api-key');
+        expect(spawnedEnv.ANTHROPIC_AUTH_TOKEN).toBe('explicit-auth-token');
+
+        // Oauth token not explicitly set should still be stripped
+        expect(spawnedEnv.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+
+        // Other vars should pass through
+        expect(spawnedEnv.PATH).toBe('/usr/bin');
+    });
+
+    it('should handle empty claudeEnvVars gracefully', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            claudeEnvVars: undefined
+        });
+
+        const spawnCall = mockSpawn.mock.calls[0];
+        const spawnedEnv = spawnCall[2].env;
+
+        // Auth vars should be stripped with undefined claudeEnvVars
+        expect(spawnedEnv.ANTHROPIC_API_KEY).toBeUndefined();
+        expect(spawnedEnv.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+        expect(spawnedEnv.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+
+        // Other vars should pass through
+        expect(spawnedEnv.PATH).toBe('/usr/bin');
+        expect(spawnedEnv.CUSTOM_VAR).toBe('custom-value');
+    });
+
+    it('should strip only the auth vars, not others with similar names', async () => {
+        process.env = {
+            ...process.env,
+            ANTHROPIC_API_KEY: 'should-be-stripped',
+            ANTHROPIC_OTHER_VAR: 'should-remain',
+            AUTH_TOKEN: 'should-remain',
+            CLAUDE_OTHER: 'should-remain',
+        };
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+        });
+
+        const spawnCall = mockSpawn.mock.calls[0];
+        const spawnedEnv = spawnCall[2].env;
+
+        // Only exact matches should be stripped
+        expect(spawnedEnv.ANTHROPIC_API_KEY).toBeUndefined();
+        expect(spawnedEnv.ANTHROPIC_OTHER_VAR).toBe('should-remain');
+        expect(spawnedEnv.AUTH_TOKEN).toBe('should-remain');
+        expect(spawnedEnv.CLAUDE_OTHER).toBe('should-remain');
+    });
+
+    it('should log when stripping auth vars', async () => {
+        const { logger } = await import('@/ui/logger');
+        const debugSpy = vi.spyOn(logger, 'debug');
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+        });
+
+        // Should have logged stripping of inherited auth vars
+        const stripLogs = debugSpy.mock.calls.filter(
+            (call: any[]) => call[0]?.includes('Stripping inherited') && call[0]?.includes('from env')
+        );
+        expect(stripLogs.length).toBeGreaterThan(0);
+        expect(stripLogs.some((call: any[]) => call[0]?.includes('ANTHROPIC_API_KEY'))).toBe(true);
     });
 });
