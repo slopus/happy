@@ -9,6 +9,7 @@ import { ItemList } from '@/components/ItemList';
 import { Text } from '@/components/StyledText';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { Typography } from '@/constants/Typography';
 import {
     machineListClaudeSessions,
     machineSpawnNewSession,
@@ -24,8 +25,9 @@ import {
     ClaudeSessionPreviewMessage,
 } from '@/sync/ops';
 import { SessionPreviewSheet } from '@/components/SessionPreviewSheet';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
 import { Modal } from '@/modal';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { sync } from '@/sync/sync';
@@ -56,6 +58,57 @@ const rightIconStyle = {
     alignItems: 'center',
     justifyContent: 'center',
 } as const;
+
+const filterStyles = StyleSheet.create((theme) => ({
+    searchContainer: {
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 4,
+    },
+    searchInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 10,
+        paddingHorizontal: 8,
+        height: 36,
+    },
+    searchIcon: {
+        marginRight: 6,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 15,
+        lineHeight: 20,
+        color: theme.colors.text,
+        ...Typography.default(),
+    },
+    clearButton: {
+        padding: 4,
+    },
+    filterRow: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingTop: 6,
+        paddingBottom: 4,
+        gap: 8,
+    },
+    filterTrigger: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        height: 36,
+    },
+    filterTriggerText: {
+        flex: 1,
+        fontSize: 14,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+}));
 
 type HistoryGroup = {
     key: string;
@@ -156,6 +209,8 @@ export default function AgentHistoryPage() {
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchTrigger, setSearchTrigger] = React.useState(0);
     const searchDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [machineMenuVisible, setMachineMenuVisible] = React.useState(false);
+    const [agentMenuVisible, setAgentMenuVisible] = React.useState(false);
 
     // Preview sheet state
     const [previewEntry, setPreviewEntry] = React.useState<AgentSessionIndexEntry | null>(null);
@@ -477,114 +532,12 @@ export default function AgentHistoryPage() {
     return (
         <ItemList style={{ paddingTop: 0 }} onScroll={handleScroll} scrollEventThrottle={200}>
             <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
-                {/* Machine picker */}
-                {(machines.length === 0 || machines.length > 1) && (
-                    <ItemGroup title={t('settings.machines')}>
-                        {machines.length === 0 && (
-                            <Item
-                                title={t('claudeHistory.noMachines')}
-                                icon={<Ionicons name="desktop-outline" size={29} color={theme.colors.textSecondary} />}
-                                showChevron={false}
-                            />
-                        )}
-                        {machines.length > 1 && machines.map((machine) => {
-                            const isOnline = isMachineOnline(machine);
-                            const host = machine.metadata?.host || 'Unknown';
-                            const displayName = machine.metadata?.displayName;
-                            const platform = machine.metadata?.platform || '';
-
-                            const title = displayName || host;
-                            let subtitle = '';
-                            if (displayName && displayName !== host) {
-                                subtitle = host;
-                            }
-                            if (platform) {
-                                subtitle = subtitle ? `${subtitle} \u2022 ${platform}` : platform;
-                            }
-                            subtitle = subtitle
-                                ? `${subtitle} \u2022 ${isOnline ? t('status.online') : t('status.offline')}`
-                                : (isOnline ? t('status.online') : t('status.offline'));
-
-                            return (
-                                <Item
-                                    key={machine.id}
-                                    title={title}
-                                    subtitle={subtitle}
-                                    selected={machine.id === selectedMachineId}
-                                    showChevron={false}
-                                    icon={
-                                        <Ionicons
-                                            name="desktop-outline"
-                                            size={29}
-                                            color={isOnline ? theme.colors.status.connected : theme.colors.status.disconnected}
-                                        />
-                                    }
-                                    onPress={() => setSelectedMachineId(machine.id)}
-                                />
-                            );
-                        })}
-                    </ItemGroup>
-                )}
-
-                {/* Tab selector */}
-                <View style={{
-                    flexDirection: 'row',
-                    marginHorizontal: 16,
-                    marginTop: 16,
-                    marginBottom: 8,
-                    backgroundColor: theme.colors.groupped.background,
-                    borderRadius: 10,
-                    padding: 3,
-                }}>
-                    {AGENT_TABS.map((tab) => {
-                        const isActive = activeTab === tab.key;
-                        return (
-                            <Pressable
-                                key={tab.key}
-                                onPress={() => { setActiveTab(tab.key); setSearchQuery(''); }}
-                                style={{
-                                    flex: 1,
-                                    paddingVertical: 8,
-                                    borderRadius: 8,
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    backgroundColor: isActive ? theme.colors.surface : 'transparent',
-                                }}
-                            >
-                                <Text style={{
-                                    fontSize: 14,
-                                    fontWeight: isActive ? '600' : '400',
-                                    color: isActive ? theme.colors.text : theme.colors.textSecondary,
-                                }}>
-                                    {tab.label()}
-                                </Text>
-                            </Pressable>
-                        );
-                    })}
-                </View>
-
-                {/* Search bar */}
-                <View style={{
-                    marginHorizontal: 16,
-                    marginBottom: 8,
-                }}>
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        backgroundColor: theme.colors.groupped.background,
-                        borderRadius: 10,
-                        paddingHorizontal: 12,
-                        height: 36,
-                    }}>
-                        <Ionicons name="search-outline" size={16} color={theme.colors.textSecondary} />
+                {/* Search box */}
+                <View style={filterStyles.searchContainer}>
+                    <View style={filterStyles.searchInputWrapper}>
+                        <Ionicons name="search" size={16} color={theme.colors.textSecondary} style={filterStyles.searchIcon} />
                         <TextInput
-                            style={{
-                                flex: 1,
-                                marginLeft: 8,
-                                fontSize: 14,
-                                color: theme.colors.text,
-                                padding: 0,
-                            }}
+                            style={filterStyles.searchInput}
                             placeholder={t('agentHistory.searchPlaceholder')}
                             placeholderTextColor={theme.colors.textSecondary}
                             value={searchQuery}
@@ -600,14 +553,46 @@ export default function AgentHistoryPage() {
                             autoCorrect={false}
                         />
                         {searchQuery.length > 0 && (
-                            <Pressable onPress={() => {
+                            <Pressable style={filterStyles.clearButton} onPress={() => {
                                 setSearchQuery('');
                                 setSearchTrigger(prev => prev + 1);
                             }}>
-                                <Ionicons name="close-circle" size={16} color={theme.colors.textSecondary} />
+                                <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
                             </Pressable>
                         )}
                     </View>
+                </View>
+
+                {/* Device & Agent filter triggers */}
+                <View style={filterStyles.filterRow}>
+                    <Pressable
+                        style={filterStyles.filterTrigger}
+                        onPress={() => setMachineMenuVisible(true)}
+                    >
+                        <Ionicons name="desktop-outline" size={16} color={theme.colors.textSecondary} style={{ marginRight: 6 }} />
+                        <Text style={filterStyles.filterTriggerText} numberOfLines={1}>
+                            {selectedMachine
+                                ? (selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Unknown')
+                                : t('claudeHistory.noMachines')}
+                        </Text>
+                        <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} />
+                    </Pressable>
+
+                    <Pressable
+                        style={filterStyles.filterTrigger}
+                        onPress={() => setAgentMenuVisible(true)}
+                    >
+                        <Image
+                            source={agentIcons[activeTab]}
+                            style={{ width: 16, height: 16, marginRight: 6 }}
+                            contentFit="contain"
+                            tintColor={activeTab === 'codex' ? theme.colors.text : undefined}
+                        />
+                        <Text style={filterStyles.filterTriggerText} numberOfLines={1}>
+                            {AGENT_TABS.find(tab => tab.key === activeTab)?.label() || activeTab}
+                        </Text>
+                        <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} />
+                    </Pressable>
                 </View>
 
                 {/* Loading / empty state */}
@@ -715,6 +700,28 @@ export default function AgentHistoryPage() {
                 loading={previewLoading}
                 onClose={handleClosePreview}
                 onResume={handleResumeFromPreview}
+            />
+
+            <ActionMenuModal
+                visible={machineMenuVisible}
+                title={t('settings.machines')}
+                items={machines.map((machine) => ({
+                    label: machine.metadata?.displayName || machine.metadata?.host || 'Unknown',
+                    selected: machine.id === selectedMachineId,
+                    onPress: () => setSelectedMachineId(machine.id),
+                }))}
+                onClose={() => setMachineMenuVisible(false)}
+            />
+
+            <ActionMenuModal
+                visible={agentMenuVisible}
+                title={t('agentHistory.title')}
+                items={AGENT_TABS.map((tab) => ({
+                    label: tab.label(),
+                    selected: activeTab === tab.key,
+                    onPress: () => { setActiveTab(tab.key); setSearchQuery(''); },
+                }))}
+                onClose={() => setAgentMenuVisible(false)}
             />
         </ItemList>
     );
