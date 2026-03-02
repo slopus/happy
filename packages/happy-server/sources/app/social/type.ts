@@ -16,6 +16,9 @@ export type UserProfile = {
     username: string;
     bio: string | null;
     status: RelationshipStatus;
+    publicKey: string;
+    contentPublicKey: string | null;
+    contentPublicKeySig: string | null;
 }
 
 export function buildUserProfile(
@@ -26,6 +29,9 @@ export function buildUserProfile(
         username: string | null;
         avatar: ImageRef | null;
         githubUser: { profile: GitHubProfile } | null;
+        publicKey: string;
+        contentPublicKey: Uint8Array | null;
+        contentPublicKeySig: Uint8Array | null;
     },
     status: RelationshipStatus
 ): UserProfile {
@@ -51,6 +57,9 @@ export function buildUserProfile(
         avatar,
         username: account.username || githubProfile?.login || '',
         bio: githubProfile?.bio || null,
-        status
+        status,
+        publicKey: account.publicKey,
+        contentPublicKey: account.contentPublicKey ? Buffer.from(account.contentPublicKey).toString('base64') : null,
+        contentPublicKeySig: account.contentPublicKeySig ? Buffer.from(account.contentPublicKeySig).toString('base64') : null,
     };
 }
