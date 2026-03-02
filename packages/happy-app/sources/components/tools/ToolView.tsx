@@ -4,7 +4,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
-import { CodeView } from '../CodeView';
+import { ToolInputView, SmartDataView } from '../KeyValueView';
 import { ToolSectionView } from './ToolSectionView';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { ToolError } from './ToolError';
@@ -255,15 +255,13 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                         {/* Default content when no custom view available */}
                         {tool.input && (
                             <ToolSectionView title={t('toolView.input')}>
-                                <CodeView code={JSON.stringify(tool.input, null, 2)} />
+                                <ToolInputView input={tool.input} />
                             </ToolSectionView>
                         )}
 
                         {tool.state === 'completed' && tool.result && (
                             <ToolSectionView title={t('toolView.output')}>
-                                <CodeView
-                                    code={typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
-                                />
+                                <SmartDataView data={tool.result} />
                             </ToolSectionView>
                         )}
                     </View>
