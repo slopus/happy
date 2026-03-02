@@ -593,6 +593,7 @@ export const it: TranslationStructure = {
         tabClaude: 'Claude',
         tabGemini: 'Gemini',
         tabCodex: 'Codex',
+        searchPlaceholder: 'Cerca per nome o ID',
     },
 
     sessionPreview: {

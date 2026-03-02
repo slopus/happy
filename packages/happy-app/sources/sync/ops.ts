@@ -283,16 +283,18 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
  */
 export async function machineListClaudeSessions(
     machineId: string,
-    options?: { offset?: number; limit?: number; timeoutMs?: number }
-): Promise<{ sessions: ClaudeSessionIndexEntry[]; total: number }> {
+    options?: { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean; timeoutMs?: number }
+): Promise<{ sessions: ClaudeSessionIndexEntry[]; total: number; fromCache?: boolean }> {
     const timeoutMs = options?.timeoutMs ?? 10000;
 
-    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number }>(
+    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean }>(
         machineId,
         'claude-list-sessions',
         {
             offset: options?.offset,
-            limit: options?.limit
+            limit: options?.limit,
+            query: options?.query,
+            waitForRefresh: options?.waitForRefresh,
         }
     );
 
@@ -312,7 +314,7 @@ export async function machineListClaudeSessions(
         return { sessions: [], total: 0 };
     }
     const total = typeof result.total === 'number' ? result.total : result.sessions.length;
-    return { sessions: result.sessions, total };
+    return { sessions: result.sessions, total, fromCache: result.fromCache };
 }
 
 /**
@@ -356,14 +358,19 @@ export async function machineGetClaudeSessionPreview(
  */
 export async function machineListGeminiSessions(
     machineId: string,
-    options?: { offset?: number; limit?: number; timeoutMs?: number }
-): Promise<{ sessions: AgentSessionIndexEntry[]; total: number }> {
+    options?: { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean; timeoutMs?: number }
+): Promise<{ sessions: AgentSessionIndexEntry[]; total: number; fromCache?: boolean }> {
     const timeoutMs = options?.timeoutMs ?? 15000;
 
-    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number }>(
+    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean }>(
         machineId,
         'gemini-list-sessions',
-        { offset: options?.offset, limit: options?.limit }
+        {
+            offset: options?.offset,
+            limit: options?.limit,
+            query: options?.query,
+            waitForRefresh: options?.waitForRefresh,
+        }
     );
 
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -381,7 +388,7 @@ export async function machineListGeminiSessions(
         agent: 'gemini' as const,
     }));
     const total = typeof result.total === 'number' ? result.total : sessions.length;
-    return { sessions, total };
+    return { sessions, total, fromCache: result.fromCache };
 }
 
 /**
@@ -417,14 +424,19 @@ export async function machineGetGeminiSessionPreview(
  */
 export async function machineListCodexSessions(
     machineId: string,
-    options?: { offset?: number; limit?: number; timeoutMs?: number }
-): Promise<{ sessions: AgentSessionIndexEntry[]; total: number }> {
+    options?: { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean; timeoutMs?: number }
+): Promise<{ sessions: AgentSessionIndexEntry[]; total: number; fromCache?: boolean }> {
     const timeoutMs = options?.timeoutMs ?? 15000;
 
-    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number }>(
+    const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean }>(
         machineId,
         'codex-list-sessions',
-        { offset: options?.offset, limit: options?.limit }
+        {
+            offset: options?.offset,
+            limit: options?.limit,
+            query: options?.query,
+            waitForRefresh: options?.waitForRefresh,
+        }
     );
 
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -442,7 +454,7 @@ export async function machineListCodexSessions(
         agent: 'codex' as const,
     }));
     const total = typeof result.total === 'number' ? result.total : sessions.length;
-    return { sessions, total };
+    return { sessions, total, fromCache: result.fromCache };
 }
 
 /**

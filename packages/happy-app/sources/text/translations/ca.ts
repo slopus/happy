@@ -564,6 +564,7 @@ export const ca: TranslationStructure = {
         tabClaude: 'Claude',
         tabGemini: 'Gemini',
         tabCodex: 'Codex',
+        searchPlaceholder: 'Cerca per nom o ID',
     },
 
     sessionPreview: {

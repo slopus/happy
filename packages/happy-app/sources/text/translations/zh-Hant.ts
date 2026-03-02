@@ -565,6 +565,7 @@ export const zhHant: TranslationStructure = {
         tabClaude: 'Claude',
         tabGemini: 'Gemini',
         tabCodex: 'Codex',
+        searchPlaceholder: '按名稱或 ID 搜尋',
     },
 
     sessionPreview: {

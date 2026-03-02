@@ -563,6 +563,7 @@ export const en = {
         tabClaude: 'Claude',
         tabGemini: 'Gemini',
         tabCodex: 'Codex',
+        searchPlaceholder: 'Search by name or ID',
     },
 
     sessionPreview: {

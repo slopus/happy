@@ -580,6 +580,7 @@ export const en: TranslationStructure = {
         tabClaude: 'Claude',
         tabGemini: 'Gemini',
         tabCodex: 'Codex',
+        searchPlaceholder: 'Search by name or ID',
     },
 
     sessionPreview: {

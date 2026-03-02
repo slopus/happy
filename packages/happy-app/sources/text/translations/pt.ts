@@ -564,6 +564,7 @@ export const pt: TranslationStructure = {
         tabClaude: 'Claude',
         tabGemini: 'Gemini',
         tabCodex: 'Codex',
+        searchPlaceholder: 'Pesquisar por nome ou ID',
     },
 
     sessionPreview: {

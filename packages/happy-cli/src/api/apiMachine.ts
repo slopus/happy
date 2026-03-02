@@ -16,6 +16,7 @@ import { readGeminiSessionLog, listGeminiSessions, getGeminiSessionPreview } fro
 import { forkGeminiSession, forkAndTruncateGeminiSession } from '@/gemini/utils/sessionFork';
 import { readCodexSessionUserMessages, listCodexSessions, getCodexSessionPreview } from '@/codex/utils/codexSessionReader';
 import { forkCodexSession, forkAndTruncateCodexSession } from '@/codex/utils/codexSessionFork';
+import { SessionCache, matchFields } from '@/cache/SessionCache';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -90,6 +91,24 @@ export class ApiMachineClient {
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private rpcHandlerManager: RpcHandlerManager;
 
+    private claudeCache = new SessionCache({
+        loader: listClaudeSessionsFromIndex,
+        staleTTL: 30_000,
+        matchFn: (s, q) => matchFields(q, [s.sessionId, s.title, s.projectId]),
+    });
+
+    private geminiCache = new SessionCache({
+        loader: listGeminiSessions,
+        staleTTL: 30_000,
+        matchFn: (s, q) => matchFields(q, [s.sessionId, s.title]),
+    });
+
+    private codexCache = new SessionCache({
+        loader: listCodexSessions,
+        staleTTL: 30_000,
+        matchFn: (s, q) => matchFields(q, [s.sessionId, s.title]),
+    });
+
     constructor(
         private token: string,
         private machine: Machine
@@ -158,6 +177,9 @@ export class ApiMachineClient {
 
             switch (result.type) {
                 case 'success':
+                    this.claudeCache.invalidate();
+                    this.geminiCache.invalidate();
+                    this.codexCache.invalidate();
                     logger.debug(`[API MACHINE] Spawned session ${result.sessionId}`);
                     return { type: 'success', sessionId: result.sessionId };
 
@@ -243,6 +265,10 @@ export class ApiMachineClient {
                 throw new Error('Session not found or failed to stop');
             }
 
+            this.claudeCache.invalidate();
+            this.geminiCache.invalidate();
+            this.codexCache.invalidate();
+
             logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
             return { message: 'Session stopped' };
         });
@@ -264,10 +290,9 @@ export class ApiMachineClient {
         this.rpcHandlerManager.registerHandler('claude-list-sessions', async (params: any) => {
             const offset = typeof params?.offset === 'number' && params.offset >= 0 ? Math.floor(params.offset) : 0;
             const limit = typeof params?.limit === 'number' && params.limit > 0 ? Math.floor(params.limit) : 50;
-            const sessions = await listClaudeSessionsFromIndex();
-            const total = sessions.length;
-            const paged = sessions.slice(offset, offset + limit);
-            return { sessions: paged, total, offset, limit };
+            const query = typeof params?.query === 'string' ? params.query : undefined;
+            const waitForRefresh = params?.waitForRefresh === true;
+            return this.claudeCache.list({ offset, limit, query, waitForRefresh });
         });
 
         // Get preview messages from a Claude session
@@ -427,10 +452,9 @@ export class ApiMachineClient {
         this.rpcHandlerManager.registerHandler('gemini-list-sessions', async (params: any) => {
             const offset = typeof params?.offset === 'number' && params.offset >= 0 ? Math.floor(params.offset) : 0;
             const limit = typeof params?.limit === 'number' && params.limit > 0 ? Math.floor(params.limit) : 50;
-            const sessions = await listGeminiSessions();
-            const total = sessions.length;
-            const paged = sessions.slice(offset, offset + limit);
-            return { sessions: paged, total, offset, limit };
+            const query = typeof params?.query === 'string' ? params.query : undefined;
+            const waitForRefresh = params?.waitForRefresh === true;
+            return this.geminiCache.list({ offset, limit, query, waitForRefresh });
         });
 
         this.rpcHandlerManager.registerHandler('gemini-session-preview', async (params: any) => {
@@ -448,10 +472,9 @@ export class ApiMachineClient {
         this.rpcHandlerManager.registerHandler('codex-list-sessions', async (params: any) => {
             const offset = typeof params?.offset === 'number' && params.offset >= 0 ? Math.floor(params.offset) : 0;
             const limit = typeof params?.limit === 'number' && params.limit > 0 ? Math.floor(params.limit) : 50;
-            const sessions = await listCodexSessions();
-            const total = sessions.length;
-            const paged = sessions.slice(offset, offset + limit);
-            return { sessions: paged, total, offset, limit };
+            const query = typeof params?.query === 'string' ? params.query : undefined;
+            const waitForRefresh = params?.waitForRefresh === true;
+            return this.codexCache.list({ offset, limit, query, waitForRefresh });
         });
 
         this.rpcHandlerManager.registerHandler('codex-session-preview', async (params: any) => {

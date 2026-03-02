@@ -596,6 +596,7 @@ export const ja: TranslationStructure = {
         tabClaude: 'Claude',
         tabGemini: 'Gemini',
         tabCodex: 'Codex',
+        searchPlaceholder: '名前または ID で検索',
     },
 
     sessionPreview: {

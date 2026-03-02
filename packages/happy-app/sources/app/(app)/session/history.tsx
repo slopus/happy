@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent, Pressable } from 'react-native';
+import { View, ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent, Pressable, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -153,6 +153,9 @@ export default function AgentHistoryPage() {
     const [loadingMore, setLoadingMore] = React.useState(false);
     const [totalCount, setTotalCount] = React.useState<number | null>(null);
     const [resumingSessionId, setResumingSessionId] = React.useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [searchTrigger, setSearchTrigger] = React.useState(0);
+    const searchDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Preview sheet state
     const [previewEntry, setPreviewEntry] = React.useState<AgentSessionIndexEntry | null>(null);
@@ -193,6 +196,13 @@ export default function AgentHistoryPage() {
         mmkv.set(SELECTED_TAB_KEY, activeTab);
     }, [activeTab]);
 
+    // Clean up debounce timer on unmount
+    React.useEffect(() => {
+        return () => {
+            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        };
+    }, []);
+
     // Load sessions when tab or machine changes
     React.useEffect(() => {
         if (!selectedMachineId) {
@@ -214,32 +224,41 @@ export default function AgentHistoryPage() {
 
         const loadSessions = async () => {
             try {
+                let data: { sessions: any[]; total: number; fromCache?: boolean };
+
                 if (activeTab === 'claude') {
-                    const data = await machineListClaudeSessions(selectedMachineId, { offset: 0, limit: pageSize });
-                    if (!isMounted) return;
-                    // Map Claude entries to AgentSessionIndexEntry
-                    const mapped: AgentSessionIndexEntry[] = data.sessions.map(s => ({
-                        sessionId: s.sessionId,
-                        agent: 'claude' as const,
-                        originalPath: s.originalPath,
-                        title: s.title,
-                        updatedAt: s.updatedAt,
-                        messageCount: s.messageCount,
-                        gitBranch: s.gitBranch,
-                        projectId: s.projectId,
-                    }));
-                    setSessions(mapped);
-                    setTotalCount(data.total);
+                    data = await machineListClaudeSessions(selectedMachineId, { offset: 0, limit: pageSize, query: searchQuery || undefined });
                 } else if (activeTab === 'gemini') {
-                    const data = await machineListGeminiSessions(selectedMachineId, { offset: 0, limit: pageSize });
-                    if (!isMounted) return;
-                    setSessions(data.sessions);
-                    setTotalCount(data.total);
+                    data = await machineListGeminiSessions(selectedMachineId, { offset: 0, limit: pageSize, query: searchQuery || undefined });
                 } else {
-                    const data = await machineListCodexSessions(selectedMachineId, { offset: 0, limit: pageSize });
+                    data = await machineListCodexSessions(selectedMachineId, { offset: 0, limit: pageSize, query: searchQuery || undefined });
+                }
+                if (!isMounted) return;
+
+                // Map Claude entries to include agent field
+                const mapped: AgentSessionIndexEntry[] = activeTab === 'claude'
+                    ? data.sessions.map((s: any) => ({ ...s, agent: 'claude' as const }))
+                    : data.sessions;
+                setSessions(mapped);
+                setTotalCount(data.total);
+                setLoading(false);
+
+                // If data was from cache, request fresh data in background
+                if (data.fromCache) {
+                    let freshData: { sessions: any[]; total: number; fromCache?: boolean };
+                    if (activeTab === 'claude') {
+                        freshData = await machineListClaudeSessions(selectedMachineId, { offset: 0, limit: pageSize, query: searchQuery || undefined, waitForRefresh: true });
+                    } else if (activeTab === 'gemini') {
+                        freshData = await machineListGeminiSessions(selectedMachineId, { offset: 0, limit: pageSize, query: searchQuery || undefined, waitForRefresh: true });
+                    } else {
+                        freshData = await machineListCodexSessions(selectedMachineId, { offset: 0, limit: pageSize, query: searchQuery || undefined, waitForRefresh: true });
+                    }
                     if (!isMounted) return;
-                    setSessions(data.sessions);
-                    setTotalCount(data.total);
+                    const freshMapped: AgentSessionIndexEntry[] = activeTab === 'claude'
+                        ? freshData.sessions.map((s: any) => ({ ...s, agent: 'claude' as const }))
+                        : freshData.sessions;
+                    setSessions(freshMapped);
+                    setTotalCount(freshData.total);
                 }
             } catch (error) {
                 if (!isMounted) return;
@@ -247,14 +266,13 @@ export default function AgentHistoryPage() {
                 Modal.alert(t('common.error'), t('agentHistory.loadFailed'));
                 setSessions([]);
                 setTotalCount(0);
-            } finally {
-                if (isMounted) setLoading(false);
+                setLoading(false);
             }
         };
 
         loadSessions();
         return () => { isMounted = false; };
-    }, [selectedMachineId, activeTab]);
+    }, [selectedMachineId, activeTab, searchTrigger]);
 
     // Load more (pagination)
     const handleLoadMore = React.useCallback(() => {
@@ -270,7 +288,7 @@ export default function AgentHistoryPage() {
         const loadMore = async () => {
             try {
                 if (activeTab === 'claude') {
-                    const data = await machineListClaudeSessions(selectedMachineId, { offset, limit: pageSize });
+                    const data = await machineListClaudeSessions(selectedMachineId, { offset, limit: pageSize, query: searchQuery || undefined });
                     const mapped: AgentSessionIndexEntry[] = data.sessions.map(s => ({
                         sessionId: s.sessionId,
                         agent: 'claude' as const,
@@ -284,11 +302,11 @@ export default function AgentHistoryPage() {
                     setSessions(prev => prev ? prev.concat(mapped) : mapped);
                     setTotalCount(data.total);
                 } else if (activeTab === 'gemini') {
-                    const data = await machineListGeminiSessions(selectedMachineId, { offset, limit: pageSize });
+                    const data = await machineListGeminiSessions(selectedMachineId, { offset, limit: pageSize, query: searchQuery || undefined });
                     setSessions(prev => prev ? prev.concat(data.sessions) : data.sessions);
                     setTotalCount(data.total);
                 } else {
-                    const data = await machineListCodexSessions(selectedMachineId, { offset, limit: pageSize });
+                    const data = await machineListCodexSessions(selectedMachineId, { offset, limit: pageSize, query: searchQuery || undefined });
                     setSessions(prev => prev ? prev.concat(data.sessions) : data.sessions);
                     setTotalCount(data.total);
                 }
@@ -301,7 +319,7 @@ export default function AgentHistoryPage() {
         };
 
         loadMore();
-    }, [selectedMachineId, sessions, hasMore, loading, loadingMore, activeTab, pageSize]);
+    }, [selectedMachineId, sessions, hasMore, loading, loadingMore, activeTab, pageSize, searchQuery]);
 
     const handleScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (!hasMore || loadingMore || loading) return;
@@ -523,7 +541,7 @@ export default function AgentHistoryPage() {
                         return (
                             <Pressable
                                 key={tab.key}
-                                onPress={() => setActiveTab(tab.key)}
+                                onPress={() => { setActiveTab(tab.key); setSearchQuery(''); }}
                                 style={{
                                     flex: 1,
                                     paddingVertical: 8,
@@ -543,6 +561,53 @@ export default function AgentHistoryPage() {
                             </Pressable>
                         );
                     })}
+                </View>
+
+                {/* Search bar */}
+                <View style={{
+                    marginHorizontal: 16,
+                    marginBottom: 8,
+                }}>
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: theme.colors.groupped.background,
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        height: 36,
+                    }}>
+                        <Ionicons name="search-outline" size={16} color={theme.colors.textSecondary} />
+                        <TextInput
+                            style={{
+                                flex: 1,
+                                marginLeft: 8,
+                                fontSize: 14,
+                                color: theme.colors.text,
+                                padding: 0,
+                            }}
+                            placeholder={t('agentHistory.searchPlaceholder')}
+                            placeholderTextColor={theme.colors.textSecondary}
+                            value={searchQuery}
+                            onChangeText={(text) => {
+                                setSearchQuery(text);
+                                if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                                searchDebounceRef.current = setTimeout(() => {
+                                    setSearchTrigger(prev => prev + 1);
+                                }, 300);
+                            }}
+                            returnKeyType="search"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+                        {searchQuery.length > 0 && (
+                            <Pressable onPress={() => {
+                                setSearchQuery('');
+                                setSearchTrigger(prev => prev + 1);
+                            }}>
+                                <Ionicons name="close-circle" size={16} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        )}
+                    </View>
                 </View>
 
                 {/* Loading / empty state */}

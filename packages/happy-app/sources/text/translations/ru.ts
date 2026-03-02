@@ -528,6 +528,7 @@ export const ru: TranslationStructure = {
         tabClaude: 'Claude',
         tabGemini: 'Gemini',
         tabCodex: 'Codex',
+        searchPlaceholder: 'Поиск по названию или ID',
     },
 
     sessionPreview: {
