@@ -98,6 +98,8 @@ interface StorageState {
     feedHasMore: boolean;
     feedLoaded: boolean;  // True after initial feed fetch
     friendsLoaded: boolean;  // True after initial friends fetch
+    sharedSessions: Record<string, Session>;
+    sharedSessionsLoaded: boolean;
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     realtimeMode: 'idle' | 'speaking' | 'thinking';
     microphoneMuted: boolean;
@@ -176,6 +178,11 @@ interface StorageState {
     applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => void;
     getFriend: (userId: string) => UserProfile | undefined;
     getAcceptedFriends: () => UserProfile[];
+    // Shared sessions methods
+    applySharedSessions: (sessions: Session[]) => void;
+    addSharedSession: (session: Session) => void;
+    updateSharedSessionAccessLevel: (sessionId: string, accessLevel: 'view' | 'edit' | 'admin') => void;
+    removeSharedSession: (sessionId: string) => void;
     // User cache methods
     applyUsers: (users: Record<string, UserProfile | null>) => void;
     getUser: (userId: string) => UserProfile | null | undefined;
@@ -365,6 +372,8 @@ export const storage = create<StorageState>()((set, get) => {
         feedHasMore: false,
         feedLoaded: false,  // Initialize as false
         friendsLoaded: false,  // Initialize as false
+        sharedSessions: {},
+        sharedSessionsLoaded: false,
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
@@ -1299,6 +1308,31 @@ export const storage = create<StorageState>()((set, get) => {
             const friends = get().friends;
             return Object.values(friends).filter(friend => friend.status === 'friend');
         },
+        // Shared sessions methods
+        applySharedSessions: (sessions) => set((state) => ({
+            ...state,
+            sharedSessions: Object.fromEntries(sessions.map(s => [s.id, s])),
+            sharedSessionsLoaded: true
+        })),
+        addSharedSession: (session) => set((state) => ({
+            ...state,
+            sharedSessions: { ...state.sharedSessions, [session.id]: session }
+        })),
+        updateSharedSessionAccessLevel: (sessionId, accessLevel) => set((state) => {
+            const session = state.sharedSessions[sessionId];
+            if (!session) return state;
+            return {
+                ...state,
+                sharedSessions: {
+                    ...state.sharedSessions,
+                    [sessionId]: { ...session, accessLevel }
+                }
+            };
+        }),
+        removeSharedSession: (sessionId) => set((state) => {
+            const { [sessionId]: _, ...rest } = state.sharedSessions;
+            return { ...state, sharedSessions: rest };
+        }),
         // User cache methods
         applyUsers: (users: Record<string, UserProfile | null>) => set((state) => ({
             ...state,
@@ -1907,6 +1941,19 @@ export function useRequestedFriends() {
         // Filter friends to get sent requests (where status is 'requested')
         return Object.values(state.friends).filter(friend => friend.status === 'requested');
     }));
+}
+
+// Shared sessions hooks
+export function useSharedSessions() {
+    return storage(useShallow((state) => Object.values(state.sharedSessions)));
+}
+
+export function useSessionAccessLevel(sessionId: string) {
+    return storage((state) => state.sharedSessions[sessionId]?.accessLevel);
+}
+
+export function useIsSessionOwner(sessionId: string) {
+    return storage((state) => !state.sharedSessions[sessionId]);
 }
 
 // DooTask hooks
