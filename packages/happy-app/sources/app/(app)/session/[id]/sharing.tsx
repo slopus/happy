@@ -9,14 +9,16 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
-import { FriendSelector, SessionShareDialog } from '@/components/sessionSharing';
-import { SessionShare, ShareAccessLevel } from '@/sync/sharingTypes';
-import { getSessionShares, createSessionShare, updateSessionShare, deleteSessionShare } from '@/sync/apiSharing';
+import { FriendSelector, SessionShareDialog, PublicLinkDialog } from '@/components/sessionSharing';
+import { SessionShare, ShareAccessLevel, PublicSessionShare } from '@/sync/sharingTypes';
+import { getSessionShares, createSessionShare, updateSessionShare, deleteSessionShare, getPublicShare, createPublicShare, deletePublicShare } from '@/sync/apiSharing';
 import { sync } from '@/sync/sync';
 import { HappyError } from '@/utils/errors';
 import { getFriendsList } from '@/sync/apiFriends';
 import { UserProfile } from '@/sync/friendTypes';
 import { encryptDataKeyForRecipientV0, verifyRecipientContentPublicKeyBinding } from '@/sync/directShareEncryption';
+import { encryptDataKeyForPublicShare } from '@/sync/encryption/publicShareEncryption';
+import { getRandomBytes } from 'expo-crypto';
 
 function SharingManagementContent({ sessionId }: { sessionId: string }) {
     const { theme } = useUnistyles();
@@ -24,8 +26,10 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
 
     const [shares, setShares] = useState<SessionShare[]>([]);
     const [friends, setFriends] = useState<UserProfile[]>([]);
+    const [publicShare, setPublicShare] = useState<PublicSessionShare | null>(null);
     const [showShareDialog, setShowShareDialog] = useState(false);
     const [showFriendSelector, setShowFriendSelector] = useState(false);
+    const [showPublicLinkDialog, setShowPublicLinkDialog] = useState(false);
 
     // Load sharing data
     const loadSharingData = useCallback(async () => {
@@ -34,6 +38,12 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
         setShares(sharesData);
         const friendsData = await getFriendsList(credentials);
         setFriends(friendsData);
+        try {
+            const publicShareData = await getPublicShare(credentials, sessionId);
+            setPublicShare(publicShareData);
+        } catch {
+            setPublicShare(null);
+        }
     }, [sessionId]);
 
     useEffect(() => {
@@ -91,6 +101,30 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
         await loadSharingData();
     }, [sessionId, loadSharingData]);
 
+    // Handle creating a public share
+    const handleCreatePublicShare = useCallback(async (options: { expiresInDays?: number; maxUses?: number; isConsentRequired: boolean }) => {
+        const credentials = sync.getCredentials();
+        const tokenBytes = getRandomBytes(12);
+        const token = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        const dataKey = sync.getSessionDataKey(sessionId);
+        if (!dataKey) throw new HappyError(t('errors.sessionNotFound'), false);
+        const encryptedDataKey = await encryptDataKeyForPublicShare(dataKey, token);
+        const expiresAt = options.expiresInDays ? Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000 : undefined;
+        const created = await createPublicShare(credentials, sessionId, {
+            token, encryptedDataKey, expiresAt, maxUses: options.maxUses, isConsentRequired: options.isConsentRequired,
+        });
+        setPublicShare(created);
+        await loadSharingData();
+    }, [sessionId, loadSharingData]);
+
+    // Handle deleting a public share
+    const handleDeletePublicShare = useCallback(async () => {
+        const credentials = sync.getCredentials();
+        await deletePublicShare(credentials, sessionId);
+        setPublicShare(null);
+        setShowPublicLinkDialog(false);
+    }, [sessionId]);
+
     if (!session) {
         return (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -140,6 +174,28 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                         />
                     )}
                 </ItemGroup>
+
+                {/* Public Link */}
+                <ItemGroup title={t('session.sharing.publicLink')}>
+                    {publicShare ? (
+                        <Item
+                            title={t('session.sharing.publicLinkActive')}
+                            subtitle={publicShare.expiresAt
+                                ? t('session.sharing.expiresOn') + ': ' + new Date(publicShare.expiresAt).toLocaleDateString()
+                                : t('session.sharing.never')
+                            }
+                            icon={<Ionicons name="link-outline" size={29} color="#34C759" />}
+                            onPress={() => setShowPublicLinkDialog(true)}
+                        />
+                    ) : (
+                        <Item
+                            title={t('session.sharing.createPublicLink')}
+                            subtitle={t('session.sharing.publicLinkDescription')}
+                            icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
+                            onPress={() => setShowPublicLinkDialog(true)}
+                        />
+                    )}
+                </ItemGroup>
             </ItemList>
 
             {/* Share Dialog */}
@@ -165,6 +221,16 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                     excludedUserIds={excludedUserIds}
                     onSelect={handleAddShare}
                     onCancel={() => setShowFriendSelector(false)}
+                />
+            )}
+
+            {/* Public Link Dialog */}
+            {showPublicLinkDialog && (
+                <PublicLinkDialog
+                    publicShare={publicShare}
+                    onCreate={handleCreatePublicShare}
+                    onDelete={handleDeletePublicShare}
+                    onCancel={() => setShowPublicLinkDialog(false)}
                 />
             )}
         </>
