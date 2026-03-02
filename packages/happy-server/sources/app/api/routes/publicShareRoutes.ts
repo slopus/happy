@@ -100,7 +100,8 @@ export function publicShareRoutes(app: Fastify) {
             });
         }
 
-        // Emit real-time update to session owner
+        // Emit real-time update to session owner only (no session-scoped broadcast
+        // since public-share-created includes the raw token which must not leak)
         const updateSeq = await allocateUserSeq(userId);
         const updatePayload = isUpdate
             ? buildPublicShareUpdatedUpdate(publicShare, updateSeq, randomKeyNaked(12))
@@ -109,7 +110,6 @@ export function publicShareRoutes(app: Fastify) {
         eventRouter.emitUpdate({
             userId: userId,
             payload: updatePayload,
-            recipientFilter: { type: 'all-interested-in-session', sessionId }
         });
 
         return reply.send({
@@ -217,7 +217,6 @@ export function publicShareRoutes(app: Fastify) {
             eventRouter.emitUpdate({
                 userId: userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'all-interested-in-session', sessionId }
             });
         }
 

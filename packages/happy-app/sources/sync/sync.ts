@@ -2161,7 +2161,26 @@ class Sync {
             this.feedSync.invalidate();
         } else if (updateData.body.t === 'session-shared') {
             log.log('Received session-shared update');
-            const { sessionId, sharedBy, accessLevel, createdAt } = updateData.body;
+            const { sessionId, sharedBy, accessLevel, encryptedDataKey, createdAt } = updateData.body;
+
+            // Decrypt the shared session's data encryption key
+            let decryptedDataKey: Uint8Array | null = null;
+            if (encryptedDataKey) {
+                try {
+                    decryptedDataKey = await this.encryption.decryptEncryptionKey(encryptedDataKey);
+                    if (!decryptedDataKey) {
+                        console.error(`Failed to decrypt data key for shared session ${sessionId}`);
+                    }
+                } catch (error) {
+                    console.error(`Error decrypting data key for shared session ${sessionId}:`, error);
+                }
+            }
+
+            // Initialize session encryption if we have the key
+            if (decryptedDataKey) {
+                this.sessionDataKeys.set(sessionId, decryptedDataKey);
+                await this.encryption.initializeSessions(new Map([[sessionId, decryptedDataKey]]));
+            }
 
             // Add to shared sessions in storage
             storage.getState().addSharedSession({
@@ -2198,6 +2217,17 @@ class Sync {
             log.log('Received session-share-revoked');
             const { sessionId } = updateData.body;
             storage.getState().removeSharedSession(sessionId);
+
+        } else if (updateData.body.t === 'public-share-created') {
+            log.log('Received public-share-created');
+            // Public share events are owner-only notifications, no action needed
+            // The sharing UI will refresh via API when opened
+
+        } else if (updateData.body.t === 'public-share-updated') {
+            log.log('Received public-share-updated');
+
+        } else if (updateData.body.t === 'public-share-deleted') {
+            log.log('Received public-share-deleted');
 
         } else if (updateData.body.t === 'new-artifact') {
             log.log('📦 Received new-artifact update');

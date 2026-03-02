@@ -86,7 +86,7 @@ export const PublicLinkDialog = memo(function PublicLinkDialog({
 
                     <Item
                         title={t('session.sharing.requireConsent')}
-                        subtitle={publicShare.isConsentRequired ? 'Yes' : 'No'}
+                        subtitle={publicShare.isConsentRequired ? t('common.yes') : t('common.no')}
                         showChevron={false}
                     />
 

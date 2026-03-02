@@ -1953,7 +1953,7 @@ export function useSessionAccessLevel(sessionId: string) {
 }
 
 export function useIsSessionOwner(sessionId: string) {
-    return storage((state) => !state.sharedSessions[sessionId]);
+    return storage((state) => !!state.sessions[sessionId] && !state.sharedSessions[sessionId]);
 }
 
 // DooTask hooks

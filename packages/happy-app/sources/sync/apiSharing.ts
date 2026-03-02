@@ -11,6 +11,7 @@ import {
     CreatePublicShareRequest,
     AccessPublicShareResponse,
     PublicShareNotFoundError,
+    ConsentRequiredError,
     ShareNotFoundError,
     SessionSharingError
 } from './sharingTypes';
@@ -252,6 +253,12 @@ export async function accessPublicShare(
         if (!response.ok) {
             if (response.status === 404) {
                 throw new PublicShareNotFoundError();
+            }
+            if (response.status === 403) {
+                const body = await response.json();
+                if (body.requiresConsent) {
+                    throw new ConsentRequiredError();
+                }
             }
             throw new Error(`Failed to access public share: ${response.status}`);
         }
