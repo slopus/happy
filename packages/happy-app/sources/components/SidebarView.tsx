@@ -9,7 +9,6 @@ import { StatusDot } from './StatusDot';
 import { FABWide } from './FABWide';
 
 import { MainView } from './MainView';
-import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -116,12 +115,7 @@ export const SidebarView = React.memo(() => {
                             hitSlop={10}
                             style={styles.iconButton}
                         >
-                            <Image
-                                source={require('@/assets/images/brutalist/Brutalism 9.png')}
-                                contentFit="contain"
-                                style={{ width: 24, height: 24 }}
-                                tintColor={theme.colors.header.tint}
-                            />
+                            <Ionicons name="folder-outline" size={20} color={theme.colors.header.tint} />
                         </Pressable>
                     </View>
 

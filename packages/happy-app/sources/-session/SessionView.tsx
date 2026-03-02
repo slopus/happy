@@ -257,7 +257,6 @@ export const SessionView = React.memo((props: { id: string }) => {
                         {...headerProps}
                         onBackPress={() => router.back()}
                         onSettingsPress={() => setShowSettingsOverlay(prev => !prev)}
-                        onFileBrowserPress={() => setFileBrowserOpen(!fileBrowserOpen)}
                     />
 
                 </View>
