@@ -776,6 +776,12 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Quick Actions */}
                 <ItemGroup title={t('sessionInfo.quickActions')}>
+                    <Item
+                        title={t('session.sharing.manageSharing')}
+                        subtitle={t('session.sharing.manageSharingSubtitle')}
+                        icon={<Ionicons name="share-outline" size={29} color="#007AFF" />}
+                        onPress={() => router.push(`/session/${session.id}/sharing`)}
+                    />
                     {session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}

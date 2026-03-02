@@ -661,6 +661,16 @@ class Sync {
         return this.credentials;
     }
 
+    /**
+     * Get the decrypted data encryption key for a session.
+     * Returns null if the key hasn't been fetched/decrypted yet.
+     */
+    public getSessionDataKey(sessionId: string): Uint8Array | null {
+        const key = this.sessionDataKeys.get(sessionId);
+        if (!key) return null;
+        return new Uint8Array(key);
+    }
+
     // Artifact methods
     public fetchArtifactsList = async (): Promise<void> => {
         log.log('📦 fetchArtifactsList: Starting artifact sync');
