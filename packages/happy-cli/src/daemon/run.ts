@@ -22,6 +22,7 @@ import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import { buildEnvWithStrippedAuthVars } from '@/utils/stripAuthEnvVars';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -366,18 +367,7 @@ export async function startDaemon(): Promise<void> {
         // native OAuth login (Max plan). Without this, users with both a Max plan and a stale
         // ANTHROPIC_API_KEY in their shell would always get billed via the API key.
         // See: https://github.com/anthropics/happy-cli/issues/120
-        const authVarsToStrip = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'];
-        const baseEnv: Record<string, string> = {};
-        for (const [key, value] of Object.entries(process.env)) {
-          if (value !== undefined) {
-            // Strip auth vars from inherited env unless the profile explicitly sets them
-            if (authVarsToStrip.includes(key) && !(key in extraEnv)) {
-              logger.debug(`[DAEMON RUN] Stripping inherited ${key} from daemon env (not set by profile) to allow native Claude Code auth`);
-              continue;
-            }
-            baseEnv[key] = value;
-          }
-        }
+        const baseEnv = buildEnvWithStrippedAuthVars(process.env, extraEnv);
 
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();

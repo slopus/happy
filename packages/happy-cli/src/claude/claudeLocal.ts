@@ -11,6 +11,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { buildEnvWithStrippedAuthVars } from "@/utils/stripAuthEnvVars";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -238,20 +239,10 @@ export async function claudeLocal(opts: {
             // Note: Local mode uses global Claude installation with --session-id flag
             // Launcher only intercepts fetch for thinking state tracking
             
-            // Strip inherited auth vars unless explicitly set by claudeEnvVars
-            // This prevents unintended authentication using API keys from parent process
-            const authVarsToStrip = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'];
-            const baseEnv: Record<string, string> = {};
-            for (const [key, value] of Object.entries(process.env)) {
-                if (value !== undefined) {
-                    // Skip auth vars unless explicitly provided in claudeEnvVars
-                    if (authVarsToStrip.includes(key) && !(key in (opts.claudeEnvVars || {}))) {
-                        logger.debug(`[ClaudeLocal] Stripping inherited ${key} from env (not set by configuration)`);
-                        continue;
-                    }
-                    baseEnv[key] = value;
-                }
-            }
+            // Strip inherited auth vars unless explicitly set by claudeEnvVars.
+            // This prevents unintended authentication using API keys from parent process.
+            // See: https://github.com/anthropics/happy-cli/issues/120
+            const baseEnv = buildEnvWithStrippedAuthVars(process.env, opts.claudeEnvVars ?? {});
             const env = {
                 ...baseEnv,
                 ...opts.claudeEnvVars
