@@ -184,6 +184,37 @@ export const ApiDeleteOpenClawMachineSchema = z.object({
     machineId: z.string()
 });
 
+// Session sharing update schemas
+export const ApiSessionSharedSchema = z.object({
+    t: z.literal('session-shared'),
+    sessionId: z.string(),
+    shareId: z.string(),
+    sharedBy: z.object({
+        id: z.string(),
+        firstName: z.string().nullable(),
+        lastName: z.string().nullable(),
+        username: z.string().nullable(),
+        avatar: z.any().nullable(),
+    }),
+    accessLevel: z.enum(['view', 'edit', 'admin']),
+    encryptedDataKey: z.string(),
+    createdAt: z.number(),
+});
+
+export const ApiSessionShareUpdatedSchema = z.object({
+    t: z.literal('session-share-updated'),
+    sessionId: z.string(),
+    shareId: z.string(),
+    accessLevel: z.enum(['view', 'edit', 'admin']),
+    updatedAt: z.number(),
+});
+
+export const ApiSessionShareRevokedSchema = z.object({
+    t: z.literal('session-share-revoked'),
+    sessionId: z.string(),
+    shareId: z.string(),
+});
+
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
@@ -200,7 +231,10 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiKvBatchUpdateSchema,
     ApiNewOpenClawMachineSchema,
     ApiUpdateOpenClawMachineSchema,
-    ApiDeleteOpenClawMachineSchema
+    ApiDeleteOpenClawMachineSchema,
+    ApiSessionSharedSchema,
+    ApiSessionShareUpdatedSchema,
+    ApiSessionShareRevokedSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;

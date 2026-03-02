@@ -2151,7 +2151,7 @@ class Sync {
             this.feedSync.invalidate();
         } else if (updateData.body.t === 'session-shared') {
             log.log('Received session-shared update');
-            const { sessionId, sharedBy, accessLevel, encryptedDataKey, createdAt } = updateData.body;
+            const { sessionId, sharedBy, accessLevel, createdAt } = updateData.body;
 
             // Add to shared sessions in storage
             storage.getState().addSharedSession({
@@ -2169,7 +2169,13 @@ class Sync {
                 thinkingAt: 0,
                 presence: createdAt,
                 owner: sharedBy.id,
-                ownerProfile: sharedBy,
+                ownerProfile: {
+                    id: sharedBy.id,
+                    username: sharedBy.username ?? '',
+                    firstName: sharedBy.firstName ?? '',
+                    lastName: sharedBy.lastName,
+                    avatar: typeof sharedBy.avatar === 'string' ? sharedBy.avatar : null,
+                },
                 accessLevel,
             });
 
