@@ -2149,6 +2149,40 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
+        } else if (updateData.body.t === 'session-shared') {
+            log.log('Received session-shared update');
+            const { sessionId, sharedBy, accessLevel, encryptedDataKey, createdAt } = updateData.body;
+
+            // Add to shared sessions in storage
+            storage.getState().addSharedSession({
+                id: sessionId,
+                seq: 0,
+                createdAt,
+                updatedAt: createdAt,
+                active: false,
+                activeAt: createdAt,
+                metadata: null,
+                metadataVersion: 0,
+                agentState: null,
+                agentStateVersion: 0,
+                thinking: false,
+                thinkingAt: 0,
+                presence: createdAt,
+                owner: sharedBy.id,
+                ownerProfile: sharedBy,
+                accessLevel,
+            });
+
+        } else if (updateData.body.t === 'session-share-updated') {
+            log.log('Received session-share-updated');
+            const { sessionId, accessLevel } = updateData.body;
+            storage.getState().updateSharedSessionAccessLevel(sessionId, accessLevel);
+
+        } else if (updateData.body.t === 'session-share-revoked') {
+            log.log('Received session-share-revoked');
+            const { sessionId } = updateData.body;
+            storage.getState().removeSharedSession(sessionId);
+
         } else if (updateData.body.t === 'new-artifact') {
             log.log('📦 Received new-artifact update');
             const artifactUpdate = updateData.body;
