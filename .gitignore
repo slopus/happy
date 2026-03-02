@@ -48,6 +48,9 @@ CLAUDE.local.md
 
 .dev/worktree/*
 
+# Local dev environments
+.environments/
+
 # Development planning notes (keep local, don't commit)
 notes/
 # ralphex progress logs
