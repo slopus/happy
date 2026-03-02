@@ -188,9 +188,11 @@ class Logger {
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
           level,
-          message: `${message} ${args.map(a => 
-            typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-          ).join(' ')}`,
+          message: `${message} ${args.map(a => {
+            if (a instanceof Error) return `${a.message}\n${a.stack ?? ''}`
+            if (typeof a === 'object') return JSON.stringify(a, null, 2)
+            return String(a)
+          }).join(' ')}`,
           source: 'cli',
           platform: process.platform
         })
@@ -201,9 +203,11 @@ class Logger {
   }
 
   private logToFile(prefix: string, message: string, ...args: unknown[]): void {
-    const logLine = `${prefix} ${message} ${args.map(arg => 
-      typeof arg === 'string' ? arg : JSON.stringify(arg)
-    ).join(' ')}\n`
+    const logLine = `${prefix} ${message} ${args.map(arg => {
+      if (typeof arg === 'string') return arg
+      if (arg instanceof Error) return `${arg.message}\n${arg.stack ?? ''}`
+      return JSON.stringify(arg)
+    }).join(' ')}\n`
     
     // Send to remote server if configured
     if (this.dangerouslyUnencryptedServerLoggingUrl) {
