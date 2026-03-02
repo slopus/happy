@@ -22,7 +22,7 @@ import { createWorktree } from '@/utils/createWorktree';
 import { createWorkspace, type WorkspaceRepoInput } from '@/utils/createWorkspace';
 import { RepoPickerBar, type SelectedRepo } from '@/components/RepoPickerBar';
 import type { RegisteredRepo } from '@/utils/workspaceRepos';
-import { saveRegisteredRepos } from '@/sync/repoStore';
+import { saveRegisteredRepos, loadRegisteredRepos } from '@/sync/repoStore';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
@@ -545,6 +545,20 @@ function NewSessionWizard() {
             setSelectedPath(trimmedPath);
         }
     }, [pathParam, selectedPath]);
+
+    // Load registered repos from server when machine is selected (ensures repos
+    // are available even if the user hasn't visited the machine detail page yet,
+    // and always fetches fresh data to stay in sync with other devices/pages)
+    React.useEffect(() => {
+        if (!selectedMachineId) return;
+        const credentials = sync.getCredentials();
+        if (!credentials) return;
+        loadRegisteredRepos(credentials, selectedMachineId).then(({ repos, version }) => {
+            if (repos.length > 0) {
+                storage.getState().setRegisteredRepos(selectedMachineId, repos, version);
+            }
+        }).catch(() => { /* ignore load errors */ });
+    }, [selectedMachineId]);
 
     // Path selection state - initialize with formatted selected path
 
