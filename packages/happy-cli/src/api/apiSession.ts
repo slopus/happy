@@ -350,7 +350,8 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
-        const shouldSendLegacyOutputCompatibility = body.type === 'assistant';
+        // Only mirror real assistant messages with content; skip synthetic error messages (body.message may be absent).
+        const shouldSendLegacyOutputCompatibility = body.type === 'assistant' && body.message != null;
         if (shouldSendLegacyOutputCompatibility) {
             this.enqueueLegacyClaudeOutputCompatibility(body, false);
         }
