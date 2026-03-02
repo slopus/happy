@@ -29,7 +29,8 @@ export class GitStatusSync {
     private retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
     // Automatic retry attempts per project (for transient failures)
     private retryAttempts = new Map<string, number>();
-    private readonly maxAutoRetryAttempts = 10;
+    // Maximum delay between retries (ms). Retries use exponential backoff and never stop.
+    private readonly maxRetryDelay = 60_000;
 
     /**
      * Get project key string for a session
@@ -149,16 +150,17 @@ export class GitStatusSync {
         this.retryAttempts.delete(projectKey);
     }
 
-    private scheduleRetry(projectKey: string, delayMs: number = 2500): void {
+    private scheduleRetry(projectKey: string): void {
         if (this.retryTimers.has(projectKey)) {
             return;
         }
         const attempts = this.retryAttempts.get(projectKey) || 0;
-        if (attempts >= this.maxAutoRetryAttempts) {
-            console.warn(`Git status auto-retry limit reached for ${projectKey} (${this.maxAutoRetryAttempts})`);
-            return;
-        }
         this.retryAttempts.set(projectKey, attempts + 1);
+
+        // Exponential backoff: 2.5s, 5s, 10s, 20s, 40s, 60s, 60s, ...
+        // Capped at maxRetryDelay — never gives up completely.
+        const delayMs = Math.min(2500 * Math.pow(2, attempts), this.maxRetryDelay);
+
         const timer = setTimeout(() => {
             this.retryTimers.delete(projectKey);
             const sync = this.projectSyncMap.get(projectKey);

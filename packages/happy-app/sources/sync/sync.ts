@@ -268,8 +268,10 @@ class Sync {
         }
         ex.invalidate();
 
-        // Also invalidate git status sync for this session
-        gitStatusSync.getSync(sessionId).invalidate();
+        // Also invalidate git status sync for this session.
+        // Uses gitStatusSync.invalidate() (not getSync().invalidate()) to also reset
+        // the retry counter, ensuring recovery after transient failures.
+        gitStatusSync.invalidate(sessionId);
 
         // Track which session user is viewing
         if (userInitiated) {
