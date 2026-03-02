@@ -177,6 +177,30 @@ export type UpdateEvent = {
 } | {
     type: 'delete-openclaw-machine';
     machineId: string;
+} | {
+    type: 'session-shared';
+    sessionId: string;
+    shareId: string;
+    sharedBy: {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        username: string | null;
+        avatar: any | null;
+    };
+    accessLevel: 'view' | 'edit' | 'admin';
+    encryptedDataKey: string;
+    createdAt: number;
+} | {
+    type: 'session-share-updated';
+    sessionId: string;
+    shareId: string;
+    accessLevel: 'view' | 'edit' | 'admin';
+    updatedAt: number;
+} | {
+    type: 'session-share-revoked';
+    sessionId: string;
+    shareId: string;
 };
 
 // === EPHEMERAL EVENT TYPES (Transient) ===
@@ -760,6 +784,76 @@ export function buildDeleteOpenClawMachineUpdate(
         body: {
             t: 'delete-openclaw-machine',
             machineId
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildSessionSharedUpdate(share: {
+    id: string;
+    sessionId: string;
+    sharedByUser: {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        username: string | null;
+        avatar: any | null;
+    };
+    accessLevel: 'view' | 'edit' | 'admin';
+    encryptedDataKey: Uint8Array;
+    createdAt: Date;
+}, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'session-shared',
+            sessionId: share.sessionId,
+            shareId: share.id,
+            sharedBy: share.sharedByUser,
+            accessLevel: share.accessLevel,
+            encryptedDataKey: Buffer.from(share.encryptedDataKey).toString('base64'),
+            createdAt: share.createdAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildSessionShareUpdatedUpdate(
+    shareId: string,
+    sessionId: string,
+    accessLevel: 'view' | 'edit' | 'admin',
+    updatedAt: Date,
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'session-share-updated',
+            sessionId,
+            shareId,
+            accessLevel,
+            updatedAt: updatedAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildSessionShareRevokedUpdate(
+    shareId: string,
+    sessionId: string,
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'session-share-revoked',
+            sessionId,
+            shareId
         },
         createdAt: Date.now()
     };
