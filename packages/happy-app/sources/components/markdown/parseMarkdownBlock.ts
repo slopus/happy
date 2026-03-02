@@ -62,6 +62,7 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
 
 export function parseMarkdownBlock(markdown: string) {
     const blocks: MarkdownBlock[] = [];
+    if (!markdown) return blocks;
     const lines = markdown.split('\n');
     let index = 0;
     outer: while (index < lines.length) {
@@ -94,9 +95,11 @@ export function parseMarkdownBlock(markdown: string) {
             }
             const contentString = content.join('\n');
 
-            // Detect mermaid diagram language and route to appropriate block type
+            // Detect diagram languages and route to appropriate block type
             if (language === 'mermaid') {
                 blocks.push({ type: 'mermaid', content: contentString });
+            } else if (language === 'd2') {
+                blocks.push({ type: 'd2', content: contentString });
             } else {
                 blocks.push({ type: 'code-block', language, content: contentString });
             }
@@ -131,6 +134,37 @@ export function parseMarkdownBlock(markdown: string) {
             continue;
         }
 
+        // Details/summary collapsible block
+        if (trimmed === '<details>' || trimmed.startsWith('<details>')) {
+            let summary = '';
+            let contentLines: string[] = [];
+            // Check if summary is on same line: <details><summary>Text</summary>
+            const inlineSummary = trimmed.match(/<summary>(.*?)<\/summary>/);
+            if (inlineSummary) {
+                summary = inlineSummary[1];
+            }
+            while (index < lines.length) {
+                const nextLine = lines[index];
+                const nextTrimmed = nextLine.trim();
+                if (nextTrimmed === '</details>') {
+                    index++;
+                    break;
+                }
+                // Extract summary if on its own line
+                const summaryMatch = nextTrimmed.match(/^<summary>(.*?)<\/summary>$/);
+                if (summaryMatch && !summary) {
+                    summary = summaryMatch[1];
+                    index++;
+                    continue;
+                }
+                contentLines.push(nextLine);
+                index++;
+            }
+            const innerContent = contentLines.join('\n').trim();
+            blocks.push({ type: 'details', summary: summary || 'Details', contentMarkdown: innerContent });
+            continue;
+        }
+
         // If it is a numbered list
         const numberedListMatch = trimmed.match(/^(\d+)\.\s/);
         if (numberedListMatch) {
@@ -154,6 +188,13 @@ export function parseMarkdownBlock(markdown: string) {
                 index++;
             }
             blocks.push({ type: 'list', items: allLines.map((l) => parseMarkdownSpans(l, false)) });
+            continue;
+        }
+
+        // Image: ![alt](url)
+        const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+        if (imageMatch) {
+            blocks.push({ type: 'image', alt: imageMatch[1], url: imageMatch[2] });
             continue;
         }
 

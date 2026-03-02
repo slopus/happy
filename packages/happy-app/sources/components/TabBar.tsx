@@ -3,12 +3,13 @@ import { View, Pressable, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
-export type TabType = 'inbox' | 'sessions' | 'settings';
+export type TabType = 'zen' | 'inbox' | 'sessions' | 'files' | 'settings';
 
 interface TabBarProps {
     activeTab: TabType;
@@ -33,8 +34,8 @@ const styles = StyleSheet.create((theme) => ({
     tab: {
         flex: 1,
         alignItems: 'center',
-        paddingTop: 8,
-        paddingBottom: 4,
+        paddingTop: 16,
+        paddingBottom: 10,
     },
     tabContent: {
         alignItems: 'center',
@@ -85,21 +86,20 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
     const insets = useSafeAreaInsets();
     const inboxHasContent = useInboxHasContent();
 
-    const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
-        // NOTE: Zen tab removed - the feature never got to a useful state
+    const tabs: { key: TabType; icon?: any; ionicon?: string; label: string }[] = React.useMemo(() => {
         return [
-            { key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism 27.png'), label: t('tabs.inbox') },
             { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism 15.png'), label: t('tabs.sessions') },
+            { key: 'files', ionicon: 'folder-outline', label: t('tabs.files') },
             { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism 9.png'), label: t('tabs.settings') },
         ];
     }, []);
 
     return (
-        <View style={[styles.outerContainer, { paddingBottom: insets.bottom }]}>
+        <View style={[styles.outerContainer, { paddingBottom: insets.bottom + 8 }]}>
             <View style={styles.innerContainer}>
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.key;
-                    
+
                     return (
                         <Pressable
                             key={tab.key}
@@ -108,12 +108,20 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
                             hitSlop={8}
                         >
                             <View style={styles.tabContent}>
-                                <Image
-                                    source={tab.icon}
-                                    contentFit="contain"
-                                    style={[{ width: 24, height: 24 }]}
-                                    tintColor={isActive ? theme.colors.text : theme.colors.textSecondary}
-                                />
+                                {tab.ionicon ? (
+                                    <Ionicons
+                                        name={tab.ionicon as any}
+                                        size={22}
+                                        color={isActive ? theme.colors.text : theme.colors.textSecondary}
+                                    />
+                                ) : (
+                                    <Image
+                                        source={tab.icon}
+                                        contentFit="contain"
+                                        style={[{ width: 24, height: 24 }]}
+                                        tintColor={isActive ? theme.colors.text : theme.colors.textSecondary}
+                                    />
+                                )}
                                 {tab.key === 'inbox' && inboxBadgeCount > 0 && (
                                     <View style={styles.badge}>
                                         <Text style={styles.badgeText}>

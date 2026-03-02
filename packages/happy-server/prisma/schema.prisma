@@ -100,6 +100,7 @@ model Session {
     agentState        String?
     agentStateVersion Int              @default(0)
     dataEncryptionKey Bytes?
+    publicLabel       String?
     seq               Int              @default(0)
     active            Boolean          @default(true)
     lastActiveAt      DateTime         @default(now())
@@ -111,6 +112,7 @@ model Session {
 
     @@unique([accountId, tag])
     @@index([accountId, updatedAt(sort: Desc)])
+    @@index([accountId, publicLabel, active])
 }
 
 model SessionMessage {
@@ -359,5 +361,22 @@ model UserKVStore {
     updatedAt DateTime @updatedAt
 
     @@unique([accountId, key])
+    @@index([accountId])
+}
+
+//
+// Shared Sessions (public links)
+//
+
+model SharedSession {
+    id        String   @id @default(cuid())
+    accountId String
+    sessionId String?
+    title     String   @default("")
+    messages  Json     // Array of { role, text }
+    viewCount Int      @default(0)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
     @@index([accountId])
 }

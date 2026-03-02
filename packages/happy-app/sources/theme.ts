@@ -144,6 +144,7 @@ export const lightTheme = {
             readOnly: '#8B8B8D',
             safeYolo: '#FF6B35',
             yolo: '#DC143C',
+            zen: '#8B5CF6',
         },
 
         // Permission button colors
@@ -354,6 +355,7 @@ export const darkTheme = {
             readOnly: '#98989D',
             safeYolo: '#FF7A4C',
             yolo: '#FF453A',
+            zen: '#A78BFA',
         },
 
         // Permission button colors
@@ -448,5 +450,145 @@ export const darkTheme = {
 
     ...sharedSpacing,
 } satisfies typeof lightTheme;
+
+// Helper to create dark theme variants by deep-merging color overrides
+function createDarkVariant(overrides: Record<string, any>): typeof darkTheme {
+    const base = JSON.parse(JSON.stringify(darkTheme));
+    function deepMerge(target: any, source: any) {
+        for (const key of Object.keys(source)) {
+            if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) && target[key] && typeof target[key] === 'object') {
+                deepMerge(target[key], source[key]);
+            } else {
+                target[key] = source[key];
+            }
+        }
+        return target;
+    }
+    deepMerge(base.colors, overrides);
+    return base;
+}
+
+// Carbon — clean grays, high contrast, mint accent. Inspired by Linear/Vercel.
+export const darkCarbonTheme = createDarkVariant({
+    text: '#F0F0F0',
+    textSecondary: '#A0A0A0',
+    textLink: '#5DE4C7',
+    surface: '#171717',
+    surfacePressed: '#262626',
+    surfaceSelected: '#262626',
+    surfaceHigh: '#141414',
+    surfaceHighest: '#2A2A2A',
+    divider: '#2A2A2A',
+    header: { background: '#171717', tint: '#F0F0F0' },
+    groupped: { background: '#141414', chevron: '#A0A0A0', sectionTitle: '#A0A0A0' },
+    input: { background: '#262626', text: '#F0F0F0', placeholder: '#666666' },
+    userMessageBackground: '#262626',
+    agentEventText: '#777777',
+    status: { connected: '#5DE4C7', connecting: '#F0F0F0', disconnected: '#666666', error: '#FF6B6B', default: '#666666' },
+    switch: { track: { active: '#5DE4C7', inactive: '#333333' }, thumb: { active: '#FFFFFF', inactive: '#767577' } },
+    radio: { active: '#5DE4C7', inactive: '#404040', dot: '#5DE4C7' },
+    fab: { background: '#5DE4C7', backgroundPressed: '#4CCFB3', icon: '#000000' },
+    terminal: { background: '#141414', prompt: '#5DE4C7', command: '#E0E0E0', stdout: '#E0E0E0', stderr: '#FFB86C', error: '#FF6B6B', emptyOutput: '#555555' },
+    diff: { outline: '#2A2A2A', contextBg: '#141414', lineNumberBg: '#141414', hunkHeaderBg: '#141414', hunkHeaderText: '#5DE4C7', leadingSpaceDot: '#252525' },
+    permission: { default: '#666666', acceptEdits: '#5DE4C7', bypass: '#FFB86C', plan: '#5DE4C7', readOnly: '#777777', safeYolo: '#FF7A4C', yolo: '#FF453A', zen: '#A78BFA' },
+    permissionButton: { allow: { background: '#5DE4C7', text: '#000000' }, deny: { background: '#FF453A', text: '#FFFFFF' }, allowAll: { background: '#5DE4C7', text: '#000000' }, inactive: { background: '#262626', border: '#333333', text: '#666666' }, selected: { background: '#1A1A1A', border: '#333333', text: '#F0F0F0' } },
+}) satisfies typeof lightTheme;
+
+// Warm Night — warm amber tones, cozy feel. Inspired by Notion dark, Craft.
+export const darkWarmTheme = createDarkVariant({
+    text: '#F5E6D3',
+    textSecondary: '#A89585',
+    textLink: '#E8A96B',
+    surface: '#1A1410',
+    surfacePressed: '#2A2219',
+    surfaceSelected: '#2A2219',
+    surfaceHigh: '#151008',
+    surfaceHighest: '#302820',
+    divider: '#302820',
+    header: { background: '#1A1410', tint: '#F5E6D3' },
+    groupped: { background: '#151008', chevron: '#A89585', sectionTitle: '#A89585' },
+    input: { background: '#2A2219', text: '#F5E6D3', placeholder: '#736355' },
+    userMessageBackground: '#2A2219',
+    agentEventText: '#8B7B6B',
+    status: { connected: '#D4A574', connecting: '#F5E6D3', disconnected: '#736355', error: '#E87461', default: '#736355' },
+    switch: { track: { active: '#D4A574', inactive: '#3A3028' }, thumb: { active: '#FFFFFF', inactive: '#767577' } },
+    radio: { active: '#E8A96B', inactive: '#3A3028', dot: '#E8A96B' },
+    fab: { background: '#E8A96B', backgroundPressed: '#D49A5C', icon: '#1A1410' },
+    terminal: { background: '#151008', prompt: '#D4A574', command: '#E8D5C0', stdout: '#E8D5C0', stderr: '#E8A96B', error: '#E87461', emptyOutput: '#5A4A3A' },
+    diff: { outline: '#302820', contextBg: '#151008', lineNumberBg: '#151008', hunkHeaderBg: '#151008', hunkHeaderText: '#E8A96B', leadingSpaceDot: '#252015' },
+    permission: { default: '#736355', acceptEdits: '#E8A96B', bypass: '#E8A96B', plan: '#D4A574', readOnly: '#8B7B6B', safeYolo: '#E87461', yolo: '#E05040', zen: '#C4A0E8' },
+    permissionButton: { allow: { background: '#D4A574', text: '#1A1410' }, deny: { background: '#E87461', text: '#FFFFFF' }, allowAll: { background: '#E8A96B', text: '#1A1410' }, inactive: { background: '#2A2219', border: '#3A3028', text: '#736355' }, selected: { background: '#201810', border: '#3A3028', text: '#F5E6D3' } },
+    syntaxKeyword: '#E8A96B',
+    syntaxString: '#D4A574',
+    syntaxComment: '#736355',
+    syntaxNumber: '#C4A0E8',
+    syntaxFunction: '#F0C090',
+    syntaxDefault: '#E8D5C0',
+}) satisfies typeof lightTheme;
+
+// Deep Ocean — dark navy, blue accents. Inspired by GitHub Dark, Arc browser.
+export const darkOceanTheme = createDarkVariant({
+    text: '#E6EDF3',
+    textSecondary: '#8B949E',
+    textLink: '#58A6FF',
+    surface: '#0D1117',
+    surfacePressed: '#1B2332',
+    surfaceSelected: '#1B2332',
+    surfaceHigh: '#090D13',
+    surfaceHighest: '#21262D',
+    divider: '#21262D',
+    header: { background: '#0D1117', tint: '#E6EDF3' },
+    groupped: { background: '#090D13', chevron: '#8B949E', sectionTitle: '#8B949E' },
+    input: { background: '#161B22', text: '#E6EDF3', placeholder: '#6E7681' },
+    userMessageBackground: '#161B22',
+    agentEventText: '#6E7681',
+    status: { connected: '#3FB950', connecting: '#E6EDF3', disconnected: '#6E7681', error: '#F85149', default: '#6E7681' },
+    switch: { track: { active: '#58A6FF', inactive: '#21262D' }, thumb: { active: '#FFFFFF', inactive: '#767577' } },
+    radio: { active: '#58A6FF', inactive: '#30363D', dot: '#58A6FF' },
+    fab: { background: '#58A6FF', backgroundPressed: '#4090E8', icon: '#FFFFFF' },
+    terminal: { background: '#090D13', prompt: '#3FB950', command: '#C9D1D9', stdout: '#C9D1D9', stderr: '#D29922', error: '#F85149', emptyOutput: '#484F58' },
+    diff: { outline: '#30363D', success: '#3FB950', error: '#F85149', addedBg: '#0D2E1F', addedBorder: '#3FB950', addedText: '#C9D1D9', removedBg: '#3F1B23', removedBorder: '#F85149', removedText: '#C9D1D9', contextBg: '#090D13', contextText: '#8B949E', lineNumberBg: '#090D13', lineNumberText: '#6E7681', hunkHeaderBg: '#0D1117', hunkHeaderText: '#58A6FF', leadingSpaceDot: '#1A1F26', inlineAddedBg: '#1A4A2A', inlineAddedText: '#7AFF7A', inlineRemovedBg: '#4A1A2A', inlineRemovedText: '#FF7A7A' },
+    permission: { default: '#6E7681', acceptEdits: '#58A6FF', bypass: '#D29922', plan: '#3FB950', readOnly: '#8B949E', safeYolo: '#DB6D28', yolo: '#F85149', zen: '#A78BFA' },
+    permissionButton: { allow: { background: '#3FB950', text: '#FFFFFF' }, deny: { background: '#F85149', text: '#FFFFFF' }, allowAll: { background: '#58A6FF', text: '#FFFFFF' }, inactive: { background: '#161B22', border: '#30363D', text: '#6E7681' }, selected: { background: '#0D1117', border: '#30363D', text: '#E6EDF3' } },
+    syntaxKeyword: '#FF7B72',
+    syntaxString: '#A5D6FF',
+    syntaxComment: '#8B949E',
+    syntaxNumber: '#79C0FF',
+    syntaxFunction: '#D2A8FF',
+    syntaxDefault: '#C9D1D9',
+}) satisfies typeof lightTheme;
+
+// OLED Black — true black for OLED screens, neon green accent. Maximum contrast.
+export const darkOledTheme = createDarkVariant({
+    text: '#FFFFFF',
+    textSecondary: '#999999',
+    textLink: '#00FF88',
+    surface: '#000000',
+    surfacePressed: '#1A1A1A',
+    surfaceSelected: '#1A1A1A',
+    surfaceHigh: '#000000',
+    surfaceHighest: '#1F1F1F',
+    divider: '#1F1F1F',
+    header: { background: '#000000', tint: '#FFFFFF' },
+    groupped: { background: '#000000', chevron: '#999999', sectionTitle: '#999999' },
+    input: { background: '#1A1A1A', text: '#FFFFFF', placeholder: '#666666' },
+    userMessageBackground: '#1A1A1A',
+    agentEventText: '#777777',
+    status: { connected: '#00FF88', connecting: '#FFFFFF', disconnected: '#666666', error: '#FF4444', default: '#666666' },
+    switch: { track: { active: '#00FF88', inactive: '#2A2A2A' }, thumb: { active: '#FFFFFF', inactive: '#767577' } },
+    radio: { active: '#00FF88', inactive: '#333333', dot: '#00FF88' },
+    fab: { background: '#00FF88', backgroundPressed: '#00DD77', icon: '#000000' },
+    button: { primary: { background: '#00FF88', tint: '#000000', disabled: '#555555' }, secondary: { tint: '#999999' } },
+    terminal: { background: '#000000', prompt: '#00FF88', command: '#FFFFFF', stdout: '#FFFFFF', stderr: '#FFAA00', error: '#FF4444', emptyOutput: '#444444' },
+    diff: { outline: '#1F1F1F', contextBg: '#000000', lineNumberBg: '#000000', hunkHeaderBg: '#000000', hunkHeaderText: '#00FF88', leadingSpaceDot: '#181818' },
+    permission: { default: '#666666', acceptEdits: '#00FF88', bypass: '#FFAA00', plan: '#00FF88', readOnly: '#888888', safeYolo: '#FF7744', yolo: '#FF4444', zen: '#BB88FF' },
+    permissionButton: { allow: { background: '#00FF88', text: '#000000' }, deny: { background: '#FF4444', text: '#FFFFFF' }, allowAll: { background: '#00FF88', text: '#000000' }, inactive: { background: '#1A1A1A', border: '#2A2A2A', text: '#666666' }, selected: { background: '#0A0A0A', border: '#2A2A2A', text: '#FFFFFF' } },
+    syntaxKeyword: '#FF6688',
+    syntaxString: '#00FF88',
+    syntaxComment: '#555555',
+    syntaxNumber: '#FFAA00',
+    syntaxFunction: '#BB88FF',
+    syntaxDefault: '#DDDDDD',
+}) satisfies typeof lightTheme;
 
 export type Theme = typeof lightTheme;

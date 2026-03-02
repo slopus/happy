@@ -21,6 +21,9 @@ export type MarkdownBlock = {
     type: 'mermaid',
     content: string
 } | {
+    type: 'd2',
+    content: string
+} | {
     type: 'horizontal-rule'
 } | {
     type: 'options',
@@ -29,6 +32,14 @@ export type MarkdownBlock = {
     type: 'table',
     headers: string[],
     rows: string[][]
+} | {
+    type: 'image',
+    alt: string,
+    url: string,
+} | {
+    type: 'details',
+    summary: string,
+    contentMarkdown: string,
 }
 
 export type MarkdownSpan = {

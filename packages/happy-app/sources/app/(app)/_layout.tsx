@@ -24,6 +24,8 @@ export default function RootLayout() {
                 header: shouldUseCustomHeader ? createHeader : undefined,
                 headerBackTitle: t('common.back'),
                 headerShadowVisible: false,
+                gestureEnabled: true,
+                fullScreenGestureEnabled: true,
                 contentStyle: {
                     backgroundColor: theme.colors.surface,
                 },
@@ -54,6 +56,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="files"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('tabs.files'),
+                    headerBackTitle: t('common.home')
+                }}
+            />
+            <Stack.Screen
                 name="settings/index"
                 options={{
                     headerShown: true,
@@ -64,7 +74,9 @@ export default function RootLayout() {
             <Stack.Screen
                 name="session/[id]"
                 options={{
-                    headerShown: false
+                    headerShown: false,
+                    gestureEnabled: true,
+                    fullScreenGestureEnabled: true,
                 }}
             />
             <Stack.Screen
@@ -323,6 +335,59 @@ export default function RootLayout() {
                 options={{
                     headerTitle: t('newSession.title'),
                     headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="zen/index"
+                options={{
+                    headerShown: false
+                }}
+            />
+            <Stack.Screen
+                name="zen/new"
+                options={{
+                    presentation: 'modal',
+                    headerTitle: 'New Task',
+                    headerBackTitle: t('common.cancel'),
+                }}
+            />
+            <Stack.Screen
+                name="zen/view"
+                options={{
+                    presentation: 'modal',
+                    headerTitle: 'Task Details',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            {/* Learn mode routes */}
+            <Stack.Screen
+                name="learn/course/[id]"
+                options={{
+                    headerShown: true,
+                    headerTitle: '',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="learn/lesson/[id]"
+                options={{
+                    headerShown: true,
+                    headerTitle: '',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="learn/review"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Review',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="learn/chat/[id]"
+                options={{
+                    headerShown: false,
                 }}
             />
         </Stack>

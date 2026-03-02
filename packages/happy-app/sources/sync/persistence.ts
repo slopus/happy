@@ -3,7 +3,7 @@ import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './set
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
-import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import type { PermissionMode } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -16,7 +16,7 @@ export interface NewSessionDraft {
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: NewSessionAgentType;
-    permissionMode: PermissionModeKey;
+    permissionMode: PermissionMode;
     sessionType: NewSessionSessionType;
     updatedAt: number;
 }
@@ -75,7 +75,7 @@ export function saveLocalSettings(settings: LocalSettings) {
     mmkv.set('local-settings', JSON.stringify(settings));
 }
 
-export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
+export function loadThemePreference(): 'light' | 'dark' | 'darkCarbon' | 'darkWarm' | 'darkOcean' | 'darkOled' | 'adaptive' {
     const localSettings = mmkv.getString('local-settings');
     if (localSettings) {
         try {
@@ -142,8 +142,8 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini'
             ? parsed.agentType
             : 'claude';
-        const permissionMode: PermissionModeKey = typeof parsed.permissionMode === 'string'
-            ? parsed.permissionMode
+        const permissionMode: PermissionMode = typeof parsed.permissionMode === 'string'
+            ? (parsed.permissionMode as PermissionMode)
             : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
@@ -171,7 +171,7 @@ export function clearNewSessionDraft() {
     mmkv.delete(NEW_SESSION_DRAFT_KEY);
 }
 
-export function loadSessionPermissionModes(): Record<string, string> {
+export function loadSessionPermissionModes(): Record<string, PermissionMode> {
     const modes = mmkv.getString('session-permission-modes');
     if (modes) {
         try {
@@ -184,7 +184,7 @@ export function loadSessionPermissionModes(): Record<string, string> {
     return {};
 }
 
-export function saveSessionPermissionModes(modes: Record<string, string>) {
+export function saveSessionPermissionModes(modes: Record<string, PermissionMode>) {
     mmkv.set('session-permission-modes', JSON.stringify(modes));
 }
 

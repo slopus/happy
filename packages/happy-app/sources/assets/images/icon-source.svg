@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.29  0 0 0 0 0.87  0 0 0 0 0.5  0 0 0 0.35 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#000000"/>
+
+  <!-- Bubble moved up ~4px, narrower ~4% (was 72-952=880w, now 92-932=840w) -->
+  <g filter="url(#glow)">
+    <path d="M172,187
+             L852,187
+             Q932,187 932,267
+             L932,607
+             Q932,687 852,687
+             L320,687
+             L245,790
+             L245,687
+             L172,687
+             Q92,687 92,607
+             L92,267
+             Q92,187 172,187 Z"
+          fill="none" stroke="#4ADE80" stroke-width="29" stroke-linejoin="round"/>
+
+    <!-- Star centered in bubble body (187-687=center 437, moved up ~2px to 435) -->
+    <path d="M512,282
+             Q526,392 544,410 Q562,428 672,440
+             Q562,452 544,470 Q526,488 512,598
+             Q498,488 480,470 Q462,452 352,440
+             Q462,428 480,410 Q498,392 512,282 Z"
+          fill="#4ADE80"/>
+  </g>
+</svg>

@@ -5,7 +5,7 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
-import type { PermissionModeKey, ModelModeKey } from '@/components/PermissionModeSelector';
+import { PermissionModeSelector, PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
@@ -514,8 +514,8 @@ interface NewSessionWizardProps {
         sessionType: 'simple' | 'worktree';
         profileId: string | null;
         agentType: 'claude' | 'codex';
-        permissionMode: PermissionModeKey;
-        modelMode: ModelModeKey;
+        permissionMode: PermissionMode;
+        modelMode: ModelMode;
         machineId: string;
         path: string;
         prompt: string;
@@ -548,8 +548,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
         return 'claude';
     });
-    const [permissionMode, setPermissionMode] = useState<PermissionModeKey>('default');
-    const [modelMode, setModelMode] = useState<ModelModeKey>('default');
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
+    const [modelMode, setModelMode] = useState<ModelMode>('default');
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
         return lastUsedProfile;
     });
@@ -1596,7 +1596,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 { value: 'default', label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
                                 { value: 'acceptEdits', label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
                                 { value: 'plan', label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                { value: 'bypassPermissions', label: 'Yolo', description: 'Skip all permissions', icon: 'flash-outline' },
+                                { value: 'bypassPermissions', label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
                             ] as const).map((option, index, array) => (
                                 <Item
                                     key={option.value}
@@ -1616,7 +1616,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                             color={theme.colors.button.primary.background}
                                         />
                                     ) : null}
-                                    onPress={() => setPermissionMode(option.value)}
+                                    onPress={() => setPermissionMode(option.value as PermissionMode)}
                                     showChevron={false}
                                     selected={permissionMode === option.value}
                                     showDivider={index < array.length - 1}
@@ -1653,7 +1653,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                             color={theme.colors.button.primary.background}
                                         />
                                     ) : null}
-                                    onPress={() => setModelMode(option.value)}
+                                    onPress={() => setModelMode(option.value as ModelMode)}
                                     showChevron={false}
                                     selected={modelMode === option.value}
                                     showDivider={index < array.length - 1}

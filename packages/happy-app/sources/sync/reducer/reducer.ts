@@ -126,6 +126,8 @@ type ReducerMessage = {
     isThinking?: boolean;
     event: AgentEvent | null;
     tool: ToolCall | null;
+    images?: Array<{ url: string; mediaType: string; width: number; height: number }>;
+    documents?: Array<{ url: string; mediaType: string; fileName: string; fileSize: number }>;
     meta?: MessageMeta;
 }
 
@@ -250,12 +252,6 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             // Mark as processed to prevent duplication but don't add to messages
             state.messageIds.set(msg.id, msg.id);
             hasReadyEvent = true;
-            continue;
-        }
-
-        // Session protocol turn-start markers are lifecycle-only and should stay invisible.
-        if (msg.role === 'event' && msg.content.type === 'message' && msg.content.message === 'Turn started') {
-            state.messageIds.set(msg.id, msg.id);
             continue;
         }
 
@@ -610,6 +606,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 text: msg.content.text,
                 tool: null,
                 event: null,
+                ...(msg.content.images && msg.content.images.length > 0 ? { images: msg.content.images } : {}),
+                ...(msg.content.documents && msg.content.documents.length > 0 ? { documents: msg.content.documents } : {}),
                 meta: msg.meta,
             });
 
@@ -644,7 +642,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
-                        text: isThinking ? `*${c.thinking}*` : c.text,
+                        text: isThinking ? `*Thinking...*\n\n*${c.thinking}*` : c.text,
                         isThinking,
                         tool: null,
                         event: null,
@@ -877,7 +875,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
-                        text: isThinking ? `*${c.thinking}*` : c.text,
+                        text: isThinking ? `*Thinking...*\n\n*${c.thinking}*` : c.text,
                         isThinking,
                         tool: null,
                         event: null,
@@ -1116,6 +1114,8 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             kind: 'user-text',
             text: reducerMsg.text,
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
+            ...(reducerMsg.images && reducerMsg.images.length > 0 ? { images: reducerMsg.images } : {}),
+            ...(reducerMsg.documents && reducerMsg.documents.length > 0 ? { documents: reducerMsg.documents } : {}),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {

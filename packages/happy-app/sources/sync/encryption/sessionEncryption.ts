@@ -41,6 +41,22 @@ export class SessionEncryption {
                 results[i] = cached;
             } else if (message.content.t === 'encrypted') {
                 toDecrypt.push({ index: i, message });
+            } else if ((message.content as any).t === 'plaintext') {
+                // Plaintext message from remote API (Siri, etc.)
+                const c = message.content as any;
+                const result: DecryptedMessage = {
+                    id: message.id,
+                    seq: message.seq,
+                    localId: message.localId ?? null,
+                    content: {
+                        role: c.role || 'user',
+                        content: { type: 'text', text: c.text },
+                        meta: c.meta || {},
+                    },
+                    createdAt: message.createdAt,
+                };
+                this.cache.setCachedMessage(message.id, result);
+                results[i] = result;
             } else {
                 // Not encrypted or invalid
                 results[i] = {
@@ -57,7 +73,7 @@ export class SessionEncryption {
         // Batch decrypt uncached messages
         if (toDecrypt.length > 0) {
             const encrypted = toDecrypt.map(item =>
-                decodeBase64(item.message.content.c, 'base64')
+                decodeBase64((item.message.content as any).c, 'base64')
             );
             
             const decrypted = await this.encryptor.decrypt(encrypted);

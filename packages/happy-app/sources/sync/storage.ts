@@ -8,10 +8,11 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
+import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
-import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import type { PermissionMode } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -42,11 +43,6 @@ function isSessionActive(session: { active: boolean; activeAt: number }): boolea
     return session.active;
 }
 
-function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
-    const sandbox = metadata?.sandbox;
-    return !!sandbox && typeof sandbox === 'object' && (sandbox as { enabled?: unknown }).enabled === true;
-}
-
 // Known entitlement IDs
 export type KnownEntitlements = 'pro';
 
@@ -55,6 +51,8 @@ interface SessionMessages {
     messagesMap: Record<string, Message>;
     reducerState: ReducerState;
     isLoaded: boolean;
+    hasMore: boolean;
+    oldestSeq: number | null;
 }
 
 // Machine type is now imported from storageTypes - represents persisted machine data
@@ -92,33 +90,42 @@ interface StorageState {
     friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     realtimeMode: 'idle' | 'speaking';
+    voiceTranscript: string;
+    voiceContinuous: boolean;
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
     isDataReady: boolean;
     nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
+    todoState: TodoState | null;
+    todosLoaded: boolean;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyLoaded: () => void;
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
     applyMessagesLoaded: (sessionId: string) => void;
+    applyPaginationState: (sessionId: string, hasMore: boolean, oldestSeq: number | null) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
     applyProfile: (profile: Profile) => void;
+    applyTodos: (todoState: TodoState) => void;
     applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
     clearRealtimeModeDebounce: () => void;
+    appendVoiceTranscript: (text: string) => void;
+    clearVoiceTranscript: () => void;
+    setVoiceContinuous: (continuous: boolean) => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
-    updateSessionPermissionMode: (sessionId: string, mode: string) => void;
-    updateSessionModelMode: (sessionId: string, mode: string) => void;
+    updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'zen') => void;
+    updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -268,12 +275,16 @@ export const storage = create<StorageState>()((set, get) => {
         feedHasMore: false,
         feedLoaded: false,  // Initialize as false
         friendsLoaded: false,  // Initialize as false
+        todoState: null,  // Initialize todo state
+        todosLoaded: false,  // Initialize todos loaded state
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
+        voiceTranscript: '',
+        voiceContinuous: false,
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
@@ -311,23 +322,25 @@ export const storage = create<StorageState>()((set, get) => {
                 // Use centralized resolver for consistent state management
                 const presence = resolveSessionOnlineState(session);
 
-                // Preserve existing draft and permission mode if they exist, or load from saved data
+                // Preserve existing draft, permission mode, and metadata.summary if they exist
                 const existingDraft = state.sessions[session.id]?.draft;
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
-                const defaultPermissionMode: PermissionModeKey = isSandboxEnabled(session.metadata) ? 'bypassPermissions' : 'default';
-                const resolvedPermissionMode: PermissionModeKey =
-                    (existingPermissionMode && existingPermissionMode !== 'default' ? existingPermissionMode : undefined) ||
-                    (savedPermissionMode && savedPermissionMode !== 'default' ? savedPermissionMode : undefined) ||
-                    (session.permissionMode && session.permissionMode !== 'default' ? session.permissionMode : undefined) ||
-                    defaultPermissionMode;
+                const existingSummary = state.sessions[session.id]?.metadata?.summary;
+
+                // Merge metadata, preserving existing summary if server doesn't have one
+                const mergedMetadata = session.metadata ? {
+                    ...session.metadata,
+                    summary: session.metadata.summary || existingSummary
+                } : (existingSummary ? { summary: existingSummary } : null);
 
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
+                    metadata: mergedMetadata,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: resolvedPermissionMode
+                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
                 };
             });
 
@@ -434,7 +447,9 @@ export const storage = create<StorageState>()((set, get) => {
                         messages: messagesArray,
                         messagesMap: mergedMessagesMap,
                         reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
-                        isLoaded: existingSessionMessages.isLoaded
+                        isLoaded: existingSessionMessages.isLoaded,
+                        hasMore: existingSessionMessages.hasMore,
+                        oldestSeq: existingSessionMessages.oldestSeq
                     };
 
                     // IMPORTANT: Copy latestUsage from reducerState to Session for immediate availability
@@ -490,7 +505,9 @@ export const storage = create<StorageState>()((set, get) => {
                     messages: [],
                     messagesMap: {},
                     reducerState: createReducer(),
-                    isLoaded: false
+                    isLoaded: false,
+                    hasMore: true,
+                    oldestSeq: null
                 };
 
                 // Get the session's agentState if available
@@ -510,9 +527,16 @@ export const storage = create<StorageState>()((set, get) => {
                     hasReadyEvent = true;
                 }
 
-                // Merge messages
+                // Merge messages with localId deduplication
+                // When a message is sent locally, it's stored with id=localId
+                // When the server confirms it, it arrives with a new server id but same localId
+                // We need to remove the local version when the server version arrives
                 const mergedMessagesMap = { ...existingSession.messagesMap };
                 processedMessages.forEach(message => {
+                    // If this message has a localId and there's already a message with id=localId, remove it
+                    if (message.localId && message.id !== message.localId && mergedMessagesMap[message.localId]) {
+                        delete mergedMessagesMap[message.localId];
+                    }
                     mergedMessagesMap[message.id] = message;
                 });
 
@@ -608,7 +632,9 @@ export const storage = create<StorageState>()((set, get) => {
                             reducerState,
                             messages,
                             messagesMap,
-                            isLoaded: true
+                            isLoaded: true,
+                            hasMore: true,
+                            oldestSeq: null
                         } satisfies SessionMessages
                     }
                 };
@@ -626,6 +652,23 @@ export const storage = create<StorageState>()((set, get) => {
             }
 
             return result;
+        }),
+        applyPaginationState: (sessionId: string, hasMore: boolean, oldestSeq: number | null) => set((state) => {
+            const existing = state.sessionMessages[sessionId];
+            if (!existing) return state;
+            return {
+                ...state,
+                sessionMessages: {
+                    ...state.sessionMessages,
+                    [sessionId]: {
+                        ...existing,
+                        hasMore,
+                        oldestSeq: oldestSeq !== null
+                            ? (existing.oldestSeq !== null ? Math.min(existing.oldestSeq, oldestSeq) : oldestSeq)
+                            : existing.oldestSeq
+                    }
+                }
+            };
         }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
             saveSettings(applySettings(state.settings, settings), state.settingsVersion ?? 0);
@@ -673,6 +716,13 @@ export const storage = create<StorageState>()((set, get) => {
                 profile
             };
         }),
+        applyTodos: (todoState: TodoState) => set((state) => {
+            return {
+                ...state,
+                todoState,
+                todosLoaded: true
+            };
+        }),
         applyGitStatus: (sessionId: string, status: GitStatus | null) => set((state) => {
             // Update project git status as well
             projectManager.updateSessionProjectGitStatus(sessionId, status);
@@ -718,6 +768,18 @@ export const storage = create<StorageState>()((set, get) => {
                 realtimeModeDebounceTimer = null;
             }
         },
+        appendVoiceTranscript: (text: string) => set((state) => ({
+            ...state,
+            voiceTranscript: state.voiceTranscript ? state.voiceTranscript + ' ' + text : text
+        })),
+        clearVoiceTranscript: () => set((state) => ({
+            ...state,
+            voiceTranscript: ''
+        })),
+        setVoiceContinuous: (continuous: boolean) => set((state) => ({
+            ...state,
+            voiceContinuous: continuous
+        })),
         setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
             const now = Date.now();
             const updates: Partial<StorageState> = {
@@ -777,7 +839,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        updateSessionPermissionMode: (sessionId: string, mode: string) => set((state) => {
+        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'zen') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
@@ -791,7 +853,7 @@ export const storage = create<StorageState>()((set, get) => {
             };
 
             // Collect all permission modes for persistence
-            const allModes: Record<string, string> = {};
+            const allModes: Record<string, PermissionMode> = {};
             Object.entries(updatedSessions).forEach(([id, sess]) => {
                 if (sess.permissionMode && sess.permissionMode !== 'default') {
                     allModes[id] = sess.permissionMode;
@@ -807,7 +869,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
-        updateSessionModelMode: (sessionId: string, mode: string) => set((state) => {
+        updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
@@ -1078,12 +1140,13 @@ export function useSession(id: string): Session | null {
 
 const emptyArray: unknown[] = [];
 
-export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean } {
+export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean, hasMore: boolean } {
     return storage(useShallow((state) => {
         const session = state.sessionMessages[sessionId];
         return {
             messages: session?.messages ?? emptyArray,
-            isLoaded: session?.isLoaded ?? false
+            isLoaded: session?.isLoaded ?? false,
+            hasMore: session?.hasMore ?? true
         };
     }));
 }
@@ -1231,6 +1294,14 @@ export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected'
 
 export function useRealtimeMode(): 'idle' | 'speaking' {
     return storage(useShallow((state) => state.realtimeMode));
+}
+
+export function useVoiceTranscript(): string {
+    return storage(useShallow((state) => state.voiceTranscript));
+}
+
+export function useVoiceContinuous(): boolean {
+    return storage(useShallow((state) => state.voiceContinuous));
 }
 
 export function useSocketStatus() {

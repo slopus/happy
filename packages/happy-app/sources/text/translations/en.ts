@@ -34,6 +34,7 @@ export const en: TranslationStructure = {
         // Tab navigation labels
         inbox: 'Inbox',
         sessions: 'Terminals',
+        files: 'Files',
         settings: 'Settings',
     },
 
@@ -390,6 +391,17 @@ export const en: TranslationStructure = {
         deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
         failedToDeleteSession: 'Failed to delete session',
         sessionDeleted: 'Session deleted successfully',
+        killProcess: 'Kill Process',
+        killProcessSubtitle: 'Force terminate the session process',
+        killProcessConfirm: 'Kill the process and archive the session?',
+        killAndResume: 'Kill & Restart',
+        killAndResumeConfirm: 'Kill the process and restart the session?',
+        longPressToRestart: 'Long press to restart',
+        longPressToDelete: 'Long press to delete',
+        archiveAndDelete: 'Archive & Delete',
+        archiveAndDeleteWarning: 'This will archive the session and permanently delete all its data. This action cannot be undone.',
+        failedToKillProcess: 'Failed to kill process',
+        missingProcessInfo: 'Missing process information',
 
     },
 
@@ -410,10 +422,12 @@ export const en: TranslationStructure = {
             default: 'Default',
             acceptEdits: 'Accept Edits',
             plan: 'Plan Mode',
-            bypassPermissions: 'Yolo',
+            bypassPermissions: 'Yolo Mode',
             badgeAcceptAllEdits: 'Accept All Edits',
-            badgeBypassAllPermissions: 'Yolo',
+            badgeBypassAllPermissions: 'Bypass All Permissions',
             badgePlanMode: 'Plan Mode',
+            zen: 'Zen Mode',
+            badgeZen: 'Zen Mode',
         },
         agent: {
             claude: 'Claude',
@@ -777,6 +791,7 @@ export const en: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Yes, allow all edits during this session',
+            yesAllowAll: "Yes, don't ask again (allow all)",
             yesForTool: "Yes, don't ask again for this tool",
             noTellClaude: 'No, and provide feedback',
         }

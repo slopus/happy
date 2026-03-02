@@ -20,6 +20,8 @@ import { tracking } from '@/track/tracking';
 import { syncRestore } from '@/sync/sync';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
+import { isLearnMode } from '@/appMode';
+import { learnRestore } from '@/learn/learnSync';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
@@ -114,8 +116,11 @@ async function loadFonts() {
                 'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
                 'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
 
-                // Bricolage Grotesque  
+                // Bricolage Grotesque
                 'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+
+                // Audiowide (brand logo)
+                'Audiowide-Regular': require('@/assets/fonts/Audiowide-Regular.ttf'),
 
                 ...FontAwesome.font,
             });
@@ -138,8 +143,11 @@ async function loadFonts() {
                         'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
                         'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
 
-                        // Bricolage Grotesque  
+                        // Bricolage Grotesque
                         'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+
+                        // Audiowide (brand logo)
+                        'Audiowide-Regular': require('@/assets/fonts/Audiowide-Regular.ttf'),
 
                         ...FontAwesome.font,
                     });
@@ -180,11 +188,17 @@ export default function RootLayout() {
         (async () => {
             try {
                 await loadFonts();
-                await sodium.ready;
+                if (!isLearnMode) {
+                    await sodium.ready;
+                }
                 const credentials = await TokenStorage.getCredentials();
                 console.log('credentials', credentials);
                 if (credentials) {
-                    await syncRestore(credentials);
+                    if (isLearnMode) {
+                        await learnRestore(credentials);
+                    } else {
+                        await syncRestore(credentials);
+                    }
                 }
 
                 setInitState({ credentials });
@@ -218,6 +232,24 @@ export default function RootLayout() {
     // Boot
     //
 
+    const coreContent = (
+        <HorizontalSafeAreaWrapper>
+            <SidebarNavigator />
+        </HorizontalSafeAreaWrapper>
+    );
+
+    const wrappedContent = isLearnMode ? (
+        <RealtimeProvider>
+            {coreContent}
+        </RealtimeProvider>
+    ) : (
+        <CommandPaletteProvider>
+            <RealtimeProvider>
+                {coreContent}
+            </RealtimeProvider>
+        </CommandPaletteProvider>
+    );
+
     let providers = (
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <KeyboardProvider>
@@ -226,13 +258,7 @@ export default function RootLayout() {
                         <ThemeProvider value={navigationTheme}>
                             <StatusBarProvider />
                             <ModalProvider>
-                                <CommandPaletteProvider>
-                                    <RealtimeProvider>
-                                        <HorizontalSafeAreaWrapper>
-                                            <SidebarNavigator />
-                                        </HorizontalSafeAreaWrapper>
-                                    </RealtimeProvider>
-                                </CommandPaletteProvider>
+                                {wrappedContent}
                             </ModalProvider>
                         </ThemeProvider>
                     </AuthProvider>
@@ -240,7 +266,7 @@ export default function RootLayout() {
             </KeyboardProvider>
         </SafeAreaProvider>
     );
-    if (tracking) {
+    if (tracking && !isLearnMode) {
         providers = (
             <PostHogProvider client={tracking}>
                 {providers}

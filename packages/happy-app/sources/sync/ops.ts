@@ -5,6 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
+import { storage } from './storage';
 import type { MachineMetadata } from './storageTypes';
 
 // Strict type definitions for all operations
@@ -139,6 +140,12 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'codex' | 'claude' | 'gemini';
+    /** Claude Code session ID to resume (uses --resume flag) */
+    claudeResumeSessionId?: string;
+    /** Public label to copy when resuming a session */
+    publicLabel?: string;
+    /** Session title/summary to copy when resuming a session */
+    sessionSummary?: string;
     // Environment variables from AI backend profile
     // Accepts any environment variables - daemon will pass them to the agent process
     // Common variables include:
@@ -159,7 +166,7 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, claudeResumeSessionId, publicLabel, sessionSummary } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -169,10 +176,13 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini',
             environmentVariables?: Record<string, string>;
+            claudeResumeSessionId?: string;
+            publicLabel?: string;
+            sessionSummary?: string;
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables, claudeResumeSessionId, publicLabel, sessionSummary }
         );
         return result;
     } catch (error) {
@@ -267,6 +277,22 @@ export async function machineUpdateMetadata(
         });
 
         if (result.result === 'success') {
+            // Update local store immediately with the new metadata
+            const currentMachine = storage.getState().machines[machineId];
+            if (currentMachine) {
+                const updatedMachine = {
+                    ...currentMachine,
+                    metadata: currentMetadata,
+                    metadataVersion: result.version!,
+                    updatedAt: Date.now()
+                };
+                storage.getState().applyMachines([updatedMachine]);
+                console.log('📊 machineUpdateMetadata: Updated store with new metadata:', {
+                    machineId,
+                    displayName: currentMetadata.displayName,
+                    version: result.version
+                });
+            }
             return {
                 version: result.version!,
                 metadata: result.metadata!
@@ -425,6 +451,32 @@ export async function sessionListDirectory(sessionId: string, path: string): Pro
 }
 
 /**
+ * Read CLAUDE.md chain - walk up from startPath collecting all CLAUDE.md files
+ */
+export interface ClaudeMdChainResponse {
+    success: boolean;
+    files: Array<{ path: string; content: string; directory: string }>;
+    error?: string;
+}
+
+export async function sessionReadClaudeMdChain(sessionId: string, startPath: string): Promise<ClaudeMdChainResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<ClaudeMdChainResponse, { startPath: string }>(
+            sessionId,
+            'readClaudeMdChain',
+            { startPath }
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            files: [],
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
  * Get directory tree from the session
  */
 export async function sessionGetDirectoryTree(
@@ -501,7 +553,7 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
         const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
             method: 'DELETE'
         });
-        
+
         if (response.ok) {
             const result = await response.json();
             return { success: true };
@@ -516,6 +568,128 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
         return {
             success: false,
             message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
+ * Force deactivate a session (archive without RPC)
+ * Use this when the session process is dead but still marked as active
+ */
+export async function sessionDeactivate(sessionId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+        const response = await apiSocket.request(`/v1/sessions/${sessionId}/deactivate`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            return { success: true };
+        } else {
+            const error = await response.text();
+            return {
+                success: false,
+                message: error || 'Failed to deactivate session'
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
+ * Kill the process of a session on the machine where it's running
+ * Uses machineBash to send kill signal to the hostPid
+ */
+export async function killSessionProcess(machineId: string, hostPid: number): Promise<{ success: boolean; message?: string }> {
+    try {
+        const result = await machineBash(machineId, `kill ${hostPid}`, '/');
+        if (result.success && result.exitCode === 0) {
+            return { success: true, message: 'Process killed' };
+        } else {
+            // Check if process simply doesn't exist anymore
+            const stderr = result.stderr || '';
+            if (stderr.includes('No such process') || stderr.includes('no process found')) {
+                return { success: true, message: 'Process already terminated' };
+            }
+            return {
+                success: false,
+                message: stderr || `Failed to kill process (exit code: ${result.exitCode})`
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
+ * Resume an offline Claude Code session
+ * Calls the server which proxies to the local session-resume daemon
+ */
+export async function sessionResume(claudeSessionId: string, directory: string): Promise<{ success: boolean; message?: string }> {
+    try {
+        const response = await apiSocket.request('/v1/sessions/resume', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ claudeSessionId, directory })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            return { success: true, message: result.message };
+        } else {
+            const error = await response.json();
+            return { success: false, message: error.message || 'Failed to resume session' };
+        }
+    } catch (error) {
+        console.error('[sessionResume] Failed:', error);
+        return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+// Machine-level file operations (unrestricted, for Files tab)
+
+/**
+ * List directory on a machine (unrestricted path)
+ */
+export async function machineListDirectory(machineId: string, path: string): Promise<SessionListDirectoryResponse> {
+    try {
+        const response = await apiSocket.machineRPC<SessionListDirectoryResponse, { path: string }>(
+            machineId,
+            'machine-listDirectory',
+            { path }
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
+ * Read file on a machine (unrestricted path)
+ */
+export async function machineReadFile(machineId: string, path: string): Promise<SessionReadFileResponse> {
+    try {
+        const response = await apiSocket.machineRPC<SessionReadFileResponse, { path: string }>(
+            machineId,
+            'machine-readFile',
+            { path }
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
         };
     }
 }

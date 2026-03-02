@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionKill, sessionDelete, sessionDeactivate, killSessionProcess, machineSpawnNewSession } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -20,6 +20,9 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { storage } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -60,73 +63,14 @@ function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: 
     );
 }
 
-function formatSandboxMetadata(sandbox: unknown, homeDir?: string): string {
-    if (sandbox === null || sandbox === undefined) {
-        return 'Disabled';
-    }
-
-    if (typeof sandbox === 'string') {
-        return sandbox;
-    }
-
-    if (typeof sandbox !== 'object') {
-        return String(sandbox);
-    }
-
-    const value = sandbox as Record<string, unknown>;
-    if (value.enabled === false) {
-        return 'Disabled';
-    }
-
-    const parts: string[] = ['Enabled'];
-    const isolation = typeof value.sessionIsolation === 'string' ? value.sessionIsolation : undefined;
-    const networkMode = typeof value.networkMode === 'string' ? value.networkMode : undefined;
-    const workspaceRoot = typeof value.workspaceRoot === 'string' ? value.workspaceRoot : undefined;
-
-    if (isolation) {
-        parts.push(`isolation=${isolation}`);
-    }
-    if (networkMode) {
-        parts.push(`network=${networkMode}`);
-    }
-    if (workspaceRoot) {
-        parts.push(`workspace=${formatPathRelativeToHome(workspaceRoot, homeDir)}`);
-    }
-
-    return parts.join(' | ');
-}
-
-function formatDangerouslySkipPermissionsMetadata(
-    value: unknown,
-    flavor: string | null | undefined,
-    permissionMode: Session['permissionMode'],
-    sandbox: unknown,
-): string {
-    if (typeof value === 'boolean') {
-        return value ? 'Enabled' : 'Disabled';
-    }
-
-    if (permissionMode === 'bypassPermissions' || permissionMode === 'yolo') {
-        return 'Enabled';
-    }
-
-    if (flavor === 'claude' && sandbox && typeof sandbox === 'object') {
-        const sandboxValue = sandbox as Record<string, unknown>;
-        if (sandboxValue.enabled === true) {
-            return 'Enabled';
-        }
-    }
-
-    return 'Unknown';
-}
-
 function SessionInfoContent({ session }: { session: Session }) {
     const { theme } = useUnistyles();
     const router = useRouter();
+    const navigateToSession = useNavigateToSession();
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
-    
+
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
@@ -152,9 +96,14 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     // Use HappyAction for archiving - it handles errors automatically
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        // Try RPC kill first, fallback to force deactivate if RPC fails
         const result = await sessionKill(session.id);
         if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+            // RPC failed (process may be dead), try force deactivate
+            const deactivateResult = await sessionDeactivate(session.id);
+            if (!deactivateResult.success) {
+                throw new HappyError(deactivateResult.message || t('sessionInfo.failedToArchiveSession'), false);
+            }
         }
         // Success - navigate back
         router.back();
@@ -200,6 +149,40 @@ function SessionInfoContent({ session }: { session: Session }) {
         );
     }, [performDelete]);
 
+    // Long press on Archive: archive + delete
+    const [_archivingAndDeleting, performArchiveAndDelete] = useHappyAction(async () => {
+        // First archive (kill + deactivate)
+        const result = await sessionKill(session.id);
+        if (!result.success) {
+            const deactivateResult = await sessionDeactivate(session.id);
+            if (!deactivateResult.success) {
+                throw new HappyError(deactivateResult.message || t('sessionInfo.failedToArchiveSession'), false);
+            }
+        }
+        // Then delete
+        const deleteResult = await sessionDelete(session.id);
+        if (!deleteResult.success) {
+            throw new HappyError(deleteResult.message || t('sessionInfo.failedToDeleteSession'), false);
+        }
+        router.back();
+        router.back();
+    });
+
+    const handleArchiveAndDelete = useCallback(() => {
+        Modal.alert(
+            t('sessionInfo.archiveAndDelete'),
+            t('sessionInfo.archiveAndDeleteWarning'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.archiveAndDelete'),
+                    style: 'destructive',
+                    onPress: performArchiveAndDelete
+                }
+            ]
+        );
+    }, [performArchiveAndDelete]);
+
     const formatDate = useCallback((timestamp: number) => {
         return new Date(timestamp).toLocaleString();
     }, []);
@@ -213,6 +196,99 @@ function SessionInfoContent({ session }: { session: Session }) {
             Modal.alert(t('common.error'), t('common.error'));
         }
     }, []);
+
+    // Kill process action - only available when we have machineId and hostPid
+    const canKillProcess = sessionStatus.isConnected && session.metadata?.machineId && session.metadata?.hostPid;
+
+    // Short tap: kill process + archive session
+    const [killingProcess, performKillProcess] = useHappyAction(async () => {
+        if (!session.metadata?.machineId || !session.metadata?.hostPid) {
+            throw new HappyError(t('sessionInfo.missingProcessInfo'), false);
+        }
+        const result = await killSessionProcess(session.metadata.machineId, session.metadata.hostPid);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToKillProcess'), false);
+        }
+        // Archive the session after killing the process
+        await sessionDeactivate(session.id);
+        router.back();
+        router.back();
+    });
+
+    const handleKillProcess = useCallback(() => {
+        Modal.alert(
+            t('sessionInfo.killProcess'),
+            t('sessionInfo.killProcessConfirm'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.killProcess'),
+                    style: 'destructive',
+                    onPress: performKillProcess
+                }
+            ]
+        );
+    }, [performKillProcess]);
+
+    // Long press: kill process + archive + resume
+    const [_killingAndResuming, performKillAndResume] = useHappyAction(async () => {
+        if (!session.metadata?.machineId || !session.metadata?.hostPid) {
+            throw new HappyError(t('sessionInfo.missingProcessInfo'), false);
+        }
+        const result = await killSessionProcess(session.metadata.machineId, session.metadata.hostPid);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToKillProcess'), false);
+        }
+        // Archive the session
+        await sessionDeactivate(session.id);
+
+        // Resume: spawn a new session with the same Claude session ID
+        if (session.metadata?.claudeSessionId && session.metadata?.path) {
+            let targetMachineId = session.metadata.machineId;
+            const machines = storage.getState().machines;
+            const sessionMachine = machines[targetMachineId];
+            if (!sessionMachine || !isMachineOnline(sessionMachine)) {
+                const onlineMachine = Object.values(machines).find(m => isMachineOnline(m));
+                if (onlineMachine) {
+                    targetMachineId = onlineMachine.id;
+                }
+            }
+            const summaryText = session.metadata.summary?.text;
+            const labelMatch = summaryText?.match(/^\[([^\]]+)\]/);
+            const publicLabel = labelMatch ? labelMatch[1].toLowerCase() : undefined;
+
+            const spawnResult = await machineSpawnNewSession({
+                machineId: targetMachineId,
+                directory: session.metadata.path,
+                claudeResumeSessionId: session.metadata.claudeSessionId,
+                agent: 'claude',
+                publicLabel,
+                sessionSummary: summaryText
+            });
+            if (spawnResult.type === 'success' && spawnResult.sessionId) {
+                navigateToSession(spawnResult.sessionId);
+                return;
+            }
+        }
+        // Fallback: just go back
+        router.back();
+        router.back();
+    });
+
+    const handleKillAndResume = useCallback(() => {
+        Modal.alert(
+            t('sessionInfo.killProcess'),
+            t('sessionInfo.killAndResumeConfirm') || 'Kill the process and restart the session?',
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.killAndResume') || 'Kill & Restart',
+                    style: 'destructive',
+                    onPress: performKillAndResume
+                }
+            ]
+        );
+    }, [performKillAndResume]);
 
     return (
         <>
@@ -320,9 +396,19 @@ function SessionInfoContent({ session }: { session: Session }) {
                     {sessionStatus.isConnected && (
                         <Item
                             title={t('sessionInfo.archiveSession')}
-                            subtitle={t('sessionInfo.archiveSessionSubtitle')}
+                            subtitle={t('sessionInfo.archiveSessionSubtitle') + ' · ' + t('sessionInfo.longPressToDelete')}
                             icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
                             onPress={handleArchiveSession}
+                            onLongPress={handleArchiveAndDelete}
+                        />
+                    )}
+                    {canKillProcess && (
+                        <Item
+                            title={t('sessionInfo.killProcess')}
+                            subtitle={t('sessionInfo.killProcessSubtitle') + ' · ' + (t('sessionInfo.longPressToRestart') || 'Long press to restart')}
+                            icon={<Ionicons name="skull-outline" size={29} color="#FF3B30" />}
+                            onPress={handleKillProcess}
+                            onLongPress={handleKillAndResume}
                         />
                     )}
                     {!sessionStatus.isConnected && !session.active && (
@@ -377,23 +463,6 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 return flavor;
                             })()}
                             icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
-                            showChevron={false}
-                        />
-                        <Item
-                            title="Sandbox"
-                            subtitle={formatSandboxMetadata(session.metadata.sandbox, session.metadata.homeDir)}
-                            icon={<Ionicons name="shield-outline" size={29} color="#5856D6" />}
-                            showChevron={false}
-                        />
-                        <Item
-                            title="Dangerously Skip Permissions"
-                            subtitle={formatDangerouslySkipPermissionsMetadata(
-                                session.metadata.dangerouslySkipPermissions,
-                                session.metadata.flavor,
-                                session.permissionMode,
-                                session.metadata.sandbox,
-                            )}
-                            icon={<Ionicons name="warning-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
                         {session.metadata.hostPid && (

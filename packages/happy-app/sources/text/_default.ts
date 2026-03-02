@@ -19,6 +19,7 @@ export const en = {
         // Tab navigation labels
         inbox: 'Inbox',
         sessions: 'Terminals',
+        files: 'Files',
         settings: 'Settings',
     },
 
@@ -374,7 +375,14 @@ export const en = {
         deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
         failedToDeleteSession: 'Failed to delete session',
         sessionDeleted: 'Session deleted successfully',
-        
+        killProcess: 'Kill Process',
+        killProcessSubtitle: 'Force terminate the session process',
+        killProcessConfirm: 'Kill the process and archive the session?',
+        killAndResume: 'Kill & Restart',
+        killAndResumeConfirm: 'Kill the process and restart the session?',
+        longPressToRestart: 'Long press to restart',
+        failedToKillProcess: 'Failed to kill process',
+        missingProcessInfo: 'Missing process information',
     },
 
     components: {
@@ -394,10 +402,12 @@ export const en = {
             default: 'Default',
             acceptEdits: 'Accept Edits',
             plan: 'Plan Mode',
-            bypassPermissions: 'Yolo',
+            bypassPermissions: 'Yolo Mode',
             badgeAcceptAllEdits: 'Accept All Edits',
-            badgeBypassAllPermissions: 'Yolo',
+            badgeBypassAllPermissions: 'Bypass All Permissions',
             badgePlanMode: 'Plan Mode',
+            zen: 'Zen Mode',
+            badgeZen: 'Zen Mode',
         },
         agent: {
             claude: 'Claude',
@@ -761,6 +771,7 @@ export const en = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Yes, allow all edits during this session',
+            yesAllowAll: "Yes, don't ask again (allow all)",
             yesForTool: "Yes, don't ask again for this tool",
             noTellClaude: 'No, and provide feedback',
         }

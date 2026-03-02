@@ -1,5 +1,6 @@
+// SessionsList component - v2 - uses sessionResume API
 import React from 'react';
-import { View, Pressable, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList, Platform, TouchableOpacity } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
@@ -26,7 +27,10 @@ import { useRouter } from 'expo-router';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { sessionDelete } from '@/sync/ops';
+import { sessionDelete, machineSpawnNewSession } from '@/sync/ops';
+import { sync } from '@/sync/sync';
+import { storage } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
 
@@ -73,14 +77,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     sessionItem: {
-        height: 88,
+        height: 64,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 12,
         backgroundColor: theme.colors.surface,
     },
     sessionItemContainer: {
-        marginHorizontal: 16,
+        marginHorizontal: 8,
         marginBottom: 1,
         overflow: 'hidden',
     },
@@ -113,7 +117,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionContent: {
         flex: 1,
-        marginLeft: 16,
+        marginLeft: 10,
         justifyContent: 'center',
     },
     sessionTitleRow: {
@@ -158,8 +162,8 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     avatarContainer: {
         position: 'relative',
-        width: 48,
-        height: 48,
+        width: 36,
+        height: 36,
     },
     draftIconContainer: {
         position: 'absolute',
@@ -191,6 +195,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: '#FFFFFF',
         textAlign: 'center',
         ...Typography.default('semiBold'),
+    },
+    resumeButton: {
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 4,
     },
 }));
 
@@ -314,7 +325,7 @@ export function SessionsList() {
                     data={dataWithSelected}
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
-                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
+                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 180, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
                 />
             </View>
@@ -331,6 +342,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     isSingle?: boolean;
 }) => {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
@@ -339,12 +351,74 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
 
+    // Can resume if offline and has Claude session ID, path, and machineId
+    const canResume = !sessionStatus.isConnected && !!session.metadata?.claudeSessionId && !!session.metadata?.path && !!session.metadata?.machineId;
+
     const [deletingSession, performDelete] = useHappyAction(async () => {
         const result = await sessionDelete(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
         }
     });
+
+    const [resumingSession, performResume] = useHappyAction(async () => {
+        if (!session.metadata?.claudeSessionId || !session.metadata?.path || !session.metadata?.machineId) {
+            throw new HappyError('Missing session data for resume (need claudeSessionId, path, machineId)', false);
+        }
+        // Use session's machineId if online, otherwise fallback to any online machine
+        let targetMachineId = session.metadata.machineId;
+        const machines = storage.getState().machines;
+        const sessionMachine = machines[targetMachineId];
+        if (!sessionMachine || !isMachineOnline(sessionMachine)) {
+            const onlineMachine = Object.values(machines).find(m => isMachineOnline(m));
+            if (onlineMachine) {
+                targetMachineId = onlineMachine.id;
+            }
+        }
+        // Extract publicLabel from session title (e.g., "[brain] Fix docker" → "brain")
+        const summaryText = session.metadata.summary?.text;
+        const labelMatch = summaryText?.match(/^\[([^\]]+)\]/);
+        const publicLabel = labelMatch ? labelMatch[1].toLowerCase() : undefined;
+
+        const result = await machineSpawnNewSession({
+            machineId: targetMachineId,
+            directory: session.metadata.path,
+            claudeResumeSessionId: session.metadata.claudeSessionId,
+            agent: 'claude',
+            publicLabel,
+            sessionSummary: summaryText
+        });
+        if (result.type === 'error') {
+            throw new HappyError(result.errorMessage || 'Failed to resume session', false);
+        }
+        // Navigate to the new session
+        if (result.type === 'success' && result.sessionId) {
+            navigateToSession(result.sessionId);
+
+            // Re-fetch messages after CLI has had time to load history into DB
+            // SessionScanner sends history ~500ms after session starts, so we wait a bit longer
+            setTimeout(() => {
+                console.log('[SessionsList] Re-fetching messages for resumed session:', result.sessionId);
+                sync.onSessionVisible(result.sessionId);
+            }, 1500);
+
+            // Also re-fetch again after 3 seconds in case of slow connections
+            setTimeout(() => {
+                console.log('[SessionsList] Second re-fetch for resumed session:', result.sessionId);
+                sync.onSessionVisible(result.sessionId);
+            }, 3000);
+        }
+    });
+
+    const handleResume = React.useCallback(() => {
+        console.log('[SessionsList] handleResume called', {
+            claudeSessionId: session.metadata?.claudeSessionId,
+            path: session.metadata?.path,
+            machineId: session.metadata?.machineId,
+            canResume
+        });
+        performResume();
+    }, [performResume, session.metadata, canResume]);
 
     const handleDelete = React.useCallback(() => {
         swipeableRef.current?.close();
@@ -367,7 +441,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     }, [session]);
 
     const itemContent = (
-        <Pressable
+        <View
             style={[
                 styles.sessionItem,
                 selected && styles.sessionItemSelected,
@@ -375,59 +449,78 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
             ]}
-            onPressIn={() => {
-                if (isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
-            onPress={() => {
-                if (!isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
         >
-            <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-                {session.draft && (
-                    <View style={styles.draftIconContainer}>
-                        <Ionicons
-                            name="create-outline"
-                            size={12}
-                            style={styles.draftIconOverlay}
-                        />
-                    </View>
-                )}
-            </View>
-            <View style={styles.sessionContent}>
-                {/* Title line */}
-                <View style={styles.sessionTitleRow}>
-                    <Text style={[
-                        styles.sessionTitle,
-                        sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                    ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
-                        {sessionName}
-                    </Text>
+            <Pressable
+                style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                onPressIn={() => {
+                    if (isTablet) {
+                        navigateToSession(session.id);
+                    }
+                }}
+                onPress={() => {
+                    if (!isTablet) {
+                        navigateToSession(session.id);
+                    }
+                }}
+            >
+                <View style={styles.avatarContainer}>
+                    <Avatar id={avatarId} size={36} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                    {session.draft && (
+                        <View style={styles.draftIconContainer}>
+                            <Ionicons
+                                name="create-outline"
+                                size={12}
+                                style={styles.draftIconOverlay}
+                            />
+                        </View>
+                    )}
                 </View>
-
-                {/* Subtitle line */}
-                <Text style={styles.sessionSubtitle} numberOfLines={1}>
-                    {sessionSubtitle}
-                </Text>
-
-                {/* Status line with dot */}
-                <View style={styles.statusRow}>
-                    <View style={styles.statusDotContainer}>
-                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                <View style={styles.sessionContent}>
+                    {/* Title line */}
+                    <View style={styles.sessionTitleRow}>
+                        <Text style={[
+                            styles.sessionTitle,
+                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                        ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
+                            {sessionName}
+                        </Text>
                     </View>
-                    <Text style={[
-                        styles.statusText,
-                        { color: sessionStatus.statusColor }
-                    ]}>
-                        {sessionStatus.statusText}
+
+                    {/* Subtitle line */}
+                    <Text style={styles.sessionSubtitle} numberOfLines={1}>
+                        {sessionSubtitle}
                     </Text>
+
+                    {/* Status line with dot */}
+                    <View style={styles.statusRow}>
+                        <View style={styles.statusDotContainer}>
+                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                        </View>
+                        <Text style={[
+                            styles.statusText,
+                            { color: sessionStatus.statusColor }
+                        ]}>
+                            {sessionStatus.statusText}
+                        </Text>
+                    </View>
                 </View>
-            </View>
-        </Pressable>
+            </Pressable>
+            {canResume && (
+                <Pressable
+                    onPress={handleResume}
+                    disabled={resumingSession}
+                    style={styles.resumeButton}
+                    // @ts-ignore - onClick for web platform
+                    onClick={Platform.OS === 'web' ? handleResume : undefined}
+                >
+                    <Ionicons
+                        name="play-circle-outline"
+                        size={28}
+                        color={theme.colors.status.connected}
+                    />
+                </Pressable>
+            )}
+        </View>
     );
 
     const containerStyles = [

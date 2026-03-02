@@ -1,5 +1,5 @@
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { darkTheme, lightTheme } from './theme';
+import { darkTheme, darkCarbonTheme, darkWarmTheme, darkOceanTheme, darkOledTheme, lightTheme } from './theme';
 import { loadThemePreference } from './sync/persistence';
 import { Appearance } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
@@ -10,7 +10,11 @@ import * as SystemUI from 'expo-system-ui';
 
 const appThemes = {
     light: lightTheme,
-    dark: darkTheme
+    dark: darkTheme,
+    darkCarbon: darkCarbonTheme,
+    darkWarm: darkWarmTheme,
+    darkOcean: darkOceanTheme,
+    darkOled: darkOledTheme,
 };
 
 const breakpoints = {
@@ -25,25 +29,28 @@ const breakpoints = {
 // Load theme preference from storage
 const themePreference = loadThemePreference();
 
-// Determine initial theme and adaptive settings
-const getInitialTheme = (): 'light' | 'dark' => {
+// Determine initial theme key for Unistyles
+type ThemeKey = keyof typeof appThemes;
+
+const getInitialTheme = (): ThemeKey => {
     if (themePreference === 'adaptive') {
         const systemTheme = Appearance.getColorScheme();
         return systemTheme === 'dark' ? 'dark' : 'light';
     }
-    return themePreference;
+    // Return the preference directly — it matches appThemes keys
+    return themePreference as ThemeKey;
 };
 
 const settings = themePreference === 'adaptive'
     ? {
         // When adaptive, let Unistyles handle theme switching automatically
         adaptiveThemes: true,
-        CSSVars: true, // Enable CSS variables for web
+        CSSVars: true,
     }
     : {
         // When fixed theme, set the initial theme explicitly
         initialTheme: getInitialTheme(),
-        CSSVars: true, // Enable CSS variables for web
+        CSSVars: true,
     };
 
 //
@@ -66,16 +73,13 @@ StyleSheet.configure({
 
 // Set initial root view background color based on theme
 const setRootBackgroundColor = () => {
-    if (themePreference === 'adaptive') {
-        const systemTheme = Appearance.getColorScheme();
-        const color = systemTheme === 'dark' ? appThemes.dark.colors.groupped.background : appThemes.light.colors.groupped.background;
-        UnistylesRuntime.setRootViewBackgroundColor(color);
-        SystemUI.setBackgroundColorAsync(color);
-    } else {
-        const color = themePreference === 'dark' ? appThemes.dark.colors.groupped.background : appThemes.light.colors.groupped.background;
-        UnistylesRuntime.setRootViewBackgroundColor(color);
-        SystemUI.setBackgroundColorAsync(color);
-    }
+    const key = themePreference === 'adaptive'
+        ? (Appearance.getColorScheme() === 'dark' ? 'dark' : 'light')
+        : themePreference as ThemeKey;
+    const theme = appThemes[key] || appThemes.dark;
+    const color = theme.colors.groupped.background;
+    UnistylesRuntime.setRootViewBackgroundColor(color);
+    SystemUI.setBackgroundColorAsync(color);
 };
 
 // Set initial background color

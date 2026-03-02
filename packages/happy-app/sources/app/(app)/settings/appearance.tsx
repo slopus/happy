@@ -9,7 +9,7 @@ import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
 import { Appearance } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
-import { darkTheme, lightTheme } from '@/theme';
+import { darkTheme, darkCarbonTheme, darkWarmTheme, darkOceanTheme, darkOledTheme, lightTheme } from '@/theme';
 import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 
 // Define known avatar styles for this version of the app
@@ -56,37 +56,43 @@ export default function AppearanceSettingsScreen() {
 
             {/* Theme Settings */}
             <ItemGroup title={t('settingsAppearance.theme')} footer={t('settingsAppearance.themeDescription')}>
-                <Item
-                    title={t('settings.appearance')}
-                    subtitle={themePreference === 'adaptive' ? t('settingsAppearance.themeDescriptions.adaptive') : themePreference === 'light' ? t('settingsAppearance.themeDescriptions.light') : t('settingsAppearance.themeDescriptions.dark')}
-                    icon={<Ionicons name="contrast-outline" size={29} color={theme.colors.status.connecting} />}
-                    detail={themePreference === 'adaptive' ? t('settingsAppearance.themeOptions.adaptive') : themePreference === 'light' ? t('settingsAppearance.themeOptions.light') : t('settingsAppearance.themeOptions.dark')}
-                    onPress={() => {
-                        const currentIndex = themePreference === 'adaptive' ? 0 : themePreference === 'light' ? 1 : 2;
-                        const nextIndex = (currentIndex + 1) % 3;
-                        const nextTheme = nextIndex === 0 ? 'adaptive' : nextIndex === 1 ? 'light' : 'dark';
-                        
-                        // Update the setting
-                        setThemePreference(nextTheme);
-                        
-                        // Apply the theme change immediately
-                        if (nextTheme === 'adaptive') {
-                            // Enable adaptive themes and set to system theme
-                            UnistylesRuntime.setAdaptiveThemes(true);
-                            const systemTheme = Appearance.getColorScheme();
-                            const color = systemTheme === 'dark' ? darkTheme.colors.groupped.background : lightTheme.colors.groupped.background;
-                            UnistylesRuntime.setRootViewBackgroundColor(color);
-                            SystemUI.setBackgroundColorAsync(color);
-                        } else {
-                            // Disable adaptive themes and set explicit theme
-                            UnistylesRuntime.setAdaptiveThemes(false);
-                            UnistylesRuntime.setTheme(nextTheme);
-                            const color = nextTheme === 'dark' ? darkTheme.colors.groupped.background : lightTheme.colors.groupped.background;
-                            UnistylesRuntime.setRootViewBackgroundColor(color);
-                            SystemUI.setBackgroundColorAsync(color);
-                        }
-                    }}
-                />
+                {([
+                    { key: 'adaptive', label: 'Auto', subtitle: 'Follows system theme', icon: 'sync-outline' as const, color: theme.colors.status.connecting },
+                    { key: 'light', label: 'Light', subtitle: 'Light background', icon: 'sunny-outline' as const, color: '#FF9500' },
+                    { key: 'dark', label: 'Midnight', subtitle: 'Default dark — M3 lavender', icon: 'moon-outline' as const, color: '#A78BFA' },
+                    { key: 'darkCarbon', label: 'Carbon', subtitle: 'Clean grays, mint accent', icon: 'diamond-outline' as const, color: '#5DE4C7' },
+                    { key: 'darkWarm', label: 'Warm Night', subtitle: 'Warm amber tones', icon: 'flame-outline' as const, color: '#E8A96B' },
+                    { key: 'darkOcean', label: 'Deep Ocean', subtitle: 'Dark navy, blue accent', icon: 'water-outline' as const, color: '#58A6FF' },
+                    { key: 'darkOled', label: 'OLED Black', subtitle: 'True black, neon green', icon: 'phone-portrait-outline' as const, color: '#00FF88' },
+                ] as const).map((item) => {
+                    const themeMap = { adaptive: null, light: lightTheme, dark: darkTheme, darkCarbon: darkCarbonTheme, darkWarm: darkWarmTheme, darkOcean: darkOceanTheme, darkOled: darkOledTheme } as const;
+                    return (
+                        <Item
+                            key={item.key}
+                            title={item.label}
+                            subtitle={item.subtitle}
+                            icon={<Ionicons name={item.icon} size={29} color={item.color} />}
+                            detail={themePreference === item.key ? '✓' : undefined}
+                            onPress={() => {
+                                setThemePreference(item.key);
+                                if (item.key === 'adaptive') {
+                                    UnistylesRuntime.setAdaptiveThemes(true);
+                                    const systemTheme = Appearance.getColorScheme();
+                                    const color = systemTheme === 'dark' ? darkTheme.colors.groupped.background : lightTheme.colors.groupped.background;
+                                    UnistylesRuntime.setRootViewBackgroundColor(color);
+                                    SystemUI.setBackgroundColorAsync(color);
+                                } else {
+                                    UnistylesRuntime.setAdaptiveThemes(false);
+                                    UnistylesRuntime.setTheme(item.key);
+                                    const selectedTheme = themeMap[item.key]!;
+                                    const color = selectedTheme.colors.groupped.background;
+                                    UnistylesRuntime.setRootViewBackgroundColor(color);
+                                    SystemUI.setBackgroundColorAsync(color);
+                                }
+                            }}
+                        />
+                    );
+                })}
             </ItemGroup>
 
             {/* Language Settings */}

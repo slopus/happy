@@ -49,7 +49,11 @@ export const IGNORED_COMMANDS = [
     "hooks",
     "export",
     "logout",
-    "login"
+    "login",
+    "merge",
+    "keybindings-help",
+    "context",
+    "insights"
 ];
 
 // Default commands always available

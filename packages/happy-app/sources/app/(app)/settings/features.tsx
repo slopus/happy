@@ -33,6 +33,7 @@ export default function FeaturesSettingsScreen() {
                         />
                     }
                     showChevron={false}
+                    expandableSubtitle
                 />
                 <Item
                     title={t('settingsFeatures.markdownCopyV2')}
@@ -45,6 +46,7 @@ export default function FeaturesSettingsScreen() {
                         />
                     }
                     showChevron={false}
+                    expandableSubtitle
                 />
                 <Item
                     title={t('settingsFeatures.hideInactiveSessions')}
@@ -57,6 +59,7 @@ export default function FeaturesSettingsScreen() {
                         />
                     }
                     showChevron={false}
+                    expandableSubtitle
                 />
                 <Item
                     title={t('settingsFeatures.enhancedSessionWizard')}
@@ -71,6 +74,7 @@ export default function FeaturesSettingsScreen() {
                         />
                     }
                     showChevron={false}
+                    expandableSubtitle
                 />
             </ItemGroup>
 

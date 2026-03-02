@@ -13,6 +13,8 @@ export interface NewSessionData {
     sessionType?: 'simple' | 'worktree';
     taskId?: string;
     taskTitle?: string;
+    customSystemPrompt?: string;
+    presetId?: string;
 }
 
 // In-memory store for temporary data

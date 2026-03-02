@@ -1,6 +1,6 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { Text, View, Image, Platform } from "react-native";
+import { Text, View, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/encryption/base64";
@@ -51,11 +51,17 @@ function NotAuthenticated() {
 
     const portraitLayout = (
         <View style={styles.portraitContainer}>
-            <Image
-                source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                resizeMode="contain"
-                style={styles.logo}
-            />
+            <View style={styles.brandContainer}>
+                <View style={styles.brandRow}>
+                    <View style={styles.brandDot} />
+                    <Text style={[Typography.brand(), styles.brandText, { color: theme.colors.text }]}>
+                        304.SYSTEMS
+                    </Text>
+                </View>
+                <Text style={[Typography.brand(), styles.brandTagline, { color: theme.colors.textSecondary }]}>
+                    end-to-end. nothing leaks
+                </Text>
+            </View>
             <Text style={styles.title}>
                 {t('welcome.title')}
             </Text>
@@ -110,11 +116,17 @@ function NotAuthenticated() {
         <View style={[styles.landscapeContainer, { paddingBottom: insets.bottom + 24 }]}>
             <View style={styles.landscapeInner}>
                 <View style={styles.landscapeLogoSection}>
-                    <Image
-                        source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                        resizeMode="contain"
-                        style={styles.logo}
-                    />
+                    <View style={styles.brandContainer}>
+                        <View style={styles.brandRow}>
+                            <View style={styles.brandDot} />
+                            <Text style={[Typography.brand(), styles.brandText, { color: theme.colors.text }]}>
+                                304.SYSTEMS
+                            </Text>
+                        </View>
+                        <Text style={[Typography.brand(), styles.brandTagline, { color: theme.colors.textSecondary }]}>
+                            end-to-end. nothing leaks
+                        </Text>
+                    </View>
                 </View>
                 <View style={styles.landscapeContentSection}>
                     <Text style={styles.landscapeTitle}>
@@ -183,9 +195,30 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    logo: {
-        width: 300,
-        height: 90,
+    brandContainer: {
+        alignItems: 'flex-start',
+        marginBottom: 8,
+    },
+    brandRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    brandDot: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: '#34D399',
+        marginRight: 12,
+    },
+    brandText: {
+        fontSize: 28,
+        letterSpacing: 5,
+    },
+    brandTagline: {
+        fontSize: 10,
+        letterSpacing: 3,
+        marginLeft: 24,
     },
     title: {
         marginTop: 16,

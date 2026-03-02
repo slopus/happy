@@ -22,7 +22,11 @@ import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
 import { v3SessionRoutes } from "./routes/v3SessionRoutes";
-import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
+import { remoteRoutes } from "./routes/remoteRoutes";
+import { sessionImageRoutes } from "./routes/sessionImageRoutes";
+import { sessionDocumentRoutes } from "./routes/sessionDocumentRoutes";
+import { shareRoutes } from "./routes/shareRoutes";
+import { isLocalStorage, getLocalFilesDir, s3client, s3bucket } from "@/storage/files";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -39,8 +43,30 @@ export async function startApi() {
     app.register(import('@fastify/cors'), {
         origin: '*',
         allowedHeaders: '*',
-        methods: ['GET', 'POST', 'DELETE']
+        methods: ['GET', 'POST', 'DELETE', 'PATCH', 'PUT']
     });
+    // Accept raw binary body for image and document uploads
+    app.addContentTypeParser([
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic',
+        'application/pdf', 'application/octet-stream',
+    ], { parseAs: 'buffer' }, (req, body, done) => {
+        done(null, body);
+    });
+
+    // Accept text-based document uploads as raw buffer
+    app.addContentTypeParser([
+        'text/plain', 'text/csv', 'text/markdown', 'text/html', 'text/xml',
+        'text/x-python', 'text/x-python-script', 'text/javascript', 'text/typescript',
+        'text/x-java', 'text/x-c', 'text/x-csrc', 'text/x-c++', 'text/x-c++src',
+        'text/x-go', 'text/x-rust', 'text/x-ruby', 'text/x-php',
+        'text/x-swift', 'text/x-kotlin', 'text/x-yaml', 'text/x-sh',
+        'application/x-yaml', 'application/yaml', 'application/xml',
+        'application/x-sh', 'application/x-python',
+        'application/javascript', 'application/typescript',
+    ], { parseAs: 'buffer' }, (req, body, done) => {
+        done(null, body);
+    });
+
     app.get('/', function (request, reply) {
         reply.send('Welcome to Happy Server!');
     });
@@ -55,7 +81,7 @@ export async function startApi() {
     enableErrorHandlers(typed);
     enableAuthentication(typed);
 
-    // Serve local files when using local storage
+    // Serve files: local filesystem or S3 proxy
     if (isLocalStorage()) {
         app.get('/files/*', function (request, reply) {
             const filePath = (request.params as any)['*'];
@@ -71,6 +97,25 @@ export async function startApi() {
             }
             const stream = fs.createReadStream(fullPath);
             reply.send(stream);
+        });
+    } else {
+        // Proxy /files/* to MinIO/S3 for serving uploaded files
+        app.get('/files/*', async (request, reply) => {
+            const filePath = (request.params as any)['*'];
+            if (!filePath) {
+                return reply.code(400).send({ error: 'No path specified' });
+            }
+            try {
+                const stream = await s3client.getObject(s3bucket, filePath);
+                reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+                reply.header('Access-Control-Allow-Origin', '*');
+                return reply.send(stream);
+            } catch (e: any) {
+                if (e.code === 'NoSuchKey') {
+                    return reply.code(404).send({ error: 'File not found' });
+                }
+                return reply.code(500).send({ error: 'Failed to retrieve file' });
+            }
         });
     }
 
@@ -90,6 +135,10 @@ export async function startApi() {
     feedRoutes(typed);
     kvRoutes(typed);
     v3SessionRoutes(typed);
+    remoteRoutes(typed);
+    sessionImageRoutes(typed);
+    sessionDocumentRoutes(typed);
+    shareRoutes(typed);
 
     // Start HTTP 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;

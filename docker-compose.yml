@@ -1,0 +1,163 @@
+# ═══════════════════════════════════════════════════════════════════
+# Happy Codex — Fully Isolated Stack (/opt/llmchat)
+# ═══════════════════════════════════════════════════════════════════
+#
+# Single domain: app.304.systems
+#   /v1, /v2, /v3, /files, /health → server
+#   everything else               → webapp
+#
+# Usage:
+#   docker compose up -d --build
+#   docker compose logs -f
+#   docker compose down
+# ═══════════════════════════════════════════════════════════════════
+
+networks:
+  llmchat:
+    name: llmchat
+    driver: bridge
+  brain-frontend:
+    name: brain-frontend
+    external: true
+
+services:
+
+  # ── Database ──────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: llmchat-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: happy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: happy
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - llmchat
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U happy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Cache ─────────────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    container_name: llmchat-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - llmchat
+
+  # ── S3 Storage ────────────────────────────────────────────────────
+
+  minio:
+    image: minio/minio:latest
+    container_name: llmchat-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    volumes:
+      - minio_data:/data
+    networks:
+      - llmchat
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: llmchat-minio-init
+    depends_on:
+      - minio
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      sleep 5 &&
+      mc alias set local http://minio:9000 minioadmin ${MINIO_PASSWORD} &&
+      mc mb -p local/happy || true &&
+      mc anonymous set download local/happy &&
+      echo 'MinIO bucket ready'
+      "
+    networks:
+      - llmchat
+    restart: "no"
+
+  # ── Happy Server ──────────────────────────────────────────────────
+
+  happy-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: llmchat-server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3005"
+      DATABASE_URL: postgresql://happy:${POSTGRES_PASSWORD}@postgres:5432/happy
+      REDIS_URL: redis://redis:6379
+      HANDY_MASTER_SECRET: ${HANDY_MASTER_SECRET}
+      METRICS_ENABLED: "false"
+      S3_HOST: minio
+      S3_PORT: "9000"
+      S3_USE_SSL: "false"
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_BUCKET: happy
+      S3_PUBLIC_URL: https://app.304.systems/files
+      WEBAPP_URL: https://app.304.systems
+      HAPPY_API_KEY: ${HAPPY_API_KEY:-}
+      SESSION_RESUME_URL: ${SESSION_RESUME_URL:-http://host.docker.internal:8765}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    networks:
+      - llmchat
+      - brain-frontend
+    labels:
+      - "traefik.enable=false"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ── Happy Webapp ──────────────────────────────────────────────────
+
+  happy-webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile.webapp
+      args:
+        EXPO_PUBLIC_HAPPY_SERVER_URL: https://app.304.systems
+    container_name: llmchat-webapp
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - llmchat
+      - brain-frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=false"
+
+volumes:
+  postgres_data:
+    name: llmchat-postgres-data
+  redis_data:
+    name: llmchat-redis-data
+  minio_data:
+    name: llmchat-minio-data

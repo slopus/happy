@@ -10,16 +10,16 @@ const FAVICON_ACTIVE = '/favicon-active.ico';
  */
 function setFavicon(url: string) {
     if (typeof document === 'undefined') return;
-    
+
     let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    
+
     if (!link) {
         link = document.createElement('link');
         link.rel = 'icon';
         link.type = 'image/x-icon';
         document.head.appendChild(link);
     }
-    
+
     // Force reload by adding timestamp
     link.href = url + '?t=' + Date.now();
 }

@@ -5,6 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Typography } from '@/constants/Typography';
+import { Image } from 'expo-image';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
@@ -178,6 +179,29 @@ export default function FileScreen() {
                 
                 // Check if file is likely binary before trying to read
                 if (isBinaryFile(filePath)) {
+                    // For images, load base64 content to display inline
+                    const ext = filePath.split('.').pop()?.toLowerCase();
+                    const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg'];
+                    if (ext && imageExts.includes(ext)) {
+                        try {
+                            const response = await sessionReadFile(sessionId, filePath);
+                            if (!isCancelled && response.success && response.content) {
+                                setFileContent({
+                                    content: response.content,
+                                    encoding: 'base64',
+                                    isBinary: true
+                                });
+                            } else if (!isCancelled) {
+                                setFileContent({ content: '', encoding: 'base64', isBinary: true });
+                            }
+                        } catch {
+                            if (!isCancelled) {
+                                setFileContent({ content: '', encoding: 'base64', isBinary: true });
+                            }
+                        }
+                        if (!isCancelled) setIsLoading(false);
+                        return;
+                    }
                     if (!isCancelled) {
                         setFileContent({
                             content: '',
@@ -335,16 +359,56 @@ export default function FileScreen() {
     }
 
     if (fileContent?.isBinary) {
+        // Image preview for binary image files with base64 content
+        const ext = filePath.split('.').pop()?.toLowerCase();
+        const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg'];
+        if (ext && imageExts.includes(ext) && fileContent.content) {
+            const mimeMap: Record<string, string> = {
+                png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+                gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
+                ico: 'image/x-icon', svg: 'image/svg+xml',
+            };
+            const mime = mimeMap[ext] || 'image/png';
+            return (
+                <View style={{ flex: 1, backgroundColor: '#000' }}>
+                    <View style={{
+                        padding: 16,
+                        borderBottomWidth: 0,
+                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        zIndex: 1,
+                    }}>
+                        <FileIcon fileName={fileName} size={20} />
+                        <Text style={{
+                            fontSize: 14,
+                            color: 'rgba(255,255,255,0.8)',
+                            marginLeft: 8,
+                            flex: 1,
+                            ...Typography.mono()
+                        }}>
+                            {filePath}
+                        </Text>
+                    </View>
+                    <Image
+                        source={{ uri: `data:${mime};base64,${fileContent.content}` }}
+                        style={{ flex: 1 }}
+                        contentFit="contain"
+                    />
+                </View>
+            );
+        }
+
         return (
-            <View style={{ 
-                flex: 1, 
+            <View style={{
+                flex: 1,
                 backgroundColor: theme.colors.surface,
-                justifyContent: 'center', 
+                justifyContent: 'center',
                 alignItems: 'center',
                 padding: 20
             }}>
-                <Text style={{ 
-                    fontSize: 18, 
+                <Text style={{
+                    fontSize: 18,
                     fontWeight: 'bold',
                     color: theme.colors.textSecondary,
                     marginBottom: 8,
@@ -352,20 +416,20 @@ export default function FileScreen() {
                 }}>
                     {t('files.binaryFile')}
                 </Text>
-                <Text style={{ 
-                    fontSize: 16, 
+                <Text style={{
+                    fontSize: 16,
                     color: theme.colors.textSecondary,
                     textAlign: 'center',
-                    ...Typography.default() 
+                    ...Typography.default()
                 }}>
                     {t('files.cannotDisplayBinary')}
                 </Text>
-                <Text style={{ 
-                    fontSize: 14, 
+                <Text style={{
+                    fontSize: 14,
                     color: '#999',
                     textAlign: 'center',
                     marginTop: 8,
-                    ...Typography.default() 
+                    ...Typography.default()
                 }}>
                     {fileName}
                 </Text>

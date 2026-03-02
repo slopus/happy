@@ -400,6 +400,8 @@ export const zhHant: TranslationStructure = {
             badgeAcceptAllEdits: '接受所有編輯',
             badgeBypassAllPermissions: '繞過所有權限',
             badgePlanMode: '計畫模式',
+            zen: 'Zen Mode',
+            badgeZen: 'Zen Mode',
         },
         agent: {
             claude: 'Claude',
@@ -763,6 +765,7 @@ export const zhHant: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: '是，允許本次工作階段的所有編輯',
+            yesAllowAll: '是，不再詢問（全部允許）',
             yesForTool: '是，不再詢問此工具',
             noTellClaude: '否，並告訴 Claude 該如何不同地操作',
         }

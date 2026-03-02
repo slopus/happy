@@ -23,7 +23,7 @@ function getMaxWidth(): number {
 // Calculate max width based on device type
 function getMaxLayoutWidth(): number {
     const deviceType = getDeviceType();
-    
+
     // For phones, use the max dimension (width or height)
     if (deviceType === 'phone' && Platform.OS !== 'web') {
         const { width, height } = Dimensions.get('window');
@@ -33,10 +33,13 @@ function getMaxLayoutWidth(): number {
     if (isRunningOnMac()) {
         return 1400;
     }
-    
-    // For tablets and web, use 700px
-    return 800;
+
+    // For tablets and web
+    return 1100;
 }
+
+// Expanded max width when sidebar is collapsed
+export const EXPANDED_MAX_WIDTH = 1200;
 
 export const layout = {
     maxWidth: getMaxLayoutWidth(),

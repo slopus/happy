@@ -1,168 +1,267 @@
 import React, { useEffect, useRef } from 'react';
-import { useConversation } from '@elevenlabs/react';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
-import { realtimeClientTools } from './realtimeClientTools';
-import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
+import { sync } from '@/sync/sync';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
-// Static reference to the conversation hook instance
-let conversationInstance: ReturnType<typeof useConversation> | null = null;
+// SpeechRecognition types for web
+interface SpeechRecognitionEvent {
+    resultIndex: number;
+    results: SpeechRecognitionResultList;
+}
 
-// Global voice session implementation
+interface SpeechRecognitionResultList {
+    length: number;
+    item(index: number): SpeechRecognitionResult;
+    [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+    isFinal: boolean;
+    length: number;
+    item(index: number): SpeechRecognitionAlternative;
+    [index: number]: SpeechRecognitionAlternative;
+}
+
+interface SpeechRecognitionAlternative {
+    transcript: string;
+    confidence: number;
+}
+
+interface SpeechRecognitionInstance extends EventTarget {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    start(): void;
+    stop(): void;
+    abort(): void;
+    onresult: ((event: SpeechRecognitionEvent) => void) | null;
+    onerror: ((event: { error: string }) => void) | null;
+    onend: (() => void) | null;
+    onstart: (() => void) | null;
+    onspeechstart: (() => void) | null;
+    onspeechend: (() => void) | null;
+}
+
+declare global {
+    interface Window {
+        SpeechRecognition: new () => SpeechRecognitionInstance;
+        webkitSpeechRecognition: new () => SpeechRecognitionInstance;
+    }
+}
+
+// Active recognition state
+let recognition: SpeechRecognitionInstance | null = null;
+let activeSessionId: string | null = null;
+let isContinuousMode: boolean = false;
+let stoppedByUser: boolean = false;
+
+function cleanupState() {
+    activeSessionId = null;
+    recognition = null;
+    isContinuousMode = false;
+    stoppedByUser = false;
+    storage.getState().setVoiceContinuous(false);
+    storage.getState().setRealtimeStatus('disconnected');
+    storage.getState().setRealtimeMode('idle', true);
+}
+
 class RealtimeVoiceSessionImpl implements VoiceSession {
 
     async startSession(config: VoiceSessionConfig): Promise<void> {
-        console.log('[RealtimeVoiceSessionImpl] conversationInstance:', conversationInstance);
-        if (!conversationInstance) {
-            console.warn('Realtime voice session not initialized - conversationInstance is null');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            console.error('[WebSpeech] Not supported in this browser');
+            storage.getState().setRealtimeStatus('error');
             return;
         }
 
         try {
             storage.getState().setRealtimeStatus('connecting');
+            isContinuousMode = config.continuous ?? false;
+            stoppedByUser = false;
+            storage.getState().setVoiceContinuous(isContinuousMode);
 
-            // Request microphone permission first
-            try {
-                await navigator.mediaDevices.getUserMedia({ audio: true });
-            } catch (error) {
-                console.error('Failed to get microphone permission:', error);
-                storage.getState().setRealtimeStatus('error');
-                return;
-            }
+            activeSessionId = config.sessionId;
 
-            // Get user's preferred language for voice assistant
-            const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
-            const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
-            
-            if (!config.token && !config.agentId) {
-                throw new Error('Neither token nor agentId provided');
-            }
-            
-            const sessionConfig: any = {
-                connectionType: 'webrtc',
-                dynamicVariables: {
-                    sessionId: config.sessionId,
-                    initialConversationContext: config.initialContext || ''
-                },
-                overrides: {
-                    agent: {
-                        language: elevenLabsLanguage
-                    }
-                },
-                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId })
+            recognition = new SpeechRecognition();
+            recognition.continuous = true; // Always continuous — we control stop ourselves
+            recognition.interimResults = true; // Show interim for visual feedback
+
+            // Get user's preferred language, default to Russian
+            const userLang = storage.getState().settings.voiceAssistantLanguage;
+            recognition.lang = userLang || 'ru-RU';
+
+            console.log('[WebSpeech] Starting, mode:', isContinuousMode ? 'continuous' : 'tap', 'lang:', recognition.lang);
+
+            recognition.onstart = () => {
+                console.log('[WebSpeech] Recognition started');
+                storage.getState().setRealtimeStatus('connected');
+                storage.getState().setRealtimeMode('idle');
             };
-            
-            const conversationId = await conversationInstance.startSession(sessionConfig);
 
-            console.log('Started conversation with ID:', conversationId);
+            recognition.onspeechstart = () => {
+                storage.getState().setRealtimeMode('speaking');
+            };
+
+            recognition.onspeechend = () => {
+                storage.getState().setRealtimeMode('idle');
+            };
+
+            // Tap mode: accumulate text, send after silence pause
+            let tapBuffer = '';
+            let tapSendTimer: ReturnType<typeof setTimeout> | null = null;
+            let tapSent = false;
+
+            recognition.onresult = (event: SpeechRecognitionEvent) => {
+                // Ignore results after tap mode already sent
+                if (!isContinuousMode && tapSent) return;
+
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const result = event.results[i];
+                    if (result.isFinal) {
+                        finalTranscript += result[0].transcript;
+                    }
+                }
+
+                if (!finalTranscript.trim()) return;
+
+                console.log('[WebSpeech] Final transcript:', finalTranscript.trim());
+
+                if (isContinuousMode) {
+                    // Continuous mode: accumulate in input field, user sends manually
+                    storage.getState().appendVoiceTranscript(finalTranscript.trim());
+                } else {
+                    // Tap mode: accumulate and send after 1.5s silence
+                    tapBuffer += (tapBuffer ? ' ' : '') + finalTranscript.trim();
+
+                    // Update input field as preview
+                    storage.getState().clearVoiceTranscript();
+                    storage.getState().appendVoiceTranscript(tapBuffer);
+
+                    // Reset the send timer
+                    if (tapSendTimer) clearTimeout(tapSendTimer);
+                    tapSendTimer = setTimeout(() => {
+                        if (tapBuffer.trim() && activeSessionId && !tapSent) {
+                            tapSent = true;
+                            console.log('[WebSpeech] Tap mode: sending after pause:', tapBuffer.trim());
+                            sync.sendMessage(activeSessionId, tapBuffer.trim(), undefined, undefined, 'voice');
+                            tapBuffer = '';
+                            storage.getState().clearVoiceTranscript();
+                        }
+                        // Abort recognition immediately (releases mic faster)
+                        stoppedByUser = true;
+                        recognition?.abort();
+                    }, 1500);
+                }
+            };
+
+            recognition.onerror = (event: { error: string }) => {
+                console.warn('[WebSpeech] Error:', event.error);
+                // Ignore transient errors
+                if (event.error === 'no-speech' || event.error === 'aborted') {
+                    return;
+                }
+                storage.getState().setRealtimeStatus('error');
+            };
+
+            recognition.onend = () => {
+                console.log('[WebSpeech] Recognition ended, continuous:', isContinuousMode, 'stoppedByUser:', stoppedByUser);
+
+                if (!stoppedByUser && activeSessionId) {
+                    // Browser stopped recognition on its own (e.g. long silence)
+                    if (isContinuousMode) {
+                        // Continuous mode: auto-restart
+                        console.log('[WebSpeech] Auto-restarting (continuous mode)');
+                        try {
+                            recognition?.start();
+                            return;
+                        } catch (e) {
+                            console.warn('[WebSpeech] Failed to restart:', e);
+                        }
+                    } else {
+                        // Tap mode: browser stopped before timer fired
+                        // Send whatever we have and clean up
+                        if (tapBuffer.trim() && activeSessionId && !tapSent) {
+                            tapSent = true;
+                            console.log('[WebSpeech] Tap mode: sending on unexpected end:', tapBuffer.trim());
+                            sync.sendMessage(activeSessionId, tapBuffer.trim(), undefined, undefined, 'voice');
+                            tapBuffer = '';
+                            storage.getState().clearVoiceTranscript();
+                        }
+                        if (tapSendTimer) {
+                            clearTimeout(tapSendTimer);
+                            tapSendTimer = null;
+                        }
+                    }
+                }
+
+                // Clear timer if pending
+                if (tapSendTimer) {
+                    clearTimeout(tapSendTimer);
+                    tapSendTimer = null;
+                }
+
+                // Full cleanup
+                cleanupState();
+            };
+
+            recognition.start();
         } catch (error) {
-            console.error('Failed to start realtime session:', error);
-            storage.getState().setRealtimeStatus('error');
+            console.error('[WebSpeech] Failed to start:', error);
+            cleanupState();
         }
     }
 
     async endSession(): Promise<void> {
-        if (!conversationInstance) {
-            return;
+        console.log('[WebSpeech] endSession called');
+        stoppedByUser = true;
+
+        if (recognition) {
+            try {
+                recognition.abort();
+            } catch (e) {
+                // Ignore
+            }
+            recognition = null;
         }
 
-        try {
-            await conversationInstance.endSession();
-            storage.getState().setRealtimeStatus('disconnected');
-        } catch (error) {
-            console.error('Failed to end realtime session:', error);
-        }
+        cleanupState();
     }
 
-    sendTextMessage(message: string): void {
-        if (!conversationInstance) {
-            console.warn('Realtime voice session not initialized');
-            return;
-        }
-
-        conversationInstance.sendUserMessage(message);
+    sendTextMessage(_message: string): void {
+        // Not used with Web Speech API
     }
 
-    sendContextualUpdate(update: string): void {
-        if (!conversationInstance) {
-            console.warn('Realtime voice session not initialized');
-            return;
-        }
-
-        conversationInstance.sendContextualUpdate(update);
+    sendContextualUpdate(_update: string): void {
+        // Not used with Web Speech API
     }
 }
 
 export const RealtimeVoiceSession: React.FC = () => {
-    const conversation = useConversation({
-        clientTools: realtimeClientTools,
-        onConnect: () => {
-            console.log('Realtime session connected');
-            storage.getState().setRealtimeStatus('connected');
-            storage.getState().setRealtimeMode('idle');
-        },
-        onDisconnect: () => {
-            console.log('Realtime session disconnected');
-            storage.getState().setRealtimeStatus('disconnected');
-            storage.getState().setRealtimeMode('idle', true); // immediate mode change
-            storage.getState().clearRealtimeModeDebounce();
-        },
-        onMessage: (data) => {
-            console.log('Realtime message:', data);
-        },
-        onError: (error) => {
-            // Log but don't block app - voice features will be unavailable
-            // This prevents initialization errors from showing "Terminals error" on startup
-            console.warn('Realtime voice not available:', error);
-            // Don't set error status during initialization - just set disconnected
-            // This allows the app to continue working without voice features
-            storage.getState().setRealtimeStatus('disconnected');
-            storage.getState().setRealtimeMode('idle', true); // immediate mode change
-        },
-        onStatusChange: (data) => {
-            console.log('Realtime status change:', data);
-        },
-        onModeChange: (data) => {
-            console.log('Realtime mode change:', data);
-            
-            // Only animate when speaking
-            const mode = data.mode as string;
-            const isSpeaking = mode === 'speaking';
-            
-            // Use centralized debounce logic from storage
-            storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
-        },
-        onDebug: (message) => {
-            console.debug('Realtime debug:', message);
-        }
-    });
-
     const hasRegistered = useRef(false);
 
     useEffect(() => {
-        // Store the conversation instance globally
-        console.log('[RealtimeVoiceSession] Setting conversationInstance:', conversation);
-        conversationInstance = conversation;
-
-        // Register the voice session once
         if (!hasRegistered.current) {
             try {
-                console.log('[RealtimeVoiceSession] Registering voice session');
+                console.log('[RealtimeVoiceSession] Registering Web Speech API voice session');
                 registerVoiceSession(new RealtimeVoiceSessionImpl());
                 hasRegistered.current = true;
-                console.log('[RealtimeVoiceSession] Voice session registered successfully');
             } catch (error) {
                 console.error('Failed to register voice session:', error);
             }
         }
 
         return () => {
-            // Clean up on unmount
-            conversationInstance = null;
+            stoppedByUser = true;
+            if (recognition) {
+                recognition.abort();
+                recognition = null;
+            }
         };
-    }, [conversation]);
+    }, []);
 
-    // This component doesn't render anything visible
     return null;
 };

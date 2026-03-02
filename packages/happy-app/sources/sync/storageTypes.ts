@@ -5,24 +5,6 @@ import { z } from "zod";
 //
 
 export const MetadataSchema = z.object({
-    models: z.array(z.object({
-        code: z.string(),
-        value: z.string(),
-        description: z.string().nullish(),
-    })).optional(),
-    currentModelCode: z.string().optional(),
-    operatingModes: z.array(z.object({
-        code: z.string(),
-        value: z.string(),
-        description: z.string().nullish(),
-    })).optional(),
-    currentOperatingModeCode: z.string().optional(),
-    thoughtLevels: z.array(z.object({
-        code: z.string(),
-        value: z.string(),
-        description: z.string().nullish(),
-    })).optional(),
-    currentThoughtLevelCode: z.string().optional(),
     path: z.string(),
     host: z.string(),
     version: z.string().optional(),
@@ -39,9 +21,7 @@ export const MetadataSchema = z.object({
     homeDir: z.string().optional(), // User's home directory on the machine
     happyHomeDir: z.string().optional(), // Happy configuration directory 
     hostPid: z.number().optional(), // Process ID of the session
-    flavor: z.string().nullish(), // Session flavor/variant identifier
-    sandbox: z.any().nullish(), // Sandbox config metadata from CLI (or null when disabled)
-    dangerouslySkipPermissions: z.boolean().nullish(), // Claude --dangerously-skip-permissions mode (or null when unknown)
+    flavor: z.string().nullish() // Session flavor/variant identifier
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
@@ -89,8 +69,8 @@ export interface Session {
         id: string;
     }>;
     draft?: string | null; // Local draft message, not synced to server
-    permissionMode?: string | null; // Local permission mode key, not synced to server
-    modelMode?: string | null; // Local model key, not synced to server
+    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'zen' | null; // Local permission mode, not synced to server
+    modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | null; // Local model mode, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

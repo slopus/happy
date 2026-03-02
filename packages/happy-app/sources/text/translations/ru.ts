@@ -30,6 +30,7 @@ export const ru: TranslationStructure = {
         // Tab navigation labels
         inbox: 'Входящие',
         sessions: 'Терминалы',
+        files: 'Файлы',
         settings: 'Настройки',
     },
 
@@ -349,6 +350,17 @@ export const ru: TranslationStructure = {
         deleteSessionWarning: 'Это действие нельзя отменить. Все сообщения и данные, связанные с этой сессией, будут удалены навсегда.',
         failedToDeleteSession: 'Не удалось удалить сессию',
         sessionDeleted: 'Сессия успешно удалена',
+        killProcess: 'Убить процесс',
+        killProcessSubtitle: 'Принудительно завершить процесс сессии',
+        killProcessConfirm: 'Убить процесс и отправить сессию в архив?',
+        killAndResume: 'Убить и перезапустить',
+        killAndResumeConfirm: 'Убить процесс и перезапустить сессию?',
+        longPressToRestart: 'Долгое нажатие — перезапуск',
+        longPressToDelete: 'Долгое нажатие — удалить',
+        archiveAndDelete: 'Архивировать и удалить',
+        archiveAndDeleteWarning: 'Сессия будет архивирована и все данные удалены навсегда. Это действие нельзя отменить.',
+        failedToKillProcess: 'Не удалось убить процесс',
+        missingProcessInfo: 'Отсутствует информация о процессе',
     },
 
     components: {
@@ -409,6 +421,8 @@ export const ru: TranslationStructure = {
             badgeAcceptAllEdits: 'Принимать все правки',
             badgeBypassAllPermissions: 'Обход всех разрешений',
             badgePlanMode: 'Режим планирования',
+            zen: 'Режим Дзен',
+            badgeZen: 'Режим Дзен',
         },
         agent: {
             claude: 'Claude',
@@ -760,6 +774,7 @@ export const ru: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Да, разрешить все правки в этой сессии',
+            yesAllowAll: 'Да, больше не спрашивать (разрешить всё)',
             yesForTool: 'Да, больше не спрашивать для этого инструмента',
             noTellClaude: 'Нет, дать обратную связь',
         }

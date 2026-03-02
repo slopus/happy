@@ -157,7 +157,7 @@ class ApiSocket {
         if (!this.socket) {
             throw new Error('Socket not connected');
         }
-        return await this.socket.emitWithAck(event, data);
+        return await this.socket.timeout(10000).emitWithAck(event, data);
     }
 
     //

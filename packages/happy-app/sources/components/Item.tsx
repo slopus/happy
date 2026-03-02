@@ -39,6 +39,7 @@ export interface ItemProps {
     dividerInset?: number;
     pressableStyle?: StyleProp<ViewStyle>;
     copy?: boolean | string;
+    expandableSubtitle?: boolean;
 }
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
@@ -142,8 +143,11 @@ export const Item = React.memo<ItemProps>((props) => {
         showDivider = true,
         dividerInset = isIOS ? 15 : 16,
         pressableStyle,
-        copy
+        copy,
+        expandableSubtitle
     } = props;
+
+    const [subtitleExpanded, setSubtitleExpanded] = React.useState(false);
 
     // Handle copy functionality
     const handleCopy = React.useCallback(async () => {
@@ -197,8 +201,16 @@ export const Item = React.memo<ItemProps>((props) => {
     // The copy will be handled by long press instead
     const handlePress = onPress;
     
-    const isInteractive = handlePress || onLongPress || (copy && !isWeb);
-    const showAccessory = isInteractive && showChevron && !rightElement;
+    const handleLongPress = React.useCallback(() => {
+        if (expandableSubtitle && subtitle) {
+            setSubtitleExpanded(v => !v);
+        } else if (onLongPress) {
+            onLongPress();
+        }
+    }, [expandableSubtitle, subtitle, onLongPress]);
+
+    const isInteractive = handlePress || onLongPress || expandableSubtitle || (copy && !isWeb);
+    const showAccessory = isInteractive && showChevron && !rightElement && !expandableSubtitle;
     const chevronSize = (isIOS && !isWeb) ? 17 : 24;
 
     const titleColor = destructive ? styles.titleDestructive : (selected ? styles.titleSelected : styles.titleNormal);
@@ -224,9 +236,11 @@ export const Item = React.memo<ItemProps>((props) => {
                     </Text>
                     {subtitle && (() => {
                         // Allow multiline when requested or when content contains line breaks
-                        const effectiveLines = subtitleLines !== undefined
-                            ? (subtitleLines <= 0 ? undefined : subtitleLines)
-                            : (typeof subtitle === 'string' && subtitle.indexOf('\n') !== -1 ? undefined : 1);
+                        const effectiveLines = subtitleExpanded ? undefined : (
+                            subtitleLines !== undefined
+                                ? (subtitleLines <= 0 ? undefined : subtitleLines)
+                                : (typeof subtitle === 'string' && subtitle.indexOf('\n') !== -1 ? undefined : 1)
+                        );
                         return (
                             <Text
                                 style={[styles.subtitle, subtitleStyle]}
@@ -289,7 +303,7 @@ export const Item = React.memo<ItemProps>((props) => {
         return (
             <Pressable
                 onPress={handlePress}
-                onLongPress={onLongPress}
+                onLongPress={handleLongPress}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 disabled={disabled || loading}

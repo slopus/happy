@@ -29,7 +29,7 @@ if (!useLocalStorage) {
     s3public = process.env.S3_PUBLIC_URL!;
 }
 
-export { s3client, s3bucket, s3host };
+export { s3client, s3bucket, s3host, s3public };
 
 export async function loadFiles() {
     if (useLocalStorage) {

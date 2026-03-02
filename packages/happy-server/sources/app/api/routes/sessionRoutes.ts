@@ -1,4 +1,4 @@
-import { eventRouter, buildNewSessionUpdate } from "@/app/events/eventRouter";
+import { eventRouter, buildNewSessionUpdate, buildSessionActivityEphemeral } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
@@ -222,13 +222,56 @@ export function sessionRoutes(app: Fastify) {
                 tag: z.string(),
                 metadata: z.string(),
                 agentState: z.string().nullish(),
-                dataEncryptionKey: z.string().nullish()
+                dataEncryptionKey: z.string().nullish(),
+                publicLabel: z.string().nullish(),
+                existingSessionId: z.string().nullish()
             })
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.userId;
-        const { tag, metadata, dataEncryptionKey } = request.body;
+        const { tag, metadata, dataEncryptionKey, publicLabel, existingSessionId } = request.body;
+
+        // If existingSessionId is provided, try to reattach to that session first
+        if (existingSessionId) {
+            const existing = await db.session.findFirst({
+                where: {
+                    accountId: userId,
+                    id: existingSessionId
+                }
+            });
+            if (existing) {
+                log({ module: 'session-create', sessionId: existing.id, userId, tag }, `Reattaching to existing session: ${existing.id}`);
+                // Reactivate and update the session
+                const updated = await db.session.update({
+                    where: { id: existing.id },
+                    data: {
+                        tag: tag,
+                        metadata: metadata,
+                        active: true,
+                        lastActiveAt: new Date(),
+                        ...(dataEncryptionKey && { dataEncryptionKey: new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) }),
+                        ...(publicLabel && { publicLabel })
+                    }
+                });
+                return reply.send({
+                    session: {
+                        id: updated.id,
+                        seq: updated.seq,
+                        metadata: updated.metadata,
+                        metadataVersion: updated.metadataVersion,
+                        agentState: updated.agentState,
+                        agentStateVersion: updated.agentStateVersion,
+                        dataEncryptionKey: updated.dataEncryptionKey ? Buffer.from(updated.dataEncryptionKey).toString('base64') : null,
+                        active: updated.active,
+                        activeAt: updated.lastActiveAt.getTime(),
+                        createdAt: updated.createdAt.getTime(),
+                        updatedAt: updated.updatedAt.getTime(),
+                        lastMessage: null
+                    }
+                });
+            }
+        }
 
         const session = await db.session.findFirst({
             where: {
@@ -266,7 +309,8 @@ export function sessionRoutes(app: Fastify) {
                     accountId: userId,
                     tag: tag,
                     metadata: metadata,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
+                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
+                    publicLabel: publicLabel || undefined
                 }
             });
             log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
@@ -309,12 +353,17 @@ export function sessionRoutes(app: Fastify) {
         schema: {
             params: z.object({
                 sessionId: z.string()
+            }),
+            querystring: z.object({
+                limit: z.coerce.number().int().min(1).max(200).default(50),
+                before: z.coerce.number().int().optional()
             })
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
+        const { limit, before } = request.query;
 
         // Verify session belongs to user
         const session = await db.session.findFirst({
@@ -329,9 +378,12 @@ export function sessionRoutes(app: Fastify) {
         }
 
         const messages = await db.sessionMessage.findMany({
-            where: { sessionId },
+            where: {
+                sessionId,
+                ...(before !== undefined ? { seq: { lt: before } } : {})
+            },
             orderBy: { createdAt: 'desc' },
-            take: 150,
+            take: limit + 1, // Fetch one extra to detect if there are more
             select: {
                 id: true,
                 seq: true,
@@ -342,15 +394,19 @@ export function sessionRoutes(app: Fastify) {
             }
         });
 
+        const hasMore = messages.length > limit;
+        const resultMessages = hasMore ? messages.slice(0, limit) : messages;
+
         return reply.send({
-            messages: messages.map((v) => ({
+            messages: resultMessages.map((v) => ({
                 id: v.id,
                 seq: v.seq,
                 content: v.content,
                 localId: v.localId,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime()
-            }))
+            })),
+            hasMore
         });
     });
 
@@ -373,5 +429,143 @@ export function sessionRoutes(app: Fastify) {
         }
 
         return reply.send({ success: true });
+    });
+
+    // Force deactivate session (archive without RPC)
+    app.post('/v1/sessions/:sessionId/deactivate', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found or not owned by user' });
+        }
+
+        await db.session.update({
+            where: { id: sessionId },
+            data: {
+                active: false,
+                lastActiveAt: new Date()
+            }
+        });
+
+        log({
+            module: 'session-deactivate',
+            userId,
+            sessionId
+        }, `Session force-deactivated`);
+
+        const sessionActivity = buildSessionActivityEphemeral(sessionId, false, Date.now(), false);
+        eventRouter.emitEphemeral({
+            userId,
+            payload: sessionActivity,
+            recipientFilter: { type: 'user-scoped-only' }
+        });
+
+        return reply.send({ success: true });
+    });
+
+    // Update public label for a session (used by CLI on change_title)
+    app.patch('/v1/sessions/:sessionId/label', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                publicLabel: z.string()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const { publicLabel } = request.body;
+
+        const session = await db.session.findFirst({
+            where: { id: sessionId, accountId: userId }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        await db.session.update({
+            where: { id: sessionId },
+            data: { publicLabel }
+        });
+
+        log({ module: 'session-label', sessionId, userId }, `Public label updated to "${publicLabel}"`);
+        return reply.send({ success: true });
+    });
+
+    // Resume a Claude Code session via local session-resume server
+    // This endpoint proxies to the local Python server that runs `happy claude --resume`
+    // Note: Direct RPC to daemon doesn't work because params need to be encrypted with machine's E2E key
+    app.post('/v1/sessions/resume', {
+        schema: {
+            body: z.object({
+                claudeSessionId: z.string().uuid(), // Claude Code session ID (UUID from ~/.claude/projects)
+                directory: z.string().default('/opt/brain')
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { claudeSessionId, directory } = request.body;
+
+        log({ module: 'session-resume', userId }, `Resume request for Claude session ${claudeSessionId} in ${directory}`);
+
+        // Local session-resume server URL (running on the same machine)
+        const SESSION_RESUME_URL = process.env.SESSION_RESUME_URL || 'http://localhost:8765';
+
+        try {
+            // Call local session-resume server
+            const url = `${SESSION_RESUME_URL}/resume/${claudeSessionId}?directory=${encodeURIComponent(directory)}`;
+            log({ module: 'session-resume', userId }, `Proxying to: ${url}`);
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json() as { success?: boolean; error?: string; pid?: number; session_id?: string; message?: string };
+            log({ module: 'session-resume', userId }, `Proxy response: ${JSON.stringify(result)}`);
+
+            if (!response.ok || !result.success) {
+                return reply.code(response.status || 500).send({
+                    error: 'Resume failed',
+                    message: result.error || 'Unknown error from session-resume server'
+                });
+            }
+
+            return reply.send({
+                success: true,
+                pid: result.pid,
+                sessionId: result.session_id,
+                message: result.message || `Claude session ${claudeSessionId} resume initiated`
+            });
+
+        } catch (error) {
+            log({ module: 'session-resume', level: 'error', userId }, `Proxy call failed: ${error}`);
+            return reply.code(503).send({
+                error: 'Session resume server unavailable',
+                message: error instanceof Error ? error.message : 'Failed to contact session-resume server. Is it running?'
+            });
+        }
     });
 }

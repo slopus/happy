@@ -6,6 +6,7 @@ import { CodeView } from '../CodeView';
 import { Metadata } from '@/sync/storageTypes';
 import { getToolFullViewComponent } from './views/_all';
 import { layout } from '../layout';
+import { useContentMaxWidth } from '../SidebarNavigator';
 import { useLocalSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -14,21 +15,23 @@ interface ToolFullViewProps {
     tool: ToolCall;
     metadata?: Metadata | null;
     messages?: Message[];
+    sessionId?: string;
 }
 
-export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProps) {
+export function ToolFullView({ tool, metadata, messages = [], sessionId }: ToolFullViewProps) {
     // Check if there's a specialized content view for this tool
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
+    const expandedMaxWidth = useContentMaxWidth();
     const devModeEnabled = (useLocalSetting('devModeEnabled') || __DEV__);
     console.log('ToolFullView', devModeEnabled);
 
     return (
         <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
-            <View style={styles.contentWrapper}>
+            <View style={expandedMaxWidth ? [styles.contentWrapper, { maxWidth: expandedMaxWidth }] : styles.contentWrapper}>
                 {/* Tool-specific content or generic fallback */}
                 {SpecializedFullView ? (
-                    <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} />
+                    <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} sessionId={sessionId} />
                 ) : (
                     <>
                     {/* Generic fallback for tools without specialized views */}

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, ActivityIndicator, Text, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
+import { useFriendRequests, useSocketStatus, useSettingMutable, useAllMachines } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
@@ -14,13 +14,21 @@ import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { SessionsListWrapper } from './SessionsListWrapper';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
-import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+
 import { StatusDot } from './StatusDot';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
+import { useHappyAction } from '@/hooks/useHappyAction';
+import { machineStopDaemon } from '@/sync/ops';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { Modal } from '@/modal';
+import { Image } from 'expo-image';
+import { FilesTabView } from './FilesTabView';
+import { isLearnMode } from '@/appMode';
+import { LearnMainView } from '@/learn/components/LearnMainView';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -98,15 +106,16 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-// Tab header configuration
+// Tab header configuration (zen excluded as that tab is disabled)
 const TAB_TITLES = {
     sessions: 'tabs.sessions',
     inbox: 'tabs.inbox',
+    files: 'tabs.files',
     settings: 'tabs.settings',
 } as const;
 
-// Active tabs
-type ActiveTabType = 'sessions' | 'inbox' | 'settings';
+// Active tabs (excludes zen which is disabled)
+type ActiveTabType = 'sessions' | 'inbox' | 'files' | 'settings';
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -149,6 +158,34 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
         }
     }, [socketStatus, theme]);
 
+    if (activeTab === 'sessions') {
+        const statusColor = (() => {
+            switch (socketStatus.status) {
+                case 'connected': return theme.colors.status.connected;
+                case 'connecting': return theme.colors.status.connecting;
+                case 'disconnected': return theme.colors.status.disconnected;
+                case 'error': return theme.colors.status.error;
+                default: return theme.colors.status.default;
+            }
+        })();
+        return (
+            <View style={{ position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, pointerEvents: 'none' }}>
+                <StatusDot
+                    color={statusColor}
+                    isPulsing={socketStatus.status === 'connecting'}
+                    size={8}
+                />
+                <Text style={{
+                    fontSize: 15,
+                    letterSpacing: 2,
+                    textTransform: 'uppercase' as any,
+                    color: theme.colors.header.tint,
+                    ...Typography.brand(),
+                }}>304.systems</Text>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.titleContainer}>
             <Text style={styles.titleText}>
@@ -171,6 +208,63 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     );
 });
 
+// Header left - refresh + eye for sessions, logo for other tabs
+const HeaderLeft = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
+    const { theme } = useUnistyles();
+    const allMachines = useAllMachines();
+    const [hideInactive, setHideInactive] = useSettingMutable('hideInactiveSessions');
+    const toggleHideInactive = React.useCallback(() => setHideInactive(!hideInactive), [hideInactive]);
+
+    const [restartingDaemon, handleRestartDaemon] = useHappyAction(async () => {
+        const onlineMachines = allMachines.filter(m => isMachineOnline(m));
+        if (onlineMachines.length === 0) {
+            Modal.alert(t('common.error'), 'No online machines found');
+            return;
+        }
+        const confirmed = await Modal.confirm(
+            'Restart Daemon',
+            `Restart daemon on ${onlineMachines.length} machine(s)? Active sessions will be recovered automatically.`,
+            { confirmText: 'Restart', destructive: true }
+        );
+        if (!confirmed) return;
+        for (const machine of onlineMachines) {
+            await machineStopDaemon(machine.id);
+        }
+    });
+
+    if (activeTab === 'sessions') {
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 72 }}>
+                <Pressable
+                    onPress={handleRestartDaemon}
+                    disabled={restartingDaemon}
+                    hitSlop={10}
+                    style={styles.headerButton}
+                >
+                    <Ionicons
+                        name="refresh-outline"
+                        size={20}
+                        color={theme.colors.textSecondary}
+                    />
+                </Pressable>
+                <Pressable
+                    onPress={toggleHideInactive}
+                    hitSlop={10}
+                    style={styles.headerButton}
+                >
+                    <Ionicons
+                        name={hideInactive ? "eye-off-outline" : "eye-outline"}
+                        size={20}
+                        color={theme.colors.textSecondary}
+                    />
+                </Pressable>
+            </View>
+        );
+    }
+
+    return <HeaderLogo />;
+});
+
 // Header right button - varies by tab
 const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
     const router = useRouter();
@@ -179,13 +273,27 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
 
     if (activeTab === 'sessions') {
         return (
-            <Pressable
-                onPress={() => router.push('/new')}
-                hitSlop={15}
-                style={styles.headerButton}
-            >
-                <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
-            </Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 72, justifyContent: 'flex-end' }}>
+                <Pressable
+                    onPress={() => router.push('/settings')}
+                    hitSlop={10}
+                    style={styles.headerButton}
+                >
+                    <Image
+                        source={require('@/assets/images/brutalist/Brutalism 9.png')}
+                        contentFit="contain"
+                        style={{ width: 24, height: 24 }}
+                        tintColor={theme.colors.header.tint}
+                    />
+                </Pressable>
+                <Pressable
+                    onPress={() => router.push('/new')}
+                    hitSlop={10}
+                    style={styles.headerButton}
+                >
+                    <Ionicons name="add-outline" size={22} color={theme.colors.header.tint} />
+                </Pressable>
+            </View>
         );
     }
 
@@ -224,12 +332,15 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
 });
 
 export const MainView = React.memo(({ variant }: MainViewProps) => {
+    if (isLearnMode) {
+        return <LearnMainView variant={variant} />;
+    }
+
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
     const isTablet = useIsTablet();
     const router = useRouter();
     const friendRequests = useFriendRequests();
-    const realtimeStatus = useRealtimeStatus();
 
     // Tab state management
     // NOTE: Zen tab removed - the feature never got to a useful state
@@ -248,6 +359,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         switch (activeTab) {
             case 'inbox':
                 return <InboxView />;
+            case 'files':
+                return <FilesTabView />;
             case 'settings':
                 return <SettingsViewWrapper />;
             case 'sessions':
@@ -304,13 +417,11 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                     <Header
                         title={<HeaderTitle activeTab={activeTab as ActiveTabType} />}
                         headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} />}
-                        headerLeft={() => <HeaderLogo />}
+                        headerLeft={() => <HeaderLeft activeTab={activeTab as ActiveTabType} />}
                         headerShadowVisible={false}
                         headerTransparent={true}
                     />
-                    {realtimeStatus !== 'disconnected' && (
-                        <VoiceAssistantStatusBar variant="full" />
-                    )}
+
                 </View>
                 {renderTabContent()}
             </View>

@@ -12,7 +12,7 @@ import { StatusDot } from './StatusDot';
 import { useAllMachines, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
+import { machineSpawnNewSession, sessionKill, sessionDeactivate } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
@@ -300,9 +300,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const swipeEnabled = Platform.OS !== 'web';
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        // Try RPC kill first, fallback to force deactivate if RPC fails
         const result = await sessionKill(session.id);
         if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+            // RPC failed (process may be dead), try force deactivate
+            const deactivateResult = await sessionDeactivate(session.id);
+            if (!deactivateResult.success) {
+                throw new HappyError(deactivateResult.message || t('sessionInfo.failedToArchiveSession'), false);
+            }
         }
     });
 

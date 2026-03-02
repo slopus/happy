@@ -9,9 +9,10 @@ import { CommandView } from '@/components/CommandView';
 interface BashViewFullProps {
     tool: ToolCall;
     metadata: Metadata | null;
+    sessionId?: string;
 }
 
-export const BashViewFull = React.memo<BashViewFullProps>(({ tool, metadata }) => {
+export const BashViewFull = React.memo<BashViewFullProps>(({ tool, metadata, sessionId }) => {
     const { input, result, state } = tool;
 
     // Parse the result
@@ -52,6 +53,7 @@ export const BashViewFull = React.memo<BashViewFullProps>(({ tool, metadata }) =
                             stderr={parsedResult?.stderr}
                             error={error}
                             fullWidth
+                            sessionId={sessionId}
                         />
                     </View>
                 </ScrollView>

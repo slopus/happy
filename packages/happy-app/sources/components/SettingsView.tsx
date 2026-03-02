@@ -14,6 +14,7 @@ import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useEntitlement, useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
+import { machineStopDaemon } from '@/sync/ops';
 import { trackPaywallButtonClicked, trackWhatsNewClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
@@ -126,6 +127,23 @@ export const SettingsView = React.memo(function SettingsView() {
         }
     });
 
+    // Restart daemon on all online machines
+    const [restartingDaemon, handleRestartDaemon] = useHappyAction(async () => {
+        const onlineMachines = allMachines.filter(m => isMachineOnline(m));
+        if (onlineMachines.length === 0) {
+            Modal.alert(t('common.error'), 'No online machines found');
+            return;
+        }
+        const confirmed = await Modal.confirm(
+            'Restart Daemon',
+            `Restart daemon on ${onlineMachines.length} machine(s)? Active sessions will be recovered automatically.`,
+            { confirmText: 'Restart', destructive: true }
+        );
+        if (!confirmed) return;
+        for (const machine of onlineMachines) {
+            await machineStopDaemon(machine.id);
+        }
+    });
 
     return (
 
@@ -154,21 +172,25 @@ export const SettingsView = React.memo(function SettingsView() {
                             )}
                         </>
                     ) : (
-                        // Logo view: Original logo + version
-                        <>
-                            <Image
-                                source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                                contentFit="contain"
-                                style={{ width: 300, height: 90, marginBottom: 12 }}
-                            />
-                        </>
+                        // Logo view: 304.SYSTEMS branding
+                        <View style={{ alignItems: 'flex-start', paddingHorizontal: 16 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#34D399', marginRight: 10 }} />
+                                <Text style={[Typography.brand(), { fontSize: 24, letterSpacing: 4, color: theme.colors.text }]}>
+                                    304.SYSTEMS
+                                </Text>
+                            </View>
+                            <Text style={[Typography.brand(), { fontSize: 9, letterSpacing: 3, color: theme.colors.textSecondary, marginLeft: 20 }]}>
+                                end-to-end. nothing leaks
+                            </Text>
+                        </View>
                     )}
                 </View>
             </View>
 
-            {/* Connect Terminal - Only show on native platforms */}
-            {Platform.OS !== 'web' && (
-                <ItemGroup>
+            {/* Connect Terminal */}
+            <ItemGroup>
+                {Platform.OS !== 'web' && (
                     <Item
                         title={t('settings.scanQrCodeToAuthenticate')}
                         icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
@@ -176,74 +198,27 @@ export const SettingsView = React.memo(function SettingsView() {
                         loading={isLoading}
                         showChevron={false}
                     />
-                    <Item
-                        title={t('connect.enterUrlManually')}
-                        icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
-                        onPress={async () => {
-                            const url = await Modal.prompt(
-                                t('modals.authenticateTerminal'),
-                                t('modals.pasteUrlFromTerminal'),
-                                {
-                                    placeholder: 'happy://terminal?...',
-                                    confirmText: t('common.authenticate')
-                                }
-                            );
-                            if (url?.trim()) {
-                                connectWithUrl(url.trim());
+                )}
+                <Item
+                    title={t('connect.enterUrlManually')}
+                    icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
+                    onPress={async () => {
+                        const url = await Modal.prompt(
+                            t('modals.authenticateTerminal'),
+                            t('modals.pasteUrlFromTerminal'),
+                            {
+                                placeholder: 'happy://terminal?...',
+                                confirmText: t('common.authenticate')
                             }
-                        }}
-                        showChevron={false}
-                    />
-                </ItemGroup>
-            )}
-
-            {/* Support Us */}
-            <ItemGroup>
-                <Item
-                    title={t('settings.supportUs')}
-                    subtitle={isPro ? t('settings.supportUsSubtitlePro') : t('settings.supportUsSubtitle')}
-                    icon={<Ionicons name="heart" size={29} color="#FF3B30" />}
-                    showChevron={false}
-                    onPress={isPro ? undefined : handleSubscribe}
-                />
-            </ItemGroup>
-
-            <ItemGroup title={t('settings.connectedAccounts')}>
-                <Item
-                    title="Claude Code"
-                    subtitle={isAnthropicConnected
-                        ? t('settingsAccount.statusActive')
-                        : t('settings.connectAccount')
-                    }
-                    icon={
-                        <Image
-                            source={require('@/assets/images/icon-claude.png')}
-                            style={{ width: 29, height: 29 }}
-                            contentFit="contain"
-                        />
-                    }
-                    onPress={isAnthropicConnected ? handleDisconnectAnthropic : connectAnthropic}
-                    loading={connectingAnthropic || disconnectingAnthropic}
-                    showChevron={false}
-                />
-                <Item
-                    title={t('settings.github')}
-                    subtitle={isGitHubConnected
-                        ? t('settings.githubConnected', { login: profile.github?.login! })
-                        : t('settings.connectGithubAccount')
-                    }
-                    icon={
-                        <Ionicons
-                            name="logo-github"
-                            size={29}
-                            color={isGitHubConnected ? theme.colors.status.connected : theme.colors.textSecondary}
-                        />
-                    }
-                    onPress={isGitHubConnected ? handleDisconnectGitHub : connectGitHub}
-                    loading={connectingGitHub || disconnectingGitHub}
+                        );
+                        if (url?.trim()) {
+                            connectWithUrl(url.trim());
+                        }
+                    }}
                     showChevron={false}
                 />
             </ItemGroup>
+
 
             {/* Social */}
             {/* <ItemGroup title={t('settings.social')}>
@@ -293,6 +268,19 @@ export const SettingsView = React.memo(function SettingsView() {
                             />
                         );
                     })}
+                    <Item
+                        title="Restart Daemon"
+                        subtitle="Stop daemon and recover all sessions"
+                        icon={
+                            <Ionicons
+                                name="refresh-outline"
+                                size={29}
+                                color={theme.colors.status.warning || '#FF9500'}
+                            />
+                        }
+                        loading={restartingDaemon}
+                        onPress={handleRestartDaemon}
+                    />
                 </ItemGroup>
             )}
 
@@ -349,63 +337,8 @@ export const SettingsView = React.memo(function SettingsView() {
                 </ItemGroup>
             )}
 
-            {/* About */}
-            <ItemGroup title={t('settings.about')} footer={t('settings.aboutFooter')}>
-                <Item
-                    title={t('settings.whatsNew')}
-                    subtitle={t('settings.whatsNewSubtitle')}
-                    icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
-                    onPress={() => {
-                        trackWhatsNewClicked();
-                        router.push('/changelog');
-                    }}
-                />
-                <Item
-                    title={t('settings.github')}
-                    icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
-                    detail="slopus/happy"
-                    onPress={handleGitHub}
-                />
-                <Item
-                    title={t('settings.reportIssue')}
-                    icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
-                    onPress={handleReportIssue}
-                />
-                <Item
-                    title={t('settings.privacyPolicy')}
-                    icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
-                    onPress={async () => {
-                        const url = 'https://happy.engineering/privacy/';
-                        const supported = await Linking.canOpenURL(url);
-                        if (supported) {
-                            await Linking.openURL(url);
-                        }
-                    }}
-                />
-                <Item
-                    title={t('settings.termsOfService')}
-                    icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
-                    onPress={async () => {
-                        const url = 'https://github.com/slopus/happy/blob/main/TERMS.md';
-                        const supported = await Linking.canOpenURL(url);
-                        if (supported) {
-                            await Linking.openURL(url);
-                        }
-                    }}
-                />
-                {Platform.OS === 'ios' && (
-                    <Item
-                        title={t('settings.eula')}
-                        icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
-                        onPress={async () => {
-                            const url = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
-                            const supported = await Linking.canOpenURL(url);
-                            if (supported) {
-                                await Linking.openURL(url);
-                            }
-                        }}
-                    />
-                )}
+            {/* Version */}
+            <ItemGroup>
                 <Item
                     title={t('common.version')}
                     detail={appVersion}

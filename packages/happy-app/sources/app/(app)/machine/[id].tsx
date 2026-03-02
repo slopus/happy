@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useLayoutEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack, useNavigation } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
+import { useSessions, useAllMachines, useMachine, storage } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
@@ -66,6 +66,7 @@ export default function MachineDetailScreen() {
     const { theme } = useUnistyles();
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
+    const navigation = useNavigation();
     const sessions = useSessions();
     const machine = useMachine(machineId!);
     const navigateToSession = useNavigateToSession();
@@ -122,6 +123,55 @@ export default function MachineDetailScreen() {
         // Use machine online status as proxy for daemon status
         return isMachineOnline(machine) ? 'likely alive' : 'stopped';
     }, [machine]);
+
+    // Local state for machine name (updated immediately on rename)
+    const [localDisplayName, setLocalDisplayName] = useState<string | null>(null);
+
+    // Compute machine name for header
+    const machineName = useMemo(() => {
+        if (localDisplayName !== null) {
+            return localDisplayName || machine?.metadata?.host || 'unknown machine';
+        }
+        return machine?.metadata?.displayName || machine?.metadata?.host || 'unknown machine';
+    }, [localDisplayName, machine?.metadata?.displayName, machine?.metadata?.host]);
+
+    // Update header when machine name changes
+    useLayoutEffect(() => {
+        if (!machine) return;
+
+        navigation.setOptions({
+            headerTitle: () => (
+                <View style={{ alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons
+                            name="desktop-outline"
+                            size={18}
+                            color={theme.colors.header.tint}
+                            style={{ marginRight: 6 }}
+                        />
+                        <Text style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}>
+                            {machineName}
+                        </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                        <View style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: isMachineOnline(machine) ? '#34C759' : '#999',
+                            marginRight: 4
+                        }} />
+                        <Text style={[Typography.default(), {
+                            fontSize: 12,
+                            color: isMachineOnline(machine) ? '#34C759' : '#999'
+                        }]}>
+                            {isMachineOnline(machine) ? t('status.online') : t('status.offline')}
+                        </Text>
+                    </View>
+                </View>
+            ),
+        });
+    }, [machine, machineName, navigation, theme]);
 
     const handleStopDaemon = async () => {
         // Show confirmation modal using alert with buttons
@@ -183,15 +233,36 @@ export default function MachineDetailScreen() {
                     ...machine.metadata!,
                     displayName: newDisplayName.trim() || undefined
                 };
-                
-                await machineUpdateMetadata(
+
+                console.log('🔄 handleRenameMachine: Calling machineUpdateMetadata', {
+                    machineId,
+                    currentVersion: machine.metadataVersion,
+                    newDisplayName: newDisplayName.trim(),
+                    fullMetadata: updatedMetadata
+                });
+
+                const result = await machineUpdateMetadata(
                     machineId,
                     updatedMetadata,
                     machine.metadataVersion
                 );
-                
+
+                console.log('✅ handleRenameMachine: machineUpdateMetadata returned', result);
+
+                // Update local state immediately to show new name
+                setLocalDisplayName(newDisplayName.trim());
+
+                console.log('🔄 handleRenameMachine: Calling refreshMachines');
+                // Refresh to sync with server
+                await sync.refreshMachines();
+
+                console.log('✅ handleRenameMachine: refreshMachines completed');
+                console.log('📊 handleRenameMachine: Machine in store after refresh:',
+                    storage.getState().machines[machineId]?.metadata);
+
                 Modal.alert(t('common.success'), 'Machine renamed successfully');
             } catch (error) {
+                console.error('❌ handleRenameMachine: Error', error);
                 Modal.alert(
                     'Error',
                     error instanceof Error ? error.message : 'Failed to rename machine'
@@ -270,8 +341,6 @@ export default function MachineDetailScreen() {
     }
 
     const metadata = machine.metadata;
-    const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
-
     const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
 
     return (
@@ -279,36 +348,7 @@ export default function MachineDetailScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: () => (
-                        <View style={{ alignItems: 'center' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Ionicons
-                                    name="desktop-outline"
-                                    size={18}
-                                    color={theme.colors.header.tint}
-                                    style={{ marginRight: 6 }}
-                                />
-                                <Text style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}>
-                                    {machineName}
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                                <View style={{
-                                    width: 6,
-                                    height: 6,
-                                    borderRadius: 3,
-                                    backgroundColor: isMachineOnline(machine) ? '#34C759' : '#999',
-                                    marginRight: 4
-                                }} />
-                                <Text style={[Typography.default(), {
-                                    fontSize: 12,
-                                    color: isMachineOnline(machine) ? '#34C759' : '#999'
-                                }]}>
-                                    {isMachineOnline(machine) ? t('status.online') : t('status.offline')}
-                                </Text>
-                            </View>
-                        </View>
-                    ),
+                    // headerTitle is set dynamically via useLayoutEffect
                     headerRight: () => (
                         <Pressable
                             onPress={handleRenameMachine}

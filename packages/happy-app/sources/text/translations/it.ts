@@ -428,6 +428,8 @@ export const it: TranslationStructure = {
             badgeAcceptAllEdits: 'Accetta tutte le modifiche',
             badgeBypassAllPermissions: 'Bypassa tutti i permessi',
             badgePlanMode: 'Modalità piano',
+            zen: 'Zen Mode',
+            badgeZen: 'Zen Mode',
         },
         agent: {
             claude: 'Claude',
@@ -791,6 +793,7 @@ export const it: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Sì, consenti tutte le modifiche durante questa sessione',
+            yesAllowAll: 'Sì, non chiedere più (consenti tutto)',
             yesForTool: 'Sì, non chiedere più per questo strumento',
             noTellClaude: 'No, fornisci feedback',
         }

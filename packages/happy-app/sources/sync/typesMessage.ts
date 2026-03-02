@@ -29,6 +29,8 @@ export type UserTextMessage = {
     createdAt: number;
     text: string;
     displayText?: string; // Optional text to display in UI instead of actual text
+    images?: Array<{ url: string; mediaType: string; width: number; height: number }>;
+    documents?: Array<{ url: string; mediaType: string; fileName: string; fileSize: number }>;
     meta?: MessageMeta;
 }
 
