@@ -1,4 +1,5 @@
 import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
+import { canSendMessages } from "@/app/share/accessControl";
 import { db } from "@/storage/db";
 import { allocateSessionSeqBatch } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
@@ -132,17 +133,20 @@ export function v3SessionRoutes(app: Fastify) {
         const { sessionId } = request.params;
         const { messages } = request.body;
 
-        const session = await db.session.findFirst({
-            where: {
-                id: sessionId,
-                accountId: userId
-            },
-            select: { id: true }
-        });
+        // Check if user can send messages (owner or shared with edit/admin access)
+        if (!await canSendMessages(userId, sessionId)) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
 
+        // Get session owner for broadcasting
+        const session = await db.session.findUnique({
+            where: { id: sessionId },
+            select: { accountId: true }
+        });
         if (!session) {
             return reply.code(404).send({ error: 'Session not found' });
         }
+        const ownerId = session.accountId;
 
         const firstMessageByLocalId = new Map<string, { localId: string; content: string }>();
         for (const message of messages) {
@@ -220,7 +224,7 @@ export function v3SessionRoutes(app: Fastify) {
             }
 
             await eventRouter.emitToSessionSubscribers({
-                ownerId: userId,
+                ownerId,
                 sessionId,
                 buildPayload: (_uid, seq) => buildNewMessageUpdate({
                     ...message,
