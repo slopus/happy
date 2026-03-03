@@ -786,7 +786,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/session/${session.id}/sharing`)}
                         />
                     )}
-                    {isAdmin && session.metadata?.machineId && (
+                    {isOwner && session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}
                             subtitle={t('sessionInfo.viewMachineSubtitle')}
