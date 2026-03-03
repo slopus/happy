@@ -1,5 +1,4 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
 import {
     SessionShare,
@@ -38,21 +37,19 @@ export async function fetchSharedSessions(
 ): Promise<SharedSessionFromServer[]> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions/shared`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch shared sessions: ${response.status}`);
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/shared`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
         }
-
-        const data = await response.json();
-        return data.sharedSessions;
     });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch shared sessions: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.sharedSessions;
 }
 
 /**
@@ -65,20 +62,18 @@ export async function uploadContentPublicKey(
 ): Promise<void> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/user/content-key`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ contentPublicKey, contentPublicKeySig })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to upload content public key: ${response.status}`);
-        }
+    const response = await fetch(`${API_ENDPOINT}/v1/user/content-key`, {
+        method: 'PUT',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ contentPublicKey, contentPublicKeySig })
     });
+
+    if (!response.ok) {
+        throw new Error(`Failed to upload content public key: ${response.status}`);
+    }
 }
 
 /**
@@ -90,24 +85,22 @@ export async function getSessionShares(
 ): Promise<SessionShare[]> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/shares`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-            }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                throw new SessionSharingError('Forbidden');
-            }
-            throw new Error(`Failed to get session shares: ${response.status}`);
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/shares`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
         }
-
-        const data: SessionSharesResponse = await response.json();
-        return data.shares;
     });
+
+    if (!response.ok) {
+        if (response.status === 403) {
+            throw new SessionSharingError('Forbidden');
+        }
+        throw new Error(`Failed to get session shares: ${response.status}`);
+    }
+
+    const data: SessionSharesResponse = await response.json();
+    return data.shares;
 }
 
 /**
@@ -120,31 +113,29 @@ export async function createSessionShare(
 ): Promise<SessionShare> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/shares`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(request)
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                const error = await response.json();
-                throw new SessionSharingError(error.error || 'Forbidden');
-            }
-            if (response.status === 400) {
-                const error = await response.json();
-                throw new SessionSharingError(error.error || 'Bad request');
-            }
-            throw new Error(`Failed to create session share: ${response.status}`);
-        }
-
-        const data: SessionShareResponse = await response.json();
-        return data.share;
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/shares`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
     });
+
+    if (!response.ok) {
+        if (response.status === 403) {
+            const error = await response.json();
+            throw new SessionSharingError(error.error || 'Forbidden');
+        }
+        if (response.status === 400) {
+            const error = await response.json();
+            throw new SessionSharingError(error.error || 'Bad request');
+        }
+        throw new Error(`Failed to create session share: ${response.status}`);
+    }
+
+    const data: SessionShareResponse = await response.json();
+    return data.share;
 }
 
 /**
@@ -158,29 +149,27 @@ export async function updateSessionShare(
 ): Promise<SessionShare> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/shares/${shareId}`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ accessLevel })
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                throw new SessionSharingError('Forbidden');
-            }
-            if (response.status === 404) {
-                throw new ShareNotFoundError();
-            }
-            throw new Error(`Failed to update session share: ${response.status}`);
-        }
-
-        const data: SessionShareResponse = await response.json();
-        return data.share;
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/shares/${shareId}`, {
+        method: 'PATCH',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ accessLevel })
     });
+
+    if (!response.ok) {
+        if (response.status === 403) {
+            throw new SessionSharingError('Forbidden');
+        }
+        if (response.status === 404) {
+            throw new ShareNotFoundError();
+        }
+        throw new Error(`Failed to update session share: ${response.status}`);
+    }
+
+    const data: SessionShareResponse = await response.json();
+    return data.share;
 }
 
 /**
@@ -193,24 +182,22 @@ export async function deleteSessionShare(
 ): Promise<void> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/shares/${shareId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-            }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                throw new SessionSharingError('Forbidden');
-            }
-            if (response.status === 404) {
-                throw new ShareNotFoundError();
-            }
-            throw new Error(`Failed to delete session share: ${response.status}`);
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/shares/${shareId}`, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
         }
     });
+
+    if (!response.ok) {
+        if (response.status === 403) {
+            throw new SessionSharingError('Forbidden');
+        }
+        if (response.status === 404) {
+            throw new ShareNotFoundError();
+        }
+        throw new Error(`Failed to delete session share: ${response.status}`);
+    }
 }
 
 /**
@@ -222,27 +209,25 @@ export async function getPublicShare(
 ): Promise<PublicSessionShare | null> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-            }
-        });
-
-        if (!response.ok) {
-            if (response.status === 404) {
-                return null;
-            }
-            if (response.status === 403) {
-                throw new SessionSharingError('Forbidden');
-            }
-            throw new Error(`Failed to get public share: ${response.status}`);
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
         }
-
-        const data: PublicShareResponse = await response.json();
-        return data.publicShare;
     });
+
+    if (!response.ok) {
+        if (response.status === 404) {
+            return null;
+        }
+        if (response.status === 403) {
+            throw new SessionSharingError('Forbidden');
+        }
+        throw new Error(`Failed to get public share: ${response.status}`);
+    }
+
+    const data: PublicShareResponse = await response.json();
+    return data.publicShare;
 }
 
 /**
@@ -255,26 +240,24 @@ export async function createPublicShare(
 ): Promise<PublicSessionShare> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(request)
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                throw new SessionSharingError('Forbidden');
-            }
-            throw new Error(`Failed to create public share: ${response.status}`);
-        }
-
-        const data: PublicShareResponse = await response.json();
-        return data.publicShare;
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(request)
     });
+
+    if (!response.ok) {
+        if (response.status === 403) {
+            throw new SessionSharingError('Forbidden');
+        }
+        throw new Error(`Failed to create public share: ${response.status}`);
+    }
+
+    const data: PublicShareResponse = await response.json();
+    return data.publicShare;
 }
 
 /**
@@ -286,21 +269,19 @@ export async function deletePublicShare(
 ): Promise<void> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-            }
-        });
-
-        if (!response.ok) {
-            if (response.status === 403) {
-                throw new SessionSharingError('Forbidden');
-            }
-            throw new Error(`Failed to delete public share: ${response.status}`);
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/public-share`, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
         }
     });
+
+    if (!response.ok) {
+        if (response.status === 403) {
+            throw new SessionSharingError('Forbidden');
+        }
+        throw new Error(`Failed to delete public share: ${response.status}`);
+    }
 }
 
 /**
@@ -311,32 +292,30 @@ export async function getPublicShareMessages(
     token: string,
     consent?: boolean
 ): Promise<{ id: string; seq: number; content: { t: string; c: string }; localId: string | null; createdAt: number; updatedAt: number }[]> {
-    return await backoff(async () => {
-        const url = new URL(`${serverUrl}/v1/public-share/${token}/messages`);
-        if (consent) {
-            url.searchParams.set('consent', 'true');
-        }
+    const url = new URL(`${serverUrl}/v1/public-share/${token}/messages`);
+    if (consent) {
+        url.searchParams.set('consent', 'true');
+    }
 
-        const response = await fetch(url.toString(), {
-            method: 'GET',
-        });
-
-        if (!response.ok) {
-            if (response.status === 404) {
-                throw new PublicShareNotFoundError();
-            }
-            if (response.status === 403) {
-                const body = await response.json();
-                if (body.requiresConsent) {
-                    throw new ConsentRequiredError();
-                }
-            }
-            throw new Error(`Failed to get public share messages: ${response.status}`);
-        }
-
-        const data = await response.json();
-        return data.messages;
+    const response = await fetch(url.toString(), {
+        method: 'GET',
     });
+
+    if (!response.ok) {
+        if (response.status === 404) {
+            throw new PublicShareNotFoundError();
+        }
+        if (response.status === 403) {
+            const body = await response.json();
+            if (body.requiresConsent) {
+                throw new ConsentRequiredError();
+            }
+        }
+        throw new Error(`Failed to get public share messages: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.messages;
 }
 
 /**
@@ -347,29 +326,27 @@ export async function accessPublicShare(
     token: string,
     consent?: boolean
 ): Promise<AccessPublicShareResponse> {
-    return await backoff(async () => {
-        const url = new URL(`${serverUrl}/v1/public-share/${token}`);
-        if (consent) {
-            url.searchParams.set('consent', 'true');
-        }
+    const url = new URL(`${serverUrl}/v1/public-share/${token}`);
+    if (consent) {
+        url.searchParams.set('consent', 'true');
+    }
 
-        const response = await fetch(url.toString(), {
-            method: 'GET',
-        });
-
-        if (!response.ok) {
-            if (response.status === 404) {
-                throw new PublicShareNotFoundError();
-            }
-            if (response.status === 403) {
-                const body = await response.json();
-                if (body.requiresConsent) {
-                    throw new ConsentRequiredError();
-                }
-            }
-            throw new Error(`Failed to access public share: ${response.status}`);
-        }
-
-        return await response.json();
+    const response = await fetch(url.toString(), {
+        method: 'GET',
     });
+
+    if (!response.ok) {
+        if (response.status === 404) {
+            throw new PublicShareNotFoundError();
+        }
+        if (response.status === 403) {
+            const body = await response.json();
+            if (body.requiresConsent) {
+                throw new ConsentRequiredError();
+            }
+        }
+        throw new Error(`Failed to access public share: ${response.status}`);
+    }
+
+    return await response.json();
 }

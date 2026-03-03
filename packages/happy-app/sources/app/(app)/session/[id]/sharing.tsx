@@ -38,8 +38,12 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
     // Load sharing data
     const loadSharingData = useCallback(async () => {
         const credentials = sync.getCredentials();
-        const sharesData = await getSessionShares(credentials, sessionId);
-        setShares(sharesData);
+        try {
+            const sharesData = await getSessionShares(credentials, sessionId);
+            setShares(sharesData);
+        } catch {
+            setShares([]);
+        }
         const friendsData = await getFriendsList(credentials);
         setFriends(friendsData);
         try {
