@@ -69,6 +69,16 @@ export async function notifyDaemonSessionStarted(
   });
 }
 
+export async function notifyDaemonClaudeSessionId(
+  happySessionId: string,
+  claudeSessionId: string
+): Promise<{ error?: string } | any> {
+  return await daemonPost('/session-claude-id', {
+    happySessionId,
+    claudeSessionId
+  });
+}
+
 export async function listDaemonSessions(): Promise<any[]> {
   const result = await daemonPost('/list');
   return result.children || [];

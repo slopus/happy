@@ -172,12 +172,12 @@ export const SettingsView = React.memo(function SettingsView() {
                             )}
                         </>
                     ) : (
-                        // Logo view: 304.SYSTEMS branding
+                        // Logo view: CHATAI.304 branding
                         <View style={{ alignItems: 'flex-start', paddingHorizontal: 16 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
                                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#34D399', marginRight: 10 }} />
-                                <Text style={[Typography.brand(), { fontSize: 24, letterSpacing: 4, color: theme.colors.text }]}>
-                                    304.SYSTEMS
+                                <Text style={[Typography.brand(), { fontSize: 24, letterSpacing: 4, color: theme.colors.text, textTransform: 'uppercase' }]}>
+                                    chatai.304
                                 </Text>
                             </View>
                             <Text style={[Typography.brand(), { fontSize: 9, letterSpacing: 3, color: theme.colors.textSecondary, marginLeft: 20 }]}>

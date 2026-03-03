@@ -2,7 +2,7 @@ import { useSocketStatus } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import { useHeaderHeight } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -32,6 +32,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
+        minWidth: 28,
     },
     centerGroup: {
         flex: 1,
@@ -44,6 +45,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
+        minWidth: 28,
     },
     titleText: {
         fontSize: 15,
@@ -100,22 +102,47 @@ export const SidebarView = React.memo(() => {
         router.push('/new');
     }, [router]);
 
+    // Extract current path for toggle behavior
+    const pathname = usePathname();
+
+    const handleSettingsPress = React.useCallback(() => {
+        if (pathname.startsWith('/settings')) {
+            router.back();
+        } else {
+            router.push('/settings');
+        }
+    }, [router, pathname]);
+
     const handleFilesPress = React.useCallback(() => {
-        router.push('/files');
-    }, [router]);
+        if (pathname === '/files') {
+            router.back();
+        } else {
+            router.push('/files');
+        }
+    }, [router, pathname]);
+    const currentSessionId = React.useMemo(() => {
+        const match = pathname.match(/\/session\/([^/]+)/);
+        return match ? match[1] : null;
+    }, [pathname]);
+
+    const handleSessionFilesPress = React.useCallback(() => {
+        if (currentSessionId) {
+            window.dispatchEvent(new CustomEvent('toggle-file-browser', { detail: { sessionId: currentSessionId } }));
+        }
+    }, [currentSessionId]);
 
     return (
         <>
             <View style={[styles.container, { paddingTop: safeArea.top }]}>
                 <View style={[styles.header, { height: headerHeight }]}>
-                    {/* Left: settings */}
+                    {/* Left: settings grid */}
                     <View style={styles.leftGroup}>
                         <Pressable
-                            onPress={() => router.push('/settings')}
+                            onPress={handleSettingsPress}
                             hitSlop={10}
                             style={styles.iconButton}
                         >
-                            <Ionicons name="folder-outline" size={20} color={theme.colors.header.tint} />
+                            <Ionicons name="grid-outline" size={18} color={theme.colors.header.tint} />
                         </Pressable>
                     </View>
 
@@ -126,10 +153,10 @@ export const SidebarView = React.memo(() => {
                             isPulsing={isPulsing}
                             size={8}
                         />
-                        <Text style={[styles.titleText, { WebkitTextStroke: '1.2px' } as any]}>chatai.304</Text>
+                        <Text style={styles.titleText}>chatai.304</Text>
                     </View>
 
-                    {/* Right: add */}
+                    {/* Right: add session */}
                     <View style={styles.rightGroup}>
                         <Pressable
                             onPress={handleNewSession}
@@ -143,7 +170,7 @@ export const SidebarView = React.memo(() => {
 
                 <MainView variant="sidebar" />
             </View>
-            <FABWide onPress={handleNewSession} onFilesPress={handleFilesPress} />
+            <FABWide onFilesPress={handleFilesPress} onSessionFilesPress={currentSessionId ? handleSessionFilesPress : undefined} />
         </>
     )
 });

@@ -19,15 +19,20 @@ function formatFileSize(bytes?: number): string {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export const FilesTabView = React.memo(() => {
+interface FilesTabViewProps {
+    initialPath?: string;
+    initialMachineId?: string;
+}
+
+export const FilesTabView = React.memo(({ initialPath, initialMachineId }: FilesTabViewProps = {}) => {
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const allMachines = useAllMachines();
     const onlineMachines = allMachines.filter(isMachineOnline);
 
     // State
-    const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
-    const [currentPath, setCurrentPath] = useState('/');
+    const [selectedMachineId, setSelectedMachineId] = useState<string | null>(initialMachineId ?? null);
+    const [currentPath, setCurrentPath] = useState(initialPath || '/');
     const [entries, setEntries] = useState<DirectoryEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -36,12 +41,16 @@ export const FilesTabView = React.memo(() => {
     const [showHidden, setShowHidden] = useState(false);
     const pathHistory = useRef<string[]>([]);
 
-    // Auto-select first online machine
+    // Auto-select machine: prefer initialMachineId, then first online
     useEffect(() => {
         if (!selectedMachineId && onlineMachines.length > 0) {
-            setSelectedMachineId(onlineMachines[0].id);
+            if (initialMachineId && onlineMachines.some(m => m.id === initialMachineId)) {
+                setSelectedMachineId(initialMachineId);
+            } else {
+                setSelectedMachineId(onlineMachines[0].id);
+            }
         }
-    }, [onlineMachines, selectedMachineId]);
+    }, [onlineMachines, selectedMachineId, initialMachineId]);
 
     // Load directory
     const loadDirectory = useCallback(async (path: string) => {

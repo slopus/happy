@@ -119,8 +119,8 @@ async function loadFonts() {
                 // Bricolage Grotesque
                 'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
 
-                // Audiowide (brand logo)
-                'Audiowide-Regular': require('@/assets/fonts/Audiowide-Regular.ttf'),
+                // Jura Bold (brand logo)
+                'Jura-Bold': require('@/assets/fonts/Jura-Bold.ttf'),
 
                 ...FontAwesome.font,
             });

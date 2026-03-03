@@ -58,7 +58,7 @@ export default function RootLayout() {
             <Stack.Screen
                 name="files"
                 options={{
-                    headerShown: true,
+                    headerShown: false,
                     headerTitle: t('tabs.files'),
                     headerBackTitle: t('common.home')
                 }}
@@ -98,7 +98,7 @@ export default function RootLayout() {
             <Stack.Screen
                 name="session/[id]/files"
                 options={{
-                    headerShown: true,
+                    headerShown: false,
                     headerTitle: t('common.files'),
                     headerBackTitle: t('common.back'),
                 }}

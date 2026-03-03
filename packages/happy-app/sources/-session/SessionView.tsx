@@ -60,6 +60,19 @@ export const SessionView = React.memo((props: { id: string }) => {
     const [showSettingsOverlay, setShowSettingsOverlay] = React.useState(false);
     const insertTextRef = React.useRef<(text: string) => void>(null);
 
+    // Listen for toggle-file-browser event from sidebar
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.sessionId === sessionId) {
+                setFileBrowserOpen(prev => !prev);
+            }
+        };
+        window.addEventListener('toggle-file-browser', handler);
+        return () => window.removeEventListener('toggle-file-browser', handler);
+    }, [sessionId]);
+
     // Web swipe-back gesture (swipe right from left edge to go back)
     React.useEffect(() => {
         if (Platform.OS !== 'web') return;
@@ -839,7 +852,7 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
             onAbort={() => sessionAbort(sessionId)}
             onKillAndArchive={handleKillAndArchive}
             showAbortButton={sessionStatus.state === 'thinking'}
-            onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
+            onFileViewerPress={() => router.push(`/session/${sessionId}/files`)}
             // Autocomplete configuration
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}

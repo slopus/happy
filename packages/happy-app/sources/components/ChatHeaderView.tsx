@@ -23,6 +23,7 @@ interface ChatHeaderViewProps {
     presetEmoji?: string;
     onPresetPress?: () => void;
     onSettingsPress?: () => void;
+    onFileBrowserPress?: () => void;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -36,6 +37,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     presetEmoji,
     onPresetPress,
     onSettingsPress,
+    onFileBrowserPress,
 }) => {
     const { theme } = useUnistyles();
     const navigation = useNavigation();
@@ -57,32 +59,24 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
         <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
             <View style={styles.contentWrapper}>
                 <View style={[styles.content, { height: headerHeight, maxWidth: expandedMaxWidth || layout.maxWidth }]}>
-                {onSettingsPress && (
-                    <Pressable
-                        onPress={onSettingsPress}
-                        hitSlop={10}
-                        style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                        <Ionicons name="folder-outline" size={20} color={theme.colors.header.tint} style={{ opacity: 0.6 }} />
-                    </Pressable>
-                )}
+                <Pressable onPress={handleBackPress} hitSlop={10} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons
+                        name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                        size={20}
+                        color={theme.colors.header.tint}
+                        style={{ opacity: 0.6 }}
+                    />
+                </Pressable>
+
                 {Platform.OS === 'web' && isTablet && (
                     <Pressable
                         onPress={toggleSidebar}
                         hitSlop={10}
                         style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                     >
-                        <Ionicons name={sidebarCollapsed ? "contract-outline" : "expand-outline"} size={18} color={theme.colors.header.tint} style={{ opacity: 0.6 }} />
+                        <Ionicons name={sidebarCollapsed ? "contract-outline" : "expand-outline"} size={20} color={theme.colors.header.tint} style={{ opacity: 0.6 }} />
                     </Pressable>
                 )}
-
-                <Pressable onPress={handleBackPress} style={styles.backButton} hitSlop={15}>
-                    <Ionicons
-                        name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-                        size={Platform.select({ ios: 28, default: 24 })}
-                        color={theme.colors.header.tint}
-                    />
-                </Pressable>
 
                 <View style={styles.titleContainer}>
                     <Text
@@ -116,6 +110,15 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     )}
                 </View>
 
+                {onFileBrowserPress && (
+                    <Pressable
+                        onPress={onFileBrowserPress}
+                        hitSlop={10}
+                        style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                        <Ionicons name="folder-outline" size={20} color={theme.colors.header.tint} style={{ opacity: 0.6 }} />
+                    </Pressable>
+                )}
                 {onPresetPress && (
                     <Pressable
                         onPress={onPresetPress}
@@ -127,6 +130,15 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                         ) : (
                             <Ionicons name="sparkles-outline" size={20} color={theme.colors.header.tint} style={{ opacity: 0.5 }} />
                         )}
+                    </Pressable>
+                )}
+                {onSettingsPress && (
+                    <Pressable
+                        onPress={onSettingsPress}
+                        hitSlop={10}
+                        style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                        <Ionicons name="settings-outline" size={20} color={theme.colors.header.tint} style={{ opacity: 0.6 }} />
                     </Pressable>
                 )}
                 {avatarId && onAvatarPress && (
@@ -170,7 +182,7 @@ const styles = StyleSheet.create({
     titleContainer: {
         flex: 1,
         justifyContent: 'center',
-        alignItems: 'flex-start',
+        alignItems: 'center',
     },
     title: {
         fontSize: Platform.select({
@@ -180,12 +192,13 @@ const styles = StyleSheet.create({
         }),
         fontWeight: '600',
         marginBottom: 1,
-        width: '100%',
+        textAlign: 'center' as const,
     },
     subtitle: {
         fontSize: 12,
         fontWeight: '400',
         lineHeight: 14,
+        textAlign: 'center' as const,
     },
     avatarButton: {
         width: 44,

@@ -16,13 +16,15 @@ export function startDaemonControlServer({
   stopSession,
   spawnSession,
   requestShutdown,
-  onHappySessionWebhook
+  onHappySessionWebhook,
+  onClaudeSessionIdUpdate
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
+  onClaudeSessionIdUpdate: (happySessionId: string, claudeSessionId: string) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -53,6 +55,26 @@ export function startDaemonControlServer({
       logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
       onHappySessionWebhook(sessionId, metadata);
 
+      return { status: 'ok' as const };
+    });
+
+    // Session reports its Claude Code session ID (for recovery)
+    typed.post('/session-claude-id', {
+      schema: {
+        body: z.object({
+          happySessionId: z.string(),
+          claudeSessionId: z.string()
+        }),
+        response: {
+          200: z.object({
+            status: z.literal('ok')
+          })
+        }
+      }
+    }, async (request) => {
+      const { happySessionId, claudeSessionId } = request.body;
+      logger.debug(`[CONTROL SERVER] Claude session ID update: ${happySessionId} -> ${claudeSessionId}`);
+      onClaudeSessionIdUpdate(happySessionId, claudeSessionId);
       return { status: 'ok' as const };
     });
 

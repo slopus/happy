@@ -136,9 +136,9 @@ export const FontFamilies = {
     bold: 'BricolageGrotesque-Bold',
   },
 
-  // Audiowide (brand logo - 304.SYSTEMS)
+  // Jura Bold (brand logo - chatai.304)
   brand: {
-    regular: 'Audiowide-Regular',
+    bold: 'Jura-Bold',
   },
 
   // Legacy fonts (keep for backward compatibility)
@@ -198,9 +198,9 @@ export const Typography = {
     fontFamily: getLogoFont(),
   }),
 
-  // Brand font style (Audiowide - 304.SYSTEMS)
+  // Brand font style (Jura Bold - chatai.304)
   brand: () => ({
-    fontFamily: FontFamilies.brand.regular,
+    fontFamily: FontFamilies.brand.bold,
   }),
 
   // Header text style

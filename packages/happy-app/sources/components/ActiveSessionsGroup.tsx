@@ -73,10 +73,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         textAlign: 'right',
     },
     sessionRow: {
-        height: 56,
+        minHeight: 52,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 12,
+        paddingVertical: 10,
         backgroundColor: theme.colors.surface,
     },
     sessionRowWithBorder: {
@@ -97,7 +98,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginBottom: 4,
     },
     sessionTitle: {
-        fontSize: 15,
+        fontSize: 13,
         fontWeight: '500',
         ...Typography.default('semiBold'),
     },

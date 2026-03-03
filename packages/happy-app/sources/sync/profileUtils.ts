@@ -306,17 +306,21 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
         case 'openai':
             return {
                 id: 'openai',
-                name: 'OpenAI (GPT-5)',
+                name: 'OpenAI (Codex)',
                 openaiConfig: {},
-                environmentVariables: [
-                    { name: 'OPENAI_BASE_URL', value: 'https://api.openai.com/v1' },
-                    { name: 'OPENAI_MODEL', value: 'gpt-5-codex-high' },
-                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
-                    { name: 'API_TIMEOUT_MS', value: '600000' },
-                    { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
-                ],
+                environmentVariables: [],
                 compatibility: { claude: false, codex: true, gemini: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
+        case 'gemini':
+            return {
+                id: 'gemini',
+                name: 'Google (Gemini)',
+                environmentVariables: [],
+                compatibility: { claude: false, codex: false, gemini: true },
                 isBuiltIn: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
@@ -366,7 +370,12 @@ export const DEFAULT_PROFILES = [
     },
     {
         id: 'openai',
-        name: 'OpenAI (GPT-5)',
+        name: 'OpenAI (Codex)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'gemini',
+        name: 'Google (Gemini)',
         isBuiltIn: true,
     },
     {

@@ -30,23 +30,21 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.groupped.itemPressed,
     },
     text: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
         color: theme.colors.text,
     },
 }));
 
 interface FABWideProps {
-    onPress: () => void;
-    onFilesPress?: () => void;
+    onFilesPress: () => void;
+    onSessionFilesPress?: () => void;
 }
 
-export const FABWide = React.memo(({ onPress, onFilesPress }: FABWideProps) => {
+export const FABWide = React.memo(({ onFilesPress, onSessionFilesPress }: FABWideProps) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
-
-    if (!onFilesPress) return null;
 
     return (
         <View
@@ -65,6 +63,18 @@ export const FABWide = React.memo(({ onPress, onFilesPress }: FABWideProps) => {
                 <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
                 <Text style={styles.text}>{t('tabs.files')}</Text>
             </Pressable>
+            {onSessionFilesPress && (
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.button,
+                        pressed && styles.buttonPressed
+                    ]}
+                    onPress={onSessionFilesPress}
+                >
+                    <Ionicons name="code-slash-outline" size={18} color={theme.colors.text} />
+                    <Text style={styles.text}>{t('tabs.code')}</Text>
+                </Pressable>
+            )}
         </View>
     );
 });

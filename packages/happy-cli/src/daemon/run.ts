@@ -3,7 +3,7 @@ import os from 'os';
 import * as tmp from 'tmp';
 
 import { ApiClient } from '@/api/api';
-import { TrackedSession } from './types';
+import { TrackedSession, SessionRecoveryEntry } from './types';
 import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
@@ -550,7 +550,9 @@ export async function startDaemon(): Promise<void> {
             pid: happyProcess.pid,
             childProcess: happyProcess,
             directoryCreated,
-            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
+            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
+            directory,
+            claudeResumeSessionId: options.claudeResumeSessionId || undefined,
           };
 
           pidToTrackedSession.set(happyProcess.pid, trackedSession);
@@ -666,7 +668,16 @@ export async function startDaemon(): Promise<void> {
       stopSession,
       spawnSession,
       requestShutdown: () => requestShutdown('happy-cli'),
-      onHappySessionWebhook
+      onHappySessionWebhook,
+      onClaudeSessionIdUpdate: (happySessionId: string, claudeSessionId: string) => {
+        for (const [, tracked] of pidToTrackedSession.entries()) {
+          if (tracked.happySessionId === happySessionId) {
+            tracked.claudeResumeSessionId = claudeSessionId;
+            logger.debug(`[DAEMON RUN] Updated Claude session ID for ${happySessionId}: ${claudeSessionId}`);
+            break;
+          }
+        }
+      }
     });
 
     // Write initial daemon state (no lock needed for state file)
@@ -821,6 +832,33 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
 
+      // Save session recovery info before shutting down
+      try {
+        const recoveryEntries: SessionRecoveryEntry[] = [];
+        for (const [, tracked] of pidToTrackedSession.entries()) {
+          if (tracked.startedBy === 'daemon' && tracked.claudeResumeSessionId && tracked.directory) {
+            recoveryEntries.push({
+              claudeSessionId: tracked.claudeResumeSessionId,
+              path: tracked.directory,
+              machineId,
+            });
+          }
+        }
+        if (recoveryEntries.length > 0) {
+          const recoveryPath = `${configuration.happyHomeDir}/session-recovery.json`;
+          await fs.writeFile(recoveryPath, JSON.stringify(recoveryEntries, null, 2));
+          logger.debug(`[DAEMON RUN] Saved ${recoveryEntries.length} sessions to recovery file`);
+        } else {
+          logger.debug(`[DAEMON RUN] No sessions with claudeResumeSessionId to save for recovery (tracked: ${pidToTrackedSession.size})`);
+          // Log tracked sessions for debugging
+          for (const [pid, tracked] of pidToTrackedSession.entries()) {
+            logger.debug(`[DAEMON RUN]   PID ${pid}: startedBy=${tracked.startedBy}, dir=${tracked.directory}, claudeId=${tracked.claudeResumeSessionId}`);
+          }
+        }
+      } catch (error) {
+        logger.debug(`[DAEMON RUN] Failed to save session recovery file: ${error}`);
+      }
+
       // Update daemon state before shutting down
       await apiMachine.updateDaemonState((state: DaemonState | null) => ({
         ...state,
@@ -898,8 +936,17 @@ async function cleanupGhostSessions(
       hasRunningSessionProcesses = false;
     }
 
+    const recoveryPath = `${configuration.happyHomeDir}/session-recovery.json`;
+    const recoveryDir = `${configuration.happyHomeDir}/session-recovery`;
+
     if (hasRunningSessionProcesses) {
       logger.debug('[DAEMON RUN] Found running session processes from previous daemon, skipping ghost cleanup');
+      // Clean up stale recovery files if present (sessions are alive, no recovery needed)
+      try { await fs.unlink(recoveryPath).catch(() => {}); } catch {}
+      try {
+        const files = await fs.readdir(recoveryDir).catch(() => []);
+        for (const f of files) { await fs.unlink(`${recoveryDir}/${f}`).catch(() => {}); }
+      } catch {}
       return;
     }
 
@@ -910,16 +957,55 @@ async function cleanupGhostSessions(
     );
     const sessions: Array<{ id: string; active: boolean; metadata: any }> = response.data?.sessions || [];
     const activeSessions = sessions.filter((s: any) => s.active);
+    logger.debug(`[DAEMON RUN] Ghost cleanup: total sessions from server: ${sessions.length}, active: ${activeSessions.length}`);
+    if (activeSessions.length > 0) {
+      for (const s of activeSessions) {
+        const m = s.metadata as any;
+        logger.debug(`[DAEMON RUN] Active session ${s.id}: claudeSessionId=${m?.claudeSessionId}, path=${m?.path}, machineId=${m?.machineId}`);
+      }
+    }
 
-    // Collect sessions to recover: those with claudeSessionId and path belonging to this machine
-    const sessionsToRecover: Array<{ claudeSessionId: string; path: string }> = [];
-    for (const session of activeSessions) {
-      const metadata = session.metadata as any;
-      if (metadata?.claudeSessionId && metadata?.path && metadata?.machineId === machineId) {
-        sessionsToRecover.push({
-          claudeSessionId: metadata.claudeSessionId,
-          path: metadata.path
-        });
+    // Read per-session recovery files (written by session processes on SIGTERM)
+    let sessionsToRecover: Array<{ claudeSessionId: string; path: string }> = [];
+    try {
+      const files = await fs.readdir(recoveryDir);
+      const jsonFiles = files.filter(f => f.endsWith('.json'));
+      for (const file of jsonFiles) {
+        try {
+          const data = JSON.parse(await fs.readFile(`${recoveryDir}/${file}`, 'utf-8'));
+          if (data.claudeSessionId && data.path && (!data.machineId || data.machineId === machineId)) {
+            sessionsToRecover.push({ claudeSessionId: data.claudeSessionId, path: data.path });
+          }
+        } catch {}
+      }
+      // Clean up recovery directory
+      for (const file of jsonFiles) {
+        await fs.unlink(`${recoveryDir}/${file}`).catch(() => {});
+      }
+      if (sessionsToRecover.length > 0) {
+        logger.debug(`[DAEMON RUN] Read ${sessionsToRecover.length} sessions from recovery files`);
+      }
+    } catch {
+      // No recovery directory — try legacy single recovery file
+      try {
+        const recoveryData = await fs.readFile(recoveryPath, 'utf-8');
+        const entries: SessionRecoveryEntry[] = JSON.parse(recoveryData);
+        sessionsToRecover = entries
+          .filter(e => !e.machineId || e.machineId === machineId)
+          .map(e => ({ claudeSessionId: e.claudeSessionId, path: e.path }));
+        await fs.unlink(recoveryPath).catch(() => {});
+        logger.debug(`[DAEMON RUN] Read ${sessionsToRecover.length} sessions from legacy recovery file`);
+      } catch {
+        // No recovery files at all — fall back to server metadata (encrypted, might not work)
+        for (const session of activeSessions) {
+          const metadata = session.metadata as any;
+          if (metadata?.claudeSessionId && metadata?.path && (!metadata?.machineId || metadata?.machineId === machineId)) {
+            sessionsToRecover.push({
+              claudeSessionId: metadata.claudeSessionId,
+              path: metadata.path
+            });
+          }
+        }
       }
     }
 

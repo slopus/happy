@@ -49,8 +49,8 @@ const stylesheet = StyleSheet.create((theme) => ({
     headerSection: {
         backgroundColor: theme.colors.groupped.background,
         paddingHorizontal: 24,
-        paddingTop: 20,
-        paddingBottom: 8,
+        paddingTop: 28,
+        paddingBottom: 10,
     },
     headerText: {
         fontSize: 14,
@@ -61,7 +61,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     projectGroup: {
         paddingHorizontal: 16,
-        paddingVertical: 10,
+        paddingVertical: 14,
         backgroundColor: theme.colors.surface,
     },
     projectGroupTitle: {
@@ -73,19 +73,20 @@ const stylesheet = StyleSheet.create((theme) => ({
     projectGroupSubtitle: {
         fontSize: 11,
         color: theme.colors.textSecondary,
-        marginTop: 2,
+        marginTop: 3,
         ...Typography.default(),
     },
     sessionItem: {
-        height: 44,
+        minHeight: 60,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 10,
+        paddingVertical: 14,
         backgroundColor: theme.colors.surface,
     },
     sessionItemContainer: {
         marginHorizontal: 8,
-        marginBottom: 1,
+        marginBottom: 2,
         overflow: 'hidden',
     },
     sessionItemFirst: {
@@ -106,11 +107,11 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionItemContainerLast: {
         borderBottomLeftRadius: 12,
         borderBottomRightRadius: 12,
-        marginBottom: 8,
+        marginBottom: 16,
     },
     sessionItemContainerSingle: {
         borderRadius: 12,
-        marginBottom: 8,
+        marginBottom: 16,
     },
     sessionItemSelected: {
         backgroundColor: theme.colors.surfaceSelected,

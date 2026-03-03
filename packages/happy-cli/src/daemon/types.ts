@@ -19,4 +19,14 @@ export interface TrackedSession {
   message?: string;
   /** tmux session identifier (format: session:window) */
   tmuxSessionId?: string;
+  /** Directory the session was spawned in (for recovery) */
+  directory?: string;
+  /** Claude Code session ID for --resume (for recovery) */
+  claudeResumeSessionId?: string;
+}
+
+export interface SessionRecoveryEntry {
+  claudeSessionId: string;
+  path: string;
+  machineId: string;
 }

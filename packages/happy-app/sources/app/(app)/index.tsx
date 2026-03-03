@@ -55,7 +55,7 @@ function NotAuthenticated() {
                 <View style={styles.brandRow}>
                     <View style={styles.brandDot} />
                     <Text style={[Typography.brand(), styles.brandText, { color: theme.colors.text }]}>
-                        304.SYSTEMS
+                        CHATAI.304
                     </Text>
                 </View>
                 <Text style={[Typography.brand(), styles.brandTagline, { color: theme.colors.textSecondary }]}>
@@ -120,7 +120,7 @@ function NotAuthenticated() {
                         <View style={styles.brandRow}>
                             <View style={styles.brandDot} />
                             <Text style={[Typography.brand(), styles.brandText, { color: theme.colors.text }]}>
-                                304.SYSTEMS
+                                CHATAI.304
                             </Text>
                         </View>
                         <Text style={[Typography.brand(), styles.brandTagline, { color: theme.colors.textSecondary }]}>

@@ -535,25 +535,12 @@ function NewSessionWizard() {
         }
     }, [selectedMachineId, dismissedCLIWarnings, setDismissedCLIWarnings]);
 
-    // Helper to check if profile is available (compatible + CLI detected)
+    // Helper to check if profile is available (CLI detected on machine)
+    // Note: Profile compatibility with current agent is NOT checked here -
+    // selecting a profile will auto-switch the agent type via selectProfile()
     const isProfileAvailable = React.useCallback((profile: AIBackendProfile): { available: boolean; reason?: string } => {
-        // Check profile compatibility with selected agent type
-        if (!validateProfileForAgent(profile, agentType)) {
-            // Build list of agents this profile supports (excluding current)
-            // Uses Object.entries to iterate over compatibility flags - scales automatically with new agents
-            const supportedAgents = (Object.entries(profile.compatibility) as [string, boolean][])
-                .filter(([agent, supported]) => supported && agent !== agentType)
-                .map(([agent]) => agent.charAt(0).toUpperCase() + agent.slice(1)); // 'claude' -> 'Claude'
-            const required = supportedAgents.join(' or ') || 'another agent';
-            return {
-                available: false,
-                reason: `requires-agent:${required}`,
-            };
-        }
-
         // Check if required CLI is detected on machine (only if detection completed)
         // Determine required CLI: if profile supports exactly one CLI, that CLI is required
-        // Uses Object.entries to iterate - scales automatically when new agents are added
         const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
             .filter(([, supported]) => supported)
             .map(([agent]) => agent);
@@ -566,9 +553,17 @@ function NewSessionWizard() {
             };
         }
 
+        // Check if gemini profile requires experiments
+        if (requiredCLI === 'gemini' && !experimentsEnabled) {
+            return {
+                available: false,
+                reason: `requires-experiments`,
+            };
+        }
+
         // Optimistic: If detection hasn't completed (null) or profile supports both, assume available
         return { available: true };
-    }, [agentType, cliAvailability]);
+    }, [cliAvailability, experimentsEnabled]);
 
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
@@ -785,8 +780,8 @@ function NewSessionWizard() {
     }, [scrollToSection]);
 
     const handleAgentInputAgentClick = React.useCallback(() => {
-        scrollToSection(profileSectionRef); // Agent tied to profile section
-    }, [scrollToSection]);
+        handleAgentClick(); // Cycle through agents: claude -> codex -> gemini -> claude
+    }, [handleAgentClick]);
 
     const handleAddProfile = React.useCallback(() => {
         const newProfile: AIBackendProfile = {

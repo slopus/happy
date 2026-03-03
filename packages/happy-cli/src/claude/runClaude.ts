@@ -15,7 +15,7 @@ import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { notifyDaemonSessionStarted, notifyDaemonClaudeSessionId } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
@@ -23,7 +23,7 @@ import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/util
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve, join } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
@@ -251,6 +251,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 if (previousSessionId !== sessionId) {
                     logger.debug(`[START] Claude session ID changed: ${previousSessionId} -> ${sessionId}`);
                     currentSession.onSessionFound(sessionId);
+
+                    // Notify daemon of Claude session ID for recovery
+                    if (options.startedBy === 'daemon') {
+                        notifyDaemonClaudeSessionId(response.id, sessionId).catch((err) => {
+                            logger.debug(`[START] Failed to notify daemon of Claude session ID: ${err}`);
+                        });
+                    }
                 }
             }
         }
@@ -424,23 +431,52 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debug('[START] Received termination signal, cleaning up...');
 
         try {
-            // Update lifecycle state to archived before closing
-            if (session) {
-                session.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    lifecycleState: 'archived',
-                    lifecycleStateSince: Date.now(),
-                    archivedBy: 'cli',
-                    archiveReason: 'User terminated'
-                }));
-                
-                // Cleanup session resources (intervals, callbacks)
-                currentSession?.cleanup();
+            // Cleanup session resources (intervals, callbacks)
+            currentSession?.cleanup();
 
-                // Send session death message
-                session.sendSessionDeath();
-                await session.flush();
-                await session.close();
+            if (session) {
+                if (options.startedBy === 'daemon') {
+                    // Daemon-spawned session: stay active for resume, don't send session-end
+                    logger.debug('[START] Daemon-spawned session - skipping session death (will stay active for resume)');
+
+                    // Write recovery file so the new daemon can re-spawn this session
+                    const claudeSessionId = currentSession?.sessionId;
+                    if (claudeSessionId) {
+                        try {
+                            const recoveryDir = `${configuration.happyHomeDir}/session-recovery`;
+                            await mkdir(recoveryDir, { recursive: true });
+                            const recoveryData = {
+                                claudeSessionId,
+                                path: workingDirectory,
+                                machineId,
+                            };
+                            await writeFile(
+                                `${recoveryDir}/${response.id}.json`,
+                                JSON.stringify(recoveryData, null, 2)
+                            );
+                            logger.debug(`[START] Saved recovery file for session ${response.id} (claude: ${claudeSessionId})`);
+                        } catch (err) {
+                            logger.debug(`[START] Failed to save recovery file: ${err}`);
+                        }
+                    } else {
+                        logger.debug('[START] No Claude session ID available, skipping recovery file');
+                    }
+
+                    await session.flush();
+                    await session.close();
+                } else {
+                    // User-started session: archive and send death
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        lifecycleState: 'archived',
+                        lifecycleStateSince: Date.now(),
+                        archivedBy: 'cli',
+                        archiveReason: 'User terminated'
+                    }));
+                    session.sendSessionDeath();
+                    await session.flush();
+                    await session.close();
+                }
             }
 
             // Stop caffeinate

@@ -1,14 +1,9 @@
 import * as React from 'react';
-import { View } from 'react-native';
-import { SvgXml } from 'react-native-svg';
+import { View, Text } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
-
-const chatBubbleStarSvg = (color: string) => `
-<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M10 15C10 8.37 15.37 3 22 3H78C84.63 3 90 8.37 90 15V62C90 68.63 84.63 74 78 74H35L14 92C12.8 93.2 10.9 93.2 9.7 92C9.1 91.4 8.7 90.6 8.7 89.7V75.5C8.7 75.5 10 73 10 62V15Z" stroke="${color}" stroke-width="6.5" stroke-linejoin="round"/>
-  <path d="M50 18L55.5 38L50 60L44.5 38L50 18Z" fill="${color}"/>
-  <path d="M28 39L46 41L72 39L46 37L28 39Z" fill="${color}"/>
-</svg>`;
+import { Typography } from '@/constants/Typography';
+import { StatusDot } from './StatusDot';
+import { useSocketStatus } from '@/sync/storage';
 
 /**
  * Shared header logo component used across all main tabs.
@@ -17,18 +12,36 @@ const chatBubbleStarSvg = (color: string) => `
  */
 export const HeaderLogo = React.memo(() => {
     const { theme } = useUnistyles();
+    const socketStatus = useSocketStatus();
+
+    const statusColor = (() => {
+        switch (socketStatus.status) {
+            case 'connected': return theme.colors.status.connected;
+            case 'connecting': return theme.colors.status.connecting;
+            case 'disconnected': return theme.colors.status.disconnected;
+            case 'error': return theme.colors.status.error;
+            default: return theme.colors.status.default;
+        }
+    })();
+
     return (
         <View style={{
-            width: 32,
-            height: 32,
+            flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'center',
+            gap: 8,
         }}>
-            <SvgXml
-                xml={chatBubbleStarSvg(theme.colors.header.tint)}
-                width={24}
-                height={24}
+            <StatusDot
+                color={statusColor}
+                isPulsing={socketStatus.status === 'connecting'}
+                size={8}
             />
+            <Text style={{
+                fontSize: 15,
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                color: theme.colors.header.tint,
+                ...Typography.brand(),
+            }}>chatai.304</Text>
         </View>
     );
 });
