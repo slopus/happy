@@ -323,15 +323,23 @@ export class PermissionHandler {
      * Checks if a tool call is rejected
      */
     isAborted(toolCallId: string): boolean {
+        const response = this.responses.get(toolCallId);
+        const toolCall = this.toolCalls.find(tc => tc.id === toolCallId);
+        const isExitPlan = toolCall && (toolCall.name === 'exit_plan_mode' || toolCall.name === 'ExitPlanMode');
 
-        // If tool not approved, it's aborted
-        if (this.responses.get(toolCallId)?.approved === false) {
+        if (isExitPlan) {
+            if (response?.approved === false) {
+                // Reject with feedback: don't abort, let Claude continue with the feedback
+                if (response.reason?.trim()) return false;
+                // Reject without feedback: abort, wait for new user input
+                return true;
+            }
+            // Approve: abort (needs process restart with PLAN_FAKE_RESTART)
             return true;
         }
 
-        // Always abort exit_plan_mode
-        const toolCall = this.toolCalls.find(tc => tc.id === toolCallId);
-        if (toolCall && (toolCall.name === 'exit_plan_mode' || toolCall.name === 'ExitPlanMode')) {
+        // All other tools: abort if not approved
+        if (response?.approved === false) {
             return true;
         }
 
