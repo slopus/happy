@@ -16,7 +16,7 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
-import { MultiTextInput } from '@/components/MultiTextInput';
+import { MultiTextInput, type KeyPressEvent } from '@/components/MultiTextInput';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -265,6 +265,7 @@ function NewSessionScreen() {
     const allMachines = useAllMachines();
     const sessions = useSessions();
     const lastUsedAgent = useSetting('lastUsedAgent') as AgentKey | null;
+    const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
     const [prompt, setPrompt] = React.useState('');
     const [selectedAgent, setSelectedAgent] = React.useState<AgentKey>(lastUsedAgent ?? 'claude');
@@ -550,6 +551,17 @@ function NewSessionScreen() {
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 
+    // Handle Enter/Cmd+Enter to send on web
+    const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
+        if (Platform.OS === 'web' && event.key === 'Enter' && !event.shiftKey && agentInputEnterToSend) {
+            if (canSend) {
+                handleSend();
+                return true;
+            }
+        }
+        return false;
+    }, [agentInputEnterToSend, canSend, handleSend]);
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -706,6 +718,7 @@ function NewSessionScreen() {
                                     paddingTop={Platform.OS === 'web' ? 10 : 8}
                                     paddingBottom={Platform.OS === 'web' ? 10 : 8}
                                     maxHeight={240}
+                                    onKeyPress={handleKeyPress}
                                 />
                             </View>
                             <View style={[
