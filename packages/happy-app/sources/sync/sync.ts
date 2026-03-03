@@ -25,7 +25,7 @@ import { parseToken } from '@/utils/parseToken';
 import { getServerUrl } from './serverConfig';
 import { log } from '@/log';
 import { signContentPublicKey } from './directShareEncryption';
-import { uploadContentPublicKey } from './apiSharing';
+import { uploadContentPublicKey, fetchSharedSessions as apiFetchSharedSessions } from './apiSharing';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
 import { AsyncLock } from '@/utils/lock';
@@ -129,6 +129,7 @@ class Sync {
     private friendsSync: InvalidateSync;
     private friendRequestsSync: InvalidateSync;
     private feedSync: InvalidateSync;
+    private sharedSessionsSync: InvalidateSync;
     private openClawMachinesSync: InvalidateSync;
     private openClawMachineDataKeys = new Map<string, Uint8Array>(); // Store OpenClaw machine data encryption keys
     private activityAccumulator: ActivityUpdateAccumulator;
@@ -151,6 +152,7 @@ class Sync {
         this.friendsSync = new InvalidateSync(this.fetchFriends);
         this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests);
         this.feedSync = new InvalidateSync(this.fetchFeed);
+        this.sharedSessionsSync = new InvalidateSync(this.fetchSharedSessions);
         this.openClawMachinesSync = new InvalidateSync(this.fetchOpenClawMachines);
 
         const registerPushToken = async () => {
@@ -181,6 +183,7 @@ class Sync {
                 this.friendsSync.invalidate();
                 this.friendRequestsSync.invalidate();
                 this.feedSync.invalidate();
+                this.sharedSessionsSync.invalidate();
                 gitStatusSync.invalidateForSessions(Object.keys(storage.getState().sessions));
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
@@ -258,6 +261,7 @@ class Sync {
         this.friendRequestsSync.invalidate();
         this.artifactsSync.invalidate();
         this.feedSync.invalidate();
+        this.sharedSessionsSync.invalidate();
         log.log('🔄 #init: All syncs invalidated, including artifacts');
 
         // Wait for both sessions and machines to load, then mark as ready
@@ -670,6 +674,74 @@ class Sync {
         this.applySessions(decryptedSessions);
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
 
+    }
+
+    private fetchSharedSessions = async () => {
+        if (!this.credentials || !this.encryption) return;
+
+        const sharedSessions = await apiFetchSharedSessions(this.credentials);
+        log.log(`📥 fetchSharedSessions: received ${sharedSessions.length} shared sessions`);
+
+        // Decrypt data keys and initialize session encryptions
+        const sessionKeys = new Map<string, Uint8Array | null>();
+        for (const ss of sharedSessions) {
+            if (ss.encryptedDataKey) {
+                try {
+                    const decrypted = await this.encryption.decryptEncryptionKey(ss.encryptedDataKey);
+                    if (decrypted) {
+                        sessionKeys.set(ss.sessionId, decrypted);
+                        this.sessionDataKeys.set(ss.sessionId, decrypted);
+                    } else {
+                        console.error(`Failed to decrypt data key for shared session ${ss.sessionId}`);
+                    }
+                } catch (error) {
+                    console.error(`Error decrypting data key for shared session ${ss.sessionId}:`, error);
+                }
+            }
+        }
+        await this.encryption.initializeSessions(sessionKeys);
+
+        // Decrypt metadata for each shared session
+        const decryptedSessions: Session[] = [];
+        for (const ss of sharedSessions) {
+            const sessionEncryption = this.encryption.getSessionEncryption(ss.sessionId);
+            if (!sessionEncryption) {
+                console.error(`Session encryption not found for shared session ${ss.sessionId}`);
+                continue;
+            }
+
+            const metadata = ss.metadata
+                ? await sessionEncryption.decryptMetadata(ss.metadataVersion, ss.metadata)
+                : null;
+
+            decryptedSessions.push({
+                id: ss.sessionId,
+                seq: ss.seq,
+                createdAt: ss.createdAt,
+                updatedAt: ss.updatedAt,
+                active: ss.active,
+                activeAt: ss.activeAt,
+                metadata,
+                metadataVersion: ss.metadataVersion,
+                agentState: null,
+                agentStateVersion: 0,
+                thinking: false,
+                thinkingAt: 0,
+                presence: ss.updatedAt,
+                owner: ss.sharedBy.id,
+                ownerProfile: {
+                    id: ss.sharedBy.id,
+                    username: ss.sharedBy.username ?? '',
+                    firstName: ss.sharedBy.firstName ?? '',
+                    lastName: ss.sharedBy.lastName,
+                    avatar: ss.sharedBy.avatar,
+                },
+                accessLevel: ss.accessLevel,
+            });
+        }
+
+        storage.getState().applySharedSessions(decryptedSessions);
+        log.log(`📥 fetchSharedSessions completed - processed ${decryptedSessions.length} shared sessions`);
     }
 
     public refreshMachines = async () => {
@@ -2222,6 +2294,9 @@ class Sync {
                 },
                 accessLevel,
             });
+
+            // Refresh shared sessions to get metadata from server
+            this.sharedSessionsSync.invalidate();
 
         } else if (updateData.body.t === 'session-share-updated') {
             log.log('Received session-share-updated');

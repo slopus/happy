@@ -69,7 +69,10 @@ export function v3SessionRoutes(app: Fastify) {
         const session = await db.session.findFirst({
             where: {
                 id: sessionId,
-                accountId: userId
+                OR: [
+                    { accountId: userId },
+                    { shares: { some: { sharedWithUserId: userId } } }
+                ]
             },
             select: { id: true }
         });

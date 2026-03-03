@@ -317,4 +317,49 @@ export function shareRoutes(app: Fastify) {
 
         return reply.send({ success: true });
     });
+
+    /**
+     * Get all sessions shared with the current user
+     */
+    app.get('/v1/sessions/shared', {
+        preHandler: app.authenticate,
+    }, async (request, reply) => {
+        const userId = request.userId;
+
+        const shares = await db.sessionShare.findMany({
+            where: { sharedWithUserId: userId },
+            include: {
+                session: {
+                    select: {
+                        id: true,
+                        seq: true,
+                        metadata: true,
+                        metadataVersion: true,
+                        active: true,
+                        lastActiveAt: true,
+                        createdAt: true,
+                        updatedAt: true,
+                    }
+                },
+                sharedByUser: { select: PROFILE_SELECT }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        return reply.send({
+            sharedSessions: shares.map(share => ({
+                sessionId: share.session.id,
+                seq: share.session.seq,
+                metadata: share.session.metadata,
+                metadataVersion: share.session.metadataVersion,
+                active: share.session.active,
+                activeAt: share.session.lastActiveAt.getTime(),
+                createdAt: share.session.createdAt.getTime(),
+                updatedAt: share.session.updatedAt.getTime(),
+                accessLevel: share.accessLevel,
+                encryptedDataKey: Buffer.from(share.encryptedDataKey).toString('base64'),
+                sharedBy: toShareUserProfile(share.sharedByUser),
+            }))
+        });
+    });
 }

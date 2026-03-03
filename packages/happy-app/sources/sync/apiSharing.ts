@@ -16,6 +16,45 @@ import {
     SessionSharingError
 } from './sharingTypes';
 
+export interface SharedSessionFromServer {
+    sessionId: string;
+    seq: number;
+    metadata: string | null;
+    metadataVersion: number;
+    active: boolean;
+    activeAt: number;
+    createdAt: number;
+    updatedAt: number;
+    accessLevel: 'view' | 'edit' | 'admin';
+    encryptedDataKey: string;
+    sharedBy: { id: string; firstName: string | null; lastName: string | null; username: string | null; avatar: string | null };
+}
+
+/**
+ * Fetch all sessions shared with the current user
+ */
+export async function fetchSharedSessions(
+    credentials: AuthCredentials
+): Promise<SharedSessionFromServer[]> {
+    const API_ENDPOINT = getServerUrl();
+
+    return await backoff(async () => {
+        const response = await fetch(`${API_ENDPOINT}/v1/sessions/shared`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch shared sessions: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.sharedSessions;
+    });
+}
+
 /**
  * Upload content public key and binding signature to server
  */

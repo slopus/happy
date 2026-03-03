@@ -1680,7 +1680,7 @@ export function useSessions() {
 }
 
 export function useSession(id: string): Session | null {
-    return storage(useShallow((state) => state.sessions[id] ?? null));
+    return storage(useShallow((state) => state.sessions[id] ?? state.sharedSessions[id] ?? null));
 }
 
 const emptyArray: unknown[] = [];

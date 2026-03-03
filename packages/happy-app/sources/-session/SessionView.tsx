@@ -75,8 +75,8 @@ export const SessionView = React.memo((props: { id: string }) => {
         sync.refreshSessions()
             .then(() => {
                 if (cancelled) return;
-                // After refresh, check if session exists in storage
-                if (!storage.getState().sessions[sessionId]) {
+                // After refresh, check if session exists in storage (owned or shared)
+                if (!storage.getState().sessions[sessionId] && !storage.getState().sharedSessions[sessionId]) {
                     setSessionNotFound(true);
                 }
             })
