@@ -81,7 +81,7 @@ export function usePublicShareSession(token: string) {
 
             // 7. Reduce to Message[]
             const result = reducer(createReducer(), normalizedMessages);
-            setMessages(result.messages);
+            setMessages(result.messages.reverse());
             setState('loaded');
         } catch (e) {
             if (e instanceof PublicShareNotFoundError) {
