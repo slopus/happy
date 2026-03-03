@@ -343,6 +343,102 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(typeof (sessionUser as any).content.time).toBe('number');
     });
 
+    it('sends a legacy output compatibility mirror for assistant messages', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    { id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 },
+                    { id: 'msg-2', seq: 2, localId: 'local-2', createdAt: 1, updatedAt: 1 },
+                    { id: 'msg-3', seq: 3, localId: 'local-3', createdAt: 1, updatedAt: 1 }
+                ]
+            }
+        });
+
+        const assistantBody = {
+            type: 'assistant',
+            uuid: 'assistant-uuid-1',
+            message: {
+                role: 'assistant',
+                model: 'claude-sonnet-4-6',
+                content: [{ type: 'text', text: 'pong' }]
+            }
+        } as any;
+
+        client.sendClaudeSessionMessage(assistantBody);
+
+        await waitForCheck(() => {
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+        });
+
+        const payload = mockAxiosPost.mock.calls[0][1];
+        expect(payload.messages).toHaveLength(3);
+
+        const decryptedMessages = payload.messages.map((message: { content: string }) => decrypt(
+            session.encryptionKey,
+            session.encryptionVariant,
+            decodeBase64(message.content)
+        ));
+
+        expect(decryptedMessages).toContainEqual({
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    ...assistantBody,
+                    legacyCompat: true
+                }
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        });
+    });
+
+    it('adds a compatibility uuid when assistant output is missing one', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    { id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 },
+                    { id: 'msg-2', seq: 2, localId: 'local-2', createdAt: 1, updatedAt: 1 },
+                    { id: 'msg-3', seq: 3, localId: 'local-3', createdAt: 1, updatedAt: 1 }
+                ]
+            }
+        });
+
+        const assistantBody = {
+            type: 'assistant',
+            message: {
+                role: 'assistant',
+                model: 'claude-sonnet-4-6',
+                content: [{ type: 'text', text: 'pong' }]
+            }
+        } as any;
+
+        expect(assistantBody.uuid).toBeUndefined();
+        client.sendClaudeSessionMessage(assistantBody);
+
+        await waitForCheck(() => {
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+        });
+
+        const payload = mockAxiosPost.mock.calls[0][1];
+        const decryptedMessages = payload.messages.map((message: { content: string }) => decrypt(
+            session.encryptionKey,
+            session.encryptionVariant,
+            decodeBase64(message.content)
+        ));
+
+        const legacyOutput = decryptedMessages.find((message: any) => (
+            message?.role === 'agent' && message?.content?.type === 'output' && message?.content?.data?.legacyCompat === true
+        ));
+
+        expect(legacyOutput).toBeDefined();
+        expect(legacyOutput.content.data.uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+        expect(assistantBody.uuid).toBeUndefined();
+    });
+
     it('sends session protocol messages through enqueueMessage with session envelope', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({
@@ -374,6 +470,59 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(decrypted).toEqual({
             role: 'session',
             content: envelope,
+            meta: {
+                sentFrom: 'cli'
+            }
+        });
+    });
+
+    it('sends a legacy compatibility mirror for agent session envelopes', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    { id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 },
+                    { id: 'msg-2', seq: 2, localId: 'local-2', createdAt: 1, updatedAt: 1 }
+                ]
+            }
+        });
+
+        const envelope = {
+            id: 'env-compat-1',
+            time: 1003,
+            role: 'agent' as const,
+            turn: 'turn-compat-1',
+            ev: { t: 'text' as const, text: 'compat text' }
+        };
+
+        client.sendSessionProtocolMessage(envelope);
+
+        await waitForCheck(() => {
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+        });
+
+        const payload = mockAxiosPost.mock.calls[0][1];
+        expect(payload.messages).toHaveLength(2);
+
+        const decryptedMessages = payload.messages.map((message: { content: string }) => decrypt(
+            session.encryptionKey,
+            session.encryptionVariant,
+            decodeBase64(message.content)
+        ));
+
+        expect(decryptedMessages).toContainEqual({
+            role: 'session',
+            content: envelope,
+            meta: {
+                sentFrom: 'cli'
+            }
+        });
+        expect(decryptedMessages).toContainEqual({
+            role: 'agent',
+            content: {
+                type: 'session',
+                data: envelope
+            },
             meta: {
                 sentFrom: 'cli'
             }

@@ -952,7 +952,7 @@ export async function runAcp(opts: {
         archivedBy: 'cli',
         archiveReason: 'Session ended',
       }));
-      session.sendSessionDeath();
+      await session.sendSessionDeath();
       await session.flush();
       await session.close();
     } catch (error) {

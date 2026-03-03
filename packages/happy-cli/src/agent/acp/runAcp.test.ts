@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
     sendSessionProtocolMessage: vi.fn(),
     sendSessionEvent: vi.fn(),
     updateMetadata: vi.fn(),
-    sendSessionDeath: vi.fn(),
+    sendSessionDeath: vi.fn(async () => {}),
     flush: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
     updateAgentState: vi.fn((handler: (state: Record<string, unknown>) => Record<string, unknown>) => {

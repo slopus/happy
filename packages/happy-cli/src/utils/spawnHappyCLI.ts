@@ -100,6 +100,11 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
     throw new Error(errorMessage);
   }
   
+  // Strip CLAUDECODE env var to prevent "nested session" errors when
+  // spawned from within a Claude Code session (e.g., daemon started inside Claude Code)
+  const env = { ...(options.env || process.env) };
+  delete env.CLAUDECODE;
+
   const runtime = isBun() ? 'bun' : 'node';
-  return spawn(runtime, nodeArgs, options);
+  return spawn(runtime, nodeArgs, { ...options, env });
 }

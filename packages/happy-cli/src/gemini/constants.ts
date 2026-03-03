@@ -17,7 +17,7 @@ export const GOOGLE_API_KEY_ENV = 'GOOGLE_API_KEY';
 export const GEMINI_MODEL_ENV = 'GEMINI_MODEL';
 
 /** Default Gemini model */
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.1-pro-preview';
 
 /**
  * Instruction for changing chat title

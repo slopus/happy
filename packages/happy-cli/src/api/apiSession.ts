@@ -334,11 +334,11 @@ export class ApiSessionClient extends EventEmitter {
         this.lastSeq = maxSeq;
     }
 
-    private enqueueMessage(content: unknown, invalidate: boolean = true) {
+    private enqueueMessage(content: unknown, invalidate: boolean = true, localId?: string) {
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.pendingOutbox.push({
             content: encrypted,
-            localId: randomUUID()
+            localId: localId ?? randomUUID()
         });
         if (invalidate) {
             this.sendSync.invalidate();
@@ -350,11 +350,21 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
+        // Only mirror real assistant messages with content; skip synthetic error messages (body.message may be absent).
+        const shouldSendLegacyOutputCompatibility = body.type === 'assistant' && body.message != null;
+        if (shouldSendLegacyOutputCompatibility) {
+            this.enqueueLegacyClaudeOutputCompatibility(body, false);
+        }
+
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         for (const envelope of mapped.envelopes) {
             this.sendSessionProtocolMessage(envelope);
         }
+        if (shouldSendLegacyOutputCompatibility && mapped.envelopes.length === 0) {
+            this.sendSync.invalidate();
+        }
+
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
@@ -385,7 +395,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     sendCodexMessage(body: any) {
-        let content = {
+        const content = {
             role: 'agent',
             content: {
                 type: 'codex',
@@ -398,7 +408,7 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content);
     }
 
-    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true, localId?: string) {
         const content = {
             role: 'session',
             content: envelope,
@@ -407,17 +417,52 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
+        this.enqueueMessage(content, invalidate, localId);
+    }
+
+    private enqueueLegacyClaudeOutputCompatibility(body: RawJSONLines, invalidate: boolean = true) {
+        const fallbackUuid = (body as { uuid?: unknown }).uuid;
+        const content = {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    ...body,
+                    uuid: typeof fallbackUuid === 'string' && fallbackUuid.length > 0 ? fallbackUuid : randomUUID(),
+                    legacyCompat: true
+                }
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
+
         this.enqueueMessage(content, invalidate);
     }
 
-    sendSessionProtocolMessage(envelope: SessionEnvelope) {
-        if (envelope.role !== 'user') {
-            this.enqueueSessionProtocolEnvelope(envelope);
-            return;
-        }
+    private enqueueLegacySessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true, localId?: string) {
+        const content = {
+            role: 'agent',
+            content: {
+                type: 'session',
+                data: envelope
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
 
-        if (envelope.ev.t !== 'text') {
-            this.enqueueSessionProtocolEnvelope(envelope);
+        this.enqueueMessage(content, invalidate, localId);
+    }
+
+    sendSessionProtocolMessage(envelope: SessionEnvelope) {
+        if (envelope.role === 'agent') {
+            // Send both modern and legacy formats with the same localId
+            // so the server deduplicates and only stores one copy.
+            // Legacy format is sent second with invalidate=true to trigger flush.
+            const localId = randomUUID();
+            this.enqueueSessionProtocolEnvelope(envelope, false, localId);
+            this.enqueueLegacySessionProtocolEnvelope(envelope, true, localId);
             return;
         }
 
@@ -432,7 +477,7 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
     sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
-        let content = {
+        const content = {
             role: 'agent',
             content: {
                 type: 'acp',
@@ -458,7 +503,7 @@ export class ApiSessionClient extends EventEmitter {
     } | {
         type: 'ready'
     }, id?: string) {
-        let content = {
+        const content = {
             role: 'agent',
             content: {
                 id: id ?? randomUUID(),
@@ -485,10 +530,19 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * Send session death message
+     * Send session death message and wait for server acknowledgement.
+     * Falls back to fire-and-forget if ack times out (2s).
      */
-    sendSessionDeath() {
-        this.socket.emit('session-end', { sid: this.sessionId, time: Date.now() });
+    async sendSessionDeath(): Promise<void> {
+        try {
+            await Promise.race([
+                this.socket.emitWithAck('session-end', { sid: this.sessionId, time: Date.now() }),
+                delay(2000)
+            ]);
+        } catch {
+            // Best-effort: if ack fails, the 10-minute timeout sweep will clean up
+            logger.debug('[API] session-end ack failed or timed out');
+        }
     }
 
     /**
