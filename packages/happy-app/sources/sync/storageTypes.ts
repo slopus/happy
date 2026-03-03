@@ -130,7 +130,14 @@ export const MachineMetadataSchema = z.object({
     daemonLastKnownStatus: z.enum(['running', 'shutting-down']).optional(),
     daemonLastKnownPid: z.number().optional(),
     shutdownRequestedAt: z.number().optional(),
-    shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional()
+    shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional(),
+    cliAvailability: z.object({
+        claude: z.boolean(),
+        codex: z.boolean(),
+        gemini: z.boolean(),
+        openclaw: z.boolean(),
+        detectedAt: z.number(),
+    }).optional(),
 });
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;

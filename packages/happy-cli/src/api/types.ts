@@ -133,7 +133,14 @@ export const MachineMetadataSchema = z.object({
   happyCliVersion: z.string(),
   homeDir: z.string(),
   happyHomeDir: z.string(),
-  happyLibDir: z.string()
+  happyLibDir: z.string(),
+  cliAvailability: z.object({
+    claude: z.boolean(),
+    codex: z.boolean(),
+    gemini: z.boolean(),
+    openclaw: z.boolean(),
+    detectedAt: z.number(),
+  }).optional()
 })
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>

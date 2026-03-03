@@ -11,6 +11,7 @@ import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from 
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -78,6 +79,7 @@ type MachineRpcHandlers = {
 export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private keepAliveInterval: NodeJS.Timeout | null = null;
+    private lastKnownCLIAvailability: CLIAvailability | null = null;
     private rpcHandlerManager: RpcHandlerManager;
 
     constructor(
@@ -102,14 +104,14 @@ export class ApiMachineClient {
     }: MachineRpcHandlers) {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token } = params || {};
             logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, token });
 
             switch (result.type) {
                 case 'success':
@@ -303,10 +305,23 @@ export class ApiMachineClient {
                 machineId: this.machine.id,
                 time: Date.now()
             };
-            if (process.env.DEBUG) { // too verbose for production
+            if (process.env.DEBUG) {
                 logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
             }
             this.socket.emit('machine-alive', payload);
+
+            // Re-detect CLI availability and push metadata update if changed
+            const newAvailability = detectCLIAvailability();
+            const prev = this.lastKnownCLIAvailability;
+            if (!prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw) {
+                this.lastKnownCLIAvailability = newAvailability;
+                this.updateMachineMetadata((metadata) => ({
+                    ...(metadata || {} as any),
+                    cliAvailability: newAvailability,
+                })).catch((err) => {
+                    logger.debug('[API MACHINE] Failed to update CLI availability:', err);
+                });
+            }
         }, 20000);
         logger.debug('[API MACHINE] Keep-alive started (20s interval)');
     }
