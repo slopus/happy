@@ -90,7 +90,6 @@ function markSessionViewed(sessionId: string) {
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
-    private static readonly SESSION_READY_TIMEOUT_MS = 10000;
     // Per-session pacing for websocket new-message updates to avoid autoscroll race.
     private static readonly NEW_MESSAGE_PROCESS_INTERVAL_MS = 800;
     // First load for a session should stay bounded; older history is loaded on demand.
@@ -440,13 +439,11 @@ class Sync {
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
 
-        // Skip ready wait for shared sessions - CLI is connected to the owner's session
-        const isSharedSession = !!storage.getState().sharedSessions[sessionId];
-        if (!isSharedSession) {
-            const ready = await this.waitForAgentReady(sessionId);
-            if (!ready) {
-                log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
-            }
+        // Check if session is active before sending
+        const sessionState = storage.getState().sessions[sessionId]
+            ?? storage.getState().sharedSessions[sessionId];
+        if (sessionState && !sessionState.active) {
+            log.log(`Session ${sessionId} is not active, sending anyway`);
         }
 
         // Register onBeforeApply so the WebSocket echo path can also trigger it.
@@ -2913,39 +2910,6 @@ class Sync {
         }
     }
 
-    /**
-     * Waits for the CLI agent to be ready by watching agentStateVersion.
-     *
-     * When a session is created, agentStateVersion starts at 0. Once the CLI
-     * connects and sends its first state update (via updateAgentState()), the
-     * version becomes > 0. This serves as a reliable signal that the CLI's
-     * WebSocket is connected and ready to receive messages.
-     */
-    private waitForAgentReady(sessionId: string, timeoutMs: number = Sync.SESSION_READY_TIMEOUT_MS): Promise<boolean> {
-        const startedAt = Date.now();
-
-        return new Promise((resolve) => {
-            const done = (ready: boolean, reason: string) => {
-                clearTimeout(timeout);
-                unsubscribe();
-                const duration = Date.now() - startedAt;
-                log.log(`Session ${sessionId} ${reason} after ${duration}ms`);
-                resolve(ready);
-            };
-
-            const check = () => {
-                const state = storage.getState();
-                const s = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
-                if (s && s.agentStateVersion > 0) {
-                    done(true, `ready (agentStateVersion=${s.agentStateVersion})`);
-                }
-            };
-
-            const timeout = setTimeout(() => done(false, 'ready wait timed out'), timeoutMs);
-            const unsubscribe = storage.subscribe(check);
-            check(); // Check current state immediately
-        });
-    }
 }
 
 // Global singleton instance
