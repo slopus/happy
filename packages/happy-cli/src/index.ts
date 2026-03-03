@@ -343,26 +343,27 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
     }
     return;
   } else if (subcommand === 'copilot') {
-    // Handle copilot command (via ACP)
+    // Handle copilot command (local + remote with session continuity)
     try {
-      const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
+      const { runCopilot } = await import('@/copilot/runCopilot');
 
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      let verbose = false;
-      const copilotArgs: string[] = ['copilot'];
+      let startingMode: 'local' | 'remote' | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
           continue;
         }
-        if (args[i] === '--verbose') {
-          verbose = true;
+        if (args[i] === '--remote') {
+          startingMode = 'remote';
           continue;
         }
-        copilotArgs.push(args[i]);
+        if (args[i] === '--local') {
+          startingMode = 'local';
+          continue;
+        }
       }
 
-      const resolved = resolveAcpAgentConfig(copilotArgs);
       const { credentials } = await authAndSetupMachineIfNeeded();
 
       logger.debug('Ensuring Happy background service is running & matches our version...');
@@ -377,13 +378,10 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      await runAcp({
+      await runCopilot({
         credentials,
         startedBy,
-        verbose,
-        agentName: resolved.agentName,
-        command: resolved.command,
-        args: resolved.args,
+        startingMode,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
