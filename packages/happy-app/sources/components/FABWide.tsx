@@ -39,9 +39,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 interface FABWideProps {
     onFilesPress: () => void;
     onSessionFilesPress?: () => void;
+    onPreviewPress?: () => void;
 }
 
-export const FABWide = React.memo(({ onFilesPress, onSessionFilesPress }: FABWideProps) => {
+export const FABWide = React.memo(({ onFilesPress, onSessionFilesPress, onPreviewPress }: FABWideProps) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
@@ -73,6 +74,18 @@ export const FABWide = React.memo(({ onFilesPress, onSessionFilesPress }: FABWid
                 >
                     <Ionicons name="code-slash-outline" size={18} color={theme.colors.text} />
                     <Text style={styles.text}>{t('tabs.code')}</Text>
+                </Pressable>
+            )}
+            {onPreviewPress && (
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.button,
+                        pressed && styles.buttonPressed
+                    ]}
+                    onPress={onPreviewPress}
+                >
+                    <Ionicons name="eye-outline" size={18} color={theme.colors.text} />
+                    <Text style={styles.text}>Preview</Text>
                 </Pressable>
             )}
         </View>

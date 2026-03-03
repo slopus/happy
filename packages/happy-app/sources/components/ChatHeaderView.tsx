@@ -24,6 +24,7 @@ interface ChatHeaderViewProps {
     onPresetPress?: () => void;
     onSettingsPress?: () => void;
     onFileBrowserPress?: () => void;
+    onPreviewPress?: () => void;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -38,6 +39,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     onPresetPress,
     onSettingsPress,
     onFileBrowserPress,
+    onPreviewPress,
 }) => {
     const { theme } = useUnistyles();
     const navigation = useNavigation();
@@ -110,6 +112,15 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     )}
                 </View>
 
+                {onPreviewPress && (
+                    <Pressable
+                        onPress={onPreviewPress}
+                        hitSlop={10}
+                        style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                        <Ionicons name="eye-outline" size={20} color={theme.colors.header.tint} style={{ opacity: 0.6 }} />
+                    </Pressable>
+                )}
                 {onFileBrowserPress && (
                     <Pressable
                         onPress={onFileBrowserPress}

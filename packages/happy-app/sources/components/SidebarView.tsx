@@ -131,6 +131,12 @@ export const SidebarView = React.memo(() => {
         }
     }, [currentSessionId]);
 
+    const handlePreviewPress = React.useCallback(() => {
+        if (currentSessionId) {
+            window.dispatchEvent(new CustomEvent('toggle-preview', { detail: { sessionId: currentSessionId } }));
+        }
+    }, [currentSessionId]);
+
     return (
         <>
             <View style={[styles.container, { paddingTop: safeArea.top }]}>
@@ -170,7 +176,7 @@ export const SidebarView = React.memo(() => {
 
                 <MainView variant="sidebar" />
             </View>
-            <FABWide onFilesPress={handleFilesPress} onSessionFilesPress={currentSessionId ? handleSessionFilesPress : undefined} />
+            <FABWide onFilesPress={handleFilesPress} onSessionFilesPress={currentSessionId ? handleSessionFilesPress : undefined} onPreviewPress={currentSessionId ? handlePreviewPress : undefined} />
         </>
     )
 });
