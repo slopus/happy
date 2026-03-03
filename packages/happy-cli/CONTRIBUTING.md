@@ -73,8 +73,7 @@ npm run dev:daemon:start
 
 ## Visual Indicators
 
-You'll always see which version you're using:
-- `✅ STABLE MODE - Data: ~/.happy`
+When running in dev mode, you'll see:
 - `🔧 DEV MODE - Data: ~/.happy-dev`
 
 ## Common Tasks
@@ -184,7 +183,6 @@ Check port conflicts - each daemon needs its own port. The dev daemon will autom
 
 ### How do I check which version is running?
 Look for the visual indicator:
-- `✅ STABLE MODE` = stable version
 - `🔧 DEV MODE` = development version
 
 Or check the daemon status:
