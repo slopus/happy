@@ -334,11 +334,11 @@ export class ApiSessionClient extends EventEmitter {
         this.lastSeq = maxSeq;
     }
 
-    private enqueueMessage(content: unknown, invalidate: boolean = true) {
+    private enqueueMessage(content: unknown, invalidate: boolean = true, localId?: string) {
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.pendingOutbox.push({
             content: encrypted,
-            localId: randomUUID()
+            localId: localId ?? randomUUID()
         });
         if (invalidate) {
             this.sendSync.invalidate();
@@ -408,7 +408,7 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content);
     }
 
-    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true, localId?: string) {
         const content = {
             role: 'session',
             content: envelope,
@@ -417,7 +417,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
-        this.enqueueMessage(content, invalidate);
+        this.enqueueMessage(content, invalidate, localId);
     }
 
     private enqueueLegacyClaudeOutputCompatibility(body: RawJSONLines, invalidate: boolean = true) {
@@ -440,7 +440,7 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content, invalidate);
     }
 
-    private enqueueLegacySessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+    private enqueueLegacySessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true, localId?: string) {
         const content = {
             role: 'agent',
             content: {
@@ -452,13 +452,17 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
-        this.enqueueMessage(content, invalidate);
+        this.enqueueMessage(content, invalidate, localId);
     }
 
     sendSessionProtocolMessage(envelope: SessionEnvelope) {
         if (envelope.role === 'agent') {
-            this.enqueueSessionProtocolEnvelope(envelope, false);
-            this.enqueueLegacySessionProtocolEnvelope(envelope, true);
+            // Send both modern and legacy formats with the same localId
+            // so the server deduplicates and only stores one copy.
+            // Legacy format is sent second with invalidate=true to trigger flush.
+            const localId = randomUUID();
+            this.enqueueSessionProtocolEnvelope(envelope, false, localId);
+            this.enqueueLegacySessionProtocolEnvelope(envelope, true, localId);
             return;
         }
 
@@ -526,10 +530,19 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * Send session death message
+     * Send session death message and wait for server acknowledgement.
+     * Falls back to fire-and-forget if ack times out (2s).
      */
-    sendSessionDeath() {
-        this.socket.emit('session-end', { sid: this.sessionId, time: Date.now() });
+    async sendSessionDeath(): Promise<void> {
+        try {
+            await Promise.race([
+                this.socket.emitWithAck('session-end', { sid: this.sessionId, time: Date.now() }),
+                delay(2000)
+            ]);
+        } catch {
+            // Best-effort: if ack fails, the 10-minute timeout sweep will clean up
+            logger.debug('[API] session-end ack failed or timed out');
+        }
     }
 
     /**

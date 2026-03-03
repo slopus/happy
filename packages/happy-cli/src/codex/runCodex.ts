@@ -293,7 +293,7 @@ export async function runCodex(opts: {
                 }));
                 
                 // Send session death message
-                session.sendSessionDeath();
+                await session.sendSessionDeath();
                 await session.flush();
                 await session.close();
             }
@@ -711,7 +711,7 @@ export async function runCodex(opts: {
 
         try {
             logger.debug('[codex]: sendSessionDeath');
-            session.sendSessionDeath();
+            await session.sendSessionDeath();
             logger.debug('[codex]: flush begin');
             await session.flush();
             logger.debug('[codex]: flush done');

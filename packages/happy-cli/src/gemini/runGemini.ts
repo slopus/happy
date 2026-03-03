@@ -398,7 +398,7 @@ export async function runGemini(opts: {
           archiveReason: 'User terminated'
         }));
 
-        session.sendSessionDeath();
+        await session.sendSessionDeath();
         await session.flush();
         await session.close();
       }
@@ -1370,7 +1370,7 @@ export async function runGemini(opts: {
     }
 
     try {
-      session.sendSessionDeath();
+      await session.sendSessionDeath();
       await session.flush();
       await session.close();
     } catch (e) {

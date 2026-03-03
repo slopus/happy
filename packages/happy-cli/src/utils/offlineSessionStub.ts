@@ -39,7 +39,7 @@ export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
         sendClaudeSessionMessage: () => {},
         keepAlive: () => {},
         sendSessionEvent: () => {},
-        sendSessionDeath: () => {},
+        sendSessionDeath: async () => {},
         updateLifecycleState: () => {},
         requestControlTransfer: async () => {},
         flush: async () => {},

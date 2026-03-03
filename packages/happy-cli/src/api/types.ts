@@ -65,7 +65,7 @@ export interface ClientToServerEvents {
     thinking: boolean;
     mode?: 'local' | 'remote';
   }) => void
-  'session-end': (data: { sid: string, time: number }) => void,
+  'session-end': (data: { sid: string, time: number }, cb: (response: { result: string }) => void) => void,
   'update-metadata': (data: { sid: string, expectedVersion: number, metadata: string }, cb: (answer: {
     result: 'error'
   } | {
