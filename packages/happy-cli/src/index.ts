@@ -25,6 +25,7 @@ import { runDoctorCommand } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
+import { handleUpdateCommand } from './commands/update'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
@@ -325,6 +326,17 @@ import { execFileSync } from 'node:child_process'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'update') {
+    try {
+      await handleUpdateCommand();
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'logout') {
     // Keep for backward compatibility - redirect to auth logout
     console.log(chalk.yellow('Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n'));
@@ -563,6 +575,7 @@ ${chalk.bold('Usage:')}
   happy notify            Send push notification
   happy daemon            Manage background service that allows
                             to spawn new sessions away from your computer
+  happy update             Upgrade happy to the latest version
   happy doctor            System diagnostics & troubleshooting
 
 ${chalk.bold('Examples:')}
