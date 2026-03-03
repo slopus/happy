@@ -2149,20 +2149,6 @@ class Sync {
             storage.getState().applyMachines([updatedMachine]);
         } else if (updateData.body.t === 'relationship-updated') {
             log.log('👥 Received relationship-updated update');
-            const relationshipUpdate = updateData.body;
-            
-            // Apply the relationship update to storage
-            storage.getState().applyRelationshipUpdate({
-                fromUserId: relationshipUpdate.fromUserId,
-                toUserId: relationshipUpdate.toUserId,
-                status: relationshipUpdate.status,
-                action: relationshipUpdate.action,
-                fromUser: relationshipUpdate.fromUser,
-                toUser: relationshipUpdate.toUser,
-                timestamp: relationshipUpdate.timestamp
-            });
-            
-            // Invalidate friends data to refresh with latest changes
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();

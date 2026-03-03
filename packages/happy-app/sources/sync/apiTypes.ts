@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { GitHubProfileSchema, ImageRefSchema } from './profile';
-import { RelationshipStatusSchema, UserProfileSchema } from './friendTypes';
+import { RelationshipStatusSchema } from './friendTypes';
 import { FeedBodySchema } from './feedTypes';
 
 //
@@ -120,15 +120,11 @@ export const ApiDeleteArtifactSchema = z.object({
     artifactId: z.string()
 });
 
-// Relationship update schema
+// Relationship update schema (matches server's buildRelationshipUpdatedEvent format)
 export const ApiRelationshipUpdatedSchema = z.object({
     t: z.literal('relationship-updated'),
-    fromUserId: z.string(),
-    toUserId: z.string(),
+    uid: z.string(),
     status: RelationshipStatusSchema,
-    action: z.enum(['created', 'updated', 'deleted']),
-    fromUser: UserProfileSchema.optional(),
-    toUser: UserProfileSchema.optional(),
     timestamp: z.number()
 });
 

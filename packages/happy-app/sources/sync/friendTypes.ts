@@ -36,22 +36,6 @@ export type UserProfile = z.infer<typeof UserProfileSchema>;
 // Friend Request type no longer used in new API
 
 //
-// Relationship Updated Event
-//
-
-export const RelationshipUpdatedEventSchema = z.object({
-    fromUserId: z.string(),
-    toUserId: z.string(),
-    status: RelationshipStatusSchema,
-    action: z.enum(['created', 'updated', 'deleted']),
-    fromUser: UserProfileSchema.optional(),
-    toUser: UserProfileSchema.optional(),
-    timestamp: z.number()
-});
-
-export type RelationshipUpdatedEvent = z.infer<typeof RelationshipUpdatedEventSchema>;
-
-//
 // API Response Types
 //
 

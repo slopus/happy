@@ -1,10 +1,13 @@
 import { Context } from "@/context";
 import { buildUserProfile, UserProfile } from "./type";
-import { inTx } from "@/storage/inTx";
+import { afterTx, inTx } from "@/storage/inTx";
 import { RelationshipStatus } from "@prisma/client";
 import { relationshipSet } from "./relationshipSet";
 import { relationshipGet } from "./relationshipGet";
 import { sendFriendRequestNotification, sendFriendshipEstablishedNotification } from "./friendNotification";
+import { allocateUserSeq } from "@/storage/seq";
+import { eventRouter, buildRelationshipUpdatedEvent } from "@/app/events/eventRouter";
+import { randomKeyNaked } from "@/utils/randomKeyNaked";
 
 /**
  * Add a friend or accept a friend request.
@@ -51,6 +54,17 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
             // Send friendship established notifications to both users
             await sendFriendshipEstablishedNotification(tx, currentUser.id, targetUser.id);
 
+            // Only notify the other user — caller already has the API response
+            const targetId = targetUser.id;
+            const currentId = currentUser.id;
+            afterTx(tx, async () => {
+                const seq = await allocateUserSeq(targetId);
+                eventRouter.emitUpdate({
+                    userId: targetId,
+                    payload: buildRelationshipUpdatedEvent({ uid: currentId, status: 'friend', timestamp: Date.now() }, seq, randomKeyNaked(12))
+                });
+            });
+
             // Return the target user profile
             return buildUserProfile(targetUser, RelationshipStatus.friend);
         }
@@ -67,6 +81,17 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
 
             // Send friend request notification to the receiver
             await sendFriendRequestNotification(tx, targetUser.id, currentUser.id);
+
+            // Only notify the other user — caller already has the API response
+            const currentId = currentUser.id;
+            const targetId = targetUser.id;
+            afterTx(tx, async () => {
+                const seq = await allocateUserSeq(targetId);
+                eventRouter.emitUpdate({
+                    userId: targetId,
+                    payload: buildRelationshipUpdatedEvent({ uid: currentId, status: 'pending', timestamp: Date.now() }, seq, randomKeyNaked(12))
+                });
+            });
 
             // Return the target user profile
             return buildUserProfile(targetUser, RelationshipStatus.requested);

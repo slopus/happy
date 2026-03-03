@@ -15,6 +15,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
+import { showToast } from '@/components/Toast';
 import { Ionicons } from '@expo/vector-icons';
 import { useSharedSessions } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -67,16 +68,21 @@ export default function UserProfileScreen() {
             trackFriendsConnect();
             setUserProfile(updatedProfile);
             sync.refreshFriends();
+            showToast(updatedProfile.status === 'friend'
+                ? t('friends.requestAccepted')
+                : t('friends.requestSent'));
         } else {
             Modal.alert(t('friends.bothMustHaveGithub'));
         }
     });
 
-    // Remove friend / Cancel request / Reject request action  
+    // Remove friend / Cancel request / Reject request action
     const [removingFriend, handleRemoveFriend] = useHappyAction(async () => {
         if (!credentials || !userProfile) return;
 
-        if (userProfile.status === 'friend') {
+        const previousStatus = userProfile.status;
+
+        if (previousStatus === 'friend') {
             // Removing a friend
             const confirmed = await Modal.confirm(
                 t('friends.removeFriend'),
@@ -85,7 +91,7 @@ export default function UserProfileScreen() {
             );
 
             if (!confirmed) return;
-        } else if (userProfile.status === 'requested') {
+        } else if (previousStatus === 'requested') {
             // Canceling a sent request
             const confirmed = await Modal.confirm(
                 t('friends.cancelRequest'),
@@ -100,6 +106,9 @@ export default function UserProfileScreen() {
         if (updatedProfile) {
             setUserProfile(updatedProfile);
             sync.refreshFriends();
+            showToast(previousStatus === 'friend'
+                ? t('friends.friendRemoved')
+                : t('friends.requestRejected'));
         }
     });
 

@@ -8,7 +8,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Profile } from "./profile";
-import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
+import { UserProfile } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile, loadDooTaskUserCache, saveDooTaskUserCache, clearDooTaskUserCache, loadDooTaskProjects, saveDooTaskProjects, clearDooTaskProjects, loadDooTaskPriorities, saveDooTaskPriorities, clearDooTaskPriorities, loadDooTaskColumns, saveDooTaskColumns, clearDooTaskColumns, loadRegisteredReposLocal, saveRegisteredReposLocal } from "./persistence";
 import { DooTaskProfile, DooTaskProject, DooTaskItem, DooTaskFilters, DooTaskPager, DooTaskPriority, DooTaskColumn } from './dootask/types';
 import { dootaskFetchProjects, dootaskFetchTasks, dootaskFetchUsersBasic, dootaskFetchPriorities, dootaskFetchProjectColumns } from './dootask/api';
@@ -175,7 +175,6 @@ interface StorageState {
     updateSessionProjectGitStatus: (sessionId: string, status: import('./storageTypes').GitStatus | null) => void;
     // Friend management methods
     applyFriends: (friends: UserProfile[]) => void;
-    applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => void;
     getFriend: (userId: string) => UserProfile | undefined;
     getAcceptedFriends: () => UserProfile[];
     // Shared sessions methods
@@ -1275,30 +1274,6 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 friends: mergedFriends,
                 friendsLoaded: true  // Mark as loaded after first fetch
-            };
-        }),
-        applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => set((state) => {
-            const { fromUserId, toUserId, status, action, fromUser, toUser } = event;
-            const currentUserId = state.profile.id;
-            
-            // Update friends cache
-            const updatedFriends = { ...state.friends };
-            
-            // Determine which user profile to update based on perspective
-            const otherUserId = fromUserId === currentUserId ? toUserId : fromUserId;
-            const otherUser = fromUserId === currentUserId ? toUser : fromUser;
-            
-            if (action === 'deleted' || status === 'none') {
-                // Remove from friends if deleted or status is none
-                delete updatedFriends[otherUserId];
-            } else if (otherUser) {
-                // Update or add the user profile with current status
-                updatedFriends[otherUserId] = otherUser;
-            }
-            
-            return {
-                ...state,
-                friends: updatedFriends
             };
         }),
         getFriend: (userId: string) => {
