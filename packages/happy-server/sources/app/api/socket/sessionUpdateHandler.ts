@@ -2,7 +2,7 @@ import { sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitor
 import { activityCache } from "@/app/presence/sessionCache";
 import { buildMessageErrorEphemeral, buildMessageSyncingEphemeral, buildMessageSyncedEphemeral, buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
-import { allocateSessionSeq, allocateUserSeq } from "@/storage/seq";
+import { allocateSessionSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
@@ -80,16 +80,15 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 return null;
             }
 
-            // Generate session metadata update
-            const updSeq = await allocateUserSeq(userId);
+            // Generate session metadata update and broadcast to owner + shared users
             const metadataUpdate = {
                 value: metadata,
                 version: expectedVersion + 1
             };
-            const updatePayload = buildUpdateSessionUpdate(sid, updSeq, randomKeyNaked(12), metadataUpdate);
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
+            await eventRouter.emitToSessionSubscribers({
+                ownerId: userId,
+                sessionId: sid,
+                buildPayload: (_uid, seq) => buildUpdateSessionUpdate(sid, seq, randomKeyNaked(12), metadataUpdate),
                 recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
             });
 
@@ -146,16 +145,15 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 return null;
             }
 
-            // Generate session agent state update
-            const updSeq = await allocateUserSeq(userId);
+            // Generate session agent state update and broadcast to owner + shared users
             const agentStateUpdate = {
                 value: agentState,
                 version: expectedVersion + 1
             };
-            const updatePayload = buildUpdateSessionUpdate(sid, updSeq, randomKeyNaked(12), undefined, agentStateUpdate);
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
+            await eventRouter.emitToSessionSubscribers({
+                ownerId: userId,
+                sessionId: sid,
+                buildPayload: (_uid, seq) => buildUpdateSessionUpdate(sid, seq, randomKeyNaked(12), undefined, agentStateUpdate),
                 recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
             });
 
@@ -394,8 +392,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     c: message
                 };
 
-                // Resolve seq
-                const updSeq = await allocateUserSeq(userId);
+                // Resolve message seq
                 const msgSeq = await allocateSessionSeq(sid);
 
                 // Check if message already exists
@@ -422,11 +419,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     }
                 });
 
-                // Emit new message update to relevant clients
-                const updatePayload = buildNewMessageUpdate(msg, sid, updSeq, randomKeyNaked(12));
-                eventRouter.emitUpdate({
-                    userId,
-                    payload: updatePayload,
+                // Emit new message update to owner + shared users
+                await eventRouter.emitToSessionSubscribers({
+                    ownerId: userId,
+                    sessionId: sid,
+                    buildPayload: (_uid, seq) => buildNewMessageUpdate(msg, sid, seq, randomKeyNaked(12)),
                     recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
                     skipSenderConnection: connection
                 });

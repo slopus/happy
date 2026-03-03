@@ -3,6 +3,8 @@ import { log } from "@/utils/log";
 import { GitHubProfile } from "@/app/api/types";
 import { AccountProfile } from "@/types";
 import { getPublicUrl } from "@/storage/files";
+import { db } from "@/storage/db";
+import { allocateUserSeq } from "@/storage/seq";
 
 // === CONNECTION TYPES ===
 
@@ -322,6 +324,40 @@ class EventRouter {
             recipientFilter: params.recipientFilter || { type: 'all-user-authenticated-connections' },
             skipSenderConnection: params.skipSenderConnection
         });
+    }
+
+    /**
+     * Emit an update to the session owner AND all users who have been shared this session.
+     * Each user gets their own seq number via allocateUserSeq.
+     */
+    async emitToSessionSubscribers(params: {
+        ownerId: string;
+        sessionId: string;
+        buildPayload: (userId: string, seq: number) => UpdatePayload;
+        recipientFilter?: RecipientFilter;
+        skipSenderConnection?: ClientConnection;
+    }): Promise<void> {
+        // 1. Emit to owner
+        const ownerSeq = await allocateUserSeq(params.ownerId);
+        this.emitUpdate({
+            userId: params.ownerId,
+            payload: params.buildPayload(params.ownerId, ownerSeq),
+            recipientFilter: params.recipientFilter,
+            skipSenderConnection: params.skipSenderConnection
+        });
+
+        // 2. Find shared users and emit to each
+        const shares = await db.sessionShare.findMany({
+            where: { sessionId: params.sessionId },
+            select: { sharedWithUserId: true }
+        });
+        for (const share of shares) {
+            const seq = await allocateUserSeq(share.sharedWithUserId);
+            this.emitUpdate({
+                userId: share.sharedWithUserId,
+                payload: params.buildPayload(share.sharedWithUserId, seq)
+            });
+        }
     }
 
     emitEphemeral(params: {

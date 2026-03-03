@@ -208,7 +208,8 @@ interface StorageState {
 
 // Helper function to build unified list view data from sessions and machines
 function buildSessionListViewData(
-    sessions: Record<string, Session>
+    sessions: Record<string, Session>,
+    sharedSessions?: Record<string, Session>
 ): SessionListViewItem[] {
     // Separate active and inactive sessions
     const activeSessions: Session[] = [];
@@ -297,6 +298,16 @@ function buildSessionListViewData(
         currentDateGroup.forEach(sess => {
             listData.push({ type: 'session', session: sess });
         });
+    }
+
+    // Append shared sessions at the end
+    const sharedList = Object.values(sharedSessions ?? {});
+    if (sharedList.length > 0) {
+        sharedList.sort((a, b) => b.updatedAt - a.updatedAt);
+        listData.push({ type: 'header', title: 'Shared with me' });
+        for (const session of sharedList) {
+            listData.push({ type: 'session', session });
+        }
     }
 
     return listData;
@@ -625,7 +636,7 @@ export const storage = create<StorageState>()((set, get) => {
                 }
 
                 listData = nextListData;
-                sessionListViewData = buildSessionListViewData(mergedSessions);
+                sessionListViewData = buildSessionListViewData(mergedSessions, state.sharedSessions);
             }
 
             // Update project manager with current sessions and machines
@@ -858,7 +869,7 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state.sessions,
                 [sessionId]: updatedSession
             };
-            const sessionListViewData = buildSessionListViewData(updatedSessions);
+            const sessionListViewData = buildSessionListViewData(updatedSessions, state.sharedSessions);
 
             return {
                 ...state,
@@ -1000,7 +1011,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData to update the UI immediately
             const sessionListViewData = buildSessionListViewData(
-                updatedSessions
+                updatedSessions, state.sharedSessions
             );
 
             return {
@@ -1033,7 +1044,7 @@ export const storage = create<StorageState>()((set, get) => {
                 [sessionId]: updatedSession
             };
 
-            const sessionListViewData = buildSessionListViewData(updatedSessions);
+            const sessionListViewData = buildSessionListViewData(updatedSessions, state.sharedSessions);
 
             return {
                 ...state,
@@ -1141,7 +1152,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData to reflect machine changes
             const sessionListViewData = buildSessionListViewData(
-                state.sessions
+                state.sessions, state.sharedSessions
             );
 
             return {
@@ -1255,7 +1266,7 @@ export const storage = create<StorageState>()((set, get) => {
             saveSessionModelModes(modelModes);
             
             // Rebuild sessionListViewData without the deleted session
-            const sessionListViewData = buildSessionListViewData(remainingSessions);
+            const sessionListViewData = buildSessionListViewData(remainingSessions, state.sharedSessions);
             
             return {
                 ...state,
@@ -1285,29 +1296,43 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(friends).filter(friend => friend.status === 'friend');
         },
         // Shared sessions methods
-        applySharedSessions: (sessions) => set((state) => ({
-            ...state,
-            sharedSessions: Object.fromEntries(sessions.map(s => [s.id, s])),
-            sharedSessionsLoaded: true
-        })),
-        addSharedSession: (session) => set((state) => ({
-            ...state,
-            sharedSessions: { ...state.sharedSessions, [session.id]: session }
-        })),
+        applySharedSessions: (sessions) => set((state) => {
+            const newSharedSessions = Object.fromEntries(sessions.map(s => [s.id, s]));
+            return {
+                ...state,
+                sharedSessions: newSharedSessions,
+                sharedSessionsLoaded: true,
+                sessionListViewData: buildSessionListViewData(state.sessions, newSharedSessions)
+            };
+        }),
+        addSharedSession: (session) => set((state) => {
+            const newSharedSessions = { ...state.sharedSessions, [session.id]: session };
+            return {
+                ...state,
+                sharedSessions: newSharedSessions,
+                sessionListViewData: buildSessionListViewData(state.sessions, newSharedSessions)
+            };
+        }),
         updateSharedSessionAccessLevel: (sessionId, accessLevel) => set((state) => {
             const session = state.sharedSessions[sessionId];
             if (!session) return state;
+            const newSharedSessions = {
+                ...state.sharedSessions,
+                [sessionId]: { ...session, accessLevel }
+            };
             return {
                 ...state,
-                sharedSessions: {
-                    ...state.sharedSessions,
-                    [sessionId]: { ...session, accessLevel }
-                }
+                sharedSessions: newSharedSessions,
+                sessionListViewData: buildSessionListViewData(state.sessions, newSharedSessions)
             };
         }),
         removeSharedSession: (sessionId) => set((state) => {
             const { [sessionId]: _, ...rest } = state.sharedSessions;
-            return { ...state, sharedSessions: rest };
+            return {
+                ...state,
+                sharedSessions: rest,
+                sessionListViewData: buildSessionListViewData(state.sessions, rest)
+            };
         }),
         // User cache methods
         applyUsers: (users: Record<string, UserProfile | null>) => set((state) => ({

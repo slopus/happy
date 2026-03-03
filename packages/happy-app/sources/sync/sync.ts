@@ -2087,12 +2087,15 @@ class Sync {
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
-            const session = storage.getState().sessions[updateData.body.id];
+            const sessionId = updateData.body.id;
+            const isShared = !!storage.getState().sharedSessions[sessionId];
+            const session = storage.getState().sessions[sessionId]
+                ?? storage.getState().sharedSessions[sessionId];
             if (session) {
                 // Get session encryption
-                const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+                const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
                 if (!sessionEncryption) {
-                    console.error(`Session encryption not found for ${updateData.body.id} - this should never happen`);
+                    console.error(`Session encryption not found for ${sessionId} - this should never happen`);
                     return;
                 }
 
@@ -2103,7 +2106,7 @@ class Sync {
                     ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
                     : session.metadata;
 
-                this.applySessions([{
+                const updatedSession = {
                     ...session,
                     agentState,
                     agentStateVersion: updateData.body.agentState
@@ -2115,7 +2118,13 @@ class Sync {
                         : session.metadataVersion,
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
-                }]);
+                };
+
+                if (isShared) {
+                    storage.getState().addSharedSession(updatedSession);
+                } else {
+                    this.applySessions([updatedSession]);
+                }
 
                 // If user is viewing this session, keep lastViewedAt fresh
                 // so incoming taskCompleted doesn't show a blue dot

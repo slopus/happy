@@ -639,6 +639,7 @@ export const pl: TranslationStructure = {
             consentTitle: 'Wymagana zgoda',
             consentMessage: 'Właściciel sesji wymaga Twojej zgody przed wyświetleniem. Twój dostęp zostanie zarejestrowany.',
             consentAccept: 'Zgadzam się, pokaż sesję',
+            sharedWithMe: 'Udostępnione mi',
         },
     },
 

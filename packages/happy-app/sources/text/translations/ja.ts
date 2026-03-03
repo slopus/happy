@@ -660,6 +660,7 @@ export const ja: TranslationStructure = {
             consentTitle: '同意が必要です',
             consentMessage: 'セッションのオーナーが閲覧前に同意を求めています。アクセスは記録されます。',
             consentAccept: '同意してセッションを表示',
+            sharedWithMe: '共有されたセッション',
         },
     },
 

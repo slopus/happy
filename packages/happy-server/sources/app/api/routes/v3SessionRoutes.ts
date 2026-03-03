@@ -1,6 +1,6 @@
 import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
-import { allocateSessionSeqBatch, allocateUserSeq } from "@/storage/seq";
+import { allocateSessionSeqBatch } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
@@ -218,18 +218,14 @@ export function v3SessionRoutes(app: Fastify) {
             if (!content) {
                 continue;
             }
-            const updSeq = await allocateUserSeq(userId);
-            const updatePayload = buildNewMessageUpdate({
-                ...message,
-                content: {
-                    t: 'encrypted',
-                    c: content
-                }
-            }, sessionId, updSeq, randomKeyNaked(12));
 
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
+            await eventRouter.emitToSessionSubscribers({
+                ownerId: userId,
+                sessionId,
+                buildPayload: (_uid, seq) => buildNewMessageUpdate({
+                    ...message,
+                    content: { t: 'encrypted', c: content }
+                }, sessionId, seq, randomKeyNaked(12)),
                 recipientFilter: { type: 'all-interested-in-session', sessionId }
             });
         }

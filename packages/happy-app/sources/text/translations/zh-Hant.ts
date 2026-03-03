@@ -629,6 +629,7 @@ export const zhHant: TranslationStructure = {
             consentTitle: '需要同意',
             consentMessage: '對話擁有者要求您在查看前表示同意。您的存取將會被記錄。',
             consentAccept: '我同意，顯示對話',
+            sharedWithMe: '與我共享',
         },
     },
 

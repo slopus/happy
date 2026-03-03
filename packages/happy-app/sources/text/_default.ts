@@ -628,6 +628,7 @@ export const en = {
             consentTitle: 'Consent Required',
             consentMessage: 'The session owner requires your consent before viewing. Your access will be logged.',
             consentAccept: 'I agree, show session',
+            sharedWithMe: 'Shared with me',
         },
     },
 

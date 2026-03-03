@@ -630,6 +630,7 @@ export const zhHans: TranslationStructure = {
             consentTitle: '需要同意',
             consentMessage: '会话所有者要求您在查看前同意。您的访问将被记录。',
             consentAccept: '我同意，显示会话',
+            sharedWithMe: '与我共享',
         },
     },
 
