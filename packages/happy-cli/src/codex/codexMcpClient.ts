@@ -8,10 +8,33 @@ import { logger } from '@/ui/logger';
 import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { z } from 'zod';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import * as z4mini from 'zod/v4-mini';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { execSync } from 'child_process';
 import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
+
+/**
+ * Build a passthrough version of ElicitRequestSchema that preserves
+ * Codex-specific params (codex_call_id, codex_command, codex_cwd, etc.).
+ *
+ * The stock MCP SDK schema uses strict object validation (zod/v4-mini `object`)
+ * which strips unknown keys. We rebuild the params union members as
+ * `looseObject` so Codex-specific fields survive parsing in `setRequestHandler`.
+ */
+function buildCodexElicitRequestSchema() {
+    const shape = (ElicitRequestSchema as any)._zod.def.shape;
+    const unionOptions: any[] = shape.params._zod.def.options;
+    const looseOptions = unionOptions.map((opt: any) => z4mini.looseObject(opt._zod.def.shape));
+    // Reuse the original method schema so Client.setRequestHandler can extract the literal.
+    // (The Client override checks `def.value` but z4mini.literal only has `def.values`.)
+    return z4mini.object({
+        method: shape.method,
+        params: z4mini.union(looseOptions as [any, any, ...any[]]),
+    });
+}
+
+const CodexElicitRequestSchema = buildCodexElicitRequestSchema();
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
 
@@ -186,34 +209,28 @@ export class CodexMcpClient {
     }
 
     private registerPermissionHandlers(): void {
-        // Register handler for exec command approval requests
+        // CodexElicitRequestSchema is a passthrough version of ElicitRequestSchema
+        // that preserves Codex-specific params (codex_call_id, codex_command, etc.)
+        // which the stock MCP SDK schema would strip.
         this.client.setRequestHandler(
-            ElicitRequestSchema,
-            async (request) => {
-                console.log('[CodexMCP] Received elicitation request:', request.params);
+            CodexElicitRequestSchema as any,
+            async (request: any) => {
+                const params = request.params;
+                logger.debug('[CodexMCP] Received elicitation request:', params);
 
-                // Load params
-                const params = request.params as unknown as {
-                    message: string,
-                    codex_elicitation: string,
-                    codex_mcp_tool_call_id: string,
-                    codex_event_id: string,
-                    codex_call_id: string,
-                    codex_command: string[],
-                    codex_cwd: string
-                }
                 const toolName = 'CodexBash';
 
-                // If no permission handler set, deny by default
                 if (!this.permissionHandler) {
-                    logger.debug('[CodexMCP] No permission handler set, denying by default');
-                    return {
-                        decision: 'denied' as const,
-                    };
+                    logger.debug('[CodexMCP] No permission handler set, declining by default');
+                    return { action: 'decline' as const, decision: 'denied' as const };
+                }
+
+                if (!params?.codex_call_id) {
+                    logger.debug('[CodexMCP] No codex_call_id in params, declining');
+                    return { action: 'decline' as const, decision: 'denied' as const };
                 }
 
                 try {
-                    // Request permission through the handler
                     const result = await this.permissionHandler.handleToolCall(
                         params.codex_call_id,
                         toolName,
@@ -223,16 +240,20 @@ export class CodexMcpClient {
                         }
                     );
 
-                    logger.debug('[CodexMCP] Permission result:', result);
-                    return {
-                        decision: result.decision
-                    }
+                    // Map internal decision to MCP elicitation action.
+                    // `action` is the MCP-standard field (accept/decline/cancel).
+                    // `decision` is Codex's custom field it reads from the response.
+                    const action = result.decision === 'approved' || result.decision === 'approved_for_session'
+                        ? 'accept' as const
+                        : result.decision === 'abort'
+                            ? 'cancel' as const
+                            : 'decline' as const;
+
+                    logger.debug('[CodexMCP] Permission result:', result.decision, '→ action:', action);
+                    return { action, decision: result.decision };
                 } catch (error) {
                     logger.debug('[CodexMCP] Error handling permission request:', error);
-                    return {
-                        decision: 'denied' as const,
-                        reason: error instanceof Error ? error.message : 'Permission request failed'
-                    };
+                    return { action: 'decline' as const, decision: 'denied' as const };
                 }
             }
         );
