@@ -7,8 +7,13 @@
         ],
         "components": [
           {
+            "/": "/v1/*",
+            "exclude": true,
+            "comment": "Exclude API routes from Universal Links"
+          },
+          {
             "/": "*",
-            "comment": "Matches all routes"
+            "comment": "Matches all other routes"
           }
         ]
       }
