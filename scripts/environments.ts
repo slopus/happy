@@ -334,6 +334,34 @@ function commandRun(service: string) {
             process.exit(result.status ?? 1);
             break;
         }
+        case "ios": {
+            console.log(`Starting iOS app for environment "${envName}"...`);
+            const result = spawnSync(
+                "yarn",
+                ["ios"],
+                {
+                    cwd: path.join(REPO_ROOT, "packages", "happy-app"),
+                    env: mergedEnv,
+                    stdio: "inherit",
+                }
+            );
+            process.exit(result.status ?? 1);
+            break;
+        }
+        case "android": {
+            console.log(`Starting Android app for environment "${envName}"...`);
+            const result = spawnSync(
+                "yarn",
+                ["android"],
+                {
+                    cwd: path.join(REPO_ROOT, "packages", "happy-app"),
+                    env: mergedEnv,
+                    stdio: "inherit",
+                }
+            );
+            process.exit(result.status ?? 1);
+            break;
+        }
         case "cli": {
             console.log(`Starting CLI for environment "${envName}"...`);
             const cliBin = path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs");
@@ -349,7 +377,7 @@ function commandRun(service: string) {
             break;
         }
         default:
-            console.error(`Unknown service: "${service}". Use: server, web, cli`);
+            console.error(`Unknown service: "${service}". Use: server, web, ios, android, cli`);
             process.exit(1);
     }
 }
@@ -428,6 +456,50 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
 }
 
 // ============================================================================
+// Tailscale
+// ============================================================================
+
+function commandTailscale() {
+    const currentConfig = readCurrentConfig();
+    if (!currentConfig?.current) {
+        console.error("No current environment. Run `yarn env:new` first.");
+        process.exit(1);
+    }
+
+    const config = readEnvironmentConfig(currentConfig.current);
+
+    // Get tailscale hostname
+    let hostname: string;
+    try {
+        const statusJson = execSync("tailscale status --self --json", { encoding: "utf-8" });
+        const status = JSON.parse(statusJson);
+        hostname = status.Self.DNSName.replace(/\.$/, "");
+    } catch {
+        console.error("Failed to get Tailscale hostname. Is Tailscale running?");
+        process.exit(1);
+    }
+
+    // Reset existing funnels
+    try { execSync("tailscale funnel reset", { stdio: "ignore" }); } catch {}
+
+    // Expose web app on 443 and server on 8443
+    try {
+        execSync(`tailscale funnel --bg ${config.expoPort}`, { stdio: "inherit" });
+        execSync(`tailscale funnel --bg --https=8443 ${config.serverPort}`, { stdio: "inherit" });
+    } catch (e: any) {
+        console.error("Failed to set up Tailscale funnel:", e.message);
+        process.exit(1);
+    }
+
+    console.log("");
+    console.log(`Tailscale funnel active for "${currentConfig.current}":`);
+    console.log("");
+    console.log(`  Web:    https://${hostname}`);
+    console.log(`  Server: https://${hostname}:8443`);
+    console.log("");
+}
+
+// ============================================================================
 // CLI entry point
 // ============================================================================
 
@@ -467,6 +539,9 @@ switch (subcommand) {
         }
         commandRun(args[0]);
         break;
+    case "tailscale":
+        commandTailscale();
+        break;
     default:
         console.log(`Happy Environment Manager
 
@@ -479,7 +554,11 @@ Usage:
 
   yarn env:server           Start the server (current environment)
   yarn env:web              Start the web app (current environment)
+  yarn env:ios              Start the iOS app (current environment)
+  yarn env:android          Start the Android app (current environment)
   yarn env:cli              Start the CLI (current environment)
+
+  yarn env:tailscale        Expose server + web via Tailscale funnel
 `);
         if (subcommand && subcommand !== "--help" && subcommand !== "-h") {
             process.exit(1);

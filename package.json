@@ -13,7 +13,10 @@
         "env:current": "npx tsx scripts/environments.ts current",
         "env:server": "npx tsx scripts/environments.ts run server",
         "env:web": "npx tsx scripts/environments.ts run web",
-        "env:cli": "npx tsx scripts/environments.ts run cli"
+        "env:ios": "npx tsx scripts/environments.ts run ios",
+        "env:android": "npx tsx scripts/environments.ts run android",
+        "env:cli": "npx tsx scripts/environments.ts run cli",
+        "env:tailscale": "npx tsx scripts/environments.ts tailscale"
     },
     "workspaces": {
         "packages": [
