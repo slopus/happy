@@ -144,53 +144,64 @@ export default function UserProfileScreen() {
     const displayName = getDisplayName(userProfile);
     const avatarUrl = userProfile.avatar?.url;
 
-    // Determine friend actions based on status
-    const getFriendActions = () => {
+    // Split actions into primary (positive) and destructive groups
+    // Primary actions show near the top, destructive actions at the bottom
+    const { primaryActions, destructiveActions } = (() => {
         switch (userProfile.status) {
             case 'friend':
-                return [{
-                    title: t('friends.removeFriend'),
-                    icon: <Ionicons name="person-remove-outline" size={29} color="#FF3B30" />,
-                    onPress: handleRemoveFriend,
-                    loading: removingFriend,
-                }];
-            case 'pending':
-                // User has received a friend request
-                return [
-                    {
-                        title: t('friends.acceptRequest'),
-                        icon: <Ionicons name="checkmark-circle-outline" size={29} color="#34C759" />,
-                        onPress: addFriend,
-                        loading: addingFriend,
-                    },
-                    {
-                        title: t('friends.denyRequest'),
-                        icon: <Ionicons name="close-circle-outline" size={29} color="#FF3B30" />,
+                return {
+                    primaryActions: [],
+                    destructiveActions: [{
+                        title: t('friends.removeFriend'),
+                        icon: <Ionicons name="person-remove-outline" size={29} color="#FF3B30" />,
                         onPress: handleRemoveFriend,
                         loading: removingFriend,
-                    }
-                ];
+                    }],
+                };
+            case 'pending':
+                // User has received a friend request
+                return {
+                    primaryActions: [
+                        {
+                            title: t('friends.acceptRequest'),
+                            icon: <Ionicons name="checkmark-circle-outline" size={29} color="#34C759" />,
+                            onPress: addFriend,
+                            loading: addingFriend,
+                        },
+                        {
+                            title: t('friends.denyRequest'),
+                            icon: <Ionicons name="close-circle-outline" size={29} color="#FF3B30" />,
+                            onPress: handleRemoveFriend,
+                            loading: removingFriend,
+                        },
+                    ],
+                    destructiveActions: [],
+                };
             case 'requested':
                 // User has sent a friend request
-                return [{
-                    title: t('friends.cancelRequest'),
-                    icon: <Ionicons name="close-outline" size={29} color="#FF9500" />,
-                    onPress: handleRemoveFriend,
-                    loading: removingFriend,
-                }];
+                return {
+                    primaryActions: [],
+                    destructiveActions: [{
+                        title: t('friends.cancelRequest'),
+                        icon: <Ionicons name="close-outline" size={29} color="#FF9500" />,
+                        onPress: handleRemoveFriend,
+                        loading: removingFriend,
+                    }],
+                };
             case 'rejected':
             case 'none':
             default:
-                return [{
-                    title: t('friends.requestFriendship'),
-                    icon: <Ionicons name="person-add-outline" size={29} color="#007AFF" />,
-                    onPress: addFriend,
-                    loading: addingFriend,
-                }];
+                return {
+                    primaryActions: [{
+                        title: t('friends.requestFriendship'),
+                        icon: <Ionicons name="person-add-outline" size={29} color="#007AFF" />,
+                        onPress: addFriend,
+                        loading: addingFriend,
+                    }],
+                    destructiveActions: [],
+                };
         }
-    };
-
-    const friendActions = getFriendActions();
+    })();
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -225,22 +236,23 @@ export default function UserProfileScreen() {
                 </View>
             </View>
 
-            {/* Actions */}
-            <ItemGroup>
-                {friendActions.map((action, index) => (
-                    <Item
-                        key={index}
-                        title={action.title}
-                        icon={action.icon}
-                        onPress={action.onPress}
-                        loading={action.loading}
-                        showChevron={false}
-                    />
-                ))}
-            </ItemGroup>
+            {/* Primary Actions (add friend, accept request) - prominent position */}
+            {primaryActions.length > 0 && (
+                <ItemGroup>
+                    {primaryActions.map((action, index) => (
+                        <Item
+                            key={index}
+                            title={action.title}
+                            icon={action.icon}
+                            onPress={action.onPress}
+                            loading={action.loading}
+                            showChevron={false}
+                        />
+                    ))}
+                </ItemGroup>
+            )}
 
             {/* GitHub Link */}
-
             <ItemGroup>
                 <Item
                     title={t('settings.github')}
@@ -272,6 +284,22 @@ export default function UserProfileScreen() {
                     />
                 )}
             </ItemGroup>
+
+            {/* Destructive Actions (remove friend, deny request, cancel request) - bottom */}
+            {destructiveActions.length > 0 && (
+                <ItemGroup>
+                    {destructiveActions.map((action, index) => (
+                        <Item
+                            key={index}
+                            title={action.title}
+                            icon={action.icon}
+                            onPress={action.onPress}
+                            loading={action.loading}
+                            showChevron={false}
+                        />
+                    ))}
+                </ItemGroup>
+            )}
 
             {/* Profile Details */}
             {/* <ItemGroup>
