@@ -2,7 +2,7 @@ import { Metadata } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
 import * as z from 'zod';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import { t } from '@/text';
 
@@ -18,6 +18,7 @@ const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name=
 const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
 const ICON_QUESTION = (size: number = 24, color: string = '#000') => <Ionicons name="help-circle-outline" size={size} color={color} />;
 const ICON_SKILL = (size: number = 24, color: string = '#000') => <Ionicons name="construct-outline" size={size} color={color} />;
+const ICON_ROBOT = (size: number = 24, color: string = '#000') => <MaterialCommunityIcons name="robot-outline" size={size} color={color} />;
 
 export const knownTools = {
     'Task': {
@@ -218,7 +219,6 @@ export const knownTools = {
             }).passthrough().optional()
         }).partial().passthrough()
     },
-    // Gemini uses lowercase 'read'
     'read': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Gemini uses 'locations' array with 'path' field
@@ -629,7 +629,6 @@ export const knownTools = {
         }).partial().passthrough(),
         result: z.object({}).partial().passthrough()
     },
-    // Gemini internal tools - should be hidden (minimal)
     'search': {
         title: t('tools.names.search'),
         icon: ICON_SEARCH,
@@ -975,6 +974,21 @@ export const knownTools = {
             return title;
         },
         icon: ICON_SKILL,
+        minimal: true
+    },
+    'Agent': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            let title = "Agent";
+            if (opts.tool.description && typeof opts.tool.description === 'string') {
+                title += `: ${opts.tool.description}`;
+                return title;
+            }
+            if (opts.tool.input && opts.tool.input.description && typeof opts.tool.input.description === 'string') {
+                title += `: ${opts.tool.input.description}`;
+            }
+            return title;
+        },
+        icon: ICON_ROBOT,
         minimal: true
     }
 } satisfies Record<string, {
