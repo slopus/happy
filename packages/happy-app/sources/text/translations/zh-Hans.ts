@@ -303,6 +303,7 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        startedByDaemon: '守护进程',
     },
 
     commandPalette: {
