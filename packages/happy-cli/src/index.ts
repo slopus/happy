@@ -575,8 +575,8 @@ ${chalk.bold('Usage:')}
   happy notify            Send push notification
   happy daemon            Manage background service that allows
                             to spawn new sessions away from your computer
-  happy update             Upgrade happy to the latest version
   happy doctor            System diagnostics & troubleshooting
+  happy update            Upgrade happy to the latest version
 
 ${chalk.bold('Examples:')}
   happy                    Start session
@@ -613,8 +613,30 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Show version
     if (showVersion) {
-      console.log(`happy version: ${packageJson.version}`)
-      // Don't exit - continue to pass --version to Claude Code
+      const versions: { name: string; version: string }[] = [
+        { name: 'Happy', version: packageJson.version },
+      ]
+
+      const checks = [
+        { name: 'Claude', cmd: 'claude', args: ['--version'] },
+        { name: 'Codex', cmd: 'codex', args: ['--version'] },
+        { name: 'Gemini', cmd: 'gemini', args: ['--version'] },
+      ]
+      for (const { name, cmd, args: vArgs } of checks) {
+        try {
+          const ver = execFileSync(cmd, vArgs, { encoding: 'utf-8', timeout: 5000 }).trim()
+          versions.push({ name, version: ver })
+        } catch {
+          // Not installed - skip
+        }
+      }
+
+      const maxName = Math.max(...versions.map(v => v.name.length))
+      for (const { name, version } of versions) {
+        console.log(`${chalk.bold(name.padEnd(maxName))}  ${chalk.cyan(version)}`)
+      }
+
+      process.exit(0)
     }
 
     // Normal flow - auth and machine setup
