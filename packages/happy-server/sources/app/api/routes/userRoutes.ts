@@ -73,9 +73,13 @@ export async function userRoutes(app: Fastify) {
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const { query } = request.query;
+        // Require the caller to have a username before searching
+        const caller = await db.account.findUnique({ where: { id: request.userId }, select: { username: true } });
+        if (!caller?.username) {
+            return (reply as any).code(403).send({ error: 'You must set a username before searching for users' });
+        }
 
-        // Search for users by username, first 10 matches
+        const { query } = request.query;
         const users = await db.account.findMany({
             where: {
                 username: {
