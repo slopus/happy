@@ -6,11 +6,13 @@ import { Avatar } from '@/components/Avatar';
 interface UserCardProps {
     user: UserProfile;
     onPress?: () => void;
+    showDivider?: boolean;
 }
 
-export function UserCard({ 
-    user, 
-    onPress
+export function UserCard({
+    user,
+    onPress,
+    showDivider,
 }: UserCardProps) {
     const displayName = getDisplayName(user);
     const avatarUrl = user.avatar?.url || user.avatar?.path;
@@ -37,6 +39,7 @@ export function UserCard({
             iconContainerStyle={{ marginRight: 16 }}
             onPress={onPress}
             showChevron={!!onPress}
+            showDivider={showDivider}
         />
     );
 }

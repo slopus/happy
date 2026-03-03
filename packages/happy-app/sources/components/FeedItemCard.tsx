@@ -18,9 +18,10 @@ const SWIPE_ACTION_WIDTH = 80;
 
 interface FeedItemCardProps {
     item: FeedItem;
+    showDivider?: boolean;
 }
 
-export const FeedItemCard = React.memo(({ item }: FeedItemCardProps) => {
+export const FeedItemCard = React.memo(({ item, showDivider }: FeedItemCardProps) => {
     const { theme } = useUnistyles();
     const router = useRouter();
     const { credentials } = useAuth();
@@ -79,6 +80,7 @@ export const FeedItemCard = React.memo(({ item }: FeedItemCardProps) => {
                         iconContainerStyle={{ marginRight: 16 }}
                         onPress={() => router.push(`/user/${user!.id}`)}
                         showChevron={true}
+                        showDivider={showDivider}
                     />
                 );
             }
@@ -102,6 +104,7 @@ export const FeedItemCard = React.memo(({ item }: FeedItemCardProps) => {
                         iconContainerStyle={{ marginRight: 16 }}
                         onPress={() => router.push(`/user/${user!.id}`)}
                         showChevron={true}
+                        showDivider={showDivider}
                     />
                 );
             }
@@ -114,6 +117,7 @@ export const FeedItemCard = React.memo(({ item }: FeedItemCardProps) => {
                         icon={<Ionicons name="information-circle" size={20} color={theme.colors.textSecondary} />}
                         iconContainerStyle={{ marginRight: 16 }}
                         showChevron={false}
+                        showDivider={showDivider}
                     />
                 );
 
