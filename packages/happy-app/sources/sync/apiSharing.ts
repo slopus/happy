@@ -239,14 +239,56 @@ export async function deletePublicShare(
 }
 
 /**
+ * Fetch messages from a public share (public endpoint, no auth required)
+ */
+export async function getPublicShareMessages(
+    serverUrl: string,
+    token: string,
+    consent?: boolean
+): Promise<{ id: string; seq: number; content: { t: string; c: string }; localId: string | null; createdAt: number; updatedAt: number }[]> {
+    return await backoff(async () => {
+        const url = new URL(`${serverUrl}/v1/public-share/${token}/messages`);
+        if (consent) {
+            url.searchParams.set('consent', 'true');
+        }
+
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new PublicShareNotFoundError();
+            }
+            if (response.status === 403) {
+                const body = await response.json();
+                if (body.requiresConsent) {
+                    throw new ConsentRequiredError();
+                }
+            }
+            throw new Error(`Failed to get public share messages: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.messages;
+    });
+}
+
+/**
  * Access a session via a public share token (public endpoint, no auth required)
  */
 export async function accessPublicShare(
     serverUrl: string,
-    token: string
+    token: string,
+    consent?: boolean
 ): Promise<AccessPublicShareResponse> {
     return await backoff(async () => {
-        const response = await fetch(`${serverUrl}/v1/public-share/${token}`, {
+        const url = new URL(`${serverUrl}/v1/public-share/${token}`);
+        if (consent) {
+            url.searchParams.set('consent', 'true');
+        }
+
+        const response = await fetch(url.toString(), {
             method: 'GET',
         });
 

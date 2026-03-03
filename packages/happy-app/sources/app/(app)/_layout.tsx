@@ -314,6 +314,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="share/[token]"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('session.sharing.sharedSession'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="user/[id]"
                 options={{
                     headerShown: true,

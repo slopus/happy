@@ -623,6 +623,11 @@ export const ca: TranslationStructure = {
             noMessages: 'Encara no hi ha missatges',
             sharedSessions: 'Sessions compartides',
             noSharedSessions: 'Encara no hi ha sessions compartides',
+            sharedSession: 'Sessió compartida',
+            sharedBy: 'Compartit per',
+            consentTitle: 'Cal consentiment',
+            consentMessage: "El propietari de la sessió requereix el teu consentiment abans de veure-la. El teu accés serà registrat.",
+            consentAccept: "Hi estic d'acord, mostra la sessió",
         },
     },
 

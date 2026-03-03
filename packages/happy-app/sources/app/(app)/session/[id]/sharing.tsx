@@ -20,7 +20,6 @@ import { UserProfile } from '@/sync/friendTypes';
 import { encryptDataKeyForRecipientV0, verifyRecipientContentPublicKeyBinding } from '@/sync/directShareEncryption';
 import { encryptDataKeyForPublicShare } from '@/sync/encryption/publicShareEncryption';
 import { getRandomBytes } from 'expo-crypto';
-import { getServerUrl } from '@/sync/serverConfig';
 import { Modal } from '@/modal';
 
 function SharingManagementContent({ sessionId }: { sessionId: string }) {
@@ -170,7 +169,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
     const excludedUserIds = shares.map(share => share.sharedWithUser.id);
     const canManage = !session.accessLevel || session.accessLevel === 'admin';
     const effectiveToken = publicShareToken || publicShare?.token;
-    const publicShareUrl = effectiveToken ? `${getServerUrl()}/v1/public-share/${effectiveToken}` : null;
+    const publicShareUrl = effectiveToken ? `https://happy.hitosea.com/share/${effectiveToken}` : null;
 
     return (
         <>

@@ -625,6 +625,11 @@ export const zhHans: TranslationStructure = {
             noMessages: '暂无消息',
             sharedSessions: '共享的会话',
             noSharedSessions: '暂无共享的会话',
+            sharedSession: '共享会话',
+            sharedBy: '共享者',
+            consentTitle: '需要同意',
+            consentMessage: '会话所有者要求您在查看前同意。您的访问将被记录。',
+            consentAccept: '我同意，显示会话',
         },
     },
 

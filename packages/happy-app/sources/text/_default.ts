@@ -623,6 +623,11 @@ export const en = {
             noMessages: 'No messages yet',
             sharedSessions: 'Shared sessions',
             noSharedSessions: 'No shared sessions yet',
+            sharedSession: 'Shared Session',
+            sharedBy: 'Shared by',
+            consentTitle: 'Consent Required',
+            consentMessage: 'The session owner requires your consent before viewing. Your access will be logged.',
+            consentAccept: 'I agree, show session',
         },
     },
 

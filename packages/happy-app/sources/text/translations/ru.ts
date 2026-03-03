@@ -773,6 +773,11 @@ export const ru: TranslationStructure = {
             noMessages: 'Сообщений пока нет',
             sharedSessions: 'Общие сессии',
             noSharedSessions: 'Общих сессий пока нет',
+            sharedSession: 'Общая сессия',
+            sharedBy: 'Поделился',
+            consentTitle: 'Требуется согласие',
+            consentMessage: 'Владелец сессии требует вашего согласия перед просмотром. Ваш доступ будет зафиксирован.',
+            consentAccept: 'Согласен, показать сессию',
         },
     },
 

@@ -624,6 +624,11 @@ export const zhHant: TranslationStructure = {
             noMessages: '暫無訊息',
             sharedSessions: '共享的工作階段',
             noSharedSessions: '暫無共享的工作階段',
+            sharedSession: '共享對話',
+            sharedBy: '共享者',
+            consentTitle: '需要同意',
+            consentMessage: '對話擁有者要求您在查看前表示同意。您的存取將會被記錄。',
+            consentAccept: '我同意，顯示對話',
         },
     },
 

@@ -634,6 +634,11 @@ export const pl: TranslationStructure = {
             noMessages: 'Brak wiadomości',
             sharedSessions: 'Udostępnione sesje',
             noSharedSessions: 'Brak udostępnionych sesji',
+            sharedSession: 'Udostępniona sesja',
+            sharedBy: 'Udostępnił',
+            consentTitle: 'Wymagana zgoda',
+            consentMessage: 'Właściciel sesji wymaga Twojej zgody przed wyświetleniem. Twój dostęp zostanie zarejestrowany.',
+            consentAccept: 'Zgadzam się, pokaż sesję',
         },
     },
 

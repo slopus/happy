@@ -652,6 +652,11 @@ export const it: TranslationStructure = {
             noMessages: 'Nessun messaggio ancora',
             sharedSessions: 'Sessioni condivise',
             noSharedSessions: 'Nessuna sessione condivisa ancora',
+            sharedSession: 'Sessione condivisa',
+            sharedBy: 'Condiviso da',
+            consentTitle: 'Consenso richiesto',
+            consentMessage: 'Il proprietario della sessione richiede il tuo consenso prima della visualizzazione. Il tuo accesso verrà registrato.',
+            consentAccept: 'Accetto, mostra sessione',
         },
     },
 

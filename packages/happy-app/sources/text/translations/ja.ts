@@ -655,6 +655,11 @@ export const ja: TranslationStructure = {
             noMessages: 'メッセージはまだありません',
             sharedSessions: '共有セッション',
             noSharedSessions: '共有セッションはまだありません',
+            sharedSession: '共有セッション',
+            sharedBy: '共有者',
+            consentTitle: '同意が必要です',
+            consentMessage: 'セッションのオーナーが閲覧前に同意を求めています。アクセスは記録されます。',
+            consentAccept: '同意してセッションを表示',
         },
     },
 
