@@ -354,8 +354,9 @@ class Sync {
             return { success: false, error: 'Session encryption not found', localId: '' };
         }
 
-        // Get session data from storage
-        const session = storage.getState().sessions[sessionId];
+        // Get session data from storage (check both owned and shared sessions)
+        const session = storage.getState().sessions[sessionId]
+            ?? storage.getState().sharedSessions[sessionId];
         if (!session) {
             console.error(`Session ${sessionId} not found in storage`);
             return { success: false, error: 'Session not found', localId: '' };
