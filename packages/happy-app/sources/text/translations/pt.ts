@@ -134,9 +134,6 @@ export const pt: TranslationStructure = {
         exchangingTokens: 'Trocando tokens...',
         usage: 'Uso',
         usageSubtitle: 'Visualizar uso da API e custos',
-        profiles: 'Perfis',
-        profilesSubtitle: 'Gerenciar perfis de ambiente e variáveis',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Conta ${service} conectada`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -205,9 +202,6 @@ export const pt: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione e segure para abrir modal de cópia',
         hideInactiveSessions: 'Ocultar sessões inativas',
         hideInactiveSessionsSubtitle: 'Mostre apenas os chats ativos na sua lista',
-        enhancedSessionWizard: 'Assistente de sessão aprimorado',
-        enhancedSessionWizardEnabled: 'Lançador de sessão com perfil ativo',
-        enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
     },
 
     errors: {
@@ -258,35 +252,7 @@ export const pt: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Iniciar nova sessão',
-        noMachinesFound: 'Nenhuma máquina encontrada. Inicie uma sessão Happy no seu computador primeiro.',
-        allMachinesOffline: 'Todas as máquinas estão offline',
-        machineDetails: 'Ver detalhes da máquina →',
-        directoryDoesNotExist: 'Diretório não encontrado',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `O diretório ${directory} não existe. Deseja criá-lo?`,
-        sessionStarted: 'Sessão iniciada',
-        sessionStartedMessage: 'A sessão foi iniciada com sucesso.',
-        sessionSpawningFailed: 'Falha ao criar sessão - nenhum ID de sessão foi retornado.',
-        failedToStart: 'Falha ao iniciar sessão. Certifique-se de que o daemon está rodando na máquina de destino.',
-        sessionTimeout: 'Tempo limite de inicialização da sessão esgotado. A máquina pode estar lenta ou o daemon pode não estar respondendo.',
-        notConnectedToServer: 'Não conectado ao servidor. Verifique sua conexão com a internet.',
-        startingSession: 'Iniciando sessão...',
-        startNewSessionInFolder: 'Nova sessão aqui',
-        noMachineSelected: 'Por favor, selecione uma máquina para iniciar a sessão',
-        noPathSelected: 'Por favor, selecione um diretório para iniciar a sessão',
-        sessionType: {
-            title: 'Tipo de sessão',
-            simple: 'Simples',
-            worktree: 'Worktree',
-            comingSoon: 'Em breve',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Criando worktree '${name}'...`,
-            notGitRepo: 'Worktrees requerem um repositório git',
-            failed: ({ error }: { error: string }) => `Falha ao criar worktree: ${error}`,
-            success: 'Worktree criado com sucesso',
-        }
     },
 
     sessionHistory: {
@@ -877,36 +843,6 @@ export const pt: TranslationStructure = {
         usageOverTime: 'Uso ao longo do tempo',
         byModel: 'Por modelo',
         noData: 'Nenhum dado de uso disponível',
-    },
-
-    profiles: {
-        title: 'Perfis',
-        subtitle: 'Gerencie seus perfis de configuração',
-        noProfile: 'Nenhum perfil',
-        noProfileDescription: 'Crie um perfil para gerenciar sua configuração de ambiente',
-        addProfile: 'Adicionar perfil',
-        addProfileTitle: 'Título do perfil de adição',
-        editProfile: 'Editar perfil',
-        profileName: 'Nome do perfil',
-        enterName: 'Digite o nome do perfil',
-        baseURL: 'URL base',
-        authToken: 'Token de autenticação',
-        enterToken: 'Digite o token de autenticação',
-        model: 'Modelo',
-        defaultModel: 'Modelo padrão',
-        tmuxSession: 'Sessão tmux',
-        enterTmuxSession: 'Digite o nome da sessão tmux',
-        tmuxTempDir: 'Diretório temporário tmux',
-        enterTmuxTempDir: 'Digite o diretório temporário tmux',
-        tmuxUpdateEnvironment: 'Atualizar ambiente tmux',
-        deleteConfirm: 'Tem certeza de que deseja excluir este perfil?',
-        nameRequired: 'O nome do perfil é obrigatório',
-        delete: {
-            title: 'Excluir Perfil',
-            message: ({ name }: { name: string }) => `Tem certeza de que deseja excluir "${name}"? Esta ação não pode ser desfeita.`,
-            confirm: 'Excluir',
-            cancel: 'Cancelar',
-        },
     },
 
     feed: {

@@ -134,8 +134,6 @@ export const ca: TranslationStructure = {
         exchangingTokens: 'Intercanviant tokens...',
         usage: 'Ús',
         usageSubtitle: "Veure l'ús de l'API i costos",
-        profiles: 'Perfils',
-        profilesSubtitle: 'Gestiona els perfils d\'entorn i variables',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
@@ -205,9 +203,6 @@ export const ca: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
         hideInactiveSessions: 'Amaga les sessions inactives',
         hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
-        enhancedSessionWizard: 'Assistent de sessió millorat',
-        enhancedSessionWizardEnabled: 'Llançador de sessió amb perfil actiu',
-        enhancedSessionWizardDisabled: 'Usant el llançador de sessió estàndard',
     },
 
     errors: {
@@ -258,35 +253,7 @@ export const ca: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
-        title: 'Inicia una nova sessió',
-        noMachinesFound: 'No s\'han trobat màquines. Inicia una sessió de Happy al teu ordinador primer.',
-        allMachinesOffline: 'Totes les màquines estan fora de línia',
-        machineDetails: 'Veure detalls de la màquina →',
-        directoryDoesNotExist: 'Directori no trobat',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `El directori ${directory} no existeix. Vols crear-lo?`,
-        sessionStarted: 'Sessió iniciada',
-        sessionStartedMessage: 'La sessió s\'ha iniciat correctament.',
-        sessionSpawningFailed: 'Ha fallat la creació de la sessió - no s\'ha retornat cap ID de sessió.',
-        failedToStart: 'Ha fallat l\'inici de la sessió. Assegura\'t que el dimoni s\'estigui executant a la màquina de destinació.',
-        sessionTimeout: 'L\'inici de la sessió ha esgotat el temps d\'espera. La màquina pot ser lenta o el dimoni pot no estar responent.',
-        notConnectedToServer: 'No connectat al servidor. Comprova la teva connexió a internet.',
-        startingSession: 'Iniciant la sessió...',
-        startNewSessionInFolder: 'Nova sessió aquí',
-        noMachineSelected: 'Si us plau, selecciona una màquina per iniciar la sessió',
-        noPathSelected: 'Si us plau, selecciona un directori per iniciar la sessió',
-        sessionType: {
-            title: 'Tipus de sessió',
-            simple: 'Simple',
-            worktree: 'Worktree',
-            comingSoon: 'Properament',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Creant worktree '${name}'...`,
-            notGitRepo: 'Els worktrees requereixen un repositori git',
-            failed: ({ error }: { error: string }) => `Error en crear el worktree: ${error}`,
-            success: 'Worktree creat amb èxit',
-        }
+        title: 'Iniciar nova sessió',
     },
 
     sessionHistory: {
@@ -877,36 +844,6 @@ export const ca: TranslationStructure = {
         usageOverTime: 'Ús al llarg del temps',
         byModel: 'Per model',
         noData: "No hi ha dades d'ús disponibles",
-    },
-
-    profiles: {
-        title: 'Perfils',
-        subtitle: 'Gestiona els teus perfils de configuració',
-        noProfile: 'Cap perfil',
-        noProfileDescription: 'Crea un perfil per gestionar la teva configuració d\'entorn',
-        addProfile: 'Afegeix un perfil',
-        addProfileTitle: 'Títol del perfil d\'addició',
-        editProfile: 'Edita el perfil',
-        profileName: 'Nom del perfil',
-        enterName: 'Introdueix el nom del perfil',
-        baseURL: 'URL base',
-        authToken: 'Token d\'autenticació',
-        enterToken: 'Introdueix el token d\'autenticació',
-        model: 'Model',
-        defaultModel: 'Model per defecte',
-        tmuxSession: 'Sessió tmux',
-        enterTmuxSession: 'Introdueix el nom de la sessió tmux',
-        tmuxTempDir: 'Directori temporal tmux',
-        enterTmuxTempDir: 'Introdueix el directori temporal tmux',
-        tmuxUpdateEnvironment: 'Actualitza l\'entorn tmux',
-        deleteConfirm: 'Segur que vols eliminar aquest perfil?',
-        nameRequired: 'El nom del perfil és obligatori',
-        delete: {
-            title: 'Eliminar Perfil',
-            message: ({ name }: { name: string }) => `Estàs segur que vols eliminar "${name}"? Aquesta acció no es pot desfer.`,
-            confirm: 'Eliminar',
-            cancel: 'Cancel·lar',
-        },
     },
 
     feed: {

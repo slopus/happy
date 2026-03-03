@@ -135,9 +135,6 @@ export const zhHant: TranslationStructure = {
         exchangingTokens: '正在交換權杖...',
         usage: '使用情況',
         usageSubtitle: '查看 API 使用情況和費用',
-        profiles: '設定檔',
-        profilesSubtitle: '管理工作階段的環境變數設定檔',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -206,9 +203,6 @@ export const zhHant: TranslationStructure = {
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
         hideInactiveSessions: '隱藏非活躍工作階段',
         hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
-        enhancedSessionWizard: '增強工作階段精靈',
-        enhancedSessionWizardEnabled: '設定檔優先的工作階段啟動器已啟用',
-        enhancedSessionWizardDisabled: '使用標準工作階段啟動器',
     },
 
     errors: {
@@ -259,35 +253,7 @@ export const zhHant: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
-        title: '啟動新工作階段',
-        noMachinesFound: '未找到裝置。請先在您的電腦上啟動 Happy 工作階段。',
-        allMachinesOffline: '所有裝置似乎都已離線',
-        machineDetails: '查看裝置詳情 →',
-        directoryDoesNotExist: '目錄不存在',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `目錄 ${directory} 不存在。您要建立它嗎？`,
-        sessionStarted: '工作階段已啟動',
-        sessionStartedMessage: '工作階段已成功啟動。',
-        sessionSpawningFailed: '工作階段生成失敗 - 未返回工作階段 ID。',
-        startingSession: '正在啟動工作階段...',
-        startNewSessionInFolder: '在此資料夾中啟動新工作階段',
-        failedToStart: '啟動工作階段失敗。確保守護程序在目標裝置上執行。',
-        sessionTimeout: '工作階段啟動逾時。裝置可能執行緩慢或守護程序可能無回應。',
-        notConnectedToServer: '未連線到伺服器。請檢查您的網路連線。',
-        noMachineSelected: '請選擇一台裝置以啟動工作階段',
-        noPathSelected: '請選擇一個目錄以啟動工作階段',
-        sessionType: {
-            title: '工作階段類型',
-            simple: '簡單',
-            worktree: 'Worktree',
-            comingSoon: '即將推出',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `正在建立 worktree '${name}'...`,
-            notGitRepo: 'Worktree 需要 git 倉庫',
-            failed: ({ error }: { error: string }) => `建立 worktree 失敗：${error}`,
-            success: 'Worktree 建立成功',
-        }
+        title: '開始新工作階段',
     },
 
     sessionHistory: {
@@ -887,35 +853,4 @@ export const zhHant: TranslationStructure = {
         friendAccepted: ({ name }: { name: string }) => `您現在與 ${name} 成為了好友`,
         friendAcceptedGeneric: '好友請求已接受',
     },
-
-    profiles: {
-        // Profile management feature
-        title: '設定檔',
-        subtitle: '管理工作階段的環境變數設定檔',
-        noProfile: '無設定檔',
-        noProfileDescription: '使用預設環境設定',
-        defaultModel: '預設模型',
-        addProfile: '新增設定檔',
-        profileName: '設定檔名稱',
-        enterName: '輸入設定檔名稱',
-        baseURL: '基礎 URL',
-        authToken: '認證權杖',
-        enterToken: '輸入認證權杖',
-        model: '模型',
-        tmuxSession: 'Tmux 工作階段',
-        enterTmuxSession: '輸入 tmux 工作階段名稱',
-        tmuxTempDir: 'Tmux 暫存目錄',
-        enterTmuxTempDir: '輸入暫存目錄路徑',
-        tmuxUpdateEnvironment: '自動更新環境',
-        nameRequired: '設定檔名稱為必填',
-        deleteConfirm: '確定要刪除設定檔「{name}」嗎？',
-        editProfile: '編輯設定檔',
-        addProfileTitle: '新增設定檔',
-        delete: {
-            title: '刪除設定檔',
-            message: ({ name }: { name: string }) => `確定要刪除「${name}」嗎？此操作無法復原。`,
-            confirm: '刪除',
-            cancel: '取消',
-        },
-    }
 } as const;

@@ -149,9 +149,6 @@ export const en: TranslationStructure = {
         exchangingTokens: 'Exchanging tokens...',
         usage: 'Usage',
         usageSubtitle: 'View your API usage and costs',
-        profiles: 'Profiles',
-        profilesSubtitle: 'Manage environment variable profiles for sessions',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -220,9 +217,6 @@ export const en: TranslationStructure = {
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         hideInactiveSessions: 'Hide inactive sessions',
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
-        enhancedSessionWizard: 'Enhanced Session Wizard',
-        enhancedSessionWizardEnabled: 'Profile-first session launcher active',
-        enhancedSessionWizardDisabled: 'Using standard session launcher',
     },
 
     errors: {
@@ -273,35 +267,7 @@ export const en: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Start New Session',
-        noMachinesFound: 'No machines found. Start a Happy session on your computer first.',
-        allMachinesOffline: 'All machines appear offline',
-        machineDetails: 'View machine details →',
-        directoryDoesNotExist: 'Directory Not Found',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `The directory ${directory} does not exist. Do you want to create it?`,
-        sessionStarted: 'Session Started',
-        sessionStartedMessage: 'The session has been started successfully.',
-        sessionSpawningFailed: 'Session spawning failed - no session ID returned.',
-        startingSession: 'Starting session...',
-        startNewSessionInFolder: 'New session here',
-        failedToStart: 'Failed to start session. Make sure the daemon is running on the target machine.',
-        sessionTimeout: 'Session startup timed out. The machine may be slow or the daemon may not be responding.',
-        notConnectedToServer: 'Not connected to server. Check your internet connection.',
-        noMachineSelected: 'Please select a machine to start the session',
-        noPathSelected: 'Please select a directory to start the session in',
-        sessionType: {
-            title: 'Session Type',
-            simple: 'Simple',
-            worktree: 'Worktree',
-            comingSoon: 'Coming soon',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Creating worktree '${name}'...`,
-            notGitRepo: 'Worktrees require a git repository',
-            failed: ({ error }: { error: string }) => `Failed to create worktree: ${error}`,
-            success: 'Worktree created successfully',
-        }
     },
 
     sessionHistory: {
@@ -903,36 +869,6 @@ export const en: TranslationStructure = {
         friendAcceptedGeneric: 'Friend request accepted',
     },
 
-    profiles: {
-        // Profile management feature
-        title: 'Profiles',
-        subtitle: 'Manage environment variable profiles for sessions',
-        noProfile: 'No Profile',
-        noProfileDescription: 'Use default environment settings',
-        defaultModel: 'Default Model',
-        addProfile: 'Add Profile',
-        profileName: 'Profile Name',
-        enterName: 'Enter profile name',
-        baseURL: 'Base URL',
-        authToken: 'Auth Token',
-        enterToken: 'Enter auth token',
-        model: 'Model',
-        tmuxSession: 'Tmux Session',
-        enterTmuxSession: 'Enter tmux session name',
-        tmuxTempDir: 'Tmux Temp Directory',
-        enterTmuxTempDir: 'Enter temp directory path',
-        tmuxUpdateEnvironment: 'Update environment automatically',
-        nameRequired: 'Profile name is required',
-        deleteConfirm: 'Are you sure you want to delete the profile "{name}"?',
-        editProfile: 'Edit Profile',
-        addProfileTitle: 'Add New Profile',
-        delete: {
-            title: 'Delete Profile',
-            message: ({ name }: { name: string }) => `Are you sure you want to delete "${name}"? This action cannot be undone.`,
-            confirm: 'Delete',
-            cancel: 'Cancel',
-        },
-    }
 } as const;
 
 export type TranslationsEn = typeof en;

@@ -116,9 +116,6 @@ export const ru: TranslationStructure = {
         exchangingTokens: 'Обмен токенов...',
         usage: 'Использование',
         usageSubtitle: 'Просмотр использования API и затрат',
-        profiles: 'Профили',
-        profilesSubtitle: 'Управление профилями переменных окружения для сессий',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -187,9 +184,6 @@ export const ru: TranslationStructure = {
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать неактивные сессии',
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
-        enhancedSessionWizard: 'Улучшенный мастер сессий',
-        enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
-        enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
     },
 
     errors: {
@@ -240,35 +234,7 @@ export const ru: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Начать новую сессию',
-        noMachinesFound: 'Машины не найдены. Сначала запустите сессию Happy на вашем компьютере.',
-        allMachinesOffline: 'Все машины находятся offline',
-        machineDetails: 'Посмотреть детали машины →',
-        directoryDoesNotExist: 'Директория не найдена',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `Директория ${directory} не существует. Хотите создать её?`,
-        sessionStarted: 'Сессия запущена',
-        sessionStartedMessage: 'Сессия успешно запущена.',
-        sessionSpawningFailed: 'Ошибка создания сессии - ID сессии не получен.',
-        failedToStart: 'Не удалось запустить сессию. Убедитесь, что daemon запущен на целевой машине.',
-        sessionTimeout: 'Время запуска сессии истекло. Машина может работать медленно или daemon не отвечает.',
-        notConnectedToServer: 'Нет подключения к серверу. Проверьте интернет-соединение.',
-        startingSession: 'Запуск сессии...',
-        startNewSessionInFolder: 'Новая сессия здесь',
-        noMachineSelected: 'Пожалуйста, выберите машину для запуска сессии',
-        noPathSelected: 'Пожалуйста, выберите директорию для запуска сессии',
-        sessionType: {
-            title: 'Тип сессии',
-            simple: 'Простая',
-            worktree: 'Worktree',
-            comingSoon: 'Скоро будет доступно',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Создание worktree '${name}'...`,
-            notGitRepo: 'Worktree требует наличия git репозитория',
-            failed: ({ error }: { error: string }) => `Не удалось создать worktree: ${error}`,
-            success: 'Worktree успешно создан',
-        }
     },
 
     sessionHistory: {
@@ -910,36 +876,6 @@ export const ru: TranslationStructure = {
         friendAcceptedGeneric: 'Запрос в друзья принят',
     },
 
-    profiles: {
-        // Profile management feature
-        title: 'Профили',
-        subtitle: 'Управление профилями переменных окружения для сессий',
-        noProfile: 'Без Профиля',
-        noProfileDescription: 'Использовать настройки окружения по умолчанию',
-        defaultModel: 'Модель по Умолчанию',
-        addProfile: 'Добавить Профиль',
-        profileName: 'Имя Профиля',
-        enterName: 'Введите имя профиля',
-        baseURL: 'Базовый URL',
-        authToken: 'Токен Аутентификации',
-        enterToken: 'Введите токен аутентификации',
-        model: 'Модель',
-        tmuxSession: 'Сессия Tmux',
-        enterTmuxSession: 'Введите имя сессии tmux',
-        tmuxTempDir: 'Временный каталог Tmux',
-        enterTmuxTempDir: 'Введите путь к временному каталогу',
-        tmuxUpdateEnvironment: 'Обновлять окружение автоматически',
-        nameRequired: 'Имя профиля обязательно',
-        deleteConfirm: 'Вы уверены, что хотите удалить профиль "{name}"?',
-        editProfile: 'Редактировать Профиль',
-        addProfileTitle: 'Добавить Новый Профиль',
-        delete: {
-            title: 'Удалить Профиль',
-            message: ({ name }: { name: string }) => `Вы уверены, что хотите удалить "${name}"? Это действие нельзя отменить.`,
-            confirm: 'Удалить',
-            cancel: 'Отмена',
-        },
-    }
 } as const;
 
 export type TranslationsRu = typeof ru;

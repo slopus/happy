@@ -22,8 +22,6 @@ import { hackMode, hackModes } from '@/sync/modeHacks';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
-import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile } from '@/sync/profileUtils';
 
 interface AgentInputProps {
     value: string;
@@ -74,8 +72,6 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
-    profileId?: string | null;
-    onProfileClick?: () => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -338,17 +334,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         }
         return label;
     }, [isSandboxEnabled]);
-
-    // Profile data
-    const profiles = useSetting('profiles');
-    const currentProfile = React.useMemo(() => {
-        if (!props.profileId) return null;
-        // Check custom profiles first
-        const customProfile = profiles.find(p => p.id === props.profileId);
-        if (customProfile) return customProfile;
-        // Check built-in profiles
-        return getBuiltInProfile(props.profileId);
-    }, [profiles, props.profileId]);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -980,42 +965,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             size={16}
                                             color={theme.colors.button.secondary.tint}
                                         />
-                                    </Pressable>
-                                )}
-
-                                {/* Profile selector button - FIRST */}
-                                {props.profileId && props.onProfileClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onProfileClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Ionicons
-                                            name="person-outline"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {currentProfile?.name || 'Select Profile'}
-                                        </Text>
                                     </Pressable>
                                 )}
 

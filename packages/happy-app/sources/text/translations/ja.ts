@@ -74,36 +74,6 @@ export const ja: TranslationStructure = {
         status: 'ステータス',
     },
 
-    profiles: {
-        title: 'プロファイル',
-        subtitle: 'セッション用の環境変数プロファイルを管理',
-        noProfile: 'プロファイルなし',
-        noProfileDescription: 'デフォルトの環境設定を使用',
-        defaultModel: 'デフォルトモデル',
-        addProfile: 'プロファイルを追加',
-        profileName: 'プロファイル名',
-        enterName: 'プロファイル名を入力',
-        baseURL: 'ベースURL',
-        authToken: '認証トークン',
-        enterToken: '認証トークンを入力',
-        model: 'モデル',
-        tmuxSession: 'Tmuxセッション',
-        enterTmuxSession: 'tmuxセッション名を入力',
-        tmuxTempDir: 'Tmux一時ディレクトリ',
-        enterTmuxTempDir: '一時ディレクトリのパスを入力',
-        tmuxUpdateEnvironment: '環境を自動更新',
-        nameRequired: 'プロファイル名は必須です',
-        deleteConfirm: 'プロファイル「{name}」を削除してもよろしいですか？',
-        editProfile: 'プロファイルを編集',
-        addProfileTitle: '新しいプロファイルを追加',
-        delete: {
-            title: 'プロファイルを削除',
-            message: ({ name }: { name: string }) => `「${name}」を削除してもよろしいですか？この操作は元に戻せません。`,
-            confirm: '削除',
-            cancel: 'キャンセル',
-        },
-    },
-
     status: {
         connected: '接続済み',
         connecting: '接続中',
@@ -166,9 +136,6 @@ export const ja: TranslationStructure = {
         exchangingTokens: 'トークンを交換中...',
         usage: '使用状況',
         usageSubtitle: 'API使用量とコストを確認',
-        profiles: 'プロファイル',
-        profilesSubtitle: 'セッション用の環境変数プロファイルを管理',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -237,9 +204,6 @@ export const ja: TranslationStructure = {
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
         hideInactiveSessions: '非アクティブセッションを非表示',
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
-        enhancedSessionWizard: '拡張セッションウィザード',
-        enhancedSessionWizardEnabled: 'プロファイル優先セッションランチャーが有効',
-        enhancedSessionWizardDisabled: '標準セッションランチャーを使用',
     },
 
     errors: {
@@ -290,35 +254,7 @@ export const ja: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: '新しいセッションを開始',
-        noMachinesFound: 'マシンが見つかりません。まずコンピューターでHappyセッションを起動してください。',
-        allMachinesOffline: 'すべてのマシンがオフラインです',
-        machineDetails: 'マシンの詳細を表示 →',
-        directoryDoesNotExist: 'ディレクトリが見つかりません',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `ディレクトリ ${directory} は存在しません。作成しますか？`,
-        sessionStarted: 'セッションが開始されました',
-        sessionStartedMessage: 'セッションが正常に開始されました。',
-        sessionSpawningFailed: 'セッションの生成に失敗しました - セッションIDが返されませんでした。',
-        startingSession: 'セッションを開始中...',
-        startNewSessionInFolder: 'このフォルダで新しいセッション',
-        failedToStart: 'セッションの開始に失敗しました。ターゲットマシンでデーモンが実行中か確認してください。',
-        sessionTimeout: 'セッションの開始がタイムアウトしました。マシンが遅いか、デーモンが応答していない可能性があります。',
-        notConnectedToServer: 'サーバーに接続されていません。インターネット接続を確認してください。',
-        noMachineSelected: 'セッションを開始するマシンを選択してください',
-        noPathSelected: 'セッションを開始するディレクトリを選択してください',
-        sessionType: {
-            title: 'セッションタイプ',
-            simple: 'シンプル',
-            worktree: 'ワークツリー',
-            comingSoon: '近日公開',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `ワークツリー '${name}' を作成中...`,
-            notGitRepo: 'ワークツリーにはGitリポジトリが必要です',
-            failed: ({ error }: { error: string }) => `ワークツリーの作成に失敗しました: ${error}`,
-            success: 'ワークツリーが正常に作成されました',
-        }
     },
 
     sessionHistory: {

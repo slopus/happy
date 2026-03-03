@@ -71,36 +71,6 @@ export const it: TranslationStructure = {
         status: 'Stato',
     },
 
-    profiles: {
-        title: 'Profili',
-        subtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
-        noProfile: 'Nessun profilo',
-        noProfileDescription: 'Usa le impostazioni ambiente predefinite',
-        defaultModel: 'Modello predefinito',
-        addProfile: 'Aggiungi profilo',
-        profileName: 'Nome profilo',
-        enterName: 'Inserisci nome profilo',
-        baseURL: 'URL base',
-        authToken: 'Token di autenticazione',
-        enterToken: 'Inserisci token di autenticazione',
-        model: 'Modello',
-        tmuxSession: 'Sessione Tmux',
-        enterTmuxSession: 'Inserisci nome sessione tmux',
-        tmuxTempDir: 'Directory temporanea Tmux',
-        enterTmuxTempDir: 'Inserisci percorso directory temporanea',
-        tmuxUpdateEnvironment: 'Aggiorna ambiente automaticamente',
-        nameRequired: 'Il nome del profilo è obbligatorio',
-        deleteConfirm: 'Sei sicuro di voler eliminare il profilo "{name}"?',
-        editProfile: 'Modifica profilo',
-        addProfileTitle: 'Aggiungi nuovo profilo',
-        delete: {
-            title: 'Elimina profilo',
-            message: ({ name }: { name: string }) => `Sei sicuro di voler eliminare "${name}"? Questa azione non può essere annullata.`,
-            confirm: 'Elimina',
-            cancel: 'Annulla',
-        },
-    },
-
     status: {
         connected: 'connesso',
         connecting: 'connessione in corso',
@@ -163,9 +133,6 @@ export const it: TranslationStructure = {
         exchangingTokens: 'Scambio dei token...',
         usage: 'Utilizzo',
         usageSubtitle: 'Vedi il tuo utilizzo API e i costi',
-        profiles: 'Profili',
-        profilesSubtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Account ${service} collegato`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -234,9 +201,6 @@ export const it: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',
         hideInactiveSessions: 'Nascondi sessioni inattive',
         hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
-        enhancedSessionWizard: 'Wizard sessione avanzato',
-        enhancedSessionWizardEnabled: 'Avvio sessioni con profili attivo',
-        enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
     },
 
     errors: {
@@ -287,35 +251,7 @@ export const it: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Avvia nuova sessione',
-        noMachinesFound: 'Nessuna macchina trovata. Avvia prima una sessione Happy sul tuo computer.',
-        allMachinesOffline: 'Tutte le macchine sembrano offline',
-        machineDetails: 'Visualizza dettagli macchina →',
-        directoryDoesNotExist: 'Directory non trovata',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `La directory ${directory} non esiste. Vuoi crearla?`,
-        sessionStarted: 'Sessione avviata',
-        sessionStartedMessage: 'La sessione è stata avviata con successo.',
-        sessionSpawningFailed: 'Avvio sessione non riuscito - nessun ID sessione restituito.',
-        startingSession: 'Avvio sessione...',
-        startNewSessionInFolder: 'Nuova sessione qui',
-        failedToStart: 'Impossibile avviare la sessione. Assicurati che il daemon sia in esecuzione sulla macchina di destinazione.',
-        sessionTimeout: 'Avvio sessione scaduto. La macchina potrebbe essere lenta o il daemon potrebbe non rispondere.',
-        notConnectedToServer: 'Non connesso al server. Controlla la tua connessione Internet.',
-        noMachineSelected: 'Seleziona una macchina per avviare la sessione',
-        noPathSelected: 'Seleziona una directory in cui avviare la sessione',
-        sessionType: {
-            title: 'Tipo di sessione',
-            simple: 'Semplice',
-            worktree: 'Worktree',
-            comingSoon: 'In arrivo',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Creazione worktree '${name}'...`,
-            notGitRepo: 'Le worktree richiedono un repository git',
-            failed: ({ error }: { error: string }) => `Impossibile creare la worktree: ${error}`,
-            success: 'Worktree creata con successo',
-        }
     },
 
     sessionHistory: {
