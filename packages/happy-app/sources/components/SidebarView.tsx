@@ -192,7 +192,7 @@ export const SidebarView = React.memo(() => {
     const shouldLeftJustify = settings.experiments || sidebarWidth < 340;
 
     const handleNewSession = React.useCallback(() => {
-        router.push('/new');
+        router.navigate('/new');
     }, [router]);
 
     // Title content used in both centered and left-justified modes (DRY)

@@ -180,7 +180,7 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     if (activeTab === 'sessions') {
         return (
             <Pressable
-                onPress={() => router.push('/new')}
+                onPress={() => router.navigate('/new')}
                 hitSlop={15}
                 style={styles.headerButton}
             >
@@ -236,7 +236,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
 
     const handleNewSession = React.useCallback(() => {
-        router.push('/new');
+        router.navigate('/new');
     }, [router]);
 
     const handleTabPress = React.useCallback((tab: TabType) => {
