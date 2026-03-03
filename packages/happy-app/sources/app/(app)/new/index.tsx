@@ -24,7 +24,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
@@ -510,8 +510,12 @@ function NewSessionScreen() {
             const pathToUse = selectedPath || '~';
             const absolutePath = resolveAbsolutePath(pathToUse, selectedMachine.metadata?.homeDir);
 
-            // Persist last used agent
-            sync.applySettings({ lastUsedAgent: selectedAgent });
+            // Persist last used settings
+            sync.applySettings({
+                lastUsedAgent: selectedAgent,
+                lastUsedPermissionMode: currentPermission.key,
+                lastUsedModelMode: currentModelKey,
+            });
 
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
@@ -523,6 +527,10 @@ function NewSessionScreen() {
             switch (result.type) {
                 case 'success':
                     await sync.refreshSessions();
+
+                    // Set permission mode and model on the session before sending
+                    storage.getState().updateSessionPermissionMode(result.sessionId, currentPermission.key);
+                    storage.getState().updateSessionModelMode(result.sessionId, currentModelKey);
 
                     // Send initial message if provided
                     if (prompt.trim()) {
@@ -555,7 +563,7 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession, currentPermission.key, currentModelKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 
