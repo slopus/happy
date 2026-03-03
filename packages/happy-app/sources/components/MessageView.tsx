@@ -22,6 +22,7 @@ export const MessageView = (props: {
   getMessageById?: (id: string) => Message | null;
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
+  readOnly?: boolean;
 }) => {
   return (
     <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
@@ -33,6 +34,7 @@ export const MessageView = (props: {
           getMessageById={props.getMessageById}
           isNewestMessage={props.isNewestMessage}
           onFillInput={props.onFillInput}
+          readOnly={props.readOnly}
         />
       </View>
     </View>
@@ -47,6 +49,7 @@ function RenderBlock(props: {
   getMessageById?: (id: string) => Message | null;
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
+  readOnly?: boolean;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -58,6 +61,7 @@ function RenderBlock(props: {
           sessionHomeDirectory={props.metadata?.homeDir ?? null}
           isNewestMessage={props.isNewestMessage}
           onFillInput={props.onFillInput}
+          readOnly={props.readOnly}
         />
       );
 
@@ -70,6 +74,7 @@ function RenderBlock(props: {
           sessionHomeDirectory={props.metadata?.homeDir ?? null}
           isNewestMessage={props.isNewestMessage}
           onFillInput={props.onFillInput}
+          readOnly={props.readOnly}
         />
       );
 
@@ -99,6 +104,7 @@ function UserTextBlock(props: {
   sessionHomeDirectory?: string | null;
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
+  readOnly?: boolean;
 }) {
   const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
   const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
@@ -169,9 +175,10 @@ function UserTextBlock(props: {
           sessionId={props.sessionId}
           sessionWorkingDirectory={props.sessionWorkingDirectory}
           sessionHomeDirectory={props.sessionHomeDirectory}
-          onOptionPress={handleOptionPress}
-          onOptionLongPress={handleOptionLongPress}
-          optionsLoadingState={optionsLoadingState}
+          onOptionPress={props.readOnly ? undefined : handleOptionPress}
+          onOptionLongPress={props.readOnly ? undefined : handleOptionLongPress}
+          optionsLoadingState={props.readOnly ? undefined : optionsLoadingState}
+          hideOptions={props.readOnly}
         />
       </View>
     </View>
@@ -185,6 +192,7 @@ function AgentTextBlock(props: {
   sessionHomeDirectory?: string | null;
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
+  readOnly?: boolean;
 }) {
   const showThinkingMessages = useSetting('showThinkingMessages');
   const [optionsLoadingState, setOptionsLoadingState] = React.useState<OptionsLoadingState>({ loadingIndex: null });
@@ -228,9 +236,10 @@ function AgentTextBlock(props: {
         sessionId={props.sessionId}
         sessionWorkingDirectory={props.sessionWorkingDirectory}
         sessionHomeDirectory={props.sessionHomeDirectory}
-        onOptionPress={handleOptionPress}
-        onOptionLongPress={handleOptionLongPress}
-        optionsLoadingState={optionsLoadingState}
+        onOptionPress={props.readOnly ? undefined : handleOptionPress}
+        onOptionLongPress={props.readOnly ? undefined : handleOptionLongPress}
+        optionsLoadingState={props.readOnly ? undefined : optionsLoadingState}
+        hideOptions={props.readOnly}
       />
     </View>
   );

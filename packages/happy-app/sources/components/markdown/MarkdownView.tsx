@@ -37,6 +37,7 @@ export const MarkdownView = React.memo((props: {
     sessionId?: string;
     sessionWorkingDirectory?: string | null;
     sessionHomeDirectory?: string | null;
+    hideOptions?: boolean;
 }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
 
@@ -82,6 +83,7 @@ export const MarkdownView = React.memo((props: {
         } else if (block.type === 'mermaid') {
             return <MermaidRenderer content={block.content} key={index} />;
         } else if (block.type === 'options') {
+            if (props.hideOptions) return null;
             return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} onOptionLongPress={props.onOptionLongPress} optionsLoadingState={props.optionsLoadingState} />;
         } else if (block.type === 'table') {
             return <RenderTableBlock headers={block.headers} rows={block.rows} key={index} first={index === 0} last={index === blocks.length - 1} />;
@@ -136,6 +138,7 @@ export const MarkdownView = React.memo((props: {
 
     blocks.forEach((block, index) => {
         if (block.type === 'options') {
+            if (props.hideOptions) return;
             // Flush any accumulated non-options blocks first
             flushNonOptionsGroup();
             // Render options block directly without parent GestureDetector

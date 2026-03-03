@@ -43,6 +43,7 @@ export default memo(function PublicShareScreen() {
             message={item}
             metadata={metadata}
             sessionId={sessionId || ''}
+            readOnly
         />
     ), [metadata, sessionId]);
 
