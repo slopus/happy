@@ -4,7 +4,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { storage, usePreviewState, useSelectedElement } from '@/sync/storage';
 import { PreviewToolbar } from './PreviewToolbar';
 import { DevServerPicker } from './DevServerPicker';
-import { type SelectedElement } from 'happy-wire';
+import { type SelectedElement } from '@slopus/happy-wire';
 import { useAutoRefresh } from './useAutoRefresh';
 
 interface PreviewPanelProps {

@@ -21,7 +21,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { type SelectedElement, type PreviewState, createDefaultPreviewState } from "happy-wire";
+import { type SelectedElement, type PreviewState, createDefaultPreviewState } from "@slopus/happy-wire";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
