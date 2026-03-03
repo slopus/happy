@@ -32,6 +32,8 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
+                _count: { select: { shares: true } },
+                publicShare: { select: { id: true } },
                 // messages: {
                 //     orderBy: { seq: 'desc' },
                 //     take: 1,
@@ -64,7 +66,8 @@ export function sessionRoutes(app: Fastify) {
                     agentState: v.agentState,
                     agentStateVersion: v.agentStateVersion,
                     dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
-                    lastMessage: null
+                    lastMessage: null,
+                    isShared: (v._count.shares > 0) || (v.publicShare !== null)
                 };
             })
         });

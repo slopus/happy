@@ -154,6 +154,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     statusRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
     },
     statusDotContainer: {
         alignItems: 'center',
@@ -166,6 +167,20 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 12,
         fontWeight: '500',
         lineHeight: 16,
+        ...Typography.default(),
+    },
+    taskStatusContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surfaceHighest,
+        paddingHorizontal: 4,
+        height: 16,
+        borderRadius: 4,
+    },
+    taskStatusText: {
+        fontSize: 10,
+        fontWeight: '500',
+        color: theme.colors.textSecondary,
         ...Typography.default(),
     },
     avatarContainer: {
@@ -442,15 +457,30 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 
                         {/* Status line with dot */}
                         <View style={styles.statusRow}>
-                            <View style={styles.statusDotContainer}>
-                                <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <View style={styles.statusDotContainer}>
+                                    <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                                </View>
+                                <Text style={[
+                                    styles.statusText,
+                                    { color: sessionStatus.statusColor }
+                                ]}>
+                                    {sessionStatus.statusText}
+                                </Text>
                             </View>
-                            <Text style={[
-                                styles.statusText,
-                                { color: sessionStatus.statusColor }
-                            ]}>
-                                {sessionStatus.statusText}
-                            </Text>
+
+                            {/* Shared status indicator */}
+                            {session.isShared && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
+                                    <View style={styles.taskStatusContainer}>
+                                        <Ionicons
+                                            name="share-social-outline"
+                                            size={10}
+                                            color={styles.taskStatusText.color}
+                                        />
+                                    </View>
+                                </View>
+                            )}
                         </View>
                     </>
                 )}

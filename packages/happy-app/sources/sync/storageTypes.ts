@@ -136,6 +136,7 @@ export interface Session {
         timestamp: number;
     } | null;
     owner?: string;
+    isShared?: boolean;
     ownerProfile?: {
         id: string;
         username: string;

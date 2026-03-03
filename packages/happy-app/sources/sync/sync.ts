@@ -621,6 +621,7 @@ class Sync {
             createdAt: number;
             updatedAt: number;
             lastMessage: ApiMessage | null;
+            isShared?: boolean;
         }>;
 
         // Initialize all session encryptions first
@@ -2319,14 +2320,20 @@ class Sync {
 
         } else if (updateData.body.t === 'public-share-created') {
             log.log('Received public-share-created');
-            // Public share events are owner-only notifications, no action needed
-            // The sharing UI will refresh via API when opened
+            const { sessionId } = updateData.body;
+            // Optimistically mark session as shared
+            const session = storage.getState().sessions[sessionId];
+            if (session) {
+                storage.getState().applySessions([{ ...session, isShared: true }]);
+            }
 
         } else if (updateData.body.t === 'public-share-updated') {
             log.log('Received public-share-updated');
 
         } else if (updateData.body.t === 'public-share-deleted') {
             log.log('Received public-share-deleted');
+            // Re-fetch sessions to determine accurate isShared state
+            this.sessionsSync.invalidate();
 
         } else if (updateData.body.t === 'new-artifact') {
             log.log('📦 Received new-artifact update');

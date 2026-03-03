@@ -334,7 +334,8 @@ function areSessionsShallowEqual(a: Session, b: Session): boolean {
         a.draft === b.draft &&
         a.permissionMode === b.permissionMode &&
         a.modelMode === b.modelMode &&
-        a.latestUsage === b.latestUsage
+        a.latestUsage === b.latestUsage &&
+        a.isShared === b.isShared
     );
 }
 
