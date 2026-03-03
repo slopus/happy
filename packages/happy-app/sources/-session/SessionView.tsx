@@ -690,7 +690,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     ) : null;
 
-    const input = (
+    const canEdit = !session.accessLevel || session.accessLevel !== 'view';
+
+    const input = canEdit ? (
         <AgentInput
             ref={inputRef}
             placeholder={t('session.inputPlaceholder')}
@@ -797,7 +799,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             isUploadingImages={isUploadingImages}
             onImageDrop={handleImageDrop}
         />
-    );
+    ) : null;
 
 
     return (
