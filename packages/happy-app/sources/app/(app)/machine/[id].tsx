@@ -487,6 +487,53 @@ export default function MachineDetailScreen() {
                         />
                 </ItemGroup>
 
+                {/* CLI Availability */}
+                {metadata?.cliAvailability && (
+                    <ItemGroup title={t('machine.cliAvailability')}>
+                        <Item
+                            title="Claude"
+                            showChevron={false}
+                            rightElement={
+                                <Text style={{ color: metadata.cliAvailability.claude ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
+                                    {metadata.cliAvailability.claude ? t('machine.cliInstalled') : t('machine.cliNotFound')}
+                                </Text>
+                            }
+                        />
+                        <Item
+                            title="Codex"
+                            showChevron={false}
+                            rightElement={
+                                <Text style={{ color: metadata.cliAvailability.codex ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
+                                    {metadata.cliAvailability.codex ? t('machine.cliInstalled') : t('machine.cliNotFound')}
+                                </Text>
+                            }
+                        />
+                        <Item
+                            title="Gemini"
+                            showChevron={false}
+                            rightElement={
+                                <Text style={{ color: metadata.cliAvailability.gemini ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
+                                    {metadata.cliAvailability.gemini ? t('machine.cliInstalled') : t('machine.cliNotFound')}
+                                </Text>
+                            }
+                        />
+                        <Item
+                            title="OpenClaw"
+                            showChevron={false}
+                            rightElement={
+                                <Text style={{ color: metadata.cliAvailability.openclaw ? '#34C759' : theme.colors.textSecondary, fontSize: 14 }}>
+                                    {metadata.cliAvailability.openclaw ? t('machine.cliInstalled') : t('machine.cliNotFound')}
+                                </Text>
+                            }
+                        />
+                        <Item
+                            title={t('machine.lastDetected')}
+                            subtitle={new Date(metadata.cliAvailability.detectedAt).toLocaleString()}
+                            showChevron={false}
+                        />
+                    </ItemGroup>
+                )}
+
                 {/* Previous Sessions (debug view) */}
                 {previousSessions.length > 0 && (
                     <ItemGroup title={'Previous Sessions (up to 5 most recent)'}>
