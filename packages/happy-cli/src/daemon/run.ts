@@ -448,7 +448,7 @@ export async function startDaemon(): Promise<void> {
                   type: 'error',
                   errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
                 });
-              }, 15_000); // Same timeout as regular sessions
+              }, 60_000); // Extended timeout for slow MCP/project init
 
               // Register awaiter for tmux session (exact same as regular flow)
               pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
@@ -563,9 +563,8 @@ export async function startDaemon(): Promise<void> {
                 type: 'error',
                 errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
               });
-              // 15 second timeout - I have seen timeouts on 10 seconds
-              // even though session was still created successfully in ~2 more seconds
-            }, 15_000);
+              // 60 second timeout - MCP servers and project init can be slow
+            }, 60_000);
 
             // Register awaiter
             pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
