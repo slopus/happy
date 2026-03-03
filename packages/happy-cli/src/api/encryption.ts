@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, createHash, createHmac } from 'node:crypto';
 import tweetnacl from 'tweetnacl';
 
 /**
@@ -191,6 +191,20 @@ export function decrypt(key: Uint8Array, variant: 'legacy' | 'dataKey', data: Ui
   } else {
     return decryptWithDataKey(data, key);
   }
+}
+
+/**
+ * Derive a purpose-specific encryption key for vendor API tokens.
+ * Uses HMAC-SHA256 to derive a separate key from machineKey,
+ * preventing domain overlap with session E2E encryption and
+ * avoiding nonce-reuse risks across different encryption purposes.
+ */
+export function deriveVendorEncryptionKey(machineKey: Uint8Array): Uint8Array {
+  return new Uint8Array(
+    createHmac('sha256', machineKey)
+      .update('happy-vendor-token-encryption')
+      .digest()
+  );
 }
 
 /**
