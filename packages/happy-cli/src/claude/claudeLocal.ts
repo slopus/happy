@@ -11,6 +11,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { buildEnvWithStrippedAuthVars } from "@/utils/stripAuthEnvVars";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -237,8 +238,13 @@ export async function claudeLocal(opts: {
             // Prepare environment variables
             // Note: Local mode uses global Claude installation with --session-id flag
             // Launcher only intercepts fetch for thinking state tracking
+            
+            // Strip inherited auth vars unless explicitly set by claudeEnvVars.
+            // This prevents unintended authentication using API keys from parent process.
+            // See: https://github.com/anthropics/happy-cli/issues/120
+            const baseEnv = buildEnvWithStrippedAuthVars(process.env, opts.claudeEnvVars ?? {});
             const env = {
-                ...process.env,
+                ...baseEnv,
                 ...opts.claudeEnvVars
             }
 

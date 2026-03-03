@@ -1489,6 +1489,30 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 }
             }
         });
+
+        it('drops legacy output compatibility mirrors tagged with legacyCompat', () => {
+            const normalized = normalizeRawMessage('compat-output-1', null, 1, {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'assistant',
+                        message: {
+                            role: 'assistant',
+                            model: 'claude-sonnet-4-6',
+                            content: [{ type: 'text', text: 'pong' }]
+                        },
+                        uuid: 'compat-output-uuid-1',
+                        legacyCompat: true
+                    }
+                },
+                meta: {
+                    sentFrom: 'cli'
+                }
+            } as any);
+
+            expect(normalized).toBeNull();
+        });
     });
 
     describe('Session protocol normalization', () => {

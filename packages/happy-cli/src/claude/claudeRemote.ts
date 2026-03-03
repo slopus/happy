@@ -12,6 +12,7 @@ import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
+import { deleteAuthVarsFromProcessEnv } from "@/utils/stripAuthEnvVars";
 
 export async function claudeRemote(opts: {
 
@@ -73,6 +74,15 @@ export async function claudeRemote(opts: {
             }
         }
     }
+
+    // Strip inherited auth vars from process.env before the SDK reads it.
+    // The Claude Code SDK uses process.env directly for .cjs launcher executables
+    // (sdk/query.ts: `spawnEnv = isCommandOnly ? getCleanEnv() : process.env`).
+    // Inherited shell vars like ANTHROPIC_API_KEY would override Claude's native
+    // OAuth / Max-plan auth unless removed here.
+    // Auth vars present in opts.claudeEnvVars are explicitly configured and kept.
+    // See: https://github.com/anthropics/happy-cli/issues/120
+    deleteAuthVarsFromProcessEnv(opts.claudeEnvVars ?? {});
 
     // Set environment variables for Claude Code SDK
     if (opts.claudeEnvVars) {

@@ -213,20 +213,6 @@ const rawHyphenatedToolResultSchema = z.object({
 type RawHyphenatedToolResult = z.infer<typeof rawHyphenatedToolResultSchema>;
 
 /**
- * Input schema accepting ALL formats (both hyphenated and canonical)
- * Including Claude's extended thinking content type
- */
-const rawAgentContentInputSchema = z.discriminatedUnion('type', [
-    rawTextContentSchema,           // type: 'text' (canonical)
-    rawToolUseContentSchema,        // type: 'tool_use' (canonical)
-    rawToolResultContentSchema,     // type: 'tool_result' (canonical)
-    rawThinkingContentSchema,       // type: 'thinking' (canonical)
-    rawHyphenatedToolCallSchema,    // type: 'tool-call' (hyphenated)
-    rawHyphenatedToolResultSchema,  // type: 'tool-call-result' (hyphenated)
-]);
-type RawAgentContentInput = z.infer<typeof rawAgentContentInputSchema>;
-
-/**
  * Type-safe transform: Hyphenated tool-call → Canonical tool_use
  * ROBUST: Unknown fields preserved via object spread and .passthrough()
  */
@@ -749,6 +735,11 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     if (raw.role === 'agent') {
         if (raw.content.type === 'output') {
 
+            const compatibilityOutput = raw.content.data as { legacyCompat?: unknown };
+            if (compatibilityOutput.legacyCompat === true) {
+                return null;
+            }
+
             // Skip Meta messages
             if (raw.content.data.isMeta) {
                 return null;
@@ -891,25 +882,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             };
         }
         if (raw.content.type === 'codex') {
-            if (raw.content.data.type === 'message') {
-                // Cast codex messages to agent text messages
-                return {
-                    id,
-                    localId,
-                    createdAt,
-                    role: 'agent',
-                    isSidechain: false,
-                    content: [{
-                        type: 'text',
-                        text: raw.content.data.message,
-                        uuid: id,
-                        parentUUID: null
-                    }],
-                    meta: raw.meta
-                };
-            }
-            if (raw.content.data.type === 'reasoning') {
-                // Cast codex messages to agent text messages
+            if (raw.content.data.type === 'message' || raw.content.data.type === 'reasoning') {
                 return {
                     id,
                     localId,
@@ -970,23 +943,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
         }
         // ACP (Agent Communication Protocol) - unified format for all agent providers
         if (raw.content.type === 'acp') {
-            if (raw.content.data.type === 'message') {
-                return {
-                    id,
-                    localId,
-                    createdAt,
-                    role: 'agent',
-                    isSidechain: false,
-                    content: [{
-                        type: 'text',
-                        text: raw.content.data.message,
-                        uuid: id,
-                        parentUUID: null
-                    }],
-                    meta: raw.meta
-                } satisfies NormalizedMessage;
-            }
-            if (raw.content.data.type === 'reasoning') {
+            if (raw.content.data.type === 'message' || raw.content.data.type === 'reasoning') {
                 return {
                     id,
                     localId,
