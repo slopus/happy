@@ -24,6 +24,8 @@ import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { getServerUrl } from './serverConfig';
 import { log } from '@/log';
+import { signContentPublicKey } from './directShareEncryption';
+import { uploadContentPublicKey } from './apiSharing';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
 import { AsyncLock } from '@/utils/lock';
@@ -198,6 +200,9 @@ class Sync {
 
         // Await profile sync to have fresh profile
         await this.profileSync.awaitQueue();
+
+        // Upload content public key for direct sharing (fire-and-forget)
+        this.#uploadContentPublicKey().catch(() => {});
     }
 
     async restore(credentials: AuthCredentials, encryption: Encryption) {
@@ -208,6 +213,21 @@ class Sync {
         this.anonID = encryption.anonID;
         this.serverID = parseToken(credentials.token);
         await this.#init();
+
+        // Upload content public key for direct sharing (fire-and-forget)
+        this.#uploadContentPublicKey().catch(() => {});
+    }
+
+    async #uploadContentPublicKey() {
+        if (!this.credentials || !this.encryption) return;
+        const seed = decodeBase64(this.credentials.secret, 'base64url');
+        const publicKey = this.encryption.contentDataKey; // X25519 public key
+        const sig = await signContentPublicKey(publicKey, seed);
+        await uploadContentPublicKey(
+            this.credentials,
+            encodeBase64(publicKey, 'base64'),
+            encodeBase64(sig, 'base64')
+        );
     }
 
     async #init() {
@@ -609,6 +629,7 @@ class Sync {
                     continue;
                 }
                 sessionKeys.set(session.id, decrypted);
+                this.sessionDataKeys.set(session.id, decrypted);
             } else {
                 sessionKeys.set(session.id, null);
             }
@@ -1979,6 +2000,7 @@ class Sync {
 
             // Remove encryption keys from memory
             this.encryption.removeSessionEncryption(sessionId);
+            this.sessionDataKeys.delete(sessionId);
 
             // Remove from project manager
             projectManager.removeSession(sessionId);

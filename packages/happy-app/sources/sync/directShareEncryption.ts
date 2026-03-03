@@ -1,5 +1,5 @@
 import { encodeBase64, decodeBase64 } from '@/encryption/base64';
-import { encryptBox } from '@/encryption/libsodium';
+import { encryptBox, signDetached } from '@/encryption/libsodium';
 import { decodeHex } from '@/encryption/hex';
 import sodium from '@/encryption/libsodium.lib';
 
@@ -17,6 +17,16 @@ export function encryptDataKeyForRecipientV0(
     out.set(bundle, 1);
 
     return encodeBase64(out, 'base64');
+}
+
+export async function signContentPublicKey(
+    contentPublicKey: Uint8Array,
+    signingPrivateKey: Uint8Array
+): Promise<Uint8Array> {
+    const message = new Uint8Array(CONTENT_KEY_BINDING_PREFIX.length + contentPublicKey.length);
+    message.set(CONTENT_KEY_BINDING_PREFIX, 0);
+    message.set(contentPublicKey, CONTENT_KEY_BINDING_PREFIX.length);
+    return signDetached(message, signingPrivateKey);
 }
 
 export function verifyRecipientContentPublicKeyBinding(params: {

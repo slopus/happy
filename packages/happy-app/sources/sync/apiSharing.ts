@@ -17,6 +17,32 @@ import {
 } from './sharingTypes';
 
 /**
+ * Upload content public key and binding signature to server
+ */
+export async function uploadContentPublicKey(
+    credentials: AuthCredentials,
+    contentPublicKey: string,
+    contentPublicKeySig: string
+): Promise<void> {
+    const API_ENDPOINT = getServerUrl();
+
+    return await backoff(async () => {
+        const response = await fetch(`${API_ENDPOINT}/v1/user/content-key`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ contentPublicKey, contentPublicKeySig })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to upload content public key: ${response.status}`);
+        }
+    });
+}
+
+/**
  * Get all shares for a session
  */
 export async function getSessionShares(
