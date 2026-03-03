@@ -76,15 +76,7 @@ export function UserSearchResult({
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 12,
-        marginHorizontal: 16,
-        marginVertical: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
+        paddingHorizontal: 16,
     },
     content: {
         flexDirection: 'row',

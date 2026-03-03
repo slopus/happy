@@ -200,13 +200,13 @@ const styles = StyleSheet.create((theme) => ({
         minHeight: 200,
     },
     resultsList: {
-        paddingVertical: 8,
+        paddingVertical: 4,
     },
     separator: {
-        height: 1,
+        height: StyleSheet.hairlineWidth,
         backgroundColor: theme.colors.divider,
-        marginHorizontal: 16,
-        marginVertical: 8,
+        marginLeft: 80,
+        marginRight: 16,
     },
     loadingContainer: {
         alignItems: 'center',
