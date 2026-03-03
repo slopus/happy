@@ -191,6 +191,15 @@ export class GitStatusSync {
         return text.includes('not a git repository') || text.includes('must be run in a work tree');
     }
 
+    private isRpcNotAvailable(result: {
+        stdout?: string;
+        stderr?: string;
+        error?: string;
+    }): boolean {
+        const text = this.getGitErrorText(result);
+        return text.includes('rpc method not available');
+    }
+
     /**
      * Get or create git status sync for a session (creates project-based sync)
      */
@@ -341,7 +350,9 @@ export class GitStatusSync {
                     }
 
                     // Transient failure (RPC/network/session hiccup): keep previous status and retry.
-                    console.warn('Transient git check failure, keeping previous git status:', gitCheckResult.error || gitCheckResult.stderr);
+                    if (!this.isRpcNotAvailable(gitCheckResult)) {
+                        console.warn('Transient git check failure, keeping previous git status:', gitCheckResult.error || gitCheckResult.stderr);
+                    }
                     this.scheduleRetry(projectKey);
                     return;
                 }
@@ -366,7 +377,9 @@ export class GitStatusSync {
                         return;
                     }
 
-                    console.warn('Transient git status failure, keeping previous git status:', statusResult.error || statusResult.stderr);
+                    if (!this.isRpcNotAvailable(statusResult)) {
+                        console.warn('Transient git status failure, keeping previous git status:', statusResult.error || statusResult.stderr);
+                    }
                     this.scheduleRetry(projectKey);
                     return;
                 }
@@ -398,7 +411,9 @@ export class GitStatusSync {
                         return;
                     }
 
-                    console.warn('Transient git diff-stat failure, keeping previous git status');
+                    if (!this.isRpcNotAvailable(diffStatResult) && !this.isRpcNotAvailable(stagedDiffStatResult)) {
+                        console.warn('Transient git diff-stat failure, keeping previous git status');
+                    }
                     this.scheduleRetry(projectKey);
                     return;
                 }
