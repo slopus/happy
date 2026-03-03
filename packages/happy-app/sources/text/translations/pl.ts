@@ -1369,6 +1369,7 @@ export const pl: TranslationStructure = {
         checkUsername: 'Sprawdź nazwę użytkownika i spróbuj ponownie',
         howToFind: 'Jak znaleźć przyjaciół',
         findInstructions: 'Szukaj przyjaciół po nazwie użytkownika. Zarówno ty, jak i twój przyjaciel musicie mieć połączony GitHub, aby wysyłać zaproszenia do znajomych.',
+        connectGithubToSearch: 'Połącz swoje konto GitHub, aby wyszukiwać i dodawać znajomych.',
         requestSent: 'Zaproszenie do znajomych wysłane!',
         requestAccepted: 'Zaproszenie do znajomych zaakceptowane!',
         requestRejected: 'Zaproszenie do znajomych odrzucone',

@@ -1368,6 +1368,7 @@ export const ru: TranslationStructure = {
         checkUsername: 'Пожалуйста, проверьте имя пользователя и попробуйте снова',
         howToFind: 'Как найти друзей',
         findInstructions: 'Ищите друзей по имени пользователя. И вы, и ваш друг должны подключить GitHub для отправки запросов в друзья.',
+        connectGithubToSearch: 'Подключите аккаунт GitHub для поиска и добавления друзей.',
         requestSent: 'Запрос в друзья отправлен!',
         requestAccepted: 'Запрос в друзья принят!',
         requestRejected: 'Запрос в друзья отклонён',

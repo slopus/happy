@@ -1345,6 +1345,7 @@ export const ca: TranslationStructure = {
         checkUsername: 'Si us plau, verifica el nom d\'usuari i torna-ho a provar',
         howToFind: 'Com trobar amics',
         findInstructions: 'Cerca amics pel seu nom d\'usuari. Tant tu com el teu amic heu de tenir GitHub connectat per enviar sol·licituds d\'amistat.',
+        connectGithubToSearch: 'Connecta el teu compte de GitHub per cercar i afegir amics.',
         requestSent: 'Sol·licitud d\'amistat enviada!',
         requestAccepted: 'Sol·licitud d\'amistat acceptada!',
         requestRejected: 'Sol·licitud d\'amistat rebutjada',

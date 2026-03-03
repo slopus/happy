@@ -1378,6 +1378,7 @@ export const ja: TranslationStructure = {
         checkUsername: 'ユーザー名を確認して再試行してください',
         howToFind: '友達を見つける方法',
         findInstructions: 'ユーザー名で友達を検索します。友達リクエストを送信するには、両方のユーザーがGitHubを接続している必要があります。',
+        connectGithubToSearch: 'GitHubアカウントを接続して友達を検索・追加しましょう。',
         requestSent: '友達リクエストが送信されました！',
         requestAccepted: '友達リクエストが承認されました！',
         requestRejected: '友達リクエストが拒否されました',

@@ -1375,6 +1375,7 @@ export const it: TranslationStructure = {
         checkUsername: 'Controlla il nome utente e riprova',
         howToFind: 'Come trovare amici',
         findInstructions: 'Cerca amici tramite il loro nome utente. Sia tu che il tuo amico dovete avere GitHub collegato per inviare richieste di amicizia.',
+        connectGithubToSearch: 'Collega il tuo account GitHub per cercare e aggiungere amici.',
         requestSent: 'Richiesta di amicizia inviata!',
         requestAccepted: 'Richiesta di amicizia accettata!',
         requestRejected: 'Richiesta di amicizia rifiutata',

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, FlatList } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { UserSearchResult } from '@/components/UserSearchResult';
@@ -11,9 +11,12 @@ import { trackFriendsConnect } from '@/track';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { useSearch } from '@/hooks/useSearch';
+import { useProfile } from '@/sync/storage';
 
 export default function SearchFriendsScreen() {
     const { credentials } = useAuth();
+    const profile = useProfile();
+    const hasGithub = !!profile.github;
     const [searchQuery, setSearchQuery] = useState('');
     const [processingUserId, setProcessingUserId] = useState<string | null>(null);
     
@@ -76,70 +79,85 @@ export default function SearchFriendsScreen() {
                 style={{ paddingTop: 0 }}
                 keyboardShouldPersistTaps="handled"
             >
-                <ItemGroup
-                    title={t('friends.searchInstructions')}
-                    style={styles.searchSection}
-                >
-                    <View style={styles.searchContainer}>
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder={t('friends.searchPlaceholder')}
-                            placeholderTextColor="#999999"
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            returnKeyType="search"
-                            editable={!processingUserId}
-                        />
-                        
-                        {isSearching && (
-                            <View style={styles.searchingIndicator}>
-                                <ActivityIndicator size="small" color="#2BACCC" />
-                            </View>
-                        )}
-                    </View>
-                </ItemGroup>
+                {!hasGithub ? (
+                    <ItemGroup style={styles.resultsGroup}>
+                        <View style={styles.helpContainer}>
+                            <Text style={styles.helpTitle}>
+                                {t('settings.connectGithubAccount')}
+                            </Text>
+                            <Text style={styles.helpText}>
+                                {t('friends.connectGithubToSearch')}
+                            </Text>
+                        </View>
+                    </ItemGroup>
+                ) : (
+                    <>
+                        <ItemGroup
+                            title={t('friends.searchInstructions')}
+                            style={styles.searchSection}
+                        >
+                            <View style={styles.searchContainer}>
+                                <TextInput
+                                    style={styles.searchInput}
+                                    placeholder={t('friends.searchPlaceholder')}
+                                    placeholderTextColor="#999999"
+                                    value={searchQuery}
+                                    onChangeText={setSearchQuery}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    returnKeyType="search"
+                                    editable={!processingUserId}
+                                />
 
-                <ItemGroup
-                    style={styles.resultsGroup}
-                >
-                    <View style={styles.resultsSection}>
-                        {isSearching && searchResults.length === 0 ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#2BACCC" />
-                                <Text style={styles.loadingText}>{t('friends.searching')}</Text>
+                                {isSearching && (
+                                    <View style={styles.searchingIndicator}>
+                                        <ActivityIndicator size="small" color="#2BACCC" />
+                                    </View>
+                                )}
                             </View>
-                        ) : searchResults.length > 0 ? (
-                            <FlatList
-                                data={searchResults}
-                                renderItem={renderUserItem}
-                                ItemSeparatorComponent={renderSeparator}
-                                keyExtractor={(item) => item.id}
-                                scrollEnabled={false}
-                                contentContainerStyle={styles.resultsList}
-                            />
-                        ) : hasSearched ? (
-                            <View style={styles.noResultsContainer}>
-                                <Text style={styles.noResultsText}>
-                                    {t('friends.noUserFound')}
-                                </Text>
-                                <Text style={styles.noResultsHint}>
-                                    {t('friends.checkUsername')}
-                                </Text>
+                        </ItemGroup>
+
+                        <ItemGroup
+                            style={styles.resultsGroup}
+                        >
+                            <View style={styles.resultsSection}>
+                                {isSearching && searchResults.length === 0 ? (
+                                    <View style={styles.loadingContainer}>
+                                        <ActivityIndicator size="large" color="#2BACCC" />
+                                        <Text style={styles.loadingText}>{t('friends.searching')}</Text>
+                                    </View>
+                                ) : searchResults.length > 0 ? (
+                                    <FlatList
+                                        data={searchResults}
+                                        renderItem={renderUserItem}
+                                        ItemSeparatorComponent={renderSeparator}
+                                        keyExtractor={(item) => item.id}
+                                        scrollEnabled={false}
+                                        contentContainerStyle={styles.resultsList}
+                                    />
+                                ) : hasSearched ? (
+                                    <View style={styles.noResultsContainer}>
+                                        <Text style={styles.noResultsText}>
+                                            {t('friends.noUserFound')}
+                                        </Text>
+                                        <Text style={styles.noResultsHint}>
+                                            {t('friends.checkUsername')}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <View style={styles.helpContainer}>
+                                        <Text style={styles.helpTitle}>
+                                            {t('friends.howToFind')}
+                                        </Text>
+                                        <Text style={styles.helpText}>
+                                            {t('friends.findInstructions')}
+                                        </Text>
+                                    </View>
+                                )}
                             </View>
-                        ) : (
-                            <View style={styles.helpContainer}>
-                                <Text style={styles.helpTitle}>
-                                    {t('friends.howToFind')}
-                                </Text>
-                                <Text style={styles.helpText}>
-                                    {t('friends.findInstructions')}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-                </ItemGroup>
+                        </ItemGroup>
+                    </>
+                )}
             </ItemList>
         </KeyboardAvoidingView>
     );

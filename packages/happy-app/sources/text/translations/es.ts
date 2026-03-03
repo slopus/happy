@@ -1346,6 +1346,7 @@ export const es: TranslationStructure = {
         checkUsername: 'Por favor, verifica el nombre de usuario e intenta de nuevo',
         howToFind: 'Cómo encontrar amigos',
         findInstructions: 'Busca amigos por su nombre de usuario. Tanto tú como tu amigo deben tener GitHub conectado para enviar solicitudes de amistad.',
+        connectGithubToSearch: 'Conecta tu cuenta de GitHub para buscar y agregar amigos.',
         requestSent: '¡Solicitud de amistad enviada!',
         requestAccepted: '¡Solicitud de amistad aceptada!',
         requestRejected: 'Solicitud de amistad rechazada',

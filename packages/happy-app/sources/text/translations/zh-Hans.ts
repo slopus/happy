@@ -1347,6 +1347,7 @@ export const zhHans: TranslationStructure = {
         checkUsername: '请检查用户名后重试',
         howToFind: '如何查找好友',
         findInstructions: '通过用户名搜索好友。您和您的好友都需要连接 GitHub 才能发送好友请求。',
+        connectGithubToSearch: '连接您的 GitHub 账户以搜索和添加好友。',
         requestSent: '好友请求已发送！',
         requestAccepted: '好友请求已接受！',
         requestRejected: '好友请求已拒绝',

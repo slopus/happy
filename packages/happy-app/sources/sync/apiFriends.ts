@@ -35,6 +35,9 @@ export async function searchUsersByUsername(
             if (response.status === 404) {
                 return [];
             }
+            if (response.status === 403) {
+                return [];
+            }
             throw new Error(`Failed to search users: ${response.status}`);
         }
 
@@ -44,7 +47,7 @@ export async function searchUsersByUsername(
             console.error('Failed to parse search response:', parsed.error);
             return [];
         }
-        
+
         return parsed.data.users;
     });
 }
