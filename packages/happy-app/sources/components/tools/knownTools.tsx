@@ -518,13 +518,13 @@ export const knownTools = {
     },
     'CodexReasoning': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Use the title from input if provided
             if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
                 return opts.tool.input.title;
             }
             return t('tools.names.reasoning');
         },
         icon: ICON_REASONING,
+        hidden: true,
         minimal: true,
         input: z.object({
             title: z.string().describe('The title of the reasoning')
@@ -542,13 +542,13 @@ export const knownTools = {
     },
     'GeminiReasoning': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Use the title from input if provided
             if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
                 return opts.tool.input.title;
             }
             return t('tools.names.reasoning');
         },
         icon: ICON_REASONING,
+        hidden: true,
         minimal: true,
         input: z.object({
             title: z.string().describe('The title of the reasoning')
@@ -566,13 +566,13 @@ export const knownTools = {
     },
     'think': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Use the title from input if provided
             if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
                 return opts.tool.input.title;
             }
             return t('tools.names.reasoning');
         },
         icon: ICON_REASONING,
+        hidden: true,
         minimal: true,
         input: z.object({
             title: z.string().optional().describe('The title of the thinking'),
@@ -594,6 +594,7 @@ export const knownTools = {
     'change_title': {
         title: 'Change Title',
         icon: ICON_EDIT,
+        hidden: true,
         minimal: true,
         noStatus: true,
         input: z.object({

@@ -10,6 +10,7 @@ import {
     TextInput,
     ScrollView,
     LayoutAnimation,
+    ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons, Octicons } from '@expo/vector-icons';
@@ -521,6 +522,13 @@ function NewSessionScreen() {
 
             switch (result.type) {
                 case 'success':
+                    await sync.refreshSessions();
+
+                    // Send initial message if provided
+                    if (prompt.trim()) {
+                        await sync.sendMessage(result.sessionId, prompt.trim());
+                    }
+
                     router.back();
                     navigateToSession(result.sessionId);
                     break;
@@ -547,7 +555,7 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 
@@ -736,12 +744,19 @@ function NewSessionScreen() {
                                     disabled={!canSend}
                                     onPress={() => handleSend()}
                                 >
-                                    <Octicons
-                                        name="arrow-up"
-                                        size={16}
-                                        color={theme.colors.button.primary.tint}
-                                        style={{ marginTop: Platform.OS === 'web' ? 2 : 0 }}
-                                    />
+                                    {isSpawning ? (
+                                        <ActivityIndicator
+                                            size="small"
+                                            color={theme.colors.button.primary.tint}
+                                        />
+                                    ) : (
+                                        <Octicons
+                                            name="arrow-up"
+                                            size={16}
+                                            color={theme.colors.button.primary.tint}
+                                            style={{ marginTop: Platform.OS === 'web' ? 2 : 0 }}
+                                        />
+                                    )}
                                 </Pressable>
                             </View>
                         </View>

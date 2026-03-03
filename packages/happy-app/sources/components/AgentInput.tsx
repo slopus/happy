@@ -511,7 +511,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     return (
         <View style={[
             styles.container,
-            { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+            { paddingHorizontal: screenWidth > 700 ? 12 : 8 }
         ]}>
             <View style={[
                 styles.innerContainer,
