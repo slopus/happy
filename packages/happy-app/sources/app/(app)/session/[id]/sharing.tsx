@@ -137,7 +137,11 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
             setPublicShareToken(token);
             await loadSharingData();
         } catch (e) {
-            Modal.alert('Error', e instanceof HappyError ? e.message : t('errors.operationFailed'), [{ text: 'OK', style: 'cancel' }]);
+            console.error('createPublicShare failed:', e);
+            const message = e instanceof HappyError ? e.message
+                : e instanceof Error ? e.message
+                : t('errors.operationFailed');
+            Modal.alert('Error', message, [{ text: 'OK', style: 'cancel' }]);
         }
     }, [sessionId, loadSharingData]);
 
@@ -171,7 +175,8 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
     }
 
     const excludedUserIds = shares.map(share => share.sharedWithUser.id);
-    const canManage = !session.accessLevel || session.accessLevel === 'admin';
+    const isOwner = !session.accessLevel;
+    const canManage = isOwner || session.accessLevel === 'admin';
     const effectiveToken = publicShareToken || publicShare?.token;
     const publicShareUrl = effectiveToken ? `https://happy.hitosea.com/share/${effectiveToken}` : null;
 
@@ -206,27 +211,29 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                     )}
                 </ItemGroup>
 
-                {/* Public Link */}
-                <ItemGroup title={t('session.sharing.publicLink')}>
-                    {publicShare ? (
-                        <Item
-                            title={t('session.sharing.publicLinkActive')}
-                            subtitle={publicShare.expiresAt
-                                ? t('session.sharing.expiresOn') + ': ' + new Date(publicShare.expiresAt).toLocaleDateString()
-                                : t('session.sharing.never')
-                            }
-                            icon={<Ionicons name="link-outline" size={29} color="#34C759" />}
-                            onPress={() => publicLinkRef.current?.present()}
-                        />
-                    ) : (
-                        <Item
-                            title={t('session.sharing.createPublicLink')}
-                            subtitle={t('session.sharing.publicLinkDescription')}
-                            icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
-                            onPress={() => publicLinkRef.current?.present()}
-                        />
-                    )}
-                </ItemGroup>
+                {/* Public Link - owner only */}
+                {isOwner && (
+                    <ItemGroup title={t('session.sharing.publicLink')}>
+                        {publicShare ? (
+                            <Item
+                                title={t('session.sharing.publicLinkActive')}
+                                subtitle={publicShare.expiresAt
+                                    ? t('session.sharing.expiresOn') + ': ' + new Date(publicShare.expiresAt).toLocaleDateString()
+                                    : t('session.sharing.never')
+                                }
+                                icon={<Ionicons name="link-outline" size={29} color="#34C759" />}
+                                onPress={() => publicLinkRef.current?.present()}
+                            />
+                        ) : (
+                            <Item
+                                title={t('session.sharing.createPublicLink')}
+                                subtitle={t('session.sharing.publicLinkDescription')}
+                                icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
+                                onPress={() => publicLinkRef.current?.present()}
+                            />
+                        )}
+                    </ItemGroup>
+                )}
             </ItemList>
 
             {/* Bottom Sheets */}

@@ -21,8 +21,8 @@ export async function deriveSecretKeyTreeChild(chainCode: Uint8Array, index: str
     // Derive key
     const I = await hmac_sha512(chainCode, data);
     return {
-        key: I.subarray(0, 32),
-        chainCode: I.subarray(32),
+        key: I.slice(0, 32),
+        chainCode: I.slice(32),
     };
 }
 
