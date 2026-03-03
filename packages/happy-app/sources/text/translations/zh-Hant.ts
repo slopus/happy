@@ -603,6 +603,7 @@ export const zhHant: TranslationStructure = {
             publicLinkDescription: '建立一個連結，讓任何人都可以檢視此工作階段。',
             createPublicLink: '建立公開連結',
             regeneratePublicLink: '重新產生公開連結',
+            copyLink: '複製連結',
             deletePublicLink: '刪除公開連結',
             linkToken: '連結權杖',
             tokenNotRecoverable: '權杖不可用',

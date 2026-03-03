@@ -4,15 +4,20 @@ import { BottomSheetModal, BottomSheetBackdrop, BottomSheetScrollView } from '@g
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { StyleSheet } from 'react-native-unistyles';
+import * as Clipboard from 'expo-clipboard';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Text } from '@/components/StyledText';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { PublicSessionShare } from '@/sync/sharingTypes';
+import { hapticsLight } from '@/components/haptics';
+import { showCopiedToast } from '@/components/Toast';
+import { getServerUrl } from '@/sync/serverConfig';
 
 export interface PublicLinkDialogProps {
     publicShare: PublicSessionShare | null;
+    publicShareUrl: string | null;
     onCreate: (options: {
         expiresInDays?: number;
         maxUses?: number;
@@ -23,6 +28,7 @@ export interface PublicLinkDialogProps {
 
 export const PublicLinkDialog = React.memo(React.forwardRef<BottomSheetModal, PublicLinkDialogProps>(({
     publicShare,
+    publicShareUrl,
     onCreate,
     onDelete,
 }, ref) => {
@@ -45,6 +51,14 @@ export const PublicLinkDialog = React.memo(React.forwardRef<BottomSheetModal, Pu
             ref.current.dismiss();
         }
     }, [onDelete, ref]);
+
+    const handleCopyLink = React.useCallback(async () => {
+        if (publicShareUrl) {
+            await Clipboard.setStringAsync(publicShareUrl);
+            hapticsLight();
+            showCopiedToast();
+        }
+    }, [publicShareUrl]);
 
     const renderBackdrop = React.useCallback(
         (props: any) => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} pressBehavior="close" />,
@@ -95,6 +109,14 @@ export const PublicLinkDialog = React.memo(React.forwardRef<BottomSheetModal, Pu
                                 showChevron={false}
                             />
                         </ItemGroup>
+                        {publicShareUrl && (
+                            <ItemGroup>
+                                <Item
+                                    title={t('session.sharing.copyLink')}
+                                    onPress={handleCopyLink}
+                                />
+                            </ItemGroup>
+                        )}
                         <ItemGroup>
                             <Item
                                 title={t('session.sharing.deletePublicLink')}

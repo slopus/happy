@@ -602,6 +602,7 @@ export const ca: TranslationStructure = {
             publicLinkDescription: 'Crear un enllaç que permeti a qualsevol veure aquesta sessió.',
             createPublicLink: 'Crear enllaç públic',
             regeneratePublicLink: 'Regenerar enllaç públic',
+            copyLink: 'Copiar enllaç',
             deletePublicLink: 'Eliminar enllaç públic',
             linkToken: "Token de l'enllaç",
             tokenNotRecoverable: 'Token no disponible',

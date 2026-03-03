@@ -613,6 +613,7 @@ export const pl: TranslationStructure = {
             publicLinkDescription: 'Utwórz link umożliwiający każdemu przeglądanie tej sesji.',
             createPublicLink: 'Utwórz link publiczny',
             regeneratePublicLink: 'Odnów link publiczny',
+            copyLink: 'Kopiuj link',
             deletePublicLink: 'Usuń link publiczny',
             linkToken: 'Token linku',
             tokenNotRecoverable: 'Token niedostępny',

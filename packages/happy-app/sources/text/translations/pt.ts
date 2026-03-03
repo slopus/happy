@@ -602,6 +602,7 @@ export const pt: TranslationStructure = {
             publicLinkDescription: 'Criar um link que permite qualquer pessoa ver esta sessão.',
             createPublicLink: 'Criar link público',
             regeneratePublicLink: 'Regenerar link público',
+            copyLink: 'Copiar link',
             deletePublicLink: 'Excluir link público',
             linkToken: 'Token do link',
             tokenNotRecoverable: 'Token não disponível',

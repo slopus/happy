@@ -752,6 +752,7 @@ export const ru: TranslationStructure = {
             publicLinkDescription: 'Создать ссылку, которая позволит любому просматривать эту сессию.',
             createPublicLink: 'Создать публичную ссылку',
             regeneratePublicLink: 'Обновить публичную ссылку',
+            copyLink: 'Скопировать ссылку',
             deletePublicLink: 'Удалить публичную ссылку',
             linkToken: 'Токен ссылки',
             tokenNotRecoverable: 'Токен недоступен',

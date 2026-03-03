@@ -634,6 +634,7 @@ export const ja: TranslationStructure = {
             publicLinkDescription: '誰でもこのセッションを閲覧できるリンクを作成します。',
             createPublicLink: '公開リンクを作成',
             regeneratePublicLink: '公開リンクを再生成',
+            copyLink: 'リンクをコピー',
             deletePublicLink: '公開リンクを削除',
             linkToken: 'リンクトークン',
             tokenNotRecoverable: 'トークンは利用できません',

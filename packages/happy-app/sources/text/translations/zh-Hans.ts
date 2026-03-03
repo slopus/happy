@@ -604,6 +604,7 @@ export const zhHans: TranslationStructure = {
             publicLinkDescription: '创建一个链接，让任何人都可以查看此会话。',
             createPublicLink: '创建公开链接',
             regeneratePublicLink: '重新生成公开链接',
+            copyLink: '复制链接',
             deletePublicLink: '删除公开链接',
             linkToken: '链接令牌',
             tokenNotRecoverable: '令牌不可用',

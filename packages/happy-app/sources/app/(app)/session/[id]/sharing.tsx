@@ -20,6 +20,8 @@ import { UserProfile } from '@/sync/friendTypes';
 import { encryptDataKeyForRecipientV0, verifyRecipientContentPublicKeyBinding } from '@/sync/directShareEncryption';
 import { encryptDataKeyForPublicShare } from '@/sync/encryption/publicShareEncryption';
 import { getRandomBytes } from 'expo-crypto';
+import { getServerUrl } from '@/sync/serverConfig';
+import { Modal } from '@/modal';
 
 function SharingManagementContent({ sessionId }: { sessionId: string }) {
     const { theme } = useUnistyles();
@@ -28,6 +30,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
     const [shares, setShares] = useState<SessionShare[]>([]);
     const [friends, setFriends] = useState<UserProfile[]>([]);
     const [publicShare, setPublicShare] = useState<PublicSessionShare | null>(null);
+    const [publicShareToken, setPublicShareToken] = useState<string | null>(null);
 
     const shareDialogRef = useRef<BottomSheetModal>(null);
     const friendSelectorRef = useRef<BottomSheetModal>(null);
@@ -54,76 +57,99 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
 
     // Handle adding a new share
     const handleAddShare = useCallback(async (userId: string, accessLevel: ShareAccessLevel) => {
-        const credentials = sync.getCredentials();
+        try {
+            const credentials = sync.getCredentials();
 
-        const friend = friends.find(f => f.id === userId);
-        if (!friend) {
-            throw new HappyError(t('errors.operationFailed'), false);
-        }
-        if (!friend.contentPublicKey || !friend.contentPublicKeySig) {
-            throw new HappyError(t('session.sharing.recipientMissingKeys'), false);
-        }
-        const isValidBinding = verifyRecipientContentPublicKeyBinding({
-            signingPublicKeyHex: friend.publicKey,
-            contentPublicKeyB64: friend.contentPublicKey,
-            contentPublicKeySigB64: friend.contentPublicKeySig,
-        });
-        if (!isValidBinding) {
-            throw new HappyError(t('errors.operationFailed'), false);
-        }
+            const friend = friends.find(f => f.id === userId);
+            if (!friend) {
+                throw new HappyError(t('errors.operationFailed'), false);
+            }
+            if (!friend.contentPublicKey || !friend.contentPublicKeySig) {
+                throw new HappyError(t('session.sharing.recipientMissingKeys'), false);
+            }
+            const isValidBinding = verifyRecipientContentPublicKeyBinding({
+                signingPublicKeyHex: friend.publicKey,
+                contentPublicKeyB64: friend.contentPublicKey,
+                contentPublicKeySigB64: friend.contentPublicKeySig,
+            });
+            if (!isValidBinding) {
+                throw new HappyError(t('errors.operationFailed'), false);
+            }
 
-        // Get plaintext session DEK from the sync layer (owner/admin only)
-        const dataKey = sync.getSessionDataKey(sessionId);
-        if (!dataKey) {
-            throw new HappyError(t('errors.sessionNotFound'), false);
+            // Get plaintext session DEK from the sync layer (owner/admin only)
+            const dataKey = sync.getSessionDataKey(sessionId);
+            if (!dataKey) {
+                throw new HappyError(t('errors.sessionNotFound'), false);
+            }
+            const encryptedDataKey = encryptDataKeyForRecipientV0(dataKey, friend.contentPublicKey);
+
+            await createSessionShare(credentials, sessionId, {
+                userId,
+                accessLevel,
+                encryptedDataKey,
+            });
+
+            await loadSharingData();
+        } catch (e) {
+            Modal.alert('Error', e instanceof HappyError ? e.message : t('errors.operationFailed'), [{ text: 'OK', style: 'cancel' }]);
         }
-        const encryptedDataKey = encryptDataKeyForRecipientV0(dataKey, friend.contentPublicKey);
-
-        await createSessionShare(credentials, sessionId, {
-            userId,
-            accessLevel,
-            encryptedDataKey,
-        });
-
-        await loadSharingData();
     }, [friends, sessionId, loadSharingData]);
 
     // Handle updating share access level
     const handleUpdateShare = useCallback(async (shareId: string, accessLevel: ShareAccessLevel) => {
-        const credentials = sync.getCredentials();
-        await updateSessionShare(credentials, sessionId, shareId, accessLevel);
-        await loadSharingData();
+        try {
+            const credentials = sync.getCredentials();
+            await updateSessionShare(credentials, sessionId, shareId, accessLevel);
+            await loadSharingData();
+        } catch (e) {
+            Modal.alert('Error', e instanceof HappyError ? e.message : t('errors.operationFailed'), [{ text: 'OK', style: 'cancel' }]);
+        }
     }, [sessionId, loadSharingData]);
 
     // Handle removing a share
     const handleRemoveShare = useCallback(async (shareId: string) => {
-        const credentials = sync.getCredentials();
-        await deleteSessionShare(credentials, sessionId, shareId);
-        await loadSharingData();
+        try {
+            const credentials = sync.getCredentials();
+            await deleteSessionShare(credentials, sessionId, shareId);
+            await loadSharingData();
+        } catch (e) {
+            Modal.alert('Error', e instanceof HappyError ? e.message : t('errors.operationFailed'), [{ text: 'OK', style: 'cancel' }]);
+        }
     }, [sessionId, loadSharingData]);
 
     // Handle creating a public share
     const handleCreatePublicShare = useCallback(async (options: { expiresInDays?: number; maxUses?: number; isConsentRequired: boolean }) => {
-        const credentials = sync.getCredentials();
-        const tokenBytes = getRandomBytes(12);
-        const token = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        const dataKey = sync.getSessionDataKey(sessionId);
-        if (!dataKey) throw new HappyError(t('errors.sessionNotFound'), false);
-        const encryptedDataKey = await encryptDataKeyForPublicShare(dataKey, token);
-        const expiresAt = options.expiresInDays ? Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000 : undefined;
-        const created = await createPublicShare(credentials, sessionId, {
-            token, encryptedDataKey, expiresAt, maxUses: options.maxUses, isConsentRequired: options.isConsentRequired,
-        });
-        setPublicShare(created);
-        await loadSharingData();
+        try {
+            const credentials = sync.getCredentials();
+            const tokenBytes = getRandomBytes(12);
+            const token = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            const dataKey = sync.getSessionDataKey(sessionId);
+            if (!dataKey) throw new HappyError(t('errors.sessionNotFound'), false);
+            const encryptedDataKey = await encryptDataKeyForPublicShare(dataKey, token);
+            const expiresAt = options.expiresInDays ? Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000 : undefined;
+            const created = await createPublicShare(credentials, sessionId, {
+                token, encryptedDataKey, expiresAt, maxUses: options.maxUses, isConsentRequired: options.isConsentRequired,
+            });
+            setPublicShare(created);
+            setPublicShareToken(token);
+            await loadSharingData();
+        } catch (e) {
+            Modal.alert('Error', e instanceof HappyError ? e.message : t('errors.operationFailed'), [{ text: 'OK', style: 'cancel' }]);
+        }
     }, [sessionId, loadSharingData]);
 
     // Handle deleting a public share
     const handleDeletePublicShare = useCallback(async () => {
-        const credentials = sync.getCredentials();
-        await deletePublicShare(credentials, sessionId);
-        setPublicShare(null);
-    }, [sessionId]);
+        try {
+            const credentials = sync.getCredentials();
+            await deletePublicShare(credentials, sessionId);
+            setPublicShare(null);
+            setPublicShareToken(null);
+            await loadSharingData();
+        } catch (e) {
+            Modal.alert('Error', e instanceof HappyError ? e.message : t('errors.operationFailed'), [{ text: 'OK', style: 'cancel' }]);
+        }
+    }, [sessionId, loadSharingData]);
 
     if (!session) {
         return (
@@ -143,6 +169,8 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
 
     const excludedUserIds = shares.map(share => share.sharedWithUser.id);
     const canManage = !session.accessLevel || session.accessLevel === 'admin';
+    const effectiveToken = publicShareToken || publicShare?.token;
+    const publicShareUrl = effectiveToken ? `${getServerUrl()}/v1/public-share/${effectiveToken}` : null;
 
     return (
         <>
@@ -219,6 +247,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
             <PublicLinkDialog
                 ref={publicLinkRef}
                 publicShare={publicShare}
+                publicShareUrl={publicShareUrl}
                 onCreate={handleCreatePublicShare}
                 onDelete={handleDeletePublicShare}
             />
