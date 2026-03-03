@@ -1,7 +1,8 @@
-import { memo, useState, useCallback, useEffect } from 'react';
+import { memo, useRef, useState, useCallback, useEffect } from 'react';
 import { View, Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -27,9 +28,10 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
     const [shares, setShares] = useState<SessionShare[]>([]);
     const [friends, setFriends] = useState<UserProfile[]>([]);
     const [publicShare, setPublicShare] = useState<PublicSessionShare | null>(null);
-    const [showShareDialog, setShowShareDialog] = useState(false);
-    const [showFriendSelector, setShowFriendSelector] = useState(false);
-    const [showPublicLinkDialog, setShowPublicLinkDialog] = useState(false);
+
+    const shareDialogRef = useRef<BottomSheetModal>(null);
+    const friendSelectorRef = useRef<BottomSheetModal>(null);
+    const publicLinkRef = useRef<BottomSheetModal>(null);
 
     // Load sharing data
     const loadSharingData = useCallback(async () => {
@@ -84,7 +86,6 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
         });
 
         await loadSharingData();
-        setShowFriendSelector(false);
     }, [friends, sessionId, loadSharingData]);
 
     // Handle updating share access level
@@ -122,7 +123,6 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
         const credentials = sync.getCredentials();
         await deletePublicShare(credentials, sessionId);
         setPublicShare(null);
-        setShowPublicLinkDialog(false);
     }, [sessionId]);
 
     if (!session) {
@@ -156,7 +156,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                                 title={share.sharedWithUser.username || [share.sharedWithUser.firstName, share.sharedWithUser.lastName].filter(Boolean).join(' ') || ''}
                                 subtitle={`@${share.sharedWithUser.username} \u2022 ${t(`session.sharing.${share.accessLevel === 'view' ? 'viewOnly' : share.accessLevel === 'edit' ? 'canEdit' : 'canManage'}`)}`}
                                 icon={<Ionicons name="person-outline" size={29} color="#007AFF" />}
-                                onPress={() => setShowShareDialog(true)}
+                                onPress={() => shareDialogRef.current?.present()}
                             />
                         ))
                     ) : (
@@ -170,7 +170,7 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                         <Item
                             title={t('session.sharing.addShare')}
                             icon={<Ionicons name="person-add-outline" size={29} color="#34C759" />}
-                            onPress={() => setShowFriendSelector(true)}
+                            onPress={() => friendSelectorRef.current?.present()}
                         />
                     )}
                 </ItemGroup>
@@ -185,54 +185,43 @@ function SharingManagementContent({ sessionId }: { sessionId: string }) {
                                 : t('session.sharing.never')
                             }
                             icon={<Ionicons name="link-outline" size={29} color="#34C759" />}
-                            onPress={() => setShowPublicLinkDialog(true)}
+                            onPress={() => publicLinkRef.current?.present()}
                         />
                     ) : (
                         <Item
                             title={t('session.sharing.createPublicLink')}
                             subtitle={t('session.sharing.publicLinkDescription')}
                             icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
-                            onPress={() => setShowPublicLinkDialog(true)}
+                            onPress={() => publicLinkRef.current?.present()}
                         />
                     )}
                 </ItemGroup>
             </ItemList>
 
-            {/* Share Dialog */}
-            {showShareDialog && (
-                <SessionShareDialog
-                    sessionId={sessionId}
-                    shares={shares}
-                    canManage={canManage}
-                    onAddShare={() => {
-                        setShowShareDialog(false);
-                        setShowFriendSelector(true);
-                    }}
-                    onUpdateShare={handleUpdateShare}
-                    onRemoveShare={handleRemoveShare}
-                    onClose={() => setShowShareDialog(false)}
-                />
-            )}
+            {/* Bottom Sheets */}
+            <SessionShareDialog
+                ref={shareDialogRef}
+                sessionId={sessionId}
+                shares={shares}
+                canManage={canManage}
+                onAddShare={() => friendSelectorRef.current?.present()}
+                onUpdateShare={handleUpdateShare}
+                onRemoveShare={handleRemoveShare}
+            />
 
-            {/* Friend Selector */}
-            {showFriendSelector && (
-                <FriendSelector
-                    friends={friends}
-                    excludedUserIds={excludedUserIds}
-                    onSelect={handleAddShare}
-                    onCancel={() => setShowFriendSelector(false)}
-                />
-            )}
+            <FriendSelector
+                ref={friendSelectorRef}
+                friends={friends}
+                excludedUserIds={excludedUserIds}
+                onSelect={handleAddShare}
+            />
 
-            {/* Public Link Dialog */}
-            {showPublicLinkDialog && (
-                <PublicLinkDialog
-                    publicShare={publicShare}
-                    onCreate={handleCreatePublicShare}
-                    onDelete={handleDeletePublicShare}
-                    onCancel={() => setShowPublicLinkDialog(false)}
-                />
-            )}
+            <PublicLinkDialog
+                ref={publicLinkRef}
+                publicShare={publicShare}
+                onCreate={handleCreatePublicShare}
+                onDelete={handleDeletePublicShare}
+            />
         </>
     );
 }

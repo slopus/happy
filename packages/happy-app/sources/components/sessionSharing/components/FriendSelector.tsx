@@ -1,126 +1,117 @@
-import { memo, useState, useMemo } from 'react';
-import { View, Text, TextInput, FlatList, ScrollView } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import * as React from 'react';
+import { View, TextInput, Platform } from 'react-native';
+import { BottomSheetModal, BottomSheetBackdrop, BottomSheetFlatList, BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { ShareAccessLevel } from '@/sync/sharingTypes';
 import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/ItemGroup';
 import { Avatar } from '@/components/Avatar';
+import { Text } from '@/components/StyledText';
 import { t } from '@/text';
+import { Typography } from '@/constants/Typography';
 
-/**
- * Props for FriendSelector component
- */
+const SheetTextInput = Platform.OS === 'web' ? TextInput : BottomSheetTextInput;
+
 export interface FriendSelectorProps {
-    /** List of friends to choose from */
     friends: UserProfile[];
-    /** IDs of users already having access */
     excludedUserIds: string[];
-    /** Callback when a friend is selected with an access level */
     onSelect: (userId: string, accessLevel: ShareAccessLevel) => void;
-    /** Callback when user cancels selection */
-    onCancel: () => void;
 }
 
-/**
- * Friend selector component for sharing
- *
- * Displays a searchable list of friends and allows selecting
- * an access level. Filters out excluded users and friends
- * without encryption keys.
- */
-export const FriendSelector = memo(function FriendSelector({
+export const FriendSelector = React.memo(React.forwardRef<BottomSheetModal, FriendSelectorProps>(({
     friends,
     excludedUserIds,
     onSelect,
-    onCancel,
-}: FriendSelectorProps) {
-    const [searchQuery, setSearchQuery] = useState('');
-    const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-    const [selectedAccessLevel, setSelectedAccessLevel] = useState<ShareAccessLevel>('view');
+}, ref) => {
+    const { theme } = useUnistyles();
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
+    const [selectedAccessLevel, setSelectedAccessLevel] = React.useState<ShareAccessLevel>('view');
 
-    // Filter friends based on search and exclusions
-    const filteredFriends = useMemo(() => {
+    const filteredFriends = React.useMemo(() => {
         const excluded = new Set(excludedUserIds);
         return friends.filter(friend => {
             if (excluded.has(friend.id)) return false;
             if (!searchQuery) return true;
-
             const displayName = getDisplayName(friend).toLowerCase();
             const username = friend.username.toLowerCase();
             const query = searchQuery.toLowerCase();
-
             return displayName.includes(query) || username.includes(query);
         });
     }, [friends, excludedUserIds, searchQuery]);
 
-    const selectedFriend = useMemo(() => {
-        return friends.find(f => f.id === selectedUserId);
-    }, [friends, selectedUserId]);
+    const handleSelect = React.useCallback(() => {
+        if (selectedUserId) {
+            onSelect(selectedUserId, selectedAccessLevel);
+            if (ref && typeof ref !== 'function' && ref.current) {
+                ref.current.dismiss();
+            }
+        }
+    }, [selectedUserId, selectedAccessLevel, onSelect, ref]);
 
-    return (
-        <ScrollView style={styles.container}>
-            {/* Search input */}
-            <TextInput
-                style={styles.searchInput}
-                placeholder={t('friends.searchPlaceholder')}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoFocus
-            />
+    const handleAnimate = React.useCallback((_from: number, to: number) => {
+        if (to === -1) {
+            setSearchQuery('');
+            setSelectedUserId(null);
+            setSelectedAccessLevel('view');
+        }
+    }, []);
 
-            {/* Friend list */}
-            <View style={styles.friendList}>
-                <FlatList
-                    data={filteredFriends}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => {
-                        const hasKeys = !!item.contentPublicKey && !!item.contentPublicKeySig;
-                        const avatarUrl = item.avatar?.url || item.avatar?.path;
+    const renderBackdrop = React.useCallback(
+        (props: any) => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} pressBehavior="close" />,
+        [],
+    );
 
-                        return (
-                            <View style={styles.friendItem}>
-                                <Item
-                                    title={getDisplayName(item)}
-                                    subtitle={hasKeys ? `@${item.username}` : t('session.sharing.recipientMissingKeys')}
-                                    subtitleLines={1}
-                                    leftElement={
-                                        <Avatar
-                                            id={item.id}
-                                            size={40}
-                                            imageUrl={avatarUrl}
-                                            thumbhash={item.avatar?.thumbhash}
-                                        />
-                                    }
-                                    onPress={hasKeys ? () => setSelectedUserId(item.id) : undefined}
-                                    disabled={!hasKeys}
-                                    showChevron={false}
-                                />
-                                {selectedUserId === item.id && (
-                                    <View style={styles.selectedIndicator} />
-                                )}
-                            </View>
-                        );
-                    }}
-                    ListEmptyComponent={
-                        <View style={styles.emptyState}>
-                            <Text style={styles.emptyText}>
-                                {searchQuery
-                                    ? t('common.notFound')
-                                    : t('friends.noFriendsYet')
-                                }
-                            </Text>
-                        </View>
+    const renderItem = React.useCallback(({ item }: { item: UserProfile }) => {
+        const hasKeys = !!item.contentPublicKey && !!item.contentPublicKeySig;
+        const avatarUrl = item.avatar?.url || item.avatar?.path;
+        const isSelected = selectedUserId === item.id;
+
+        return (
+            <View style={isSelected ? { backgroundColor: theme.colors.surfaceHigh } : undefined}>
+                <Item
+                    title={getDisplayName(item)}
+                    subtitle={hasKeys ? `@${item.username}` : t('session.sharing.recipientMissingKeys')}
+                    subtitleLines={1}
+                    leftElement={
+                        <Avatar
+                            id={item.id}
+                            size={40}
+                            imageUrl={avatarUrl}
+                            thumbhash={item.avatar?.thumbhash}
+                        />
                     }
-                    scrollEnabled={false}
+                    iconContainerStyle={{ marginRight: 16 }}
+                    onPress={hasKeys ? () => setSelectedUserId(item.id) : undefined}
+                    disabled={!hasKeys}
+                    showChevron={false}
                 />
             </View>
+        );
+    }, [selectedUserId, theme]);
 
-            {/* Access level selection (only shown when friend is selected) */}
-            {selectedFriend && (
-                <View style={styles.accessLevelSection}>
-                    <Text style={styles.sectionTitle}>
-                        {t('session.sharing.accessLevel')}
-                    </Text>
+    const keyExtractor = React.useCallback((item: UserProfile) => item.id, []);
+
+    const ListHeaderComponent = React.useMemo(() => (
+        <View style={[styles.searchContainer, { backgroundColor: theme.colors.surfaceHigh, borderColor: theme.colors.divider }]}>
+            <SheetTextInput
+                style={[styles.searchInput, { color: theme.colors.text }, Platform.OS === 'web' && { outlineStyle: 'none' } as any]}
+                placeholder={t('friends.searchPlaceholder')}
+                placeholderTextColor={theme.colors.textSecondary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+            />
+        </View>
+    ), [searchQuery, theme]);
+
+    const ListFooterComponent = React.useMemo(() => {
+        if (!selectedUserId) return null;
+        return (
+            <View style={{ marginTop: 8 }}>
+                <ItemGroup title={t('session.sharing.accessLevel')}>
                     <Item
                         title={t('session.sharing.viewOnly')}
                         subtitle={t('session.sharing.viewOnlyDescription')}
@@ -163,74 +154,89 @@ export const FriendSelector = memo(function FriendSelector({
                             )
                         }
                     />
-                    <View style={styles.buttonRow}>
-                        <Item
-                            title={t('common.cancel')}
-                            onPress={onCancel}
-                        />
-                        <Item
-                            title={t('session.sharing.addShare')}
-                            onPress={() => onSelect(selectedUserId!, selectedAccessLevel)}
-                        />
-                    </View>
-                </View>
-            )}
-        </ScrollView>
+                </ItemGroup>
+                <ItemGroup>
+                    <Item
+                        title={t('session.sharing.addShare')}
+                        onPress={handleSelect}
+                    />
+                </ItemGroup>
+            </View>
+        );
+    }, [selectedUserId, selectedAccessLevel, handleSelect]);
+
+    const ListEmptyComponent = React.useMemo(() => (
+        <View style={styles.emptyState}>
+            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                {searchQuery ? t('common.notFound') : t('friends.noFriendsYet')}
+            </Text>
+        </View>
+    ), [searchQuery, theme]);
+
+    return (
+        <BottomSheetModal
+            ref={ref}
+            snapPoints={['75%']}
+            enableDynamicSizing={false}
+            keyboardBehavior="interactive"
+            keyboardBlurBehavior="restore"
+            android_keyboardInputMode="adjustResize"
+            backdropComponent={renderBackdrop}
+            onAnimate={handleAnimate}
+            backgroundStyle={{ backgroundColor: theme.colors.groupped.background }}
+            handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
+        >
+            <View style={{ flex: 1 }}>
+                <Text style={[styles.title, { color: theme.colors.text }]}>
+                    {t('session.sharing.shareWith')}
+                </Text>
+                <BottomSheetFlatList
+                    data={filteredFriends}
+                    keyExtractor={keyExtractor}
+                    renderItem={renderItem}
+                    ListHeaderComponent={ListHeaderComponent}
+                    ListFooterComponent={ListFooterComponent}
+                    ListEmptyComponent={ListEmptyComponent}
+                    contentContainerStyle={{ paddingBottom: 32 }}
+                    keyboardShouldPersistTaps="handled"
+                />
+            </View>
+        </BottomSheetModal>
     );
-});
+}));
 
 const styles = StyleSheet.create((theme) => ({
-    container: {
-        flex: 1,
-        padding: 16,
+    title: {
+        ...Typography.default('semiBold'),
+        fontSize: 17,
+        textAlign: 'center',
+        paddingVertical: 8,
+    },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: 16,
+        marginVertical: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8,
+        borderWidth: 1,
     },
     searchInput: {
-        height: 40,
-        borderRadius: 8,
-        backgroundColor: theme.colors.surfaceHigh,
-        paddingHorizontal: 12,
-        marginBottom: 16,
-        fontSize: 16,
-        color: theme.colors.text,
-    },
-    friendList: {
-        marginBottom: 16,
-    },
-    friendItem: {
-        position: 'relative',
-    },
-    selectedIndicator: {
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: 4,
-        backgroundColor: theme.colors.textLink,
+        ...Typography.default(),
+        flex: 1,
+        fontSize: 15,
+        lineHeight: 20,
+        padding: 0,
     },
     emptyState: {
         padding: 32,
         alignItems: 'center',
     },
     emptyText: {
+        ...Typography.default(),
         fontSize: 16,
-        color: theme.colors.textSecondary,
         textAlign: 'center',
-    },
-    accessLevelSection: {
-        marginTop: 8,
-    },
-    sectionTitle: {
-        fontSize: 17,
-        fontWeight: '600',
-        color: theme.colors.text,
-        marginBottom: 12,
-        paddingHorizontal: 4,
-    },
-    buttonRow: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        marginTop: 16,
-        gap: 8,
     },
     radioSelected: {
         width: 20,
