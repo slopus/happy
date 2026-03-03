@@ -76,6 +76,8 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
+    const isOwner = !session.accessLevel;
+    const isAdmin = isOwner || session.accessLevel === 'admin';
     const localModelDisplay = React.useMemo(() => resolveLocalModelDisplay(session.modelMode), [session.modelMode]);
     const modelSubtitle = React.useMemo(() => {
         const model = localModelDisplay.model || session.metadata?.model;
@@ -701,7 +703,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                 )}
 
                 {/* Repository */}
-                {session.metadata?.path && sessionStatus.isConnected && (
+                {isAdmin && session.metadata?.path && sessionStatus.isConnected && (
                     <ItemGroup>
                         <Item
                             title={t('repository.code')}
@@ -776,7 +778,7 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Quick Actions */}
                 <ItemGroup title={t('sessionInfo.quickActions')}>
-                    {(!session.accessLevel || session.accessLevel === 'admin') && (
+                    {isAdmin && (
                         <Item
                             title={t('session.sharing.manageSharing')}
                             subtitle={t('session.sharing.manageSharingSubtitle')}
@@ -784,7 +786,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/session/${session.id}/sharing`)}
                         />
                     )}
-                    {session.metadata?.machineId && (
+                    {isAdmin && session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}
                             subtitle={t('sessionInfo.viewMachineSubtitle')}
@@ -792,7 +794,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
-                    {(session.metadata?.claudeSessionId || session.metadata?.flavor === 'gemini' || session.metadata?.codexSessionId) && session.metadata?.machineId && session.metadata?.path && (
+                    {isOwner && (session.metadata?.claudeSessionId || session.metadata?.flavor === 'gemini' || session.metadata?.codexSessionId) && session.metadata?.machineId && session.metadata?.path && (
                         <Item
                             title={session.active ? t('sessionInfo.copySession') : t('sessionInfo.resumeSession')}
                             subtitle={session.active ? t('sessionInfo.copySessionSubtitle') : t('sessionInfo.resumeSessionSubtitle')}
@@ -803,7 +805,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             showChevron={!forkingSession}
                         />
                     )}
-                    {sessionStatus.isConnected && (
+                    {isAdmin && sessionStatus.isConnected && (
                         <Item
                             title={t('sessionInfo.archiveSession')}
                             subtitle={t('sessionInfo.archiveSessionSubtitle')}
@@ -811,7 +813,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={handleArchiveSession}
                         />
                     )}
-                    {!sessionStatus.isConnected && !session.active && (
+                    {isOwner && !sessionStatus.isConnected && !session.active && (
                         <Item
                             title={t('sessionInfo.deleteSession')}
                             subtitle={t('sessionInfo.deleteSessionSubtitle')}
