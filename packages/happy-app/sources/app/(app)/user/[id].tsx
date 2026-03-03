@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, ActivityIndicator, Linking } from 'react-native';
+import { View, ActivityIndicator, Linking, Pressable, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { useAuth } from '@/auth/AuthContext';
@@ -19,7 +19,19 @@ import { showToast } from '@/components/Toast';
 import { Ionicons } from '@expo/vector-icons';
 import { useSharedSessions } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { getSessionName } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+import { StatusDot } from '@/components/StatusDot';
+import { Typography } from '@/constants/Typography';
+import { Session } from '@/sync/storageTypes';
+
+function getAccessLevelLabel(accessLevel?: 'view' | 'edit' | 'admin') {
+    switch (accessLevel) {
+        case 'view': return t('session.sharing.viewOnly');
+        case 'edit': return t('session.sharing.canEdit');
+        case 'admin': return t('session.sharing.canManage');
+        default: return t('session.sharing.viewOnly');
+    }
+}
 
 export default function UserProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -180,15 +192,6 @@ export default function UserProfileScreen() {
 
     const friendActions = getFriendActions();
 
-    const getAccessLevelLabel = (accessLevel?: 'view' | 'edit' | 'admin') => {
-        switch (accessLevel) {
-            case 'view': return t('session.sharing.viewOnly');
-            case 'edit': return t('session.sharing.canEdit');
-            case 'admin': return t('session.sharing.canManage');
-            default: return t('session.sharing.viewOnly');
-        }
-    };
-
     return (
         <ItemList style={{ paddingTop: 0 }}>
             {/* User Info Header */}
@@ -257,12 +260,9 @@ export default function UserProfileScreen() {
             <ItemGroup title={t('session.sharing.sharedSessions')}>
                 {filteredSharedSessions.length > 0 ? (
                     filteredSharedSessions.map((session) => (
-                        <Item
+                        <SharedSessionItem
                             key={session.id}
-                            title={getSessionName(session)}
-                            detail={getAccessLevelLabel(session.accessLevel)}
-                            icon={<Ionicons name="document-text-outline" size={29} color={theme.colors.text} />}
-                            onPress={() => router.push(`/session/${session.id}`)}
+                            session={session}
                         />
                     ))
                 ) : (
@@ -297,6 +297,73 @@ export default function UserProfileScreen() {
                 />
             </ItemGroup> */}
         </ItemList>
+    );
+}
+
+function SharedSessionItem({ session, showDivider }: {
+    session: Session;
+    showDivider?: boolean;
+}) {
+    const { theme } = useUnistyles();
+    const sessionStatus = useSessionStatus(session);
+    const sessionName = getSessionName(session);
+    const sessionSubtitle = getSessionSubtitle(session);
+    const avatarId = getSessionAvatarId(session);
+    const router = useRouter();
+    const isIOS = Platform.OS === 'ios';
+    const isWeb = Platform.OS === 'web';
+
+    return (
+        <Pressable
+            onPress={() => router.push(`/session/${session.id}`)}
+            style={({ pressed }) => ({
+                backgroundColor: pressed && isIOS && !isWeb ? theme.colors.surfacePressedOverlay : 'transparent',
+            })}
+            android_ripple={!isIOS || isWeb ? {
+                color: theme.colors.surfaceRipple,
+                borderless: false,
+                foreground: true,
+            } : undefined}
+        >
+            <View style={styles.sharedSessionItemInner}>
+                <View style={styles.sharedSessionAvatar}>
+                    <Avatar
+                        id={avatarId}
+                        size={48}
+                        monochrome={!sessionStatus.isConnected}
+                        flavor={session.metadata?.flavor}
+                        sessionIcon={session.metadata?.sessionIcon}
+                    />
+                </View>
+                <View style={styles.sharedSessionContent}>
+                    <View style={styles.sharedSessionTitleRow}>
+                        <Text style={[
+                            styles.sharedSessionName,
+                            { color: sessionStatus.isConnected ? theme.colors.text : theme.colors.textSecondary }
+                        ]} numberOfLines={1}>
+                            {sessionName}
+                        </Text>
+                        <Text style={styles.sharedSessionAccessLevel}>
+                            {getAccessLevelLabel(session.accessLevel)}
+                        </Text>
+                    </View>
+                    <Text style={styles.sharedSessionSubtitle} numberOfLines={1}>
+                        {sessionSubtitle}
+                    </Text>
+                    <View style={styles.sharedSessionStatusRow}>
+                        <View style={styles.sharedSessionStatusDot}>
+                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                        </View>
+                        <Text style={[styles.sharedSessionStatusText, { color: sessionStatus.statusColor }]}>
+                            {sessionStatus.statusText}
+                        </Text>
+                    </View>
+                </View>
+            </View>
+            {showDivider && (
+                <View style={[styles.sharedSessionDivider, { marginLeft: 80 }]} />
+            )}
+        </Pressable>
     );
 }
 
@@ -364,5 +431,64 @@ const styles = StyleSheet.create((theme) => ({
         color: '#34C759',
         marginLeft: 4,
         fontWeight: '500',
+    },
+    sharedSessionItemInner: {
+        height: 76,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+    },
+    sharedSessionAvatar: {
+        width: 48,
+        height: 48,
+    },
+    sharedSessionContent: {
+        flex: 1,
+        marginLeft: 16,
+        justifyContent: 'center',
+    },
+    sharedSessionTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 2,
+    },
+    sharedSessionName: {
+        fontSize: 15,
+        fontWeight: '500',
+        flex: 1,
+        ...Typography.default('semiBold'),
+    },
+    sharedSessionAccessLevel: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginLeft: 8,
+        ...Typography.default(),
+    },
+    sharedSessionSubtitle: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        marginBottom: 4,
+        ...Typography.default(),
+    },
+    sharedSessionStatusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    sharedSessionStatusDot: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 16,
+        marginTop: 2,
+        marginRight: 4,
+    },
+    sharedSessionStatusText: {
+        fontSize: 12,
+        fontWeight: '500',
+        lineHeight: 16,
+        ...Typography.default(),
+    },
+    sharedSessionDivider: {
+        height: Platform.select({ ios: 0.33, default: 0 }),
+        backgroundColor: theme.colors.divider,
     },
 }));
