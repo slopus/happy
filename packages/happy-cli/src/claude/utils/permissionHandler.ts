@@ -99,7 +99,7 @@ export class PermissionHandler {
                 }
                 pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
             } else {
-                pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' });
+                pending.resolve({ behavior: 'deny', message: response.reason || '' });
             }
         } else {
             // Handle default case for all other tools
