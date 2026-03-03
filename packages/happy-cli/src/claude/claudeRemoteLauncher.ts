@@ -292,6 +292,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     try {
         let pending: {
             message: string;
+            images?: import('@/api/types').ImageInfo[];
             mode: EnhancedMode;
         } | null = null;
 
@@ -357,6 +358,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             permissionHandler.handleModeChange(mode.permissionMode);
                             return {
                                 message: msg.message,
+                                images: msg.images,
                                 mode: msg.mode
                             }
                         }

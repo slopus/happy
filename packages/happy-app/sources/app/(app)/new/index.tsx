@@ -309,7 +309,7 @@ function NewSessionWizard() {
         if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
             return lastUsedProfile;
         }
-        return 'anthropic'; // Default to Anthropic
+        return 'default'; // Default to Universal profile
     });
     const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
         // Check if agent type was provided in temp data
@@ -913,7 +913,7 @@ function NewSessionWizard() {
                         const updatedProfiles = profiles.filter(p => p.id !== profile.id);
                         setProfiles(updatedProfiles); // Use mutable setter for persistence
                         if (selectedProfileId === profile.id) {
-                            setSelectedProfileId('anthropic'); // Default to Anthropic
+                            setSelectedProfileId('default'); // Default to Universal profile
                         }
                     }
                 }

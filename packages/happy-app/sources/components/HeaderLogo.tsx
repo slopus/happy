@@ -1,14 +1,12 @@
 import * as React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
-import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useSocketStatus } from '@/sync/storage';
 
 /**
  * Shared header logo component used across all main tabs.
- * Extracted to prevent flickering on tab switches - when each tab
- * had its own HeaderLeft, the component would unmount/remount.
+ * Shows a minimal status dot instead of text branding.
  */
 export const HeaderLogo = React.memo(() => {
     const { theme } = useUnistyles();
@@ -28,20 +26,12 @@ export const HeaderLogo = React.memo(() => {
         <View style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
         }}>
             <StatusDot
                 color={statusColor}
                 isPulsing={socketStatus.status === 'connecting'}
                 size={8}
             />
-            <Text style={{
-                fontSize: 15,
-                letterSpacing: 2,
-                textTransform: 'uppercase',
-                color: theme.colors.header.tint,
-                ...Typography.brand(),
-            }}>chatai.304</Text>
         </View>
     );
 });

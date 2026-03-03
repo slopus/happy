@@ -74,6 +74,23 @@ export const SidebarNavigator = React.memo(() => {
         });
     }, []);
 
+    // Cmd+B to toggle sidebar
+    const toggleSidebarRef = React.useRef(toggleSidebar);
+    toggleSidebarRef.current = toggleSidebar;
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.metaKey && e.code === 'KeyB') {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                toggleSidebarRef.current();
+            }
+        };
+        window.addEventListener('keydown', handler, { capture: true });
+        return () => window.removeEventListener('keydown', handler, { capture: true });
+    }, []);
+
     const collapseContextValue = React.useMemo(() => ({
         collapsed: sidebarCollapsed && showPermanentDrawer,
         toggle: toggleSidebar,

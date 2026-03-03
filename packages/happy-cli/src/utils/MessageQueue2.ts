@@ -1,7 +1,9 @@
 import { logger } from "@/ui/logger";
+import type { ImageInfo } from "@/api/types";
 
 interface QueueItem<T> {
     message: string;
+    images?: ImageInfo[];
     mode: T;
     modeHash: string;
     isolate?: boolean; // If true, this message must be processed alone
@@ -37,16 +39,17 @@ export class MessageQueue2<T> {
     /**
      * Push a message to the queue with a mode.
      */
-    push(message: string, mode: T): void {
+    push(message: string, mode: T, images?: ImageInfo[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
 
         const modeHash = this.modeHasher(mode);
-        logger.debug(`[MessageQueue2] push() called with mode hash: ${modeHash}`);
+        logger.debug(`[MessageQueue2] push() called with mode hash: ${modeHash}${images?.length ? `, images: ${images.length}` : ''}`);
 
         this.queue.push({
             message,
+            images,
             mode,
             modeHash,
             isolate: false
@@ -72,7 +75,7 @@ export class MessageQueue2<T> {
      * Push a message immediately without batching delay.
      * Does not clear the queue or enforce isolation.
      */
-    pushImmediate(message: string, mode: T): void {
+    pushImmediate(message: string, mode: T, images?: ImageInfo[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -82,6 +85,7 @@ export class MessageQueue2<T> {
 
         this.queue.push({
             message,
+            images,
             mode,
             modeHash,
             isolate: false
@@ -108,7 +112,7 @@ export class MessageQueue2<T> {
      * Clears any pending messages and ensures this message is never batched with others.
      * Used for special commands that require dedicated processing.
      */
-    pushIsolateAndClear(message: string, mode: T): void {
+    pushIsolateAndClear(message: string, mode: T, images?: ImageInfo[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -121,6 +125,7 @@ export class MessageQueue2<T> {
 
         this.queue.push({
             message,
+            images,
             mode,
             modeHash,
             isolate: true
@@ -145,7 +150,7 @@ export class MessageQueue2<T> {
     /**
      * Push a message to the beginning of the queue with a mode.
      */
-    unshift(message: string, mode: T): void {
+    unshift(message: string, mode: T, images?: ImageInfo[]): void {
         if (this.closed) {
             throw new Error('Cannot unshift to closed queue');
         }
@@ -155,6 +160,7 @@ export class MessageQueue2<T> {
 
         this.queue.unshift({
             message,
+            images,
             mode,
             modeHash,
             isolate: false
@@ -221,7 +227,7 @@ export class MessageQueue2<T> {
      * Wait for messages and return all messages with the same mode as a single string
      * Returns { message: string, mode: T } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, images?: ImageInfo[], mode: T, isolate: boolean, hash: string } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -245,13 +251,14 @@ export class MessageQueue2<T> {
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean } | null {
+    private collectBatch(): { message: string, images?: ImageInfo[], mode: T, hash: string, isolate: boolean } | null {
         if (this.queue.length === 0) {
             return null;
         }
 
         const firstItem = this.queue[0];
         const sameModeMessages: string[] = [];
+        const allImages: ImageInfo[] = [];
         let mode = firstItem.mode;
         let isolate = firstItem.isolate ?? false;
         const targetModeHash = firstItem.modeHash;
@@ -260,6 +267,7 @@ export class MessageQueue2<T> {
         if (firstItem.isolate) {
             const item = this.queue.shift()!;
             sameModeMessages.push(item.message);
+            if (item.images?.length) allImages.push(...item.images);
             logger.debug(`[MessageQueue2] Collected isolated message with mode hash: ${targetModeHash}`);
         } else {
             // Collect all messages with the same mode until we hit an isolated message
@@ -268,6 +276,7 @@ export class MessageQueue2<T> {
                 !this.queue[0].isolate) {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
+                if (item.images?.length) allImages.push(...item.images);
             }
             logger.debug(`[MessageQueue2] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);
         }
@@ -277,6 +286,7 @@ export class MessageQueue2<T> {
 
         return {
             message: combinedMessage,
+            images: allImages.length > 0 ? allImages : undefined,
             mode,
             hash: targetModeHash,
             isolate

@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import { Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { Modal } from '@/modal';
 import { CommandPalette } from './CommandPalette';
 import { Command } from './types';
@@ -12,15 +12,38 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
+    const pathname = usePathname();
     const { logout } = useAuth();
     const sessions = storage(useShallow((state) => state.sessions));
     const commandPaletteEnabled = storage(useShallow((state) => state.localSettings.commandPaletteEnabled));
     const navigateToSession = useNavigateToSession();
 
+    // Active sessions sorted by updatedAt (same order as sidebar)
+    const activeSessions = useMemo(() => {
+        return Object.values(sessions)
+            .filter(s => s.active)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+    }, [sessions]);
+
+    // All sessions sorted (for Cmd+1..9 — matches sidebar order: active first, then inactive)
+    const sidebarOrderSessions = useMemo(() => {
+        const active = Object.values(sessions)
+            .filter(s => s.active)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+        const inactive = Object.values(sessions)
+            .filter(s => !s.active)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+        return [...active, ...inactive];
+    }, [sessions]);
+
+    const currentSessionId = useMemo(() => {
+        const match = pathname.match(/\/session\/([^/]+)/);
+        return match ? match[1] : null;
+    }, [pathname]);
+
     // Define available commands
     const commands = useMemo((): Command[] => {
         const cmds: Command[] = [
-            // Navigation commands
             {
                 id: 'new-session',
                 title: 'New Session',
@@ -73,21 +96,40 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                     router.push('/terminal/connect');
                 }
             },
+            {
+                id: 'prev-session',
+                title: 'Previous Session',
+                subtitle: 'Switch to the previous active session',
+                icon: 'arrow-back-outline',
+                category: 'Sessions',
+                shortcut: '⌘[',
+                action: () => navigatePrevSession(),
+            },
+            {
+                id: 'next-session',
+                title: 'Next Session',
+                subtitle: 'Switch to the next active session',
+                icon: 'arrow-forward-outline',
+                category: 'Sessions',
+                shortcut: '⌘]',
+                action: () => navigateNextSession(),
+            },
         ];
 
-        // Add session-specific commands
+        // Add session-specific commands with Cmd+N shortcuts
         const recentSessions = Object.values(sessions)
             .sort((a, b) => b.updatedAt - a.updatedAt)
-            .slice(0, 5);
+            .slice(0, 9);
 
-        recentSessions.forEach(session => {
+        recentSessions.forEach((session, index) => {
             const sessionName = session.metadata?.name || `Session ${session.id.slice(0, 6)}`;
             cmds.push({
                 id: `session-${session.id}`,
                 title: sessionName,
                 subtitle: session.metadata?.path || 'Switch to session',
-                icon: 'time-outline',
-                category: 'Recent Sessions',
+                icon: session.active ? 'radio-button-on-outline' : 'time-outline',
+                category: session.active ? 'Active Sessions' : 'Recent Sessions',
+                shortcut: index < 9 ? `⌘${index + 1}` : undefined,
                 action: () => {
                     navigateToSession(session.id);
                 }
@@ -106,7 +148,6 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             }
         });
 
-        // Dev commands (if in development)
         if (__DEV__) {
             cmds.push({
                 id: 'dev-menu',
@@ -125,7 +166,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
 
     const showCommandPalette = useCallback(() => {
         if (Platform.OS !== 'web' || !commandPaletteEnabled) return;
-        
+
         Modal.show({
             component: CommandPalette,
             props: {
@@ -134,8 +175,53 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         } as any);
     }, [commands, commandPaletteEnabled]);
 
-    // Set up global keyboard handler only if feature is enabled
-    useGlobalKeyboard(commandPaletteEnabled ? showCommandPalette : () => {});
+    // Cmd+[ / Cmd+] — cycle only through active sessions
+    const navigatePrevSession = useCallback(() => {
+        if (activeSessions.length === 0) return;
+        if (!currentSessionId) {
+            navigateToSession(activeSessions[0].id);
+            return;
+        }
+        const currentIndex = activeSessions.findIndex(s => s.id === currentSessionId);
+        if (currentIndex === -1) {
+            navigateToSession(activeSessions[0].id);
+            return;
+        }
+        const prevIndex = (currentIndex + 1) % activeSessions.length;
+        navigateToSession(activeSessions[prevIndex].id);
+    }, [activeSessions, currentSessionId, navigateToSession]);
+
+    const navigateNextSession = useCallback(() => {
+        if (activeSessions.length === 0) return;
+        if (!currentSessionId) {
+            navigateToSession(activeSessions[0].id);
+            return;
+        }
+        const currentIndex = activeSessions.findIndex(s => s.id === currentSessionId);
+        if (currentIndex === -1) {
+            navigateToSession(activeSessions[0].id);
+            return;
+        }
+        const nextIndex = (currentIndex - 1 + activeSessions.length) % activeSessions.length;
+        navigateToSession(activeSessions[nextIndex].id);
+    }, [activeSessions, currentSessionId, navigateToSession]);
+
+    // Cmd+1..9 — switch by sidebar order (active first, then inactive)
+    const navigateToSessionByIndex = useCallback((index: number) => {
+        if (index >= 0 && index < sidebarOrderSessions.length) {
+            navigateToSession(sidebarOrderSessions[index].id);
+        }
+    }, [sidebarOrderSessions, navigateToSession]);
+
+    // Set up global keyboard shortcuts
+    useGlobalKeyboard({
+        onCommandPalette: commandPaletteEnabled ? showCommandPalette : undefined,
+        onNewSession: useCallback(() => router.push('/new'), [router]),
+        onSettings: useCallback(() => router.push('/settings'), [router]),
+        onPrevSession: navigatePrevSession,
+        onNextSession: navigateNextSession,
+        onSessionByIndex: navigateToSessionByIndex,
+    });
 
     return <>{children}</>;
 }

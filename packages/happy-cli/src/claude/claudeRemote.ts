@@ -12,6 +12,7 @@ import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
+import type { ImageInfo } from "@/api/types";
 
 export async function claudeRemote(opts: {
 
@@ -30,7 +31,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: string, images?: ImageInfo[], mode: EnhancedMode } | null>,
     onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -145,13 +146,31 @@ export async function claudeRemote(opts: {
         }
     };
 
+    // Helper: build content with optional images
+    function buildContent(text: string, images?: ImageInfo[]): string | Array<{ type: string; [key: string]: unknown }> {
+        if (!images || images.length === 0) {
+            return text;
+        }
+        const blocks: Array<{ type: string; [key: string]: unknown }> = [
+            { type: 'text', text },
+            ...images.map(img => ({
+                type: 'image',
+                source: {
+                    type: 'url' as const,
+                    url: img.url,
+                },
+            })),
+        ];
+        return blocks;
+    }
+
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     messages.push({
         type: 'user',
         message: {
             role: 'user',
-            content: initial.message,
+            content: buildContent(initial.message, initial.images),
         },
     });
 
@@ -213,7 +232,7 @@ export async function claudeRemote(opts: {
                     return;
                 }
                 mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                messages.push({ type: 'user', message: { role: 'user', content: buildContent(next.message, next.images) } });
             }
 
             // Handle tool result

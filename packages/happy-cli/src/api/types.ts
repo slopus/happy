@@ -204,11 +204,21 @@ export const CreateSessionResponseSchema = z.object({
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>
 
+export const ImageInfoSchema = z.object({
+  url: z.string(),
+  mediaType: z.string(),
+  width: z.number(),
+  height: z.number(),
+})
+
+export type ImageInfo = z.infer<typeof ImageInfoSchema>
+
 export const UserMessageSchema = z.object({
   role: z.literal('user'),
   content: z.object({
     type: z.literal('text'),
-    text: z.string()
+    text: z.string(),
+    images: z.array(ImageInfoSchema).optional(),
   }),
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()

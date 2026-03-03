@@ -22,6 +22,16 @@ export interface ProfileDocumentation {
  */
 export const getBuiltInProfileDocumentation = (id: string): ProfileDocumentation | null => {
     switch (id) {
+        case 'default':
+            return {
+                description: 'Universal profile - works with Claude, Codex, and Gemini using their native authentication',
+                environmentVariables: [],
+                shellConfigExample: `# No additional environment variables needed
+# Each agent uses its own authentication:
+# - Claude: ANTHROPIC_AUTH_TOKEN from login session
+# - Codex: ChatGPT OAuth (codex login --device-auth)
+# - Gemini: Google OAuth (gemini auth)`,
+            };
         case 'anthropic':
             return {
                 description: 'Official Anthropic Claude API - uses your default Anthropic credentials',
@@ -238,10 +248,22 @@ export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-codex"`,
  */
 export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
     switch (id) {
+        case 'default':
+            return {
+                id: 'default',
+                name: 'Default (Universal)',
+                environmentVariables: [],
+                defaultPermissionMode: 'default',
+                compatibility: { claude: true, codex: true, gemini: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
         case 'anthropic':
             return {
                 id: 'anthropic',
-                name: 'Anthropic (Default)',
+                name: 'Anthropic (Claude)',
                 anthropicConfig: {},
                 environmentVariables: [],
                 defaultPermissionMode: 'default',
@@ -354,8 +376,13 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
  */
 export const DEFAULT_PROFILES = [
     {
+        id: 'default',
+        name: 'Default (Universal)',
+        isBuiltIn: true,
+    },
+    {
         id: 'anthropic',
-        name: 'Anthropic (Default)',
+        name: 'Anthropic (Claude)',
         isBuiltIn: true,
     },
     {
