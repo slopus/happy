@@ -333,6 +333,7 @@ export const ja: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'メッセージを入力...',
+        compact: 'コンパクト',
     },
 
     commandPalette: {

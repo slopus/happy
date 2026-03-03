@@ -330,6 +330,7 @@ export const it: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Scrivi un messaggio ...',
+        compact: 'Compatta',
     },
 
     commandPalette: {

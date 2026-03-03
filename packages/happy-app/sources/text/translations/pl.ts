@@ -312,6 +312,7 @@ export const pl: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Wpisz wiadomość...',
+        compact: 'Kompaktuj',
     },
 
     commandPalette: {
