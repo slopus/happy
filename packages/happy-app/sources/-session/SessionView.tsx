@@ -39,6 +39,9 @@ import * as Clipboard from 'expo-clipboard';
 import { createSharedSession } from '@/sync/apiShare';
 import { FileBrowserPanel } from './FileBrowserPanel';
 import { ResizableDivider } from '@/components/ResizableDivider';
+import { PreviewPanel } from '@/components/preview/PreviewPanel';
+import { ElementChip, formatElementForMessage } from '@/components/preview/ElementChip';
+import { usePreviewVisible, useSelectedElement } from '@/sync/storage';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -57,8 +60,10 @@ export const SessionView = React.memo((props: { id: string }) => {
     const [currentPreset, setCurrentPreset] = React.useState<AgentPreset | null>(null);
     const [showPresetPicker, setShowPresetPicker] = React.useState(false);
     const [fileBrowserOpen, setFileBrowserOpen] = React.useState(false);
+    const [previewOpen, setPreviewOpen] = React.useState(false);
     const [showSettingsOverlay, setShowSettingsOverlay] = React.useState(false);
     const insertTextRef = React.useRef<(text: string) => void>(null);
+    const previewVisible = usePreviewVisible(sessionId);
 
     // Listen for toggle-file-browser event from sidebar
     React.useEffect(() => {
@@ -71,6 +76,19 @@ export const SessionView = React.memo((props: { id: string }) => {
         };
         window.addEventListener('toggle-file-browser', handler);
         return () => window.removeEventListener('toggle-file-browser', handler);
+    }, [sessionId]);
+
+    // Listen for toggle-preview event from sidebar
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.sessionId === sessionId) {
+                setPreviewOpen(prev => !prev);
+            }
+        };
+        window.addEventListener('toggle-preview', handler);
+        return () => window.removeEventListener('toggle-preview', handler);
     }, [sessionId]);
 
     // Web swipe-back gesture (swipe right from left edge to go back)
@@ -371,13 +389,24 @@ export const SessionView = React.memo((props: { id: string }) => {
         </>
     );
 
-    // Split mode (web/tablet): chat + divider + file panel side by side
+    // Split mode (web/tablet): chat + divider + side panels
     if (useSplitMode) {
         return (
             <View style={{ flex: 1, flexDirection: 'row' }}>
                 <View style={{ flex: 1 }}>
                     {mainContent}
                 </View>
+                {previewOpen && (
+                    <>
+                        <ResizableDivider onResize={handleFilePanelResize} onResizeEnd={handleFilePanelResizeEnd} />
+                        <View style={{ width: filePanelWidth, borderLeftWidth: 1, borderLeftColor: theme.colors.divider }}>
+                            <PreviewPanel
+                                sessionId={sessionId}
+                                onClose={() => setPreviewOpen(false)}
+                            />
+                        </View>
+                    </>
+                )}
                 {fileBrowserOpen && (
                     <>
                         <ResizableDivider onResize={handleFilePanelResize} onResizeEnd={handleFilePanelResizeEnd} />
@@ -421,6 +450,7 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
+    const selectedElement = useSelectedElement(sessionId);
 
     // Register setMessage into parent ref for FileBrowserPanel insert-to-chat
     React.useEffect(() => {
@@ -800,6 +830,15 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
                     </Pressable>
                 </View>
             )}
+            {/* Selected element chip from Preview Panel */}
+            {selectedElement && (
+                <View style={{ paddingHorizontal: 12, paddingTop: 6 }}>
+                    <ElementChip
+                        element={selectedElement}
+                        onDismiss={() => storage.getState().clearSelectedElement(sessionId)}
+                    />
+                </View>
+            )}
         <AgentInput
             placeholder={t('session.inputPlaceholder')}
             value={message}
@@ -824,10 +863,14 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
                     const documents = pendingDocuments.length > 0
                         ? pendingDocuments.map(({ url, mediaType, fileName, fileSize }) => ({ url, mediaType, fileName, fileSize }))
                         : undefined;
-                    const text = message.trim() || (images ? '[image]' : (documents ? '[document]' : ''));
+                    // Prepend selected element context if available
+                    const elementContext = selectedElement ? formatElementForMessage(selectedElement) : '';
+                    const userText = message.trim() || (images ? '[image]' : (documents ? '[document]' : ''));
+                    const text = elementContext ? `${elementContext}\n${userText}` : userText;
                     setMessage('');
                     setPendingImages([]);
                     setPendingDocuments([]);
+                    if (selectedElement) storage.getState().clearSelectedElement(sessionId);
                     clearDraft();
                     storage.getState().clearVoiceTranscript();
                     const isVoiceActive = realtimeStatus === 'connected' || realtimeStatus === 'connecting';

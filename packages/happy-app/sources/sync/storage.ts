@@ -21,6 +21,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
+import { type SelectedElement, type PreviewState, createDefaultPreviewState } from "happy-wire";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -87,6 +88,8 @@ interface StorageState {
     feedTail: string | null;  // Oldest cursor
     feedHasMore: boolean;
     feedLoaded: boolean;  // True after initial feed fetch
+    // Preview panel state per session
+    previewStates: Record<string, PreviewState>;
     friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     realtimeMode: 'idle' | 'speaking';
@@ -153,6 +156,9 @@ interface StorageState {
     // Feed methods
     applyFeedItems: (items: FeedItem[]) => void;
     clearFeed: () => void;
+    // Preview panel methods
+    setPreviewState: (sessionId: string, updates: Partial<PreviewState>) => void;
+    clearSelectedElement: (sessionId: string) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -281,6 +287,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessionListViewData: null,
         sessionMessages: {},
         sessionGitStatus: {},
+        previewStates: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
         voiceTranscript: '',
@@ -1127,6 +1134,29 @@ export const storage = create<StorageState>()((set, get) => {
             feedLoaded: false,  // Reset loading flag
             friendsLoaded: false  // Reset loading flag
         })),
+
+        // Preview panel methods
+        setPreviewState: (sessionId: string, updates: Partial<PreviewState>) => set((state) => ({
+            ...state,
+            previewStates: {
+                ...state.previewStates,
+                [sessionId]: {
+                    ...(state.previewStates[sessionId] || createDefaultPreviewState()),
+                    ...updates,
+                },
+            },
+        })),
+
+        clearSelectedElement: (sessionId: string) => set((state) => ({
+            ...state,
+            previewStates: {
+                ...state.previewStates,
+                [sessionId]: {
+                    ...(state.previewStates[sessionId] || createDefaultPreviewState()),
+                    selectedElement: null,
+                },
+            },
+        })),
     }
 });
 
@@ -1364,4 +1394,17 @@ export function useRequestedFriends() {
         // Filter friends to get sent requests (where status is 'requested')
         return Object.values(state.friends).filter(friend => friend.status === 'requested');
     }));
+}
+
+// Preview panel hooks
+export function usePreviewState(sessionId: string) {
+    return storage(useShallow((state) => state.previewStates[sessionId] ?? null));
+}
+
+export function usePreviewVisible(sessionId: string) {
+    return storage((state) => state.previewStates[sessionId]?.isVisible ?? false);
+}
+
+export function useSelectedElement(sessionId: string) {
+    return storage(useShallow((state) => state.previewStates[sessionId]?.selectedElement ?? null));
 }
