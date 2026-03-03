@@ -1,6 +1,9 @@
 import { eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 import { Socket } from "socket.io";
+import { checkSessionAccess } from "@/app/share/accessControl";
+import { getOrCreateUserRpcListeners } from "./rpcRegistry";
+import { db } from "@/storage/db";
 
 export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
     
@@ -78,9 +81,32 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
                 return;
             }
 
-            const targetSocket = rpcListeners.get(method);
+            let targetSocket = rpcListeners.get(method);
+
+            // If not found in current user's listeners, check if this is a shared session
             if (!targetSocket || !targetSocket.connected) {
-                // log({ module: 'websocket-rpc' }, `RPC call failed: Method ${method} not available (disconnected or not registered)`);
+                const colonIndex = method.indexOf(':');
+                if (colonIndex > 0) {
+                    const sessionId = method.substring(0, colonIndex);
+                    const access = await checkSessionAccess(userId, sessionId);
+                    if (access && !access.isOwner) {
+                        // Look up the session owner and try their RPC listeners
+                        const session = await db.session.findUnique({
+                            where: { id: sessionId },
+                            select: { accountId: true }
+                        });
+                        if (session) {
+                            const ownerListeners = getOrCreateUserRpcListeners(session.accountId);
+                            const ownerSocket = ownerListeners.get(method);
+                            if (ownerSocket?.connected) {
+                                targetSocket = ownerSocket;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!targetSocket || !targetSocket.connected) {
                 if (callback) {
                     callback({
                         ok: false,
