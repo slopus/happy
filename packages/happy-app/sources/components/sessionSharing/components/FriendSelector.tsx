@@ -65,10 +65,11 @@ export const FriendSelector = React.memo(React.forwardRef<BottomSheetModal, Frie
         [],
     );
 
-    const renderItem = React.useCallback(({ item }: { item: UserProfile }) => {
+    const renderItem = React.useCallback(({ item, index }: { item: UserProfile, index: number }) => {
         const hasKeys = !!item.contentPublicKey && !!item.contentPublicKeySig;
         const avatarUrl = item.avatar?.url || item.avatar?.path;
         const isSelected = selectedUserId === item.id;
+        const isLast = index === filteredFriends.length - 1;
 
         return (
             <View style={isSelected ? { backgroundColor: theme.colors.surfaceHigh } : undefined}>
@@ -88,10 +89,11 @@ export const FriendSelector = React.memo(React.forwardRef<BottomSheetModal, Frie
                     onPress={hasKeys ? () => setSelectedUserId(item.id) : undefined}
                     disabled={!hasKeys}
                     showChevron={false}
+                    showDivider={!isLast}
                 />
             </View>
         );
-    }, [selectedUserId, theme]);
+    }, [selectedUserId, theme, filteredFriends.length]);
 
     const keyExtractor = React.useCallback((item: UserProfile) => item.id, []);
 

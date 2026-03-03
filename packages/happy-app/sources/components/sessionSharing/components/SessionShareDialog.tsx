@@ -115,6 +115,7 @@ interface ShareItemProps {
     share: SessionShare;
     canManage: boolean;
     isSelected: boolean;
+    showDivider?: boolean;
     onPress: () => void;
     onAccessLevelChange: (shareId: string, accessLevel: ShareAccessLevel) => void;
     onRemove: (shareId: string) => void;
@@ -124,6 +125,7 @@ const ShareItem = React.memo(function ShareItem({
     share,
     canManage,
     isSelected,
+    showDivider,
     onPress,
     onAccessLevelChange,
     onRemove,
@@ -149,6 +151,7 @@ const ShareItem = React.memo(function ShareItem({
                 iconContainerStyle={{ marginRight: 16 }}
                 onPress={canManage ? onPress : undefined}
                 showChevron={canManage}
+                showDivider={showDivider}
             />
             {isSelected && canManage && (
                 <View style={{ paddingLeft: 24, backgroundColor: theme.colors.surfaceHigh }}>
