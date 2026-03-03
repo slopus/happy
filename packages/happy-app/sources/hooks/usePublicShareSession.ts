@@ -81,12 +81,16 @@ export function usePublicShareSession(token: string) {
 
             // 7. Reduce to Message[]
             const result = reducer(createReducer(), normalizedMessages);
-            setMessages(result.messages.reverse());
+            // Sort by createdAt since the reducer processes event messages
+            // (e.g. title changes) before regular messages, breaking chronological order
+            result.messages.sort((a, b) => b.createdAt - a.createdAt);
+            setMessages(result.messages);
             setState('loaded');
         } catch (e) {
             if (e instanceof PublicShareNotFoundError) {
                 setState('not-found');
             } else if (e instanceof ConsentRequiredError) {
+                setOwner(e.owner);
                 setState('consent-required');
             } else {
                 setState('error');

@@ -386,9 +386,11 @@ export class PublicShareNotFoundError extends SessionSharingError {
  * indicates the consent parameter was missing or false.
  */
 export class ConsentRequiredError extends SessionSharingError {
-    constructor() {
+    owner: ShareUserProfile | null;
+    constructor(owner?: ShareUserProfile | null) {
         super('Consent required for access');
         this.name = 'ConsentRequiredError';
+        this.owner = owner ?? null;
     }
 }
 

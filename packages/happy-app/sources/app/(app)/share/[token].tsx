@@ -11,14 +11,14 @@ import { MessageView } from '@/components/MessageView';
 import { usePublicShareSession } from '@/hooks/usePublicShareSession';
 import { Message } from '@/sync/typesMessage';
 
-function OwnerCard({ owner }: { owner: { username: string | null; firstName: string | null; lastName: string | null } }) {
+function OwnerCard({ owner, floating }: { owner: { username: string | null; firstName: string | null; lastName: string | null }; floating?: boolean }) {
     const { theme } = useUnistyles();
     const name = owner.username
         || [owner.firstName, owner.lastName].filter(Boolean).join(' ')
         || 'Unknown';
 
     return (
-        <View style={[styles.ownerCard, { backgroundColor: theme.colors.groupped.background }]}>
+        <View style={[styles.ownerCard, floating && styles.ownerCardFloating, { backgroundColor: theme.colors.groupped.background }]}>
             <Ionicons name="person-circle-outline" size={32} color={theme.colors.textSecondary} />
             <View style={styles.ownerInfo}>
                 <Text style={[styles.ownerLabel, { color: theme.colors.textSecondary }]}>
@@ -84,7 +84,7 @@ export default memo(function PublicShareScreen() {
     if (state === 'consent-required') {
         return (
             <View style={[styles.center, { backgroundColor: theme.colors.surface }]}>
-                {owner && <OwnerCard owner={owner} />}
+                {owner && <OwnerCard owner={owner} floating />}
                 <Ionicons name="shield-checkmark-outline" size={48} color={theme.colors.textSecondary} style={{ marginTop: 24 }} />
                 <Text style={[styles.consentTitle, { color: theme.colors.text }]}>
                     {t('session.sharing.consentTitle')}
@@ -151,6 +151,10 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 12,
         borderBottomWidth: 0.5,
         borderBottomColor: theme.colors.divider,
+    },
+    ownerCardFloating: {
+        borderBottomWidth: 0,
+        borderRadius: 12,
     },
     ownerInfo: {
         marginLeft: 12,

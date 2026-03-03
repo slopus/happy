@@ -308,7 +308,7 @@ export async function getPublicShareMessages(
         if (response.status === 403) {
             const body = await response.json();
             if (body.requiresConsent) {
-                throw new ConsentRequiredError();
+                throw new ConsentRequiredError(body.owner);
             }
         }
         throw new Error(`Failed to get public share messages: ${response.status}`);
@@ -342,7 +342,7 @@ export async function accessPublicShare(
         if (response.status === 403) {
             const body = await response.json();
             if (body.requiresConsent) {
-                throw new ConsentRequiredError();
+                throw new ConsentRequiredError(body.owner);
             }
         }
         throw new Error(`Failed to access public share: ${response.status}`);
