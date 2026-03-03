@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, ActivityIndicator, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Text } from '@/components/StyledText';
@@ -16,12 +16,14 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
 import { Ionicons } from '@expo/vector-icons';
+import { useSharedSessions } from '@/sync/storage';
 
 export default function UserProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { credentials } = useAuth();
     const router = useRouter();
     const { theme } = useUnistyles();
+    const sharedSessions = useSharedSessions();
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -160,6 +162,20 @@ export default function UserProfileScreen() {
 
     const friendActions = getFriendActions();
 
+    const filteredSharedSessions = useMemo(() => {
+        if (!userProfile) return [];
+        return sharedSessions.filter(session => session.owner === userProfile.id);
+    }, [sharedSessions, userProfile]);
+
+    const getAccessLevelLabel = (accessLevel?: 'view' | 'edit' | 'admin') => {
+        switch (accessLevel) {
+            case 'view': return t('session.sharing.viewOnly');
+            case 'edit': return t('session.sharing.canEdit');
+            case 'admin': return t('session.sharing.canManage');
+            default: return t('session.sharing.viewOnly');
+        }
+    };
+
     return (
         <ItemList style={{ paddingTop: 0 }}>
             {/* User Info Header */}
@@ -212,7 +228,7 @@ export default function UserProfileScreen() {
             <ItemGroup>
                 <Item
                     title={t('settings.github')}
-                    detail={`@${userProfile.username}`} 
+                    detail={`@${userProfile.username}`}
                     icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
                     onPress={async () => {
                         const url = `https://github.com/${userProfile.username}`;
@@ -222,6 +238,26 @@ export default function UserProfileScreen() {
                         }
                     }}
                 />
+            </ItemGroup>
+
+            {/* Shared Sessions */}
+            <ItemGroup title={t('session.sharing.sharedSessions')}>
+                {filteredSharedSessions.length > 0 ? (
+                    filteredSharedSessions.map((session) => (
+                        <Item
+                            key={session.id}
+                            title={session.metadata?.name || session.id}
+                            detail={getAccessLevelLabel(session.accessLevel)}
+                            icon={<Ionicons name="document-text-outline" size={29} color={theme.colors.text} />}
+                            onPress={() => router.push(`/session/${session.id}`)}
+                        />
+                    ))
+                ) : (
+                    <Item
+                        title={t('session.sharing.noSharedSessions')}
+                        showChevron={false}
+                    />
+                )}
             </ItemGroup>
 
             {/* Profile Details */}

@@ -7,6 +7,7 @@ import { Context } from "@/context";
 import { friendRemove } from "@/app/social/friendRemove";
 import { friendList } from "@/app/social/friendList";
 import { buildUserProfile } from "@/app/social/type";
+import * as privacyKit from "privacy-kit";
 
 export async function userRoutes(app: Fastify) {
 
@@ -108,6 +109,30 @@ export async function userRoutes(app: Fastify) {
         });
     });
 
+    // Upload content public key
+    app.put('/v1/user/content-key', {
+        schema: {
+            body: z.object({
+                contentPublicKey: z.string(), // base64
+                contentPublicKeySig: z.string() // base64
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { contentPublicKey, contentPublicKeySig } = request.body;
+
+        await db.account.update({
+            where: { id: userId },
+            data: {
+                contentPublicKey: privacyKit.decodeBase64(contentPublicKey),
+                contentPublicKeySig: privacyKit.decodeBase64(contentPublicKeySig)
+            }
+        });
+
+        return reply.send({ success: true });
+    });
+
     // Add friend
     app.post('/v1/friends/add', {
         schema: {
@@ -179,5 +204,8 @@ const UserProfileSchema = z.object({
     }).nullable(),
     username: z.string(),
     bio: z.string().nullable(),
-    status: RelationshipStatusSchema
+    status: RelationshipStatusSchema,
+    publicKey: z.string(),
+    contentPublicKey: z.string().nullable(),
+    contentPublicKeySig: z.string().nullable(),
 });

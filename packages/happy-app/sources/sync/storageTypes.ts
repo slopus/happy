@@ -135,6 +135,15 @@ export interface Session {
         contextWindowSize?: number;
         timestamp: number;
     } | null;
+    owner?: string;
+    ownerProfile?: {
+        id: string;
+        username: string;
+        firstName: string;
+        lastName: string | null;
+        avatar: string | null;
+    };
+    accessLevel?: 'view' | 'edit' | 'admin';
 }
 
 export interface DecryptedMessage {

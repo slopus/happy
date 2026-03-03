@@ -148,6 +148,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/[id]/sharing"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('session.sharing.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="settings/account"
                 options={{
                     headerTitle: t('settings.account'),
