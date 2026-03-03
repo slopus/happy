@@ -440,9 +440,13 @@ class Sync {
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
 
-        const ready = await this.waitForAgentReady(sessionId);
-        if (!ready) {
-            log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
+        // Skip ready wait for shared sessions - CLI is connected to the owner's session
+        const isSharedSession = !!storage.getState().sharedSessions[sessionId];
+        if (!isSharedSession) {
+            const ready = await this.waitForAgentReady(sessionId);
+            if (!ready) {
+                log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
+            }
         }
 
         // Register onBeforeApply so the WebSocket echo path can also trigger it.
@@ -2930,7 +2934,8 @@ class Sync {
             };
 
             const check = () => {
-                const s = storage.getState().sessions[sessionId];
+                const state = storage.getState();
+                const s = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
                 if (s && s.agentStateVersion > 0) {
                     done(true, `ready (agentStateVersion=${s.agentStateVersion})`);
                 }
