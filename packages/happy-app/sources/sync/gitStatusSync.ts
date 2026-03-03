@@ -83,14 +83,14 @@ export class GitStatusSync {
     }
 
     private getLiveSessionForProject(projectKey: string): { sessionId: string; session: Session } | null {
-        const sessions = storage.getState().sessions;
+        const state = storage.getState();
         const sessionIds = this.projectToSessionIds.get(projectKey);
         if (!sessionIds || sessionIds.size === 0) {
             return null;
         }
 
         for (const sessionId of Array.from(sessionIds)) {
-            const session = sessions[sessionId];
+            const session = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
             if (!session) {
                 this.unlinkSession(sessionId);
                 continue;

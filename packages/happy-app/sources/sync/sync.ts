@@ -183,7 +183,7 @@ class Sync {
                 this.friendRequestsSync.invalidate();
                 this.feedSync.invalidate();
                 this.sharedSessionsSync.invalidate();
-                gitStatusSync.invalidateForSessions(Object.keys(storage.getState().sessions));
+                gitStatusSync.invalidateForSessions([...Object.keys(storage.getState().sessions), ...Object.keys(storage.getState().sharedSessions)]);
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
             }
@@ -268,7 +268,7 @@ class Sync {
             this.sessionsSync.awaitQueue(),
             this.machinesSync.awaitQueue()
         ]).then(() => {
-            gitStatusSync.invalidateForSessions(Object.keys(storage.getState().sessions));
+            gitStatusSync.invalidateForSessions([...Object.keys(storage.getState().sessions), ...Object.keys(storage.getState().sharedSessions)]);
             storage.getState().applyReady();
         }).catch((error) => {
             console.error('Failed to load initial data:', error);
@@ -2017,7 +2017,7 @@ class Sync {
         // local sync state (InvalidateSync, retry counters) may be stuck and needs resetting.
         apiSocket.onStatusChange((status) => {
             if (status === 'connected') {
-                gitStatusSync.invalidateForSessions(Object.keys(storage.getState().sessions));
+                gitStatusSync.invalidateForSessions([...Object.keys(storage.getState().sessions), ...Object.keys(storage.getState().sharedSessions)]);
             }
         });
     }
