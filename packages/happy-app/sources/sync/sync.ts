@@ -2343,7 +2343,7 @@ class Sync {
                 body: feedUpdate.body,
                 cursor: feedUpdate.cursor,
                 createdAt: feedUpdate.createdAt,
-                repeatKey: feedUpdate.repeatKey,
+                repeatKey: feedUpdate.repeatKey ?? null,
                 counter: parseInt(feedUpdate.cursor.substring(2), 10)
             };
             
