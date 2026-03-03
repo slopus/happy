@@ -17,15 +17,6 @@ const usageDataSchema = z.object({
 
 export type UsageData = z.infer<typeof usageDataSchema>;
 
-function isSessionProtocolSendEnabled(): boolean {
-    const raw = (
-        process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND
-        ?? process.env.ENABLE_SESSION_PROTOCOL_SEND
-        ?? ''
-    ).toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes';
-}
-
 const agentEventSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('switch'),
     mode: z.enum(['local', 'remote'])
@@ -592,10 +583,6 @@ function normalizeSessionEnvelope(
 
     if (envelope.ev.t === 'text') {
         if (envelope.role === 'user') {
-            if (!isSessionProtocolSendEnabled()) {
-                return null;
-            }
-
             return {
                 id: messageId,
                 localId,
@@ -724,10 +711,6 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     }
     raw = parsed.data;
     if (raw.role === 'user') {
-        if (isSessionProtocolSendEnabled()) {
-            return null;
-        }
-
         return {
             id,
             localId,
