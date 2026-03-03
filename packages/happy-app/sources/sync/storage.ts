@@ -181,6 +181,7 @@ interface StorageState {
     applySharedSessions: (sessions: Session[]) => void;
     addSharedSession: (session: Session) => void;
     updateSharedSessionAccessLevel: (sessionId: string, accessLevel: 'view' | 'edit' | 'admin') => void;
+    updateSharedSessionActivity: (sessionId: string, active: boolean, activeAt: number, thinking: boolean) => void;
     removeSharedSession: (sessionId: string) => void;
     // User cache methods
     applyUsers: (users: Record<string, UserProfile | null>) => void;
@@ -1319,6 +1320,21 @@ export const storage = create<StorageState>()((set, get) => {
             const newSharedSessions = {
                 ...state.sharedSessions,
                 [sessionId]: { ...session, accessLevel }
+            };
+            return {
+                ...state,
+                sharedSessions: newSharedSessions,
+                sessionListViewData: buildSessionListViewData(state.sessions, newSharedSessions)
+            };
+        }),
+        updateSharedSessionActivity: (sessionId, active, activeAt, thinking) => set((state) => {
+            const session = state.sharedSessions[sessionId];
+            if (!session) return state;
+            const presence = resolveSessionOnlineState({ active, activeAt });
+            if (session.active === active && session.activeAt === activeAt && session.thinking === thinking) return state;
+            const newSharedSessions = {
+                ...state.sharedSessions,
+                [sessionId]: { ...session, active, activeAt, thinking, thinkingAt: activeAt, presence }
             };
             return {
                 ...state,

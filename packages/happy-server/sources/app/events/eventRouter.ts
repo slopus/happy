@@ -375,6 +375,37 @@ class EventRouter {
         });
     }
 
+    /**
+     * Emit an ephemeral event to the session owner AND all users who have been shared this session.
+     */
+    async emitEphemeralToSessionSubscribers(params: {
+        ownerId: string;
+        sessionId: string;
+        payload: EphemeralPayload;
+        recipientFilter?: RecipientFilter;
+        skipSenderConnection?: ClientConnection;
+    }): Promise<void> {
+        // 1. Emit to owner
+        this.emitEphemeral({
+            userId: params.ownerId,
+            payload: params.payload,
+            recipientFilter: params.recipientFilter,
+            skipSenderConnection: params.skipSenderConnection
+        });
+
+        // 2. Find shared users and emit to each
+        const shares = await db.sessionShare.findMany({
+            where: { sessionId: params.sessionId },
+            select: { sharedWithUserId: true }
+        });
+        for (const share of shares) {
+            this.emitEphemeral({
+                userId: share.sharedWithUserId,
+                payload: params.payload
+            });
+        }
+    }
+
     // === PRIVATE ROUTING LOGIC ===
 
     private shouldSendToConnection(

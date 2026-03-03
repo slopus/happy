@@ -200,10 +200,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             // Queue database update (will only update if time difference is significant)
             activityCache.queueSessionUpdate(sid, t);
 
-            // Emit session activity update
+            // Emit session activity update to owner and shared users
             const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);
-            eventRouter.emitEphemeral({
-                userId,
+            eventRouter.emitEphemeralToSessionSubscribers({
+                ownerId: userId,
+                sessionId: sid,
                 payload: sessionActivity,
                 recipientFilter: { type: 'user-scoped-only' }
             });
@@ -472,10 +473,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 data: { lastActiveAt: new Date(t), active: false }
             });
 
-            // Emit session activity update
+            // Emit session activity update to owner and shared users
             const sessionActivity = buildSessionActivityEphemeral(sid, false, t, false);
-            eventRouter.emitEphemeral({
-                userId,
+            eventRouter.emitEphemeralToSessionSubscribers({
+                ownerId: userId,
+                sessionId: sid,
                 payload: sessionActivity,
                 recipientFilter: { type: 'user-scoped-only' }
             });

@@ -19,6 +19,7 @@ import { showToast } from '@/components/Toast';
 import { Ionicons } from '@expo/vector-icons';
 import { useSharedSessions } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { getSessionName } from '@/utils/sessionUtils';
 
 export default function UserProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -258,7 +259,7 @@ export default function UserProfileScreen() {
                     filteredSharedSessions.map((session) => (
                         <Item
                             key={session.id}
-                            title={session.metadata?.name || session.id}
+                            title={getSessionName(session)}
                             detail={getAccessLevelLabel(session.accessLevel)}
                             icon={<Ionicons name="document-text-outline" size={29} color={theme.colors.text} />}
                             onPress={() => router.push(`/session/${session.id}`)}

@@ -727,7 +727,7 @@ class Sync {
                 agentStateVersion: 0,
                 thinking: false,
                 thinkingAt: 0,
-                presence: ss.updatedAt,
+                presence: ss.active ? "online" : ss.activeAt,
                 owner: ss.sharedBy.id,
                 ownerProfile: {
                     id: ss.sharedBy.id,
@@ -2752,11 +2752,11 @@ class Sync {
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
         // log.log(`🔄 Flushing activity updates for ${updates.size} sessions - acquiring lock`);
 
-
         const sessions: Session[] = [];
+        const state = storage.getState();
 
         for (const [sessionId, update] of updates) {
-            const session = storage.getState().sessions[sessionId];
+            const session = state.sessions[sessionId];
             if (session) {
                 sessions.push({
                     ...session,
@@ -2765,6 +2765,14 @@ class Sync {
                     thinking: update.thinking ?? false,
                     thinkingAt: update.activeAt // Always use activeAt for consistency
                 });
+            } else if (state.sharedSessions[sessionId]) {
+                // Update shared session activity
+                state.updateSharedSessionActivity(
+                    sessionId,
+                    update.active,
+                    update.activeAt,
+                    update.thinking ?? false
+                );
             }
         }
 
