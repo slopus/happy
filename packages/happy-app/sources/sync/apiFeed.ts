@@ -1,8 +1,8 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
-import { FeedResponse, FeedResponseSchema, FeedItem } from './feedTypes';
+import { FeedResponseSchema, FeedItem } from './feedTypes';
 import { log } from '@/log';
+import { backoff } from '@/utils/time';
 
 /**
  * Fetch user's feed with pagination
@@ -56,4 +56,20 @@ export async function fetchFeed(
             hasMore: parsed.data.hasMore
         };
     });
+}
+
+export async function deleteFeedItem(
+    credentials: AuthCredentials,
+    itemId: string
+): Promise<void> {
+    const API_ENDPOINT = getServerUrl();
+    const response = await fetch(`${API_ENDPOINT}/v1/feed/${itemId}`, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`
+        }
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to delete feed item: ${response.status}`);
+    }
 }

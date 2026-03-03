@@ -7,7 +7,6 @@ import { relationshipGet } from "./relationshipGet";
 import { allocateUserSeq } from "@/storage/seq";
 import { eventRouter, buildRelationshipUpdatedEvent } from "@/app/events/eventRouter";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
-
 export async function friendRemove(ctx: Context, uid: string): Promise<UserProfile | null> {
     return await inTx(async (tx) => {
 
@@ -38,7 +37,6 @@ export async function friendRemove(ctx: Context, uid: string): Promise<UserProfi
             if (targetUserRelationship === RelationshipStatus.pending) {
                 await relationshipSet(tx, targetUser.id, currentUser.id, RelationshipStatus.none);
             }
-
             afterTx(tx, async () => {
                 if (targetUserRelationship === RelationshipStatus.pending) {
                     const seq = await allocateUserSeq(targetId);
@@ -76,7 +74,6 @@ export async function friendRemove(ctx: Context, uid: string): Promise<UserProfi
             if (targetAlsoCleared) {
                 await relationshipSet(tx, targetUser.id, currentUser.id, RelationshipStatus.none);
             }
-
             // Only notify the other user — caller already has the API response
             afterTx(tx, async () => {
                 if (targetAlsoCleared) {

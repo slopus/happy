@@ -188,6 +188,7 @@ interface StorageState {
     assumeUsers: (userIds: string[]) => Promise<void>;
     // Feed methods
     applyFeedItems: (items: FeedItem[]) => void;
+    removeFeedItem: (itemId: string) => void;
     clearFeed: () => void;
     // DooTask methods
     setDootaskProfile: (profile: DooTaskProfile | null) => void;
@@ -1379,6 +1380,10 @@ export const storage = create<StorageState>()((set, get) => {
                 feedLoaded: true  // Mark as loaded after first fetch
             };
         }),
+        removeFeedItem: (itemId: string) => set((state) => ({
+            ...state,
+            feedItems: state.feedItems.filter(item => item.id !== itemId)
+        })),
         clearFeed: () => set((state) => ({
             ...state,
             feedItems: [],

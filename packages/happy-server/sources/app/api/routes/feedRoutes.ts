@@ -37,4 +37,24 @@ export function feedRoutes(app: Fastify) {
         });
         return reply.send({ items: items.items, hasMore: items.hasMore });
     });
+
+    app.delete('/v1/feed/:id', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            response: {
+                200: z.object({ ok: z.boolean() })
+            }
+        }
+    }, async (request, reply) => {
+        await db.userFeedItem.deleteMany({
+            where: {
+                id: request.params.id,
+                userId: request.userId
+            }
+        });
+        return reply.send({ ok: true });
+    });
 }

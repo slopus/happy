@@ -1,7 +1,6 @@
 import { Prisma, RelationshipStatus } from "@prisma/client";
 import { feedPost } from "@/app/feed/feedPost";
 import { Context } from "@/context";
-import { afterTx } from "@/storage/inTx";
 
 /**
  * Check if a notification should be sent based on the last notification time and relationship status.
