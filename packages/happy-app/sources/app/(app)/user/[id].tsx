@@ -17,6 +17,7 @@ import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
 import { Ionicons } from '@expo/vector-icons';
 import { useSharedSessions } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 
 export default function UserProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -65,6 +66,7 @@ export default function UserProfileScreen() {
         if (updatedProfile) {
             trackFriendsConnect();
             setUserProfile(updatedProfile);
+            sync.refreshFriends();
         } else {
             Modal.alert(t('friends.bothMustHaveGithub'));
         }
@@ -97,6 +99,7 @@ export default function UserProfileScreen() {
         const updatedProfile = await removeFriend(credentials, userProfile.id);
         if (updatedProfile) {
             setUserProfile(updatedProfile);
+            sync.refreshFriends();
         }
     });
 

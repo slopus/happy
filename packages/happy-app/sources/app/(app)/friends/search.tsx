@@ -12,6 +12,7 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { useSearch } from '@/hooks/useSearch';
 import { useProfile } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 
 export default function SearchFriendsScreen() {
     const { credentials } = useAuth();
@@ -40,6 +41,7 @@ export default function SearchFriendsScreen() {
 
             if (updatedProfile) {
                 trackFriendsConnect();
+                sync.refreshFriends();
                 console.log(t('friends.requestSent'));
             } else {
                 await Modal.alert(t('friends.bothMustHaveGithub'));

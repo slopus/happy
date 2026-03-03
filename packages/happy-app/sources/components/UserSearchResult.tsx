@@ -76,7 +76,7 @@ export function UserSearchResult({
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        paddingHorizontal: 16,
+        paddingHorizontal: 12
     },
     content: {
         flexDirection: 'row',

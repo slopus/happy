@@ -659,6 +659,11 @@ class Sync {
         return this.sessionsSync.invalidateAndAwait();
     }
 
+    public refreshFriends = () => {
+        this.friendsSync.invalidate();
+        this.friendRequestsSync.invalidate();
+    }
+
     public getCredentials() {
         return this.credentials;
     }
