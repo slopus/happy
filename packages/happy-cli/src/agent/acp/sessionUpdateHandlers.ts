@@ -97,6 +97,40 @@ export function parseArgsFromContent(content: unknown): Record<string, unknown> 
 }
 
 /**
+ * Extract text from tool_call_update content for intermediate output relay.
+ * Copilot sends content as an array of {type: "content", content: {text, type}} objects,
+ * or sometimes the rawOutput field contains the final text.
+ */
+export function extractToolUpdateText(content: unknown): string | null {
+  if (!content) return null;
+
+  // Array format: [{type: "content", content: {text: "...", type: "text"}}]
+  if (Array.isArray(content)) {
+    const texts: string[] = [];
+    for (const item of content) {
+      if (item && typeof item === 'object') {
+        const obj = item as Record<string, unknown>;
+        const inner = obj.content as Record<string, unknown> | undefined;
+        if (inner && typeof inner.text === 'string') {
+          texts.push(inner.text);
+        }
+      }
+    }
+    return texts.length > 0 ? texts.join('\n') : null;
+  }
+
+  // Object format with text field
+  if (typeof content === 'object' && content !== null) {
+    const obj = content as Record<string, unknown>;
+    if (typeof obj.text === 'string') return obj.text;
+  }
+
+  if (typeof content === 'string') return content;
+
+  return null;
+}
+
+/**
  * Extract error detail from update content
  */
 export function extractErrorDetail(content: unknown): string | undefined {
@@ -296,6 +330,16 @@ export function startToolCall(
   // Parse args and emit tool-call event
   const args = parseArgsFromContent(update.content);
 
+  // Include rawInput from Copilot-style tool calls (command, description, etc.)
+  if (update.rawInput && typeof update.rawInput === 'object') {
+    args.rawInput = update.rawInput as Record<string, unknown>;
+  }
+
+  // Include title from the update if present
+  if (typeof update.title === 'string') {
+    args.title = update.title;
+  }
+
   // Extract locations if present
   if (update.locations && Array.isArray(update.locations)) {
     args.locations = update.locations;
@@ -454,6 +498,14 @@ export function handleToolCallUpdate(
       toolCallCountSincePrompt++;
       startToolCall(toolCallId, toolKind, update, ctx, 'tool_call_update');
     } else {
+      // Emit intermediate tool output (terminal text, file content, etc.)
+      const outputText = extractToolUpdateText(update.content);
+      if (outputText) {
+        ctx.emit({
+          type: 'terminal-output',
+          data: outputText,
+        });
+      }
       logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
     }
   } else if (status === 'completed') {
