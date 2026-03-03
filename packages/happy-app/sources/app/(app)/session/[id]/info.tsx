@@ -1,5 +1,5 @@
-import React, { useCallback } from 'react';
-import { View, Text, Animated } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, Animated, TextInput, TouchableOpacity, Keyboard } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionKill, sessionDelete, sessionUpdateTitle } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -126,9 +126,38 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
-    
+
+    // Title editing state
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editedTitle, setEditedTitle] = useState(sessionName);
+
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
+
+    // Use HappyAction for title update
+    const [updatingTitle, performUpdateTitle] = useHappyAction(async () => {
+        const trimmedTitle = editedTitle.trim();
+        if (!trimmedTitle) {
+            throw new HappyError('Title cannot be empty', false);
+        }
+        const result = await sessionUpdateTitle(session.id, trimmedTitle);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToUpdateTitle'), false);
+        }
+        setIsEditingTitle(false);
+        Keyboard.dismiss();
+    });
+
+    const handleStartEditTitle = useCallback(() => {
+        setEditedTitle(sessionName);
+        setIsEditingTitle(true);
+    }, [sessionName]);
+
+    const handleCancelEditTitle = useCallback(() => {
+        setIsEditingTitle(false);
+        setEditedTitle(sessionName);
+        Keyboard.dismiss();
+    }, [sessionName]);
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
@@ -221,16 +250,78 @@ function SessionInfoContent({ session }: { session: Session }) {
                 <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
                     <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginBottom: 8, borderRadius: 12, marginHorizontal: 16, marginTop: 16 }}>
                         <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-                        <Text style={{
-                            fontSize: 20,
-                            fontWeight: '600',
-                            marginTop: 12,
-                            textAlign: 'center',
-                            color: theme.colors.text,
-                            ...Typography.default('semiBold')
-                        }}>
-                            {sessionName}
-                        </Text>
+                        {isEditingTitle ? (
+                            <View style={{ marginTop: 12, width: '80%' }}>
+                                <TextInput
+                                    value={editedTitle}
+                                    onChangeText={setEditedTitle}
+                                    style={{
+                                        fontSize: 20,
+                                        fontWeight: '600',
+                                        textAlign: 'center',
+                                        color: theme.colors.text,
+                                        backgroundColor: theme.colors.background,
+                                        borderRadius: 8,
+                                        paddingVertical: 8,
+                                        paddingHorizontal: 12,
+                                        borderWidth: 1,
+                                        borderColor: theme.colors.border,
+                                        ...Typography.default('semiBold')
+                                    }}
+                                    placeholder={t('sessionInfo.titlePlaceholder')}
+                                    placeholderTextColor={theme.colors.textSecondary}
+                                    autoFocus
+                                    selectTextOnFocus
+                                    onSubmitEditing={performUpdateTitle}
+                                    returnKeyType="done"
+                                />
+                                <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 12, gap: 12 }}>
+                                    <TouchableOpacity
+                                        onPress={handleCancelEditTitle}
+                                        style={{
+                                            paddingVertical: 8,
+                                            paddingHorizontal: 16,
+                                            backgroundColor: theme.colors.background,
+                                            borderRadius: 8,
+                                            borderWidth: 1,
+                                            borderColor: theme.colors.border,
+                                        }}
+                                    >
+                                        <Text style={{ color: theme.colors.text, ...Typography.default() }}>
+                                            {t('common.cancel')}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={performUpdateTitle}
+                                        disabled={updatingTitle}
+                                        style={{
+                                            paddingVertical: 8,
+                                            paddingHorizontal: 16,
+                                            backgroundColor: '#007AFF',
+                                            borderRadius: 8,
+                                            opacity: updatingTitle ? 0.5 : 1,
+                                        }}
+                                    >
+                                        <Text style={{ color: '#FFFFFF', fontWeight: '600', ...Typography.default('semiBold') }}>
+                                            {updatingTitle ? t('common.loading') : t('common.save')}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        ) : (
+                            <TouchableOpacity onPress={handleStartEditTitle} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+                                <Text style={{
+                                    fontSize: 20,
+                                    fontWeight: '600',
+                                    textAlign: 'center',
+                                    color: theme.colors.text,
+                                    ...Typography.default('semiBold')
+                                }}>
+                                    {sessionName}
+                                </Text>
+                                <Ionicons name="pencil-outline" size={16} color={theme.colors.textSecondary} style={{ marginLeft: 6 }} />
+                            </TouchableOpacity>
+                        )}
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                             <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} size={10} />
                             <Text style={{

@@ -5,7 +5,8 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata } from './storageTypes';
+import { storage } from './storage';
+import type { MachineMetadata, Metadata } from './storageTypes';
 
 // Strict type definitions for all operations
 
@@ -501,7 +502,7 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
         const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
             method: 'DELETE'
         });
-        
+
         if (response.ok) {
             const result = await response.json();
             return { success: true };
@@ -510,6 +511,93 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
             return {
                 success: false,
                 message: error || 'Failed to delete session'
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+// Session title update types
+interface SessionUpdateTitleResponse {
+    success: boolean;
+    message?: string;
+}
+
+/**
+ * Update the title (summary) of a session from the mobile app
+ * This uses the same update-metadata WebSocket event that CLI uses
+ */
+export async function sessionUpdateTitle(
+    sessionId: string,
+    title: string
+): Promise<SessionUpdateTitleResponse> {
+    try {
+        // Get session encryption
+        const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+        if (!sessionEncryption) {
+            return {
+                success: false,
+                message: 'Session encryption not found'
+            };
+        }
+
+        // Get current session from storage to get metadata and version
+        const session = storage.getState().sessions[sessionId];
+        if (!session) {
+            return {
+                success: false,
+                message: 'Session not found'
+            };
+        }
+
+        // Build updated metadata with new summary
+        const currentMetadata = session.metadata;
+        if (!currentMetadata) {
+            return {
+                success: false,
+                message: 'Session metadata not found'
+            };
+        }
+
+        const updatedMetadata: Metadata = {
+            ...currentMetadata,
+            summary: {
+                text: title,
+                updatedAt: Date.now()
+            }
+        };
+
+        // Encrypt metadata
+        const encryptedMetadata = await sessionEncryption.encryptMetadata(updatedMetadata);
+
+        // Send update via WebSocket
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+            message?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encryptedMetadata,
+            expectedVersion: session.metadataVersion
+        });
+
+        if (result.result === 'success') {
+            return { success: true };
+        } else if (result.result === 'version-mismatch') {
+            // Could implement retry logic here, but for now just report the error
+            return {
+                success: false,
+                message: 'Version mismatch - please try again'
+            };
+        } else {
+            return {
+                success: false,
+                message: result.message || 'Failed to update title'
             };
         }
     } catch (error) {

@@ -374,7 +374,12 @@ export const en = {
         deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
         failedToDeleteSession: 'Failed to delete session',
         sessionDeleted: 'Session deleted successfully',
-        
+        editTitle: 'Edit Title',
+        editTitleSubtitle: 'Change the session title',
+        titlePlaceholder: 'Enter session title',
+        titleUpdated: 'Title updated successfully',
+        failedToUpdateTitle: 'Failed to update title',
+
     },
 
     components: {
