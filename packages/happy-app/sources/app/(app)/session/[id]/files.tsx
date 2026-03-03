@@ -11,7 +11,7 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus, useSessionProjectGitStatus, storage } from '@/sync/storage';
+import { useSessionGitStatus, useSessionProjectGitStatus, getSession } from '@/sync/storage';
 import { sessionBash } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
@@ -40,7 +40,7 @@ export default function FilesScreen() {
     const { theme } = useUnistyles();
     const isWeb = Platform.OS === 'web';
 
-    const session = storage.getState().sessions[sessionId];
+    const session = getSession(sessionId);
     const commandCwd = session?.metadata?.path || '';
 
     // Multi-repo workspace support

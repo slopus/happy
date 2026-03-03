@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform }
 import { Ionicons } from '@expo/vector-icons';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
-import { storage } from '@/sync/storage';
+import { storage, getSession } from '@/sync/storage';
 import { t } from '@/text';
 
 interface PermissionFooterProps {
@@ -30,7 +30,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
     const getCurrentClaudeMode = (): 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | undefined => {
-        const mode = storage.getState().sessions[sessionId]?.permissionMode;
+        const mode = getSession(sessionId)?.permissionMode;
         if (mode === 'default' || mode === 'acceptEdits' || mode === 'bypassPermissions' || mode === 'plan') {
             return mode;
         }

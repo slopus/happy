@@ -6,7 +6,7 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { sessionBash } from '@/sync/ops';
-import { storage } from '@/sync/storage';
+import { getSession } from '@/sync/storage';
 import { getWorkspaceRepos } from '@/utils/workspaceRepos';
 import { RepoSelector } from '@/components/RepoSelector';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
@@ -68,7 +68,7 @@ export default function CommitsScreen() {
     const fileFilter = searchParams.file as string | undefined;
     const { theme } = useUnistyles();
 
-    const session = storage.getState().sessions[sessionId];
+    const session = getSession(sessionId);
     const sessionPath = session?.metadata?.path || '';
 
     // Multi-repo workspace support

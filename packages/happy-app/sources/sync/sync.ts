@@ -3,7 +3,7 @@ import { apiSocket } from '@/sync/apiSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
-import { storage } from './storage';
+import { storage, getSession } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate, ApiUpdateContainer } from './apiTypes';
 import { Session, Machine } from './storageTypes';
@@ -354,8 +354,7 @@ class Sync {
         }
 
         // Get session data from storage (check both owned and shared sessions)
-        const session = storage.getState().sessions[sessionId]
-            ?? storage.getState().sharedSessions[sessionId];
+        const session = getSession(sessionId);
         if (!session) {
             console.error(`Session ${sessionId} not found in storage`);
             return { success: false, error: 'Session not found', localId: '' };
@@ -440,8 +439,7 @@ class Sync {
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
 
         // Check if session is active before sending
-        const sessionState = storage.getState().sessions[sessionId]
-            ?? storage.getState().sharedSessions[sessionId];
+        const sessionState = getSession(sessionId);
         if (sessionState && !sessionState.active) {
             log.log(`Session ${sessionId} is not active, sending anyway`);
         }

@@ -1724,6 +1724,14 @@ export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? state.sharedSessions[id] ?? null));
 }
 
+/**
+ * Non-hook version: look up a session by ID from both owned and shared sessions.
+ */
+export function getSession(id: string): Session | undefined {
+    const state = storage.getState();
+    return state.sessions[id] ?? state.sharedSessions[id];
+}
+
 const emptyArray: unknown[] = [];
 
 export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean, hasMore: boolean, fetchVersion: number } {

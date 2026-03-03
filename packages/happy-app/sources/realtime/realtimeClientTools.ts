@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny, sessionDelete, machineSpawnNewSession } from '@/sync/ops';
-import { storage } from '@/sync/storage';
+import { storage, getSession } from '@/sync/storage';
 import { trackPermissionResponse } from '@/track';
 import { getCurrentRealtimeSessionId, setCurrentRealtimeSessionId, stopRealtimeSession } from './RealtimeSession';
 import { getSessionName, getSessionSubtitle, isSessionOnline, formatPathRelativeToHome } from '@/utils/sessionUtils';
@@ -121,7 +121,7 @@ export const realtimeClientTools = {
         console.log('🔍 processPermissionRequest called with:', decision);
         
         // Get the current session to check for permission requests
-        const session = storage.getState().sessions[sessionId];
+        const session = getSession(sessionId);
         const requests = session?.agentState?.requests;
         
         if (!requests || Object.keys(requests).length === 0) {
@@ -237,7 +237,7 @@ export const realtimeClientTools = {
         }
 
         const { sessionId } = parsed.data;
-        const session = storage.getState().sessions[sessionId];
+        const session = getSession(sessionId);
         if (!session) {
             return "error (session not found)";
         }
@@ -265,7 +265,7 @@ export const realtimeClientTools = {
 
         const { directory } = parsed.data;
         const currentSessionId = getCurrentRealtimeSessionId();
-        const currentSession = currentSessionId ? storage.getState().sessions[currentSessionId] : null;
+        const currentSession = currentSessionId ? getSession(currentSessionId) ?? null : null;
         const machineId = currentSession?.metadata?.machineId;
 
         if (!machineId) {
@@ -349,7 +349,7 @@ export const realtimeClientTools = {
             return "error (no active session)";
         }
 
-        const session = storage.getState().sessions[sessionId];
+        const session = getSession(sessionId);
         if (!session) {
             return "error (session not found)";
         }
@@ -404,7 +404,7 @@ export const realtimeClientTools = {
         const { sessionId: targetId, confirmed } = parsed.data;
 
         if (!confirmed) {
-            const session = storage.getState().sessions[targetId];
+            const session = getSession(targetId);
             const name = session ? getSessionName(session) : targetId;
             return `Are you sure you want to delete session "${name}"? Call deleteSessionTool again with confirmed: true to proceed.`;
         }

@@ -8,7 +8,7 @@ import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { sessionListDirectory, sessionBash } from '@/sync/ops';
-import { storage } from '@/sync/storage';
+import { getSession } from '@/sync/storage';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
@@ -52,7 +52,7 @@ export default function BrowserScreen() {
     const sessionId = (route.params! as any).id as string;
     const { theme } = useUnistyles();
 
-    const session = storage.getState().sessions[sessionId];
+    const session = getSession(sessionId);
     const rootPath = session?.metadata?.path || '';
 
     const [currentPath, setCurrentPath] = React.useState(rootPath);

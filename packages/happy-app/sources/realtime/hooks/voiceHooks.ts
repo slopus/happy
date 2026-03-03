@@ -9,7 +9,7 @@ import {
     formatSessionOffline,
     formatSessionOnline
 } from './contextFormatters';
-import { storage } from '@/sync/storage';
+import { storage, getSession } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
 import { VOICE_CONFIG } from '../voiceConfig';
 import { config } from '@/config';
@@ -58,8 +58,7 @@ function reportTextUpdate(update: string | null | undefined) {
 function reportSession(sessionId: string) {
     if (shownSessions.has(sessionId)) return;
     shownSessions.add(sessionId);
-    const session = storage.getState().sessions[sessionId]
-        ?? storage.getState().sharedSessions[sessionId];
+    const session = getSession(sessionId);
     if (!session) return;
     const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
     const contextUpdate = formatSessionFull(session, messages);
@@ -152,8 +151,8 @@ export const voiceHooks = {
         shownSessions.clear();
         lastFocusSession = sessionId;
         let prompt = '';
-        const session = storage.getState().sessions[sessionId]
-            ?? storage.getState().sharedSessions[sessionId];
+        const session = getSession(sessionId);
+        if (!session) return prompt;
         const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
         if (config.voiceProvider === 'happy-voice') {
             prompt += formatSessionFull(session, messages);

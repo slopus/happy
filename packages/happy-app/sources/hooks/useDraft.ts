@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import { storage } from '@/sync/storage';
+import { storage, getSession } from '@/sync/storage';
 import { useIsFocused } from '@react-navigation/native';
 
 interface UseDraftOptions {
@@ -30,7 +30,7 @@ export function useDraft(
     useEffect(() => {
         if (!sessionId || !isFocused) return;
 
-        const session = storage.getState().sessions[sessionId];
+        const session = getSession(sessionId);
         if (session?.draft && !value) {
             onChange(session.draft);
             lastSavedValue.current = session.draft;

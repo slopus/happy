@@ -9,7 +9,7 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Typography } from '@/constants/Typography';
 import { sessionBash } from '@/sync/ops';
-import { storage } from '@/sync/storage';
+import { getSession } from '@/sync/storage';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
@@ -88,7 +88,7 @@ export default function CommitScreen() {
     const hash = searchParams.hash as string;
     const { theme } = useUnistyles();
 
-    const session = storage.getState().sessions[sessionId];
+    const session = getSession(sessionId);
     const sessionPath = session?.metadata?.path || '';
     const cwdParam = searchParams.cwd as string | undefined;
     const repoCwd = cwdParam || sessionPath;

@@ -10,7 +10,7 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { sessionBash } from '@/sync/ops';
-import { storage } from '@/sync/storage';
+import { getSession } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -28,7 +28,7 @@ export default function StatusScreen() {
     const cwdParam = searchParams.cwd as string | undefined;
     const { theme } = useUnistyles();
 
-    const session = storage.getState().sessions[sessionId];
+    const session = getSession(sessionId);
     const defaultSessionPath = session?.metadata?.path || '';
     const targetRepoPath = cwdParam || defaultSessionPath;
     const useGitPathOverride = Boolean(cwdParam && defaultSessionPath && cwdParam !== defaultSessionPath);

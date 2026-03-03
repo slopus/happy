@@ -4,7 +4,7 @@
  */
 
 import Fuse from 'fuse.js';
-import { storage } from './storage';
+import { getSession } from './storage';
 
 export interface CommandItem {
     command: string;        // The command without slash (e.g., "compact")
@@ -89,8 +89,7 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
 // Get commands from session metadata
 function getCommandsFromSession(sessionId: string): CommandItem[] {
-    const state = storage.getState();
-    const session = state.sessions[sessionId];
+    const session = getSession(sessionId);
     if (!session || !session.metadata) {
         return DEFAULT_COMMANDS;
     }

@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { sessionReadFile, sessionBash, sessionWriteFile } from '@/sync/ops';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
-import { storage, useSetting } from '@/sync/storage';
+import { getSession, useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -122,7 +122,7 @@ export default function FileScreen() {
         filePath = encodedPath || ''; // Fallback to original path if decoding fails
     }
     
-    const session = storage.getState().sessions[sessionId!];
+    const session = getSession(sessionId!);
     const displayPath = formatPathRelativeToHome(filePath, session?.metadata?.homeDir);
 
     const sessionPath = session?.metadata?.path || '';
@@ -318,7 +318,7 @@ export default function FileScreen() {
                 setError(null);
                 
                 // Get session metadata for git commands
-                const session = storage.getState().sessions[sessionId!];
+                const session = getSession(sessionId!);
                 const sessionPath = session?.metadata?.path;
                 
                 // Check if file is likely binary before trying to read
