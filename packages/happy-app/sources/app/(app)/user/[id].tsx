@@ -27,6 +27,11 @@ export default function UserProfileScreen() {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    const filteredSharedSessions = useMemo(() => {
+        if (!userProfile) return [];
+        return sharedSessions.filter(session => session.owner === userProfile.id);
+    }, [sharedSessions, userProfile]);
+
     // Load user profile on mount
     useEffect(() => {
         if (!credentials || !id) return;
@@ -161,11 +166,6 @@ export default function UserProfileScreen() {
     };
 
     const friendActions = getFriendActions();
-
-    const filteredSharedSessions = useMemo(() => {
-        if (!userProfile) return [];
-        return sharedSessions.filter(session => session.owner === userProfile.id);
-    }, [sharedSessions, userProfile]);
 
     const getAccessLevelLabel = (accessLevel?: 'view' | 'edit' | 'admin') => {
         switch (accessLevel) {
