@@ -36,7 +36,7 @@ export function UserCard({
             subtitle={subtitle}
             subtitleLines={1}
             leftElement={avatarElement}
-            iconContainerStyle={{ marginRight: 16 }}
+            iconContainerStyle={{ marginRight: 20 }}
             onPress={onPress}
             showChevron={!!onPress}
             showDivider={showDivider}

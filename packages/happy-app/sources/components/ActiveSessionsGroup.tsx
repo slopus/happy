@@ -81,9 +81,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 16,
         backgroundColor: theme.colors.surface,
     },
-    sessionRowWithBorder: {
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: theme.colors.divider,
+    sessionDivider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
+        marginLeft: 80, // 16px paddingHorizontal + 48px avatar + 16px gap
     },
     sessionRowSelected: {
         backgroundColor: theme.colors.surfaceSelected,
@@ -432,7 +433,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         <Pressable
             style={[
                 styles.sessionRow,
-                showBorder && styles.sessionRowWithBorder,
                 selected && styles.sessionRowSelected
             ]}
             onPressIn={() => {
@@ -546,7 +546,13 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     );
 
     if (!swipeEnabled) {
-        return <>{itemContent}{archiveModal}</>;
+        return (
+            <>
+                {itemContent}
+                {showBorder && <View style={styles.sessionDivider} />}
+                {archiveModal}
+            </>
+        );
     }
 
     const renderRightActions = () => (
@@ -572,6 +578,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             >
                 {itemContent}
             </Swipeable>
+            {showBorder && <View style={styles.sessionDivider} />}
             {archiveModal}
         </>
     );

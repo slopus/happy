@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useFeedItems, useFeedLoaded, useFriendsLoaded, useRealtimeStatus } from '@/sync/storage';
 import { UserCard } from '@/components/UserCard';
@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { FeedItemCard } from './FeedItemCard';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+import { sync } from '@/sync/sync';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -108,30 +109,55 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
 
+    const [refreshing, setRefreshing] = React.useState(false);
+    const handleRefresh = React.useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await sync.refreshInbox();
+        } finally {
+            setRefreshing(false);
+        }
+    }, []);
+
     const isLoading = !feedLoaded || !friendsLoaded;
     const isEmpty = !isLoading && friendRequests.length === 0 && requestedFriends.length === 0 && friends.length === 0 && feedItems.length === 0;
+
+    const refreshControl = (
+        <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.colors.textSecondary}
+        />
+    );
+
+    const tabletHeader = isTablet ? (
+        <View style={{ backgroundColor: theme.colors.groupped.background }}>
+            <Header
+                title={<HeaderTitleTablet />}
+                headerRight={() => <HeaderRightTablet />}
+                headerLeft={() => null}
+                headerShadowVisible={false}
+                headerTransparent={true}
+            />
+            {realtimeStatus !== 'disconnected' && (
+                <VoiceAssistantStatusBar variant="full" />
+            )}
+        </View>
+    ) : null;
 
     if (isLoading) {
         return (
             <View style={styles.container}>
-                {isTablet && (
-                    <View style={{ backgroundColor: theme.colors.groupped.background }}>
-                        <Header
-                            title={<HeaderTitleTablet />}
-                            headerRight={() => <HeaderRightTablet />}
-                            headerLeft={() => null}
-                            headerShadowVisible={false}
-                            headerTransparent={true}
-                        />
-                        {realtimeStatus !== 'disconnected' && (
-                            <VoiceAssistantStatusBar variant="full" />
-                        )}
+                {tabletHeader}
+                <ScrollView
+                    contentContainerStyle={{ flexGrow: 1 }}
+                    refreshControl={refreshControl}
+                >
+                    <UpdateBanner />
+                    <View style={styles.emptyContainer}>
+                        <ActivityIndicator size="large" color={theme.colors.textSecondary} />
                     </View>
-                )}
-                <UpdateBanner />
-                <View style={styles.emptyContainer}>
-                    <ActivityIndicator size="large" color={theme.colors.textSecondary} />
-                </View>
+                </ScrollView>
             </View>
         );
     }
@@ -139,58 +165,41 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
     if (isEmpty) {
         return (
             <View style={styles.container}>
-                {isTablet && (
-                    <View style={{ backgroundColor: theme.colors.groupped.background }}>
-                        <Header
-                            title={<HeaderTitleTablet />}
-                            headerRight={() => <HeaderRightTablet />}
-                            headerLeft={() => null}
-                            headerShadowVisible={false}
-                            headerTransparent={true}
+                {tabletHeader}
+                <ScrollView
+                    contentContainerStyle={{ flexGrow: 1 }}
+                    refreshControl={refreshControl}
+                >
+                    <UpdateBanner />
+                    <View style={styles.emptyContainer}>
+                        <Image
+                            source={require('@/assets/images/brutalist/Brutalism 10.png')}
+                            contentFit="contain"
+                            style={[{ width: 64, height: 64 }, styles.emptyIcon]}
+                            tintColor={theme.colors.textSecondary}
                         />
-                        {realtimeStatus !== 'disconnected' && (
-                            <VoiceAssistantStatusBar variant="full" />
-                        )}
+                        <Text style={styles.emptyTitle}>{t('inbox.emptyTitle')}</Text>
+                        <Text style={styles.emptyDescription}>{t('inbox.emptyDescription')}</Text>
                     </View>
-                )}
-                <UpdateBanner />
-                <View style={styles.emptyContainer}>
-                    <Image
-                        source={require('@/assets/images/brutalist/Brutalism 10.png')}
-                        contentFit="contain"
-                        style={[{ width: 64, height: 64 }, styles.emptyIcon]}
-                        tintColor={theme.colors.textSecondary}
-                    />
-                    <Text style={styles.emptyTitle}>{t('inbox.emptyTitle')}</Text>
-                    <Text style={styles.emptyDescription}>{t('inbox.emptyDescription')}</Text>
-                </View>
+                </ScrollView>
             </View>
         );
     }
 
     return (
         <View style={styles.container}>
-            {isTablet && (
-                <View style={{ backgroundColor: theme.colors.groupped.background }}>
-                    <Header
-                        title={<HeaderTitleTablet />}
-                        headerRight={() => <HeaderRightTablet />}
-                        headerLeft={() => null}
-                        headerShadowVisible={false}
-                        headerTransparent={true}
-                    />
-                    {realtimeStatus !== 'disconnected' && (
-                        <VoiceAssistantStatusBar variant="full" />
-                    )}
-                </View>
-            )}
-            <ScrollView contentContainerStyle={{
-                maxWidth: layout.maxWidth,
-                alignSelf: 'center',
-                width: '100%'
-            }}>
+            {tabletHeader}
+            <ScrollView
+                contentContainerStyle={{
+                    flexGrow: 1,
+                    maxWidth: layout.maxWidth,
+                    alignSelf: 'center',
+                    width: '100%'
+                }}
+                refreshControl={refreshControl}
+            >
                 <UpdateBanner />
-                
+
                 {feedItems.length > 0 && (
                     <>
                         <ItemGroup title={t('inbox.updates')}>
@@ -203,7 +212,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                         </ItemGroup>
                     </>
                 )}
-                
+
                 {friendRequests.length > 0 && (
                     <>
                         <ItemGroup title={t('friends.pendingRequests')}>

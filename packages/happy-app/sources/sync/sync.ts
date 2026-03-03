@@ -758,6 +758,14 @@ class Sync {
         this.friendRequestsSync.invalidate();
     }
 
+    public refreshInbox = async () => {
+        await Promise.all([
+            this.feedSync.invalidateAndAwait(),
+            this.friendsSync.invalidateAndAwait(),
+            this.friendRequestsSync.invalidateAndAwait(),
+        ]);
+    }
+
     public getCredentials() {
         return this.credentials;
     }

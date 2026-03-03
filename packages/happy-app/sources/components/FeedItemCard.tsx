@@ -77,7 +77,7 @@ export const FeedItemCard = React.memo(({ item, showDivider }: FeedItemCardProps
                         title={t('feed.friendRequestFrom', { name: user!.firstName || user!.username })}
                         subtitle={getTimeAgo(item.createdAt)}
                         leftElement={avatarElement}
-                        iconContainerStyle={{ marginRight: 16 }}
+                        iconContainerStyle={{ marginRight: 20 }}
                         onPress={() => router.push(`/user/${user!.id}`)}
                         showChevron={true}
                         showDivider={showDivider}
@@ -101,7 +101,7 @@ export const FeedItemCard = React.memo(({ item, showDivider }: FeedItemCardProps
                         title={t('feed.friendAccepted', { name: user!.firstName || user!.username })}
                         subtitle={getTimeAgo(item.createdAt)}
                         leftElement={avatarElement}
-                        iconContainerStyle={{ marginRight: 16 }}
+                        iconContainerStyle={{ marginRight: 20 }}
                         onPress={() => router.push(`/user/${user!.id}`)}
                         showChevron={true}
                         showDivider={showDivider}
@@ -115,7 +115,7 @@ export const FeedItemCard = React.memo(({ item, showDivider }: FeedItemCardProps
                         title={item.body.text}
                         subtitle={getTimeAgo(item.createdAt)}
                         icon={<Ionicons name="information-circle" size={20} color={theme.colors.textSecondary} />}
-                        iconContainerStyle={{ marginRight: 16 }}
+                        iconContainerStyle={{ marginRight: 20 }}
                         showChevron={false}
                         showDivider={showDivider}
                     />

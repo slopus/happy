@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList, Platform, RefreshControl } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
@@ -29,6 +29,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { sessionDelete } from '@/sync/ops';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
+import { sync } from '@/sync/sync';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -88,7 +89,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionItemContainer: {
         marginHorizontal: 16,
-        marginBottom: 1,
         overflow: 'hidden',
     },
     sessionItemFirst: {
@@ -226,6 +226,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: '#007AFF',
         marginRight: 6,
     },
+    sessionDivider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
+        marginLeft: 80, // 16px paddingHorizontal + 48px avatar + 16px gap
+    },
 }));
 
 export function SessionsList() {
@@ -237,6 +242,16 @@ export function SessionsList() {
     const navigateToSession = useNavigateToSession();
     const compactSessionView = useSetting('compactSessionView');
     const router = useRouter();
+    const { theme } = useUnistyles();
+    const [refreshing, setRefreshing] = React.useState(false);
+    const handleRefresh = React.useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await sync.refreshSessions();
+        } finally {
+            setRefreshing(false);
+        }
+    }, []);
     const selectable = isTablet;
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
@@ -349,6 +364,13 @@ export function SessionsList() {
                     keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={theme.colors.textSecondary}
+                        />
+                    }
                 />
             </View>
         </View>
@@ -495,10 +517,16 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 isLast ? styles.sessionItemContainerLast : {}
     ];
 
+    const showDivider = !isLast && !isSingle;
+    const dividerStyle = compactSessionView
+        ? [styles.sessionDivider, { marginLeft: 16 }]
+        : styles.sessionDivider;
+
     if (!swipeEnabled) {
         return (
             <View style={containerStyles}>
                 {itemContent}
+                {showDivider && <View style={dividerStyle} />}
             </View>
         );
     }
@@ -526,6 +554,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             >
                 {itemContent}
             </Swipeable>
+            {showDivider && <View style={dividerStyle} />}
         </View>
     );
 });
