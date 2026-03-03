@@ -58,7 +58,8 @@ function reportTextUpdate(update: string | null | undefined) {
 function reportSession(sessionId: string) {
     if (shownSessions.has(sessionId)) return;
     shownSessions.add(sessionId);
-    const session = storage.getState().sessions[sessionId];
+    const session = storage.getState().sessions[sessionId]
+        ?? storage.getState().sharedSessions[sessionId];
     if (!session) return;
     const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
     const contextUpdate = formatSessionFull(session, messages);
@@ -151,10 +152,13 @@ export const voiceHooks = {
         shownSessions.clear();
         lastFocusSession = sessionId;
         let prompt = '';
+        const session = storage.getState().sessions[sessionId]
+            ?? storage.getState().sharedSessions[sessionId];
+        const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
         if (config.voiceProvider === 'happy-voice') {
-            prompt += formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
+            prompt += formatSessionFull(session, messages);
         } else {
-            prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
+            prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(session, messages);
         }
         shownSessions.add(sessionId);
         // prompt += 'Another active sessions: \n\n';
