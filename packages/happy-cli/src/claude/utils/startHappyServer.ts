@@ -72,10 +72,13 @@ export async function startHappyServer(client: ApiSessionClient) {
         }
     });
 
+    // Use a fixed session ID so the transport operates in stateful mode.
+    // Stateless mode (sessionIdGenerator: undefined) throws on the second request
+    // because StreamableHTTPServerTransport refuses to be reused, causing Claude Code
+    // to see a 500 error and mark the MCP server as "failed".
+    const sessionId = randomUUID();
     const transport = new StreamableHTTPServerTransport({
-        // NOTE: Returning session id here will result in claude
-        // sdk spawn to fail with `Invalid Request: Server already initialized`
-        sessionIdGenerator: undefined
+        sessionIdGenerator: () => sessionId,
     });
     await mcp.connect(transport);
 
