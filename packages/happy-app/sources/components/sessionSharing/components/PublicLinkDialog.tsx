@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { View, Switch } from 'react-native';
 import { BottomSheetModal, BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { StyleSheet } from 'react-native-unistyles';
 import { Item } from '@/components/Item';
@@ -26,6 +27,7 @@ export const PublicLinkDialog = React.memo(React.forwardRef<BottomSheetModal, Pu
     onDelete,
 }, ref) => {
     const { theme } = useUnistyles();
+    const insets = useSafeAreaInsets();
     const [expiresInDays, setExpiresInDays] = React.useState<number | undefined>(7);
     const [maxUses, setMaxUses] = React.useState<number | undefined>(undefined);
     const [isConsentRequired, setIsConsentRequired] = React.useState(true);
@@ -59,7 +61,7 @@ export const PublicLinkDialog = React.memo(React.forwardRef<BottomSheetModal, Pu
             backgroundStyle={{ backgroundColor: theme.colors.groupped.background }}
             handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
         >
-            <BottomSheetScrollView style={{ paddingBottom: 32 }}>
+            <BottomSheetScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}>
                 <Text style={[styles.title, { color: theme.colors.text }]}>
                     {t('session.sharing.publicLink')}
                 </Text>

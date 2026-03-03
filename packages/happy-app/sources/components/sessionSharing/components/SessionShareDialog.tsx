@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { View } from 'react-native';
 import { BottomSheetModal, BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
@@ -28,6 +29,7 @@ export const SessionShareDialog = React.memo(React.forwardRef<BottomSheetModal, 
     onRemoveShare,
 }, ref) => {
     const { theme } = useUnistyles();
+    const insets = useSafeAreaInsets();
     const [selectedShareId, setSelectedShareId] = React.useState<string | null>(null);
 
     const handleSharePress = React.useCallback((shareId: string) => {
@@ -66,7 +68,7 @@ export const SessionShareDialog = React.memo(React.forwardRef<BottomSheetModal, 
             backgroundStyle={{ backgroundColor: theme.colors.groupped.background }}
             handleIndicatorStyle={{ backgroundColor: theme.colors.textSecondary }}
         >
-            <BottomSheetScrollView style={{ paddingBottom: 32 }}>
+            <BottomSheetScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}>
                 <Text style={[styles.title, { color: theme.colors.text }]}>
                     {t('session.sharing.title')}
                 </Text>

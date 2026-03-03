@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { View, TextInput, Platform } from 'react-native';
 import { BottomSheetModal, BottomSheetBackdrop, BottomSheetFlatList, BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { ShareAccessLevel } from '@/sync/sharingTypes';
@@ -25,6 +26,7 @@ export const FriendSelector = React.memo(React.forwardRef<BottomSheetModal, Frie
     onSelect,
 }, ref) => {
     const { theme } = useUnistyles();
+    const insets = useSafeAreaInsets();
     const [searchQuery, setSearchQuery] = React.useState('');
     const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
     const [selectedAccessLevel, setSelectedAccessLevel] = React.useState<ShareAccessLevel>('view');
@@ -197,7 +199,7 @@ export const FriendSelector = React.memo(React.forwardRef<BottomSheetModal, Frie
                     ListHeaderComponent={ListHeaderComponent}
                     ListFooterComponent={ListFooterComponent}
                     ListEmptyComponent={ListEmptyComponent}
-                    contentContainerStyle={{ paddingBottom: 32 }}
+                    contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
                     keyboardShouldPersistTaps="handled"
                 />
             </View>
