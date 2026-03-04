@@ -112,20 +112,22 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
         if (session.copilotSessionId) {
             scanner.watchSession(session.copilotSessionId, true);
         } else {
-            // Poll for new session directory (Copilot creates it on startup)
+            // Poll for new session directory that has events.jsonl
+            // Copilot may create multiple directories; only the one with events.jsonl is the real session
             const pollForNewSession = setInterval(() => {
                 try {
                     for (const entry of readdirSync(COPILOT_SESSION_STATE_DIR)) {
                         if (!existingSessionIds.has(entry) && /^[0-9a-f]{8}-/.test(entry)) {
-                            const stat = statSync(join(COPILOT_SESSION_STATE_DIR, entry));
-                            if (stat.isDirectory()) {
-                                logger.debug(`[copilotLocal] Detected new session: ${entry}`);
-                                session.onCopilotSessionFound(entry);
-                                // New session — relay all events including user input
-                                scanner.watchSession(entry, false);
-                                clearInterval(pollForNewSession);
-                                return;
-                            }
+                            const eventsPath = join(COPILOT_SESSION_STATE_DIR, entry, 'events.jsonl');
+                            try {
+                                if (statSync(eventsPath).isFile()) {
+                                    logger.debug(`[copilotLocal] Detected new session with events: ${entry}`);
+                                    session.onCopilotSessionFound(entry);
+                                    scanner.watchSession(entry, false);
+                                    clearInterval(pollForNewSession);
+                                    return;
+                                }
+                            } catch { /* events.jsonl doesn't exist yet, skip */ }
                         }
                     }
                 } catch { /* ignore */ }
