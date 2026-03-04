@@ -10,6 +10,8 @@
  */
 
 import { join } from 'node:path';
+import React from 'react';
+import { render } from 'ink';
 import { logger } from '@/ui/logger';
 import { CopilotSession, type CopilotMode } from './copilotSession';
 import { AcpBackend, type AcpPermissionHandler } from '@/agent/acp/AcpBackend';
@@ -22,6 +24,8 @@ import { projectPath } from '@/projectPath';
 import type { AgentMessage } from '@/agent/core';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { Future } from '@/utils/future';
+import { RemoteModeDisplay } from '@/ui/ink/RemoteModeDisplay';
+import { MessageBuffer } from '@/ui/ink/messageBuffer';
 
 class CopilotPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
     async handleToolCall(toolCallId: string, toolName: string, input: unknown): Promise<PermissionResult> {
@@ -155,27 +159,34 @@ export async function copilotRemoteLauncher(session: CopilotSession): Promise<'s
         await handleAbort();
     });
 
-    // Handle stdin for switching back to local (any keypress)
+    // Use the same Ink-based RemoteModeDisplay as Claude for consistent UX.
+    // Double-space to switch to local, Ctrl-C to exit.
     const hasTTY = process.stdout.isTTY && process.stdin.isTTY;
-    let stdinHandler: ((data: Buffer) => void) | null = null;
+    let inkInstance: ReturnType<typeof render> | null = null;
+    const messageBuffer = new MessageBuffer();
 
     if (hasTTY) {
-        console.log('\n  📱 Remote mode — controlling from Happy app');
-        console.log('  Press any key to switch back to local mode\n');
+        inkInstance = render(React.createElement(RemoteModeDisplay, {
+            messageBuffer,
+            onExit: async () => {
+                logger.debug('[copilotRemote] Exit via Ctrl-C');
+                if (!exitReason) exitReason = 'exit';
+                shouldExit = true;
+                session.queue.close();
+                await handleAbort();
+            },
+            onSwitchToLocal: () => {
+                logger.debug('[copilotRemote] Switch to local via double-space');
+                if (!exitReason) exitReason = 'switch';
+                shouldExit = true;
+                session.queue.close();
+                handleAbort();
+            },
+        }), { exitOnCtrlC: false, patchConsole: false });
 
         process.stdin.resume();
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(true);
-        }
-        stdinHandler = () => {
-            if (!exitReason) {
-                exitReason = 'switch';
-            }
-            shouldExit = true;
-            session.queue.close();
-            handleAbort();
-        };
-        process.stdin.on('data', stdinHandler);
+        if (process.stdin.isTTY) process.stdin.setRawMode(true);
+        process.stdin.setEncoding('utf8');
     }
 
     try {
@@ -215,11 +226,9 @@ export async function copilotRemoteLauncher(session: CopilotSession): Promise<'s
         }
     } finally {
         // Cleanup
-        if (stdinHandler) {
-            process.stdin.removeListener('data', stdinHandler);
-            if (process.stdin.isTTY) {
-                process.stdin.setRawMode(false);
-            }
+        inkInstance?.unmount();
+        if (hasTTY && process.stdin.isTTY) {
+            process.stdin.setRawMode(false);
             process.stdin.pause();
         }
 
