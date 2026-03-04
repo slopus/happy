@@ -12,6 +12,7 @@ import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeT
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete } from '@/sync/ops';
+import { removeWorktree, isWorktreePath } from '@/utils/worktree';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -178,6 +179,13 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     // Use HappyAction for deletion - it handles errors automatically
     const [deletingSession, performDelete] = useHappyAction(async () => {
+        // Clean up worktree if this session was in one (best-effort)
+        const sessionPath = session.metadata?.path;
+        const machineId = session.metadata?.machineId;
+        if (sessionPath && isWorktreePath(sessionPath) && machineId) {
+            await removeWorktree(machineId, sessionPath).catch(() => {});
+        }
+
         const result = await sessionDelete(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);

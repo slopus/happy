@@ -1,9 +1,36 @@
 /**
- * Create and list Git worktrees
+ * Git worktree operations: create, list, remove
  */
 
 import { machineBash } from '@/sync/ops';
-import { generateWorktreeName } from './generateWorktreeName';
+
+/** Relative path prefix where worktrees are stored inside a repo */
+export const WORKTREE_DIR = '.dev/worktree';
+
+/** Absolute path marker used to detect worktree paths */
+export const WORKTREE_PATH_MARKER = `/${WORKTREE_DIR}/`;
+
+// --- Name generation ---
+
+const adjectives = [
+    'clever', 'happy', 'swift', 'bright', 'calm',
+    'bold', 'quiet', 'brave', 'wise', 'eager',
+    'gentle', 'quick', 'sharp', 'smooth', 'fresh'
+];
+
+const nouns = [
+    'ocean', 'forest', 'cloud', 'star', 'river',
+    'mountain', 'valley', 'bridge', 'beacon', 'harbor',
+    'garden', 'meadow', 'canyon', 'island', 'desert'
+];
+
+function generateWorktreeName(): string {
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    return `${adjective}-${noun}`;
+}
+
+// --- Operations ---
 
 export async function createWorktree(
     machineId: string,
@@ -15,14 +42,14 @@ export async function createWorktree(
     error?: string;
 }> {
     const name = generateWorktreeName();
-    
+
     // Check if it's a git repository
     const gitCheck = await machineBash(
         machineId,
         'git rev-parse --git-dir',
         basePath
     );
-    
+
     if (!gitCheck.success) {
         return {
             success: false,
@@ -31,27 +58,27 @@ export async function createWorktree(
             error: 'Not a Git repository'
         };
     }
-    
+
     // Create the worktree with new branch
-    const worktreePath = `.dev/worktree/${name}`;
+    const worktreePath = `${WORKTREE_DIR}/${name}`;
     let result = await machineBash(
         machineId,
         `git worktree add -b ${name} ${worktreePath}`,
         basePath
     );
-    
+
     // If worktree exists, try with a different name
     if (!result.success && result.stderr.includes('already exists')) {
         // Try up to 3 times with numbered suffixes
         for (let i = 2; i <= 4; i++) {
             const newName = `${name}-${i}`;
-            const newWorktreePath = `.dev/worktree/${newName}`;
+            const newWorktreePath = `${WORKTREE_DIR}/${newName}`;
             result = await machineBash(
                 machineId,
                 `git worktree add -b ${newName} ${newWorktreePath}`,
                 basePath
             );
-            
+
             if (result.success) {
                 return {
                     success: true,
@@ -62,7 +89,7 @@ export async function createWorktree(
             }
         }
     }
-    
+
     if (result.success) {
         return {
             success: true,
@@ -71,7 +98,7 @@ export async function createWorktree(
             error: undefined
         };
     }
-    
+
     return {
         success: false,
         worktreePath: '',
@@ -117,4 +144,30 @@ export async function listWorktrees(
     }
 
     return worktrees;
+}
+
+export async function removeWorktree(
+    machineId: string,
+    worktreePath: string
+): Promise<{ success: boolean; error?: string }> {
+    const idx = worktreePath.indexOf(WORKTREE_PATH_MARKER);
+    if (idx === -1) {
+        return { success: false, error: 'Not a worktree path' };
+    }
+    const basePath = worktreePath.slice(0, idx);
+
+    const result = await machineBash(
+        machineId,
+        `git worktree remove ${worktreePath} --force`,
+        basePath
+    );
+    return {
+        success: result.success,
+        error: result.success ? undefined : (result.stderr || 'Failed to remove worktree'),
+    };
+}
+
+/** Check if a path is inside a worktree */
+export function isWorktreePath(path: string): boolean {
+    return path.includes(WORKTREE_PATH_MARKER);
 }

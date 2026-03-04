@@ -29,7 +29,7 @@ import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
-import { createWorktree, listWorktrees } from '@/utils/createWorktree';
+import { createWorktree, listWorktrees } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -552,7 +552,6 @@ function NewSessionScreen() {
 
             // Handle worktree selection
             let spawnDirectory = absolutePath;
-            let spawnApprovedNewDir = approvedNewDirectoryCreation;
             if (worktreeKey === '__new__') {
                 const worktreeResult = await createWorktree(selectedMachineId, absolutePath);
                 if (!worktreeResult.success) {
@@ -560,11 +559,9 @@ function NewSessionScreen() {
                     return;
                 }
                 spawnDirectory = worktreeResult.worktreePath;
-                spawnApprovedNewDir = true;
             } else if (worktreeKey !== '__none__') {
                 // Existing worktree — use its path directly
                 spawnDirectory = worktreeKey;
-                spawnApprovedNewDir = true;
             }
 
             // Persist last used settings
@@ -577,7 +574,7 @@ function NewSessionScreen() {
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: spawnDirectory,
-                approvedNewDirectoryCreation: spawnApprovedNewDir,
+                approvedNewDirectoryCreation,
                 agent: selectedAgent,
             });
 
