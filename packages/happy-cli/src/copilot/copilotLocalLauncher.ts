@@ -5,11 +5,15 @@
  * interaction. A session scanner watches Copilot's events.jsonl on disk
  * and relays events to the Happy app in real-time.
  * 
+ * The session ID is either resumed from a previous mode switch, or
+ * pre-generated and passed via `--resume <uuid>` to control which
+ * session Copilot uses (avoiding filesystem polling).
+ * 
  * Modeled on claude/claudeLocalLauncher.ts.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { readdirSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { logger } from '@/ui/logger';
@@ -30,6 +34,12 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
     let copilotProcess: ChildProcess | null = null;
     const exitFuture = new Future<void>();
 
+    // Determine session ID: reuse existing or generate a new one
+    const copilotSessionId = session.copilotSessionId ?? randomUUID();
+    if (!session.copilotSessionId) {
+        session.onCopilotSessionFound(copilotSessionId);
+    }
+
     // Create session scanner to relay events to Happy app
     const scanner = await createCopilotSessionScanner({
         onEnvelope: (envelope) => {
@@ -37,18 +47,15 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
             session.client.sendSessionProtocolMessage(envelope);
         },
         onSessionIdDetected: (sessionId) => {
-            if (!session.copilotSessionId || session.copilotSessionId !== sessionId) {
+            if (session.copilotSessionId !== sessionId) {
                 session.onCopilotSessionFound(sessionId);
             }
         },
     });
 
     try {
-        // Build copilot CLI args
-        const args: string[] = [];
-        if (session.copilotSessionId) {
-            args.push('--resume', session.copilotSessionId);
-        }
+        // Build copilot CLI args — always pass --resume with our known session ID
+        const args: string[] = ['--resume', copilotSessionId];
 
         async function killProcess() {
             if (copilotProcess && !copilotProcess.killed) {
@@ -91,15 +98,13 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
             return { type: 'switch' };
         }
 
-        // Snapshot existing sessions before spawn (to detect new one)
-        const existingSessionIds = new Set<string>();
-        try {
-            for (const entry of readdirSync(COPILOT_SESSION_STATE_DIR)) {
-                existingSessionIds.add(entry);
-            }
-        } catch { /* directory may not exist yet */ }
+        // Start watching the known session immediately — no polling needed
+        const isResume = session.copilotSessionId === copilotSessionId && copilotSessionId !== null;
+        logger.debug(`[copilotLocal] Watching session: ${copilotSessionId}, isResume: ${isResume}`);
+        // For resumed sessions skip existing events; for new sessions relay everything
+        scanner.watchSession(copilotSessionId, isResume);
 
-        // Spawn copilot
+        // Spawn copilot with our session ID
         logger.debug(`[copilotLocal] Spawning: copilot ${args.join(' ')}`);
         copilotProcess = spawn('copilot', args, {
             cwd: session.path,
@@ -107,35 +112,6 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
             env: { ...process.env },
             shell: true,
         });
-
-        // If we already know the session ID (resuming), start watching but skip existing events
-        if (session.copilotSessionId) {
-            scanner.watchSession(session.copilotSessionId, true);
-        } else {
-            // Poll for new session directory that has events.jsonl
-            // Copilot may create multiple directories; only the one with events.jsonl is the real session
-            const pollForNewSession = setInterval(() => {
-                try {
-                    for (const entry of readdirSync(COPILOT_SESSION_STATE_DIR)) {
-                        if (!existingSessionIds.has(entry) && /^[0-9a-f]{8}-/.test(entry)) {
-                            const eventsPath = join(COPILOT_SESSION_STATE_DIR, entry, 'events.jsonl');
-                            try {
-                                if (statSync(eventsPath).isFile()) {
-                                    logger.debug(`[copilotLocal] Detected new session with events: ${entry}`);
-                                    session.onCopilotSessionFound(entry);
-                                    scanner.watchSession(entry, false);
-                                    clearInterval(pollForNewSession);
-                                    return;
-                                }
-                            } catch { /* events.jsonl doesn't exist yet, skip */ }
-                        }
-                    }
-                } catch { /* ignore */ }
-            }, 500);
-
-            // Clean up polling on exit
-            copilotProcess.on('exit', () => clearInterval(pollForNewSession));
-        }
 
         copilotProcess.on('exit', (code, signal) => {
             logger.debug(`[copilotLocal] Process exited: code=${code}, signal=${signal}`);
