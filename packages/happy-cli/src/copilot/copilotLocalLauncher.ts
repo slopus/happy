@@ -33,6 +33,7 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
     // Create session scanner to relay events to Happy app
     const scanner = await createCopilotSessionScanner({
         onEnvelope: (envelope) => {
+            logger.debug(`[copilotLocal] Sending envelope: role=${envelope.role}, ev.t=${envelope.ev.t}${envelope.ev.t === 'text' ? `, text=${(envelope.ev as any).text?.substring(0, 50)}` : ''}`);
             session.client.sendSessionProtocolMessage(envelope);
         },
         onSessionIdDetected: (sessionId) => {

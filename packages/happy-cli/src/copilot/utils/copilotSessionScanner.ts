@@ -72,8 +72,8 @@ export async function createCopilotSessionScanner(opts: CopilotScannerOptions) {
                     for (const envelope of envelopes) {
                         opts.onEnvelope(envelope);
                     }
-                } catch {
-                    // Skip malformed lines
+                } catch (err) {
+                    logger.debug(`[CopilotScanner] Error processing event: ${err}`);
                 }
             }
 
