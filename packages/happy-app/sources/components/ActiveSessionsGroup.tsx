@@ -521,7 +521,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         })()}
 
                         {/* Shared status indicator */}
-                        {session.isShared && (
+                        {session.ownerProfile ? (
+                            <Avatar id={session.ownerProfile.id} size={18} imageUrl={session.ownerProfile.avatar ?? undefined} />
+                        ) : session.isShared ? (
                             <View style={styles.taskStatusContainer}>
                                 <Ionicons
                                     name="share-social-outline"
@@ -529,7 +531,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                                     color={styles.taskStatusText.color}
                                 />
                             </View>
-                        )}
+                        ) : null}
                     </View>
                 </View>
             </View>

@@ -552,7 +552,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                             </View>
 
                             {/* Shared status indicator */}
-                            {session.isShared && (
+                            {session.ownerProfile ? (
+                                <Avatar id={session.ownerProfile.id} size={18} imageUrl={session.ownerProfile.avatar ?? undefined} />
+                            ) : session.isShared ? (
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
                                     <View style={styles.taskStatusContainer}>
                                         <Ionicons
@@ -562,7 +564,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                                         />
                                     </View>
                                 </View>
-                            )}
+                            ) : null}
                         </View>
                     </>
                 )}
