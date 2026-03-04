@@ -90,6 +90,26 @@ export async function runCopilot(opts: {
     // Create message queue
     const messageQueue = new MessageQueue2<CopilotMode>((mode) => hashObject(mode));
 
+    // Register global user message handler so that app messages in LOCAL mode
+    // get pushed to the queue (triggering mode switch to remote).
+    // The remote launcher also registers its own onUserMessage, which overrides
+    // this one, but both do the same job.
+    let currentPermissionMode: string | undefined;
+    let currentModel: string | null | undefined;
+    sessionClient.onUserMessage((message) => {
+        if (typeof message.meta?.permissionMode === 'string') {
+            currentPermissionMode = message.meta.permissionMode;
+        }
+        if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
+            currentModel = message.meta.model ?? null;
+        }
+        if (!message.content.text) return;
+        messageQueue.push(message.content.text, {
+            permissionMode: currentPermissionMode,
+            model: currentModel ?? undefined,
+        });
+    });
+
     // Prevent sleep on macOS
     startCaffeinate();
 
