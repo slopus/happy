@@ -421,7 +421,15 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
+        // Send user text as both session protocol envelope AND legacy format.
+        // The app uses a feature flag (ENABLE_SESSION_PROTOCOL_SEND) to decide
+        // which format to render — one will always work regardless of the flag.
         this.enqueueSessionProtocolEnvelope(envelope);
+        this.enqueueMessage({
+            role: 'user',
+            content: envelope.ev.text,
+            meta: { sentFrom: 'cli' },
+        });
     }
 
     /**
