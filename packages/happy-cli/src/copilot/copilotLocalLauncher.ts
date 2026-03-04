@@ -109,6 +109,11 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
         // For resumed sessions skip existing events; for new sessions relay everything
         scanner.watchSession(copilotSessionId, isResume);
 
+        // Clear terminal and prepare stdin for the child process (mirrors claudeLocal.ts).
+        // After Ink's RemoteModeDisplay unmounts, the terminal may be in a partial state.
+        console.clear();
+        process.stdin.pause();
+
         // Spawn copilot with our session ID
         logger.debug(`[copilotLocal] Spawning: copilot ${args.join(' ')}`);
         copilotProcess = spawn('copilot', args, {
@@ -139,6 +144,7 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
         await exitFuture.promise;
 
     } finally {
+        process.stdin.resume();
         // Cleanup
         await scanner.cleanup();
         session.client.rpcHandlerManager.registerHandler('abort', async () => {});

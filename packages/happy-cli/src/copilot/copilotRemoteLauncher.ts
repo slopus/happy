@@ -213,7 +213,6 @@ export async function copilotRemoteLauncher(session: CopilotSession): Promise<'s
         inkInstance?.unmount();
         if (hasTTY && process.stdin.isTTY) {
             process.stdin.setRawMode(false);
-            process.stdin.pause();
         }
 
         backend.offMessage?.(onBackendMessage);
