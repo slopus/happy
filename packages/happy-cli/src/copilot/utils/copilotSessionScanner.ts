@@ -93,37 +93,46 @@ export async function createCopilotSessionScanner(opts: CopilotScannerOptions) {
     return {
         /**
          * Start watching a Copilot session by ID.
-         * Call this when the session ID is known.
+         * @param sessionId The session UUID
+         * @param skipExisting If true, mark existing events as processed (for resumed sessions).
+         *                     If false, relay all events including existing ones (for new sessions).
          */
-        watchSession(sessionId: string) {
+        watchSession(sessionId: string, skipExisting: boolean = true) {
             if (currentSessionId === sessionId) return;
 
             // Stop previous watcher
             stopWatcher?.();
 
             currentSessionId = sessionId;
-            logger.debug(`[CopilotScanner] Watching session: ${sessionId}`);
+            logger.debug(`[CopilotScanner] Watching session: ${sessionId}, skipExisting: ${skipExisting}`);
 
-            // Mark existing events as processed (don't replay history)
-            const eventsPath = getEventsPath(sessionId);
-            if (existsSync(eventsPath)) {
-                try {
-                    const content = require('node:fs').readFileSync(eventsPath, 'utf-8');
-                    const lines = content.split('\n').filter((l: string) => l.trim());
-                    for (const line of lines) {
-                        try {
-                            const event = JSON.parse(line) as CopilotEvent;
-                            if (event.id) processedIds.add(event.id);
-                        } catch { /* skip */ }
-                    }
-                    logger.debug(`[CopilotScanner] Marked ${processedIds.size} existing events as processed`);
-                } catch { /* ignore */ }
+            if (skipExisting) {
+                // Mark existing events as processed (don't replay history)
+                const eventsPath = getEventsPath(sessionId);
+                if (existsSync(eventsPath)) {
+                    try {
+                        const content = require('node:fs').readFileSync(eventsPath, 'utf-8');
+                        const lines = content.split('\n').filter((l: string) => l.trim());
+                        for (const line of lines) {
+                            try {
+                                const event = JSON.parse(line) as CopilotEvent;
+                                if (event.id) processedIds.add(event.id);
+                            } catch { /* skip */ }
+                        }
+                        logger.debug(`[CopilotScanner] Marked ${processedIds.size} existing events as processed`);
+                    } catch { /* ignore */ }
+                }
             }
 
             // Start watching for new events
-            stopWatcher = startFileWatcher(eventsPath, () => {
+            stopWatcher = startFileWatcher(getEventsPath(sessionId), () => {
                 sync.invalidate();
             });
+
+            // If not skipping, do an immediate sync to relay existing events
+            if (!skipExisting) {
+                sync.invalidate();
+            }
         },
 
         /**

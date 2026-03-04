@@ -107,9 +107,9 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
             shell: true,
         });
 
-        // If we already know the session ID, start watching immediately
+        // If we already know the session ID (resuming), start watching but skip existing events
         if (session.copilotSessionId) {
-            scanner.watchSession(session.copilotSessionId);
+            scanner.watchSession(session.copilotSessionId, true);
         } else {
             // Poll for new session directory (Copilot creates it on startup)
             const pollForNewSession = setInterval(() => {
@@ -120,7 +120,8 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
                             if (stat.isDirectory()) {
                                 logger.debug(`[copilotLocal] Detected new session: ${entry}`);
                                 session.onCopilotSessionFound(entry);
-                                scanner.watchSession(entry);
+                                // New session — relay all events including user input
+                                scanner.watchSession(entry, false);
                                 clearInterval(pollForNewSession);
                                 return;
                             }
