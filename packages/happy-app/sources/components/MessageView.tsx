@@ -23,6 +23,9 @@ export const MessageView = (props: {
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
   readOnly?: boolean;
+  isSharedSession?: boolean;
+  currentUserId?: string;
+  showSenderName?: boolean;
 }) => {
   return (
     <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
@@ -35,6 +38,9 @@ export const MessageView = (props: {
           isNewestMessage={props.isNewestMessage}
           onFillInput={props.onFillInput}
           readOnly={props.readOnly}
+          isSharedSession={props.isSharedSession}
+          currentUserId={props.currentUserId}
+          showSenderName={props.showSenderName}
         />
       </View>
     </View>
@@ -50,6 +56,9 @@ function RenderBlock(props: {
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
   readOnly?: boolean;
+  isSharedSession?: boolean;
+  currentUserId?: string;
+  showSenderName?: boolean;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -62,6 +71,9 @@ function RenderBlock(props: {
           isNewestMessage={props.isNewestMessage}
           onFillInput={props.onFillInput}
           readOnly={props.readOnly}
+          isSharedSession={props.isSharedSession}
+          currentUserId={props.currentUserId}
+          showSenderName={props.showSenderName}
         />
       );
 
@@ -105,6 +117,9 @@ function UserTextBlock(props: {
   isNewestMessage?: boolean;
   onFillInput?: (text: string, allOptions?: string[]) => void;
   readOnly?: boolean;
+  isSharedSession?: boolean;
+  currentUserId?: string;
+  showSenderName?: boolean;
 }) {
   const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
   const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
@@ -145,8 +160,17 @@ function UserTextBlock(props: {
     setImageViewerVisible(true);
   }, []);
 
+  const senderLabel = React.useMemo(() => {
+    if (!props.isSharedSession || !props.showSenderName || !props.message.sentBy) return null;
+    if (props.message.sentBy === props.currentUserId) return t('message.you');
+    return props.message.sentByName || t('message.unknownSender');
+  }, [props.isSharedSession, props.showSenderName, props.message.sentBy, props.currentUserId, props.message.sentByName]);
+
   return (
     <View style={styles.userMessageContainer}>
+      {senderLabel && (
+        <Text style={styles.senderLabel}>{senderLabel}</Text>
+      )}
       <View style={styles.userMessageBubble}>
         {images.length > 0 && (
           <>
@@ -336,6 +360,12 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  senderLabel: {
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    marginBottom: 2,
+    paddingRight: 4,
   },
   agentMessageContainer: {
     paddingHorizontal: 16,

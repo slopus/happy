@@ -49,6 +49,8 @@ export class SessionEncryption {
                     localId: message.localId ?? null,
                     content: null,
                     createdAt: message.createdAt,
+                    sentBy: message.sentBy ?? null,
+                    sentByName: message.sentByName ?? null,
                 };
                 this.cache.setCachedMessage(message.id, results[i]!);
             }
@@ -73,6 +75,8 @@ export class SessionEncryption {
                         localId: message.localId ?? null,
                         content: decryptedData,
                         createdAt: message.createdAt,
+                        sentBy: message.sentBy ?? null,
+                        sentByName: message.sentByName ?? null,
                     };
                     this.cache.setCachedMessage(message.id, result);
                     results[index] = result;
@@ -83,6 +87,8 @@ export class SessionEncryption {
                         localId: message.localId ?? null,
                         content: null,
                         createdAt: message.createdAt,
+                        sentBy: message.sentBy ?? null,
+                        sentByName: message.sentByName ?? null,
                     };
                     this.cache.setCachedMessage(message.id, result);
                     results[index] = result;

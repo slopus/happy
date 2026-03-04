@@ -519,6 +519,8 @@ export function buildNewMessageUpdate(message: {
     seq: number;
     content: any;
     localId: string | null;
+    sentBy: string | null;
+    sentByName: string | null;
     createdAt: Date;
     updatedAt: Date;
 }, sessionId: string, updateSeq: number, updateId: string): UpdatePayload {
@@ -533,6 +535,8 @@ export function buildNewMessageUpdate(message: {
                 seq: message.seq,
                 content: message.content,
                 localId: message.localId,
+                sentBy: message.sentBy,
+                sentByName: message.sentByName,
                 createdAt: message.createdAt.getTime(),
                 updatedAt: message.updatedAt.getTime()
             }

@@ -1270,6 +1270,8 @@ export const en = {
         unknownTime: 'unknown time',
         confirmOldOption: 'Send old option?',
         confirmOldOptionMessage: 'This option is from an earlier message. Are you sure you want to send it?',
+        you: 'You',
+        unknownSender: 'Unknown',
         confirmOverwriteInput: 'Overwrite current input?',
         confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
     },

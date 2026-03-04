@@ -153,6 +153,8 @@ export interface DecryptedMessage {
     localId: string | null,
     content: any,
     createdAt: number,
+    sentBy?: string | null,
+    sentByName?: string | null,
 }
 
 //

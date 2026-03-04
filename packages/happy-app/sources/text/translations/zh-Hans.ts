@@ -1264,6 +1264,8 @@ export const zhHans: TranslationStructure = {
         unknownTime: '未知时间',
         confirmOldOption: '发送旧选项？',
         confirmOldOptionMessage: '该选项来自较早的消息，确定要发送吗？',
+        you: '你',
+        unknownSender: '未知',
         confirmOverwriteInput: '覆盖当前输入？',
         confirmOverwriteInputMessage: '输入框已有内容，是否替换？',
     },

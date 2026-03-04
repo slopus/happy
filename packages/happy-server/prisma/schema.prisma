@@ -126,15 +126,17 @@ model Session {
 }
 
 model SessionMessage {
-  id        String   @id @default(cuid())
-  sessionId String
-  session   Session  @relation(fields: [sessionId], references: [id])
-  localId   String?
-  seq       Int
+  id         String   @id @default(cuid())
+  sessionId  String
+  session    Session  @relation(fields: [sessionId], references: [id])
+  localId    String?
+  seq        Int
   /// [SessionMessageContent]
-  content   Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  content    Json
+  sentBy     String?
+  sentByName String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@unique([sessionId, localId])
   @@index([sessionId, seq])

@@ -32,6 +32,8 @@ export type UserTextMessage = {
     displayText?: string; // Optional text to display in UI instead of actual text
     images?: ImageContent[]; // Optional images attached to the message
     meta?: MessageMeta;
+    sentBy?: string | null;
+    sentByName?: string | null;
 }
 
 export type ModeSwitchMessage = {

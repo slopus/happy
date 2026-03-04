@@ -16,6 +16,8 @@ export const ApiMessageSchema = z.object({
         c: z.string(), // Base64 encoded encrypted content
     }),
     createdAt: z.number(),
+    sentBy: z.string().nullish(),
+    sentByName: z.string().nullish(),
 });
 
 export type ApiMessage = z.infer<typeof ApiMessageSchema>;

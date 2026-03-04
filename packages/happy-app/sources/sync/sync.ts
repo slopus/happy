@@ -437,6 +437,11 @@ class Sync {
         // Prepare normalized message for later use
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
+        if (normalizedMessage) {
+            const profile = storage.getState().profile;
+            normalizedMessage.sentBy = this.serverID;
+            normalizedMessage.sentByName = profile.firstName || null;
+        }
 
         // Check if session is active before sending
         const sessionState = getSession(sessionId);
@@ -1782,6 +1787,8 @@ class Sync {
                 existingMessages.add(decrypted.id);
                 const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                 if (normalized) {
+                    normalized.sentBy = decrypted.sentBy;
+                    normalized.sentByName = decrypted.sentByName;
                     normalizedMessages.push(normalized);
                 }
             }
@@ -2700,6 +2707,10 @@ class Sync {
             const decrypted = await encryption.decryptMessage(updateData.body.message);
             if (decrypted) {
                 lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                if (lastMessage) {
+                    lastMessage.sentBy = decrypted.sentBy;
+                    lastMessage.sentByName = decrypted.sentByName;
+                }
 
                 // Check for task lifecycle events to update thinking state
                 // This ensures UI updates even if volatile activity updates are lost

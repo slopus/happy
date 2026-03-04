@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useSession, useSessionMessages } from "@/sync/storage";
+import { useSession, useSessionMessages, useProfile } from "@/sync/storage";
 import { ActivityIndicator, FlatList, Platform, Pressable, Text, View } from 'react-native';
 import { useCallback, useRef, useState } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
@@ -24,6 +24,8 @@ function shouldHideMessageInChatList(message: Message): boolean {
 
 export const ChatList = React.memo((props: { session: Session; onFillInput?: (text: string, allOptions?: string[]) => void; onLoadMore?: () => void }) => {
     const { messages, hasMore } = useSessionMessages(props.session.id);
+    const profile = useProfile();
+    const isSharedSession = !!(props.session.isShared || props.session.accessLevel);
     return (
         <ChatListInternal
             metadata={props.session.metadata}
@@ -32,6 +34,8 @@ export const ChatList = React.memo((props: { session: Session; onFillInput?: (te
             hasMore={hasMore}
             onFillInput={props.onFillInput}
             onLoadMore={props.onLoadMore}
+            isSharedSession={isSharedSession}
+            currentUserId={profile.id}
         />
     )
 });
@@ -59,6 +63,8 @@ const ChatListInternal = React.memo((props: {
     hasMore: boolean,
     onFillInput?: (text: string, allOptions?: string[]) => void,
     onLoadMore?: () => void,
+    isSharedSession: boolean,
+    currentUserId: string,
 }) => {
     const { theme } = useUnistyles();
     const flatListRef = useRef<FlatList>(null);
@@ -66,6 +72,23 @@ const ChatListInternal = React.memo((props: {
         () => props.messages.filter((message) => !shouldHideMessageInChatList(message)),
         [props.messages]
     );
+
+    // Compute which user-text messages should show sender name labels.
+    // In the inverted FlatList (index 0 = newest), show name when the next item
+    // in the array (= older message at higher index) is from a different sender
+    // or is not a user-text message, so only the first in a consecutive group shows it.
+    const senderVisibility = React.useMemo(() => {
+        if (!props.isSharedSession) return null;
+        const map = new Map<string, boolean>();
+        for (let i = 0; i < visibleMessages.length; i++) {
+            const msg = visibleMessages[i];
+            if (msg.kind !== 'user-text') continue;
+            const nextMsg = visibleMessages[i + 1];
+            const nextSentBy = nextMsg?.kind === 'user-text' ? nextMsg.sentBy : null;
+            map.set(msg.id, msg.sentBy !== nextSentBy);
+        }
+        return map;
+    }, [visibleMessages, props.isSharedSession]);
 
     // Track if scroll-to-bottom button should be visible
     const [showScrollButton, setShowScrollButton] = useState(false);
@@ -89,15 +112,18 @@ const ChatListInternal = React.memo((props: {
     }
 
     const keyExtractor = useCallback((item: any) => item.id, []);
-    const renderItem = useCallback(({ item, index }: { item: any, index: number }) => (
+    const renderItem = useCallback(({ item, index }: { item: Message, index: number }) => (
         <MessageView
             message={item}
             metadata={props.metadata}
             sessionId={props.sessionId}
             isNewestMessage={index === 0}
             onFillInput={props.onFillInput}
+            isSharedSession={props.isSharedSession}
+            currentUserId={props.currentUserId}
+            showSenderName={senderVisibility?.get(item.id) ?? false}
         />
-    ), [props.metadata, props.sessionId, props.onFillInput]);
+    ), [props.metadata, props.sessionId, props.onFillInput, props.isSharedSession, props.currentUserId, senderVisibility]);
 
     // Handle scroll position changes
     const handleScroll = useCallback((event: any) => {

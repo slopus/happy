@@ -24,6 +24,8 @@ type SelectedMessage = {
     seq: number;
     content: unknown;
     localId: string | null;
+    sentBy: string | null;
+    sentByName: string | null;
     createdAt: Date;
     updatedAt: Date;
 };
@@ -34,6 +36,8 @@ function toResponseMessage(message: SelectedMessage) {
         seq: message.seq,
         content: message.content,
         localId: message.localId,
+        sentBy: message.sentBy,
+        sentByName: message.sentByName,
         createdAt: message.createdAt.getTime(),
         updatedAt: message.updatedAt.getTime()
     };
@@ -44,6 +48,8 @@ function toSendResponseMessage(message: Omit<SelectedMessage, "content">) {
         id: message.id,
         seq: message.seq,
         localId: message.localId,
+        sentBy: message.sentBy,
+        sentByName: message.sentByName,
         createdAt: message.createdAt.getTime(),
         updatedAt: message.updatedAt.getTime()
     };
@@ -106,6 +112,8 @@ export function v3SessionRoutes(app: Fastify) {
                 seq: true,
                 content: true,
                 localId: true,
+                sentBy: true,
+                sentByName: true,
                 createdAt: true,
                 updatedAt: true
             }
@@ -148,6 +156,12 @@ export function v3SessionRoutes(app: Fastify) {
         }
         const ownerId = session.accountId;
 
+        const senderAccount = await db.account.findUnique({
+            where: { id: userId },
+            select: { firstName: true, username: true }
+        });
+        const sentByName = senderAccount?.firstName || senderAccount?.username || null;
+
         const firstMessageByLocalId = new Map<string, { localId: string; content: string }>();
         for (const message of messages) {
             if (!firstMessageByLocalId.has(message.localId)) {
@@ -169,6 +183,8 @@ export function v3SessionRoutes(app: Fastify) {
                     id: true,
                     seq: true,
                     localId: true,
+                    sentBy: true,
+                    sentByName: true,
                     createdAt: true,
                     updatedAt: true
                 }
@@ -195,13 +211,17 @@ export function v3SessionRoutes(app: Fastify) {
                             t: 'encrypted',
                             c: message.content
                         },
-                        localId: message.localId
+                        localId: message.localId,
+                        sentBy: userId,
+                        sentByName,
                     },
                     select: {
                         id: true,
                         seq: true,
                         content: true,
                         localId: true,
+                        sentBy: true,
+                        sentByName: true,
                         createdAt: true,
                         updatedAt: true
                     }

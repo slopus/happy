@@ -1262,6 +1262,8 @@ export const pt: TranslationStructure = {
         unknownTime: 'horário desconhecido',
         confirmOldOption: 'Send old option?',
         confirmOldOptionMessage: 'This option is from an earlier message. Are you sure you want to send it?',
+        you: 'Você',
+        unknownSender: 'Desconhecido',
         confirmOverwriteInput: 'Overwrite current input?',
         confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
     },

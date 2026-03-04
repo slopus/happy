@@ -1294,6 +1294,8 @@ export const ja: TranslationStructure = {
         unknownTime: '不明な時間',
         confirmOldOption: '古いオプションを送信しますか？',
         confirmOldOptionMessage: 'このオプションは以前のメッセージからのものです。送信してもよろしいですか？',
+        you: 'あなた',
+        unknownSender: '不明',
         confirmOverwriteInput: 'Overwrite current input?',
         confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
     },

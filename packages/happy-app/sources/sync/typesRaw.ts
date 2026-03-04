@@ -565,6 +565,8 @@ export type NormalizedMessage = ({
     meta?: MessageMeta,
     usage?: UsageData,
     contextWindowSize?: number,
+    sentBy?: string | null,
+    sentByName?: string | null,
 };
 
 type PlanStepStatus = 'pending' | 'in_progress' | 'completed';
