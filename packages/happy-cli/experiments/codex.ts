@@ -1,8 +1,13 @@
 /**
- * Codex MCP Client exploration script.
+ * Codex MCP Client exploration script (legacy path).
  *
  * Connects to `codex mcp-server` directly (no daemon, no API, no session),
  * sends a prompt, auto-approves permission requests, and prints all events.
+ *
+ * What this shows:
+ * 1. Elicitation payload compatibility with Codex-specific fields
+ * 2. MCP `action` + Codex `decision` response requirements
+ * 3. Sandbox/approval policy behavior under MCP transport
  *
  * Usage:
  *   npx tsx experiments/codex.ts

@@ -288,7 +288,10 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         };
     }
 
-    if (type === 'exec_command_begin' || type === 'exec_approval_request') {
+    // exec_approval_request is intentionally NOT mapped here — the permission
+    // handler already renders the approval UI via agent state.  Mapping it to
+    // tool-call-start too would create a duplicate tool call card.
+    if (type === 'exec_command_begin') {
         const call = pickCallId(message);
         const { call_id: _callIdSnake, callId: _callIdCamel, type: _type, ...args } = message;
 

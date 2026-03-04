@@ -1,27 +1,23 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
-import { CodexMcpClient } from '../codexMcpClient';
 
 const {
     mockExecSync,
     mockInitializeSandbox,
     mockWrapForMcpTransport,
     mockSandboxCleanup,
-    mockClientConnect,
-    mockClientClose,
-    mockStdioCtor,
+    mockSpawn,
 } = vi.hoisted(() => ({
     mockExecSync: vi.fn(),
     mockInitializeSandbox: vi.fn(),
     mockWrapForMcpTransport: vi.fn(),
     mockSandboxCleanup: vi.fn(),
-    mockClientConnect: vi.fn(),
-    mockClientClose: vi.fn(),
-    mockStdioCtor: vi.fn(),
+    mockSpawn: vi.fn(),
 }));
 
 vi.mock('child_process', () => ({
     execSync: mockExecSync,
+    spawn: mockSpawn,
 }));
 
 vi.mock('@/sandbox/manager', () => ({
@@ -37,26 +33,39 @@ vi.mock('@/ui/logger', () => ({
     },
 }));
 
-vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
-    Client: class MockClient {
-        setNotificationHandler = vi.fn();
-        setRequestHandler = vi.fn();
-        connect = mockClientConnect;
-        close = mockClientClose;
-        callTool = vi.fn();
-        constructor() {}
-    },
+vi.mock('../package.json', () => ({
+    default: { version: '0.0.1-test' },
 }));
 
-vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
-    StdioClientTransport: class MockTransport {
-        pid = 12345;
-        close = vi.fn();
-        constructor(opts: any) {
-            mockStdioCtor(opts);
-        }
-    },
-}));
+// Mock child process with stdin/stdout/stderr
+function createMockProcess() {
+    const { Readable, Writable } = require('stream');
+    const stdin = new Writable({ write: (_: any, __: any, cb: () => void) => cb() });
+    const stdout = new Readable({ read() {} });
+    const stderr = new Readable({ read() {} });
+    const proc = Object.assign(new (require('events').EventEmitter)(), {
+        stdin,
+        stdout,
+        stderr,
+        pid: 12345,
+        kill: vi.fn(),
+    });
+    // Send initialize response immediately when stdin is written to
+    const origWrite = stdin.write.bind(stdin);
+    stdin.write = (data: any, ...args: any[]) => {
+        try {
+            const msg = JSON.parse(typeof data === 'string' ? data : data.toString());
+            if (msg.method === 'initialize' && msg.id != null) {
+                // Send response on next tick
+                setTimeout(() => {
+                    stdout.push(JSON.stringify({ id: msg.id, result: { userAgent: 'test' } }) + '\n');
+                }, 5);
+            }
+        } catch {}
+        return origWrite(data, ...args);
+    };
+    return proc;
+}
 
 const sandboxConfig: SandboxConfig = {
     enabled: true,
@@ -72,34 +81,35 @@ const sandboxConfig: SandboxConfig = {
     allowLocalBinding: true,
 };
 
-describe('CodexMcpClient sandbox integration', () => {
+describe('CodexAppServerClient sandbox integration', () => {
     const originalRustLog = process.env.RUST_LOG;
 
     beforeEach(() => {
         vi.clearAllMocks();
         process.env.RUST_LOG = originalRustLog;
-        mockExecSync.mockReturnValue('codex-cli 0.43.0');
-        mockClientConnect.mockResolvedValue(undefined);
-        mockClientClose.mockResolvedValue(undefined);
+        mockExecSync.mockReturnValue('codex-cli 0.107.0');
         mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
-        mockWrapForMcpTransport.mockResolvedValue({ command: 'sh', args: ['-c', 'wrapped codex mcp'] });
+        mockWrapForMcpTransport.mockResolvedValue({ command: 'sh', args: ['-c', 'wrapped codex app-server'] });
+        mockSpawn.mockImplementation(() => createMockProcess());
     });
 
     afterAll(() => {
         process.env.RUST_LOG = originalRustLog;
     });
 
-    it('wraps MCP transport when sandbox is enabled', async () => {
-        const client = new CodexMcpClient(sandboxConfig);
+    it('wraps transport when sandbox is enabled', async () => {
+        // Dynamic import to ensure mocks are applied
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(sandboxConfig);
 
         await client.connect();
 
         expect(mockInitializeSandbox).toHaveBeenCalledWith(sandboxConfig, process.cwd());
-        expect(mockWrapForMcpTransport).toHaveBeenCalledWith('codex', ['mcp-server']);
-        expect(mockStdioCtor).toHaveBeenCalledWith(
+        expect(mockWrapForMcpTransport).toHaveBeenCalledWith('codex', ['app-server', '--listen', 'stdio://']);
+        expect(mockSpawn).toHaveBeenCalledWith(
+            'sh',
+            ['-c', 'wrapped codex app-server'],
             expect.objectContaining({
-                command: 'sh',
-                args: ['-c', 'wrapped codex mcp'],
                 env: expect.objectContaining({
                     CODEX_SANDBOX: 'seatbelt',
                     RUST_LOG: expect.stringContaining('codex_core::rollout::list=off'),
@@ -107,29 +117,35 @@ describe('CodexMcpClient sandbox integration', () => {
             }),
         );
         expect(client.sandboxEnabled).toBe(true);
+
+        await client.disconnect();
     });
 
     it('falls back to non-sandbox transport when sandbox initialization fails', async () => {
         mockInitializeSandbox.mockRejectedValue(new Error('sandbox init failed'));
-        const client = new CodexMcpClient(sandboxConfig);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(sandboxConfig);
 
         await client.connect();
 
         expect(mockWrapForMcpTransport).not.toHaveBeenCalled();
-        expect(mockStdioCtor).toHaveBeenCalledWith(
+        expect(mockSpawn).toHaveBeenCalledWith(
+            'codex',
+            ['app-server', '--listen', 'stdio://'],
             expect.objectContaining({
-                command: 'codex',
-                args: ['mcp-server'],
                 env: expect.objectContaining({
                     RUST_LOG: expect.stringContaining('codex_core::rollout::list=off'),
                 }),
             }),
         );
         expect(client.sandboxEnabled).toBe(false);
+
+        await client.disconnect();
     });
 
     it('resets sandbox on disconnect', async () => {
-        const client = new CodexMcpClient(sandboxConfig);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(sandboxConfig);
 
         await client.connect();
         await client.disconnect();
@@ -140,16 +156,21 @@ describe('CodexMcpClient sandbox integration', () => {
 
     it('appends rollout log filter to existing RUST_LOG', async () => {
         process.env.RUST_LOG = 'info,codex_core=warn';
-        const client = new CodexMcpClient(sandboxConfig);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(sandboxConfig);
 
         await client.connect();
 
-        expect(mockStdioCtor).toHaveBeenCalledWith(
+        expect(mockSpawn).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.anything(),
             expect.objectContaining({
                 env: expect.objectContaining({
                     RUST_LOG: 'info,codex_core=warn,codex_core::rollout::list=off',
                 }),
             }),
         );
+
+        await client.disconnect();
     });
 });
