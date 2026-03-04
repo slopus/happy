@@ -333,14 +333,12 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={handleArchiveSession}
                         />
                     )}
-                    {!sessionStatus.isConnected && !session.active && (
-                        <Item
-                            title={t('sessionInfo.deleteSession')}
-                            subtitle={t('sessionInfo.deleteSessionSubtitle')}
-                            icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
-                            onPress={handleDeleteSession}
-                        />
-                    )}
+                    <Item
+                        title={t('sessionInfo.deleteSession')}
+                        subtitle={t('sessionInfo.deleteSessionSubtitle')}
+                        icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
+                        onPress={handleDeleteSession}
+                    />
                 </ItemGroup>
 
                 {/* Metadata */}
