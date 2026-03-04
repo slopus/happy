@@ -16,7 +16,7 @@ export function monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyIn
   // NEVER ENABLE REMOTE LOGGING IN PRODUCTION
   // This is for local debugging with AI only
   // So AI will have all the logs easily accessible in one file for analysis
-  if (!process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
+  if (!process.env.EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
     return
   }
 
