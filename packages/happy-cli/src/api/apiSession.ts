@@ -243,6 +243,14 @@ export class ApiSessionClient extends EventEmitter {
     private routeIncomingMessage(message: unknown) {
         const userResult = UserMessageSchema.safeParse(message);
         if (userResult.success) {
+            // Skip messages the CLI itself sent (echoed back from server).
+            // The CLI sends user messages to the server so the app can display
+            // them (e.g. local Copilot terminal messages relayed via scanner).
+            // Without this guard those echoes would be mistaken for app-user
+            // messages and trigger a spurious local→remote mode switch.
+            if (userResult.data.meta?.sentFrom === 'cli') {
+                return;
+            }
             if (this.pendingMessageCallback) {
                 this.pendingMessageCallback(userResult.data);
             } else {
