@@ -423,6 +423,7 @@ export function SessionsList() {
                     keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
+                    removeClippedSubviews={true}
                     refreshControl={
                         <RefreshControl
                             refreshing={refreshing}
