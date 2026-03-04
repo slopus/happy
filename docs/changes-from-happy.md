@@ -12,13 +12,14 @@ This document summarizes what changed in the `next` branch compared to the origi
 | Voice | LiveKit-based voice gateway with pluggable STT/LLM/TTS providers |
 | Workspaces | Multi-repo worktree creation, switching, archiving, and PR flows |
 | Code browser | File browser, Monaco editor, commit history, git stage/commit/discard |
-| DooTask | Task list, detail, real-time chat, one-click AI session launch |
+| Session sharing | Direct invite and public link sharing with E2E encryption and access control |
+| DooTask | Task list, detail, real-time chat, one-click AI session launch, in-app task/project creation |
 | Self-hosting | One-command `docker-compose` stack with separate origins |
 | Sync | v3 messages API, HTTP outbox, server-confirmed sends, race condition fixes |
-| Chat UX | Image attachment, pagination, blue dot, compact view, session search |
+| Chat UX | Image attachment, pagination, blue dot, compact view, session search, pull-to-refresh |
 | Bug fixes | 200+ fixes across message sending, sessions, rendering, navigation, security |
 | Performance | Payload trimming, lazy-load diffs, rendering optimization |
-| CLI | `happy-next-cli` with multi-agent support, worktree RPC, diff processing |
+| CLI | `happy-next-cli` with multi-agent support, worktree RPC, diff processing, self-upgrade |
 | OpenClaw | External AI machine gateway with tunnel/direct connections and chat UI |
 | Profiles | AI backend profiles with presets for DeepSeek, Z.AI, OpenAI, Azure, Google AI |
 | Rebrand | CLI published as `happy-next-cli`, binary remains `happy` |
@@ -87,6 +88,23 @@ The app now includes a full code browsing and git management experience.
 - **Staged file diff display** with accurate line count
 - **Base64 decoding** fixed for UTF-8 (CJK characters)
 
+## Session Sharing
+
+Share AI coding sessions with others through direct invites or public links, with full end-to-end encryption.
+
+- **Direct sharing** with NaCl Box end-to-end encryption via uploaded content public keys
+- **Public link sharing** with token-derived key encryption
+- **Access levels**: view-only, edit, and admin permissions with server-side enforcement
+- **Real-time sync**: messages, git status, and voice chat broadcast to all shared users via socket events
+- **"All / Shared with me" filter tabs** in session list
+- **Share indicator** on sessions shared with others
+- **Sharer avatar** and **sender name** display in shared sessions
+- **Public share web viewer** for link-based access without the app
+- **Shared sessions on user profile** page
+- **Permission-aware UI**: input bar, voice button, and session actions adapt to access level
+- **Server-side access control** module with permission validation for messages, RPC calls, and voice
+- **Access logging** for public share views
+
 ## OpenClaw Integration
 
 Connect to external AI machines through a gateway system with its own chat interface.
@@ -123,6 +141,9 @@ Deep integration with DooTask project management, from browsing tasks to launchi
 - **DooTask connection page** with login, captcha support, and field caching
 - **Task status management**: clickable status badges with workflow transitions
 - **DooTask tab** in main navigation with connected account management
+- **Create tasks and projects** directly from the app with dedicated form pages
+- **Cross-platform date picker** (`react-native-ui-datepicker`) with bottom sheet confirm
+- **Form caching** for task/project creation across navigation
 
 ## Self-Hosting
 
@@ -167,6 +188,15 @@ Extensive improvements to the chat and session management experience.
 - **Permission mode**: live updates, privileged/YOLO mode distinction, per-agent caching
 - **QR scanner** migrated from expo-camera to vision-camera
 - **Toast notifications** replacing modal alerts for lightweight feedback
+- **Pull-to-refresh** for session list and inbox
+- **Inset dividers** for cleaner list layouts
+- **Agent tool display** with robot icon in known tools list
+- **Tool input/output** formatted as key-value pairs instead of raw JSON
+- **AskUserQuestion** "Other" custom input option with markdown preview
+- **In-memory SWR cache** and search for agent session history
+- **Real-time friend request updates** via socket events
+- **Swipe-to-delete** for feed notifications
+- **Friend search** with flat layout, GitHub connect prompt for users without username
 
 ## CLI Improvements
 
@@ -184,6 +214,10 @@ The CLI (`happy-next-cli`) received substantial upgrades.
 - **Settings persistence**: "don't ask again" for tool approvals saved to `settings.local.json`
 - **Session title management**: `change_title` tool with lock support
 - **CI**: smoke tests on `next` branch, happy-wire build dependency
+- **`happy update`** self-upgrade command
+- **`happy --version`** displays Claude, Codex, and Gemini CLI versions
+- **Worktree subdirectory detection** in workspace root
+- **Latest CLI version** fetched from npm instead of hardcoded minimum
 
 ## Server
 
@@ -192,6 +226,9 @@ The CLI (`happy-next-cli`) received substantial upgrades.
 - **Usage metrics** merged incrementally instead of overwriting
 - **S3 region/path normalization** for broader compatibility
 - **Message loss prevention** when CLI is offline
+- **Session sharing API**: direct sharing routes, public share routes, content key upload, access control
+- **Socket events** for session sharing (real-time broadcast to shared users)
+- **Public share access logging**
 
 ## UI & Polish
 
@@ -266,6 +303,9 @@ Over 200 bug fixes landed on `next`. The following are grouped by area.
 - Fix due date highlighting for completed tasks
 - Fix infinite re-render and web input polish
 - Fix image extraction (DOM-based instead of regex)
+- Fix member avatars and layout in create task form
+- Fix date validation, clearDootaskData reset in create sheets
+- Fix paginated column response in create task sheet
 
 ### Worktree
 - Fix metadata race condition (pass via spawn params instead of async write)
@@ -284,12 +324,26 @@ Over 200 bug fixes landed on `next`. The following are grouped by area.
 - Require user approval for ExitPlanMode in bypass-permissions mode
 - Preserve privileged mode after plan approval (prevent regression to default)
 
+### Sharing
+- Fix shared session unable to display git status data
+- Fix shared session unable to save drafts, switch model and permission mode
+- Fix 10s delay when sending messages in shared sessions
+- Fix shared session name display and online status sync
+- Fix public share page owner display and message ordering
+- Fix divider display in sharing dialogs
+- Remove backoff retry from sharing API, fix 403 log spam
+- Allow shared users to make RPC calls to session CLI
+- Restrict session info actions by access level
+- Hide input and voice button for view-only shared users
+
 ### Performance
 - Optimize `applySessions` to avoid redundant re-renders when state unchanged
 - Trim Codex/Gemini payloads before sending to mobile (remove large tool results)
 - Lazy-load diffs: CLI persists to storage, app fetches on file-name click
 - Pace per-session WebSocket updates to avoid autoscroll race
 - Lock table row height measurement to eliminate measuring jitter
+- Enable `removeClippedSubviews` for session list FlatList
+- Git status retry no longer infinite; resets on session focus
 
 ## Repo Hygiene
 

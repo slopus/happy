@@ -1,19 +1,21 @@
 # Changelog
 
-## Version 6 - 2026-03-02
+## Version 6 - 2026-03-04
 
-The biggest Happy update ever — multi-agent, voice, workspaces, code browser, DooTask, and self-hosting all land in one release, plus 200+ bug fixes across the board.
+The biggest Happy update ever — multi-agent, voice, workspaces, code browser, DooTask, session sharing, and self-hosting all land in one release, plus 200+ bug fixes across the board.
 
 - Full multi-agent support: Claude Code, Codex, and Gemini are now equal first-class agents with session resume, duplicate/fork, per-agent model selection, and accurate cost tracking.
 - LiveKit-based voice assistant with pluggable STT/LLM/TTS providers, microphone mute, thinking indicator, and context-aware conversations that understand your full app state.
 - Multi-repo worktree workspaces: create workspaces spanning multiple repositories, manage branches per-repo, auto-generate CLAUDE.md, and create PRs with AI-powered code review.
 - Built-in code browser with file navigation, Monaco editor, commit history, branch selector, and a full git changes page for staging, committing, and discarding changes.
-- DooTask integration with task lists, detail pages, real-time WebSocket chat, emoji reactions, voice message playback, and one-click AI session launch from any task.
+- Session sharing: share sessions with friends via direct invite (NaCl Box E2E encryption) or public links (token-derived keys), with real-time sync, access control, and a public share web viewer.
+- DooTask integration with task lists, detail pages, real-time WebSocket chat, emoji reactions, voice message playback, one-click AI session launch, and in-app task/project creation.
 - OpenClaw gateway for connecting to external AI machines with secure Ed25519 key exchange, real-time streaming chat, and relay or direct connection modes.
 - AI backend profiles with built-in presets for DeepSeek, Z.AI, OpenAI, Azure, and Google AI — switch LLM backends for Claude Code with custom environment variable mapping.
 - Self-hosting with a single `docker-compose` command: Web app, API server, Voice gateway, Postgres, Redis, and MinIO all configured out of the box.
 - Major sync reliability improvements: v3 messages API with seq-based sync, HTTP outbox for offline delivery, server-confirmed sends, and message loss prevention.
-- Chat UX polish: image attachment and clipboard paste, message pagination, unread blue dot indicator, compact view, session search, /duplicate command, and improved markdown tables.
+- Chat UX polish: image attachment and clipboard paste, message pagination, unread blue dot indicator, compact view, session search, /duplicate command, pull-to-refresh, and improved markdown tables.
+- CLI: `happy update` self-upgrade command, `happy --version` displays all agent versions, worktree subdirectory detection.
 
 ## Version 5 - 2025-12-22
 

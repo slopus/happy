@@ -121,6 +121,14 @@ Happy Next is a major evolution of the original Happy. Here are the highlights:
 - Git changes page: stage, unstage, commit, discard
 - Per-file diff stats (+N/-N) for Claude, Codex, and Gemini
 
+### Session Sharing
+- Share sessions with friends via direct invite or public link
+- End-to-end encrypted: NaCl Box (direct) and token-derived keys (public links)
+- Real-time sync of messages, git status, and voice chat across shared users
+- Access control with view, edit, and admin permission levels
+- "All / Shared with me" filter tabs and share indicator in session list
+- Public share web viewer for link-based access
+
 ### OpenClaw Gateway
 - Connect to external AI machines via relay tunnel or direct WebSocket
 - Machine pairing with Ed25519 key exchange
@@ -131,6 +139,7 @@ Happy Next is a major evolution of the original Happy. Here are the highlights:
 - Task detail with HTML rendering, assignees, files, sub-tasks
 - Real-time WebSocket chat (Slack-style layout, emoji reactions, voice playback, images/video)
 - One-click AI session launch from any task (MCP server passthrough)
+- Create tasks and projects directly from the app with cross-platform date picker
 
 ### Self-Hosting
 - One-command `docker-compose up` (Web + API + Voice + Postgres + Redis + MinIO)
@@ -150,9 +159,13 @@ Happy Next is a major evolution of the original Happy. Here are the highlights:
 - Message pagination, unread blue dot indicator, compact list view
 - Session rename with lock (prevent AI auto-update), search in history
 - Options click-to-send / long-press-to-fill, scroll-to-bottom button
+- Pull-to-refresh, inset dividers, Agent tool display with robot icon
+- Tool input/output formatted as key-value pairs instead of raw JSON
+- In-memory SWR cache and search for agent session history
+- CLI: `happy update` self-upgrade, `happy --version` with all agent versions
 
 ### Bug Fixes & Stability
-- 200+ bug fixes: message sending reliability, session lifecycle, Markdown rendering, navigation, voice, DooTask
+- 200+ bug fixes: message sending reliability, session lifecycle, Markdown rendering, navigation, voice, DooTask, sharing
 - Security: shell command injection fix, plan mode permission handling
 - Performance: payload trimming for mobile, lazy-load diffs, rendering optimization
 
