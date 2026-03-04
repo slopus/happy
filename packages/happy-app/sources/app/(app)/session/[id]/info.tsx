@@ -776,52 +776,54 @@ function SessionInfoContent({ session }: { session: Session }) {
                     />
                 </ItemGroup>
 
-                {/* Quick Actions */}
-                <ItemGroup title={t('sessionInfo.quickActions')}>
-                    {isAdmin && (
-                        <Item
-                            title={t('session.sharing.manageSharing')}
-                            subtitle={t('session.sharing.manageSharingSubtitle')}
-                            icon={<Ionicons name="share-outline" size={29} color="#007AFF" />}
-                            onPress={() => router.push(`/session/${session.id}/sharing`)}
-                        />
-                    )}
-                    {isOwner && session.metadata?.machineId && (
-                        <Item
-                            title={t('sessionInfo.viewMachine')}
-                            subtitle={t('sessionInfo.viewMachineSubtitle')}
-                            icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
-                            onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
-                        />
-                    )}
-                    {isOwner && (session.metadata?.claudeSessionId || session.metadata?.flavor === 'gemini' || session.metadata?.codexSessionId) && session.metadata?.machineId && session.metadata?.path && (
-                        <Item
-                            title={session.active ? t('sessionInfo.copySession') : t('sessionInfo.resumeSession')}
-                            subtitle={session.active ? t('sessionInfo.copySessionSubtitle') : t('sessionInfo.resumeSessionSubtitle')}
-                            icon={<Ionicons name={session.active ? "copy-outline" : "play-circle-outline"} size={29} color="#34C759" />}
-                            onPress={handleForkSession}
-                            disabled={forkingSession}
-                            loading={forkingSession}
-                            showChevron={!forkingSession}
-                        />
-                    )}
-                    {isAdmin && sessionStatus.isConnected && (
-                        <Item
-                            title={t('sessionInfo.archiveSession')}
-                            subtitle={t('sessionInfo.archiveSessionSubtitle')}
-                            icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
-                            onPress={handleArchiveSession}
-                        />
-                    )}
-                    {isOwner && !sessionStatus.isConnected && !session.active && (
-                        <Item
-                            title={t('sessionInfo.deleteSession')}
-                            subtitle={t('sessionInfo.deleteSessionSubtitle')}
-                            icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
-                            onPress={handleDeleteSession}
-                        />
-                    )}
-                </ItemGroup>
+                {/* Quick Actions - only show when user has admin/owner permissions */}
+                {isAdmin && (
+                    <ItemGroup title={t('sessionInfo.quickActions')}>
+                        {isAdmin && (
+                            <Item
+                                title={t('session.sharing.manageSharing')}
+                                subtitle={t('session.sharing.manageSharingSubtitle')}
+                                icon={<Ionicons name="share-outline" size={29} color="#007AFF" />}
+                                onPress={() => router.push(`/session/${session.id}/sharing`)}
+                            />
+                        )}
+                        {isOwner && session.metadata?.machineId && (
+                            <Item
+                                title={t('sessionInfo.viewMachine')}
+                                subtitle={t('sessionInfo.viewMachineSubtitle')}
+                                icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
+                                onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
+                            />
+                        )}
+                        {isOwner && (session.metadata?.claudeSessionId || session.metadata?.flavor === 'gemini' || session.metadata?.codexSessionId) && session.metadata?.machineId && session.metadata?.path && (
+                            <Item
+                                title={session.active ? t('sessionInfo.copySession') : t('sessionInfo.resumeSession')}
+                                subtitle={session.active ? t('sessionInfo.copySessionSubtitle') : t('sessionInfo.resumeSessionSubtitle')}
+                                icon={<Ionicons name={session.active ? "copy-outline" : "play-circle-outline"} size={29} color="#34C759" />}
+                                onPress={handleForkSession}
+                                disabled={forkingSession}
+                                loading={forkingSession}
+                                showChevron={!forkingSession}
+                            />
+                        )}
+                        {isAdmin && sessionStatus.isConnected && (
+                            <Item
+                                title={t('sessionInfo.archiveSession')}
+                                subtitle={t('sessionInfo.archiveSessionSubtitle')}
+                                icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
+                                onPress={handleArchiveSession}
+                            />
+                        )}
+                        {isOwner && !sessionStatus.isConnected && !session.active && (
+                            <Item
+                                title={t('sessionInfo.deleteSession')}
+                                subtitle={t('sessionInfo.deleteSessionSubtitle')}
+                                icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
+                                onPress={handleDeleteSession}
+                            />
+                        )}
+                    </ItemGroup>
+                )}
 
                 {/* Worktree Info & Actions */}
                 {isMultiRepo && (
