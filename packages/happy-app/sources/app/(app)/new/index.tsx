@@ -25,12 +25,14 @@ import Constants from 'expo-constants';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
 import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
+import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { Modal } from '@/modal';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
@@ -54,7 +56,7 @@ const agentIcons = {
     gemini: require('@/assets/images/icon-gemini.png'),
 };
 
-type AgentKey = 'claude' | 'codex' | 'openclaw' | 'gemini';
+type AgentKey = NewSessionAgentType;
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
@@ -263,34 +265,39 @@ function NewSessionScreen() {
     const navigateToSession = useNavigateToSession();
 
     // Real data sources
-    const allMachines = useAllMachines();
+    const allMachines = useAllMachines({ includeOffline: true });
     const sessions = useSessions();
-    const lastUsedAgent = useSetting('lastUsedAgent') as AgentKey | null;
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
-    const [prompt, setPrompt] = React.useState('');
-    const [selectedAgent, setSelectedAgent] = React.useState<AgentKey>(lastUsedAgent ?? 'claude');
+    // Persisted draft state (survives navigation)
+    const draft = useNewSessionDraft();
+    const prompt = draft.input;
+    const setPrompt = draft.setInput;
+    const selectedAgent = draft.agentType;
+    const setSelectedAgent = draft.setAgentType;
+    const selectedMachineId = draft.selectedMachineId;
+    const setSelectedMachineId = draft.setMachineId;
+    const selectedPath = draft.selectedPath;
+    const setSelectedPath = draft.setPath;
+    const worktreeKey = draft.sessionType === 'worktree' ? '__new__' : '__none__';
+    const setWorktreeKey = React.useCallback((key: string) => {
+        draft.setSessionType(key !== '__none__' ? 'worktree' : 'simple');
+    }, [draft.setSessionType]);
+
+    // Local-only UI state (not persisted)
     const [permissionIndex, setPermissionIndex] = React.useState(0);
     const [modelIndex, setModelIndex] = React.useState(0);
     const [effortIndex, setEffortIndex] = React.useState(0);
     const [isSpawning, setIsSpawning] = React.useState(false);
-
-    // Picker state
-    const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(null);
-    const [selectedPath, setSelectedPath] = React.useState<string | null>(null);
-    const [worktreeKey, setWorktreeKey] = React.useState('__none__');
     const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
 
     // Config collapse — auto-collapses when typing, expands when empty
     const [isConfigExpanded, setIsConfigExpanded] = React.useState(true);
 
-    // Auto-select first online machine on mount
+    // Auto-select first machine when none selected (first-ever use, no draft)
     React.useEffect(() => {
         if (selectedMachineId) return;
-        const onlineMachine = allMachines.find(m => isMachineOnline(m));
-        if (onlineMachine) {
-            setSelectedMachineId(onlineMachine.id);
-        } else if (allMachines.length > 0) {
+        if (allMachines.length > 0) {
             setSelectedMachineId(allMachines[0].id);
         }
     }, [allMachines, selectedMachineId]);
@@ -310,7 +317,7 @@ function NewSessionScreen() {
         return sorted.map(m => ({
             key: m.id,
             label: getMachineName(m),
-            subtitle: isMachineOnline(m) ? undefined : t('status.offline'),
+            subtitle: isMachineOnline(m) ? undefined : t('status.lastSeen', { time: formatLastSeen(m.activeAt, false) }),
         }));
     }, [allMachines]);
 
@@ -337,7 +344,7 @@ function NewSessionScreen() {
         if (pathItems.length > 0 && !pathItems.find(p => p.key === selectedPath)) {
             setSelectedPath(pathItems[0].key);
         }
-    }, [pathItems, selectedPath]);
+    }, [pathItems, selectedPath, setSelectedPath]);
 
     // Filter available agents based on CLI availability from machine metadata
     const availableAgents = React.useMemo(() => {
@@ -351,7 +358,7 @@ function NewSessionScreen() {
         if (availableAgents.length > 0 && !availableAgents.find(a => a.key === selectedAgent)) {
             setSelectedAgent(availableAgents[0].key);
         }
-    }, [availableAgents, selectedAgent]);
+    }, [availableAgents, selectedAgent, setSelectedAgent]);
 
     // Derive options from agent type
     const permissionModes = React.useMemo<PermissionMode[]>(
@@ -376,15 +383,15 @@ function NewSessionScreen() {
     const showEffort = effortLevels.length > 0;
     const showPermission = permissionModes.length > 1;
 
-    // Reset indices when agent changes
+    // Reset indices when agent changes — try draft keys first, then defaults
     React.useEffect(() => {
-        const defaultPermKey = getDefaultPermissionModeKey(selectedAgent);
-        const permIdx = permissionModes.findIndex(m => m.key === defaultPermKey);
-        setPermissionIndex(permIdx >= 0 ? permIdx : 0);
+        const draftPermIdx = permissionModes.findIndex(m => m.key === draft.permissionMode);
+        const defaultPermIdx = permissionModes.findIndex(m => m.key === getDefaultPermissionModeKey(selectedAgent));
+        setPermissionIndex(draftPermIdx >= 0 ? draftPermIdx : (defaultPermIdx >= 0 ? defaultPermIdx : 0));
 
-        const defaultModelKey = getDefaultModelKey(selectedAgent);
-        const modelIdx = modelModes.findIndex(m => m.key === defaultModelKey);
-        setModelIndex(modelIdx >= 0 ? modelIdx : 0);
+        const draftModelIdx = modelModes.findIndex(m => m.key === draft.modelMode);
+        const defaultModelIdx = modelModes.findIndex(m => m.key === getDefaultModelKey(selectedAgent));
+        setModelIndex(draftModelIdx >= 0 ? draftModelIdx : (defaultModelIdx >= 0 ? defaultModelIdx : 0));
 
         if (!supportsWorktree) setWorktreeKey('__none__');
     }, [selectedAgent, permissionModes, modelModes, supportsWorktree]);
@@ -429,24 +436,32 @@ function NewSessionScreen() {
     }, []);
 
     const cyclePermission = React.useCallback(() => {
-        setPermissionIndex(i => (i + 1) % permissionModes.length);
-    }, [permissionModes.length]);
+        setPermissionIndex(i => {
+            const next = (i + 1) % permissionModes.length;
+            draft.setPermissionMode(permissionModes[next]?.key ?? 'default');
+            return next;
+        });
+    }, [permissionModes, draft.setPermissionMode]);
 
     const cycleModel = React.useCallback(() => {
-        setModelIndex(i => (i + 1) % modelModes.length);
-    }, [modelModes.length]);
+        setModelIndex(i => {
+            const next = (i + 1) % modelModes.length;
+            draft.setModelMode(modelModes[next]?.key ?? 'default');
+            return next;
+        });
+    }, [modelModes, draft.setModelMode]);
 
     const cycleEffort = React.useCallback(() => {
         setEffortIndex(i => (i + 1) % effortLevels.length);
     }, [effortLevels.length]);
 
     const cycleAgent = React.useCallback(() => {
-        setSelectedAgent(prev => {
-            const idx = availableAgents.findIndex(a => a.key === prev);
-            return availableAgents[(idx + 1) % availableAgents.length].key;
-        });
-    }, [availableAgents]);
+        const idx = availableAgents.findIndex(a => a.key === selectedAgent);
+        const next = availableAgents[(idx + 1) % availableAgents.length].key;
+        setSelectedAgent(next);
+    }, [availableAgents, selectedAgent, setSelectedAgent]);
 
+    const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
     const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
     const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
     const currentEffort = effortLevels[effortIndex] ?? effortLevels[0];
@@ -481,8 +496,6 @@ function NewSessionScreen() {
         switch (activePicker) {
             case 'machine':
                 setSelectedMachineId(key);
-                // Reset path selection when machine changes
-                setSelectedPath(null);
                 break;
             case 'path':
                 setSelectedPath(key);
@@ -492,7 +505,7 @@ function NewSessionScreen() {
                 break;
         }
         setActivePicker(null);
-    }, [activePicker]);
+    }, [activePicker, setSelectedMachineId, setSelectedPath, setWorktreeKey]);
 
     // Spawn session handler
     const handleSend = React.useCallback(async (approvedNewDirectoryCreation: boolean = false) => {
@@ -531,6 +544,9 @@ function NewSessionScreen() {
                     // Set permission mode and model on the session before sending
                     storage.getState().updateSessionPermissionMode(result.sessionId, currentPermission.key);
                     storage.getState().updateSessionModelMode(result.sessionId, currentModelKey);
+
+                    // Clear input text so draft doesn't repeat the sent message
+                    setPrompt('');
 
                     // Send initial message if provided
                     if (prompt.trim()) {
@@ -600,92 +616,110 @@ function NewSessionScreen() {
                                     <Text style={styles.configLabel} numberOfLines={1}>
                                         {machineName}
                                     </Text>
-                                    {selectedMachine && !isMachineOnline(selectedMachine) && (
+                                    {selectedMachine && isOffline && (
                                         <Text style={{ fontSize: 12, color: theme.colors.status.disconnected }}>
-                                            {t('status.offline')}
+                                            {t('status.lastSeen', { time: formatLastSeen(selectedMachine.activeAt, false) })}
                                         </Text>
                                     )}
                                 </Pressable>
 
-                                {/* Path row */}
-                                <Pressable
-                                    style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                    onPress={() => togglePicker('path')}
-                                >
-                                    <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
-                                    <Text style={styles.configLabel} numberOfLines={1}>
-                                        {pathName}
-                                    </Text>
-                                </Pressable>
-
-                                {/* Agent + model + effort row */}
-                                <View style={styles.configRow}>
+                                {/* Config rows below machine — grayed out when offline */}
+                                <View style={{ opacity: isOffline ? 0.4 : 1 }} pointerEvents={isOffline ? 'none' : 'auto'}>
+                                    {/* Path row */}
                                     <Pressable
-                                        onPress={cycleAgent}
-                                        style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 8 }, p.pressed && styles.configRowPressed]}
+                                        style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                        onPress={() => togglePicker('path')}
                                     >
-                                        <Image
-                                            source={agentIcons[agent.key]}
-                                            style={{ width: 15, height: 15 }}
-                                            contentFit="contain"
-                                            tintColor={theme.colors.textSecondary}
-                                        />
+                                        <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
                                         <Text style={styles.configLabel} numberOfLines={1}>
-                                            {agent.label}
+                                            {pathName}
                                         </Text>
                                     </Pressable>
 
-                                    {showModel && (
-                                        <>
-                                            <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                            <Pressable onPress={cycleModel} style={(p) => [p.pressed && styles.configRowPressed]}>
-                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                                    {currentModel.name}
-                                                </Text>
-                                            </Pressable>
-                                        </>
+                                    {/* Agent + model + effort row */}
+                                    <View style={styles.configRow}>
+                                        <Pressable
+                                            onPress={cycleAgent}
+                                            style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 8 }, p.pressed && styles.configRowPressed]}
+                                        >
+                                            <Image
+                                                source={agentIcons[agent.key]}
+                                                style={{ width: 15, height: 15 }}
+                                                contentFit="contain"
+                                                tintColor={theme.colors.textSecondary}
+                                            />
+                                            <Text style={styles.configLabel} numberOfLines={1}>
+                                                {agent.label}
+                                            </Text>
+                                        </Pressable>
+
+                                        {showModel && (
+                                            <>
+                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
+                                                <Pressable onPress={cycleModel} style={(p) => [p.pressed && styles.configRowPressed]}>
+                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                                        {currentModel.name}
+                                                    </Text>
+                                                </Pressable>
+                                            </>
+                                        )}
+
+                                        {showEffort && (
+                                            <>
+                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
+                                                <Pressable onPress={cycleEffort} style={(p) => [p.pressed && styles.configRowPressed]}>
+                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                                        {currentEffort?.name}
+                                                    </Text>
+                                                </Pressable>
+                                            </>
+                                        )}
+                                    </View>
+
+                                    {/* Permission row */}
+                                    {showPermission && (
+                                        <Pressable
+                                            style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                            onPress={cyclePermission}
+                                        >
+                                            <Ionicons
+                                                name={permissionStyle?.icon ?? 'shield-outline'}
+                                                size={15}
+                                                color={theme.colors.textSecondary}
+                                            />
+                                            <Text style={styles.configLabel} numberOfLines={1}>
+                                                {currentPermission?.name}
+                                            </Text>
+                                        </Pressable>
                                     )}
 
-                                    {showEffort && (
-                                        <>
-                                            <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                            <Pressable onPress={cycleEffort} style={(p) => [p.pressed && styles.configRowPressed]}>
-                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                                    {currentEffort?.name}
-                                                </Text>
-                                            </Pressable>
-                                        </>
+                                    {/* Worktree row */}
+                                    {supportsWorktree && (
+                                        <Pressable
+                                            style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                            onPress={() => togglePicker('worktree')}
+                                        >
+                                            <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
+                                            <Text style={styles.configLabel} numberOfLines={1}>
+                                                {worktreeLabel}
+                                            </Text>
+                                        </Pressable>
                                     )}
                                 </View>
 
-                                {/* Permission row */}
-                                {showPermission && (
-                                    <Pressable
-                                        style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                        onPress={cyclePermission}
-                                    >
-                                        <Ionicons
-                                            name={permissionStyle?.icon ?? 'shield-outline'}
-                                            size={15}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                        <Text style={styles.configLabel} numberOfLines={1}>
-                                            {currentPermission?.name}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Worktree row */}
-                                {supportsWorktree && (
-                                    <Pressable
-                                        style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                        onPress={() => togglePicker('worktree')}
-                                    >
-                                        <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
-                                        <Text style={styles.configLabel} numberOfLines={1}>
-                                            {worktreeLabel}
-                                        </Text>
-                                    </Pressable>
+                                {/* Offline help section */}
+                                {isOffline && (
+                                    <View style={styles.offlineHelp}>
+                                        <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.offlineHelpTitle, { color: theme.colors.status.disconnected }]}>
+                                                {t('newSession.machineOffline')}
+                                            </Text>
+                                            <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
+                                                {t('machine.offlineHelp')}
+                                            </Text>
+                                        </View>
+                                    </View>
                                 )}
                             </>
                         ) : (
@@ -881,6 +915,24 @@ const styles = StyleSheet.create((theme) => ({
     },
     sendButtonInactive: {
         backgroundColor: theme.colors.button.primary.disabled,
+    },
+    offlineHelp: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    offlineHelpTitle: {
+        fontSize: 13,
+        ...Typography.default('semiBold'),
+        marginBottom: 4,
+    },
+    offlineHelpText: {
+        fontSize: 12,
+        lineHeight: 18,
+        ...Typography.default(),
     },
 }));
 

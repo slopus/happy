@@ -254,6 +254,7 @@ export const ca: TranslationStructure = {
 
     newSession: {
         title: 'Iniciar nova sessió',
+        machineOffline: 'La màquina està fora de línia',
     },
 
     sessionHistory: {

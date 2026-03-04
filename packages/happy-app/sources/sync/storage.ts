@@ -1122,10 +1122,12 @@ export function useLocalSettings(): LocalSettings {
     return storage(useShallow((state) => state.localSettings));
 }
 
-export function useAllMachines(): Machine[] {
+export function useAllMachines(options?: { includeOffline?: boolean }): Machine[] {
+    const includeOffline = options?.includeOffline ?? false;
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        return (Object.values(state.machines).sort((a, b) => b.createdAt - a.createdAt)).filter((v) => v.active);
+        const machines = Object.values(state.machines).sort((a, b) => b.createdAt - a.createdAt);
+        return includeOffline ? machines : machines.filter((v) => v.active);
     }));
 }
 

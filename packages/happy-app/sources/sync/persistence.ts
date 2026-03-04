@@ -17,6 +17,7 @@ export interface NewSessionDraft {
     selectedPath: string | null;
     agentType: NewSessionAgentType;
     permissionMode: PermissionModeKey;
+    modelMode: string;
     sessionType: NewSessionSessionType;
     updatedAt: number;
 }
@@ -145,6 +146,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const permissionMode: PermissionModeKey = typeof parsed.permissionMode === 'string'
             ? parsed.permissionMode
             : 'default';
+        const modelMode: string = typeof parsed.modelMode === 'string' ? parsed.modelMode : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
@@ -154,6 +156,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             selectedPath,
             agentType,
             permissionMode,
+            modelMode,
             sessionType,
             updatedAt,
         };

@@ -235,6 +235,7 @@ export const ru: TranslationStructure = {
 
     newSession: {
         title: 'Начать новую сессию',
+        machineOffline: 'Машина недоступна',
     },
 
     sessionHistory: {

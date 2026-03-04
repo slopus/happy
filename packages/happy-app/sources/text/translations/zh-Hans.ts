@@ -255,6 +255,7 @@ export const zhHans: TranslationStructure = {
 
     newSession: {
         title: '开始新会话',
+        machineOffline: '设备离线',
     },
 
     sessionHistory: {

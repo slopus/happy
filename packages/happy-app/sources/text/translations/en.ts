@@ -268,6 +268,7 @@ export const en: TranslationStructure = {
 
     newSession: {
         title: 'Start New Session',
+        machineOffline: 'Machine is offline',
     },
 
     sessionHistory: {

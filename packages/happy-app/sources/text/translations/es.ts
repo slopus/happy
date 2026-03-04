@@ -254,6 +254,7 @@ export const es: TranslationStructure = {
 
     newSession: {
         title: 'Iniciar nueva sesión',
+        machineOffline: 'La máquina está desconectada',
     },
 
     sessionHistory: {

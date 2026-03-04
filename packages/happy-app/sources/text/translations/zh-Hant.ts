@@ -254,6 +254,7 @@ export const zhHant: TranslationStructure = {
 
     newSession: {
         title: '開始新工作階段',
+        machineOffline: '裝置離線',
     },
 
     sessionHistory: {
