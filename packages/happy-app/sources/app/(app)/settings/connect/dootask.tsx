@@ -29,7 +29,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { storage } from '@/sync/storage';
 import { loadDooTaskLoginCache, saveDooTaskLoginCache } from '@/sync/persistence';
 import { t } from '@/text';
-import { dootaskLogin, dootaskGetTokenExpire, dootaskGetCaptcha } from '@/sync/dootask/api';
+import { dootaskLogin, dootaskGetTokenExpire, dootaskGetCaptcha, syncDootaskToServer } from '@/sync/dootask/api';
 import type { DooTaskProfile } from '@/sync/dootask/types';
 
 function ensureHttpsPrefix(url: string): string {
@@ -156,6 +156,16 @@ export default React.memo(function DooTaskConnectPage() {
                     };
 
                     storage.getState().setDootaskProfile(profile);
+
+                    // Sync to server (fire-and-forget)
+                    syncDootaskToServer({
+                        serverUrl: profile.serverUrl,
+                        token: profile.token,
+                        userId: profile.userId,
+                        username: profile.username,
+                        avatar: profile.avatar,
+                    }).catch(() => {});
+
                     router.back();
                     break;
                 }

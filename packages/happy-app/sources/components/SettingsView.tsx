@@ -120,8 +120,9 @@ export const SettingsView = React.memo(function SettingsView() {
         if (confirmed) {
             if (dootaskProfile) {
                 // Fire-and-forget: don't block disconnect on server response
-                import('@/sync/dootask/api').then(({ dootaskLogout }) => {
+                import('@/sync/dootask/api').then(({ dootaskLogout, deleteDootaskFromServer }) => {
                     dootaskLogout(dootaskProfile.serverUrl, dootaskProfile.token).catch(() => {});
+                    deleteDootaskFromServer().catch(() => {});
                 });
             }
             storage.getState().clearDootaskData();

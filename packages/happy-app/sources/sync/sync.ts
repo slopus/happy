@@ -184,6 +184,58 @@ class Sync {
                 this.feedSync.invalidate();
                 this.sharedSessionsSync.invalidate();
                 gitStatusSync.invalidateForSessions([...Object.keys(storage.getState().sessions), ...Object.keys(storage.getState().sharedSessions)]);
+
+                // DooTask token refresh (throttled to 1h)
+                const dootaskProfile = storage.getState().dootaskProfile;
+                if (dootaskProfile && this.credentials) {
+                    const lastChecked = dootaskProfile.lastCheckedAt
+                        ? new Date(dootaskProfile.lastCheckedAt).getTime()
+                        : 0;
+                    const now = Date.now();
+                    const ONE_HOUR = 60 * 60 * 1000;
+                    if (now - lastChecked >= ONE_HOUR) {
+                        // Refresh token via DooTask API
+                        fetch(`${dootaskProfile.serverUrl}/api/users/token/expire?refresh=1`, {
+                            method: 'GET',
+                            headers: { 'Content-Type': 'application/json', 'dootask-token': dootaskProfile.token },
+                        }).then(res => res.json()).then((json: any) => {
+                            if (json.ret !== 1) throw new Error('refresh failed');
+                            const newToken: string | null = json.data?.token ?? null;
+                            const updatedProfile = {
+                                ...dootaskProfile,
+                                lastCheckedAt: new Date().toISOString(),
+                                tokenExpiredAt: json.data?.expired_at ?? null,
+                                tokenRemainingSeconds: json.data?.remaining_seconds ?? null,
+                                ...(newToken ? { token: newToken } : {}),
+                            };
+                            storage.getState().setDootaskProfile(updatedProfile);
+
+                            // Sync new token to server if refreshed
+                            if (newToken && this.credentials) {
+                                fetch(`${getServerUrl()}/v1/connect/dootask`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${this.credentials.token}`,
+                                    },
+                                    body: JSON.stringify({
+                                        serverUrl: updatedProfile.serverUrl,
+                                        token: updatedProfile.token,
+                                        userId: updatedProfile.userId,
+                                        username: updatedProfile.username,
+                                        avatar: updatedProfile.avatar,
+                                    }),
+                                }).catch(() => {});
+                            }
+                        }).catch(() => {
+                            // Update lastCheckedAt even on failure to avoid retry storm
+                            storage.getState().setDootaskProfile({
+                                ...dootaskProfile,
+                                lastCheckedAt: new Date().toISOString(),
+                            });
+                        });
+                    }
+                }
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
             }
@@ -270,6 +322,34 @@ class Sync {
         ]).then(() => {
             gitStatusSync.invalidateForSessions([...Object.keys(storage.getState().sessions), ...Object.keys(storage.getState().sharedSessions)]);
             storage.getState().applyReady();
+
+            // Restore DooTask profile from server if not available locally
+            if (!storage.getState().dootaskProfile && this.credentials) {
+                const endpoint = getServerUrl();
+                const token = this.credentials.token;
+                fetch(`${endpoint}/v1/connect/dootask`, {
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                }).then(res => {
+                    if (!res.ok) return null;
+                    return res.json();
+                }).then(json => {
+                    const profile = json?.profile;
+                    log.log(`🔗 DooTask: Server restore: ${profile ? 'found' : 'null'}`);
+                    if (profile && !storage.getState().dootaskProfile) {
+                        storage.getState().setDootaskProfile({
+                            serverUrl: profile.serverUrl,
+                            token: profile.token,
+                            userId: profile.userId,
+                            username: profile.username,
+                            avatar: profile.avatar,
+                            tokenExpiredAt: null,
+                            tokenRemainingSeconds: null,
+                            lastCheckedAt: null,
+                        });
+                    }
+                }).catch(() => {});
+            }
         }).catch((error) => {
             console.error('Failed to load initial data:', error);
         });

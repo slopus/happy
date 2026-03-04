@@ -1,6 +1,8 @@
 // packages/happy-app/sources/sync/dootask/api.ts
 
 import type { CreateTaskParams, CreateProjectParams } from './types';
+import { TokenStorage } from '@/auth/tokenStorage';
+import { getServerUrl } from '@/sync/serverConfig';
 
 type LoginParams = {
     serverUrl: string;
@@ -407,4 +409,73 @@ export async function dootaskCreateProject(serverUrl: string, token: string, par
         body: JSON.stringify(params),
     });
     return response.json();
+}
+
+// --- Token Refresh ---
+
+export async function dootaskRefreshToken(serverUrl: string, token: string): Promise<{ newToken: string | null; expiredAt: string | null; remainingSeconds: number | null }> {
+    const url = validateServerUrl(serverUrl);
+    const response = await fetch(`${url}/api/users/token/expire?refresh=1`, {
+        method: 'GET',
+        headers: buildHeaders(token),
+    });
+    const json: DooTaskResponse = await response.json();
+    if (json.ret !== 1) {
+        return { newToken: null, expiredAt: null, remainingSeconds: null };
+    }
+    return {
+        newToken: json.data?.token ?? null,
+        expiredAt: json.data?.expired_at ?? null,
+        remainingSeconds: json.data?.remaining_seconds ?? null,
+    };
+}
+
+// --- Happy Server Sync ---
+
+type DootaskProfile = {
+    serverUrl: string;
+    token: string;
+    userId: number;
+    username: string;
+    avatar: string | null;
+};
+
+/** Sync DooTask profile to Happy server */
+export async function syncDootaskToServer(profile: DootaskProfile): Promise<void> {
+    const credentials = await TokenStorage.getCredentials();
+    if (!credentials) return;
+    const endpoint = getServerUrl();
+    await fetch(`${endpoint}/v1/connect/dootask`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${credentials.token}`,
+        },
+        body: JSON.stringify(profile),
+    });
+}
+
+/** Get DooTask profile from Happy server */
+export async function getDootaskFromServer(): Promise<DootaskProfile | null> {
+    const credentials = await TokenStorage.getCredentials();
+    if (!credentials) return null;
+    const endpoint = getServerUrl();
+    const res = await fetch(`${endpoint}/v1/connect/dootask`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${credentials.token}` },
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.profile ?? null;
+}
+
+/** Delete DooTask profile from Happy server */
+export async function deleteDootaskFromServer(): Promise<void> {
+    const credentials = await TokenStorage.getCredentials();
+    if (!credentials) return;
+    const endpoint = getServerUrl();
+    await fetch(`${endpoint}/v1/connect/dootask`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${credentials.token}` },
+    });
 }

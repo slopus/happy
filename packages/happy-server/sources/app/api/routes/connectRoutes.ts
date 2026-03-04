@@ -246,6 +246,83 @@ export function connectRoutes(app: Fastify) {
         }
     });
 
+    // --- DooTask connection ---
+
+    // Save or update DooTask connection
+    app.post('/v1/connect/dootask', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                serverUrl: z.string(),
+                token: z.string(),
+                userId: z.number(),
+                username: z.string(),
+                avatar: z.string().nullable(),
+            }),
+            response: {
+                200: z.object({ success: z.literal(true) }),
+            }
+        }
+    }, async (request, reply) => {
+        const accountId = request.userId;
+        const profileJson = JSON.stringify(request.body);
+        const encrypted = encryptString(['user', accountId, 'dootask', 'profile'], profileJson);
+        await db.userKVStore.upsert({
+            where: { accountId_key: { accountId, key: 'dootask-profile' } },
+            update: { value: encrypted, updatedAt: new Date() },
+            create: { accountId, key: 'dootask-profile', value: encrypted },
+        });
+        return reply.send({ success: true });
+    });
+
+    // Get DooTask connection
+    app.get('/v1/connect/dootask', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({
+                    profile: z.object({
+                        serverUrl: z.string(),
+                        token: z.string(),
+                        userId: z.number(),
+                        username: z.string(),
+                        avatar: z.string().nullable(),
+                    }).nullable(),
+                }),
+            }
+        }
+    }, async (request, reply) => {
+        const accountId = request.userId;
+        const record = await db.userKVStore.findUnique({
+            where: { accountId_key: { accountId, key: 'dootask-profile' } },
+        });
+        if (!record || !record.value) {
+            return reply.send({ profile: null });
+        }
+        try {
+            const profileJson = decryptString(['user', accountId, 'dootask', 'profile'], record.value);
+            return reply.send({ profile: JSON.parse(profileJson) });
+        } catch {
+            return reply.send({ profile: null });
+        }
+    });
+
+    // Disconnect DooTask
+    app.delete('/v1/connect/dootask', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({ success: z.literal(true) }),
+            }
+        }
+    }, async (request, reply) => {
+        const accountId = request.userId;
+        await db.userKVStore.deleteMany({
+            where: { accountId, key: 'dootask-profile' },
+        });
+        return reply.send({ success: true });
+    });
+
     //
     // Inference endpoints
     //
