@@ -982,15 +982,17 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
-            const session = state.sessions[sessionId];
+            const isShared = sessionId in state.sharedSessions;
+            const session = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
             if (!session) return state;
 
             // Don't store empty strings, convert to null
             const normalizedDraft = draft?.trim() ? draft : null;
 
-            // Collect all drafts for persistence
+            // Collect all drafts for persistence (from both own and shared sessions)
             const allDrafts: Record<string, string> = {};
-            Object.entries(state.sessions).forEach(([id, sess]) => {
+            const allSessions = { ...state.sessions, ...state.sharedSessions };
+            Object.entries(allSessions).forEach(([id, sess]) => {
                 if (id === sessionId) {
                     if (normalizedDraft) {
                         allDrafts[id] = normalizedDraft;
@@ -1003,24 +1005,17 @@ export const storage = create<StorageState>()((set, get) => {
             // Persist drafts
             saveSessionDrafts(allDrafts);
 
-            const updatedSessions = {
-                ...state.sessions,
-                [sessionId]: {
-                    ...session,
-                    draft: normalizedDraft
-                }
-            };
+            const updatedSession = { ...session, draft: normalizedDraft };
 
-            // Rebuild sessionListViewData to update the UI immediately
-            const sessionListViewData = buildSessionListViewData(
-                updatedSessions, state.sharedSessions
-            );
+            if (isShared) {
+                const updatedSharedSessions = { ...state.sharedSessions, [sessionId]: updatedSession };
+                const sessionListViewData = buildSessionListViewData(state.sessions, updatedSharedSessions);
+                return { ...state, sharedSessions: updatedSharedSessions, sessionListViewData };
+            }
 
-            return {
-                ...state,
-                sessions: updatedSessions,
-                sessionListViewData
-            };
+            const updatedSessions = { ...state.sessions, [sessionId]: updatedSession };
+            const sessionListViewData = buildSessionListViewData(updatedSessions, state.sharedSessions);
+            return { ...state, sessions: updatedSessions, sessionListViewData };
         }),
         updateSessionActivity: (sessionId: string, active: boolean) => set((state) => {
             const session = state.sessions[sessionId];
@@ -1055,70 +1050,59 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => {
-            const session = get().sessions[sessionId];
+            const s = get();
+            const session = s.sessions[sessionId] ?? s.sharedSessions[sessionId];
             if (!session) return;
             const flavor = session.metadata?.flavor;
             if (flavor === 'claude' || flavor === 'gemini') {
                 void sync.changePermissionMode(sessionId, mode);
             }
             set((state) => {
-                const existing = state.sessions[sessionId];
+                const isShared = sessionId in state.sharedSessions;
+                const existing = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
                 if (!existing) return state;
 
-                // Update the session with the new permission mode
-                const updatedSessions = {
-                    ...state.sessions,
-                    [sessionId]: {
-                        ...existing,
-                        permissionMode: mode
-                    }
-                };
+                const updatedSession = { ...existing, permissionMode: mode };
 
                 // Collect all permission modes for persistence
+                const allSessions = { ...state.sessions, ...state.sharedSessions };
                 const allModes: Record<string, PermissionMode> = {};
-                Object.entries(updatedSessions).forEach(([id, sess]) => {
-                    if (sess.permissionMode && sess.permissionMode !== 'default') {
-                        allModes[id] = sess.permissionMode;
+                Object.entries(allSessions).forEach(([id, sess]) => {
+                    const pm = id === sessionId ? mode : sess.permissionMode;
+                    if (pm && pm !== 'default') {
+                        allModes[id] = pm;
                     }
                 });
-
-                // Persist permission modes (only non-default values to save space)
                 saveSessionPermissionModes(allModes);
 
-                // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
-                return {
-                    ...state,
-                    sessions: updatedSessions
-                };
+                if (isShared) {
+                    return { ...state, sharedSessions: { ...state.sharedSessions, [sessionId]: updatedSession } };
+                }
+                return { ...state, sessions: { ...state.sessions, [sessionId]: updatedSession } };
             });
         },
         updateSessionModelMode: (sessionId: string, mode: string) => set((state) => {
-            const session = state.sessions[sessionId];
+            const isShared = sessionId in state.sharedSessions;
+            const session = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
             if (!session) return state;
 
-            // Update the session with the new model mode
-            const updatedSessions = {
-                ...state.sessions,
-                [sessionId]: {
-                    ...session,
-                    modelMode: mode
-                }
-            };
+            const updatedSession = { ...session, modelMode: mode };
 
             // Persist model modes (only non-default values to save space)
+            const allSessions = { ...state.sessions, ...state.sharedSessions };
             const allModes: Record<string, string> = {};
-            Object.entries(updatedSessions).forEach(([id, sess]) => {
-                if (sess.modelMode && sess.modelMode !== 'default') {
-                    allModes[id] = sess.modelMode;
+            Object.entries(allSessions).forEach(([id, sess]) => {
+                const mm = id === sessionId ? mode : sess.modelMode;
+                if (mm && mm !== 'default') {
+                    allModes[id] = mm;
                 }
             });
             saveSessionModelModes(allModes);
 
-            // No need to rebuild sessionListViewData since model mode doesn't affect the list display
-            return {
-                ...state,
-                sessions: updatedSessions
-            };
+            if (isShared) {
+                return { ...state, sharedSessions: { ...state.sharedSessions, [sessionId]: updatedSession } };
+            }
+            return { ...state, sessions: { ...state.sessions, [sessionId]: updatedSession } };
         }),
         // Project management methods
         getProjects: () => projectManager.getProjects(),
