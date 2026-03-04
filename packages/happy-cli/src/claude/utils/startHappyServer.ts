@@ -12,6 +12,21 @@ import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
 
+const OAUTH_AUTHORIZATION_SERVER_PATH = /^\/\.well-known\/oauth-authorization-server\/?$/;
+const OAUTH_PROTECTED_RESOURCE_PATH = /^\/\.well-known\/oauth-protected-resource(?:\/.*)?$/;
+
+export function getRequestPath(reqUrl: string | undefined): string {
+    try {
+        return new URL(reqUrl ?? "/", "http://127.0.0.1").pathname;
+    } catch {
+        return "/";
+    }
+}
+
+export function isOAuthMetadataDiscoveryPath(pathname: string): boolean {
+    return OAUTH_AUTHORIZATION_SERVER_PATH.test(pathname) || OAUTH_PROTECTED_RESOURCE_PATH.test(pathname);
+}
+
 export async function startHappyServer(client: ApiSessionClient) {
     logger.debug(`[happyMCP] server:start sessionId=${client.sessionId}`);
 
@@ -86,6 +101,21 @@ export async function startHappyServer(client: ApiSessionClient) {
     //
 
     const server = createServer(async (req, res) => {
+        const pathname = getRequestPath(req.url);
+
+        // MCP OAuth discovery clients treat 404 as "no OAuth" and continue.
+        // Return 404 explicitly so local authless servers don't fail tool startup.
+        if (isOAuthMetadataDiscoveryPath(pathname)) {
+            res.writeHead(404).end();
+            return;
+        }
+
+        // This server only exposes MCP on the root path.
+        if (pathname !== "/") {
+            res.writeHead(404).end();
+            return;
+        }
+
         try {
             await transport.handleRequest(req, res);
         } catch (error) {
