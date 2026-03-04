@@ -98,6 +98,20 @@ import { execFileSync } from 'node:child_process'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
+
+      // Auto-start daemon for codex (same as claude/gemini)
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
       await runCodex({credentials, startedBy});
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
@@ -441,20 +455,22 @@ import { execFileSync } from 'node:child_process'
         console.log(latest.path)
       }
       process.exit(0)
-    } else if (daemonSubcommand === 'install') {
+    } else if (daemonSubcommand === 'enable' || daemonSubcommand === 'install') {
       try {
         await install()
       } catch (error) {
         console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
         process.exit(1)
       }
-    } else if (daemonSubcommand === 'uninstall') {
+      process.exit(0)
+    } else if (daemonSubcommand === 'disable' || daemonSubcommand === 'uninstall') {
       try {
         await uninstall()
       } catch (error) {
         console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
         process.exit(1)
       }
+      process.exit(0)
     } else {
       console.log(`
 ${chalk.bold('happy daemon')} - Daemon management
@@ -464,8 +480,10 @@ ${chalk.bold('Usage:')}
   happy daemon stop               Stop the daemon (sessions stay alive)
   happy daemon status             Show daemon status
   happy daemon list               List active sessions
+  happy daemon enable             Enable auto-start on boot
+  happy daemon disable            Disable auto-start on boot
 
-  If you want to kill all happy related processes run 
+  If you want to kill all happy related processes run
   ${chalk.cyan('happy doctor clean')}
 
 ${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
@@ -573,8 +591,8 @@ ${chalk.bold('Usage:')}
   happy gemini            Start Gemini mode (ACP)
   happy connect           Connect AI vendor API keys
   happy notify            Send push notification
-  happy daemon            Manage background service that allows
-                            to spawn new sessions away from your computer
+  happy daemon            Manage background service
+  happy daemon enable     Auto-start daemon on boot
   happy doctor            System diagnostics & troubleshooting
   happy update            Upgrade happy to the latest version
 

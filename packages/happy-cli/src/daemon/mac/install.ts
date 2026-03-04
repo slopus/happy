@@ -1,94 +1,88 @@
-/**
- * Installation script for Happy daemon using macOS LaunchDaemons
- * 
- * NOTE: This installation method is currently NOT USED in favor of auto-starting 
- * the daemon when the user runs the happy command. 
- * 
- * Why we're not using this approach:
- * 1. Installing a LaunchDaemon requires sudo permissions, which users might not be comfortable with
- * 2. We assume users will run happy frequently (every time they open their laptop)
- * 3. The auto-start approach provides the same functionality without requiring elevated permissions
- * 
- * This code is kept for potential future use if we decide to offer system-level installation as an option.
- */
-
-import { writeFileSync, chmodSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
+import os from 'os';
+import { join } from 'path';
 import { logger } from '@/ui/logger';
 import { trimIdent } from '@/utils/trimIdent';
-import os from 'os';
+import { projectPath } from '@/projectPath';
 
 const PLIST_LABEL = 'com.happy-cli.daemon';
-const PLIST_FILE = `/Library/LaunchDaemons/${PLIST_LABEL}.plist`;
-
-// NOTE: Local installation like --local does not make too much sense I feel like
+const PLIST_DIR = join(os.homedir(), 'Library', 'LaunchAgents');
+const PLIST_FILE = join(PLIST_DIR, `${PLIST_LABEL}.plist`);
+const LOG_DIR = join(os.homedir(), '.happy');
 
 export async function install(): Promise<void> {
-    try {
-        // Check if already installed
-        if (existsSync(PLIST_FILE)) {
-            logger.info('Daemon plist already exists. Uninstalling first...');
-            execSync(`launchctl unload ${PLIST_FILE}`, { stdio: 'inherit' });
-        }
+    const runtime = process.execPath;
+    const entrypoint = join(projectPath(), 'dist', 'index.mjs');
 
-        // Get the path to the happy CLI executable
-        const happyPath = process.argv[0]; // Node.js executable
-        const scriptPath = process.argv[1]; // Script path
-
-        // Create plist content
-        const plistContent = trimIdent(`
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>Label</key>
-                <string>${PLIST_LABEL}</string>
-                
-                <key>ProgramArguments</key>
-                <array>
-                    <string>${happyPath}</string>
-                    <string>${scriptPath}</string>
-                    <string>happy-daemon</string>
-                </array>
-                
-                <key>EnvironmentVariables</key>
-                <dict>
-                    <key>HAPPY_DAEMON_MODE</key>
-                    <string>true</string>
-                </dict>
-                
-                <key>RunAtLoad</key>
-                <true/>
-                
-                <key>KeepAlive</key>
-                <true/>
-                
-                <key>StandardErrorPath</key>
-                <string>${os.homedir()}/.happy/daemon.err</string>
-                
-                <key>StandardOutPath</key>
-                <string>${os.homedir()}/.happy/daemon.log</string>
-                
-                <key>WorkingDirectory</key>
-                <string>/tmp</string>
-            </dict>
-            </plist>
-        `);
-
-        // Write plist file
-        writeFileSync(PLIST_FILE, plistContent);
-        chmodSync(PLIST_FILE, 0o644);
-
-        logger.info(`Created daemon plist at ${PLIST_FILE}`);
-
-        // Load the daemon
-        execSync(`launchctl load ${PLIST_FILE}`, { stdio: 'inherit' });
-
-        logger.info('Daemon installed and started successfully');
-        logger.info('Check logs at ~/.happy/daemon.log');
-
-    } catch (error) {
-        logger.debug('Failed to install daemon:', error);
-        throw error;
+    // Ensure directories exist
+    if (!existsSync(PLIST_DIR)) {
+        mkdirSync(PLIST_DIR, { recursive: true });
     }
+    if (!existsSync(LOG_DIR)) {
+        mkdirSync(LOG_DIR, { recursive: true });
+    }
+
+    // If plist already exists, unload it first (ignore errors in case it wasn't loaded)
+    if (existsSync(PLIST_FILE)) {
+        logger.info('Daemon plist already exists. Unloading first...');
+        try {
+            execSync(`launchctl unload ${PLIST_FILE}`, { stdio: 'ignore' });
+        } catch {
+            // Ignore — may not be loaded
+        }
+    }
+
+    const plistContent = trimIdent(`
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key>
+            <string>${PLIST_LABEL}</string>
+
+            <key>ProgramArguments</key>
+            <array>
+                <string>${runtime}</string>
+                <string>--no-warnings</string>
+                <string>--no-deprecation</string>
+                <string>${entrypoint}</string>
+                <string>daemon</string>
+                <string>start-sync</string>
+            </array>
+
+            <key>RunAtLoad</key>
+            <true/>
+
+            <key>KeepAlive</key>
+            <dict>
+                <key>SuccessfulExit</key>
+                <false/>
+            </dict>
+
+            <key>ThrottleInterval</key>
+            <integer>30</integer>
+
+            <key>StandardOutPath</key>
+            <string>${join(os.homedir(), '.happy', 'daemon.log')}</string>
+
+            <key>StandardErrorPath</key>
+            <string>${join(os.homedir(), '.happy', 'daemon.err')}</string>
+
+            <key>WorkingDirectory</key>
+            <string>/tmp</string>
+        </dict>
+        </plist>
+    `);
+
+    writeFileSync(PLIST_FILE, plistContent);
+    logger.info(`Created LaunchAgent plist at ${PLIST_FILE}`);
+
+    try {
+        execSync(`launchctl load ${PLIST_FILE}`, { stdio: 'pipe' });
+    } catch (error) {
+        throw new Error(`Failed to load LaunchAgent. You can try manually: launchctl load ${PLIST_FILE}`);
+    }
+    logger.info('Daemon enabled and started. It will auto-start on login.');
+    logger.info('To disable: happy daemon disable');
 }
