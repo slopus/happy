@@ -181,6 +181,18 @@ export default function RootLayout() {
             try {
                 await loadFonts();
                 await sodium.ready;
+
+                // Dev-only: auto-login via URL params (e.g. ?dev_token=xxx&dev_secret=xxx)
+                if (__DEV__ && Platform.OS === 'web' && typeof window !== 'undefined') {
+                    const params = new URLSearchParams(window.location.search);
+                    const devToken = params.get('dev_token');
+                    const devSecret = params.get('dev_secret');
+                    if (devToken && devSecret) {
+                        await TokenStorage.setCredentials({ token: devToken, secret: devSecret });
+                        window.history.replaceState({}, '', window.location.pathname);
+                    }
+                }
+
                 const credentials = await TokenStorage.getCredentials();
                 console.log('credentials', credentials);
                 if (credentials) {

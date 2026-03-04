@@ -16,6 +16,9 @@
         "env:ios": "npx tsx scripts/environments.ts run ios",
         "env:android": "npx tsx scripts/environments.ts run android",
         "env:cli": "npx tsx scripts/environments.ts run cli",
+        "env:seed": "npx tsx scripts/environments.ts seed",
+        "env:up": "npx tsx scripts/environments.ts up --template",
+        "env:down": "npx tsx scripts/environments.ts down",
         "env:tailscale": "npx tsx scripts/environments.ts tailscale"
     },
     "workspaces": {

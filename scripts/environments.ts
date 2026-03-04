@@ -1,7 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as net from "net";
-import { execSync, spawnSync } from "child_process";
+import * as crypto from "crypto";
+import { execSync, spawn, spawnSync } from "child_process";
 
 // ============================================================================
 // Configuration
@@ -120,6 +121,74 @@ function isPortInUse(port: number): boolean {
     } catch {
         return false;
     }
+}
+
+// ============================================================================
+// PID file management
+// ============================================================================
+
+function writePidFile(envDir: string, service: string, pid: number): void {
+    const pidsDir = path.join(envDir, "pids");
+    fs.mkdirSync(pidsDir, { recursive: true });
+    fs.writeFileSync(path.join(pidsDir, `${service}.pid`), String(pid));
+}
+
+function readPidFile(envDir: string, service: string): number | null {
+    const pidPath = path.join(envDir, "pids", `${service}.pid`);
+    if (!fs.existsSync(pidPath)) return null;
+    const raw = fs.readFileSync(pidPath, "utf-8").trim();
+    const pid = parseInt(raw, 10);
+    return isNaN(pid) ? null : pid;
+}
+
+function removePidFile(envDir: string, service: string): void {
+    const pidPath = path.join(envDir, "pids", `${service}.pid`);
+    try { fs.unlinkSync(pidPath); } catch {}
+}
+
+function isProcessAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function killProcess(pid: number): void {
+    try {
+        // Kill entire process group (detached processes get their own group)
+        process.kill(-pid, "SIGTERM");
+    } catch {
+        try { process.kill(pid, "SIGTERM"); } catch {}
+    }
+}
+
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs: number, label: string): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        try { if (await check()) return; } catch {}
+        await new Promise(r => setTimeout(r, 500));
+    }
+    throw new Error(`Timed out waiting for ${label} after ${timeoutMs}ms`);
+}
+
+function spawnService(
+    command: string,
+    args: string[],
+    opts: { cwd: string; env: Record<string, string | undefined>; logFile: string },
+): number {
+    fs.mkdirSync(path.dirname(opts.logFile), { recursive: true });
+    const logFd = fs.openSync(opts.logFile, "a");
+    const child = spawn(command, args, {
+        cwd: opts.cwd,
+        env: opts.env,
+        stdio: ["ignore", logFd, logFd],
+        detached: true,
+    });
+    child.unref();
+    fs.closeSync(logFd);
+    return child.pid!;
 }
 
 // ============================================================================
@@ -458,6 +527,272 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
 }
 
 // ============================================================================
+// Seed auth
+// ============================================================================
+
+async function commandSeed() {
+    const currentConfig = readCurrentConfig();
+    if (!currentConfig?.current) {
+        console.error("No current environment. Run `yarn env:new` first.");
+        process.exit(1);
+    }
+
+    const envName = currentConfig.current;
+    const envDir = path.join(ENVIRONMENTS_DIR, envName);
+    const config = readEnvironmentConfig(envName);
+    const serverUrl = `http://localhost:${config.serverPort}`;
+
+    // Health check
+    try {
+        const res = await fetch(`${serverUrl}/`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+    } catch {
+        console.error(`Server not reachable at ${serverUrl}. Start it first: yarn env:server`);
+        process.exit(1);
+    }
+
+    // Generate Ed25519 signing keypair and challenge-response for /v1/auth
+    const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+    // Extract raw 32-byte public key from JWK
+    const jwk = publicKey.export({ format: "jwk" }) as { x?: string };
+    const rawPublicKey = Buffer.from(jwk.x || "", "base64url");
+
+    const challenge = crypto.randomBytes(32);
+    const signature = crypto.sign(null, challenge, privateKey);
+
+    const toBase64 = (buf: Buffer | Uint8Array) => Buffer.from(buf).toString("base64");
+    const toBase64Url = (buf: Buffer | Uint8Array) =>
+        Buffer.from(buf).toString("base64url");
+
+    // Create account + get token
+    const authRes = await fetch(`${serverUrl}/v1/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            publicKey: toBase64(rawPublicKey),
+            challenge: toBase64(challenge),
+            signature: toBase64(signature),
+        }),
+    });
+    if (!authRes.ok) {
+        console.error(`Auth failed: ${authRes.status} ${await authRes.text()}`);
+        process.exit(1);
+    }
+    const { token } = (await authRes.json()) as { token: string };
+
+    // Generate encryption secret
+    const secret = crypto.randomBytes(32);
+
+    // Write CLI credentials
+    const cliHome = path.join(envDir, "cli", "home");
+    fs.mkdirSync(cliHome, { recursive: true });
+
+    fs.writeFileSync(
+        path.join(cliHome, "access.key"),
+        JSON.stringify({ secret: toBase64(secret), token }, null, 2),
+    );
+
+    fs.writeFileSync(
+        path.join(cliHome, "settings.json"),
+        JSON.stringify(
+            {
+                schemaVersion: 2,
+                onboardingCompleted: true,
+                machineId: crypto.randomUUID(),
+            },
+            null,
+            2,
+        ),
+    );
+
+    // Stop existing daemon if running
+    const daemonStatePath = path.join(envDir, "cli", "home", "daemon.state.json");
+    if (fs.existsSync(daemonStatePath)) {
+        try {
+            const daemonState = JSON.parse(fs.readFileSync(daemonStatePath, "utf-8"));
+            if (daemonState.pid && isProcessAlive(daemonState.pid)) {
+                console.log(`Stopping existing daemon (PID ${daemonState.pid})...`);
+                killProcess(daemonState.pid);
+                // Give it a moment to die
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        } catch {}
+    }
+
+    // Start daemon so a machine registers with the server
+    const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
+    // Unset CLAUDECODE so the daemon can spawn Claude Code subprocesses
+    const daemonEnv = { ...process.env, ...envVars };
+    delete daemonEnv.CLAUDECODE;
+
+    const happyBin = path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs");
+    const daemon = spawn("node", [happyBin, "daemon", "start"], {
+        env: daemonEnv,
+        stdio: "ignore",
+        detached: true,
+    });
+    daemon.unref();
+
+    // Wait for machine to register
+    const machineRegistered = await waitFor(async () => {
+        const res = await fetch(`${serverUrl}/v1/machines`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return false;
+        const machines = (await res.json()) as unknown[];
+        return machines.length > 0;
+    }, 10_000, "machine registration").then(() => true, () => false);
+
+    console.log(`  Seeded: credentials written, daemon ${machineRegistered ? "registered" : "starting"}`);
+}
+
+// ============================================================================
+// Up / Down
+// ============================================================================
+
+const VALID_TEMPLATES = ["authenticated-empty", "empty"] as const;
+type Template = (typeof VALID_TEMPLATES)[number];
+
+async function commandUp(template: Template) {
+    // Always create a fresh environment
+    await commandNew();
+
+    const currentConfig = readCurrentConfig()!;
+    const envName = currentConfig.current;
+    const envDir = path.join(ENVIRONMENTS_DIR, envName);
+    const config = readEnvironmentConfig(envName);
+    const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
+    const mergedEnv: Record<string, string | undefined> = { ...process.env, ...envVars };
+
+    // Record template
+    const configPath = path.join(envDir, "environment.json");
+    const configData = { ...config, template };
+    fs.writeFileSync(configPath, JSON.stringify(configData, null, 4) + "\n");
+
+    // Start server
+    const serverLogFile = path.join(envDir, "server", "stdout.log");
+    console.log(`Starting server on port ${config.serverPort}...`);
+    const serverPid = spawnService("yarn", ["standalone", "serve"], {
+        cwd: path.join(REPO_ROOT, "packages", "happy-server"),
+        env: mergedEnv,
+        logFile: serverLogFile,
+    });
+    writePidFile(envDir, "server", serverPid);
+
+    const serverUrl = `http://localhost:${config.serverPort}`;
+    await waitFor(async () => {
+        const res = await fetch(`${serverUrl}/`);
+        return res.ok;
+    }, 30_000, "server").catch(() => {
+        console.error(`Server failed to start. Check logs: ${serverLogFile}`);
+        process.exit(1);
+    });
+    console.log(`  Server is healthy.`);
+
+    // Start web
+    const webLogFile = path.join(envDir, "web", "stdout.log");
+    fs.mkdirSync(path.join(envDir, "web"), { recursive: true });
+    console.log(`Starting web on port ${config.expoPort}...`);
+    const webPid = spawnService("yarn", ["web", "--port", String(config.expoPort)], {
+        cwd: path.join(REPO_ROOT, "packages", "happy-app"),
+        env: mergedEnv,
+        logFile: webLogFile,
+    });
+    writePidFile(envDir, "web", webPid);
+
+    await waitFor(() => isPortInUse(config.expoPort), 30_000, "web").catch(() => {
+        console.error(`Web failed to start. Check logs: ${webLogFile}`);
+        process.exit(1);
+    });
+    console.log(`  Web is listening.`);
+
+    // Seed if template requires it
+    if (template === "authenticated-empty") {
+        // Always rebuild CLI so the daemon binary matches this worktree
+        console.log("Building CLI (needed for daemon)...");
+        const buildResult = spawnSync("yarn", ["build"], {
+            cwd: path.join(REPO_ROOT, "packages", "happy-cli"),
+            env: mergedEnv,
+            stdio: "inherit",
+        });
+        if (buildResult.status !== 0) {
+            console.error("CLI build failed.");
+            process.exit(1);
+        }
+
+        console.log("Seeding auth + starting daemon...");
+        await commandSeed();
+    }
+
+    // Print summary
+    console.log("");
+    console.log(`Environment "${envName}" is up!`);
+    console.log(`  Server: http://localhost:${config.serverPort}`);
+    console.log(`  Web:    http://localhost:${config.expoPort}`);
+
+    const accessKeyPath = path.join(envDir, "cli", "home", "access.key");
+    if (fs.existsSync(accessKeyPath)) {
+        const creds = JSON.parse(fs.readFileSync(accessKeyPath, "utf-8"));
+        const webParams = new URLSearchParams({
+            dev_token: creds.token,
+            dev_secret: Buffer.from(creds.secret, "base64").toString("base64url"),
+        });
+        console.log(`  Open:   http://localhost:${config.expoPort}/?${webParams}`);
+    }
+
+    console.log(`  Logs:   ${path.relative(process.cwd(), path.join(envDir, "server", "stdout.log"))}`);
+    console.log(`          ${path.relative(process.cwd(), path.join(envDir, "web", "stdout.log"))}`);
+    console.log(`  Stop:   yarn env:down`);
+    console.log("");
+}
+
+function commandDown() {
+    const currentConfig = readCurrentConfig();
+    if (!currentConfig?.current) {
+        console.error("No current environment. Nothing to stop.");
+        process.exit(1);
+    }
+
+    const envName = currentConfig.current;
+    const envDir = path.join(ENVIRONMENTS_DIR, envName);
+    let killed = 0;
+
+    for (const service of ["server", "web"] as const) {
+        const pid = readPidFile(envDir, service);
+        if (pid !== null) {
+            if (isProcessAlive(pid)) {
+                console.log(`Stopping ${service} (PID ${pid})...`);
+                killProcess(pid);
+                killed++;
+            } else {
+                console.log(`${service} PID ${pid} already dead.`);
+            }
+            removePidFile(envDir, service);
+        }
+    }
+
+    // Best-effort kill daemon
+    const daemonStatePath = path.join(envDir, "cli", "home", "daemon.state.json");
+    if (fs.existsSync(daemonStatePath)) {
+        try {
+            const daemonState = JSON.parse(fs.readFileSync(daemonStatePath, "utf-8"));
+            if (daemonState.pid && isProcessAlive(daemonState.pid)) {
+                console.log(`Stopping daemon (PID ${daemonState.pid})...`);
+                killProcess(daemonState.pid);
+                killed++;
+            }
+        } catch {}
+    }
+
+    if (killed === 0) {
+        console.log(`No running services found for "${envName}".`);
+    } else {
+        console.log("");
+        console.log(`Environment "${envName}" is down. Stopped ${killed} process(es).`);
+    }
+}
+
+// ============================================================================
 // Tailscale
 // ============================================================================
 
@@ -541,6 +876,28 @@ switch (subcommand) {
         }
         commandRun(args[0]);
         break;
+    case "seed":
+        commandSeed().catch(err => {
+            console.error(err);
+            process.exit(1);
+        });
+        break;
+    case "up": {
+        const templateIdx = args.indexOf("--template");
+        const template = templateIdx !== -1 ? args[templateIdx + 1] : args[0];
+        if (!template || !VALID_TEMPLATES.includes(template as Template)) {
+            console.error(`Usage: yarn env:up --template <${VALID_TEMPLATES.join("|")}>`);
+            process.exit(1);
+        }
+        commandUp(template as Template).catch(err => {
+            console.error(err);
+            process.exit(1);
+        });
+        break;
+    }
+    case "down":
+        commandDown();
+        break;
     case "tailscale":
         commandTailscale();
         break;
@@ -548,11 +905,15 @@ switch (subcommand) {
         console.log(`Happy Environment Manager
 
 Usage:
+  yarn env:up --template <t>  Create + start everything (templates: ${VALID_TEMPLATES.join(", ")})
+  yarn env:down               Stop all services for current environment
+
   yarn env:new              Create a new isolated dev environment
   yarn env:list             List all environments with status
   yarn env:use <name>       Switch to a different environment
   yarn env:remove <name>    Delete an environment
   yarn env:current          Print current environment's env.sh path
+  yarn env:seed             Seed auth for CLI + web (requires server running)
 
   yarn env:server           Start the server (current environment)
   yarn env:web              Start the web app (current environment)
