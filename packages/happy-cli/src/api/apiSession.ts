@@ -421,13 +421,13 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
-        // Send both modern and legacy format to test which the app consumes
-        this.enqueueSessionProtocolEnvelope(envelope);
+        // Send both modern and legacy — app drops one based on ENABLE_SESSION_PROTOCOL_SEND flag
         this.enqueueMessage({
             role: 'user',
             content: { type: 'text', text: envelope.ev.text },
             meta: { sentFrom: 'cli' },
-        });
+        }, false);
+        this.enqueueSessionProtocolEnvelope(envelope);
     }
 
     /**
