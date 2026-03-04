@@ -715,6 +715,10 @@ class Sync {
                 ? await sessionEncryption.decryptMetadata(ss.metadataVersion, ss.metadata)
                 : null;
 
+            const agentState = ss.agentState
+                ? await sessionEncryption.decryptAgentState(ss.agentStateVersion, ss.agentState)
+                : null;
+
             decryptedSessions.push({
                 id: ss.sessionId,
                 seq: ss.seq,
@@ -724,8 +728,8 @@ class Sync {
                 activeAt: ss.activeAt,
                 metadata,
                 metadataVersion: ss.metadataVersion,
-                agentState: null,
-                agentStateVersion: 0,
+                agentState,
+                agentStateVersion: ss.agentStateVersion,
                 thinking: false,
                 thinkingAt: 0,
                 presence: ss.active ? "online" : ss.activeAt,
@@ -2131,6 +2135,10 @@ class Sync {
 
                 if (isShared) {
                     storage.getState().addSharedSession(updatedSession);
+                    // Re-process messages when agentState changes so permission buttons appear
+                    if (updateData.body.agentState && storage.getState().sessionMessages[sessionId]?.isLoaded) {
+                        storage.getState().applyMessages(sessionId, []);
+                    }
                 } else {
                     this.applySessions([updatedSession]);
                 }

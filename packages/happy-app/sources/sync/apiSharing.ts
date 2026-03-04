@@ -20,6 +20,8 @@ export interface SharedSessionFromServer {
     seq: number;
     metadata: string | null;
     metadataVersion: number;
+    agentState: string | null;
+    agentStateVersion: number;
     active: boolean;
     activeAt: number;
     createdAt: number;

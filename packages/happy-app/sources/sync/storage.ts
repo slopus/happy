@@ -685,9 +685,9 @@ export const storage = create<StorageState>()((set, get) => {
                     fetchVersion: 0,
                 };
 
-                // Get the session's agentState if available
+                // Get the session's agentState if available (also check shared sessions)
                 const session = state.sessions[sessionId];
-                const agentState = session?.agentState;
+                const agentState = session?.agentState ?? state.sharedSessions[sessionId]?.agentState;
 
                 // Messages are already normalized, no need to process them again
                 const normalizedMessages = messages;
@@ -761,9 +761,9 @@ export const storage = create<StorageState>()((set, get) => {
             let result: StorageState;
 
             if (!existingSession) {
-                // First time loading - check for AgentState
+                // First time loading - check for AgentState (also check shared sessions)
                 const session = state.sessions[sessionId];
-                const agentState = session?.agentState;
+                const agentState = session?.agentState ?? state.sharedSessions[sessionId]?.agentState;
 
                 // Create new reducer state
                 const reducerState = createReducer();
