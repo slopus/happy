@@ -34,7 +34,8 @@ export class CopilotEventMapper {
     private toolCallIdMap = new Map<string, string>();
 
     private nextTime(): number {
-        this.lastTime = Math.max(this.lastTime + 1, Date.now());
+        // Always increment; we anchor to event timestamps in mapEvent()
+        this.lastTime = this.lastTime + 1;
         return this.lastTime;
     }
 
@@ -54,8 +55,17 @@ export class CopilotEventMapper {
 
     /**
      * Map a Copilot JSONL event to zero or more Happy session envelopes.
+     * Uses the event's own timestamp for chronological ordering so that
+     * user.message events (which Copilot may write after assistant events)
+     * still appear at the correct position in the app timeline.
      */
     mapEvent(event: CopilotEvent): SessionEnvelope[] {
+        // Anchor time to the actual event timestamp; fall back to nextTime()
+        const eventTimeMs = event.timestamp ? new Date(event.timestamp).getTime() : 0;
+        if (eventTimeMs > 0) {
+            // Allow lastTime to go back in time to honour actual event order
+            this.lastTime = eventTimeMs - 1;
+        }
         switch (event.type) {
             case 'assistant.turn_start':
                 return this.handleTurnStart();
