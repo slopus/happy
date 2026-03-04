@@ -50,6 +50,9 @@ export async function copilotLoop(opts: CopilotLoopOptions): Promise<number> {
                         return 0;
                     case 'switch':
                         mode = 'local';
+                        // Remote launcher closes the queue to unblock its wait loop.
+                        // Reset it so local mode can receive new messages.
+                        opts.session.queue.reset();
                         opts.onModeChange(mode);
                         break;
                     default:
