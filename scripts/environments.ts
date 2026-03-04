@@ -401,6 +401,7 @@ function buildEnvVars(envDir: string, serverPort: number, expoPort: number): Rec
         // App (Expo)
         EXPO_PUBLIC_SERVER_URL: `http://localhost:${serverPort}`,
         EXPO_PUBLIC_HAPPY_SERVER_URL: `http://localhost:${serverPort}`,
+        EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: "true",
         EXPO_PORT: String(expoPort),
 
         // CLI
@@ -436,6 +437,7 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
     lines.push("# App (Expo)");
     lines.push(`export EXPO_PUBLIC_SERVER_URL="${vars.EXPO_PUBLIC_SERVER_URL}"`);
     lines.push(`export EXPO_PUBLIC_HAPPY_SERVER_URL="${vars.EXPO_PUBLIC_HAPPY_SERVER_URL}"`);
+    lines.push(`export EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=true`);
     lines.push(`export EXPO_PORT=${vars.EXPO_PORT}`);
     lines.push("");
 
