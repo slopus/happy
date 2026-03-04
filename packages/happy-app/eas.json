@@ -62,10 +62,13 @@
       "channel": "production",
       "env": {
         "APP_ENV": "production",
-        "ABI_FILTERS": "arm64-v8a,armeabi-v7a"
+        "ABI_FILTERS": "arm64-v8a"
       },
       "ios": {
         "image": "macos-sequoia-15.6-xcode-16.4"
+      },
+      "android": {
+        "buildType": "apk"
       }
     }
   },
