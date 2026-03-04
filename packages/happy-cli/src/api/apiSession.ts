@@ -422,10 +422,13 @@ export class ApiSessionClient extends EventEmitter {
         }
 
         // Send both modern and legacy — app drops one based on ENABLE_SESSION_PROTOCOL_SEND flag
+        // Include envelope.time in meta so the app can use it for ordering (legacy createdAt
+        // is server-assigned and always slightly newer than agent envelope.time, causing
+        // user messages to appear after agent responses).
         this.enqueueMessage({
             role: 'user',
             content: { type: 'text', text: envelope.ev.text },
-            meta: { sentFrom: 'cli' },
+            meta: { sentFrom: 'cli', time: envelope.time },
         }, false);
         this.enqueueSessionProtocolEnvelope(envelope);
     }

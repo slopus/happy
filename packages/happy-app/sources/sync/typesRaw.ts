@@ -731,7 +731,10 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
         return {
             id,
             localId,
-            createdAt,
+            // Prefer client-embedded time (from meta.time) over server-assigned createdAt.
+            // Server createdAt is always slightly newer than agent envelope.time (due to
+            // network latency), which would make user messages appear after agent responses.
+            createdAt: raw.meta?.time ?? createdAt,
             role: 'user',
             content: raw.content,
             isSidechain: false,

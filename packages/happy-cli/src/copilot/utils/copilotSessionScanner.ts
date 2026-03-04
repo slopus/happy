@@ -53,14 +53,31 @@ export async function createCopilotSessionScanner(opts: CopilotScannerOptions) {
             const lines = content.split('\n').filter(l => l.trim());
             let newCount = 0;
 
+            // Collect new events first, then sort by timestamp so that
+            // user.message (written last by Copilot but with an earlier timestamp)
+            // is relayed before the assistant events it preceded.
+            const newEvents: CopilotEvent[] = [];
             for (const line of lines) {
                 try {
                     const event = JSON.parse(line) as CopilotEvent;
                     if (!event.id || processedIds.has(event.id)) continue;
-
                     processedIds.add(event.id);
-                    newCount++;
+                    newEvents.push(event);
+                } catch (err) {
+                    logger.debug(`[CopilotScanner] Error parsing event: ${err}`);
+                }
+            }
 
+            // Sort by event timestamp (ascending) so chronological order is preserved
+            newEvents.sort((a, b) => {
+                const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                return ta - tb;
+            });
+
+            newCount = newEvents.length;
+            for (const event of newEvents) {
+                try {
                     // Detect session ID from session.start
                     if (event.type === 'session.start' && event.data?.sessionId) {
                         const sid = event.data.sessionId as string;
