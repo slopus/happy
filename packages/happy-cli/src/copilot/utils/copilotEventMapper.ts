@@ -112,9 +112,22 @@ export class CopilotEventMapper {
     private handleUserMessage(data: Record<string, unknown>): SessionEnvelope[] {
         const content = data.content;
         if (typeof content !== 'string' || !content.trim()) return [];
-        return [
+
+        // Close current agent turn before emitting user message (same as Claude)
+        const envelopes: SessionEnvelope[] = [];
+        if (this.currentTurnId) {
+            const turnId = this.currentTurnId;
+            this.currentTurnId = null;
+            this.toolCallIdMap.clear();
+            envelopes.push(
+                createEnvelope('agent', { t: 'turn-end', status: 'completed' }, { turn: turnId, time: this.nextTime() }),
+            );
+        }
+
+        envelopes.push(
             createEnvelope('user', { t: 'text', text: content }, { time: this.nextTime() }),
-        ];
+        );
+        return envelopes;
     }
 
     private handleToolStart(data: Record<string, unknown>): SessionEnvelope[] {
