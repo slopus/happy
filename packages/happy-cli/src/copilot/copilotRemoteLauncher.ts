@@ -107,25 +107,9 @@ export async function copilotRemoteLauncher(session: CopilotSession): Promise<'s
 
     backend.onMessage(onBackendMessage);
 
-    // Handle user messages from app
-    let currentPermissionMode: string | undefined;
-    let currentModel: string | null | undefined;
-
-    session.client.onUserMessage((message) => {
-        if (typeof message.meta?.permissionMode === 'string') {
-            currentPermissionMode = message.meta.permissionMode;
-        }
-        if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
-            currentModel = message.meta.model ?? null;
-        }
-        if (!message.content.text) {
-            return;
-        }
-        session.queue.push(message.content.text, {
-            permissionMode: currentPermissionMode,
-            model: currentModel ?? undefined,
-        });
-    });
+    // NOTE: Do NOT register session.client.onUserMessage here.
+    // The global handler in runCopilot.ts already pushes app messages to session.queue.
+    // We just read from the queue in the loop below (same pattern as claudeRemoteLauncher).
 
     // Handle abort/switch from app
     async function handleAbort() {

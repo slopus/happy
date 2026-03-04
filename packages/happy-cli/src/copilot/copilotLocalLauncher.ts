@@ -88,6 +88,11 @@ export async function copilotLocalLauncher(session: CopilotSession): Promise<Lau
         session.client.rpcHandlerManager.registerHandler('abort', doAbort);
         session.client.rpcHandlerManager.registerHandler('switch', doSwitch);
 
+        // Reset queue to clear any stale messages that accumulated during mode transitions
+        // (e.g. messages received while remote mode was ending). This prevents an
+        // immediate switch back to remote as soon as local mode starts.
+        session.queue.reset();
+
         // Switch to remote when message received from app
         session.queue.setOnMessage(() => {
             doSwitch();
