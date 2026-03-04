@@ -648,7 +648,7 @@ export const storage = create<StorageState>()((set, get) => {
                     machineMetadataMap.set(machine.id, machine.metadata);
                 }
             });
-            projectManager.updateSessions(Object.values(mergedSessions), machineMetadataMap);
+            projectManager.updateSessions([...Object.values(mergedSessions), ...Object.values(state.sharedSessions)], machineMetadataMap);
 
             return {
                 ...state,
@@ -1284,6 +1284,10 @@ export const storage = create<StorageState>()((set, get) => {
         // Shared sessions methods
         applySharedSessions: (sessions) => set((state) => {
             const newSharedSessions = Object.fromEntries(sessions.map(s => [s.id, s]));
+            // Register shared sessions with project manager so git status lookups work
+            for (const s of sessions) {
+                projectManager.addSession(s);
+            }
             return {
                 ...state,
                 sharedSessions: newSharedSessions,
@@ -1293,6 +1297,7 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         addSharedSession: (session) => set((state) => {
             const newSharedSessions = { ...state.sharedSessions, [session.id]: session };
+            projectManager.addSession(session);
             return {
                 ...state,
                 sharedSessions: newSharedSessions,
