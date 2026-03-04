@@ -29,6 +29,7 @@ import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
+import { createWorktree } from '@/utils/createWorktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -523,6 +524,19 @@ function NewSessionScreen() {
             const pathToUse = selectedPath || '~';
             const absolutePath = resolveAbsolutePath(pathToUse, selectedMachine.metadata?.homeDir);
 
+            // Create worktree if requested
+            let spawnDirectory = absolutePath;
+            let spawnApprovedNewDir = approvedNewDirectoryCreation;
+            if (draft.sessionType === 'worktree') {
+                const worktreeResult = await createWorktree(selectedMachineId, absolutePath);
+                if (!worktreeResult.success) {
+                    Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
+                    return;
+                }
+                spawnDirectory = worktreeResult.worktreePath;
+                spawnApprovedNewDir = true; // directory was just created
+            }
+
             // Persist last used settings
             sync.applySettings({
                 lastUsedAgent: selectedAgent,
@@ -532,8 +546,8 @@ function NewSessionScreen() {
 
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
-                directory: absolutePath,
-                approvedNewDirectoryCreation,
+                directory: spawnDirectory,
+                approvedNewDirectoryCreation: spawnApprovedNewDir,
                 agent: selectedAgent,
             });
 
