@@ -432,12 +432,20 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     const message = state.messages.get(messageId);
                     if (message?.tool) {
                         // Skip if tool has already started actual execution with approval
+                        // But still apply answers from completedRequests (not available in tool results)
                         if (message.tool.startedAt && message.tool.permission?.status === 'approved') {
+                            if (completed.answers && message.tool.permission && !message.tool.permission.answers) {
+                                message.tool.permission.answers = completed.answers;
+                            }
                             continue;
                         }
 
                         // Skip if permission already has date (came from tool result - preferred over agentState)
+                        // But still apply answers from completedRequests (not available in tool results)
                         if (message.tool.permission?.date) {
+                            if (completed.answers && !message.tool.permission.answers) {
+                                message.tool.permission.answers = completed.answers;
+                            }
                             continue;
                         }
 
