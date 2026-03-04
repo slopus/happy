@@ -122,6 +122,7 @@ export const ru: TranslationStructure = {
         optional: 'необязательно',
         notFound: 'Не найдено',
         grantPermission: 'Предоставить разрешение',
+        all: 'Все',
     },
 
     connect: {

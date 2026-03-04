@@ -111,6 +111,7 @@ export const ca: TranslationStructure = {
         optional: 'Opcional',
         notFound: 'No trobat',
         grantPermission: 'Concedir permís',
+        all: 'Tot',
     },
 
     profile: {

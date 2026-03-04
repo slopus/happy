@@ -114,6 +114,7 @@ export const ja: TranslationStructure = {
         saveAs: '名前を付けて保存',
         notFound: '見つかりません',
         grantPermission: '権限を許可',
+        all: 'すべて',
     },
 
     profile: {

@@ -111,6 +111,7 @@ export const it: TranslationStructure = {
         saveAs: 'Salva con nome',
         notFound: 'Non trovato',
         grantPermission: 'Concedi permesso',
+        all: 'Tutto',
     },
 
     profile: {

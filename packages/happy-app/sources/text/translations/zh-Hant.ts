@@ -113,6 +113,7 @@ export const zhHant: TranslationStructure = {
         optional: '選填',
         notFound: '未找到',
         grantPermission: '授予權限',
+        all: '全部',
     },
 
     profile: {

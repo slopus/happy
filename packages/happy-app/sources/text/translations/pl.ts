@@ -122,6 +122,7 @@ export const pl: TranslationStructure = {
         optional: 'opcjonalnie',
         notFound: 'Nie znaleziono',
         grantPermission: 'Udziel pozwolenia',
+        all: 'Wszystko',
     },
 
     profile: {

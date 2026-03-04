@@ -112,6 +112,7 @@ export const en = {
         optional: 'optional',
         notFound: 'Not Found',
         grantPermission: 'Grant Permission',
+        all: 'All',
     },
 
     profile: {

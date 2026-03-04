@@ -11,7 +11,7 @@ import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSetting } from '@/sync/storage';
-import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useVisibleSessionListViewData, useSharedSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
@@ -231,12 +231,32 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.divider,
         marginLeft: 80, // 16px paddingHorizontal + 48px avatar + 16px gap
     },
+    filterRow: {
+        flexDirection: 'row',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 0,
+    },
+    filterChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+    },
+    filterChipText: {
+        fontSize: 13,
+        ...Typography.default(),
+    },
 }));
+
+type SessionTab = 'all' | 'shared';
 
 export function SessionsList() {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     const data = useVisibleSessionListViewData();
+    const sharedData = useSharedSessionListViewData();
+    const [activeTab, setActiveTab] = React.useState<SessionTab>('all');
     const pathname = usePathname();
     const isTablet = useIsTablet();
     const navigateToSession = useNavigateToSession();
@@ -252,13 +272,22 @@ export function SessionsList() {
             setRefreshing(false);
         }
     }, []);
+    // Reset to 'all' tab if shared sessions become empty
+    React.useEffect(() => {
+        if (activeTab === 'shared' && sharedData && sharedData.length === 0) {
+            setActiveTab('all');
+        }
+    }, [activeTab, sharedData]);
+
+    const tabData = activeTab === 'shared' ? sharedData : data;
+
     const selectable = isTablet;
     const dataWithSelected = selectable ? React.useMemo(() => {
-        return data?.map(item => ({
+        return tabData?.map(item => ({
             ...item,
             selected: pathname.startsWith(`/session/${item.type === 'session' ? item.session.id : ''}`)
         }));
-    }, [data, pathname]) : data;
+    }, [tabData, pathname]) : tabData;
 
     // Request review
     React.useEffect(() => {
@@ -347,11 +376,41 @@ export function SessionsList() {
     // Remove this section as we'll use FlatList for all items now
 
 
+    const tabs: { key: SessionTab; label: string }[] = React.useMemo(() => [
+        { key: 'all', label: t('common.all') },
+        { key: 'shared', label: t('session.sharing.sharedWithMe') },
+    ], []);
+
+    const hasSharedSessions = sharedData && sharedData.length > 0;
+
     const HeaderComponent = React.useCallback(() => {
         return (
-            <UpdateBanner />
+            <>
+                <UpdateBanner />
+                {hasSharedSessions && (
+                    <View style={styles.filterRow}>
+                        {tabs.map((tab) => (
+                            <Pressable
+                                key={tab.key}
+                                style={[
+                                    styles.filterChip,
+                                    { backgroundColor: activeTab === tab.key ? theme.colors.button.primary.background : theme.colors.surface },
+                                ]}
+                                onPress={() => setActiveTab(tab.key)}
+                            >
+                                <Text style={[
+                                    styles.filterChipText,
+                                    { color: activeTab === tab.key ? theme.colors.button.primary.tint : theme.colors.text },
+                                ]}>
+                                    {tab.label}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                )}
+            </>
         );
-    }, []);
+    }, [activeTab, theme, hasSharedSessions]);
 
     // Footer removed - all sessions now shown inline
 

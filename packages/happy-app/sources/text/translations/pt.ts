@@ -111,6 +111,7 @@ export const pt: TranslationStructure = {
         optional: 'Opcional',
         notFound: 'Não encontrado',
         grantPermission: 'Conceder permissão',
+        all: 'Tudo',
     },
 
     profile: {
