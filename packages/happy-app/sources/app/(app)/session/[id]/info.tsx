@@ -177,8 +177,17 @@ function SessionInfoContent({ session }: { session: Session }) {
         );
     }, [performArchive]);
 
-    // Use HappyAction for deletion - it handles errors automatically
+    // Use HappyAction for deletion - kills session first if needed, then deletes
     const [deletingSession, performDelete] = useHappyAction(async () => {
+        // Navigate back optimistically
+        router.back();
+        router.back();
+
+        // Kill session first if it's still active (best-effort)
+        if (sessionStatus.isConnected || session.active) {
+            await sessionKill(session.id).catch(() => {});
+        }
+
         // Clean up worktree if this session was in one (best-effort)
         const sessionPath = session.metadata?.path;
         const machineId = session.metadata?.machineId;
@@ -190,7 +199,6 @@ function SessionInfoContent({ session }: { session: Session }) {
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
         }
-        // Success - no alert needed, UI will update to show deleted state
     });
 
     const handleDeleteSession = useCallback(() => {
