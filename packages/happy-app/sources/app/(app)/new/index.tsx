@@ -29,7 +29,7 @@ import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
-import { createWorktree } from '@/utils/createWorktree';
+import { createWorktree, listWorktrees } from '@/utils/createWorktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -280,10 +280,12 @@ function NewSessionScreen() {
     const setSelectedMachineId = draft.setMachineId;
     const selectedPath = draft.selectedPath;
     const setSelectedPath = draft.setPath;
-    const worktreeKey = draft.sessionType === 'worktree' ? '__new__' : '__none__';
-    const setWorktreeKey = React.useCallback((key: string) => {
-        draft.setSessionType(key !== '__none__' ? 'worktree' : 'simple');
-    }, [draft.setSessionType]);
+    const [worktreeKey, setWorktreeKey] = React.useState<string>(
+        draft.sessionType === 'worktree' ? '__new__' : '__none__'
+    );
+    React.useEffect(() => {
+        draft.setSessionType(worktreeKey !== '__none__' ? 'worktree' : 'simple');
+    }, [worktreeKey]);
 
     // Local-only UI state (not persisted)
     const [permissionIndex, setPermissionIndex] = React.useState(0);
@@ -346,6 +348,30 @@ function NewSessionScreen() {
             setSelectedPath(pathItems[0].key);
         }
     }, [pathItems, selectedPath, setSelectedPath]);
+
+    // Fetch existing worktrees from the selected machine/path
+    const [worktreeItems, setWorktreeItems] = React.useState<PickerItem[]>([]);
+    React.useEffect(() => {
+        if (!selectedMachineId || !selectedPath) {
+            setWorktreeItems([]);
+            return;
+        }
+        if (!selectedMachine || !isMachineOnline(selectedMachine)) {
+            setWorktreeItems([]);
+            return;
+        }
+        const absolutePath = resolveAbsolutePath(selectedPath, selectedMachine.metadata?.homeDir);
+        let cancelled = false;
+        listWorktrees(selectedMachineId, absolutePath).then(worktrees => {
+            if (cancelled) return;
+            setWorktreeItems(worktrees.map(wt => ({
+                key: wt.path,
+                label: wt.branch,
+                subtitle: wt.path,
+            })));
+        });
+        return () => { cancelled = true; };
+    }, [selectedMachineId, selectedPath, selectedMachine]);
 
     // Filter available agents based on CLI availability from machine metadata
     const availableAgents = React.useMemo(() => {
@@ -477,7 +503,7 @@ function NewSessionScreen() {
         ? 'no worktree'
         : worktreeKey === '__new__'
             ? 'new worktree'
-            : worktreeKey;
+            : worktreeItems.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
 
     // Picker data derived from active picker type
     const pickerData = React.useMemo(() => {
@@ -487,11 +513,11 @@ function NewSessionScreen() {
             case 'path':
                 return { title: 'Project', items: pathItems, selectedKey: selectedPath, searchPlaceholder: 'search projects...' };
             case 'worktree':
-                return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: [] as PickerItem[], selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
+                return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems, selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
             default:
                 return null;
         }
-    }, [activePicker, machineItems, selectedMachineId, pathItems, selectedPath, worktreeKey]);
+    }, [activePicker, machineItems, selectedMachineId, pathItems, selectedPath, worktreeKey, worktreeItems]);
 
     const handlePickerSelect = React.useCallback((key: string) => {
         switch (activePicker) {
@@ -524,17 +550,21 @@ function NewSessionScreen() {
             const pathToUse = selectedPath || '~';
             const absolutePath = resolveAbsolutePath(pathToUse, selectedMachine.metadata?.homeDir);
 
-            // Create worktree if requested
+            // Handle worktree selection
             let spawnDirectory = absolutePath;
             let spawnApprovedNewDir = approvedNewDirectoryCreation;
-            if (draft.sessionType === 'worktree') {
+            if (worktreeKey === '__new__') {
                 const worktreeResult = await createWorktree(selectedMachineId, absolutePath);
                 if (!worktreeResult.success) {
                     Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
                     return;
                 }
                 spawnDirectory = worktreeResult.worktreePath;
-                spawnApprovedNewDir = true; // directory was just created
+                spawnApprovedNewDir = true;
+            } else if (worktreeKey !== '__none__') {
+                // Existing worktree — use its path directly
+                spawnDirectory = worktreeKey;
+                spawnApprovedNewDir = true;
             }
 
             // Persist last used settings
@@ -593,7 +623,7 @@ function NewSessionScreen() {
         } finally {
             setIsSpawning(false);
         }
-    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession, currentPermission.key, currentModelKey]);
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
 
