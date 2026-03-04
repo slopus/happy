@@ -16,8 +16,27 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
 
         const filtered: SessionListViewItem[] = [];
         let pendingProjectGroup: SessionListViewItem | null = null;
+        let inSharedSection = false;
+        let pendingSharedHeader: SessionListViewItem | null = null;
 
         for (const item of data) {
+            // Keep shared section, but still filter inactive sessions within it
+            if (item.type === 'header' && item.title === 'Shared with me') {
+                inSharedSection = true;
+                pendingSharedHeader = item;
+                continue;
+            }
+            if (inSharedSection) {
+                if (item.type === 'session' && item.session.active) {
+                    if (pendingSharedHeader) {
+                        filtered.push(pendingSharedHeader);
+                        pendingSharedHeader = null;
+                    }
+                    filtered.push(item);
+                }
+                continue;
+            }
+
             if (item.type === 'project-group') {
                 pendingProjectGroup = item;
                 continue;
