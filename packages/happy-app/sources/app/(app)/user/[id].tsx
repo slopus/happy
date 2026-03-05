@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { View, ActivityIndicator, Linking, Pressable, Platform } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, ActivityIndicator, Linking, Pressable, Platform, ActionSheetIOS } from 'react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { useAuth } from '@/auth/AuthContext';
 import { getUserProfile, sendFriendRequest, removeFriend } from '@/sync/apiFriends';
@@ -24,6 +24,8 @@ import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarI
 import { StatusDot } from '@/components/StatusDot';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
 
 function getAccessLevelLabel(accessLevel?: 'view' | 'edit' | 'admin') {
     switch (accessLevel) {
@@ -43,6 +45,7 @@ export default function UserProfileScreen() {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [sharedByMeData, setSharedByMeData] = useState<SharedByMeSession[]>([]);
+    const [menuVisible, setMenuVisible] = useState(false);
 
     const filteredSharedSessions = useMemo(() => {
         if (!userProfile) return [];
@@ -142,6 +145,90 @@ export default function UserProfileScreen() {
         }
     });
 
+    // Compute actions based on user status (must be before early returns for hooks ordering)
+    const { primaryActions, destructiveActions } = useMemo(() => {
+        const status = userProfile?.status;
+        switch (status) {
+            case 'friend':
+                return {
+                    primaryActions: [] as { title: string; icon: React.ReactNode; onPress: () => void; loading: boolean }[],
+                    destructiveActions: [{
+                        title: t('friends.removeFriend'),
+                        onPress: handleRemoveFriend,
+                        destructive: true,
+                    }],
+                };
+            case 'pending':
+                return {
+                    primaryActions: [
+                        {
+                            title: t('friends.acceptRequest'),
+                            icon: <Ionicons name="checkmark-circle-outline" size={29} color="#34C759" />,
+                            onPress: addFriend,
+                            loading: addingFriend,
+                        },
+                        {
+                            title: t('friends.denyRequest'),
+                            icon: <Ionicons name="close-circle-outline" size={29} color="#FF3B30" />,
+                            onPress: handleRemoveFriend,
+                            loading: removingFriend,
+                        },
+                    ],
+                    destructiveActions: [] as { title: string; onPress: () => void; destructive: boolean }[],
+                };
+            case 'requested':
+                return {
+                    primaryActions: [] as { title: string; icon: React.ReactNode; onPress: () => void; loading: boolean }[],
+                    destructiveActions: [{
+                        title: t('friends.cancelRequest'),
+                        onPress: handleRemoveFriend,
+                        destructive: false,
+                    }],
+                };
+            default:
+                return {
+                    primaryActions: [{
+                        title: t('friends.requestFriendship'),
+                        icon: <Ionicons name="person-add-outline" size={29} color="#007AFF" />,
+                        onPress: addFriend,
+                        loading: addingFriend,
+                    }],
+                    destructiveActions: [] as { title: string; onPress: () => void; destructive: boolean }[],
+                };
+        }
+    }, [userProfile?.status, handleRemoveFriend, addFriend, addingFriend, removingFriend]);
+
+    // Show action menu (ActionSheetIOS on iOS, ActionMenuModal on Android/Web)
+    const handleShowMenu = useCallback(() => {
+        if (Platform.OS === 'ios') {
+            const options = destructiveActions.map(a => a.title);
+            options.push(t('common.cancel'));
+            ActionSheetIOS.showActionSheetWithOptions(
+                {
+                    options,
+                    destructiveButtonIndex: destructiveActions.findIndex(a => a.destructive) ?? undefined,
+                    cancelButtonIndex: options.length - 1,
+                },
+                (buttonIndex) => {
+                    if (buttonIndex < destructiveActions.length) {
+                        destructiveActions[buttonIndex].onPress();
+                    }
+                }
+            );
+        } else {
+            setMenuVisible(true);
+        }
+    }, [destructiveActions]);
+
+    // Menu items for ActionMenuModal (Android/Web)
+    const menuItems: ActionMenuItem[] = useMemo(() => {
+        return destructiveActions.map(a => ({
+            label: a.title,
+            onPress: a.onPress,
+            destructive: a.destructive,
+        }));
+    }, [destructiveActions]);
+
     if (isLoading) {
         return (
             <View style={styles.loadingContainer}>
@@ -161,70 +248,33 @@ export default function UserProfileScreen() {
     const displayName = getDisplayName(userProfile);
     const avatarUrl = userProfile.avatar?.url;
 
-    // Split actions into primary (positive) and destructive groups
-    // Primary actions show near the top, destructive actions at the bottom
-    const { primaryActions, destructiveActions } = (() => {
-        switch (userProfile.status) {
-            case 'friend':
-                return {
-                    primaryActions: [],
-                    destructiveActions: [{
-                        title: t('friends.removeFriend'),
-                        icon: <Ionicons name="person-remove-outline" size={29} color="#FF3B30" />,
-                        onPress: handleRemoveFriend,
-                        loading: removingFriend,
-                    }],
-                };
-            case 'pending':
-                // User has received a friend request
-                return {
-                    primaryActions: [
-                        {
-                            title: t('friends.acceptRequest'),
-                            icon: <Ionicons name="checkmark-circle-outline" size={29} color="#34C759" />,
-                            onPress: addFriend,
-                            loading: addingFriend,
-                        },
-                        {
-                            title: t('friends.denyRequest'),
-                            icon: <Ionicons name="close-circle-outline" size={29} color="#FF3B30" />,
-                            onPress: handleRemoveFriend,
-                            loading: removingFriend,
-                        },
-                    ],
-                    destructiveActions: [],
-                };
-            case 'requested':
-                // User has sent a friend request
-                return {
-                    primaryActions: [],
-                    destructiveActions: [{
-                        title: t('friends.cancelRequest'),
-                        icon: <Ionicons name="close-outline" size={29} color="#FF9500" />,
-                        onPress: handleRemoveFriend,
-                        loading: removingFriend,
-                    }],
-                };
-            case 'rejected':
-            case 'none':
-            default:
-                return {
-                    primaryActions: [{
-                        title: t('friends.requestFriendship'),
-                        icon: <Ionicons name="person-add-outline" size={29} color="#007AFF" />,
-                        onPress: addFriend,
-                        loading: addingFriend,
-                    }],
-                    destructiveActions: [],
-                };
-        }
-    })();
-
     return (
         <ItemList style={{ paddingTop: 0 }}>
+            {destructiveActions.length > 0 && (
+                <Stack.Screen
+                    options={{
+                        headerRight: () => (
+                            <Pressable
+                                onPress={handleShowMenu}
+                                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                            >
+                                <Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.header.tint} />
+                            </Pressable>
+                        ),
+                    }}
+                />
+            )}
+
             {/* User Info Header */}
             <View style={styles.headerContainer}>
                 <View style={styles.profileCard}>
+                    <Pressable
+                        style={styles.githubIconButton}
+                        onPress={() => Linking.openURL(`https://github.com/${userProfile.username}`)}
+                    >
+                        <Ionicons name="logo-github" size={24} color={theme.colors.text} />
+                    </Pressable>
+
                     <View style={{ marginBottom: 16 }}>
                         <Avatar
                             id={userProfile.id}
@@ -269,22 +319,6 @@ export default function UserProfileScreen() {
                 </ItemGroup>
             )}
 
-            {/* GitHub Link */}
-            <ItemGroup>
-                <Item
-                    title={t('settings.github')}
-                    detail={`@${userProfile.username}`}
-                    icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
-                    onPress={async () => {
-                        const url = `https://github.com/${userProfile.username}`;
-                        const supported = await Linking.canOpenURL(url);
-                        if (supported) {
-                            await Linking.openURL(url);
-                        }
-                    }}
-                />
-            </ItemGroup>
-
             {/* Sessions shared with me by this user */}
             {filteredSharedSessions.length > 0 && (
                 <ItemGroup title={t('session.sharing.sharedWithMeSessions')}>
@@ -304,22 +338,6 @@ export default function UserProfileScreen() {
                         <SharedSessionItem
                             key={session.id}
                             session={{ ...session, accessLevel }}
-                        />
-                    ))}
-                </ItemGroup>
-            )}
-
-            {/* Destructive Actions (remove friend, deny request, cancel request) - bottom */}
-            {destructiveActions.length > 0 && (
-                <ItemGroup>
-                    {destructiveActions.map((action, index) => (
-                        <Item
-                            key={index}
-                            title={action.title}
-                            icon={action.icon}
-                            onPress={action.onPress}
-                            loading={action.loading}
-                            showChevron={false}
                         />
                     ))}
                 </ItemGroup>
@@ -348,6 +366,13 @@ export default function UserProfileScreen() {
                     showChevron={false}
                 />
             </ItemGroup> */}
+
+            {/* Action Menu for Android/Web */}
+            <ActionMenuModal
+                visible={menuVisible}
+                items={menuItems}
+                onClose={() => setMenuVisible(false)}
+            />
         </ItemList>
     );
 }
@@ -450,6 +475,17 @@ const styles = StyleSheet.create((theme) => ({
         marginTop: 16,
         borderRadius: 12,
         marginHorizontal: 16,
+    },
+    githubIconButton: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        width: 36,
+        height: 36,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 18,
+        zIndex: 1,
     },
     displayName: {
         fontSize: 24,
