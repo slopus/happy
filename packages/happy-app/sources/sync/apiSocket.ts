@@ -201,6 +201,61 @@ class ApiSocket {
         throw new Error(result.error || 'RPC call failed');
     }
 
+    /**
+     * Spawn a session on a machine via HTTP (replacing Socket RPC)
+     */
+    async machineSpawnHTTP<R>(machineId: string, params: unknown, timeout: number = 35000): Promise<R> {
+        const machineEncryption = this.encryption!.getMachineEncryption(machineId);
+        if (!machineEncryption) {
+            throw new Error(`Machine encryption not found for ${machineId}`);
+        }
+        if (!this.config) {
+            throw new Error('ApiSocket not initialized');
+        }
+
+        const encryptedParams = await machineEncryption.encryptRaw(params);
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeout);
+
+        try {
+            const response = await fetch(`${this.config.endpoint}/v1/sessions/spawn`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.config.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    machineId,
+                    params: encryptedParams
+                }),
+                signal: controller.signal
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+                throw new Error(data.error || `Spawn failed: ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (!data.ok) {
+                throw new Error(data.error || 'Spawn failed');
+            }
+
+            let decrypted = await machineEncryption.decryptRaw(data.result);
+            if (decrypted === null) {
+                decrypted = machineEncryption.decryptRawLegacy(data.result);
+            }
+            if (decrypted === null) {
+                throw new Error('Failed to decrypt spawn response');
+            }
+
+            return decrypted as R;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     send(event: string, data: any) {
         this.socket!.emit(event, data);
         return true;

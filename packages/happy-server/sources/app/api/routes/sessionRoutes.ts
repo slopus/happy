@@ -7,6 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
+import { invokeUserRpc } from "@/app/api/socket/rpcRegistry";
 
 export function sessionRoutes(app: Fastify) {
 
@@ -216,6 +217,45 @@ export function sessionRoutes(app: Fastify) {
             nextCursor,
             hasNext
         });
+    });
+
+    // Spawn a new session on a machine (proxies RPC to daemon)
+    app.post('/v1/sessions/spawn', {
+        schema: {
+            body: z.object({
+                machineId: z.string(),
+                params: z.string(),  // E2E-encrypted spawn parameters
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { machineId, params } = request.body;
+
+        // Verify machine belongs to the user
+        const machine = await db.machine.findFirst({
+            where: { id: machineId, accountId: userId }
+        });
+        if (!machine) {
+            return reply.code(404).send({ ok: false, error: 'Machine not found' });
+        }
+
+        try {
+            const result = await invokeUserRpc(
+                userId,
+                `${machineId}:spawn-happy-session`,
+                params,
+                30000
+            );
+            return reply.send({ ok: true, result });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'RPC call failed';
+            const isTimeout = message.includes('timeout');
+            return reply.code(isTimeout ? 504 : 502).send({
+                ok: false,
+                error: message
+            });
+        }
     });
 
     // Create or load session by tag
