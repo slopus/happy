@@ -209,11 +209,26 @@ export async function copilotRemoteLauncher(session: CopilotSession): Promise<'s
             }
         }
     } finally {
-        // Cleanup
+        logger.debug(`[copilotRemote] Cleanup. exitReason=${exitReason}, hasTTY=${hasTTY}`);
+        // Cleanup — fully release stdin so the next child process can use it.
+        // Ink's unmount resets raw mode and removes its 'readable' listener,
+        // but our manual resume() above is never undone.  Without pausing here
+        // libuv keeps the console input handle active and the child hangs.
         inkInstance?.unmount();
         if (hasTTY && process.stdin.isTTY) {
             process.stdin.setRawMode(false);
         }
+        if (hasTTY) {
+            process.stdin.pause();
+        }
+        // Force exit alternate screen buffer and restore cursor visibility.
+        // Ink may use the alternate screen buffer for rendering; if it doesn't
+        // properly exit it on unmount, the terminal shows an empty buffer.
+        // \x1b[?1049l = exit alternate screen, \x1b[?25h = show cursor
+        if (hasTTY) {
+            process.stdout.write('\x1b[?1049l\x1b[?25h');
+        }
+        logger.debug('[copilotRemote] Terminal cleared, stdin raw mode off');
 
         backend.offMessage?.(onBackendMessage);
         await backend.dispose();
