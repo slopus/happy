@@ -26,6 +26,18 @@ export function useSessionStatus(session: Session): SessionStatus {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [isOnline, hasPermissions, session.thinking]);
 
+    // Cloud sessions are always "connected" (no machine needed)
+    if (session.metadata?.isCloud) {
+        return {
+            state: 'waiting',
+            isConnected: true,
+            statusText: 'Cloud',
+            shouldShowStatus: false,
+            statusColor: '#007AFF',
+            statusDotColor: '#007AFF'
+        };
+    }
+
     if (!isOnline) {
         return {
             state: 'disconnected',
@@ -77,6 +89,18 @@ export function useSessionStatus(session: Session): SessionStatus {
  * Returns the last segment of the path, or 'unknown' if no path is available.
  */
 export function getSessionName(session: Session): string {
+    // Cloud sessions: show summary or "Cloud Chat" label
+    if (session.metadata?.isCloud) {
+        if (session.metadata.summary) {
+            return session.metadata.summary.text;
+        }
+        const flavor = session.metadata.flavor;
+        if (flavor === 'claude' || flavor === 'openclaw') return 'Claude Chat';
+        if (flavor === 'codex') return 'Codex Chat';
+        if (flavor === 'gemini') return 'Gemini Chat';
+        return 'Cloud Chat';
+    }
+
     if (session.metadata?.summary) {
         return session.metadata.summary.text;
     } else if (session.metadata) {
@@ -95,6 +119,10 @@ export function getSessionName(session: Session): string {
  * This ensures the same machine + path combination always gets the same avatar.
  */
 export function getSessionAvatarId(session: Session): string {
+    // Cloud sessions get a cloud-prefixed avatar
+    if (session.metadata?.isCloud) {
+        return `cloud:${session.metadata.flavor ?? 'chat'}`;
+    }
     if (session.metadata?.machineId && session.metadata?.path) {
         // Combine machine ID and path for a unique, deterministic avatar
         return `${session.metadata.machineId}:${session.metadata.path}`;
@@ -136,6 +164,15 @@ export function formatPathRelativeToHome(path: string, homeDir?: string): string
  * Returns the session path for the subtitle.
  */
 export function getSessionSubtitle(session: Session): string {
+    // Cloud sessions: show provider name instead of path
+    if (session.metadata?.isCloud) {
+        const provider = session.metadata.cloudProvider;
+        if (provider === 'anthropic') return 'Anthropic';
+        if (provider === 'openai') return 'OpenAI';
+        if (provider === 'gemini') return 'Google Gemini';
+        return 'Cloud';
+    }
+
     if (session.metadata) {
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }

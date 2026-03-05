@@ -513,7 +513,7 @@ interface NewSessionWizardProps {
     onComplete: (config: {
         sessionType: 'simple' | 'worktree';
         profileId: string | null;
-        agentType: 'claude' | 'codex';
+        agentType: 'claude' | 'codex' | 'openclaw';
         permissionMode: PermissionModeKey;
         modelMode: ModelModeKey;
         machineId: string;
@@ -542,8 +542,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     // Wizard state
     const [currentStep, setCurrentStep] = useState<WizardStep>('profile');
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
-    const [agentType, setAgentType] = useState<'claude' | 'codex'>(() => {
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+    const [agentType, setAgentType] = useState<'claude' | 'codex' | 'openclaw'>(() => {
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'openclaw') {
             return lastUsedAgent;
         }
         return 'claude';
@@ -562,7 +562,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             description: 'Default Claude configuration',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, openclaw: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -581,7 +581,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
                 { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
             ],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, openclaw: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -596,7 +596,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, openclaw: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -612,7 +612,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 deploymentName: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, openclaw: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -628,7 +628,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             environmentVariables: [
                 { name: 'AZURE_OPENAI_API_VERSION', value: '2024-02-15-preview' },
             ],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, openclaw: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -643,7 +643,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'glm-4.6',
             },
             environmentVariables: [],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, openclaw: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -658,7 +658,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, openclaw: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -937,7 +937,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                     description: 'Custom AI profile',
                     anthropicConfig: {},
                     environmentVariables: [],
-                    compatibility: { claude: true, codex: true, gemini: true },
+                    compatibility: { claude: true, codex: true, gemini: true, openclaw: true },
                     isBuiltIn: false,
                     createdAt: Date.now(),
                     updatedAt: Date.now(),
@@ -1553,6 +1553,41 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 )}
                             </View>
                             {agentType === 'codex' && (
+                                <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
+                            )}
+                        </Pressable>
+
+                        <Pressable
+                            style={[
+                                styles.agentOption,
+                                agentType === 'openclaw' ? styles.agentOptionSelected : styles.agentOptionUnselected,
+                                selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.openclaw && {
+                                    opacity: 0.5,
+                                    backgroundColor: theme.colors.surface
+                                }
+                            ]}
+                            onPress={() => {
+                                if (!selectedProfileId || allProfiles.find(p => p.id === selectedProfileId)?.compatibility.openclaw) {
+                                    setAgentType('openclaw');
+                                }
+                            }}
+                            disabled={!!(selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.openclaw)}
+                        >
+                            <View style={styles.agentIcon}>
+                                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>O</Text>
+                            </View>
+                            <View style={styles.agentInfo}>
+                                <Text style={styles.agentName}>OpenClaw</Text>
+                                <Text style={styles.agentDescription}>
+                                    Open-source AI agent for coding tasks
+                                </Text>
+                                {selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.openclaw && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.textDestructive, marginTop: 4 }}>
+                                        Not compatible with selected profile
+                                    </Text>
+                                )}
+                            </View>
+                            {agentType === 'openclaw' && (
                                 <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
                             )}
                         </Pressable>

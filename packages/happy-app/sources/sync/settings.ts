@@ -70,6 +70,24 @@ const TogetherAIConfigSchema = z.object({
     model: z.string().optional(),
 });
 
+const GeminiConfigSchema = z.object({
+    apiKey: z.string().optional(),
+    model: z.string().optional(),
+    baseUrl: z.string().refine(
+        (val) => {
+            if (!val) return true;
+            if (/^\$\{[A-Z_][A-Z0-9_]*(:-[^}]*)?\}$/.test(val)) return true;
+            try {
+                new URL(val);
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        { message: 'Must be a valid URL or ${VAR} or ${VAR:-default} template string' }
+    ).optional(),
+});
+
 // Tmux configuration schema
 const TmuxConfigSchema = z.object({
     sessionName: z.string().optional(),
@@ -88,6 +106,7 @@ const ProfileCompatibilitySchema = z.object({
     claude: z.boolean().default(true),
     codex: z.boolean().default(true),
     gemini: z.boolean().default(true),
+    openclaw: z.boolean().default(true),
 });
 
 export const AIBackendProfileSchema = z.object({
@@ -102,6 +121,7 @@ export const AIBackendProfileSchema = z.object({
     openaiConfig: OpenAIConfigSchema.optional(),
     azureOpenAIConfig: AzureOpenAIConfigSchema.optional(),
     togetherAIConfig: TogetherAIConfigSchema.optional(),
+    geminiConfig: GeminiConfigSchema.optional(),
 
     // Tmux configuration
     tmuxConfig: TmuxConfigSchema.optional(),
@@ -122,7 +142,7 @@ export const AIBackendProfileSchema = z.object({
     defaultModelMode: z.string().optional(),
 
     // Compatibility metadata
-    compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true }),
+    compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true, openclaw: true }),
 
     // Built-in profile indicator
     isBuiltIn: z.boolean().default(false),
@@ -136,7 +156,7 @@ export const AIBackendProfileSchema = z.object({
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
 
 // Helper functions for profile validation and compatibility
-export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
+export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini' | 'openclaw'): boolean {
     return profile.compatibility[agent];
 }
 
@@ -210,6 +230,13 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
     if (profile.togetherAIConfig) {
         if (profile.togetherAIConfig.apiKey) envVars.TOGETHER_API_KEY = profile.togetherAIConfig.apiKey;
         if (profile.togetherAIConfig.model) envVars.TOGETHER_MODEL = profile.togetherAIConfig.model;
+    }
+
+    // Add Gemini config
+    if (profile.geminiConfig) {
+        if (profile.geminiConfig.apiKey) envVars.GEMINI_API_KEY = profile.geminiConfig.apiKey;
+        if (profile.geminiConfig.model) envVars.GEMINI_MODEL = profile.geminiConfig.model;
+        if (profile.geminiConfig.baseUrl) envVars.GEMINI_BASE_URL = profile.geminiConfig.baseUrl;
     }
 
     // Add Tmux config

@@ -173,6 +173,20 @@ const stylesheet = StyleSheet.create((theme) => ({
     draftIconOverlay: {
         color: theme.colors.textSecondary,
     },
+    cloudIconContainer: {
+        position: 'absolute',
+        top: -2,
+        right: -2,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: theme.colors.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cloudIcon: {
+        color: '#007AFF',
+    },
     artifactsSection: {
         paddingHorizontal: 16,
         paddingBottom: 12,
@@ -388,7 +402,16 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         >
             <View style={styles.avatarContainer}>
                 <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-                {session.draft && (
+                {session.metadata?.isCloud && (
+                    <View style={styles.cloudIconContainer}>
+                        <Ionicons
+                            name="cloud"
+                            size={11}
+                            style={styles.cloudIcon}
+                        />
+                    </View>
+                )}
+                {session.draft && !session.metadata?.isCloud && (
                     <View style={styles.draftIconContainer}>
                         <Ionicons
                             name="create-outline"

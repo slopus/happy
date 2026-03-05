@@ -42,6 +42,11 @@ export const MetadataSchema = z.object({
     flavor: z.string().nullish(), // Session flavor/variant identifier
     sandbox: z.any().nullish(), // Sandbox config metadata from CLI (or null when disabled)
     dangerouslySkipPermissions: z.boolean().nullish(), // Claude --dangerously-skip-permissions mode (or null when unknown)
+
+    // Cloud chat fields (set when session runs client-side without a connected machine)
+    isCloud: z.boolean().optional(), // true for cloud sessions
+    cloudProvider: z.enum(['anthropic', 'openai', 'gemini']).optional(), // Which API provider
+    cloudProfileId: z.string().optional(), // Profile ID used for API key
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

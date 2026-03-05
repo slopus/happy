@@ -517,6 +517,15 @@ class Sync {
         this.maybeStartBackgroundSendWatchdog();
     }
 
+    /**
+     * Add messages to a session's message list locally (for cloud chat responses).
+     * These messages are displayed immediately in the UI. The caller is responsible
+     * for also persisting them to the server.
+     */
+    addCloudResponseMessage(sessionId: string, messages: NormalizedMessage[]) {
+        this.enqueueMessages(sessionId, messages);
+    }
+
     applySettings = (delta: Partial<Settings>) => {
         storage.getState().applySettingsLocal(delta);
 

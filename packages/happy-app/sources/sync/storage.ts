@@ -90,6 +90,8 @@ interface StorageState {
     feedHasMore: boolean;
     feedLoaded: boolean;  // True after initial feed fetch
     friendsLoaded: boolean;  // True after initial friends fetch
+    // Cloud chat streaming state (temporary, in-memory only)
+    cloudStreaming: Record<string, { text: string; isStreaming: boolean }>;
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     realtimeMode: 'idle' | 'speaking';
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -268,6 +270,7 @@ export const storage = create<StorageState>()((set, get) => {
         feedHasMore: false,
         feedLoaded: false,  // Initialize as false
         friendsLoaded: false,  // Initialize as false
+        cloudStreaming: {},  // Cloud chat streaming state
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
@@ -1063,7 +1066,8 @@ export const storage = create<StorageState>()((set, get) => {
             feedTail: null,
             feedHasMore: false,
             feedLoaded: false,  // Reset loading flag
-            friendsLoaded: false  // Reset loading flag
+            friendsLoaded: false,  // Reset loading flag
+            cloudStreaming: {}  // Reset cloud streaming state
         })),
     }
 });
@@ -1099,6 +1103,12 @@ export function useSessionUsage(sessionId: string) {
     return storage(useShallow((state) => {
         const session = state.sessionMessages[sessionId];
         return session?.reducerState?.latestUsage ?? null;
+    }));
+}
+
+export function useCloudStreaming(sessionId: string): { text: string; isStreaming: boolean } {
+    return storage(useShallow((state) => {
+        return state.cloudStreaming[sessionId] ?? { text: '', isStreaming: false };
     }));
 }
 

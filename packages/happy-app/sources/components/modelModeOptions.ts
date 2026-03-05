@@ -93,12 +93,30 @@ export function getGeminiModelModes(): ModelMode[] {
     return GEMINI_MODEL_FALLBACKS;
 }
 
+export function getOpenClawPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.geminiPermissionMode.default'), description: null },
+        { key: 'read-only', name: translate('agentInput.geminiPermissionMode.readOnly'), description: null },
+        { key: 'safe-yolo', name: translate('agentInput.geminiPermissionMode.safeYolo'), description: null },
+        { key: 'yolo', name: translate('agentInput.geminiPermissionMode.yolo'), description: null },
+    ];
+}
+
+export function getOpenClawModelModes(): ModelMode[] {
+    return [
+        { key: 'default', name: 'Default', description: 'Use agent settings' },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
     }
     if (flavor === 'gemini') {
         return getGeminiPermissionModes(translate);
+    }
+    if (flavor === 'openclaw') {
+        return getOpenClawPermissionModes(translate);
     }
     return getClaudePermissionModes(translate);
 }
@@ -109,6 +127,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, translate: Translate
     }
     if (flavor === 'gemini') {
         return getGeminiModelModes();
+    }
+    if (flavor === 'openclaw') {
+        return getOpenClawModelModes();
     }
     return getClaudeModelModes();
 }
@@ -130,7 +151,7 @@ export function getAvailablePermissionModes(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): PermissionMode[] {
-    if (flavor === 'claude' || flavor === 'codex') {
+    if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 
@@ -168,6 +189,9 @@ export function getDefaultModelKey(flavor: AgentFlavor): string {
     }
     if (flavor === 'gemini') {
         return 'gemini-2.5-pro';
+    }
+    if (flavor === 'openclaw') {
+        return 'default';
     }
     return 'default';
 }

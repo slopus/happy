@@ -41,6 +41,8 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
+import { createCloudSession } from '@/cloud/cloudSession';
+import { isProfileCloudCapable, type CloudAgentType } from '@/cloud/providerRegistry';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -65,7 +67,7 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
 
 // Environment variable transformation helper
 // Returns ALL profile environment variables - daemon will use them as-is
-const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' = 'claude') => {
+const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' | 'openclaw' = 'claude') => {
     // getProfileEnvironmentVariables already returns ALL env vars from profile
     // including custom environmentVariables array and provider-specific configs
     return getProfileEnvironmentVariables(profile);
@@ -316,7 +318,7 @@ function NewSessionWizard() {
         }
         return 'anthropic'; // Default to Anthropic
     });
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini' | 'openclaw'>(() => {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
             // Only allow gemini if experiments are enabled
@@ -325,7 +327,7 @@ function NewSessionWizard() {
             }
             return tempSessionData.agentType;
         }
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'openclaw') {
             return lastUsedAgent;
         }
         // Only allow gemini if experiments are enabled
@@ -339,9 +341,10 @@ function NewSessionWizard() {
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
-            // Cycle: claude -> codex -> gemini (if experiments) -> claude
+            // Cycle: claude -> codex -> openclaw -> gemini (if experiments) -> claude
             if (prev === 'claude') return 'codex';
-            if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
+            if (prev === 'codex') return 'openclaw';
+            if (prev === 'openclaw') return experimentsEnabled ? 'gemini' : 'claude';
             return 'claude';
         });
     }, [experimentsEnabled]);
@@ -464,16 +467,17 @@ function NewSessionWizard() {
 
         if (agentAvailable === false) {
             // Current agent not available - find first available
-            const availableAgent: 'claude' | 'codex' | 'gemini' =
+            const availableAgent: 'claude' | 'codex' | 'gemini' | 'openclaw' =
                 cliAvailability.claude === true ? 'claude' :
                 cliAvailability.codex === true ? 'codex' :
+                cliAvailability.openclaw === true ? 'openclaw' :
                 (cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
                 'claude'; // Fallback to claude (will fail at spawn with clear error)
 
             console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
             setAgentType(availableAgent);
         }
-    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
+    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, cliAvailability.openclaw, agentType, experimentsEnabled]);
 
     // Extract all ${VAR} references from profiles to query daemon environment
     const envVarRefs = React.useMemo(() => {
@@ -777,7 +781,7 @@ function NewSessionWizard() {
             name: '',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
+            compatibility: { claude: true, codex: true, gemini: true, openclaw: true },
             isBuiltIn: false,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -1079,6 +1083,50 @@ function NewSessionWizard() {
         }
     }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
 
+    // Cloud Chat creation handler
+    const handleCreateCloudChat = React.useCallback(async () => {
+        // Find a cloud-capable profile for the current agent type
+        const selectedProfile = selectedProfileId ? profileMap.get(selectedProfileId) : null;
+        const profile = selectedProfile && isProfileCloudCapable(selectedProfile, agentType as CloudAgentType)
+            ? selectedProfile
+            : profiles.find(p => isProfileCloudCapable(p, agentType as CloudAgentType));
+
+        if (!profile) {
+            Modal.alert(
+                'API Key Required',
+                'To start a cloud chat, you need a profile with an API key configured. Go to Settings > Profiles to add one.',
+            );
+            return;
+        }
+
+        setIsCreating(true);
+        try {
+            const sessionId = await createCloudSession(agentType as CloudAgentType, profile);
+            if (!sessionId) {
+                throw new Error('Failed to create cloud session');
+            }
+
+            // Clear draft state
+            clearNewSessionDraft();
+
+            // Send initial message if provided
+            if (sessionPrompt.trim()) {
+                const { sendCloudMessage } = await import('@/cloud/cloudSession');
+                await sendCloudMessage(sessionId, sessionPrompt);
+            }
+
+            router.replace(`/session/${sessionId}`, {
+                dangerouslySingular() {
+                    return 'session';
+                },
+            });
+        } catch (error) {
+            console.error('Failed to create cloud chat:', error);
+            Modal.alert('Error', 'Failed to create cloud chat. Please try again.');
+            setIsCreating(false);
+        }
+    }, [agentType, selectedProfileId, profileMap, profiles, sessionPrompt, router]);
+
     const screenWidth = useWindowDimensions().width;
 
     // Machine online status for AgentInput (DRY - reused in info box too)
@@ -1150,6 +1198,33 @@ function NewSessionWizard() {
                             </View>
                         </View>
                     )}
+
+                    {/* Cloud Chat button */}
+                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 12 }}>
+                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                            <Pressable
+                                onPress={handleCreateCloudChat}
+                                disabled={isCreating}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    paddingVertical: 10,
+                                    paddingHorizontal: 16,
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.divider,
+                                    backgroundColor: theme.colors.surface,
+                                    gap: 8,
+                                }}
+                            >
+                                <Ionicons name="cloud-outline" size={18} color={theme.colors.text} />
+                                <Text style={{ color: theme.colors.text, fontSize: 14, ...Typography.default('semiBold') }}>
+                                    Cloud Chat (no terminal needed)
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
 
                     {/* AgentInput with inline chips - sticky at bottom */}
                     <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>

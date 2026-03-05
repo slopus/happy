@@ -26,6 +26,7 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
+import { useCloudSession } from '@/cloud/useCloudSession';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
@@ -167,6 +168,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
+
+    // Cloud session detection and hook
+    const isCloudSession = session.metadata?.isCloud === true;
+    const cloudSession = useCloudSession(sessionId);
 
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
@@ -318,16 +323,22 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             onSend={() => {
                 if (message.trim()) {
+                    const text = message;
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
+                    if (isCloudSession) {
+                        cloudSession.sendMessage(text);
+                    } else {
+                        sync.sendMessage(sessionId, text);
+                    }
                     trackMessageSent();
                 }
             }}
-            onMicPress={micButtonState.onMicPress}
-            isMicActive={micButtonState.isMicActive}
-            onAbort={() => sessionAbort(sessionId)}
-            showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+            onMicPress={isCloudSession ? undefined : micButtonState.onMicPress}
+            isMicActive={isCloudSession ? false : micButtonState.isMicActive}
+            onAbort={isCloudSession ? () => cloudSession.abort() : () => sessionAbort(sessionId)}
+            showAbortButton={isCloudSession ? cloudSession.isStreaming : (sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting')}
+            isCloudSession={isCloudSession}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
             // Autocomplete configuration
             autocompletePrefixes={['@', '/']}
