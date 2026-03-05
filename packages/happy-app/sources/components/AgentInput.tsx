@@ -1560,7 +1560,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 )}
 
                                 {/* Git Status Badge */}
-                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} onBlank={() => inputRef.current?.focus()} />
                                 </View>
 
                                 {/* Image button */}
@@ -1666,7 +1666,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 }));
 
 // Git Status Button Component
-function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
+function GitStatusButton({ sessionId, onPress, onBlank }: { sessionId?: string, onPress?: () => void, onBlank?: () => void }) {
     const hasLoadedGitStatus = useHasLoadedGitStatus(sessionId || '');
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -1676,33 +1676,51 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
     }
 
     return (
-        <Pressable
-            style={(p) => ({
+        <View
+            style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 borderRadius: Platform.select({ default: 16, android: 20 }),
                 paddingHorizontal: 8,
                 paddingVertical: 6,
                 height: 32,
-                opacity: p.pressed ? 0.7 : 1,
                 flex: 1,
                 overflow: 'hidden',
-            })}
-            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-            onPress={() => {
-                hapticsLight();
-                onPress?.();
             }}
         >
-            {hasLoadedGitStatus ? (
-                <GitStatusBadge sessionId={sessionId} />
-            ) : (
-                <Octicons
-                    name="git-branch"
-                    size={16}
-                    color={theme.colors.button.secondary.tint}
-                />
-            )}
-        </Pressable>
+            <Pressable
+                style={(p) => ({
+                    opacity: p.pressed ? 0.7 : 1,
+                })}
+                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                onPress={() => {
+                    hapticsLight();
+                    onPress?.();
+                }}
+            >
+                {hasLoadedGitStatus ? (
+                    <GitStatusBadge sessionId={sessionId} />
+                ) : (
+                    <Octicons
+                        name="git-branch"
+                        size={16}
+                        color={theme.colors.button.secondary.tint}
+                    />
+                )}
+            </Pressable>
+            <Pressable
+                style={{
+                    flex: 1
+                }}
+                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                onPress={() => {
+                    onBlank?.();
+                }}
+            >
+                <Text>
+                    
+                </Text>
+            </Pressable>
+        </View>
     );
 }
