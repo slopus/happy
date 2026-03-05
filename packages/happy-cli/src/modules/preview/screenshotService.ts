@@ -88,7 +88,7 @@ export interface ScreenshotResult {
 
 export async function takeScreenshot(
     url: string,
-    viewport?: { width?: number; height?: number },
+    viewport?: { width?: number; height?: number; cookies?: string },
 ): Promise<ScreenshotResult> {
     const browser = await getBrowser();
     const page = await browser.newPage();
@@ -100,6 +100,23 @@ export async function takeScreenshot(
 
     try {
         await page.setViewport(vp);
+
+        // Set cookies from the browser if provided
+        if (viewport?.cookies) {
+            const parsedUrl = new URL(url);
+            const cookiePairs = viewport.cookies.split(';').map(c => c.trim()).filter(Boolean);
+            const puppeteerCookies = cookiePairs.map(pair => {
+                const eqIdx = pair.indexOf('=');
+                const name = eqIdx > 0 ? pair.substring(0, eqIdx).trim() : pair;
+                const value = eqIdx > 0 ? pair.substring(eqIdx + 1).trim() : '';
+                return { name, value, domain: parsedUrl.hostname, path: '/' };
+            });
+            if (puppeteerCookies.length > 0) {
+                await page.setCookie(...puppeteerCookies);
+                logger.debug('[screenshot] Set', puppeteerCookies.length, 'cookies for', parsedUrl.hostname);
+            }
+        }
+
         await page.goto(url, {
             waitUntil: 'networkidle2',
             timeout: SCREENSHOT_TIMEOUT_MS,

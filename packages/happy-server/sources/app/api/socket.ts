@@ -14,6 +14,7 @@ import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 
 export function startSocket(app: Fastify) {
+    let rpcListeners = new Map<string, Map<string, Socket>>();
     const io = new Server(app.server, {
         cors: {
             origin: "*",
@@ -32,7 +33,6 @@ export function startSocket(app: Fastify) {
         serveClient: false // Don't serve the client files
     });
 
-    let rpcListeners = new Map<string, Map<string, Socket>>();
     io.on("connection", async (socket) => {
         log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;

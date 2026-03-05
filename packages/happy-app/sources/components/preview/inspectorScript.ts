@@ -307,6 +307,9 @@ export function getInspectorScript(): string {
         case 'full-reload':
           fullReload();
           break;
+        case 'get-cookies':
+          sendMessage({ type: 'cookies', cookies: document.cookie, url: window.location.href });
+          break;
       }
     }
 

@@ -720,6 +720,26 @@ export async function startDaemon(): Promise<void> {
       requestShutdown: () => requestShutdown('happy-app')
     });
 
+    // Web credential recovery: returns token + machineKey so the web app
+    // can restore its session when localStorage is cleared by the browser.
+    // Uses a direct socket event (not encrypted RPC) because the web app
+    // doesn't have the encryption key — that's the whole point of recovery.
+    apiMachine.onWebRecoverRequest(() => {
+      if (credentials.encryption.type === 'dataKey') {
+        return {
+          token: credentials.token,
+          secret: Buffer.from(credentials.encryption.machineKey).toString('base64')
+        };
+      }
+      if (credentials.encryption.type === 'legacy') {
+        return {
+          token: credentials.token,
+          secret: Buffer.from(credentials.encryption.secret).toString('base64')
+        };
+      }
+      return null;
+    });
+
     // Connect to server
     apiMachine.connect();
 

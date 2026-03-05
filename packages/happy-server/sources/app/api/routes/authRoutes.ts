@@ -4,6 +4,7 @@ import * as privacyKit from "privacy-kit";
 import { db } from "@/storage/db";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
+import { eventRouter } from "@/app/events/eventRouter";
 
 export function authRoutes(app: Fastify) {
     app.post('/v1/auth', {
@@ -239,6 +240,62 @@ export function authRoutes(app: Fastify) {
             });
         }
         return reply.send({ success: true });
+    });
+
+    /**
+     * Web credential recovery via CLI daemon.
+     * When the web app loses credentials (localStorage cleared by browser),
+     * it sends its stored userId to this endpoint. The server relays the request
+     * to the user's online CLI daemon via RPC, which returns token + machineKey.
+     * No auth required — userId is a random CUID (not guessable) and CLI must be online.
+     */
+    app.post('/v1/auth/web-recover', {
+        schema: {
+            body: z.object({
+                userId: z.string().min(10)
+            })
+        }
+    }, async (request, reply) => {
+        const { userId } = request.body;
+
+        // Verify this user actually exists
+        const user = await db.account.findUnique({ where: { id: userId } });
+        if (!user) {
+            return reply.code(404).send({ error: 'User not found' });
+        }
+
+        // Find user's machine-scoped connection (CLI daemon)
+        const connections = eventRouter.getConnections(userId);
+        let machineSocket = null;
+        if (connections) {
+            for (const conn of connections) {
+                if (conn.connectionType === 'machine-scoped' && conn.socket.connected) {
+                    machineSocket = conn.socket;
+                    break;
+                }
+            }
+        }
+        if (!machineSocket) {
+            return reply.code(503).send({ error: 'No CLI daemon online' });
+        }
+
+        try {
+            const response = await machineSocket.timeout(10000).emitWithAck('web-recover-request');
+
+            if (!response) {
+                return reply.code(502).send({ error: 'Empty response from CLI' });
+            }
+
+            const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+            if (!parsed.token || !parsed.secret) {
+                return reply.code(502).send({ error: 'Invalid response from CLI' });
+            }
+
+            return reply.send({ token: parsed.token, secret: parsed.secret });
+        } catch (error) {
+            log({ module: 'auth', level: 'error' }, `Web recovery RPC failed: ${error}`);
+            return reply.code(502).send({ error: 'CLI daemon did not respond' });
+        }
     });
 
 }

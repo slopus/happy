@@ -558,14 +558,14 @@ export const storage = create<StorageState>()((set, get) => {
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
                 let updatedSessions = state.sessions;
-                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage) && session;
+                const needsUpdate = (Array.isArray(reducerResult.todos) || existingSession.reducerState.latestUsage) && session;
 
                 if (needsUpdate) {
                     updatedSessions = {
                         ...state.sessions,
                         [sessionId]: {
                             ...session,
-                            ...(reducerResult.todos !== undefined && { todos: reducerResult.todos }),
+                            ...(Array.isArray(reducerResult.todos) && { todos: reducerResult.todos }),
                             // Copy latestUsage from reducerState to make it immediately available
                             latestUsage: existingSession.reducerState.latestUsage ? {
                                 ...existingSession.reducerState.latestUsage

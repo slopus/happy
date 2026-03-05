@@ -66,6 +66,33 @@ export const SessionView = React.memo((props: { id: string }) => {
     const insertTextRef = React.useRef<(text: string) => void>(null);
     const previewVisible = usePreviewVisible(sessionId);
 
+    // Ref for adding images from outside SessionViewLoaded (e.g. Preview screenshot)
+    const addImageRef = React.useRef<((img: { url: string; mediaType: string; width: number; height: number; localUri: string }) => void) | null>(null);
+    const setUploadingRef = React.useRef<((v: boolean) => void) | null>(null);
+
+    // Handle screenshot from Preview panel
+    const handlePreviewScreenshot = React.useCallback(async (data: { base64: string; width: number; height: number }) => {
+        try {
+            const credentials = await TokenStorage.getCredentials();
+            if (!credentials) return;
+            setUploadingRef.current?.(true);
+            const binaryString = atob(data.base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            const uploaded = await uploadSessionImage(credentials, sessionId, bytes.buffer, 'image/jpeg');
+            addImageRef.current?.({
+                ...uploaded,
+                localUri: `data:image/jpeg;base64,${data.base64}`,
+            });
+        } catch (e: any) {
+            console.error('[preview-screenshot] Upload failed:', e?.message || e);
+        } finally {
+            setUploadingRef.current?.(false);
+        }
+    }, [sessionId]);
+
     // Listen for toggle-file-browser event from sidebar
     React.useEffect(() => {
         if (Platform.OS !== 'web') return;
@@ -79,18 +106,32 @@ export const SessionView = React.memo((props: { id: string }) => {
         return () => window.removeEventListener('toggle-file-browser', handler);
     }, [sessionId]);
 
-    // Listen for toggle-preview event from sidebar
+    // Listen for toggle-preview event from sidebar / keyboard shortcut
     React.useEffect(() => {
         if (Platform.OS !== 'web') return;
         const handler = (e: Event) => {
             const detail = (e as CustomEvent).detail;
-            if (detail?.sessionId === sessionId) {
+            // Accept if sessionId matches OR no sessionId specified (global shortcut)
+            if (!detail?.sessionId || detail.sessionId === sessionId) {
                 setPreviewOpen(prev => !prev);
             }
         };
         window.addEventListener('toggle-preview', handler);
         return () => window.removeEventListener('toggle-preview', handler);
     }, [sessionId]);
+
+    // Listen for preview-screenshot event from keyboard shortcut
+    const screenshotRef = React.useRef(handlePreviewScreenshot);
+    screenshotRef.current = handlePreviewScreenshot;
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const handler = () => {
+            // Trigger screenshot click on the PreviewPanel
+            window.dispatchEvent(new CustomEvent('preview-take-screenshot'));
+        };
+        window.addEventListener('preview-screenshot', handler);
+        return () => window.removeEventListener('preview-screenshot', handler);
+    }, []);
 
     // Sync store isVisible → local previewOpen (e.g. when file path clicked in chat)
     React.useEffect(() => {
@@ -264,38 +305,6 @@ export const SessionView = React.memo((props: { id: string }) => {
         });
     }, []);
 
-    // Handle screenshot from Preview panel
-    const handlePreviewScreenshot = React.useCallback(async (data: { base64: string; width: number; height: number }) => {
-        console.log('[preview-screenshot] handlePreviewScreenshot called, base64 length:', data.base64?.length, 'width:', data.width, 'height:', data.height);
-        try {
-            const credentials = await TokenStorage.getCredentials();
-            console.log('[preview-screenshot] credentials:', !!credentials);
-            if (!credentials) return;
-
-            setIsUploadingImage(true);
-
-            // Convert base64 to ArrayBuffer
-            const binaryString = atob(data.base64);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            console.log('[preview-screenshot] ArrayBuffer created, size:', bytes.buffer.byteLength);
-
-            const uploaded = await uploadSessionImage(credentials, sessionId, bytes.buffer, 'image/jpeg');
-            console.log('[preview-screenshot] Upload success:', JSON.stringify(uploaded));
-            setPendingImages(prev => [...prev, {
-                ...uploaded,
-                localUri: `data:image/jpeg;base64,${data.base64}`,
-            }]);
-            console.log('[preview-screenshot] Added to pendingImages');
-        } catch (e: any) {
-            console.error('[preview-screenshot] Upload FAILED:', e?.message || e, e?.stack);
-        } finally {
-            setIsUploadingImage(false);
-        }
-    }, [sessionId]);
-
     const showHeader = !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web');
     const contentPaddingTop = showHeader ? safeArea.top + headerHeight : 0;
 
@@ -347,7 +356,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} currentPreset={currentPreset} showSettingsOverlay={showSettingsOverlay} onSettingsOverlayChange={setShowSettingsOverlay} onSharePress={handleShareChat} insertTextRef={insertTextRef} />
+                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} currentPreset={currentPreset} showSettingsOverlay={showSettingsOverlay} onSettingsOverlayChange={setShowSettingsOverlay} onSharePress={handleShareChat} insertTextRef={insertTextRef} addImageRef={addImageRef} setUploadingRef={setUploadingRef} />
                 )}
             </View>
 
@@ -485,7 +494,7 @@ export const SessionView = React.memo((props: { id: string }) => {
 });
 
 
-function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOverlay, onSettingsOverlayChange, onSharePress, insertTextRef }: { sessionId: string, session: Session, currentPreset: AgentPreset | null, showSettingsOverlay?: boolean, onSettingsOverlayChange?: (visible: boolean) => void, onSharePress?: () => void, insertTextRef?: React.RefObject<((text: string) => void) | null> }) {
+function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOverlay, onSettingsOverlayChange, onSharePress, insertTextRef, addImageRef, setUploadingRef }: { sessionId: string, session: Session, currentPreset: AgentPreset | null, showSettingsOverlay?: boolean, onSettingsOverlayChange?: (visible: boolean) => void, onSharePress?: () => void, insertTextRef?: React.RefObject<((text: string) => void) | null>, addImageRef?: React.RefObject<((img: { url: string; mediaType: string; width: number; height: number; localUri: string }) => void) | null>, setUploadingRef?: React.RefObject<((v: boolean) => void) | null> }) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
@@ -493,6 +502,11 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
     const selectedElements = useSelectedElements(sessionId);
+
+    // Pending images/documents for upload (must be in this component where onSend uses them)
+    const [pendingImages, setPendingImages] = React.useState<Array<{ url: string; mediaType: string; width: number; height: number; localUri: string }>>([]);
+    const [pendingDocuments, setPendingDocuments] = React.useState<Array<{ url: string; mediaType: string; fileName: string; fileSize: number }>>([]);
+    const [isUploadingImage, setIsUploadingImage] = React.useState(false);
 
     // Register setMessage into parent ref for FileBrowserPanel insert-to-chat
     React.useEffect(() => {
@@ -503,6 +517,20 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
             };
         }
     }, [insertTextRef]);
+
+    // Expose setPendingImages/setIsUploadingImage to parent via refs (for Preview screenshot)
+    React.useEffect(() => {
+        if (addImageRef) {
+            (addImageRef as React.MutableRefObject<((img: { url: string; mediaType: string; width: number; height: number; localUri: string }) => void) | null>).current = (img) => setPendingImages(prev => [...prev, img]);
+            return () => { (addImageRef as React.MutableRefObject<any>).current = null; };
+        }
+    }, [addImageRef]);
+    React.useEffect(() => {
+        if (setUploadingRef) {
+            (setUploadingRef as React.MutableRefObject<((v: boolean) => void) | null>).current = setIsUploadingImage;
+            return () => { (setUploadingRef as React.MutableRefObject<any>).current = null; };
+        }
+    }, [setUploadingRef]);
     const handleEditMessage = React.useCallback((text: string) => {
         setMessage(text);
     }, []);
@@ -542,11 +570,6 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
-
-    // Pending images for upload
-    const [pendingImages, setPendingImages] = React.useState<Array<{ url: string; mediaType: string; width: number; height: number; localUri: string }>>([]);
-    const [pendingDocuments, setPendingDocuments] = React.useState<Array<{ url: string; mediaType: string; fileName: string; fileSize: number }>>([]);
-    const [isUploadingImage, setIsUploadingImage] = React.useState(false);
 
     // MCP server management
     const [mcpServers, setMcpServers] = React.useState<Array<{ name: string; enabled: boolean; type: string }>>([]);
@@ -1083,7 +1106,7 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
             )}
 
             {/* Main content area - no padding since header is overlay */}
-            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
+            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 8 : 0) }}>
                 <AgentContentView
                     content={content}
                     input={input}

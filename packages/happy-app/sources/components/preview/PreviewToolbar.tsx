@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, TextInput, Pressable } from 'react-native';
+import { View, TextInput, Pressable, Text, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -20,6 +20,14 @@ interface PreviewToolbarProps {
     onClose: () => void;
 }
 
+interface MenuItem {
+    icon: string;
+    label: string;
+    onPress: () => void;
+    active?: boolean;
+    disabled?: boolean;
+}
+
 export const PreviewToolbar = React.memo(({
     url,
     onUrlChange,
@@ -36,6 +44,66 @@ export const PreviewToolbar = React.memo(({
     onClose,
 }: PreviewToolbarProps) => {
     const { theme } = useUnistyles();
+    const [menuOpen, setMenuOpen] = React.useState(false);
+    const menuButtonRef = React.useRef<View>(null);
+    const [menuPosition, setMenuPosition] = React.useState({ top: 0, right: 0 });
+
+    const openMenu = React.useCallback(() => {
+        if (menuButtonRef.current) {
+            menuButtonRef.current.measureInWindow((x, y, width, height) => {
+                setMenuPosition({ top: y + height + 4, right: window.innerWidth - x - width });
+                setMenuOpen(true);
+            });
+        } else {
+            setMenuOpen(true);
+        }
+    }, []);
+
+    const closeMenu = React.useCallback(() => setMenuOpen(false), []);
+
+    const menuItems: MenuItem[] = React.useMemo(() => {
+        const items: MenuItem[] = [
+            {
+                icon: 'scan-outline',
+                label: 'Inspect',
+                onPress: onToggleInspect,
+                active: inspectMode,
+            },
+            {
+                icon: 'phone-portrait-outline',
+                label: 'Device bar',
+                onPress: onToggleDeviceBar,
+                active: deviceBarVisible,
+            },
+        ];
+
+        if (onScreenshot) {
+            items.push({
+                icon: screenshotLoading ? 'hourglass-outline' : 'camera-outline',
+                label: 'Screenshot to chat',
+                onPress: onScreenshot,
+                disabled: screenshotLoading,
+            });
+        }
+
+        if (onCopyLink) {
+            items.push({
+                icon: 'link-outline',
+                label: 'Copy link',
+                onPress: onCopyLink,
+            });
+        }
+
+        if (onPopOut) {
+            items.push({
+                icon: 'open-outline',
+                label: 'Pop out',
+                onPress: onPopOut,
+            });
+        }
+
+        return items;
+    }, [inspectMode, deviceBarVisible, screenshotLoading, onToggleInspect, onToggleDeviceBar, onScreenshot, onCopyLink, onPopOut]);
 
     return (
         <View style={styles.container}>
@@ -69,65 +137,16 @@ export const PreviewToolbar = React.memo(({
                 selectTextOnFocus
             />
 
-            {/* Inspect mode toggle */}
-            <Pressable onPress={onToggleInspect} hitSlop={6}>
-                <Ionicons
-                    name="scan-outline"
-                    size={18}
-                    color={inspectMode
-                        ? theme.colors.button.primary.background
-                        : theme.colors.textSecondary
-                    }
-                />
-            </Pressable>
-
-            {/* Device bar toggle */}
-            <Pressable onPress={onToggleDeviceBar} hitSlop={6}>
-                <Ionicons
-                    name="phone-portrait-outline"
-                    size={18}
-                    color={deviceBarVisible
-                        ? theme.colors.button.primary.background
-                        : theme.colors.textSecondary
-                    }
-                />
-            </Pressable>
-
-            {/* Screenshot to chat */}
-            {onScreenshot && (
-                <Pressable onPress={onScreenshot} hitSlop={6} disabled={screenshotLoading}>
+            {/* More menu button */}
+            <View ref={menuButtonRef} collapsable={false}>
+                <Pressable onPress={openMenu} hitSlop={6}>
                     <Ionicons
-                        name={screenshotLoading ? 'hourglass-outline' : 'camera-outline'}
-                        size={18}
-                        color={screenshotLoading
-                            ? theme.colors.button.primary.background
-                            : theme.colors.textSecondary
-                        }
-                    />
-                </Pressable>
-            )}
-
-            {/* Copy monitor link */}
-            {onCopyLink && (
-                <Pressable onPress={onCopyLink} hitSlop={6}>
-                    <Ionicons
-                        name="link-outline"
+                        name="ellipsis-vertical"
                         size={18}
                         color={theme.colors.textSecondary}
                     />
                 </Pressable>
-            )}
-
-            {/* Pop out to external window */}
-            {onPopOut && (
-                <Pressable onPress={onPopOut} hitSlop={6}>
-                    <Ionicons
-                        name="open-outline"
-                        size={18}
-                        color={theme.colors.textSecondary}
-                    />
-                </Pressable>
-            )}
+            </View>
 
             {/* Refresh button */}
             <Pressable onPress={onRefresh} hitSlop={6}>
@@ -137,6 +156,69 @@ export const PreviewToolbar = React.memo(({
                     color={theme.colors.textSecondary}
                 />
             </Pressable>
+
+            {/* Dropdown menu */}
+            {menuOpen && (
+                <Modal transparent animationType="fade" onRequestClose={closeMenu}>
+                    <Pressable style={styles.overlay} onPress={closeMenu}>
+                        <View
+                            style={[
+                                styles.menu,
+                                {
+                                    backgroundColor: theme.colors.surface,
+                                    borderColor: theme.colors.divider,
+                                    top: menuPosition.top,
+                                    right: menuPosition.right,
+                                },
+                            ]}
+                        >
+                            {menuItems.map((item, index) => (
+                                <Pressable
+                                    key={item.label}
+                                    onPress={() => {
+                                        closeMenu();
+                                        item.onPress();
+                                    }}
+                                    disabled={item.disabled}
+                                    style={({ pressed }) => [
+                                        styles.menuItem,
+                                        pressed && { backgroundColor: theme.colors.groupped.background },
+                                        index < menuItems.length - 1 && {
+                                            borderBottomWidth: StyleSheet.hairlineWidth,
+                                            borderBottomColor: theme.colors.divider,
+                                        },
+                                    ]}
+                                >
+                                    <Ionicons
+                                        name={item.icon as any}
+                                        size={16}
+                                        color={item.active
+                                            ? theme.colors.button.primary.background
+                                            : item.disabled
+                                                ? theme.colors.textTertiary
+                                                : theme.colors.textSecondary
+                                        }
+                                    />
+                                    <Text
+                                        style={[
+                                            styles.menuItemText,
+                                            {
+                                                color: item.active
+                                                    ? theme.colors.button.primary.background
+                                                    : item.disabled
+                                                        ? theme.colors.textTertiary
+                                                        : theme.colors.text,
+                                            },
+                                        ]}
+                                    >
+                                        {item.label}
+                                    </Text>
+                                </Pressable>
+                            ))}
+                        </View>
+                    </Pressable>
+                </Modal>
+            )}
         </View>
     );
 });
@@ -159,5 +241,31 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         ...Typography.mono(),
         paddingHorizontal: 10,
+    },
+    overlay: {
+        flex: 1,
+    },
+    menu: {
+        position: 'absolute',
+        minWidth: 180,
+        borderRadius: 10,
+        borderWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 8,
+        overflow: 'hidden',
+    },
+    menuItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 11,
+    },
+    menuItemText: {
+        fontSize: 14,
+        ...Typography.default(),
     },
 }));

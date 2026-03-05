@@ -97,6 +97,12 @@ export class ApiMachineClient {
         registerCommonHandlers(this.rpcHandlerManager, process.cwd());
     }
 
+    private webRecoverHandler: (() => { token: string; secret: string } | null) | null = null;
+
+    onWebRecoverRequest(handler: () => { token: string; secret: string } | null): void {
+        this.webRecoverHandler = handler;
+    }
+
     setRPCHandlers({
         spawnSession,
         stopSession,
@@ -295,6 +301,16 @@ export class ApiMachineClient {
 
             // Start keep-alive
             this.startKeepAlive();
+
+            // Web credential recovery: direct socket event (unencrypted)
+            this.socket.on('web-recover-request' as any, (callback: (response: any) => void) => {
+                if (this.webRecoverHandler) {
+                    const result = this.webRecoverHandler();
+                    callback(result || { error: 'No credentials available' });
+                } else {
+                    callback({ error: 'Recovery not configured' });
+                }
+            });
         });
 
         this.socket.on('disconnect', () => {

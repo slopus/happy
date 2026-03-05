@@ -18,6 +18,7 @@ import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
 import { syncRestore } from '@/sync/sync';
+import { storage } from '@/sync/storage';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { isLearnMode } from '@/appMode';
@@ -192,13 +193,55 @@ export default function RootLayout() {
                 if (!isLearnMode) {
                     await sodium.ready;
                 }
-                const credentials = await TokenStorage.getCredentials();
-                console.log('credentials', credentials);
+                // Auto-auth via URL parameters (for server-side re-login)
+                if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                    const params = new URLSearchParams(window.location.search);
+                    const autoToken = params.get('autoauth');
+                    const autoSecret = params.get('secret');
+                    if (autoToken && autoSecret) {
+                        await TokenStorage.setCredentials({ token: autoToken, secret: autoSecret });
+                        window.history.replaceState({}, '', window.location.pathname);
+                    }
+                }
+
+                let credentials = await TokenStorage.getCredentials();
+
+                // CLI recovery: if no credentials but we have a stored userId,
+                // ask the server to get credentials from the online CLI daemon
+                if (!credentials && Platform.OS === 'web' && !isLearnMode) {
+                    const recoveryUserId = await TokenStorage.getRecoveryUserId();
+                    if (recoveryUserId) {
+                        try {
+                            const { getServerUrl } = await import('@/sync/serverConfig');
+                            const response = await fetch(`${getServerUrl()}/v1/auth/web-recover`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userId: recoveryUserId }),
+                            });
+                            if (response.ok) {
+                                const data = await response.json();
+                                if (data.token && data.secret) {
+                                    await TokenStorage.setCredentials({ token: data.token, secret: data.secret });
+                                    credentials = { token: data.token, secret: data.secret };
+                                    console.log('Credentials recovered from CLI');
+                                }
+                            }
+                        } catch (e) {
+                            console.log('CLI recovery failed:', e);
+                        }
+                    }
+                }
+
                 if (credentials) {
                     if (isLearnMode) {
                         await learnRestore(credentials);
                     } else {
                         await syncRestore(credentials);
+                        // Store userId for future CLI recovery
+                        const profile = storage.getState().profile;
+                        if (profile?.id) {
+                            TokenStorage.setRecoveryUserId(profile.id);
+                        }
                     }
                 }
 

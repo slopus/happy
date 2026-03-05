@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 export interface GlobalKeyboardHandlers {
     onCommandPalette?: () => void;
     onNewSession?: () => void;
+    onTogglePreview?: () => void;
+    onScreenshot?: () => void;
     onSettings?: () => void;
     onPrevSession?: () => void;
     onNextSession?: () => void;
@@ -37,8 +39,14 @@ export function useGlobalKeyboard(handlers: GlobalKeyboardHandlers) {
                 handled = true;
             }
 
-            // Cmd+key for everything else
-            if (e.metaKey) {
+            // Cmd+Shift+Space — screenshot preview to chat
+            if (e.metaKey && e.shiftKey && e.code === 'Space') {
+                h.onScreenshot?.();
+                handled = true;
+            }
+
+            // Cmd+key (no shift) for everything else
+            if (e.metaKey && !e.shiftKey) {
                 if (e.code === 'KeyK') {
                     h.onCommandPalette?.();
                     handled = true;
@@ -48,8 +56,11 @@ export function useGlobalKeyboard(handlers: GlobalKeyboardHandlers) {
                 } else if (e.code === 'BracketRight') {
                     h.onNextSession?.();
                     handled = true;
-                } else if (e.code === 'KeyN' && !isInputFocused) {
+                } else if (e.code === 'KeyM' && !isInputFocused) {
                     h.onNewSession?.();
+                    handled = true;
+                } else if (e.code === 'KeyN') {
+                    h.onTogglePreview?.();
                     handled = true;
                 } else if (e.code === 'Comma') {
                     h.onSettings?.();

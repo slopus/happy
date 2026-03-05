@@ -50,7 +50,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 subtitle: 'Start a new chat session',
                 icon: 'add-circle-outline',
                 category: 'Sessions',
-                shortcut: '⌘N',
+                shortcut: '⌘M',
                 action: () => {
                     router.push('/new');
                 }
@@ -94,6 +94,28 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 category: 'Navigation',
                 action: () => {
                     router.push('/terminal/connect');
+                }
+            },
+            {
+                id: 'toggle-preview',
+                title: 'Toggle Preview',
+                subtitle: 'Show or hide the preview panel',
+                icon: 'browsers-outline',
+                category: 'Navigation',
+                shortcut: '⌘N',
+                action: () => {
+                    window.dispatchEvent(new CustomEvent('toggle-preview'));
+                }
+            },
+            {
+                id: 'screenshot-preview',
+                title: 'Screenshot to Chat',
+                subtitle: 'Take a screenshot of the preview',
+                icon: 'camera-outline',
+                category: 'Navigation',
+                shortcut: '⌘⇧Space',
+                action: () => {
+                    window.dispatchEvent(new CustomEvent('preview-screenshot'));
                 }
             },
             {
@@ -213,10 +235,22 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
     }, [sidebarOrderSessions, navigateToSession]);
 
+    const togglePreview = useCallback(() => {
+        window.dispatchEvent(new CustomEvent('toggle-preview'));
+    }, []);
+
+    const triggerScreenshot = useCallback(() => {
+        window.dispatchEvent(new CustomEvent('preview-screenshot'));
+    }, []);
+
     // Set up global keyboard shortcuts
     useGlobalKeyboard({
         onCommandPalette: commandPaletteEnabled ? showCommandPalette : undefined,
-        onNewSession: useCallback(() => router.push('/new'), [router]),
+        onNewSession: useCallback(() => {
+            if (!pathname.startsWith('/new')) router.push('/new');
+        }, [router, pathname]),
+        onTogglePreview: togglePreview,
+        onScreenshot: triggerScreenshot,
         onSettings: useCallback(() => router.push('/settings'), [router]),
         onPrevSession: navigatePrevSession,
         onNextSession: navigateNextSession,

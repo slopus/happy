@@ -39,6 +39,7 @@ interface ScreenshotRequest {
     url: string;
     width?: number;
     height?: number;
+    cookies?: string;
 }
 
 interface ScreenshotResponse {
@@ -110,6 +111,7 @@ export function registerPreviewHandlers(rpcHandlerManager: RpcHandlerManager, wo
             const result = await takeScreenshot(data.url, {
                 width: data.width,
                 height: data.height,
+                cookies: data.cookies,
             });
             return { success: true, ...result };
         } catch (error) {

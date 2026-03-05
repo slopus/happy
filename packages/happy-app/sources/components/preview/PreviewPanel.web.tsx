@@ -180,6 +180,11 @@ export const PreviewPanel = React.memo(({ sessionId, onClose, onScreenshot }: Pr
                 if (data.state === 'down') onMetaDown();
                 else if (data.state === 'up') onMetaUp();
                 break;
+            case 'cookies':
+                if (cookieResolverRef.current) {
+                    cookieResolverRef.current(data.cookies as string || '');
+                }
+                break;
         }
     }, [sessionId, onMetaDown, onMetaUp]);
 
@@ -302,39 +307,70 @@ export const PreviewPanel = React.memo(({ sessionId, onClose, onScreenshot }: Pr
         storage.getState().setPreviewState(sessionId, { viewportRotated: !viewportRotated });
     }, [viewportRotated, sessionId]);
 
+    // Request cookies from iframe via postMessage
+    const cookieResolverRef = React.useRef<((cookies: string) => void) | null>(null);
+    const requestIframeCookies = React.useCallback((): Promise<string> => {
+        return new Promise((resolve) => {
+            if (!iframeRef.current?.contentWindow) {
+                resolve('');
+                return;
+            }
+            const timeout = setTimeout(() => {
+                cookieResolverRef.current = null;
+                resolve('');
+            }, 2000);
+            cookieResolverRef.current = (cookies: string) => {
+                clearTimeout(timeout);
+                cookieResolverRef.current = null;
+                resolve(cookies);
+            };
+            try {
+                iframeRef.current.contentWindow.postMessage(
+                    JSON.stringify({ type: 'get-cookies' }),
+                    '*'
+                );
+            } catch {
+                clearTimeout(timeout);
+                cookieResolverRef.current = null;
+                resolve('');
+            }
+        });
+    }, []);
+
     // Screenshot to chat
     const [screenshotLoading, setScreenshotLoading] = React.useState(false);
     const handleScreenshot = React.useCallback(async () => {
-        console.log('[preview-screenshot] handleScreenshot called, url:', url, 'screenshotLoading:', screenshotLoading, 'onScreenshot:', !!onScreenshot);
-        if (!url || screenshotLoading) {
-            window.alert?.('[Screenshot] Blocked: url=' + url + ', loading=' + screenshotLoading);
-            return;
-        }
+        if (!url || screenshotLoading) return;
         setScreenshotLoading(true);
         try {
-            console.log('[preview-screenshot] Sending RPC preview:screenshot for url:', url, 'sessionId:', sessionId);
+            // Get cookies from iframe for authenticated screenshots
+            const cookieString = await requestIframeCookies();
             const result = await apiSocket.sessionRPC<
                 { success: boolean; base64?: string; width?: number; height?: number; error?: string },
-                { url: string }
-            >(sessionId, 'preview:screenshot', { url });
-            console.log('[preview-screenshot] RPC result:', { success: result.success, hasBase64: !!result.base64, error: result.error, width: result.width, height: result.height });
+                { url: string; cookies?: string }
+            >(sessionId, 'preview:screenshot', { url, cookies: cookieString || undefined });
             if (result.success && result.base64 && onScreenshot) {
                 onScreenshot({
                     base64: result.base64,
                     width: result.width || 1280,
                     height: result.height || 800,
                 });
-                window.alert?.('[Screenshot] OK! base64 length: ' + result.base64.length);
-            } else {
-                window.alert?.('[Screenshot] RPC returned: success=' + result.success + ', hasBase64=' + !!result.base64 + ', error=' + result.error);
             }
         } catch (err: any) {
             console.error('[preview-screenshot] RPC failed:', err);
-            window.alert?.('[Screenshot] ERROR: ' + (err?.message || err));
         } finally {
             setScreenshotLoading(false);
         }
-    }, [url, sessionId, screenshotLoading, onScreenshot]);
+    }, [url, sessionId, screenshotLoading, onScreenshot, requestIframeCookies]);
+
+    // Listen for keyboard shortcut screenshot event
+    const handleScreenshotRef = React.useRef(handleScreenshot);
+    handleScreenshotRef.current = handleScreenshot;
+    React.useEffect(() => {
+        const handler = () => handleScreenshotRef.current();
+        window.addEventListener('preview-take-screenshot', handler);
+        return () => window.removeEventListener('preview-take-screenshot', handler);
+    }, []);
 
     const handleRefresh = React.useCallback(() => {
         if (iframeRef.current) {
