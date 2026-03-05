@@ -1383,13 +1383,16 @@ export const storage = create<StorageState>()((set, get) => {
                         item.repeatKey === newItem.repeatKey
                     );
                     if (indexToRemove !== -1) {
+                        const removedItem = updatedItems[indexToRemove];
+                        existingMap.delete(removedItem.id);
                         updatedItems.splice(indexToRemove, 1);
                     }
                 }
 
-                // Add new item if it doesn't exist
+                // Add or update item
                 if (!existingMap.has(newItem.id)) {
                     updatedItems.push(newItem);
+                    existingMap.set(newItem.id, newItem);
                 }
 
                 // Update head/tail cursors
