@@ -1597,7 +1597,12 @@ class Sync {
                 const response = await fetchFeed(this.credentials, {
                     limit: 100
                 });
-                allItems.push(...response.items);
+                const existingIds = new Set(allItems.map(i => i.id));
+                response.items.forEach(item => {
+                    if (!existingIds.has(item.id)) {
+                        allItems.push(item);
+                    }
+                });
             }
             
             // Collect user IDs from friend-related feed items
