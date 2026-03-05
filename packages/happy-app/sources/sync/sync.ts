@@ -846,6 +846,7 @@ class Sync {
     public refreshFriends = () => {
         this.friendsSync.invalidate();
         this.friendRequestsSync.invalidate();
+        this.feedSync.invalidate();
     }
 
     public refreshInbox = async () => {
