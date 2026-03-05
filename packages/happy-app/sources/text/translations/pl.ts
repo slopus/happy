@@ -147,6 +147,8 @@ export const pl: TranslationStructure = {
         usageSubtitle: 'Zobacz użycie API i koszty',
         profiles: 'Profile',
         profilesSubtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
+        mcpServers: 'Serwery MCP',
+        mcpServersSubtitle: 'Zarządzaj serwerami Model Context Protocol',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,
@@ -195,6 +197,13 @@ export const pl: TranslationStructure = {
         showFlavorIconsDescription: 'Wyświetlaj ikony dostawcy AI na awatarach sesji',
         compactSessionView: 'Kompaktowy widok sesji',
         compactSessionViewDescription: 'Pokazuj aktywne sesje w bardziej zwartym układzie',
+    },
+
+    settingsMcp: {
+        activeServers: 'Aktywne serwery',
+        activeServersFooter: 'Zmiany dotyczą nowych sesji Claude Code.',
+        disabledServers: 'Wyłączone serwery',
+        noServers: 'Brak skonfigurowanych serwerów MCP',
     },
 
     settingsFeatures: {

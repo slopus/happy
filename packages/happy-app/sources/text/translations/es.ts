@@ -136,6 +136,8 @@ export const es: TranslationStructure = {
         usageSubtitle: 'Ver tu uso de API y costos',
         profiles: 'Perfiles',
         profilesSubtitle: 'Gestionar perfiles de variables de entorno para sesiones',
+        mcpServers: 'Servidores MCP',
+        mcpServersSubtitle: 'Gestionar servidores Model Context Protocol',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Cuenta de ${service} conectada`,
@@ -184,6 +186,13 @@ export const es: TranslationStructure = {
         showFlavorIconsDescription: 'Mostrar íconos del proveedor de IA en los avatares de sesión',
         compactSessionView: 'Vista compacta de sesiones',
         compactSessionViewDescription: 'Mostrar sesiones activas en un diseño más compacto',
+    },
+
+    settingsMcp: {
+        activeServers: 'Servidores activos',
+        activeServersFooter: 'Los cambios se aplican a nuevas sesiones de Claude Code.',
+        disabledServers: 'Servidores desactivados',
+        noServers: 'No hay servidores MCP configurados',
     },
 
     settingsFeatures: {

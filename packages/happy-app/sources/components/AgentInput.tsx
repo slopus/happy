@@ -17,6 +17,7 @@ import { FloatingOverlay } from './FloatingOverlay';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
+import { MCPServerPopup } from '@/components/MCPServerPopup';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting, useSessionProjectGitStatus, useSessionGitStatus, useLocalSettingMutable } from '@/sync/storage';
 import { Theme } from '@/theme';
@@ -66,6 +67,13 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onAttach?: () => void;
+    // MCP servers
+    mcpServers?: Array<{ name: string; enabled: boolean; type: string }>;
+    mcpLoading?: boolean;
+    onMcpToggle?: (name: string, enabled: boolean) => void;
+    onMcpPress?: () => void;
+    showMcpPopup?: boolean;
+    onMcpPopupDismiss?: () => void;
     pendingImages?: Array<{ url: string; mediaType: string; width: number; height: number; localUri: string }>;
     onRemoveImage?: (index: number) => void;
     pendingDocuments?: Array<{ url: string; mediaType: string; fileName: string; fileSize: number }>;
@@ -579,6 +587,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             itemHeight={48}
                         />
                     </View>
+                )}
+
+                {/* MCP Server Popup */}
+                {props.showMcpPopup && props.mcpServers && (
+                    <>
+                        <TouchableWithoutFeedback onPress={() => props.onMcpPopupDismiss?.()}>
+                            <View style={styles.overlayBackdrop} />
+                        </TouchableWithoutFeedback>
+                        <View style={[styles.settingsOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}>
+                            <MCPServerPopup
+                                servers={props.mcpServers}
+                                loading={props.mcpLoading || false}
+                                onToggle={(name, enabled) => props.onMcpToggle?.(name, enabled)}
+                            />
+                        </View>
+                    </>
                 )}
 
                 {/* Settings overlay */}
@@ -1193,6 +1217,52 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     ? theme.colors.textLink
                                                     : theme.colors.button.secondary.tint}
                                             />
+                                        )}
+                                    </Pressable>
+                                )}
+
+                                {/* MCP Servers button */}
+                                {props.onMcpPress && (
+                                    <Pressable
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onMcpPress?.();
+                                        }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row' as const,
+                                            alignItems: 'center' as const,
+                                            borderRadius: 20,
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 8,
+                                            justifyContent: 'center' as const,
+                                            height: 38,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name="extension-puzzle-outline"
+                                            size={20}
+                                            color={theme.colors.button.secondary.tint}
+                                            style={{ opacity: 0.4 }}
+                                        />
+                                        {props.mcpServers && props.mcpServers.some(s => !s.enabled) && (
+                                            <View style={{
+                                                position: 'absolute' as const,
+                                                top: 4,
+                                                right: 4,
+                                                backgroundColor: theme.colors.textLink,
+                                                borderRadius: 6,
+                                                minWidth: 12,
+                                                height: 12,
+                                                alignItems: 'center' as const,
+                                                justifyContent: 'center' as const,
+                                                paddingHorizontal: 2,
+                                            }}>
+                                                <Text style={{ fontSize: 8, color: '#fff', fontWeight: '700' }}>
+                                                    {props.mcpServers.filter(s => s.enabled).length}
+                                                </Text>
+                                            </View>
                                         )}
                                     </Pressable>
                                 )}

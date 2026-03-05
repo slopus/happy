@@ -44,6 +44,9 @@ FROM nginx:alpine AS runner
 
 COPY --from=builder /repo/packages/happy-app/dist /usr/share/nginx/html
 
+# Inject PWA meta tags into index.html (Expo export doesn't include them)
+RUN sed -i 's|<meta name="viewport"|<meta name="apple-mobile-web-app-capable" content="yes" />\n    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />\n    <meta name="mobile-web-app-capable" content="yes" />\n    <link rel="manifest" href="/manifest.json" />\n    <meta name="viewport"|' /usr/share/nginx/html/index.html
+
 # Remove default nginx configuration
 RUN rm /etc/nginx/conf.d/default.conf
 

@@ -22,6 +22,7 @@ export function startSocket(app: Fastify) {
             allowedHeaders: ["*"]
         },
         transports: ['websocket', 'polling'],
+        maxHttpBufferSize: 10e6, // 10MB — needed for screenshot RPC responses
         pingTimeout: 45000,
         pingInterval: 15000,
         path: '/v1/updates',

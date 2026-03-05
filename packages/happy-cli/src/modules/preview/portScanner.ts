@@ -1,7 +1,7 @@
 import * as net from "net";
 import * as http from "http";
 
-const COMMON_PORTS = [3000, 3001, 4173, 5173, 5174, 8000, 8080, 8090, 8888];
+const COMMON_PORTS = [3000, 3001, 4173, 5173, 5174, 8000, 8080, 8082, 8090, 8888];
 const DEFAULT_TIMEOUT_MS = 500;
 
 /**
@@ -94,5 +94,5 @@ export async function scanCommonPorts(): Promise<Array<{ port: number; title?: s
     }),
   );
 
-  return results.filter((entry): entry is { port: number; title?: string } => entry !== null);
+  return results.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 }

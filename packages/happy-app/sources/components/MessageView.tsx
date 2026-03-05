@@ -14,7 +14,7 @@ import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
-import { useSession, useSetting } from "@/sync/storage";
+import { storage, useSession, useSetting } from "@/sync/storage";
 import * as Clipboard from 'expo-clipboard';
 
 // Strip <options> blocks and other technical markup from text for copy/share
@@ -284,6 +284,10 @@ function AgentTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title);
   }, [props.sessionId]);
 
+  const handleFilePathPress = React.useCallback((filePath: string) => {
+    storage.getState().setPreviewState(props.sessionId, { url: filePath, isVisible: true });
+  }, [props.sessionId]);
+
   const handleCopy = React.useCallback(async () => {
     try {
       await Clipboard.setStringAsync(cleanTextForShare(props.message.text));
@@ -312,7 +316,7 @@ function AgentTextBlock(props: {
   return (
     <Pressable onPress={handleDoubleTap}>
       <View style={styles.agentMessageContainer}>
-        <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+        <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} onFilePathPress={handleFilePathPress} />
         {props.message.text.length > 0 && !props.message.isThinking && (
           <View style={styles.messageActionsRow}>
             {showActions ? (

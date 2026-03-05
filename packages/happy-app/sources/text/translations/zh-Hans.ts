@@ -138,6 +138,8 @@ export const zhHans: TranslationStructure = {
         usageSubtitle: '查看 API 使用情况和费用',
         profiles: '配置文件',
         profilesSubtitle: '管理环境配置文件和变量',
+        mcpServers: 'MCP 服务器',
+        mcpServersSubtitle: '管理 Model Context Protocol 服务器',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -186,6 +188,13 @@ export const zhHans: TranslationStructure = {
         showFlavorIconsDescription: '在会话头像上显示 AI 提供商图标',
         compactSessionView: '紧凑会话视图',
         compactSessionViewDescription: '以更紧凑的布局显示活跃会话',
+    },
+
+    settingsMcp: {
+        activeServers: '已启用的服务器',
+        activeServersFooter: '更改将应用于新的 Claude Code 会话。',
+        disabledServers: '已禁用的服务器',
+        noServers: '未配置 MCP 服务器',
     },
 
     settingsFeatures: {

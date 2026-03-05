@@ -188,6 +188,23 @@ export function saveSessionPermissionModes(modes: Record<string, PermissionMode>
     mmkv.set('session-permission-modes', JSON.stringify(modes));
 }
 
+export function loadSessionDisabledMcpServers(): Record<string, string[]> {
+    const data = mmkv.getString('session-disabled-mcp-servers');
+    if (data) {
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.error('Failed to parse session disabled MCP servers', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionDisabledMcpServers(data: Record<string, string[]>) {
+    mmkv.set('session-disabled-mcp-servers', JSON.stringify(data));
+}
+
 export function loadProfile(): Profile {
     const profile = mmkv.getString('profile');
     if (profile) {

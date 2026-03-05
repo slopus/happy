@@ -23,6 +23,11 @@ export const ResizableDivider = React.memo(({ onResize, onResizeEnd, direction =
         isDragging.current = true;
         setDragging(true);
 
+        // Disable pointer events on all iframes to prevent them from
+        // swallowing mousemove/mouseup during drag (classic iframe bug)
+        const iframes = document.querySelectorAll('iframe');
+        iframes.forEach(f => (f.style.pointerEvents = 'none'));
+
         const handleMouseMove = (ev: MouseEvent) => {
             if (!isDragging.current) return;
             const current = isHorizontal ? ev.clientY : ev.clientX;
@@ -39,6 +44,8 @@ export const ResizableDivider = React.memo(({ onResize, onResizeEnd, direction =
             document.removeEventListener('mouseup', handleMouseUp);
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+            // Restore pointer events on iframes
+            iframes.forEach(f => (f.style.pointerEvents = ''));
         };
 
         document.addEventListener('mousemove', handleMouseMove);

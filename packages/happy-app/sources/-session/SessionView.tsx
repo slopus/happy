@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { uploadSessionImage } from '@/sync/apiImages';
 import { uploadSessionDocument, DocumentUploadResult } from '@/sync/apiDocuments';
+import { getServerUrl } from '@/sync/serverConfig';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { AgentPreset, AGENT_PRESETS, getPresetById } from '@/-zen/model/presets';
 import * as Clipboard from 'expo-clipboard';
@@ -41,7 +42,7 @@ import { FileBrowserPanel } from './FileBrowserPanel';
 import { ResizableDivider } from '@/components/ResizableDivider';
 import { PreviewPanel } from '@/components/preview/PreviewPanel';
 import { ElementChip, formatElementForMessage } from '@/components/preview/ElementChip';
-import { usePreviewVisible, useSelectedElement } from '@/sync/storage';
+import { usePreviewVisible, useSelectedElements } from '@/sync/storage';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -90,6 +91,13 @@ export const SessionView = React.memo((props: { id: string }) => {
         window.addEventListener('toggle-preview', handler);
         return () => window.removeEventListener('toggle-preview', handler);
     }, [sessionId]);
+
+    // Sync store isVisible → local previewOpen (e.g. when file path clicked in chat)
+    React.useEffect(() => {
+        if (previewVisible && !previewOpen) {
+            setPreviewOpen(true);
+        }
+    }, [previewVisible]);
 
     // Web swipe-back gesture (swipe right from left edge to go back)
     React.useEffect(() => {
@@ -256,6 +264,38 @@ export const SessionView = React.memo((props: { id: string }) => {
         });
     }, []);
 
+    // Handle screenshot from Preview panel
+    const handlePreviewScreenshot = React.useCallback(async (data: { base64: string; width: number; height: number }) => {
+        console.log('[preview-screenshot] handlePreviewScreenshot called, base64 length:', data.base64?.length, 'width:', data.width, 'height:', data.height);
+        try {
+            const credentials = await TokenStorage.getCredentials();
+            console.log('[preview-screenshot] credentials:', !!credentials);
+            if (!credentials) return;
+
+            setIsUploadingImage(true);
+
+            // Convert base64 to ArrayBuffer
+            const binaryString = atob(data.base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            console.log('[preview-screenshot] ArrayBuffer created, size:', bytes.buffer.byteLength);
+
+            const uploaded = await uploadSessionImage(credentials, sessionId, bytes.buffer, 'image/jpeg');
+            console.log('[preview-screenshot] Upload success:', JSON.stringify(uploaded));
+            setPendingImages(prev => [...prev, {
+                ...uploaded,
+                localUri: `data:image/jpeg;base64,${data.base64}`,
+            }]);
+            console.log('[preview-screenshot] Added to pendingImages');
+        } catch (e: any) {
+            console.error('[preview-screenshot] Upload FAILED:', e?.message || e, e?.stack);
+        } finally {
+            setIsUploadingImage(false);
+        }
+    }, [sessionId]);
+
     const showHeader = !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web');
     const contentPaddingTop = showHeader ? safeArea.top + headerHeight : 0;
 
@@ -404,6 +444,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                             <PreviewPanel
                                 sessionId={sessionId}
                                 onClose={() => setPreviewOpen(false)}
+                                onScreenshot={handlePreviewScreenshot}
                             />
                         </View>
                     </>
@@ -451,7 +492,7 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
-    const selectedElement = useSelectedElement(sessionId);
+    const selectedElements = useSelectedElements(sessionId);
 
     // Register setMessage into parent ref for FileBrowserPanel insert-to-chat
     React.useEffect(() => {
@@ -506,6 +547,51 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
     const [pendingImages, setPendingImages] = React.useState<Array<{ url: string; mediaType: string; width: number; height: number; localUri: string }>>([]);
     const [pendingDocuments, setPendingDocuments] = React.useState<Array<{ url: string; mediaType: string; fileName: string; fileSize: number }>>([]);
     const [isUploadingImage, setIsUploadingImage] = React.useState(false);
+
+    // MCP server management
+    const [mcpServers, setMcpServers] = React.useState<Array<{ name: string; enabled: boolean; type: string }>>([]);
+    const [mcpLoading, setMcpLoading] = React.useState(false);
+    const [showMcpPopup, setShowMcpPopup] = React.useState(false);
+
+    const fetchMcpServers = React.useCallback(async () => {
+        setMcpLoading(true);
+        try {
+            const serverUrl = getServerUrl();
+            const credentials = await TokenStorage.getCredentials();
+            const res = await fetch(`${serverUrl}/v1/mcp/servers`, {
+                headers: credentials ? { 'Authorization': `Bearer ${credentials.token}` } : {},
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMcpServers(data.servers || []);
+            }
+        } catch (e) {
+            console.warn('Failed to fetch MCP servers', e);
+        } finally {
+            setMcpLoading(false);
+        }
+    }, []);
+
+    const handleMcpToggle = React.useCallback(async (name: string, enabled: boolean) => {
+        setMcpServers(prev => prev.map(s => s.name === name ? { ...s, enabled } : s));
+        try {
+            const serverUrl = getServerUrl();
+            const credentials = await TokenStorage.getCredentials();
+            const endpoint = enabled ? 'enable' : 'disable';
+            await fetch(`${serverUrl}/v1/mcp/servers/${name}/${endpoint}`, {
+                method: 'POST',
+                headers: credentials ? { 'Authorization': `Bearer ${credentials.token}` } : {},
+            });
+        } catch (e) {
+            console.warn('Failed to toggle MCP server', e);
+            fetchMcpServers();
+        }
+    }, [fetchMcpServers]);
+
+    const handleMcpPress = React.useCallback(() => {
+        setShowMcpPopup(prev => !prev);
+        if (mcpServers.length === 0) fetchMcpServers();
+    }, [mcpServers.length, fetchMcpServers]);
 
     // Web drag & drop and paste support
     const [isDraggingOver, setIsDraggingOver] = React.useState(false);
@@ -831,13 +917,16 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
                     </Pressable>
                 </View>
             )}
-            {/* Selected element chip from Preview Panel */}
-            {selectedElement && (
-                <View style={{ paddingHorizontal: 12, paddingTop: 6 }}>
-                    <ElementChip
-                        element={selectedElement}
-                        onDismiss={() => storage.getState().clearSelectedElement(sessionId)}
-                    />
+            {/* Selected element chips from Preview Panel */}
+            {selectedElements.length > 0 && (
+                <View style={{ paddingHorizontal: 12, paddingTop: 6, gap: 4 }}>
+                    {selectedElements.map((el, i) => (
+                        <ElementChip
+                            key={el.selector + i}
+                            element={el}
+                            onDismiss={() => storage.getState().removeSelectedElement(sessionId, i)}
+                        />
+                    ))}
                 </View>
             )}
         <AgentInput
@@ -864,14 +953,16 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
                     const documents = pendingDocuments.length > 0
                         ? pendingDocuments.map(({ url, mediaType, fileName, fileSize }) => ({ url, mediaType, fileName, fileSize }))
                         : undefined;
-                    // Prepend selected element context if available
-                    const elementContext = selectedElement ? formatElementForMessage(selectedElement) : '';
+                    // Prepend selected elements context if available
+                    const elementContext = selectedElements.length > 0
+                        ? selectedElements.map(formatElementForMessage).join('\n')
+                        : '';
                     const userText = message.trim() || (images ? '[image]' : (documents ? '[document]' : ''));
                     const text = elementContext ? `${elementContext}\n${userText}` : userText;
                     setMessage('');
                     setPendingImages([]);
                     setPendingDocuments([]);
-                    if (selectedElement) storage.getState().clearSelectedElement(sessionId);
+                    if (selectedElements.length > 0) storage.getState().clearSelectedElements(sessionId);
                     clearDraft();
                     storage.getState().clearVoiceTranscript();
                     const isVoiceActive = realtimeStatus === 'connected' || realtimeStatus === 'connecting';
@@ -917,6 +1008,12 @@ function SessionViewLoaded({ sessionId, session, currentPreset, showSettingsOver
             showSettingsExternal={showSettingsOverlay}
             onSettingsVisibilityChange={onSettingsOverlayChange}
             onSharePress={onSharePress}
+            mcpServers={mcpServers}
+            mcpLoading={mcpLoading}
+            onMcpToggle={handleMcpToggle}
+            onMcpPress={handleMcpPress}
+            showMcpPopup={showMcpPopup}
+            onMcpPopupDismiss={() => setShowMcpPopup(false)}
         />
         </>
     );

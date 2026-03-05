@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Happy Monitor</title>
+<style>
+  :root { --accent: #6384FF; --bg: #1a1a1e; --surface: #242428; --border: #333; --text: #fff; --text2: #888; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f5f7; --surface: #fff; --border: #ddd; --text: #111; --text2: #666; }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  .toolbar { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .toolbar input { flex: 1; height: 32px; border: none; border-radius: 8px; padding: 0 10px; font-size: 13px; font-family: 'SF Mono', 'Menlo', monospace; background: var(--bg); color: var(--text); outline: none; }
+  .toolbar button { background: none; border: none; cursor: pointer; padding: 4px; color: var(--text2); font-size: 18px; line-height: 1; border-radius: 4px; }
+  .toolbar button:hover { background: rgba(255,255,255,0.1); }
+  .toolbar button.active { color: var(--accent); }
+  .device-bar { height: 36px; display: flex; align-items: center; gap: 4px; padding: 0 8px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .device-bar::-webkit-scrollbar { display: none; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; background: var(--bg); white-space: nowrap; font-size: 11px; font-weight: 600; color: var(--text); user-select: none; }
+  .chip.active { background: rgba(99,132,255,0.2); border-color: rgba(99,132,255,0.6); color: var(--accent); }
+  .chip .size { font-size: 9px; font-family: 'SF Mono', monospace; color: var(--text2); }
+  .chip.active .size { color: rgba(99,132,255,0.8); }
+  .rotate-btn { padding: 4px 4px 4px 8px; cursor: pointer; color: var(--text2); font-size: 14px; }
+  .preview-container { flex: 1; overflow: hidden; position: relative; display: flex; justify-content: center; }
+  iframe { border: none; }
+  .empty { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: var(--text2); }
+  .empty h2 { font-size: 18px; font-weight: 600; color: var(--text); }
+  .empty p { font-size: 13px; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <input id="urlInput" type="url" placeholder="https://example.com" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button id="goBtn" title="Go">&#x21B5;</button>
+    <button id="inspectBtn" title="Inspect element">&#x1F50D;</button>
+    <button id="deviceBtn" title="Device presets">&#x1F4F1;</button>
+    <button id="refreshBtn" title="Refresh">&#x21BB;</button>
+  </div>
+  <div class="device-bar" id="deviceBar" style="display:none"></div>
+  <div class="preview-container" id="previewContainer">
+    <div class="empty" id="emptyState">
+      <h2>Happy Monitor</h2>
+      <p>Enter a URL above to preview</p>
+    </div>
+  </div>
+  <div id="loginOverlay" style="display:none;position:fixed;inset:0;z-index:10000;background:var(--bg);display:none;align-items:center;justify-content:center">
+    <div style="text-align:center">
+      <h2 style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:4px">Happy Monitor</h2>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">Enter password to continue</p>
+      <form id="loginForm" style="display:flex;gap:8px;justify-content:center">
+        <input id="passwordInput" type="password" placeholder="Password" style="height:36px;border:1px solid var(--border);border-radius:8px;padding:0 12px;font-size:14px;background:var(--surface);color:var(--text);outline:none;width:200px">
+        <button type="submit" style="height:36px;padding:0 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:600;cursor:pointer">Enter</button>
+      </form>
+      <p id="loginError" style="color:#ef4444;font-size:12px;margin-top:6px;display:none"></p>
+    </div>
+  </div>
+
+<script>
+// ── Auth ──────────────────────────────────────────────────────────
+var loginOverlay = document.getElementById('loginOverlay');
+var loginForm = document.getElementById('loginForm');
+var passwordInput = document.getElementById('passwordInput');
+var loginError = document.getElementById('loginError');
+var authed = false;
+
+function showLogin() {
+  loginOverlay.style.display = 'flex';
+  passwordInput.focus();
+}
+function hideLogin() {
+  loginOverlay.style.display = 'none';
+  authed = true;
+}
+
+async function checkAuth() {
+  try {
+    var res = await fetch('/v1/preview/events', { method: 'HEAD' });
+    if (res.status === 401) { showLogin(); return false; }
+  } catch {}
+  authed = true;
+  return true;
+}
+
+loginForm.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  loginError.style.display = 'none';
+  try {
+    var res = await fetch('/v1/preview/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: passwordInput.value }),
+    });
+    if (res.ok) {
+      hideLogin();
+      if (urlInput.value) loadUrl(urlInput.value);
+      connectSSE();
+    } else {
+      var d = await res.json().catch(function() { return {}; });
+      loginError.textContent = d.error || 'Invalid password';
+      loginError.style.display = 'block';
+    }
+  } catch {
+    loginError.textContent = 'Connection error';
+    loginError.style.display = 'block';
+  }
+});
+
+const PRESETS = [
+  { id:'auto', label:'Auto', w:null, h:null },
+  { id:'iphone-se', label:'SE', w:375, h:667 },
+  { id:'iphone-16', label:'16', w:390, h:844 },
+  { id:'iphone-17-pro', label:'17 Pro', w:402, h:874 },
+  { id:'iphone-17-pm', label:'17 PM', w:440, h:956 },
+  { id:'ipad-mini', label:'iPad mini', w:744, h:1133 },
+  { id:'ipad-air', label:'iPad Air', w:820, h:1180 },
+  { id:'ipad-pro', label:'iPad Pro', w:1032, h:1376 },
+  { id:'macbook-air', label:'MacBook Air', w:1280, h:832 },
+  { id:'macbook-pro', label:'MacBook Pro', w:1728, h:1117 },
+];
+
+let activePreset = 'auto';
+let rotated = false;
+let deviceBarVisible = false;
+let inspectMode = false;
+let currentUrl = '';
+let iframe = null;
+let channel = null; // BroadcastChannel for syncing with app
+
+const urlInput = document.getElementById('urlInput');
+const goBtn = document.getElementById('goBtn');
+const inspectBtn = document.getElementById('inspectBtn');
+const deviceBtn = document.getElementById('deviceBtn');
+const refreshBtn = document.getElementById('refreshBtn');
+const deviceBar = document.getElementById('deviceBar');
+const container = document.getElementById('previewContainer');
+const emptyState = document.getElementById('emptyState');
+
+// Read URL from query params
+const params = new URLSearchParams(location.search);
+// Always set up BroadcastChannel for syncing with the app
+channel = new BroadcastChannel('happy-monitor');
+
+if (params.get('url')) {
+  urlInput.value = params.get('url');
+  if (params.get('preset')) activePreset = params.get('preset');
+  if (params.get('devices') === '1') deviceBarVisible = true;
+  if (params.get('inspect') === '1') inspectMode = true;
+  checkAuth().then(function(ok) { if (ok) setTimeout(function() { loadUrl(urlInput.value); }, 100); });
+} else {
+  checkAuth();
+}
+
+// Listen for inspector postMessages from iframe
+window.addEventListener('message', function(event) {
+  var data = event.data;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch { return; }
+  }
+  if (!data || typeof data !== 'object') return;
+
+  // Attach sessionId so the app knows which session to write to
+  if (data.type === 'element-selected' || data.type === 'element-added' || data.type === 'hmr-status') {
+    if (channel) channel.postMessage(data);
+    // Also send to server for cross-device relay (iPad etc.)
+    fetch('/v1/preview/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).catch(function() {});
+  }
+});
+
+function getProxyUrl(targetUrl) {
+  try {
+    const u = new URL(targetUrl);
+    const proto = u.protocol.replace(':', '');
+    const host = u.host;
+    const path = u.pathname.slice(1) + u.search + u.hash;
+    return '/v1/preview/' + proto + '/' + host + '/' + path;
+  } catch { return targetUrl; }
+}
+
+function loadUrl(url) {
+  if (!url) return;
+  // Support local file paths: /path/to/file
+  if (url.startsWith('/') && !url.startsWith('//')) {
+    currentUrl = url;
+    urlInput.value = url;
+    if (emptyState) emptyState.remove();
+    if (iframe) iframe.remove();
+    iframe = document.createElement('iframe');
+    iframe.src = '/v1/preview/file' + url;
+    iframe.allow = 'clipboard-read; clipboard-write';
+    container.appendChild(iframe);
+    updateIframeSize();
+    return;
+  }
+  const normalized = url.startsWith('http') ? url : 'https://' + url;
+  currentUrl = normalized;
+  urlInput.value = normalized;
+
+  // Update URL params without reload
+  const sp = new URLSearchParams();
+  sp.set('url', normalized);
+  if (activePreset !== 'auto') sp.set('preset', activePreset);
+  if (deviceBarVisible) sp.set('devices', '1');
+  history.replaceState(null, '', '?' + sp.toString());
+
+  if (emptyState) emptyState.remove();
+
+  if (iframe) iframe.remove();
+  iframe = document.createElement('iframe');
+  iframe.src = getProxyUrl(normalized);
+  iframe.allow = 'clipboard-read; clipboard-write';
+  iframe.onload = function() {
+    // Send current inspect mode to newly loaded iframe
+    if (inspectMode) {
+      try {
+        iframe.contentWindow.postMessage(JSON.stringify({ type: 'set-inspect-mode', enabled: true }), '*');
+      } catch {}
+    }
+  };
+  container.appendChild(iframe);
+  updateIframeSize();
+}
+
+function updateIframeSize() {
+  if (!iframe) return;
+  const preset = PRESETS.find(p => p.id === activePreset);
+  const pw = preset?.w, ph = preset?.h;
+  const iw = pw ? (rotated ? ph : pw) : null;
+  const ih = ph ? (rotated ? pw : ph) : null;
+
+  if (!iw || activePreset === 'auto') {
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.transform = '';
+    iframe.style.transformOrigin = '';
+    return;
+  }
+
+  const rect = container.getBoundingClientRect();
+  const scaleX = rect.width / iw;
+  const scale = Math.min(scaleX, 1);
+  const scaledH = Math.ceil(rect.height / scale);
+
+  iframe.style.width = iw + 'px';
+  iframe.style.height = scaledH + 'px';
+  iframe.style.transformOrigin = 'top center';
+  iframe.style.transform = 'scale(' + scale + ')';
+}
+
+function renderDeviceBar() {
+  deviceBar.innerHTML = '';
+  PRESETS.forEach(p => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (p.id === activePreset ? ' active' : '');
+    let html = p.label;
+    if (p.w) {
+      const w = rotated ? p.h : p.w;
+      const h = rotated ? p.w : p.h;
+      html += ' <span class="size">' + w + '\u00D7' + h + '</span>';
+    }
+    chip.innerHTML = html;
+    chip.onclick = () => { activePreset = p.id; rotated = false; renderDeviceBar(); updateIframeSize(); };
+    deviceBar.appendChild(chip);
+  });
+
+  // Rotate button
+  const cur = PRESETS.find(p => p.id === activePreset);
+  if (cur && cur.w) {
+    const rb = document.createElement('span');
+    rb.className = 'rotate-btn';
+    rb.textContent = rotated ? '&#x21C4;' : '&#x21C5;';
+    rb.innerHTML = rotated ? '&#x21C4;' : '&#x21C5;';
+    rb.onclick = () => { rotated = !rotated; renderDeviceBar(); updateIframeSize(); };
+    deviceBar.appendChild(rb);
+  }
+}
+
+function setInspectMode(enabled) {
+  inspectMode = enabled;
+  inspectBtn.classList.toggle('active', inspectMode);
+  if (iframe) {
+    try {
+      iframe.contentWindow.postMessage(JSON.stringify({ type: 'set-inspect-mode', enabled: inspectMode }), '*');
+    } catch {}
+  }
+}
+
+// Events
+goBtn.onclick = () => loadUrl(urlInput.value.trim());
+urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadUrl(urlInput.value.trim()); };
+refreshBtn.onclick = () => { if (iframe) { iframe.src = iframe.src; } };
+inspectBtn.onclick = () => setInspectMode(!inspectMode);
+deviceBtn.onclick = () => {
+  deviceBarVisible = !deviceBarVisible;
+  deviceBar.style.display = deviceBarVisible ? 'flex' : 'none';
+  deviceBtn.classList.toggle('active', deviceBarVisible);
+  if (deviceBarVisible) renderDeviceBar();
+  updateIframeSize();
+};
+
+window.addEventListener('resize', () => updateIframeSize());
+
+// Init device bar if visible from params
+if (deviceBarVisible) {
+  deviceBar.style.display = 'flex';
+  deviceBtn.classList.add('active');
+  renderDeviceBar();
+}
+
+// Init inspect mode from params
+if (inspectMode) {
+  inspectBtn.classList.add('active');
+}
+
+// Auto-refresh: listen for refresh events from the app
+function handleAppEvent(data) {
+  if (!data || typeof data !== 'object') return;
+  if (data.type === 'auto-refresh' && iframe) {
+    if (data.refreshType === 'css') {
+      try { iframe.contentWindow.postMessage(JSON.stringify({ type: 'css-update' }), '*'); } catch {}
+    } else {
+      try { iframe.contentWindow.postMessage(JSON.stringify({ type: 'full-reload' }), '*'); } catch {
+        iframe.src = iframe.src;
+      }
+    }
+  }
+}
+
+// BroadcastChannel (same device)
+channel.onmessage = function(event) { handleAppEvent(event.data); };
+
+// SSE (cross-device, e.g. iPad)
+var sseConnected = false;
+function connectSSE() {
+  if (sseConnected) return;
+  sseConnected = true;
+  var es = new EventSource('/v1/preview/events');
+  es.onmessage = function(event) {
+    try { handleAppEvent(JSON.parse(event.data)); } catch {}
+  };
+  es.onerror = function() {
+    es.close();
+    sseConnected = false;
+    if (authed) setTimeout(connectSSE, 3000);
+  };
+}
+if (authed) connectSSE();
+</script>
+</body>
+</html>

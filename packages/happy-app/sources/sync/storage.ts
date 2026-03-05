@@ -159,6 +159,9 @@ interface StorageState {
     // Preview panel methods
     setPreviewState: (sessionId: string, updates: Partial<PreviewState>) => void;
     clearSelectedElement: (sessionId: string) => void;
+    addSelectedElement: (sessionId: string, element: SelectedElement) => void;
+    removeSelectedElement: (sessionId: string, index: number) => void;
+    clearSelectedElements: (sessionId: string) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -1154,6 +1157,50 @@ export const storage = create<StorageState>()((set, get) => {
                 [sessionId]: {
                     ...(state.previewStates[sessionId] || createDefaultPreviewState()),
                     selectedElement: null,
+                    selectedElements: [],
+                },
+            },
+        })),
+
+        addSelectedElement: (sessionId: string, element: SelectedElement) => set((state) => {
+            const current = state.previewStates[sessionId] || createDefaultPreviewState();
+            return {
+                ...state,
+                previewStates: {
+                    ...state.previewStates,
+                    [sessionId]: {
+                        ...current,
+                        selectedElement: element,
+                        selectedElements: [...current.selectedElements, element],
+                    },
+                },
+            };
+        }),
+
+        removeSelectedElement: (sessionId: string, index: number) => set((state) => {
+            const current = state.previewStates[sessionId] || createDefaultPreviewState();
+            const updated = current.selectedElements.filter((_, i) => i !== index);
+            return {
+                ...state,
+                previewStates: {
+                    ...state.previewStates,
+                    [sessionId]: {
+                        ...current,
+                        selectedElement: updated.length > 0 ? updated[updated.length - 1] : null,
+                        selectedElements: updated,
+                    },
+                },
+            };
+        }),
+
+        clearSelectedElements: (sessionId: string) => set((state) => ({
+            ...state,
+            previewStates: {
+                ...state.previewStates,
+                [sessionId]: {
+                    ...(state.previewStates[sessionId] || createDefaultPreviewState()),
+                    selectedElement: null,
+                    selectedElements: [],
                 },
             },
         })),
@@ -1407,4 +1454,8 @@ export function usePreviewVisible(sessionId: string) {
 
 export function useSelectedElement(sessionId: string) {
     return storage(useShallow((state) => state.previewStates[sessionId]?.selectedElement ?? null));
+}
+
+export function useSelectedElements(sessionId: string) {
+    return storage(useShallow((state) => state.previewStates[sessionId]?.selectedElements ?? []));
 }

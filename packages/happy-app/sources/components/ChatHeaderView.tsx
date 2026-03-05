@@ -112,15 +112,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     )}
                 </View>
 
-                {onPreviewPress && (
-                    <Pressable
-                        onPress={onPreviewPress}
-                        hitSlop={10}
-                        style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                        <Ionicons name="eye-outline" size={20} color={theme.colors.header.tint} style={{ opacity: 0.6 }} />
-                    </Pressable>
-                )}
+                {/* Preview toggle removed — use bottom tab instead */}
                 {onFileBrowserPress && (
                     <Pressable
                         onPress={onFileBrowserPress}

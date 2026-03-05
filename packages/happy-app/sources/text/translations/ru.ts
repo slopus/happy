@@ -121,6 +121,8 @@ export const ru: TranslationStructure = {
         usageSubtitle: 'Просмотр использования API и затрат',
         profiles: 'Профили',
         profilesSubtitle: 'Управление профилями переменных окружения для сессий',
+        mcpServers: 'MCP-серверы',
+        mcpServersSubtitle: 'Управление серверами Model Context Protocol',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
@@ -169,6 +171,13 @@ export const ru: TranslationStructure = {
         showFlavorIconsDescription: 'Отображать иконки провайдеров ИИ на аватарах сессий',
         compactSessionView: 'Компактный вид сессий',
         compactSessionViewDescription: 'Отображать активные сессии в более компактном виде',
+    },
+
+    settingsMcp: {
+        activeServers: 'Активные серверы',
+        activeServersFooter: 'Изменения применяются к новым сессиям Claude Code.',
+        disabledServers: 'Отключённые серверы',
+        noServers: 'MCP-серверы не настроены',
     },
 
     settingsFeatures: {

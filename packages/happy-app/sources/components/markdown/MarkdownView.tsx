@@ -33,10 +33,14 @@ type ImageGalleryContextType = {
 };
 const ImageGalleryContext = React.createContext<ImageGalleryContextType>({ images: [], openPreview: () => {} });
 
+// Context for file path press handler (threaded through to RenderSpans)
+const FilePathPressContext = React.createContext<((path: string) => void) | undefined>(undefined);
+
 export const MarkdownView = React.memo((props: {
     markdown: string;
     onOptionPress?: (option: Option) => void;
     onTimestampPress?: (seconds: number) => void;
+    onFilePathPress?: (path: string) => void;
     timestampColor?: string;
 }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
@@ -108,6 +112,7 @@ export const MarkdownView = React.memo((props: {
         );
 
         const wrapped = (
+            <FilePathPressContext.Provider value={props.onFilePathPress}>
             <ImageGalleryContext.Provider value={galleryContext}>
                 {props.timestampColor
                     ? <TimestampColorContext.Provider value={props.timestampColor}>{inner}</TimestampColorContext.Provider>
@@ -121,6 +126,7 @@ export const MarkdownView = React.memo((props: {
                     />
                 )}
             </ImageGalleryContext.Provider>
+            </FilePathPressContext.Provider>
         );
         return wrapped;
     }
@@ -321,6 +327,7 @@ function RenderDetailsBlock(props: {
 
 function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, onTimestampPress?: (seconds: number) => void }) {
     const tsColor = React.useContext(TimestampColorContext);
+    const onFilePathPress = React.useContext(FilePathPressContext);
     return (<>
         {props.spans.map((span, index) => {
             if (span.url?.startsWith('timestamp:')) {
@@ -349,7 +356,37 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, onTimestam
                     );
                 }
                 return <Text key={index} selectable style={style.timestampInactive}>{span.text}</Text>;
+            } else if (span.url?.startsWith('filepath:')) {
+                const filePath = span.url.slice(9);
+                const hasHandler = !!onFilePathPress;
+                return (
+                    <Text
+                        key={index}
+                        selectable
+                        onPress={hasHandler ? () => onFilePathPress!(filePath) : undefined}
+                        style={[
+                            span.styles.includes('code') ? style.code : props.baseStyle,
+                            hasHandler && style.filePathLink,
+                            span.styles.filter(s => s !== 'code').map(s => style[s]),
+                        ]}
+                    >
+                        {span.text}
+                    </Text>
+                );
             } else if (span.url) {
+                // Open URL in Preview panel if handler available, otherwise new tab
+                if (onFilePathPress) {
+                    return (
+                        <Text
+                            key={index}
+                            selectable
+                            onPress={() => onFilePathPress!(span.url!)}
+                            style={[style.link, span.styles.map(s => style[s])]}
+                        >
+                            {span.text}
+                        </Text>
+                    );
+                }
                 return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
             } else {
                 return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
@@ -695,6 +732,12 @@ const style = StyleSheet.create((theme) => ({
         ...Typography.default(),
         color: theme.colors.textLink,
         fontWeight: '400',
+    },
+    filePathLink: {
+        color: theme.colors.textLink,
+        cursor: 'pointer',
+        textDecorationLine: 'underline',
+        textDecorationStyle: 'dotted',
     },
     timestamp: {
         ...Typography.mono(),

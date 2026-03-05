@@ -10,6 +10,12 @@ interface PreviewToolbarProps {
     onUrlSubmit: () => void;
     inspectMode: boolean;
     onToggleInspect: () => void;
+    deviceBarVisible: boolean;
+    onToggleDeviceBar: () => void;
+    onScreenshot?: () => void;
+    screenshotLoading?: boolean;
+    onPopOut?: () => void;
+    onCopyLink?: () => void;
     onRefresh: () => void;
     onClose: () => void;
 }
@@ -20,6 +26,12 @@ export const PreviewToolbar = React.memo(({
     onUrlSubmit,
     inspectMode,
     onToggleInspect,
+    deviceBarVisible,
+    onToggleDeviceBar,
+    onScreenshot,
+    screenshotLoading,
+    onPopOut,
+    onCopyLink,
     onRefresh,
     onClose,
 }: PreviewToolbarProps) => {
@@ -68,6 +80,54 @@ export const PreviewToolbar = React.memo(({
                     }
                 />
             </Pressable>
+
+            {/* Device bar toggle */}
+            <Pressable onPress={onToggleDeviceBar} hitSlop={6}>
+                <Ionicons
+                    name="phone-portrait-outline"
+                    size={18}
+                    color={deviceBarVisible
+                        ? theme.colors.button.primary.background
+                        : theme.colors.textSecondary
+                    }
+                />
+            </Pressable>
+
+            {/* Screenshot to chat */}
+            {onScreenshot && (
+                <Pressable onPress={onScreenshot} hitSlop={6} disabled={screenshotLoading}>
+                    <Ionicons
+                        name={screenshotLoading ? 'hourglass-outline' : 'camera-outline'}
+                        size={18}
+                        color={screenshotLoading
+                            ? theme.colors.button.primary.background
+                            : theme.colors.textSecondary
+                        }
+                    />
+                </Pressable>
+            )}
+
+            {/* Copy monitor link */}
+            {onCopyLink && (
+                <Pressable onPress={onCopyLink} hitSlop={6}>
+                    <Ionicons
+                        name="link-outline"
+                        size={18}
+                        color={theme.colors.textSecondary}
+                    />
+                </Pressable>
+            )}
+
+            {/* Pop out to external window */}
+            {onPopOut && (
+                <Pressable onPress={onPopOut} hitSlop={6}>
+                    <Ionicons
+                        name="open-outline"
+                        size={18}
+                        color={theme.colors.textSecondary}
+                    />
+                </Pressable>
+            )}
 
             {/* Refresh button */}
             <Pressable onPress={onRefresh} hitSlop={6}>

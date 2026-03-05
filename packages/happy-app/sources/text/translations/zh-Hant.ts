@@ -137,6 +137,8 @@ export const zhHant: TranslationStructure = {
         usageSubtitle: '查看 API 使用情況和費用',
         profiles: '設定檔',
         profilesSubtitle: '管理工作階段的環境變數設定檔',
+        mcpServers: 'MCP 伺服器',
+        mcpServersSubtitle: '管理 Model Context Protocol 伺服器',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,
@@ -185,6 +187,13 @@ export const zhHant: TranslationStructure = {
         showFlavorIconsDescription: '在工作階段頭像上顯示 AI 提供者圖示',
         compactSessionView: '緊湊工作階段檢視',
         compactSessionViewDescription: '以更緊湊的版面配置顯示活躍工作階段',
+    },
+
+    settingsMcp: {
+        activeServers: '已啟用的伺服器',
+        activeServersFooter: '變更將套用於新的 Claude Code 工作階段。',
+        disabledServers: '已停用的伺服器',
+        noServers: '未設定 MCP 伺服器',
     },
 
     settingsFeatures: {

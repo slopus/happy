@@ -112,6 +112,7 @@ services:
       WEBAPP_URL: https://app.304.systems
       HAPPY_API_KEY: ${HAPPY_API_KEY:-}
       SESSION_RESUME_URL: ${SESSION_RESUME_URL:-http://host.docker.internal:8765}
+      MONITOR_PASSWORD: ${MONITOR_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,6 +123,11 @@ services:
     networks:
       - llmchat
       - brain-frontend
+    volumes:
+      - /:/host-root:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /root/.claude.json:/claude-config/claude.json:rw
+      - /root/.claude:/claude-config/dotclaude:rw
     labels:
       - "traefik.enable=false"
     healthcheck:

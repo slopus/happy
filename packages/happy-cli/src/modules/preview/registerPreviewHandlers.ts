@@ -4,6 +4,7 @@ import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { scanCommonPorts } from '../preview/portScanner';
 import { startHTTPDirectProxy } from '../proxy/startHTTPDirectProxy';
 import { extractUrlsFromOutput } from './devServerDetector';
+import { takeScreenshot } from './screenshotService';
 import { logger } from '@/ui/logger';
 
 const execAsync = promisify(exec);
@@ -31,6 +32,20 @@ interface DetectUrlsRequest {
 interface DetectUrlsResponse {
     success: boolean;
     ports?: number[];
+    error?: string;
+}
+
+interface ScreenshotRequest {
+    url: string;
+    width?: number;
+    height?: number;
+}
+
+interface ScreenshotResponse {
+    success: boolean;
+    base64?: string;
+    width?: number;
+    height?: number;
     error?: string;
 }
 
@@ -83,6 +98,23 @@ export function registerPreviewHandlers(rpcHandlerManager: RpcHandlerManager, wo
         } catch (error) {
             logger.debug('preview:detect-urls failed:', error);
             return { success: false, error: error instanceof Error ? error.message : 'Failed to detect URLs' };
+        }
+    });
+
+    // Take a screenshot of a URL via headless Chrome
+    rpcHandlerManager.registerHandler<ScreenshotRequest, ScreenshotResponse>('preview:screenshot', async (data) => {
+        try {
+            if (!data.url) {
+                return { success: false, error: 'URL is required' };
+            }
+            const result = await takeScreenshot(data.url, {
+                width: data.width,
+                height: data.height,
+            });
+            return { success: true, ...result };
+        } catch (error) {
+            logger.debug('preview:screenshot failed:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to take screenshot' };
         }
     });
 

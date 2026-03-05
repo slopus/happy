@@ -28,6 +28,7 @@ import { StatusBarProvider } from '@/components/StatusBarProvider';
 // import * as SystemUI from 'expo-system-ui';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
 import { useUnistyles } from 'react-native-unistyles';
+import { useMonitorRelay } from '@/components/preview/useMonitorRelay';
 import { AsyncLock } from '@/utils/lock';
 
 // Configure notification handler for foreground notifications
@@ -219,6 +220,9 @@ export default function RootLayout() {
 
     // Track the screens
     useTrackScreens()
+
+    // Listen for inspector events from external monitor window
+    useMonitorRelay()
 
     //
     // Not inited

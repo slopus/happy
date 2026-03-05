@@ -1,0 +1,270 @@
+2026-03-03 04:05:01 Starting daemon restart...
+Killing runaway process PID 3151404: node --no-warnings --no-deprecation /opt/brain/apps/happy/webapp/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 25d0b8be-4eaf-4225-b8f7-51d37864c649
+Successfully killed runaway process PID 3151404
+Killing runaway process PID 3151485: node --no-warnings --no-deprecation /opt/brain/apps/happy/webapp/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 72194a19-1698-4d5c-9c54-7493737a0e67
+Successfully killed runaway process PID 3151485
+Killing runaway process PID 3151638: node --no-warnings --no-deprecation /opt/brain/apps/happy/webapp/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3151638
+Cleaned up 3 runaway processes
+Daemon started successfully
+2026-03-03 04:05:12 Daemon restart complete
+2026-03-03 07:45:11 Starting daemon restart...
+Killing runaway process PID 3746067: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3746067
+Killing runaway process PID 3746246: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 25d0b8be-4eaf-4225-b8f7-51d37864c649
+Successfully killed runaway process PID 3746246
+Killing runaway process PID 3746359: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 72194a19-1698-4d5c-9c54-7493737a0e67
+Successfully killed runaway process PID 3746359
+Cleaned up 3 runaway processes
+Daemon started successfully
+2026-03-03 07:45:32 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9z70ka05zfpe142bf3xev0",
+    "pid": 3758987
+  }
+]
+2026-03-03 07:45:33 Daemon restart complete
+2026-03-03 07:45:47 Starting daemon restart...
+Killing runaway process PID 3758987: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3758987
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:46:06 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9z7myb08prpe14cdqqd2er",
+    "pid": 3760092
+  }
+]
+2026-03-03 07:46:07 Daemon restart complete
+2026-03-03 07:49:23 Starting daemon restart...
+Killing runaway process PID 3760092: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3760092
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:49:42 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9zce3w0bm8pe14fir0jyya",
+    "pid": 3766084
+  }
+]
+2026-03-03 07:49:43 Daemon restart complete
+2026-03-03 07:50:57 Starting daemon restart...
+Killing runaway process PID 3766084: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3766084
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:51:16 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9zeds20eiqpe14fssgf2z0",
+    "pid": 3768960
+  }
+]
+2026-03-03 07:51:17 Daemon restart complete
+2026-03-03 07:51:37 Starting daemon restart...
+Killing runaway process PID 3768960: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3768960
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:51:56 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9zf3pd0hfqpe14lemsuuu6",
+    "pid": 3770179
+  }
+]
+2026-03-03 07:51:57 Daemon restart complete
+2026-03-03 07:52:07 Starting daemon restart...
+Killing runaway process PID 3770179: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3770179
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:52:26 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9zfuwl0kdgpe14fc67jjwl",
+    "pid": 3771412
+  }
+]
+2026-03-03 07:52:27 Daemon restart complete
+2026-03-03 07:52:36 Starting daemon restart...
+Killing runaway process PID 3771412: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3771412
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:52:55 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9zgeai0nbgpe149efcesvt",
+    "pid": 3772432
+  }
+]
+2026-03-03 07:52:56 Daemon restart complete
+2026-03-03 07:53:23 Starting daemon restart...
+Killing runaway process PID 3772432: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3772432
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:53:42 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9zhdd10qa0pe1447awe9kw",
+    "pid": 3773744
+  }
+]
+2026-03-03 07:53:43 Daemon restart complete
+2026-03-03 07:55:59 Starting daemon restart...
+Killing runaway process PID 3773744: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3773744
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:56:18 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmm9zkr9n0tdgpe14ibtvqmy6",
+    "pid": 3778334
+  }
+]
+2026-03-03 07:56:19 Daemon restart complete
+2026-03-03 07:56:55 Starting daemon restart...
+Killing runaway process PID 3778334: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3778334
+Cleaned up 1 runaway processes
+Daemon started successfully
+2026-03-03 07:57:14 Active sessions after restart:
+No active sessions this daemon is aware of (they might have been started by a previous version of the daemon)
+2026-03-03 07:57:15 Daemon restart complete
+2026-03-03 08:19:55 Starting daemon restart...
+Killing runaway process PID 3813064: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon
+Successfully killed runaway process PID 3813064
+Killing runaway process PID 3814500: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3814500
+Cleaned up 2 runaway processes
+Daemon started successfully
+2026-03-03 08:20:15 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmma0fhrr14kwpe14nv4im7kz",
+    "pid": 3816793
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmma0fig314lepe14xmsery5z",
+    "pid": 3816904
+  }
+]
+2026-03-03 08:20:16 Daemon restart complete
+2026-03-04 04:05:01 Starting daemon restart...
+Killing runaway process PID 358356: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 358356
+Killing runaway process PID 358422: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 84648587-ca9c-4e2d-b5bf-ec944ccf5cfd
+Successfully killed runaway process PID 358422
+Killing runaway process PID 358522: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume aede6638-3aa6-4477-b091-ff06ffa0e745
+Successfully killed runaway process PID 358522
+Killing runaway process PID 686010: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume c9e403d0-3b00-4ade-85a6-d48e4e67e89a
+Successfully killed runaway process PID 686010
+Killing runaway process PID 689494: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 087869e0-bfe3-4440-ab5c-6509fbd9a818
+Successfully killed runaway process PID 689494
+Cleaned up 5 runaway processes
+Daemon started successfully
+2026-03-04 04:05:25 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmb6rmm7001dpc14iaem00wg",
+    "pid": 1480155
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmb6rnae001fpc14jk0z3y2n",
+    "pid": 1480171
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmb6rnz9001jpc14yvttcab8",
+    "pid": 1480218
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmb6rops00gbpc14h7b51b6m",
+    "pid": 1480299
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmb6rpih0151pc14hp6cebn3",
+    "pid": 1480388
+  }
+]
+2026-03-04 04:05:26 Daemon restart complete
+2026-03-05 04:05:01 Starting daemon restart...
+Killing runaway process PID 3661551: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 087869e0-bfe3-4440-ab5c-6509fbd9a818
+Successfully killed runaway process PID 3661551
+Killing runaway process PID 3661876: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 84648587-ca9c-4e2d-b5bf-ec944ccf5cfd
+Successfully killed runaway process PID 3661876
+Killing runaway process PID 3662270: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume aede6638-3aa6-4477-b091-ff06ffa0e745
+Successfully killed runaway process PID 3662270
+Killing runaway process PID 3662839: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3662839
+Killing runaway process PID 3687030: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume c9e403d0-3b00-4ade-85a6-d48e4e67e89a
+Successfully killed runaway process PID 3687030
+Cleaned up 5 runaway processes
+Daemon started successfully
+2026-03-05 04:05:25 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmcm7hoh000fqp1418adewgr",
+    "pid": 3757989
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmcm7iek000jqp14g13wbsng",
+    "pid": 3758075
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmcm7j5o001lqp14nvkphsis",
+    "pid": 3758146
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmcm7k1300p3qp14bpnquq6x",
+    "pid": 3758225
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmcm7l3x01f1qp14lq12pzl4",
+    "pid": 3758340
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmmcm7mhv0255qp14ui3e10ly",
+    "pid": 3758451
+  }
+]
+2026-03-05 04:05:27 Daemon restart complete

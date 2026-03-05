@@ -26,6 +26,8 @@ import { remoteRoutes } from "./routes/remoteRoutes";
 import { sessionImageRoutes } from "./routes/sessionImageRoutes";
 import { sessionDocumentRoutes } from "./routes/sessionDocumentRoutes";
 import { shareRoutes } from "./routes/shareRoutes";
+import { previewProxyRoutes } from "./routes/previewProxyRoutes";
+import { mcpRoutes } from "./routes/mcpRoutes";
 import { isLocalStorage, getLocalFilesDir, s3client, s3bucket } from "@/storage/files";
 import * as path from "path";
 import * as fs from "fs";
@@ -139,8 +141,10 @@ export async function startApi() {
     sessionImageRoutes(typed);
     sessionDocumentRoutes(typed);
     shareRoutes(typed);
+    previewProxyRoutes(typed);
+    mcpRoutes(typed);
 
-    // Start HTTP 
+    // Start HTTP
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
     await app.listen({ port, host: '0.0.0.0' });
     onShutdown('api', async () => {

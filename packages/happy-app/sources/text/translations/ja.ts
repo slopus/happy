@@ -168,6 +168,8 @@ export const ja: TranslationStructure = {
         usageSubtitle: 'API使用量とコストを確認',
         profiles: 'プロファイル',
         profilesSubtitle: 'セッション用の環境変数プロファイルを管理',
+        mcpServers: 'MCPサーバー',
+        mcpServersSubtitle: 'Model Context Protocolサーバーを管理',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
@@ -216,6 +218,13 @@ export const ja: TranslationStructure = {
         showFlavorIconsDescription: 'セッションアバターにAIプロバイダーアイコンを表示',
         compactSessionView: 'コンパクトセッション表示',
         compactSessionViewDescription: 'アクティブなセッションをコンパクトなレイアウトで表示',
+    },
+
+    settingsMcp: {
+        activeServers: '有効なサーバー',
+        activeServersFooter: '変更は新しいClaude Codeセッションに適用されます。',
+        disabledServers: '無効なサーバー',
+        noServers: 'MCPサーバーが設定されていません',
     },
 
     settingsFeatures: {

@@ -136,6 +136,8 @@ export const ca: TranslationStructure = {
         usageSubtitle: "Veure l'ús de l'API i costos",
         profiles: 'Perfils',
         profilesSubtitle: 'Gestiona els perfils d\'entorn i variables',
+        mcpServers: 'Servidors MCP',
+        mcpServersSubtitle: 'Gestiona els servidors Model Context Protocol',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
@@ -184,6 +186,13 @@ export const ca: TranslationStructure = {
         showFlavorIconsDescription: "Mostrar icones del proveïdor d'IA als avatars de sessió",
         compactSessionView: 'Vista compacta de sessions',
         compactSessionViewDescription: 'Mostra les sessions actives en un disseny més compacte',
+    },
+
+    settingsMcp: {
+        activeServers: 'Servidors actius',
+        activeServersFooter: 'Els canvis s\'apliquen a les noves sessions de Claude Code.',
+        disabledServers: 'Servidors desactivats',
+        noServers: 'No hi ha servidors MCP configurats',
     },
 
     settingsFeatures: {

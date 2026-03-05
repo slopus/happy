@@ -316,6 +316,12 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
                     onPress={() => router.push('/settings/profiles')}
                 />
+                <Item
+                    title={t('settings.mcpServers')}
+                    subtitle={t('settings.mcpServersSubtitle')}
+                    icon={<Ionicons name="extension-puzzle-outline" size={29} color="#8B5CF6" />}
+                    onPress={() => router.push('/settings/mcp')}
+                />
                 {experiments && (
                     <Item
                         title={t('settings.usage')}

@@ -3,6 +3,65 @@ import type { MarkdownSpan } from "./parseMarkdown";
 // Updated pattern to handle nested markdown and asterisks
 const pattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))/g;
 
+// Detect file paths: at least 2 segments like /dir/file or /dir/subdir/...
+const FILE_PATH_PATTERN = /(\/(?:[\w@.+-]+\/)+[\w@.+-]+(?:\.[\w]+)?(?::[\d]+)?)/g;
+
+// Detect bare URLs: http:// or https:// followed by non-whitespace
+const URL_PATTERN = /(https?:\/\/[^\s<>\[\]"'`]+)/g;
+
+// Check if a string looks like a file path (for code spans)
+function isFilePath(text: string): boolean {
+    return /^\/(?:[\w@.+-]+\/)+[\w@.+-]+(?:\.[\w]+)?(?::[\d]+)?$/.test(text.trim());
+}
+
+// Split text to detect file paths and make them clickable (leaf — no further chaining)
+function splitFilePaths(text: string, styles: MarkdownSpan['styles']): MarkdownSpan[] {
+    const result: MarkdownSpan[] = [];
+    let last = 0;
+    let m;
+    FILE_PATH_PATTERN.lastIndex = 0;
+    while ((m = FILE_PATH_PATTERN.exec(text)) !== null) {
+        if (m.index > last) {
+            result.push({ styles, text: text.slice(last, m.index), url: null });
+        }
+        const filePath = m[1].replace(/:[\d]+$/, ''); // strip line number
+        result.push({ styles, text: m[1], url: `filepath:${filePath}` });
+        last = FILE_PATH_PATTERN.lastIndex;
+    }
+    if (last === 0) return [{ styles, text, url: null }];
+    if (last < text.length) {
+        result.push({ styles, text: text.slice(last), url: null });
+    }
+    return result;
+}
+
+// Split text to detect bare URLs first, then file paths in non-URL segments
+function splitUrls(text: string, styles: MarkdownSpan['styles']): MarkdownSpan[] {
+    const result: MarkdownSpan[] = [];
+    let last = 0;
+    let m;
+    URL_PATTERN.lastIndex = 0;
+    while ((m = URL_PATTERN.exec(text)) !== null) {
+        if (m.index > last) {
+            // Non-URL text — check for file paths
+            result.push(...splitFilePaths(text.slice(last, m.index), styles));
+        }
+        // Strip trailing punctuation that's likely not part of the URL
+        let url = m[1];
+        while (url.length > 0 && /[.,;:!?)}\]>]$/.test(url)) {
+            url = url.slice(0, -1);
+        }
+        result.push({ styles, text: url, url });
+        last = m.index + url.length;
+        URL_PATTERN.lastIndex = last;
+    }
+    if (last === 0) return splitFilePaths(text, styles);
+    if (last < text.length) {
+        result.push(...splitFilePaths(text.slice(last), styles));
+    }
+    return result;
+}
+
 // Split text that may contain [MM:SS] or `[MM:SS]` timestamps into spans
 function splitTimestamps(text: string, styles: MarkdownSpan['styles']): MarkdownSpan[] {
     const tsPattern = /`?\[(\d{1,2}:\d{2}(?::\d{2})?)\]`?/g;
@@ -11,7 +70,7 @@ function splitTimestamps(text: string, styles: MarkdownSpan['styles']): Markdown
     let m;
     while ((m = tsPattern.exec(text)) !== null) {
         if (m.index > last) {
-            result.push({ styles, text: text.slice(last, m.index), url: null });
+            result.push(...splitUrls(text.slice(last, m.index), styles));
         }
         const parts = m[1].split(':').map(Number);
         const seconds = parts.length === 3
@@ -21,7 +80,7 @@ function splitTimestamps(text: string, styles: MarkdownSpan['styles']): Markdown
         last = tsPattern.lastIndex;
     }
     if (last < text.length) {
-        result.push({ styles, text: text.slice(last), url: null });
+        result.push(...splitUrls(text.slice(last), styles));
     }
     return result;
 }
@@ -81,6 +140,10 @@ export function parseMarkdownSpans(markdown: string, header: boolean) {
             } else if (bareTs) {
                 const secs = bareTs[3] ? parseInt(bareTs[1]) * 3600 + parseInt(bareTs[2]) * 60 + parseInt(bareTs[3]) : parseInt(bareTs[1]) * 60 + parseInt(bareTs[2]);
                 spans.push({ styles: [], text: `[${codeText}]`, url: `timestamp:${secs}` });
+            } else if (isFilePath(codeText)) {
+                // File path in backticks — make clickable
+                const filePath = codeText.trim().replace(/:[\d]+$/, '');
+                spans.push({ styles: ['code'], text: codeText, url: `filepath:${filePath}` });
             } else {
                 spans.push({ styles: ['code'], text: codeText, url: null });
             }

@@ -313,10 +313,30 @@ export function getInspectorScript(): string {
     // -------------------------------------------------------------------------
     // Init
     // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Left Option key forwarding to parent (for inspect hotkey)
+    // -------------------------------------------------------------------------
+    function attachMetaKeyListeners() {
+      window.addEventListener('keydown', function(e) {
+        if (e.code === 'MetaLeft' && !e.repeat) {
+          sendMessage({ type: 'meta-key', state: 'down' });
+        }
+      }, true);
+      window.addEventListener('keyup', function(e) {
+        if (e.code === 'MetaLeft') {
+          sendMessage({ type: 'meta-key', state: 'up' });
+        }
+      }, true);
+      window.addEventListener('blur', function() {
+        sendMessage({ type: 'meta-key', state: 'up' });
+      }, true);
+    }
+
     function init() {
       attachListeners();
       restoreScroll();
       detectHMR();
+      attachMetaKeyListeners();
       window.addEventListener('message', onMessage);
     }
 
