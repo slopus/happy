@@ -26,6 +26,7 @@ import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
+import { loadSharedByMeCache, saveSharedByMeCache } from '@/sync/persistence';
 
 function getAccessLevelLabel(accessLevel?: 'view' | 'edit' | 'admin') {
     switch (accessLevel) {
@@ -65,6 +66,15 @@ export default function UserProfileScreen() {
         return result;
     }, [sharedByMeData]);
 
+    // Load cached "shared by me" data immediately, then refresh from API
+    useEffect(() => {
+        if (!id) return;
+        const cached = loadSharedByMeCache(id);
+        if (cached.length > 0) {
+            setSharedByMeData(cached);
+        }
+    }, [id]);
+
     // Load user profile on mount
     useEffect(() => {
         if (!credentials || !id) return;
@@ -74,8 +84,11 @@ export default function UserProfileScreen() {
             try {
                 const profile = await getUserProfile(credentials, id);
                 setUserProfile(profile);
-                // Fetch sessions I shared with this user (fire-and-forget, non-blocking)
-                fetchSessionsSharedByMe(credentials, id).then(setSharedByMeData).catch(() => {});
+                // Fetch sessions I shared with this user, update cache silently
+                fetchSessionsSharedByMe(credentials, id).then((data) => {
+                    setSharedByMeData(data);
+                    saveSharedByMeCache(id, data);
+                }).catch(() => {});
             } catch (error) {
                 console.error('Failed to load user profile:', error);
                 Modal.alert(t('errors.failedToLoadProfile'), '', [

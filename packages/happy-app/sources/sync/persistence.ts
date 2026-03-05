@@ -404,6 +404,21 @@ export function saveRegisteredReposLocal(repos: Record<string, any[]>, versions:
     mmkv.set('registered-repos', JSON.stringify({ repos, versions }));
 }
 
+export function loadSharedByMeCache(userId: string): any[] {
+    const raw = mmkv.getString(`shared-by-me-${userId}`);
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+export function saveSharedByMeCache(userId: string, data: any[]): void {
+    mmkv.set(`shared-by-me-${userId}`, JSON.stringify(data));
+}
+
 export function clearPersistence() {
     mmkv.clearAll();
 }
