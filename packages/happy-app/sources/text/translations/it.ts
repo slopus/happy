@@ -659,6 +659,8 @@ export const it: TranslationStructure = {
             consentMessage: 'Il proprietario della sessione richiede il tuo consenso prima della visualizzazione. Il tuo accesso verrà registrato.',
             consentAccept: 'Accetto, mostra sessione',
             sharedWithMe: 'Condiviso con me',
+            sharedWithMeSessions: 'Condiviso con te',
+            sharedByMeSessions: 'Condiviso da te',
         },
     },
 

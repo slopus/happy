@@ -17,8 +17,9 @@ import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
 import { showToast } from '@/components/Toast';
 import { Ionicons } from '@expo/vector-icons';
-import { useSharedSessions } from '@/sync/storage';
+import { useSharedSessions, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { fetchSessionsSharedByMe, SharedByMeSession } from '@/sync/apiSharing';
 import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { Typography } from '@/constants/Typography';
@@ -41,11 +42,25 @@ export default function UserProfileScreen() {
     const sharedSessions = useSharedSessions();
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [sharedByMeData, setSharedByMeData] = useState<SharedByMeSession[]>([]);
 
     const filteredSharedSessions = useMemo(() => {
         if (!userProfile) return [];
         return sharedSessions.filter(session => session.owner === userProfile.id);
     }, [sharedSessions, userProfile]);
+
+    // Sessions I shared with this user, resolved from local storage
+    const sharedByMeSessions = useMemo(() => {
+        const sessions = storage.getState().sessions;
+        const result: { session: Session; accessLevel: 'view' | 'edit' | 'admin' }[] = [];
+        for (const item of sharedByMeData) {
+            const session = sessions[item.sessionId];
+            if (session) {
+                result.push({ session, accessLevel: item.accessLevel });
+            }
+        }
+        return result;
+    }, [sharedByMeData]);
 
     // Load user profile on mount
     useEffect(() => {
@@ -56,9 +71,11 @@ export default function UserProfileScreen() {
             try {
                 const profile = await getUserProfile(credentials, id);
                 setUserProfile(profile);
+                // Fetch sessions I shared with this user (fire-and-forget, non-blocking)
+                fetchSessionsSharedByMe(credentials, id).then(setSharedByMeData).catch(() => {});
             } catch (error) {
                 console.error('Failed to load user profile:', error);
-                await Modal.alert(t('errors.failedToLoadProfile'), '', [
+                Modal.alert(t('errors.failedToLoadProfile'), '', [
                     {
                         text: t('common.ok'),
                         onPress: () => router.back()
@@ -268,22 +285,29 @@ export default function UserProfileScreen() {
                 />
             </ItemGroup>
 
-            {/* Shared Sessions */}
-            <ItemGroup title={t('session.sharing.sharedSessions')}>
-                {filteredSharedSessions.length > 0 ? (
-                    filteredSharedSessions.map((session) => (
+            {/* Sessions shared with me by this user */}
+            {filteredSharedSessions.length > 0 && (
+                <ItemGroup title={t('session.sharing.sharedWithMeSessions')}>
+                    {filteredSharedSessions.map((session) => (
                         <SharedSessionItem
                             key={session.id}
                             session={session}
                         />
-                    ))
-                ) : (
-                    <Item
-                        title={t('session.sharing.noSharedSessions')}
-                        showChevron={false}
-                    />
-                )}
-            </ItemGroup>
+                    ))}
+                </ItemGroup>
+            )}
+
+            {/* Sessions I shared with this user */}
+            {sharedByMeSessions.length > 0 && (
+                <ItemGroup title={t('session.sharing.sharedByMeSessions')}>
+                    {sharedByMeSessions.map(({ session, accessLevel }) => (
+                        <SharedSessionItem
+                            key={session.id}
+                            session={{ ...session, accessLevel }}
+                        />
+                    ))}
+                </ItemGroup>
+            )}
 
             {/* Destructive Actions (remove friend, deny request, cancel request) - bottom */}
             {destructiveActions.length > 0 && (

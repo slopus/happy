@@ -780,6 +780,8 @@ export const ru: TranslationStructure = {
             consentMessage: 'Владелец сессии требует вашего согласия перед просмотром. Ваш доступ будет зафиксирован.',
             consentAccept: 'Согласен, показать сессию',
             sharedWithMe: 'Поделились со мной',
+            sharedWithMeSessions: 'Поделились с вами',
+            sharedByMeSessions: 'Вы поделились',
         },
     },
 

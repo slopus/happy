@@ -319,6 +319,60 @@ export function shareRoutes(app: Fastify) {
     });
 
     /**
+     * Get sessions the current user has shared with a specific user.
+     * Returns session metadata and access level for each share.
+     */
+    app.get('/v1/sessions/shared-by-me', {
+        preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                withUserId: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { withUserId } = request.query;
+
+        const shares = await db.sessionShare.findMany({
+            where: {
+                sharedByUserId: userId,
+                sharedWithUserId: withUserId
+            },
+            include: {
+                session: {
+                    select: {
+                        id: true,
+                        metadata: true,
+                        metadataVersion: true,
+                        agentState: true,
+                        agentStateVersion: true,
+                        active: true,
+                        lastActiveAt: true,
+                        createdAt: true,
+                        updatedAt: true,
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        return reply.send({
+            sessions: shares.map(share => ({
+                sessionId: share.session.id,
+                metadata: share.session.metadata,
+                metadataVersion: share.session.metadataVersion,
+                agentState: share.session.agentState,
+                agentStateVersion: share.session.agentStateVersion,
+                active: share.session.active,
+                activeAt: share.session.lastActiveAt.getTime(),
+                createdAt: share.session.createdAt.getTime(),
+                updatedAt: share.session.updatedAt.getTime(),
+                accessLevel: share.accessLevel,
+            }))
+        });
+    });
+
+    /**
      * Get all sessions shared with the current user
      */
     app.get('/v1/sessions/shared', {

@@ -54,6 +54,43 @@ export async function fetchSharedSessions(
     return data.sharedSessions;
 }
 
+export interface SharedByMeSession {
+    sessionId: string;
+    metadata: string | null;
+    metadataVersion: number;
+    agentState: string | null;
+    agentStateVersion: number;
+    active: boolean;
+    activeAt: number;
+    createdAt: number;
+    updatedAt: number;
+    accessLevel: 'view' | 'edit' | 'admin';
+}
+
+/**
+ * Fetch sessions the current user has shared with a specific user
+ */
+export async function fetchSessionsSharedByMe(
+    credentials: AuthCredentials,
+    withUserId: string
+): Promise<SharedByMeSession[]> {
+    const API_ENDPOINT = getServerUrl();
+
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/shared-by-me?withUserId=${encodeURIComponent(withUserId)}`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch sessions shared by me: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.sessions;
+}
+
 /**
  * Upload content public key and binding signature to server
  */
