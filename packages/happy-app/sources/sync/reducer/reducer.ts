@@ -711,7 +711,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             changed.add(existingMessageId);
 
                             // Track TodoWrite tool inputs when updating existing messages
-                            if (message.tool.name === 'TodoWrite' && message.tool.state === 'running' && message.tool.input?.todos) {
+                            if (message.tool.name === 'TodoWrite' && message.tool.state === 'running' && Array.isArray(message.tool.input?.todos)) {
                                 // Only update if this is newer than existing todos
                                 if (!state.latestTodos || message.tool.createdAt > state.latestTodos.timestamp) {
                                     state.latestTodos = {
@@ -780,7 +780,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         changed.add(mid);
 
                         // Track TodoWrite tool inputs
-                        if (toolCall.name === 'TodoWrite' && toolCall.state === 'running' && toolCall.input?.todos) {
+                        if (toolCall.name === 'TodoWrite' && toolCall.state === 'running' && Array.isArray(toolCall.input?.todos)) {
                             // Only update if this is newer than existing todos
                             if (!state.latestTodos || toolCall.createdAt > state.latestTodos.timestamp) {
                                 state.latestTodos = {
