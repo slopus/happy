@@ -990,6 +990,17 @@ export const knownTools = {
         },
         icon: ICON_ROBOT,
         minimal: true
+    },
+    'ToolSearch': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            let title = "ToolSearch";
+            if (opts.tool.input && opts.tool.input.query && typeof opts.tool.input.query === 'string') {
+                title += `: ${opts.tool.input.query}`;
+            }
+            return title;
+        },
+        icon: ICON_SKILL,
+        minimal: true
     }
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
