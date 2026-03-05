@@ -5,7 +5,7 @@ import * as React from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Fonts from 'expo-font';
 import * as Notifications from 'expo-notifications';
-import { FontAwesome } from '@expo/vector-icons';
+import { FontAwesome, Ionicons, Octicons, MaterialCommunityIcons, AntDesign } from '@expo/vector-icons';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -183,6 +183,10 @@ async function loadFonts() {
                 'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
 
                 ...FontAwesome.font,
+                ...Ionicons.font,
+                ...Octicons.font,
+                ...MaterialCommunityIcons.font,
+                ...AntDesign.font,
             });
         } else {
             // For Tauri, skip Font Face Observer as fonts are loaded via CSS
@@ -207,6 +211,10 @@ async function loadFonts() {
                         'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
 
                         ...FontAwesome.font,
+                        ...Ionicons.font,
+                        ...Octicons.font,
+                        ...MaterialCommunityIcons.font,
+                        ...AntDesign.font,
                     });
                 } catch (e) {
                     // Ignore
