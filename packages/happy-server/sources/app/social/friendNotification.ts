@@ -30,7 +30,9 @@ export function shouldSendNotification(
 
 /**
  * Send a friend request notification to the receiver and update lastNotifiedAt.
- * This creates a feed item for the receiver about the incoming friend request.
+ * Creates a feed item for the receiver about the incoming friend request.
+ * Uses repeatKey `friend_${senderUserId}` so that a subsequent friend_accepted
+ * notification replaces this item in the feed.
  */
 export async function sendFriendRequestNotification(
     tx: Prisma.TransactionClient,
@@ -63,7 +65,7 @@ export async function sendFriendRequestNotification(
             kind: 'friend_request',
             uid: senderUserId
         },
-        `friend_request_${senderUserId}` // repeatKey to avoid duplicates
+        `friend_${senderUserId}` // shared with friend_accepted so acceptance replaces request
     );
 
     // Update lastNotifiedAt for the receiver's relationship record
@@ -82,88 +84,60 @@ export async function sendFriendRequestNotification(
 
 /**
  * Send friendship established notifications to both users and update lastNotifiedAt.
- * This creates feed items for both users about the new friendship.
+ * Creates feed items for both users about the new friendship.
+ * Uses repeatKey `friend_${otherUserId}` to replace any existing friend_request item.
+ * Always sends (no 24h cooldown) — accepting is a state transition, not a repeated notification.
  */
 export async function sendFriendshipEstablishedNotification(
     tx: Prisma.TransactionClient,
     user1Id: string,
     user2Id: string
 ): Promise<void> {
-    // Check and send notification to user1
-    const user1Relationship = await tx.userRelationship.findUnique({
+    // Always send friend_accepted to user1 (no cooldown — acceptance is a state change)
+    const user1Ctx = Context.create(user1Id);
+    await feedPost(
+        tx,
+        user1Ctx,
+        {
+            kind: 'friend_accepted',
+            uid: user2Id
+        },
+        `friend_${user2Id}` // replaces any existing friend_request from user2
+    );
+
+    await tx.userRelationship.update({
         where: {
             fromUserId_toUserId: {
                 fromUserId: user1Id,
                 toUserId: user2Id
             }
+        },
+        data: {
+            lastNotifiedAt: new Date()
         }
     });
 
-    if (user1Relationship && shouldSendNotification(
-        user1Relationship.lastNotifiedAt,
-        user1Relationship.status
-    )) {
-        const user1Ctx = Context.create(user1Id);
-        await feedPost(
-            tx,
-            user1Ctx,
-            {
-                kind: 'friend_accepted',
-                uid: user2Id
-            },
-            `friend_accepted_${user2Id}` // repeatKey to avoid duplicates
-        );
+    // Always send friend_accepted to user2 (no cooldown — acceptance is a state change)
+    const user2Ctx = Context.create(user2Id);
+    await feedPost(
+        tx,
+        user2Ctx,
+        {
+            kind: 'friend_accepted',
+            uid: user1Id
+        },
+        `friend_${user1Id}` // replaces any existing friend_request from user1
+    );
 
-        // Update lastNotifiedAt for user1
-        await tx.userRelationship.update({
-            where: {
-                fromUserId_toUserId: {
-                    fromUserId: user1Id,
-                    toUserId: user2Id
-                }
-            },
-            data: {
-                lastNotifiedAt: new Date()
-            }
-        });
-    }
-
-    // Check and send notification to user2
-    const user2Relationship = await tx.userRelationship.findUnique({
+    await tx.userRelationship.update({
         where: {
             fromUserId_toUserId: {
                 fromUserId: user2Id,
                 toUserId: user1Id
             }
+        },
+        data: {
+            lastNotifiedAt: new Date()
         }
     });
-
-    if (user2Relationship && shouldSendNotification(
-        user2Relationship.lastNotifiedAt,
-        user2Relationship.status
-    )) {
-        const user2Ctx = Context.create(user2Id);
-        await feedPost(
-            tx,
-            user2Ctx,
-            {
-                kind: 'friend_accepted',
-                uid: user1Id
-            },
-            `friend_accepted_${user1Id}` // repeatKey to avoid duplicates
-        );
-
-        // Update lastNotifiedAt for user2
-        await tx.userRelationship.update({
-            where: {
-                fromUserId_toUserId: {
-                    fromUserId: user2Id,
-                    toUserId: user1Id
-                }
-            },
-            data: {
-                lastNotifiedAt: new Date()
-            }
-        });
-    }
 }

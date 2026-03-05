@@ -128,6 +128,7 @@ class Sync {
     private friendsSync: InvalidateSync;
     private friendRequestsSync: InvalidateSync;
     private feedSync: InvalidateSync;
+    private feedFullRefresh = false;
     private sharedSessionsSync: InvalidateSync;
     private openClawMachinesSync: InvalidateSync;
     private openClawMachineDataKeys = new Map<string, Uint8Array>(); // Store OpenClaw machine data encryption keys
@@ -848,6 +849,7 @@ class Sync {
     }
 
     public refreshInbox = async () => {
+        this.feedFullRefresh = true;
         await Promise.all([
             this.feedSync.invalidateAndAwait(),
             this.friendsSync.invalidateAndAwait(),
@@ -1551,41 +1553,45 @@ class Sync {
         if (!this.credentials) return;
 
         try {
-            log.log('📰 Fetching feed...');
+            // Full refresh mode: treat as fresh load (ignore existing cursors)
+            const isFullRefresh = this.feedFullRefresh;
+            this.feedFullRefresh = false;
+
+            log.log('📰 Fetching feed...' + (isFullRefresh ? ' (full refresh)' : ''));
             const state = storage.getState();
             const existingItems = state.feedItems;
-            const head = state.feedHead;
-            
+            const head = isFullRefresh ? null : state.feedHead;
+
             // Load feed items - if we have a head, load newer items
             let allItems: FeedItem[] = [];
             let hasMore = true;
             let cursor = head ? { after: head } : undefined;
             let loadedCount = 0;
             const maxItems = 500;
-            
+
             // Keep loading until we reach known items or hit max limit
             while (hasMore && loadedCount < maxItems) {
                 const response = await fetchFeed(this.credentials, {
                     limit: 100,
                     ...cursor
                 });
-                
+
                 // Check if we reached known items
-                const foundKnown = response.items.some(item => 
+                const foundKnown = response.items.some(item =>
                     existingItems.some(existing => existing.id === item.id)
                 );
-                
+
                 allItems.push(...response.items);
                 loadedCount += response.items.length;
                 hasMore = response.hasMore && !foundKnown;
-                
+
                 // Update cursor for next page
                 if (response.items.length > 0) {
                     const lastItem = response.items[response.items.length - 1];
                     cursor = { after: lastItem.cursor };
                 }
             }
-            
+
             // If this is initial load (no head), also load older items
             if (!head && allItems.length < 100) {
                 const response = await fetchFeed(this.credentials, {
@@ -1623,9 +1629,13 @@ class Sync {
                 return true;
             });
             
-            // Apply only compatible items to storage
-            storage.getState().applyFeedItems(compatibleItems);
-            log.log(`📰 fetchFeed completed - loaded ${compatibleItems.length} compatible items (${allItems.length - compatibleItems.length} filtered)`);
+            // Full refresh replaces all items; incremental merges new ones
+            if (isFullRefresh) {
+                storage.getState().replaceFeedItems(compatibleItems);
+            } else {
+                storage.getState().applyFeedItems(compatibleItems);
+            }
+            log.log(`📰 fetchFeed completed - loaded ${compatibleItems.length} compatible items (${allItems.length - compatibleItems.length} filtered)${isFullRefresh ? ' (replaced)' : ''}`);
         } catch (error) {
             console.error('Failed to fetch feed:', error);
         }
@@ -2358,6 +2368,20 @@ class Sync {
             log.log('👥 Received relationship-updated update');
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
+
+            // When relationship is cleared (rejected/cancelled), remove stale feed items locally
+            if (updateData.body.status === 'none') {
+                const uid = updateData.body.uid;
+                const feedItems = storage.getState().feedItems;
+                const itemToRemove = feedItems.find(item =>
+                    (item.body.kind === 'friend_request' || item.body.kind === 'friend_accepted')
+                    && item.body.uid === uid
+                );
+                if (itemToRemove) {
+                    storage.getState().removeFeedItem(itemToRemove.id);
+                }
+            }
+
             this.feedSync.invalidate();
         } else if (updateData.body.t === 'session-shared') {
             log.log('Received session-shared update');

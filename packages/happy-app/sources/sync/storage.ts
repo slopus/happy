@@ -189,6 +189,7 @@ interface StorageState {
     assumeUsers: (userIds: string[]) => Promise<void>;
     // Feed methods
     applyFeedItems: (items: FeedItem[]) => void;
+    replaceFeedItems: (items: FeedItem[]) => void;
     removeFeedItem: (itemId: string) => void;
     clearFeed: () => void;
     // DooTask methods
@@ -1409,6 +1410,26 @@ export const storage = create<StorageState>()((set, get) => {
                 feedHead: head,
                 feedTail: tail,
                 feedLoaded: true  // Mark as loaded after first fetch
+            };
+        }),
+        replaceFeedItems: (items: FeedItem[]) => set((state) => {
+            let head: string | null = null;
+            let tail: string | null = null;
+            items.forEach(item => {
+                if (!head || item.counter > parseInt(head.substring(2), 10)) {
+                    head = item.cursor;
+                }
+                if (!tail || item.counter < parseInt(tail.substring(2), 10)) {
+                    tail = item.cursor;
+                }
+            });
+            const sorted = [...items].sort((a, b) => b.counter - a.counter);
+            return {
+                ...state,
+                feedItems: sorted,
+                feedHead: head,
+                feedTail: tail,
+                feedLoaded: true
             };
         }),
         removeFeedItem: (itemId: string) => set((state) => ({

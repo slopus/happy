@@ -158,6 +158,17 @@ export default function UserProfileScreen() {
         if (updatedProfile) {
             setUserProfile(updatedProfile);
             sync.refreshFriends();
+
+            // Remove related feed item (friend_request/friend_accepted) from local state
+            const feedItems = storage.getState().feedItems;
+            const itemToRemove = feedItems.find(item =>
+                (item.body.kind === 'friend_request' || item.body.kind === 'friend_accepted')
+                && item.body.uid === userProfile.id
+            );
+            if (itemToRemove) {
+                storage.getState().removeFeedItem(itemToRemove.id);
+            }
+
             showToast(previousStatus === 'friend'
                 ? t('friends.friendRemoved')
                 : t('friends.requestRejected'));

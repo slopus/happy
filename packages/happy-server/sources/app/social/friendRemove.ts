@@ -7,6 +7,14 @@ import { relationshipGet } from "./relationshipGet";
 import { allocateUserSeq } from "@/storage/seq";
 import { eventRouter, buildRelationshipUpdatedEvent } from "@/app/events/eventRouter";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
+
+/**
+ * Remove a friend, reject a friend request, or cancel an outgoing request.
+ * Handles:
+ * - Cancelling own request (requested → rejected): clears other side's pending, deletes feed item
+ * - Removing friend (friend → pending/requested): reverts to request state
+ * - Rejecting incoming request (pending → none): clears both sides, deletes feed item
+ */
 export async function friendRemove(ctx: Context, uid: string): Promise<UserProfile | null> {
     return await inTx(async (tx) => {
 
@@ -36,6 +44,14 @@ export async function friendRemove(ctx: Context, uid: string): Promise<UserProfi
             await relationshipSet(tx, currentUser.id, targetUser.id, RelationshipStatus.rejected);
             if (targetUserRelationship === RelationshipStatus.pending) {
                 await relationshipSet(tx, targetUser.id, currentUser.id, RelationshipStatus.none);
+
+                // Delete the friend_request feed item from the target's feed
+                await tx.userFeedItem.deleteMany({
+                    where: {
+                        userId: targetId,
+                        repeatKey: `friend_${currentId}`
+                    }
+                });
             }
             afterTx(tx, async () => {
                 if (targetUserRelationship === RelationshipStatus.pending) {
@@ -74,6 +90,15 @@ export async function friendRemove(ctx: Context, uid: string): Promise<UserProfi
             if (targetAlsoCleared) {
                 await relationshipSet(tx, targetUser.id, currentUser.id, RelationshipStatus.none);
             }
+
+            // Delete the friend_request feed item from the current user's feed
+            await tx.userFeedItem.deleteMany({
+                where: {
+                    userId: currentId,
+                    repeatKey: `friend_${targetId}`
+                }
+            });
+
             // Only notify the other user — caller already has the API response
             afterTx(tx, async () => {
                 if (targetAlsoCleared) {
