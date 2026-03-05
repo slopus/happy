@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, ActivityIndicator, Linking, Pressable, Platform, ActionSheetIOS } from 'react-native';
+import { View, ActivityIndicator, Linking, Pressable, Platform, ActionSheetIOS, RefreshControl } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { useAuth } from '@/auth/AuthContext';
@@ -47,6 +47,7 @@ export default function UserProfileScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [sharedByMeData, setSharedByMeData] = useState<SharedByMeSession[]>([]);
     const [menuVisible, setMenuVisible] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const filteredSharedSessions = useMemo(() => {
         if (!userProfile) return [];
@@ -75,35 +76,40 @@ export default function UserProfileScreen() {
         }
     }, [id]);
 
+    // Load profile and shared data
+    const loadData = useCallback(async () => {
+        if (!credentials || !id) return;
+        try {
+            const profile = await getUserProfile(credentials, id);
+            setUserProfile(profile);
+            fetchSessionsSharedByMe(credentials, id).then((data) => {
+                setSharedByMeData(data);
+                saveSharedByMeCache(id, data);
+            }).catch(() => {});
+        } catch (error) {
+            console.error('Failed to load user profile:', error);
+            Modal.alert(t('errors.failedToLoadProfile'), '', [
+                {
+                    text: t('common.ok'),
+                    onPress: () => router.back()
+                }
+            ]);
+        }
+    }, [credentials, id]);
+
     // Load user profile on mount
     useEffect(() => {
         if (!credentials || !id) return;
+        setIsLoading(true);
+        loadData().finally(() => setIsLoading(false));
+    }, [loadData]);
 
-        const loadUserProfile = async () => {
-            setIsLoading(true);
-            try {
-                const profile = await getUserProfile(credentials, id);
-                setUserProfile(profile);
-                // Fetch sessions I shared with this user, update cache silently
-                fetchSessionsSharedByMe(credentials, id).then((data) => {
-                    setSharedByMeData(data);
-                    saveSharedByMeCache(id, data);
-                }).catch(() => {});
-            } catch (error) {
-                console.error('Failed to load user profile:', error);
-                Modal.alert(t('errors.failedToLoadProfile'), '', [
-                    {
-                        text: t('common.ok'),
-                        onPress: () => router.back()
-                    }
-                ]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        loadUserProfile();
-    }, [credentials, id]);
+    // Pull-to-refresh handler
+    const handleRefresh = useCallback(async () => {
+        setIsRefreshing(true);
+        await loadData();
+        setIsRefreshing(false);
+    }, [loadData]);
 
     // Add friend / Accept request action
     const [addingFriend, addFriend] = useHappyAction(async () => {
@@ -262,7 +268,12 @@ export default function UserProfileScreen() {
     const avatarUrl = userProfile.avatar?.url;
 
     return (
-        <ItemList style={{ paddingTop: 0 }}>
+        <ItemList
+            style={{ paddingTop: 0 }}
+            refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+            }
+        >
             {destructiveActions.length > 0 && (
                 <Stack.Screen
                     options={{
