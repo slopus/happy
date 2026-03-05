@@ -1265,14 +1265,14 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         // Friend management methods
         applyFriends: (friends: UserProfile[]) => set((state) => {
-            const mergedFriends = { ...state.friends };
+            const newFriends: Record<string, UserProfile> = {};
             friends.forEach(friend => {
-                mergedFriends[friend.id] = friend;
+                newFriends[friend.id] = friend;
             });
             return {
                 ...state,
-                friends: mergedFriends,
-                friendsLoaded: true  // Mark as loaded after first fetch
+                friends: newFriends,
+                friendsLoaded: true
             };
         }),
         getFriend: (userId: string) => {
