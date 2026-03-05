@@ -489,27 +489,25 @@ const TaskCard = React.memo(({ item, projectName, columnName, userCache, flavors
                     </View>
                 ) : null}
             </View>
-            {hasTime || hasAssignees || (flavors && flavors.length > 0) ? (
-                <View style={styles.cardBottom}>
-                    {hasTime ? (
-                        <Text style={[
-                            styles.metaText,
-                            { color: item.overdue ? theme.colors.deleteAction : theme.colors.textSecondary },
-                        ]}>
-                            {formatEndAt(item.end_at!)}
-                            {item.overdue ? ` (${t('dootask.overdue')})` : ''}
+            <View style={styles.cardBottom}>
+                {hasTime ? (
+                    <Text style={[
+                        styles.metaText,
+                        { color: item.overdue ? theme.colors.deleteAction : theme.colors.textSecondary },
+                    ]}>
+                        {formatEndAt(item.end_at!)}
+                        {item.overdue ? ` (${t('dootask.overdue')})` : ''}
+                    </Text>
+                ) : <View />}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {hasAssignees ? (
+                        <Text style={[styles.metaText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                            {assigneeText}
                         </Text>
-                    ) : <View />}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        {hasAssignees ? (
-                            <Text style={[styles.metaText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                {assigneeText}
-                            </Text>
-                        ) : null}
-                        {flavors && flavors.length > 0 ? <FlavorBadges flavors={flavors} /> : null}
-                    </View>
+                    ) : null}
+                    {flavors && flavors.length > 0 ? <FlavorBadges flavors={flavors} /> : null}
                 </View>
-            ) : null}
+            </View>
         </Pressable>
     );
 });
@@ -697,9 +695,9 @@ const styles = StyleSheet.create((_theme) => ({
     cardMeta: { flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' },
     statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     statusBadgeText: { ...Typography.default(), fontSize: 11 },
-    metaText: { ...Typography.default(), fontSize: 12 },
+    metaText: { ...Typography.default(), fontSize: 12, lineHeight: 18 },
     subCountBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-    cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+    cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, minHeight: 20 },
     empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
     emptyTitle: { ...Typography.default('semiBold'), fontSize: 16 },
     emptyText: { ...Typography.default(), fontSize: 14, textAlign: 'center', marginTop: 4 },
