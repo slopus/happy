@@ -281,6 +281,11 @@ export interface EphemeralPayload {
     [key: string]: any;
 }
 
+type DeliveryStats = {
+    total: number;
+    sessionScoped: number;
+};
+
 // === EVENT ROUTER CLASS ===
 
 class EventRouter {
@@ -316,8 +321,8 @@ class EventRouter {
         payload: UpdatePayload;
         recipientFilter?: RecipientFilter;
         skipSenderConnection?: ClientConnection;
-    }): void {
-        this.emit({
+    }): DeliveryStats {
+        return this.emit({
             userId: params.userId,
             eventName: 'update',
             payload: params.payload,
@@ -336,10 +341,10 @@ class EventRouter {
         buildPayload: (userId: string, seq: number) => UpdatePayload;
         recipientFilter?: RecipientFilter;
         skipSenderConnection?: ClientConnection;
-    }): Promise<void> {
+    }): Promise<{ ownerDelivery: DeliveryStats }> {
         // 1. Emit to owner
         const ownerSeq = await allocateUserSeq(params.ownerId);
-        this.emitUpdate({
+        const ownerDelivery = this.emitUpdate({
             userId: params.ownerId,
             payload: params.buildPayload(params.ownerId, ownerSeq),
             recipientFilter: params.recipientFilter,
@@ -358,6 +363,8 @@ class EventRouter {
                 payload: params.buildPayload(share.sharedWithUserId, seq)
             });
         }
+
+        return { ownerDelivery };
     }
 
     emitEphemeral(params: {
@@ -365,8 +372,8 @@ class EventRouter {
         payload: EphemeralPayload;
         recipientFilter?: RecipientFilter;
         skipSenderConnection?: ClientConnection;
-    }): void {
-        this.emit({
+    }): DeliveryStats {
+        return this.emit({
             userId: params.userId,
             eventName: 'ephemeral',
             payload: params.payload,
@@ -453,13 +460,15 @@ class EventRouter {
         payload: any;
         recipientFilter: RecipientFilter;
         skipSenderConnection?: ClientConnection;
-    }): void {
+    }): DeliveryStats {
         const connections = this.userConnections.get(params.userId);
         if (!connections) {
             log({ module: 'websocket', level: 'warn' }, `No connections found for user ${params.userId}`);
-            return;
+            return { total: 0, sessionScoped: 0 };
         }
 
+        let total = 0;
+        let sessionScoped = 0;
         for (const connection of connections) {
             // Skip message echo
             if (params.skipSenderConnection && connection === params.skipSenderConnection) {
@@ -472,7 +481,13 @@ class EventRouter {
             }
 
             connection.socket.emit(params.eventName, params.payload);
+            total += 1;
+            if (connection.connectionType === 'session-scoped') {
+                sessionScoped += 1;
+            }
         }
+
+        return { total, sessionScoped };
     }
 }
 

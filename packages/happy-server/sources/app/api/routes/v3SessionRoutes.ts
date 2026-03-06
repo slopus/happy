@@ -5,6 +5,7 @@ import { allocateSessionSeqBatch } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
+import { scheduleFirstMessageReplay } from "./firstMessageReplay";
 
 const getMessagesQuerySchema = z.object({
     after_seq: z.coerce.number().int().min(0).optional(),
@@ -243,15 +244,27 @@ export function v3SessionRoutes(app: Fastify) {
                 continue;
             }
 
-            await eventRouter.emitToSessionSubscribers({
+            const payloadMessage = {
+                ...message,
+                content: { t: 'encrypted', c: content }
+            };
+
+            const emitResult = await eventRouter.emitToSessionSubscribers({
                 ownerId,
                 sessionId,
-                buildPayload: (_uid, seq) => buildNewMessageUpdate({
-                    ...message,
-                    content: { t: 'encrypted', c: content }
-                }, sessionId, seq, randomKeyNaked(12)),
+                buildPayload: (_uid, seq) => buildNewMessageUpdate(payloadMessage, sessionId, seq, randomKeyNaked(12)),
                 recipientFilter: { type: 'all-interested-in-session', sessionId }
             });
+
+            // Narrow fix: replay only the first message of a newly created
+            // session, and only if no CLI session connection received it live.
+            if (message.seq === 1 && emitResult.ownerDelivery.sessionScoped === 0) {
+                scheduleFirstMessageReplay({
+                    ownerId,
+                    sessionId,
+                    message: payloadMessage
+                });
+            }
         }
 
         return reply.send({
