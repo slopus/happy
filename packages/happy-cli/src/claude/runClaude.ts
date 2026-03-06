@@ -29,7 +29,7 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
-import { RawJSONLinesSchema } from '@/claude/types';
+import { RawJSONLinesSchema, type RawJSONLines } from '@/claude/types';
 import { getProjectPath } from '@/claude/utils/path';
 
 /** JavaScript runtime to use for spawning Claude Code */
@@ -118,6 +118,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         flavor: 'claude',
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
+        // Inherit session name from previous session on resume
+        ...(process.env.HAPPY_SESSION_SUMMARY ? {
+            summary: { text: process.env.HAPPY_SESSION_SUMMARY, updatedAt: Date.now() }
+        } : {}),
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
@@ -210,8 +214,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[START] Reading history from: ${sessionFile}`);
             const fileContent = await readFile(sessionFile, 'utf-8');
             const lines = fileContent.split('\n');
-            let sentCount = 0;
             const INTERNAL_EVENTS = new Set(['file-history-snapshot', 'change', 'queue-operation']);
+
+            // Parse all valid messages first
+            const allMessages: RawJSONLines[] = [];
             for (const line of lines) {
                 if (!line.trim()) continue;
                 try {
@@ -219,14 +225,23 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     if (message.type && INTERNAL_EVENTS.has(message.type)) continue;
                     const parsed = RawJSONLinesSchema.safeParse(message);
                     if (parsed.success) {
-                        session.sendClaudeSessionMessage(parsed.data);
-                        sentCount++;
+                        allMessages.push(parsed.data);
                     }
                 } catch (e) {
                     // Skip unparseable lines
                 }
             }
-            logger.debug(`[START] Sent ${sentCount} history messages from resumed session`);
+
+            // Only send last N messages to avoid flooding the app with tokens
+            const MAX_RESUME_MESSAGES = 60;
+            const messagesToSend = allMessages.length > MAX_RESUME_MESSAGES
+                ? allMessages.slice(-MAX_RESUME_MESSAGES)
+                : allMessages;
+
+            for (const msg of messagesToSend) {
+                session.sendClaudeSessionMessage(msg);
+            }
+            logger.debug(`[START] Sent ${messagesToSend.length}/${allMessages.length} history messages from resumed session`);
         } catch (error) {
             logger.debug(`[START] Could not load resume history: ${error}`);
         }

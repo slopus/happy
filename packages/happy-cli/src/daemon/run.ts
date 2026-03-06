@@ -423,6 +423,11 @@ export async function startDaemon(): Promise<void> {
           // Add extra environment variables (these should already be filtered)
           Object.assign(tmuxEnv, extraEnv);
 
+          // Pass session summary for name inheritance on resume
+          if (options.sessionSummary) {
+            tmuxEnv.HAPPY_SESSION_SUMMARY = options.sessionSummary;
+          }
+
           const tmuxResult = await tmux.spawnInTmux([fullCommand], {
             sessionName: tmuxSessionName,
             windowName: windowName,
@@ -521,7 +526,9 @@ export async function startDaemon(): Promise<void> {
             stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
             env: {
               ...process.env,
-              ...extraEnv
+              ...extraEnv,
+              // Pass session summary for name inheritance on resume
+              ...(options.sessionSummary ? { HAPPY_SESSION_SUMMARY: options.sessionSummary } : {})
             }
           });
 

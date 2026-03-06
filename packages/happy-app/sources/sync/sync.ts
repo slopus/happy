@@ -301,6 +301,9 @@ class Sync {
             sentFrom,
             permissionMode: permissionMode || 'default'
         });
+
+        // Re-fetch messages to pick up any that were missed due to WebSocket gaps
+        this.onSessionVisible(sessionId);
     }
 
     applySettings = (delta: Partial<Settings>) => {

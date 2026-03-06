@@ -90,6 +90,10 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         flavor: opts.flavor,
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
+        // Inherit session name from previous session on resume
+        ...(process.env.HAPPY_SESSION_SUMMARY ? {
+            summary: { text: process.env.HAPPY_SESSION_SUMMARY, updatedAt: Date.now() }
+        } : {}),
     };
 
     return { state, metadata };
