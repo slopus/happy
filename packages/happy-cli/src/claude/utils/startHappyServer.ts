@@ -86,6 +86,13 @@ export async function startHappyServer(client: ApiSessionClient) {
     //
 
     const server = createServer(async (req, res) => {
+        // Claude Code 2.1.70+ requires HTTP MCP servers to implement OAuth discovery.
+        // The MCP SDK does not handle this endpoint, returning 500 instead of 404,
+        // which causes Claude Code to fail. Returning 404 signals "no OAuth required".
+        if (req.url === '/.well-known/oauth-authorization-server') {
+            res.writeHead(404).end();
+            return;
+        }
         try {
             await transport.handleRequest(req, res);
         } catch (error) {
