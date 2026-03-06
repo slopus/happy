@@ -384,7 +384,10 @@ export const es: TranslationStructure = {
         deleteSessionWarning: 'Esta acción no se puede deshacer. Todos los mensajes y datos asociados con esta sesión se eliminarán permanentemente.',
         failedToDeleteSession: 'Error al eliminar la sesión',
         sessionDeleted: 'Sesión eliminada exitosamente',
-        
+        restartSession: 'Reiniciar',
+        restartSessionConfirm: '¿Reiniciar esta sesión? Se archivará y se reanudará.',
+        archiveAndDelete: '¿Archivar y eliminar esta sesión?',
+
     },
 
     components: {

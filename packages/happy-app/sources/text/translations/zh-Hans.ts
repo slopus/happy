@@ -386,7 +386,10 @@ export const zhHans: TranslationStructure = {
         deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
         failedToDeleteSession: '删除会话失败',
         sessionDeleted: '会话删除成功',
-        
+        restartSession: '重启',
+        restartSessionConfirm: '重启此会话？它将被归档并恢复。',
+        archiveAndDelete: '归档并删除此会话？',
+
     },
 
     components: {

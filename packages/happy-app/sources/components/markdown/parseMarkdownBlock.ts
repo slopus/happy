@@ -23,29 +23,25 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract header cells from the first line, filtering out empty cells that may result from leading/trailing pipes
+    // Extract header cells from the first line, stripping leading/trailing pipes but preserving empty cells
     const headerLine = tableLines[0].trim();
-    const headers = headerLine
-        .split('|')
-        .map(cell => cell.trim())
-        .filter(cell => cell.length > 0);
+    const headerContent = headerLine.replace(/^\|/, '').replace(/\|$/, '');
+    const headers = headerContent.split('|').map(cell => cell.trim());
 
     if (headers.length === 0) {
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract data rows from remaining lines (skipping the separator line), preserving valid cell content
+    // Extract data rows from remaining lines (skipping the separator line), preserving empty cells
     const rows: string[][] = [];
     for (let i = 2; i < tableLines.length; i++) {
         const rowLine = tableLines[i].trim();
-        if (rowLine.startsWith('|')) {
-            const rowCells = rowLine
-                .split('|')
-                .map(cell => cell.trim())
-                .filter(cell => cell.length > 0);
+        if (rowLine.includes('|')) {
+            const rowContent = rowLine.replace(/^\|/, '').replace(/\|$/, '');
+            const rowCells = rowContent.split('|').map(cell => cell.trim());
 
-            // Include rows that contain actual content, filtering out empty rows
-            if (rowCells.length > 0) {
+            // Include rows that have at least one non-empty cell
+            if (rowCells.some(cell => cell.length > 0)) {
                 rows.push(rowCells);
             }
         }

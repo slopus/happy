@@ -310,6 +310,9 @@ export function getInspectorScript(): string {
         case 'get-cookies':
           sendMessage({ type: 'cookies', cookies: document.cookie, url: window.location.href });
           break;
+        case 'get-scroll-position':
+          sendMessage({ type: 'scroll-position', scrollY: Math.round(window.scrollY) });
+          break;
       }
     }
 

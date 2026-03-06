@@ -88,25 +88,25 @@ export default function ServerConfigScreen() {
         try {
             setIsValidating(true);
             setError(null);
-            
+
             const response = await fetch(url, {
                 method: 'GET',
                 headers: {
                     'Accept': 'text/plain'
                 }
             });
-            
+
             if (!response.ok) {
                 setError(t('server.serverReturnedError'));
                 return false;
             }
-            
+
             const text = await response.text();
             if (!text.includes('Welcome to Happy Server!')) {
                 setError(t('server.notValidHappyServer'));
                 return false;
             }
-            
+
             return true;
         } catch (err) {
             setError(t('server.failedToConnectToServer'));

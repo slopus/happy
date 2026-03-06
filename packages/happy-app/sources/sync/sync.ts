@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { apiSocket } from '@/sync/apiSocket';
-import { AuthCredentials } from '@/auth/tokenStorage';
+import { AuthCredentials, refreshTokenFromCLI } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
@@ -475,11 +475,8 @@ class Sync {
         if (!this.credentials) return;
 
         const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
-            }
+        const response = await this.authenticatedFetch(`${API_ENDPOINT}/v1/sessions`, {
+            headers: { 'Content-Type': 'application/json' }
         });
 
         if (!response.ok) {
@@ -562,6 +559,27 @@ class Sync {
 
     public getCredentials() {
         return this.credentials;
+    }
+
+    public updateToken(token: string) {
+        if (this.credentials) {
+            this.credentials = { ...this.credentials, token };
+        }
+    }
+
+    // Fetch with automatic 401 token recovery from CLI
+    public async authenticatedFetch(url: string, init?: RequestInit): Promise<Response> {
+        if (!this.credentials) throw new Error('No credentials');
+        const headers = { ...init?.headers as Record<string, string>, 'Authorization': `Bearer ${this.credentials.token}` };
+        let response = await fetch(url, { ...init, headers });
+        if (response.status === 401) {
+            const refreshed = await refreshTokenFromCLI();
+            if (refreshed) {
+                headers['Authorization'] = `Bearer ${refreshed.token}`;
+                response = await fetch(url, { ...init, headers });
+            }
+        }
+        return response;
     }
 
     // Artifact methods

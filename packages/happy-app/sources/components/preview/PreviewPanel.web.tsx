@@ -9,6 +9,7 @@ import { type SelectedElement, VIEWPORT_PRESETS } from '@slopus/happy-wire';
 import { useAutoRefresh } from './useAutoRefresh';
 import { getInspectorScript } from './inspectorScript';
 import { apiSocket } from '@/sync/apiSocket';
+import html2canvas from 'html2canvas';
 
 interface ScreenshotData {
     base64: string;
@@ -185,6 +186,11 @@ export const PreviewPanel = React.memo(({ sessionId, onClose, onScreenshot }: Pr
                     cookieResolverRef.current(data.cookies as string || '');
                 }
                 break;
+            case 'scroll-position':
+                if (scrollResolverRef.current) {
+                    scrollResolverRef.current(data.scrollY as number || 0);
+                }
+                break;
         }
     }, [sessionId, onMetaDown, onMetaUp]);
 
@@ -337,31 +343,108 @@ export const PreviewPanel = React.memo(({ sessionId, onClose, onScreenshot }: Pr
         });
     }, []);
 
-    // Screenshot to chat
+    // Request scroll position from iframe via postMessage
+    const scrollResolverRef = React.useRef<((scrollY: number) => void) | null>(null);
+    const requestIframeScrollY = React.useCallback((): Promise<number> => {
+        return new Promise((resolve) => {
+            if (!iframeRef.current?.contentWindow) {
+                resolve(0);
+                return;
+            }
+            const timeout = setTimeout(() => {
+                scrollResolverRef.current = null;
+                resolve(0);
+            }, 2000);
+            scrollResolverRef.current = (scrollY: number) => {
+                clearTimeout(timeout);
+                scrollResolverRef.current = null;
+                resolve(scrollY);
+            };
+            try {
+                iframeRef.current.contentWindow.postMessage(
+                    JSON.stringify({ type: 'get-scroll-position' }),
+                    '*'
+                );
+            } catch {
+                clearTimeout(timeout);
+                scrollResolverRef.current = null;
+                resolve(0);
+            }
+        });
+    }, []);
+
+    // Screenshot to chat — captures iframe content directly in browser via html2canvas
     const [screenshotLoading, setScreenshotLoading] = React.useState(false);
     const handleScreenshot = React.useCallback(async () => {
-        if (!url || screenshotLoading) return;
+        if (!url || screenshotLoading || !onScreenshot) return;
         setScreenshotLoading(true);
         try {
-            // Get cookies from iframe for authenticated screenshots
-            const cookieString = await requestIframeCookies();
-            const result = await apiSocket.sessionRPC<
-                { success: boolean; base64?: string; width?: number; height?: number; error?: string },
-                { url: string; cookies?: string }
-            >(sessionId, 'preview:screenshot', { url, cookies: cookieString || undefined });
-            if (result.success && result.base64 && onScreenshot) {
-                onScreenshot({
-                    base64: result.base64,
-                    width: result.width || 1280,
-                    height: result.height || 800,
+            // Try browser-side capture first (same-origin iframes)
+            let captured = false;
+            try {
+                const doc = iframeRef.current?.contentDocument;
+                const win = iframeRef.current?.contentWindow;
+                if (doc && win) {
+                    const scrollY = win.scrollY || 0;
+                    const viewportW = win.innerWidth;
+                    const viewportH = win.innerHeight;
+                    console.log('[preview-screenshot] html2canvas capture:', { scrollY, viewportW, viewportH });
+                    const canvas = await html2canvas(doc.documentElement, {
+                        width: viewportW,
+                        height: viewportH,
+                        x: 0,
+                        y: scrollY,
+                        scrollX: 0,
+                        scrollY: 0,
+                        windowWidth: viewportW,
+                        windowHeight: viewportH,
+                        useCORS: true,
+                        allowTaint: true,
+                        logging: false,
+                    });
+                    const base64 = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+                    onScreenshot({
+                        base64,
+                        width: canvas.width,
+                        height: canvas.height,
+                    });
+                    captured = true;
+                }
+            } catch (e) {
+                console.warn('[preview-screenshot] html2canvas failed, falling back to RPC:', e);
+            }
+
+            // Fallback to Puppeteer RPC for cross-origin iframes
+            if (!captured) {
+                const cookieString = await requestIframeCookies();
+                let scrollY = 0;
+                scrollY = await requestIframeScrollY();
+                const screenshotWidth = iframeWidth || (containerSize?.width ? Math.round(containerSize.width) : undefined);
+                const screenshotHeight = containerSize?.height ? Math.round(containerSize.height / scale) : undefined;
+                const result = await apiSocket.sessionRPC<
+                    { success: boolean; base64?: string; width?: number; height?: number; error?: string },
+                    { url: string; width?: number; height?: number; cookies?: string; scrollY?: number }
+                >(sessionId, 'preview:screenshot', {
+                    url,
+                    width: screenshotWidth || undefined,
+                    height: screenshotHeight || undefined,
+                    cookies: cookieString || undefined,
+                    scrollY: scrollY || undefined,
                 });
+                if (result.success && result.base64) {
+                    onScreenshot({
+                        base64: result.base64,
+                        width: result.width || screenshotWidth || 1280,
+                        height: result.height || screenshotHeight || 800,
+                    });
+                }
             }
         } catch (err: any) {
-            console.error('[preview-screenshot] RPC failed:', err);
+            console.error('[preview-screenshot] Failed:', err);
         } finally {
             setScreenshotLoading(false);
         }
-    }, [url, sessionId, screenshotLoading, onScreenshot, requestIframeCookies]);
+    }, [url, sessionId, screenshotLoading, onScreenshot, requestIframeCookies, requestIframeScrollY, iframeWidth, containerSize, scale]);
 
     // Listen for keyboard shortcut screenshot event
     const handleScreenshotRef = React.useRef(handleScreenshot);

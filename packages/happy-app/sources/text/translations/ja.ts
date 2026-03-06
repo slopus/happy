@@ -416,6 +416,9 @@ export const ja: TranslationStructure = {
         deleteSessionWarning: 'この操作は取り消せません。このセッションに関連するすべてのメッセージとデータが完全に削除されます。',
         failedToDeleteSession: 'セッションの削除に失敗しました',
         sessionDeleted: 'セッションが正常に削除されました',
+        restartSession: '再起動',
+        restartSessionConfirm: 'このセッションを再起動しますか？アーカイブされてから再開されます。',
+        archiveAndDelete: 'このセッションをアーカイブして削除しますか？',
 
     },
 

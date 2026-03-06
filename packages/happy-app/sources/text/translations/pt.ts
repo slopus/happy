@@ -384,7 +384,10 @@ export const pt: TranslationStructure = {
         deleteSessionWarning: 'Esta ação não pode ser desfeita. Todas as mensagens e dados associados a esta sessão serão excluídos permanentemente.',
         failedToDeleteSession: 'Falha ao excluir sessão',
         sessionDeleted: 'Sessão excluída com sucesso',
-        
+        restartSession: 'Reiniciar',
+        restartSessionConfirm: 'Reiniciar esta sessão? Ela será arquivada e retomada.',
+        archiveAndDelete: 'Arquivar e excluir esta sessão?',
+
     },
 
     components: {

@@ -78,6 +78,45 @@ function idbDelete(key: string): Promise<void> {
     });
 }
 
+// Refresh token from CLI daemon when current token is invalid (401).
+// Returns updated credentials or null if recovery failed.
+let refreshPromise: Promise<AuthCredentials | null> | null = null;
+export async function refreshTokenFromCLI(): Promise<AuthCredentials | null> {
+    if (Platform.OS !== 'web') return null;
+    // Deduplicate concurrent refresh attempts
+    if (refreshPromise) return refreshPromise;
+    refreshPromise = (async () => {
+        try {
+            const userId = await idbGet<string>(IDB_USERID_KEY);
+            if (!userId) return null;
+            const { getServerUrl } = await import('@/sync/serverConfig');
+            const response = await fetch(`${getServerUrl()}/v1/auth/web-recover`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId }),
+            });
+            if (!response.ok) return null;
+            const data = await response.json();
+            if (!data.token || !data.secret) return null;
+            const creds: AuthCredentials = { token: data.token, secret: data.secret };
+            localStorage.setItem(AUTH_KEY, JSON.stringify(creds));
+            await idbSet(IDB_KEY, creds);
+            // Update runtime sync credentials
+            try {
+                const { sync } = await import('@/sync/sync');
+                sync.updateToken(data.token);
+            } catch { /* sync not initialized yet */ }
+            console.log('[tokenStorage] Token refreshed from CLI');
+            return creds;
+        } catch {
+            return null;
+        } finally {
+            refreshPromise = null;
+        }
+    })();
+    return refreshPromise;
+}
+
 export const TokenStorage = {
     async getCredentials(): Promise<AuthCredentials | null> {
         if (Platform.OS === 'web') {

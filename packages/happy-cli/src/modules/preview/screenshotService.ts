@@ -88,7 +88,7 @@ export interface ScreenshotResult {
 
 export async function takeScreenshot(
     url: string,
-    viewport?: { width?: number; height?: number; cookies?: string },
+    viewport?: { width?: number; height?: number; cookies?: string; scrollY?: number },
 ): Promise<ScreenshotResult> {
     const browser = await getBrowser();
     const page = await browser.newPage();
@@ -99,6 +99,7 @@ export async function takeScreenshot(
     };
 
     try {
+        logger.debug('[screenshot] Viewport:', vp.width, 'x', vp.height, 'scrollY:', viewport?.scrollY ?? 0);
         await page.setViewport(vp);
 
         // Set cookies from the browser if provided
@@ -121,6 +122,14 @@ export async function takeScreenshot(
             waitUntil: 'networkidle2',
             timeout: SCREENSHOT_TIMEOUT_MS,
         });
+
+        // Scroll to match the user's current viewport position
+        if (viewport?.scrollY && viewport.scrollY > 0) {
+            logger.debug('[screenshot] Scrolling to Y:', viewport.scrollY);
+            await page.evaluate(`window.scrollTo(0, ${viewport.scrollY})`);
+            // Wait for scroll-triggered lazy loading and rendering to settle
+            await new Promise(r => setTimeout(r, 500));
+        }
 
         const buffer = await page.screenshot({
             type: 'jpeg',

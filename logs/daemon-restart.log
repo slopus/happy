@@ -268,3 +268,41 @@ Active sessions:
   }
 ]
 2026-03-05 04:05:27 Daemon restart complete
+2026-03-06 04:05:01 Starting daemon restart...
+Killing runaway process PID 353832: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume c9e403d0-3b00-4ade-85a6-d48e4e67e89a
+Successfully killed runaway process PID 353832
+Killing runaway process PID 3757989: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 9a77380e-3796-44d8-a790-a0dbf30fc48d
+Successfully killed runaway process PID 3757989
+Killing runaway process PID 3758075: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 84648587-ca9c-4e2d-b5bf-ec944ccf5cfd
+Successfully killed runaway process PID 3758075
+Killing runaway process PID 3758146: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume aede6638-3aa6-4477-b091-ff06ffa0e745
+Successfully killed runaway process PID 3758146
+Killing runaway process PID 3758225: node --no-warnings --no-deprecation /opt/llmchat/packages/happy-cli/dist/index.mjs claude --happy-starting-mode remote --started-by daemon --resume 087869e0-bfe3-4440-ab5c-6509fbd9a818
+Successfully killed runaway process PID 3758225
+Cleaned up 5 runaway processes
+Daemon started successfully
+2026-03-06 04:05:25 Active sessions after restart:
+Active sessions:
+[
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmme1nc8e00unlf144c2cbrkn",
+    "pid": 1757433
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmme1nczw00urlf14m4ksq61l",
+    "pid": 1757541
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmme1ndt800utlf14lz1tn4qh",
+    "pid": 1757736
+  },
+  {
+    "startedBy": "daemon",
+    "happySessionId": "cmme1neqr01ellf14ks1rl7z3",
+    "pid": 1757819
+  }
+]
+2026-03-06 04:05:26 Daemon restart complete

@@ -1,21 +1,16 @@
 import React from 'react';
-import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import { View, Pressable, Platform, LayoutAnimation } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSetting } from '@/sync/storage';
-import { StyleSheet } from 'react-native-unistyles';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession, sessionKill, sessionDeactivate } from '@/sync/ops';
-import { storage } from '@/sync/storage';
+import { useAllMachines } from '@/sync/storage';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { sessionKill, sessionDeactivate, sessionDelete, sessionResume } from '@/sync/ops';
 import { Modal } from '@/modal';
-import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -178,19 +173,40 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         color: theme.colors.textSecondary,
         ...Typography.default(),
     },
-    swipeAction: {
-        width: 112,
-        height: '100%',
+    dotsButton: {
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    actionsPanel: {
+        flexDirection: 'row',
+        paddingHorizontal: 8,
+        paddingBottom: 8,
+        paddingTop: 4,
+        gap: 6,
+    },
+    actionButton: {
+        flex: 1,
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: theme.colors.status.error,
+        gap: 4,
+        paddingVertical: 8,
+        borderRadius: 8,
+        backgroundColor: theme.colors.surfaceHighest,
     },
-    swipeActionText: {
-        marginTop: 4,
-        fontSize: 12,
-        color: '#FFFFFF',
-        textAlign: 'center',
+    actionButtonPressed: {
+        opacity: 0.7,
+    },
+    actionButtonText: {
+        fontSize: 11,
+        fontWeight: '500',
+        color: theme.colors.text,
         ...Typography.default('semiBold'),
+    },
+    actionButtonDestructive: {
+        color: theme.colors.status.error,
     },
 }));
 
@@ -203,6 +219,7 @@ interface ActiveSessionsGroupProps {
 export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
     const machines = useAllMachines();
+    const [expandedSessionId, setExpandedSessionId] = React.useState<string | null>(null);
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
         machines.forEach(machine => {
@@ -323,6 +340,11 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                                 selected={selectedSessionId === session.id}
                                                 showBorder={index < machineGroup.sessions.length - 1 ||
                                                     Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
+                                                expanded={expandedSessionId === session.id}
+                                                onToggleExpand={(id) => {
+                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                    setExpandedSessionId(prev => prev === id ? null : id);
+                                                }}
                                             />
                                         ))}
                                     </View>
@@ -335,21 +357,54 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     );
 }
 
-// Compact session row component with status line
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
+// Action button for expanded session panel
+const ActionButton = React.memo(({ icon, label, onPress, destructive }: {
+    icon: string;
+    label?: string;
+    onPress: () => void;
+    destructive?: boolean;
+}) => {
+    const { theme } = useUnistyles();
+    const iconColor = destructive ? theme.colors.status.error : theme.colors.text;
+
+    return (
+        <Pressable
+            style={stylesheet.actionButton}
+            onPress={onPress}
+            android_ripple={{ color: theme.colors.surfacePressed }}
+        >
+            <Ionicons name={icon as any} size={16} color={iconColor} />
+            {label && <Text style={[stylesheet.actionButtonText, destructive && { color: theme.colors.status.error }]}>{label}</Text>}
+        </Pressable>
+    );
+});
+
+// Compact session row component with status line and inline actions
+const CompactSessionRow = React.memo(({ session, selected, showBorder, expanded, onToggleExpand }: {
+    session: Session;
+    selected?: boolean;
+    showBorder?: boolean;
+    expanded?: boolean;
+    onToggleExpand?: (id: string) => void;
+}) => {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
-    const swipeableRef = React.useRef<Swipeable | null>(null);
-    const swipeEnabled = Platform.OS !== 'web';
 
-    const [archivingSession, performArchive] = useHappyAction(async () => {
-        // Try RPC kill first, fallback to force deactivate if RPC fails
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            // RPC failed (process may be dead), try force deactivate
+    const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+
+    // Reset confirm state when collapsed
+    React.useEffect(() => {
+        if (!expanded) setConfirmingDelete(false);
+    }, [expanded]);
+
+    // Action: Archive (kill + deactivate)
+    const [, performArchive] = useHappyAction(async () => {
+        const killResult = await sessionKill(session.id);
+        if (!killResult.success) {
             const deactivateResult = await sessionDeactivate(session.id);
             if (!deactivateResult.success) {
                 throw new HappyError(deactivateResult.message || t('sessionInfo.failedToArchiveSession'), false);
@@ -357,145 +412,132 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         }
     });
 
-    const handleArchive = React.useCallback(() => {
-        swipeableRef.current?.close();
-        Modal.alert(
-            t('sessionInfo.archiveSession'),
-            t('sessionInfo.archiveSessionConfirm'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.archiveSession'),
-                    style: 'destructive',
-                    onPress: performArchive
-                }
-            ]
-        );
-    }, [performArchive]);
+    // Action: Restart (kill + deactivate + resume)
+    const [, performRestart] = useHappyAction(async () => {
+        const claudeSessionId = session.metadata?.claudeSessionId;
+        const directory = session.metadata?.path;
+        if (!claudeSessionId || !directory) {
+            throw new HappyError('Missing session metadata for restart', false);
+        }
+        await sessionKill(session.id);
+        await sessionDeactivate(session.id);
+        const resumeResult = await sessionResume(claudeSessionId, directory);
+        if (!resumeResult.success) {
+            throw new HappyError(resumeResult.message || 'Failed to resume session', false);
+        }
+    });
+
+    // Action: Delete (kill + deactivate + delete)
+    const [, performDelete] = useHappyAction(async () => {
+        await sessionKill(session.id);
+        await sessionDeactivate(session.id);
+        const deleteResult = await sessionDelete(session.id);
+        if (!deleteResult.success) {
+            throw new HappyError(deleteResult.message || t('sessionInfo.failedToDeleteSession'), false);
+        }
+    });
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
 
-    const itemContent = (
-        <Pressable
-            style={[
-                styles.sessionRow,
-                showBorder && styles.sessionRowWithBorder,
-                selected && styles.sessionRowSelected
-            ]}
-            onPressIn={() => {
-                if (isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
-            onPress={() => {
-                if (!isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
-        >
-            <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={24} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-            </View>
-            <View style={styles.sessionContent}>
-                {/* Title line */}
-                <View style={styles.sessionTitleRow}>
-                    <Text
-                        style={[
-                            styles.sessionTitle,
-                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                        ]}
-                        numberOfLines={2}
-                    >
-                        {sessionName}
-                    </Text>
-                </View>
-
-                {/* Status line with dot */}
-                <View style={styles.statusRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={styles.statusDotContainer}>
-                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
-                        </View>
-                        <Text style={[
-                            styles.statusText,
-                            { color: sessionStatus.statusColor }
-                        ]}>
-                            {sessionStatus.statusText}
-                        </Text>
-                    </View>
-
-                    {/* Status indicators on the right side */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
-                        {/* Draft status indicator */}
-                        {session.draft && (
-                            <View style={styles.taskStatusContainer}>
-                                <Ionicons
-                                    name="create-outline"
-                                    size={10}
-                                    color={styles.taskStatusText.color}
-                                />
-                            </View>
-                        )}
-
-                        {/* No longer showing git status per item - it's in the header */}
-
-                        {/* Task status indicator */}
-                        {Array.isArray(session.todos) && session.todos.length > 0 && (() => {
-                            const totalTasks = session.todos.length;
-                            const completedTasks = session.todos.filter(t => t.status === 'completed').length;
-
-                            // Don't show if all tasks are completed
-                            if (completedTasks === totalTasks) {
-                                return null;
-                            }
-
-                            return (
-                                <View style={styles.taskStatusContainer}>
-                                    <Ionicons
-                                        name="bulb-outline"
-                                        size={10}
-                                        color={styles.taskStatusText.color}
-                                        style={{ marginRight: 2 }}
-                                    />
-                                    <Text style={styles.taskStatusText}>
-                                        {completedTasks}/{totalTasks}
-                                    </Text>
-                                </View>
-                            );
-                        })()}
-                    </View>
-                </View>
-            </View>
-        </Pressable>
-    );
-
-    if (!swipeEnabled) {
-        return itemContent;
-    }
-
-    const renderRightActions = () => (
-        <Pressable
-            style={styles.swipeAction}
-            onPress={handleArchive}
-            disabled={archivingSession}
-        >
-            <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.swipeActionText} numberOfLines={2}>
-                {t('sessionInfo.archiveSession')}
-            </Text>
-        </Pressable>
-    );
-
     return (
-        <Swipeable
-            ref={swipeableRef}
-            renderRightActions={renderRightActions}
-            overshootRight={false}
-            enabled={!archivingSession}
-        >
-            {itemContent}
-        </Swipeable>
+        <View style={showBorder && !expanded ? styles.sessionRowWithBorder : undefined}>
+            <View style={[
+                styles.sessionRow,
+                selected && styles.sessionRowSelected
+            ]}>
+                <Pressable
+                    style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                    onPressIn={() => {
+                        if (isTablet) navigateToSession(session.id);
+                    }}
+                    onPress={() => {
+                        if (!isTablet) navigateToSession(session.id);
+                    }}
+                >
+                    <View style={styles.avatarContainer}>
+                        <Avatar id={avatarId} size={24} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                    </View>
+                    <View style={styles.sessionContent}>
+                        <View style={styles.sessionTitleRow}>
+                            <Text
+                                style={[
+                                    styles.sessionTitle,
+                                    sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                                ]}
+                                numberOfLines={2}
+                            >
+                                {sessionName}
+                            </Text>
+                        </View>
+
+                        <View style={styles.statusRow}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <View style={styles.statusDotContainer}>
+                                    <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                                </View>
+                                <Text style={[
+                                    styles.statusText,
+                                    { color: sessionStatus.statusColor }
+                                ]}>
+                                    {sessionStatus.statusText}
+                                </Text>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
+                                {session.draft && (
+                                    <View style={styles.taskStatusContainer}>
+                                        <Ionicons name="create-outline" size={10} color={theme.colors.textSecondary} />
+                                    </View>
+                                )}
+                                {Array.isArray(session.todos) && session.todos.length > 0 && (() => {
+                                    const totalTasks = session.todos.length;
+                                    const completedTasks = session.todos.filter(todo => todo.status === 'completed').length;
+                                    if (completedTasks === totalTasks) return null;
+                                    return (
+                                        <View style={styles.taskStatusContainer}>
+                                            <Ionicons name="bulb-outline" size={10} color={theme.colors.textSecondary} style={{ marginRight: 2 }} />
+                                            <Text style={styles.taskStatusText}>{completedTasks}/{totalTasks}</Text>
+                                        </View>
+                                    );
+                                })()}
+                            </View>
+                        </View>
+                    </View>
+                </Pressable>
+
+                {/* Three dots button — outside main Pressable so it doesn't trigger navigation */}
+                <Pressable
+                    style={styles.dotsButton}
+                    onPress={() => onToggleExpand?.(session.id)}
+                    hitSlop={8}
+                >
+                    <Ionicons
+                        name="ellipsis-horizontal"
+                        size={16}
+                        color={expanded ? theme.colors.text : theme.colors.textSecondary}
+                    />
+                </Pressable>
+            </View>
+
+            {/* Expanded action buttons */}
+            {expanded && (
+                <View style={[styles.actionsPanel, showBorder ? styles.sessionRowWithBorder : undefined]}>
+                    {confirmingDelete ? (
+                        <>
+                            <ActionButton icon="close-outline" label={t('common.no')} onPress={() => setConfirmingDelete(false)} />
+                            <ActionButton icon="checkmark-outline" label={t('common.yes')} onPress={() => { setConfirmingDelete(false); performDelete(); }} destructive />
+                        </>
+                    ) : (
+                        <>
+                            <ActionButton icon="refresh-outline" onPress={performRestart} />
+                            <ActionButton icon="archive-outline" onPress={performArchive} />
+                            <ActionButton icon="trash-outline" onPress={() => setConfirmingDelete(true)} destructive />
+                        </>
+                    )}
+                </View>
+            )}
+        </View>
     );
 });
