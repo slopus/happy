@@ -37,8 +37,22 @@ vi.mock('../package.json', () => ({
     default: { version: '0.0.1-test' },
 }));
 
+type MockRpcMessage = {
+    id?: number;
+    method?: string;
+    params?: any;
+};
+
+function pushJsonLine(stdout: NodeJS.ReadableStream & { push: (chunk: string) => void }, payload: unknown) {
+    stdout.push(JSON.stringify(payload) + '\n');
+}
+
 // Mock child process with stdin/stdout/stderr
-function createMockProcess(opts?: { pid?: number; initializeDelayMs?: number }) {
+function createMockProcess(opts?: {
+    pid?: number;
+    initializeDelayMs?: number;
+    onRequest?: (msg: MockRpcMessage, stdout: NodeJS.ReadableStream & { push: (chunk: string) => void }) => void;
+}) {
     const { Readable, Writable } = require('stream');
     const initializeDelayMs = opts?.initializeDelayMs ?? 5;
     const stdin = new Writable({ write: (_: any, __: any, cb: () => void) => cb() });
@@ -59,13 +73,24 @@ function createMockProcess(opts?: { pid?: number; initializeDelayMs?: number }) 
             if (msg.method === 'initialize' && msg.id != null) {
                 // Send response on next tick
                 setTimeout(() => {
-                    stdout.push(JSON.stringify({ id: msg.id, result: { userAgent: 'test' } }) + '\n');
+                    pushJsonLine(stdout, { id: msg.id, result: { userAgent: 'test' } });
                 }, initializeDelayMs);
             }
+            opts?.onRequest?.(msg, stdout);
         } catch {}
         return origWrite(data, ...args);
     };
     return proc;
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs: number = 1000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!predicate()) {
+        if (Date.now() >= deadline) {
+            throw new Error(`Timed out after ${timeoutMs}ms`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
 }
 
 const sandboxConfig: SandboxConfig = {
@@ -194,6 +219,146 @@ describe('CodexAppServerClient sandbox integration', () => {
         }, 10);
 
         await expect(reconnect).resolves.toBeUndefined();
+        await client.disconnect();
+    });
+
+    it('reconnects and resumes the same thread after forced restart timeout', async () => {
+        const firstProcessRequests: MockRpcMessage[] = [];
+        const secondProcessRequests: MockRpcMessage[] = [];
+        type CapturedEvent = { type: string; [key: string]: unknown };
+
+        const proc1 = createMockProcess({
+            pid: 2001,
+            onRequest: (msg, stdout) => {
+                firstProcessRequests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-1', path: '/tmp/thread-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'readOnly' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: {} });
+                        pushJsonLine(stdout, {
+                            method: 'codex/event',
+                            params: { msg: { type: 'task_started', turn_id: 'turn-1' } },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/interrupt' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: { abortReason: 'interrupted' } });
+                    }, 0);
+                }
+            },
+        });
+
+        const proc2 = createMockProcess({
+            pid: 2002,
+            onRequest: (msg, stdout) => {
+                secondProcessRequests.push(msg);
+
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-1', path: '/tmp/thread-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'readOnly' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: {} });
+                        pushJsonLine(stdout, {
+                            method: 'codex/event',
+                            params: { msg: { type: 'task_started', turn_id: 'turn-2' } },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'codex/event',
+                            params: { msg: { type: 'task_complete', turn_id: 'turn-2' } },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn
+            .mockImplementationOnce(() => proc1)
+            .mockImplementationOnce(() => proc2);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: CapturedEvent[] = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as CapturedEvent);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        const pendingTurn = client.sendTurnAndWait('hang forever', { turnTimeoutMs: 5000 });
+        await waitFor(() => firstProcessRequests.some((msg) => msg.method === 'turn/start'));
+
+        const abortResult = await client.abortTurnWithFallback({
+            gracePeriodMs: 1,
+            forceRestartOnTimeout: true,
+        });
+
+        await expect(pendingTurn).resolves.toEqual({ aborted: true });
+        expect(abortResult).toEqual({
+            hadActiveTurn: true,
+            aborted: true,
+            forcedRestart: true,
+            resumedThread: true,
+        });
+        expect(events).toContainEqual(expect.objectContaining({
+            type: 'turn_aborted',
+            reason: 'interrupted',
+            turn_id: 'turn-1',
+            forced_restart: true,
+        }));
+
+        const resumeRequest = secondProcessRequests.find((msg) => msg.method === 'thread/resume');
+        expect(resumeRequest?.params).toEqual(expect.objectContaining({
+            threadId: 'thread-1',
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+            persistExtendedHistory: true,
+        }));
+        expect(client.threadId).toBe('thread-1');
+
+        await expect(client.sendTurnAndWait('follow up after reconnect')).resolves.toEqual({ aborted: false });
+
         await client.disconnect();
     });
 });

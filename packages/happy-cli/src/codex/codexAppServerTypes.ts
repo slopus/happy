@@ -28,6 +28,8 @@ export type NewConversationParams = {
     developerInstructions: string | null;
     compactPrompt: string | null;
     includeApplyPatchTool: boolean | null;
+    experimentalRawEvents: boolean;
+    persistExtendedHistory: boolean;
 };
 
 export type NewConversationResponse = {
@@ -43,6 +45,21 @@ export type NewConversationResponse = {
     sandbox: unknown;
     reasoningEffort: ReasoningEffort | null;
 };
+
+export type ResumeConversationParams = {
+    threadId: ThreadId;
+    model: string | null;
+    modelProvider: string | null;
+    cwd: string | null;
+    approvalPolicy: ApprovalPolicy | null;
+    sandbox: SandboxMode | null;
+    config: Record<string, unknown> | null;
+    baseInstructions: string | null;
+    developerInstructions: string | null;
+    persistExtendedHistory: boolean;
+};
+
+export type ResumeConversationResponse = NewConversationResponse;
 
 // --- Turn lifecycle ---
 

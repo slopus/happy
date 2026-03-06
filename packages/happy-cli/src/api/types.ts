@@ -260,6 +260,7 @@ export type Metadata = {
   },
   machineId?: string,
   claudeSessionId?: string, // Claude Code session ID
+  codexThreadId?: string, // Codex app-server thread ID
   tools?: string[],
   slashCommands?: string[],
   homeDir: string,

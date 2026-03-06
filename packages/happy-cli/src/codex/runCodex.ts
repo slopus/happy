@@ -276,7 +276,9 @@ export async function runCodex(opts: {
                         logger.warn('[Codex] Forced app-server restart after interrupt timeout');
                         session.sendSessionEvent({
                             type: 'message',
-                            message: 'Force-stopped active task after interrupt timeout. Codex backend was restarted.',
+                            message: abortResult.resumedThread
+                                ? 'Force-stopped active task after interrupt timeout. Codex backend was restarted and the previous thread was resumed.'
+                                : 'Force-stopped active task after interrupt timeout. Codex backend was restarted, but the previous thread could not be resumed.',
                         });
                     }
                 }
@@ -574,13 +576,17 @@ export async function runCodex(opts: {
 
                 // Start thread on first turn (thread persists across mode changes)
                 if (!client.hasActiveThread()) {
-                    await client.startThread({
+                    const startedThread = await client.startThread({
                         model: message.mode.model,
                         cwd: process.cwd(),
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
                         mcpServers,
                     });
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        codexThreadId: startedThread.threadId,
+                    }));
                 }
 
                 const turnPrompt = first

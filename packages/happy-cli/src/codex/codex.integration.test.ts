@@ -115,6 +115,17 @@ class CodexDriver {
         await this.client.connect();
     }
 
+    async restartBackendAndResume(): Promise<void> {
+        if (!this.threadStarted) {
+            throw new Error("No active thread — call send() first");
+        }
+
+        const resumed = await this.client.reconnectAndResumeThread();
+        if (!resumed) {
+            throw new Error("Expected reconnectAndResumeThread() to resume the existing thread");
+        }
+    }
+
     /** Start a new thread and send the first turn. */
     async send(
         prompt: string,
@@ -281,6 +292,29 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             const result = await turnPromise;
             expect(result.aborted).toBe(true);
             expect(result.elapsed_ms).toBeLessThan(30_000);
+        });
+
+        it("should preserve context after backend reconnect and thread/resume", async () => {
+            driver = new CodexDriver();
+            await driver.connect();
+
+            driver.permissionPolicy = "approve";
+            await driver.send(
+                'The project codename is "steady-orchid-19". Confirm by repeating the project codename. Do NOT use any tools or run any commands.',
+                { approvalPolicy: "on-request", sandbox: "read-only" }
+            );
+            expect(driver.getMessages().join(" ").toLowerCase()).toContain("steady-orchid-19");
+
+            driver.clearEvents();
+            await driver.restartBackendAndResume();
+
+            driver.clearEvents();
+            await driver.continue(
+                "What was the project codename I mentioned earlier? Reply with just the codename."
+            );
+
+            const text = driver.getMessages().join(" ").toLowerCase();
+            expect(text).toContain("steady-orchid-19");
         });
 
         it("should preserve context when continuing after interruptTurn abort", async () => {

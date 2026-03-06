@@ -286,6 +286,21 @@ function SessionInfoContent({ session }: { session: Session }) {
                             }}
                         />
                     )}
+                    {session.metadata?.codexThreadId && (
+                        <Item
+                            title={t('sessionInfo.codexThreadId')}
+                            subtitle={`${session.metadata.codexThreadId.substring(0, 8)}...${session.metadata.codexThreadId.substring(session.metadata.codexThreadId.length - 8)}`}
+                            icon={<Ionicons name="terminal-outline" size={29} color="#10A37F" />}
+                            onPress={async () => {
+                                try {
+                                    await Clipboard.setStringAsync(session.metadata!.codexThreadId!);
+                                    Modal.alert(t('common.success'), t('sessionInfo.codexThreadIdCopied'));
+                                } catch (error) {
+                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyCodexThreadId'));
+                                }
+                            }}
+                        />
+                    )}
                     <Item
                         title={t('sessionInfo.connectionStatus')}
                         detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}

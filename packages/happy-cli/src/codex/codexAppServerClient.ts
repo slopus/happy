@@ -14,6 +14,8 @@ import type {
     InitializeParams,
     NewConversationParams,
     NewConversationResponse,
+    ResumeConversationParams,
+    ResumeConversationResponse,
     InterruptConversationParams,
     ReviewDecision,
     EventMsg,
@@ -75,6 +77,13 @@ export class CodexAppServerClient {
     // Session state
     private _threadId: string | null = null;
     private _turnId: string | null = null;
+    private threadDefaults: {
+        model?: string;
+        cwd?: string;
+        approvalPolicy?: ApprovalPolicy;
+        sandbox?: SandboxMode;
+        mcpServers?: Record<string, unknown>;
+    } | null = null;
 
     // Turn completion tracking for the currently active sendTurnAndWait call.
     // A completion event only resolves once we have seen task_started for this turn.
@@ -211,7 +220,9 @@ export class CodexAppServerClient {
                 title: 'Happy Codex Client',
                 version: packageJson.version,
             },
-            capabilities: null,
+            capabilities: {
+                experimentalApi: true,
+            },
         };
         await this.request('initialize', initParams);
         this.notify('initialized');
@@ -219,7 +230,7 @@ export class CodexAppServerClient {
         logger.debug('[CodexAppServer] Connected and initialized');
     }
 
-    async disconnect(): Promise<void> {
+    private async disconnectInternal(opts?: { preserveThreadState?: boolean }): Promise<void> {
         if (!this.connected && !this.process) return;
 
         const proc = this.process;
@@ -248,8 +259,11 @@ export class CodexAppServerClient {
 
         this.process = null;
         this.connected = false;
-        this._threadId = null;
         this._turnId = null;
+        if (!opts?.preserveThreadState) {
+            this._threadId = null;
+            this.threadDefaults = null;
+        }
 
         // Fail in-flight requests from this process generation.
         for (const [id, req] of this.pending) {
@@ -270,6 +284,30 @@ export class CodexAppServerClient {
         logger.debug('[CodexAppServer] Disconnected');
     }
 
+    async disconnect(): Promise<void> {
+        await this.disconnectInternal();
+    }
+
+    private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
+        return mcpServers ? { mcp_servers: mcpServers } : null;
+    }
+
+    private rememberThreadDefaults(opts: {
+        model?: string;
+        cwd?: string;
+        approvalPolicy?: ApprovalPolicy;
+        sandbox?: SandboxMode;
+        mcpServers?: Record<string, unknown>;
+    }): void {
+        this.threadDefaults = {
+            model: opts.model,
+            cwd: opts.cwd,
+            approvalPolicy: opts.approvalPolicy,
+            sandbox: opts.sandbox,
+            mcpServers: opts.mcpServers,
+        };
+    }
+
     // ─── Thread management ──────────────────────────────────────
 
     async startThread(opts: {
@@ -286,17 +324,82 @@ export class CodexAppServerClient {
             cwd: opts.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? null,
             sandbox: opts.sandbox ?? null,
-            config: opts.mcpServers ? { mcp_servers: opts.mcpServers } : null,
+            config: this.buildThreadConfig(opts.mcpServers),
             baseInstructions: null,
             developerInstructions: null,
             compactPrompt: null,
             includeApplyPatchTool: null,
+            experimentalRawEvents: false,
+            persistExtendedHistory: true,
         };
 
         const result = await this.request('thread/start', params) as NewConversationResponse;
         this._threadId = result.thread.id;
+        this._turnId = null;
+        this.rememberThreadDefaults(opts);
         logger.debug('[CodexAppServer] Thread started:', this._threadId);
         return { threadId: result.thread.id, model: result.model };
+    }
+
+    async resumeThread(opts?: {
+        threadId?: string;
+        model?: string;
+        cwd?: string;
+        approvalPolicy?: ApprovalPolicy;
+        sandbox?: SandboxMode;
+        mcpServers?: Record<string, unknown>;
+    }): Promise<{ threadId: string; model: string }> {
+        const threadId = opts?.threadId ?? this._threadId;
+        if (!threadId) {
+            throw new Error('No thread available to resume.');
+        }
+
+        const defaults = this.threadDefaults ?? {};
+        const params: ResumeConversationParams = {
+            threadId,
+            model: opts?.model ?? defaults.model ?? null,
+            modelProvider: null,
+            cwd: opts?.cwd ?? defaults.cwd ?? process.cwd(),
+            approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy ?? null,
+            sandbox: opts?.sandbox ?? defaults.sandbox ?? null,
+            config: this.buildThreadConfig(opts?.mcpServers ?? defaults.mcpServers),
+            baseInstructions: null,
+            developerInstructions: null,
+            persistExtendedHistory: true,
+        };
+
+        const result = await this.request('thread/resume', params) as ResumeConversationResponse;
+        this._threadId = result.thread.id;
+        this._turnId = null;
+        this.rememberThreadDefaults({
+            model: opts?.model ?? defaults.model,
+            cwd: opts?.cwd ?? defaults.cwd,
+            approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy,
+            sandbox: opts?.sandbox ?? defaults.sandbox,
+            mcpServers: opts?.mcpServers ?? defaults.mcpServers,
+        });
+        logger.debug('[CodexAppServer] Thread resumed:', this._threadId);
+        return { threadId: result.thread.id, model: result.model };
+    }
+
+    async reconnectAndResumeThread(): Promise<boolean> {
+        const threadId = this._threadId;
+        await this.disconnectInternal({ preserveThreadState: !!threadId });
+        await this.connect();
+
+        if (!threadId) {
+            return false;
+        }
+
+        try {
+            await this.resumeThread({ threadId });
+            return true;
+        } catch (error) {
+            logger.warn('[CodexAppServer] Failed to resume thread after reconnect', error);
+            this._threadId = null;
+            this.threadDefaults = null;
+            return false;
+        }
     }
 
     // ─── Turn management ────────────────────────────────────────
@@ -364,12 +467,12 @@ export class CodexAppServerClient {
     async abortTurnWithFallback(opts?: {
         gracePeriodMs?: number;
         forceRestartOnTimeout?: boolean;
-    }): Promise<{ hadActiveTurn: boolean; aborted: boolean; forcedRestart: boolean }> {
+    }): Promise<{ hadActiveTurn: boolean; aborted: boolean; forcedRestart: boolean; resumedThread: boolean }> {
         const hadActiveTurn = this.hasPendingTurnCompletion();
 
         // No active turn pending in this client call-site.
         if (!hadActiveTurn) {
-            return { hadActiveTurn: false, aborted: false, forcedRestart: false };
+            return { hadActiveTurn: false, aborted: false, forcedRestart: false, resumedThread: false };
         }
 
         // Best-effort interrupt request first.
@@ -378,18 +481,26 @@ export class CodexAppServerClient {
         const gracePeriodMs = opts?.gracePeriodMs ?? CodexAppServerClient.ABORT_GRACE_MS;
         const settled = await this.waitForTurnCompletion(gracePeriodMs);
         if (settled) {
-            return { hadActiveTurn: true, aborted: true, forcedRestart: false };
+            return { hadActiveTurn: true, aborted: true, forcedRestart: false, resumedThread: false };
         }
 
         const shouldForceRestart = opts?.forceRestartOnTimeout ?? true;
         if (!shouldForceRestart) {
-            return { hadActiveTurn: true, aborted: false, forcedRestart: false };
+            return { hadActiveTurn: true, aborted: false, forcedRestart: false, resumedThread: false };
         }
 
         logger.warn(`[CodexAppServer] interrupt did not settle turn in ${gracePeriodMs}ms; force-restarting app-server`);
-        await this.disconnect();
-        await this.connect();
-        return { hadActiveTurn: true, aborted: true, forcedRestart: true };
+        const pendingTurnId = this.pendingTurnCompletion?.turnId ?? this._turnId;
+        if (this.pendingTurnCompletion?.started) {
+            this.eventHandler?.({
+                type: 'turn_aborted',
+                reason: 'interrupted',
+                ...(pendingTurnId ? { turn_id: pendingTurnId } : {}),
+                forced_restart: true,
+            });
+        }
+        const resumedThread = await this.reconnectAndResumeThread();
+        return { hadActiveTurn: true, aborted: true, forcedRestart: true, resumedThread };
     }
 
     /**
@@ -706,6 +817,7 @@ export class CodexAppServerClient {
                         msg.turn_id ?? msg.turnId ?? null,
                         `codex/event/${msg.type}`,
                     );
+                    this._turnId = null;
                 }
             }
             return;
@@ -724,6 +836,7 @@ export class CodexAppServerClient {
                     params?.turnId ?? params?.turn_id ?? null,
                     method,
                 );
+                this._turnId = null;
             }
             return;
         }
