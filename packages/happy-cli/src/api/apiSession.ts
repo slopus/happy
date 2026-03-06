@@ -379,7 +379,7 @@ export class ApiSessionClient extends EventEmitter {
         // sdkToLogConverter's 'tool_result' path produces exactly one tool_result
         // block per message, so using find() is safe here.
         const anyBody = body as any;
-        let trimmedTUR = anyBody.toolUseResult;
+        let trimmedTUR = anyBody.toolUseResult ?? anyBody.tool_use_result;
         const firstToolResult = content.find((b: any) => b.type === 'tool_result' && b.tool_use_id);
         if (firstToolResult && trimmedTUR !== undefined) {
             const toolName = this.toolIdToName.get(firstToolResult.tool_use_id);

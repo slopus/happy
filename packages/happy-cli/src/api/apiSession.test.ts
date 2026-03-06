@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiSessionClient } from './apiSession';
+import * as trimToolUseResultModule from './trimToolUseResult';
+import * as toolOutputStoreModule from '../modules/common/toolOutputStore';
 
 // Use vi.hoisted to ensure mock function is available when vi.mock factory runs
 const { mockIo } = vi.hoisted(() => ({
@@ -156,5 +158,134 @@ describe('ApiSessionClient v3 outbox', () => {
 
         // Socket emit should NOT be called — messages now go through v3 HTTP outbox only
         expect(mockSocket.emit).not.toHaveBeenCalledWith('message', expect.anything());
+    });
+
+    it('should use snake_case tool_use_result payloads when trimming Claude tool results', () => {
+        const client = new ApiSessionClient('fake-token', mockSession) as any;
+        const trimSpy = vi.spyOn(trimToolUseResultModule, 'trimToolUseResult').mockReturnValue({
+            _outputTrimmed: true,
+            _callId: 'toolu_read_1',
+            _toolResultKind: 'text',
+        });
+
+        client.buildMessageContent({
+            type: 'assistant',
+            uuid: 'assistant-1',
+            message: {
+                role: 'assistant',
+                content: [{
+                    type: 'tool_use',
+                    id: 'toolu_read_1',
+                    name: 'Read',
+                    input: {
+                        file_path: '/tmp/demo.ts',
+                    },
+                }],
+            },
+        });
+
+        const toolUseResult = {
+            type: 'text',
+            file: {
+                filePath: '/tmp/demo.ts',
+                content: 'export const demo = 1;\n',
+                numLines: 1,
+                startLine: 1,
+                totalLines: 1,
+            },
+        };
+
+        const messageContent = client.buildMessageContent({
+            type: 'user',
+            uuid: 'user-1',
+            message: {
+                role: 'user',
+                content: [{
+                    type: 'tool_result',
+                    tool_use_id: 'toolu_read_1',
+                    content: 'demo',
+                }],
+            },
+            tool_use_result: toolUseResult,
+        });
+
+        expect(trimSpy).toHaveBeenCalledWith(
+            'Read',
+            toolUseResult,
+            'test-session-id',
+            'toolu_read_1'
+        );
+        expect(messageContent).toMatchObject({
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    toolUseResult: {
+                        _outputTrimmed: true,
+                        _callId: 'toolu_read_1',
+                        _toolResultKind: 'text',
+                    },
+                },
+            },
+        });
+
+        trimSpy.mockRestore();
+    });
+
+    it('should preserve trimmed WebSearch results from snake_case tool_use_result payloads', () => {
+        const client = new ApiSessionClient('fake-token', mockSession) as any;
+        const saveSpy = vi.spyOn(toolOutputStoreModule, 'saveToolOutputRecord').mockImplementation(() => {});
+
+        client.buildMessageContent({
+            type: 'assistant',
+            uuid: 'assistant-web-1',
+            message: {
+                role: 'assistant',
+                content: [{
+                    type: 'tool_use',
+                    id: 'toolu_web_1',
+                    name: 'WebSearch',
+                    input: {
+                        query: 'Claude Code CLI tool 2026',
+                    },
+                }],
+            },
+        });
+
+        const messageContent = client.buildMessageContent({
+            type: 'user',
+            uuid: 'user-web-1',
+            message: {
+                role: 'user',
+                content: [{
+                    type: 'tool_result',
+                    tool_use_id: 'toolu_web_1',
+                    content: 'large raw result',
+                }],
+            },
+            tool_use_result: {
+                query: 'Claude Code CLI tool 2026',
+                results: [
+                    { title: 'Claude Code', url: 'https://example.com/claude-code' },
+                ],
+            },
+        });
+
+        expect(messageContent).toMatchObject({
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    toolUseResult: {
+                        query: 'Claude Code CLI tool 2026',
+                        _outputTrimmed: true,
+                        _callId: 'toolu_web_1',
+                        _toolResultKind: 'structured',
+                    },
+                },
+            },
+        });
+
+        saveSpy.mockRestore();
     });
 });

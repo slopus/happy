@@ -51,6 +51,38 @@ describe('SDKToLogConverter', () => {
             expect(logMessage?.timestamp).toBeTruthy()
         })
 
+        it('should preserve tool_use_result on SDK user tool result messages', () => {
+            const sdkMessage = {
+                type: 'user',
+                message: {
+                    role: 'user',
+                    content: [{
+                        type: 'tool_result',
+                        tool_use_id: 'tool_read_123',
+                        content: '[trimmed]',
+                    }],
+                },
+                tool_use_result: {
+                    type: 'text',
+                    file: {
+                        filePath: '/tmp/demo.ts',
+                        content: 'export const demo = 1;\n',
+                    },
+                },
+            } as SDKUserMessage & { tool_use_result: unknown }
+
+            const logMessage = converter.convert(sdkMessage)
+
+            expect(logMessage).toBeTruthy()
+            expect((logMessage as any).toolUseResult).toEqual({
+                type: 'text',
+                file: {
+                    filePath: '/tmp/demo.ts',
+                    content: 'export const demo = 1;\n',
+                },
+            })
+        })
+
         it('should handle user message with complex content', () => {
             const sdkMessage: SDKUserMessage = {
                 type: 'user',

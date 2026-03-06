@@ -117,6 +117,10 @@ export class SDKToLogConverter {
 
                 // Check if this is a tool result and add mode if available
                 if (Array.isArray(userMsg.message.content)) {
+                    const toolUseResult = (sdkMessage as any).toolUseResult ?? (sdkMessage as any).tool_use_result
+                    if (toolUseResult !== undefined) {
+                        (logMessage as any).toolUseResult = toolUseResult
+                    }
                     for (const content of userMsg.message.content) {
                         if (content.type === 'tool_result' && content.tool_use_id && this.responses?.has(content.tool_use_id)) {
                             const response = this.responses.get(content.tool_use_id)
