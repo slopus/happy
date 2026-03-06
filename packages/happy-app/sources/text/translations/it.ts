@@ -264,6 +264,8 @@ export const it: TranslationStructure = {
         userNotFound: 'Utente non trovato',
         sessionDeleted: 'La sessione è stata eliminata',
         sessionDeletedDescription: 'Questa sessione è stata rimossa definitivamente',
+        chatRenderFailed: 'Impossibile caricare la chat',
+        chatRenderFailedDescription: 'Si è verificato un errore durante la visualizzazione di questa chat. Puoi riprovare o tornare alle altre chat.',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>

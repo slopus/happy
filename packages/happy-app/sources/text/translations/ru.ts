@@ -217,6 +217,8 @@ export const ru: TranslationStructure = {
         userNotFound: 'Пользователь не найден',
         sessionDeleted: 'Сессия была удалена',
         sessionDeletedDescription: 'Эта сессия была окончательно удалена',
+        chatRenderFailed: 'Не удалось загрузить чат',
+        chatRenderFailedDescription: 'Произошла ошибка при отображении этого чата. Попробуйте снова или вернитесь к другим чатам.',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
