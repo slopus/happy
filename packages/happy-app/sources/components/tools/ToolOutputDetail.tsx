@@ -8,6 +8,7 @@ import { CommandView } from '../CommandView';
 import { CodeView } from '../CodeView';
 import { SmartDataView } from '../KeyValueView';
 import { formatToolOutputContent, isTrimmedToolOutput } from './toolOutputContent';
+import { createToolOutputLoadingCardStyles, formatToolOutputSummaryValue } from './toolOutputLoadingCard';
 
 interface ToolOutputDetailProps {
     tool: ToolCall;
@@ -86,8 +87,8 @@ export const ToolOutputDetail = React.memo<ToolOutputDetailProps>(({ tool }) => 
 
     if (loading) {
         return (
-            <View style={styles.stateContainer}>
-                <ActivityIndicator size="small" />
+            <View style={styles.loadingCard} testID="tool-output-loading-card">
+                <ActivityIndicator size="small" testID="tool-output-loading-spinner" />
             </View>
         );
     }
@@ -95,9 +96,20 @@ export const ToolOutputDetail = React.memo<ToolOutputDetailProps>(({ tool }) => 
     if (error) {
         const summary = getSummaryData(marker);
         return (
-            <View style={styles.errorContainer}>
+            <View style={styles.errorCard}>
                 <Text style={styles.errorText}>{error}</Text>
-                {summary ? <SmartDataView data={summary} /> : null}
+                {summary ? (
+                    <View style={styles.summarySection}>
+                        {Object.entries(summary).map(([key, value]) => (
+                            <View key={key} style={styles.summaryRow}>
+                                <Text style={styles.summaryKey}>{key}</Text>
+                                <Text style={styles.summaryValue} selectable>
+                                    {formatToolOutputSummaryValue(value)}
+                                </Text>
+                            </View>
+                        ))}
+                    </View>
+                ) : null}
             </View>
         );
     }
@@ -136,17 +148,5 @@ function getSummaryData(marker: object): Record<string, unknown> | null {
 }
 
 const styles = StyleSheet.create((theme) => ({
-    stateContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 72,
-    },
-    errorContainer: {
-        gap: 12,
-    },
-    errorText: {
-        color: theme.colors.textSecondary,
-        fontSize: 13,
-        lineHeight: 18,
-    },
+    ...createToolOutputLoadingCardStyles(theme),
 }));
