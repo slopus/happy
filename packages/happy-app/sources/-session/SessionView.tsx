@@ -29,6 +29,7 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
@@ -151,8 +152,12 @@ export const SessionView = React.memo((props: { id: string }) => {
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    // Normal session view
-                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
+                    // Normal session view — error boundary keeps header/navigation usable on crash
+                    <ErrorBoundary fallback={({ error, retry }) => (
+                        <SessionErrorFallback error={error} retry={retry} />
+                    )}>
+                        <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
+                    </ErrorBoundary>
                 )}
             </View>
         </>
@@ -452,4 +457,34 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }
         </>
     )
+}
+
+/** Fallback shown when session content crashes. Header and navigation remain functional. */
+function SessionErrorFallback({ error, retry }: { error: Error; retry: () => void }) {
+    const { theme } = useUnistyles();
+    return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+            <Ionicons name="warning-outline" size={48} color={theme.colors.textSecondary} />
+            <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
+                {t('errors.chatRenderFailed')}
+            </Text>
+            <Text style={{ color: theme.colors.textSecondary, fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+                {t('errors.chatRenderFailedDescription')}
+            </Text>
+            <Pressable
+                onPress={retry}
+                style={{
+                    marginTop: 24,
+                    paddingHorizontal: 24,
+                    paddingVertical: 12,
+                    backgroundColor: theme.colors.button.primary.background,
+                    borderRadius: 8,
+                }}
+            >
+                <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
+                    {t('errors.tryAgain')}
+                </Text>
+            </Pressable>
+        </View>
+    );
 }

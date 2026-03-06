@@ -235,6 +235,8 @@ export const ca: TranslationStructure = {
         userNotFound: 'Usuari no trobat',
         sessionDeleted: 'La sessió s\'ha eliminat',
         sessionDeletedDescription: 'Aquesta sessió s\'ha eliminat permanentment',
+        chatRenderFailed: 'No s\'ha pogut carregar el xat',
+        chatRenderFailedDescription: 'S\'ha produït un error en mostrar aquest xat. Pots tornar-ho a provar o tornar als altres xats.',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>

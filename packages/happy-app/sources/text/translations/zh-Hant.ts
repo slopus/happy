@@ -236,6 +236,8 @@ export const zhHant: TranslationStructure = {
         userNotFound: '未找到使用者',
         sessionDeleted: '工作階段已被刪除',
         sessionDeletedDescription: '此工作階段已被永久刪除',
+        chatRenderFailed: '無法載入聊天',
+        chatRenderFailedDescription: '顯示此聊天時出現問題。您可以重試或返回其他聊天。',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>

@@ -237,6 +237,8 @@ export const zhHans: TranslationStructure = {
         userNotFound: '未找到用户',
         sessionDeleted: '会话已被删除',
         sessionDeletedDescription: '此会话已被永久删除',
+        chatRenderFailed: '无法加载聊天',
+        chatRenderFailedDescription: '显示此聊天时出现问题。您可以重试或返回其他聊天。',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>

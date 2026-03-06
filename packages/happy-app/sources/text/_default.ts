@@ -254,6 +254,8 @@ export const en = {
         failedToRemoveFriend: 'Failed to remove friend',
         searchFailed: 'Search failed. Please try again.',
         failedToSendRequest: 'Failed to send friend request',
+        chatRenderFailed: 'This chat couldn\'t load',
+        chatRenderFailedDescription: 'Something went wrong displaying this chat. You can try again or go back to your other chats.',
     },
 
     newSession: {
