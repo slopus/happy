@@ -14,6 +14,7 @@ import { projectManager, createProjectKey } from './projectManager';
 import { getWorkspaceRepos, WorkspaceRepo } from '@/utils/workspaceRepos';
 import { shellEscape } from '@/utils/shellEscape';
 import { decideNotGitRefreshOutcome } from './gitStatusRefreshPolicy';
+import { selectPreferredGitStatusSession } from './gitStatusSessionSelection';
 
 export class GitStatusSync {
     // Map project keys to sync instances
@@ -94,6 +95,7 @@ export class GitStatusSync {
             return null;
         }
 
+        const candidates: Array<{ sessionId: string; session: Session }> = [];
         for (const sessionId of Array.from(sessionIds)) {
             const session = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
             if (!session) {
@@ -117,10 +119,10 @@ export class GitStatusSync {
                 continue;
             }
 
-            return { sessionId, session };
+            candidates.push({ sessionId, session });
         }
 
-        return null;
+        return selectPreferredGitStatusSession(candidates, projectKey);
     }
 
     private async withFetchSlot<T>(task: () => Promise<T>): Promise<T> {
