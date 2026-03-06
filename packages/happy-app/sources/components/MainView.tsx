@@ -18,6 +18,7 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { StatusDot } from './StatusDot';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { ErrorBoundary } from './ErrorBoundary';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
@@ -247,12 +248,12 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const renderTabContent = React.useCallback(() => {
         switch (activeTab) {
             case 'inbox':
-                return <InboxView />;
+                return <ErrorBoundary><InboxView /></ErrorBoundary>;
             case 'settings':
-                return <SettingsViewWrapper />;
+                return <ErrorBoundary><SettingsViewWrapper /></ErrorBoundary>;
             case 'sessions':
             default:
-                return <SessionsListWrapper />;
+                return <ErrorBoundary><SessionsListWrapper /></ErrorBoundary>;
         }
     }, [activeTab]);
 
