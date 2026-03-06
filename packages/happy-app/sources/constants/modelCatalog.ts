@@ -5,6 +5,7 @@ export const MODEL_MODE_DEFAULT = 'default' as const;
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 export type CodexModelFamily =
     | typeof MODEL_MODE_DEFAULT
+    | 'gpt-5.4'
     | 'gpt-5.3-codex'
     | 'gpt-5.2-codex'
     | 'gpt-5.2'
@@ -18,6 +19,10 @@ export const MODEL_MODES = [
     'claude-sonnet-4-6',
     'claude-sonnet-4-5',
     'claude-haiku-4-5',
+    'gpt-5.4-low',
+    'gpt-5.4-medium',
+    'gpt-5.4-high',
+    'gpt-5.4-xhigh',
     'gpt-5.3-codex-low',
     'gpt-5.3-codex-medium',
     'gpt-5.3-codex-high',
@@ -61,6 +66,10 @@ export const GEMINI_MODEL_MODES = [
 
 export const CODEX_MODEL_MODES = [
     MODEL_MODE_DEFAULT,
+    'gpt-5.4-low',
+    'gpt-5.4-medium',
+    'gpt-5.4-high',
+    'gpt-5.4-xhigh',
     'gpt-5.3-codex-low',
     'gpt-5.3-codex-medium',
     'gpt-5.3-codex-high',
@@ -121,6 +130,7 @@ export const GEMINI_MODEL_OPTIONS = [
 
 export const CODEX_MODEL_FAMILY_OPTIONS = [
     { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' },
+    { value: 'gpt-5.4', label: 'GPT-5.4', shortLabel: '5.4', description: 'General-purpose model' },
     { value: 'gpt-5.3-codex', label: 'GPT-5.3-Codex', shortLabel: '5.3-Codex', description: 'Code-optimized model' },
     { value: 'gpt-5.2-codex', label: 'GPT-5.2-Codex', shortLabel: '5.2-Codex', description: 'Code-optimized model' },
     { value: 'gpt-5.2', label: 'GPT-5.2', shortLabel: '5.2', description: 'General-purpose model' },
@@ -130,6 +140,10 @@ export const CODEX_MODEL_FAMILY_OPTIONS = [
 
 export const CODEX_MODEL_OPTIONS = [
     { value: MODEL_MODE_DEFAULT, label: 'Default', description: 'Use CLI default model' },
+    { value: 'gpt-5.4-low', label: 'GPT-5.4 (Low)', description: 'Fast responses' },
+    { value: 'gpt-5.4-medium', label: 'GPT-5.4 (Medium)', description: 'Balanced responses' },
+    { value: 'gpt-5.4-high', label: 'GPT-5.4 (High)', description: 'Strong quality' },
+    { value: 'gpt-5.4-xhigh', label: 'GPT-5.4 (XHigh)', description: 'Best quality' },
     { value: 'gpt-5.3-codex-low', label: 'GPT-5.3-Codex (Low)', description: 'Fastest coding responses' },
     { value: 'gpt-5.3-codex-medium', label: 'GPT-5.3-Codex (Medium)', description: 'Balanced coding quality' },
     { value: 'gpt-5.3-codex-high', label: 'GPT-5.3-Codex (High)', description: 'Strong coding quality' },
@@ -151,6 +165,10 @@ export const CODEX_MODEL_OPTIONS = [
 ] as const satisfies readonly { value: ModelMode; label: string; description: string }[];
 
 const CODEX_MODE_TO_SELECTION: Partial<Record<ModelMode, { family: CodexModelFamily; effort: CodexReasoningEffort }>> = {
+    'gpt-5.4-low': { family: 'gpt-5.4', effort: 'low' },
+    'gpt-5.4-medium': { family: 'gpt-5.4', effort: 'medium' },
+    'gpt-5.4-high': { family: 'gpt-5.4', effort: 'high' },
+    'gpt-5.4-xhigh': { family: 'gpt-5.4', effort: 'xhigh' },
     'gpt-5.3-codex-low': { family: 'gpt-5.3-codex', effort: 'low' },
     'gpt-5.3-codex-medium': { family: 'gpt-5.3-codex', effort: 'medium' },
     'gpt-5.3-codex-high': { family: 'gpt-5.3-codex', effort: 'high' },
@@ -199,6 +217,7 @@ export type ModelSelection = {
 };
 
 const MODEL_NAME_LABELS: Record<string, string> = {
+    'gpt-5.4': 'GPT-5.4',
     'gpt-5.3-codex': 'GPT-5.3-Codex',
     'gpt-5.2-codex': 'GPT-5.2-Codex',
     'gpt-5.2': 'GPT-5.2',
@@ -287,6 +306,7 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
     'claude-sonnet-4-5': 200_000,
     'claude-haiku-4-5': 200_000,
     // Codex models (fallback; actual value comes from CLI via context_window_size)
+    'gpt-5.4': 258_400,
     'gpt-5.3-codex': 258_400,
     'gpt-5.2-codex': 258_400,
     'gpt-5.2': 258_400,
