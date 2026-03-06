@@ -183,14 +183,14 @@ function formatDateHeader(date: Date): string {
 function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
     const sortedSessions = sessions
         .slice()
-        .sort((a, b) => b.updatedAt - a.updatedAt);
+        .sort((a, b) => b.createdAt - a.createdAt);
     
     const items: SessionHistoryItem[] = [];
     let currentDateGroup: Session[] = [];
     let currentDateString: string | null = null;
     
     for (const session of sortedSessions) {
-        const sessionDate = new Date(session.updatedAt);
+        const sessionDate = new Date(session.createdAt);
         const dateString = sessionDate.toDateString();
         
         if (currentDateString !== dateString) {

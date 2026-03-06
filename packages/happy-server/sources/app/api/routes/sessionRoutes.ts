@@ -19,7 +19,7 @@ export function sessionRoutes(app: Fastify) {
 
         const sessions = await db.session.findMany({
             where: { accountId: userId },
-            orderBy: { updatedAt: 'desc' },
+            orderBy: { createdAt: 'desc' },
             take: 150,
             select: {
                 id: true,
