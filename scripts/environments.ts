@@ -76,6 +76,8 @@ interface EnvironmentConfig {
     expoPort: number;
     createdAt: string;
     template: string;
+    authenticatedWebUrl?: string;
+    cliCommand?: string;
 }
 
 interface CurrentConfig {
@@ -104,6 +106,15 @@ function writeCurrentConfig(current: string) {
 function readEnvironmentConfig(name: string): EnvironmentConfig {
     const configPath = path.join(ENVIRONMENTS_DIR, name, "environment.json");
     return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+}
+
+function writeEnvironmentConfig(config: EnvironmentConfig) {
+    const envDir = path.join(ENVIRONMENTS_DIR, config.name);
+    const configPath = path.join(ENVIRONMENTS_DIR, config.name, "environment.json");
+    fs.writeFileSync(
+        configPath,
+        JSON.stringify({ ...config, cliCommand: buildCliCommand(envDir) }, null, 4) + "\n"
+    );
 }
 
 function listEnvironments(): string[] {
@@ -229,10 +240,7 @@ async function commandNew() {
         createdAt: new Date().toISOString(),
         template: "empty",
     };
-    fs.writeFileSync(
-        path.join(envDir, "environment.json"),
-        JSON.stringify(config, null, 4) + "\n"
-    );
+    writeEnvironmentConfig(config);
 
     // Write env.sh
     const envSh = buildEnvSh(name, envDir, serverPort, expoPort);
@@ -243,8 +251,8 @@ async function commandNew() {
     const migrationEnv = buildEnvVars(envDir, serverPort, expoPort);
     const standaloneTs = path.join(REPO_ROOT, "packages", "happy-server", "sources", "standalone.ts");
     const result = spawnSync(
-        "npx",
-        ["tsx", standaloneTs, "migrate"],
+        "tsx",
+        [standaloneTs, "migrate"],
         {
             cwd: path.join(REPO_ROOT, "packages", "happy-server"),
             env: { ...process.env, ...migrationEnv },
@@ -272,6 +280,8 @@ async function commandNew() {
     console.log(`  Webapp:  yarn env:web`);
     console.log("");
     console.log("CLI (from any terminal, anywhere):");
+    console.log("");
+    console.log(`  One-liner: ${buildCliCommand(envDir)}`);
     console.log("");
     console.log(`  source ${envShRelative}`);
     console.log(`  happy`);
@@ -526,6 +536,18 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
     return lines.join("\n");
 }
 
+function buildAuthenticatedWebUrl(expoPort: number, token: string, secret: string): string {
+    const webParams = new URLSearchParams({
+        dev_token: token,
+        dev_secret: Buffer.from(secret, "base64").toString("base64url"),
+    });
+    return `http://localhost:${expoPort}/?${webParams}`;
+}
+
+function buildCliCommand(envDir: string): string {
+    return `source "${path.join(envDir, "env.sh")}" && happy`;
+}
+
 // ============================================================================
 // Seed auth
 // ============================================================================
@@ -582,6 +604,7 @@ async function commandSeed() {
 
     // Generate encryption secret
     const secret = crypto.randomBytes(32);
+    const secretBase64 = toBase64(secret);
 
     // Write CLI credentials
     const cliHome = path.join(envDir, "cli", "home");
@@ -589,7 +612,7 @@ async function commandSeed() {
 
     fs.writeFileSync(
         path.join(cliHome, "access.key"),
-        JSON.stringify({ secret: toBase64(secret), token }, null, 2),
+        JSON.stringify({ secret: secretBase64, token }, null, 2),
     );
 
     fs.writeFileSync(
@@ -604,6 +627,9 @@ async function commandSeed() {
             2,
         ),
     );
+
+    const authenticatedWebUrl = buildAuthenticatedWebUrl(config.expoPort, token, secretBase64);
+    writeEnvironmentConfig({ ...config, authenticatedWebUrl });
 
     // Stop existing daemon if running
     const daemonStatePath = path.join(envDir, "cli", "home", "daemon.state.json");
@@ -644,6 +670,7 @@ async function commandSeed() {
     }, 10_000, "machine registration").then(() => true, () => false);
 
     console.log(`  Seeded: credentials written, daemon ${machineRegistered ? "registered" : "starting"}`);
+    console.log(`  Auth URL: ${authenticatedWebUrl}`);
 }
 
 // ============================================================================
@@ -665,9 +692,8 @@ async function commandUp(template: Template) {
     const mergedEnv: Record<string, string | undefined> = { ...process.env, ...envVars };
 
     // Record template
-    const configPath = path.join(envDir, "environment.json");
     const configData = { ...config, template };
-    fs.writeFileSync(configPath, JSON.stringify(configData, null, 4) + "\n");
+    writeEnvironmentConfig(configData);
 
     // Start server
     const serverLogFile = path.join(envDir, "server", "stdout.log");
@@ -725,19 +751,17 @@ async function commandUp(template: Template) {
     }
 
     // Print summary
+    const finalConfig = readEnvironmentConfig(envName);
     console.log("");
     console.log(`Environment "${envName}" is up!`);
     console.log(`  Server: http://localhost:${config.serverPort}`);
     console.log(`  Web:    http://localhost:${config.expoPort}`);
 
-    const accessKeyPath = path.join(envDir, "cli", "home", "access.key");
-    if (fs.existsSync(accessKeyPath)) {
-        const creds = JSON.parse(fs.readFileSync(accessKeyPath, "utf-8"));
-        const webParams = new URLSearchParams({
-            dev_token: creds.token,
-            dev_secret: Buffer.from(creds.secret, "base64").toString("base64url"),
-        });
-        console.log(`  Open:   http://localhost:${config.expoPort}/?${webParams}`);
+    if (finalConfig.authenticatedWebUrl) {
+        console.log(`  Open:   ${finalConfig.authenticatedWebUrl}`);
+    }
+    if (finalConfig.cliCommand) {
+        console.log(`  CLI:    ${finalConfig.cliCommand}`);
     }
 
     console.log(`  Logs:   ${path.relative(process.cwd(), path.join(envDir, "server", "stdout.log"))}`);
@@ -884,7 +908,7 @@ switch (subcommand) {
         break;
     case "up": {
         const templateIdx = args.indexOf("--template");
-        const template = templateIdx !== -1 ? args[templateIdx + 1] : args[0];
+        const template = templateIdx !== -1 ? args[templateIdx + 1] : undefined;
         if (!template || !VALID_TEMPLATES.includes(template as Template)) {
             console.error(`Usage: yarn env:up --template <${VALID_TEMPLATES.join("|")}>`);
             process.exit(1);
@@ -906,6 +930,7 @@ switch (subcommand) {
 
 Usage:
   yarn env:up --template <t>  Create + start everything (templates: ${VALID_TEMPLATES.join(", ")})
+  yarn env:up:authenticated   Create + start everything with the authenticated template
   yarn env:down               Stop all services for current environment
 
   yarn env:new              Create a new isolated dev environment
