@@ -90,6 +90,8 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
         }
 
         event.preventDefault?.();
+        event.stopPropagation?.();
+        suppressAvatarPressUntilRef.current = Date.now() + 750;
         onAvatarMenuRequest({
             type: 'point',
             x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,

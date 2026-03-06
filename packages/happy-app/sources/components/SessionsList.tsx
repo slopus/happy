@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem } from '@/sync/storage';
@@ -21,11 +20,6 @@ import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { t } from '@/text';
-import { useHappyAction } from '@/hooks/useHappyAction';
-import { sessionDelete } from '@/sync/ops';
-import { HappyError } from '@/utils/errors';
-import { Modal } from '@/modal';
 import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 
@@ -177,20 +171,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingBottom: 12,
         backgroundColor: theme.colors.groupped.background,
     },
-    swipeAction: {
-        width: 112,
-        height: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.status.error,
-    },
-    swipeActionText: {
-        marginTop: 4,
-        fontSize: 12,
-        color: '#FFFFFF',
-        textAlign: 'center',
-        ...Typography.default('semiBold'),
-    },
 }));
 
 export function SessionsList() {
@@ -331,34 +311,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
-    const swipeableRef = React.useRef<Swipeable | null>(null);
     const triggerRef = React.useRef<View | null>(null);
     const suppressPressUntilRef = React.useRef(0);
-    const swipeEnabled = Platform.OS !== 'web';
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
-
-    const [deletingSession, performDelete] = useHappyAction(async () => {
-        const result = await sessionDelete(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
-        }
-    });
-
-    const handleDelete = React.useCallback(() => {
-        swipeableRef.current?.close();
-        Modal.alert(
-            t('sessionInfo.deleteSession'),
-            t('sessionInfo.deleteSessionWarning'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.deleteSession'),
-                    style: 'destructive',
-                    onPress: performDelete
-                }
-            ]
-        );
-    }, [performDelete]);
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -383,6 +338,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
+        event.stopPropagation?.();
+        suppressPressUntilRef.current = Date.now() + 750;
         setActionsAnchor({
             type: 'point',
             x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,
@@ -406,6 +363,14 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         navigateToSession(session.id);
     }, [navigateToSession, session.id]);
 
+    const handleWebLongPress = React.useCallback(() => {
+        suppressPressUntilRef.current = Date.now() + 750;
+
+        if (Platform.OS === 'web') {
+            openActionsFromTrigger();
+        }
+    }, [openActionsFromTrigger]);
+
     const webMenuProps = Platform.OS === 'web' ? {
         'aria-expanded': !!actionsAnchor,
         'aria-haspopup': 'menu',
@@ -422,7 +387,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
             ]}
-            onLongPress={Platform.OS === 'web' ? openActionsFromTrigger : undefined}
+            onLongPress={Platform.OS === 'web' ? handleWebLongPress : undefined}
             onPress={handlePress}
             {...webMenuProps}
         >
@@ -482,45 +447,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         </SessionActionsNativeMenu>
     );
 
-    if (!swipeEnabled) {
-        return (
-            <View collapsable={false} ref={triggerRef} style={containerStyles}>
-                {wrappedItemContent}
-                {Platform.OS === 'web' && (
-                    <SessionActionsPopover
-                        anchor={actionsAnchor}
-                        onClose={() => setActionsAnchor(null)}
-                        session={session}
-                        visible={!!actionsAnchor}
-                    />
-                )}
-            </View>
-        );
-    }
-
-    const renderRightActions = () => (
-        <Pressable
-            style={styles.swipeAction}
-            onPress={handleDelete}
-            disabled={deletingSession}
-        >
-            <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.swipeActionText} numberOfLines={2}>
-                {t('sessionInfo.deleteSession')}
-            </Text>
-        </Pressable>
-    );
-
     return (
         <View collapsable={false} ref={triggerRef} style={containerStyles}>
-            <Swipeable
-                ref={swipeableRef}
-                renderRightActions={renderRightActions}
-                overshootRight={false}
-                enabled={!deletingSession}
-            >
-                {wrappedItemContent}
-            </Swipeable>
+            {wrappedItemContent}
             {Platform.OS === 'web' && (
                 <SessionActionsPopover
                     anchor={actionsAnchor}
