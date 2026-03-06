@@ -81,6 +81,8 @@ export function getClaudeModelModes(): ModelMode[] {
 
 export function getCodexModelModes(): ModelMode[] {
     return [
+        { key: 'default', name: 'default model', description: null },
+        { key: 'gpt-5.4', name: 'gpt-5.4', description: null },
         { key: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: null },
         { key: 'gpt-5.2-codex', name: 'gpt-5.2-codex', description: null },
         { key: 'gpt-5.1-codex-max', name: 'gpt-5.1-codex-max', description: null },
@@ -139,6 +141,9 @@ export function getAvailableModels(
 ): ModelMode[] {
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
+        if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
+            return [{ key: 'default', name: 'default model', description: null }, ...metadataModels];
+        }
         return metadataModels;
     }
     return getHardcodedModelModes(flavor, translate);
@@ -183,7 +188,7 @@ export function resolveCurrentOption<T extends ModeOption>(
 
 export function getDefaultModelKey(flavor: AgentFlavor): string {
     if (flavor === 'codex') {
-        return 'gpt-5.3-codex';
+        return 'default';
     }
     if (flavor === 'gemini') {
         return 'gemini-2.5-pro';

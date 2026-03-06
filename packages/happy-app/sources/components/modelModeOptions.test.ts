@@ -30,13 +30,16 @@ describe('modelModeOptions', () => {
     it('builds codex model fallbacks', () => {
         const models = getCodexModelModes();
         expect(models.map((model) => model.key)).toEqual([
+            'default',
+            'gpt-5.4',
             'gpt-5.3-codex',
             'gpt-5.2-codex',
             'gpt-5.1-codex-max',
             'gpt-5.2',
             'gpt-5.1-codex-mini',
         ]);
-        expect(models[0].name).toBe('gpt-5.3-codex');
+        expect(models[0].name).toBe('default model');
+        expect(models[1].name).toBe('gpt-5.4');
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {
@@ -48,6 +51,19 @@ describe('modelModeOptions', () => {
 
         expect(models).toEqual([
             { key: 'custom-gemini', name: 'Gemini Custom', description: 'From metadata' },
+        ]);
+    });
+
+    it('adds codex default model option when metadata models are present', () => {
+        const models = getAvailableModels('codex', {
+            models: [
+                { code: 'gpt-5.4', value: 'gpt-5.4', description: 'Latest' },
+            ],
+        } as any, translate);
+
+        expect(models).toEqual([
+            { key: 'default', name: 'default model', description: null },
+            { key: 'gpt-5.4', name: 'gpt-5.4', description: 'Latest' },
         ]);
     });
 
