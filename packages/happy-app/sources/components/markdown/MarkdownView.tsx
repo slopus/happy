@@ -374,20 +374,28 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any, onTimestam
                     </Text>
                 );
             } else if (span.url) {
-                // Open URL in Preview panel if handler available, otherwise new tab
-                if (onFilePathPress) {
-                    return (
-                        <Text
-                            key={index}
-                            selectable
-                            onPress={() => onFilePathPress!(span.url!)}
-                            style={[style.link, span.styles.map(s => style[s])]}
-                        >
-                            {span.text}
-                        </Text>
-                    );
-                }
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
+                const isExternalUrl = span.url.startsWith('http://') || span.url.startsWith('https://');
+                const handlePress = () => {
+                    if (isExternalUrl) {
+                        if (Platform.OS === 'web') {
+                            window.open(span.url!, '_blank', 'noopener,noreferrer');
+                        } else {
+                            Linking.openURL(span.url!);
+                        }
+                    } else if (onFilePathPress) {
+                        onFilePathPress(span.url!);
+                    }
+                };
+                return (
+                    <Text
+                        key={index}
+                        selectable
+                        onPress={handlePress}
+                        style={[style.link, span.styles.map(s => style[s])]}
+                    >
+                        {span.text}
+                    </Text>
+                );
             } else {
                 return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }
