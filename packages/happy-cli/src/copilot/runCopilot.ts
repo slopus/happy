@@ -134,6 +134,40 @@ export async function runCopilot(opts: {
         controlledByUser: opts.startingMode !== 'remote',
     }));
 
+    // Cleanup function for graceful shutdown — sends session death to server
+    // so the app knows the session is offline.
+    let cleanedUp = false;
+    const cleanup = async () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        logger.debug('[COPILOT] Cleaning up...');
+
+        try {
+            copilotSession.cleanup();
+
+            sessionClient.updateMetadata((currentMetadata) => ({
+                ...currentMetadata,
+                lifecycleState: 'archived',
+                lifecycleStateSince: Date.now(),
+                archivedBy: 'cli',
+                archiveReason: 'User terminated',
+            }));
+
+            sessionClient.sendSessionDeath();
+            await sessionClient.flush();
+            await sessionClient.close();
+        } catch (error) {
+            logger.debug('[COPILOT] Error during cleanup:', error);
+        }
+
+        reconnectionHandle?.cancel();
+        stopCaffeinate();
+    };
+
+    // Handle termination signals
+    process.on('SIGTERM', async () => { await cleanup(); process.exit(0); });
+    process.on('SIGINT', async () => { await cleanup(); process.exit(0); });
+
     try {
         const exitCode = await copilotLoop({
             session: copilotSession,
@@ -141,18 +175,13 @@ export async function runCopilot(opts: {
             onModeChange: copilotSession.onModeChange,
         });
 
+        await cleanup();
+
         if (exitCode !== 0) {
             process.exit(exitCode);
         }
     } finally {
-        copilotSession.cleanup();
-        reconnectionHandle?.cancel();
-        stopCaffeinate();
-
-        sessionClient.updateMetadata((currentMetadata) => ({
-            ...currentMetadata,
-            lifecycleState: 'archived',
-            lifecycleStateSince: Date.now(),
-        }));
+        // Fallback in case cleanup wasn't called (e.g. uncaught exception)
+        await cleanup();
     }
 }

@@ -299,8 +299,26 @@ export async function copilotRemoteLauncher(session: HappyCopilotSession, scanne
         }
         logger.debug('[copilotRemote] Terminal cleared, stdin raw mode off');
 
-        try { if (sdkSession) await sdkSession.destroy(); } catch {}
-        try { await client.stop(); } catch {}
+        // Destroy session and stop client. Use timeouts to avoid hanging
+        // if the CLI subprocess doesn't exit cleanly.
+        try {
+            if (sdkSession) {
+                await Promise.race([
+                    sdkSession.destroy(),
+                    new Promise(resolve => setTimeout(resolve, 3000)),
+                ]);
+            }
+        } catch (err) {
+            logger.debug(`[copilotRemote] Session destroy error: ${err}`);
+        }
+        try {
+            await Promise.race([
+                client.stop(),
+                new Promise(resolve => setTimeout(resolve, 3000)),
+            ]);
+        } catch (err) {
+            logger.debug(`[copilotRemote] Client stop error: ${err}`);
+        }
         happyServer.stop();
 
         session.client.rpcHandlerManager.registerHandler('abort', async () => {});
