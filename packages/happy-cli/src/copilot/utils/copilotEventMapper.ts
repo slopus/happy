@@ -142,15 +142,16 @@ export class CopilotEventMapper {
 
         const call = this.ensureToolCallId(toolCallId);
         const mappedName = mapCopilotToolName(toolName);
+        const title = toolTitle(mappedName, args);
 
         return [
             createEnvelope('agent', {
                 t: 'tool-call-start',
                 call,
                 name: mappedName,
-                title: (args.description as string) || mappedName,
-                description: (args.command as string) || `Running ${mappedName}`,
-                args,
+                title,
+                description: title,
+                args: truncateArgs(args),
             }, this.turnOptions()),
         ];
     }
@@ -160,24 +161,10 @@ export class CopilotEventMapper {
         if (!toolCallId) return [];
 
         const call = this.ensureToolCallId(toolCallId);
-        const result = data.result as Record<string, unknown> | undefined;
-        const envelopes: SessionEnvelope[] = [];
 
-        // Emit result text if available
-        if (result) {
-            const content = (result.content as string) || (result.detailedContent as string);
-            if (content && content.trim()) {
-                envelopes.push(
-                    createEnvelope('agent', { t: 'text', text: content }, this.turnOptions()),
-                );
-            }
-        }
-
-        envelopes.push(
+        return [
             createEnvelope('agent', { t: 'tool-call-end', call }, this.turnOptions()),
-        );
-
-        return envelopes;
+        ];
     }
 }
 
@@ -209,4 +196,36 @@ function mapCopilotToolName(toolName: string): string {
         default:
             return toolName;
     }
+}
+
+/** Build a concise title for the tool call card */
+function toolTitle(name: string, args: Record<string, unknown>): string {
+    const desc = args.description;
+    if (typeof desc === 'string' && desc.trim().length > 0) {
+        return desc.length > 80 ? `${desc.slice(0, 77)}...` : desc;
+    }
+    const path = args.path ?? args.file_path;
+    if (typeof path === 'string' && path.length > 0) {
+        return `${name} ${path}`;
+    }
+    const cmd = args.command;
+    if (typeof cmd === 'string' && cmd.length > 0) {
+        return cmd.length > 80 ? `${cmd.slice(0, 77)}...` : cmd;
+    }
+    return `${name} call`;
+}
+
+const MAX_ARG_LENGTH = 200;
+
+/** Truncate large string values in args to keep envelopes small */
+function truncateArgs(args: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args)) {
+        if (typeof value === 'string' && value.length > MAX_ARG_LENGTH) {
+            result[key] = `${value.slice(0, MAX_ARG_LENGTH)}… (${value.length} chars)`;
+        } else {
+            result[key] = value;
+        }
+    }
+    return result;
 }

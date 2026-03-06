@@ -31,7 +31,11 @@ export async function copilotLoop(opts: CopilotLoopOptions): Promise<number> {
     // local mode resumes.
     const scanner = await createCopilotSessionScanner({
         onEnvelope: (envelope) => {
-            logger.debug(`[copilotLocal] Sending envelope: role=${envelope.role}, ev.t=${envelope.ev.t}${envelope.ev.t === 'text' ? `, text=${(envelope.ev as any).text?.substring(0, 50)}` : ''}`);
+            // In remote mode, skip user-role envelopes — the user's input already
+            // came from the app, so relaying it back from events.jsonl would duplicate it.
+            if (mode === 'remote' && envelope.role === 'user') return;
+
+            logger.debug(`[copilotLoop] Sending envelope: role=${envelope.role}, ev.t=${envelope.ev.t}${envelope.ev.t === 'text' ? `, text=${(envelope.ev as any).text?.substring(0, 50)}` : ''}`);
             opts.session.client.sendSessionProtocolMessage(envelope);
         },
         onSessionIdDetected: (sessionId) => {
@@ -62,7 +66,7 @@ export async function copilotLoop(opts: CopilotLoopOptions): Promise<number> {
                 }
 
                 case 'remote': {
-                    const reason = await copilotRemoteLauncher(opts.session);
+                    const reason = await copilotRemoteLauncher(opts.session, scanner);
                     switch (reason) {
                         case 'exit':
                             return 0;
