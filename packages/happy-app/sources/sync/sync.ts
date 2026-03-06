@@ -52,6 +52,8 @@ class Sync {
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
+    // Track last known seq per session for gap detection
+    private lastKnownSeq = new Map<string, number>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -301,9 +303,6 @@ class Sync {
             sentFrom,
             permissionMode: permissionMode || 'default'
         });
-
-        // Re-fetch messages to pick up any that were missed due to WebSocket gaps
-        this.onSessionVisible(sessionId);
     }
 
     applySettings = (delta: Partial<Settings>) => {
@@ -548,6 +547,14 @@ class Sync {
 
         // Apply to storage
         this.applySessions(decryptedSessions);
+
+        // Initialize seq tracking from fetched sessions to avoid false gap detection
+        for (const session of decryptedSessions) {
+            if (session.seq !== undefined && session.seq !== null) {
+                this.lastKnownSeq.set(session.id, session.seq);
+            }
+        }
+
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
 
     }
@@ -1645,7 +1652,18 @@ class Sync {
             return;
         }
         const updateData = validatedUpdate.data;
-        log.log(`Sync: update type: ${updateData.body.t}`);
+        log.log(`Sync: update type: ${updateData.body.t}, seq: ${updateData.seq}`);
+
+        // Seq gap detection: if we missed updates, re-fetch messages for the affected session
+        if (updateData.body.t === 'new-message' || updateData.body.t === 'update-session') {
+            const sid = updateData.body.t === 'new-message' ? updateData.body.sid : updateData.body.id;
+            const lastSeq = this.lastKnownSeq.get(sid);
+            if (lastSeq !== undefined && updateData.seq > lastSeq + 1) {
+                log.log(`⚠️ Seq gap detected for session ${sid}: expected ${lastSeq + 1}, got ${updateData.seq}. Re-fetching messages.`);
+                this.messagesSync.get(sid)?.invalidate();
+            }
+            this.lastKnownSeq.set(sid, updateData.seq);
+        }
 
         if (updateData.body.t === 'new-message') {
 
@@ -1773,6 +1791,9 @@ class Sync {
 
             // Clear any cached git status
             gitStatusSync.clearForSession(sessionId);
+
+            // Clear seq tracking
+            this.lastKnownSeq.delete(sessionId);
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
