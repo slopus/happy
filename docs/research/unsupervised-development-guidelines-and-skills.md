@@ -153,6 +153,8 @@ The first useful documentation pass would be:
    - required evidence
    - replay/regression requirements
    - daemon/network/provider failure cases to exercise
+   - slash-command behavior in non-interactive sessions: verify what happens when agent-native `/commands` are sent through remote or headless flows, including whether they execute, fail cleanly, or are surfaced back to the user without corrupting session state
+   - include explicit regression cases for stateful commands such as `/clear`, which should either truly reset session context in non-interactive flows or be rejected in a way that is visible and unambiguous to the user
 3. `docs/skills-and-subagents.md`
    - when to use a skill vs a subagent
    - naming and specialization guidance
@@ -181,5 +183,6 @@ The strongest next step is to document:
 - how it must be validated
 - how regressions are recorded
 - how subagents and skills should be used
+- how CLI agents behave when slash commands are sent in non-interactive sessions
 
 Without that layer, the system remains operable but underspecified.
