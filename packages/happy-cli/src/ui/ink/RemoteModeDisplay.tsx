@@ -4,12 +4,13 @@ import { MessageBuffer, type BufferedMessage } from './messageBuffer'
 
 interface RemoteModeDisplayProps {
     messageBuffer: MessageBuffer
+    title?: string
     logPath?: string
     onExit?: () => void
     onSwitchToLocal?: () => void
 }
 
-export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuffer, logPath, onExit, onSwitchToLocal }) => {
+export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuffer, title, logPath, onExit, onSwitchToLocal }) => {
     const [messages, setMessages] = useState<BufferedMessage[]>([])
     const [confirmationMode, setConfirmationMode] = useState<'exit' | 'switch' | null>(null)
     const [actionInProgress, setActionInProgress] = useState<'exiting' | 'switching' | null>(null)
@@ -131,7 +132,7 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
                 overflow="hidden"
             >
                 <Box flexDirection="column" marginBottom={1}>
-                    <Text color="gray" bold>📡 Remote Mode - Claude Messages</Text>
+                    <Text color="gray" bold>📡 Remote Mode - {title || 'Messages'}</Text>
                     <Text color="gray" dimColor>{'─'.repeat(Math.min(terminalWidth - 4, 60))}</Text>
                 </Box>
                 

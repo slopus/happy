@@ -316,7 +316,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
 }), z.object({
     // ACP (Agent Communication Protocol) - unified format for all agent providers
     type: z.literal('acp'),
-    provider: z.enum(['gemini', 'codex', 'claude', 'opencode']),
+    provider: z.enum(['gemini', 'codex', 'claude', 'opencode', 'copilot']),
     data: z.discriminatedUnion('type', [
         // Core message types
         z.object({ type: z.literal('reasoning'), message: z.string() }),
@@ -731,7 +731,10 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
         return {
             id,
             localId,
-            createdAt,
+            // Prefer client-embedded time (from meta.time) over server-assigned createdAt.
+            // Server createdAt is always slightly newer than agent envelope.time (due to
+            // network latency), which would make user messages appear after agent responses.
+            createdAt: raw.meta?.time ?? createdAt,
             role: 'user',
             content: raw.content,
             isSidechain: false,

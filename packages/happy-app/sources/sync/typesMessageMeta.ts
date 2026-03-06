@@ -10,7 +10,8 @@ export const MessageMetaSchema = z.object({
     appendSystemPrompt: z.string().nullable().optional(), // Append to system prompt for this message (null = reset)
     allowedTools: z.array(z.string()).nullable().optional(), // Allowed tools for this message (null = reset)
     disallowedTools: z.array(z.string()).nullable().optional(), // Disallowed tools for this message (null = reset)
-    displayText: z.string().optional() // Optional text to display in UI instead of actual message text
+    displayText: z.string().optional(), // Optional text to display in UI instead of actual message text
+    time: z.number().optional(), // Optional client-side timestamp for ordering (overrides server createdAt)
 });
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>;

@@ -4,7 +4,8 @@ import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
-import { DefaultTransport } from '@/agent/transport';
+import { DefaultTransport, CopilotTransport } from '@/agent/transport';
+import type { TransportHandler } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
@@ -435,14 +436,24 @@ type PendingTurn = {
   timeout: NodeJS.Timeout;
 };
 
-function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
+function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'copilot' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
   }
   if (agentName === 'opencode') {
     return 'opencode';
   }
+  if (agentName === 'copilot') {
+    return 'copilot';
+  }
   return 'acp';
+}
+
+function resolveTransportHandler(agentName: string): TransportHandler {
+  if (agentName === 'copilot') {
+    return new CopilotTransport();
+  }
+  return new DefaultTransport(agentName);
 }
 
 export async function runAcp(opts: {
@@ -532,7 +543,7 @@ export async function runAcp(opts: {
     args: opts.args,
     mcpServers,
     permissionHandler,
-    transportHandler: new DefaultTransport(opts.agentName),
+    transportHandler: resolveTransportHandler(opts.agentName),
     verbose,
   });
 
@@ -820,10 +831,6 @@ export async function runAcp(opts: {
   backend.onMessage(onBackendMessage);
 
   session.onUserMessage((message) => {
-    if (!message.content.text) {
-      return;
-    }
-
     if (typeof message.meta?.permissionMode === 'string') {
       currentPermissionMode = message.meta.permissionMode;
       logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
@@ -832,6 +839,21 @@ export async function runAcp(opts: {
     if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
       currentModel = message.meta.model ?? null;
       logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
+    }
+
+    if (!message.content.text) {
+      // Mode/model change only (no text prompt) — apply immediately without queuing
+      if (currentPermissionMode) {
+        switchPermissionModeIfRequested(currentPermissionMode).catch((err) => {
+          logger.debug(`[${opts.agentName}] Failed to switch permission mode: ${err}`);
+        });
+      }
+      if (typeof currentModel === 'string' && currentModel.length > 0) {
+        switchModelIfRequested(currentModel).catch((err) => {
+          logger.debug(`[${opts.agentName}] Failed to switch model: ${err}`);
+        });
+      }
+      return;
     }
 
     messageQueue.push(message.content.text, {

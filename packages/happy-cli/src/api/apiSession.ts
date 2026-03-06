@@ -243,6 +243,14 @@ export class ApiSessionClient extends EventEmitter {
     private routeIncomingMessage(message: unknown) {
         const userResult = UserMessageSchema.safeParse(message);
         if (userResult.success) {
+            // Skip messages the CLI itself sent (echoed back from server).
+            // The CLI sends user messages to the server so the app can display
+            // them (e.g. local Copilot terminal messages relayed via scanner).
+            // Without this guard those echoes would be mistaken for app-user
+            // messages and trigger a spurious local→remote mode switch.
+            if (userResult.data.meta?.sentFrom === 'cli') {
+                return;
+            }
             if (this.pendingMessageCallback) {
                 this.pendingMessageCallback(userResult.data);
             } else {
@@ -421,6 +429,15 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
+        // Send both modern and legacy — app drops one based on ENABLE_SESSION_PROTOCOL_SEND flag
+        // Include envelope.time in meta so the app can use it for ordering (legacy createdAt
+        // is server-assigned and always slightly newer than agent envelope.time, causing
+        // user messages to appear after agent responses).
+        this.enqueueMessage({
+            role: 'user',
+            content: { type: 'text', text: envelope.ev.text },
+            meta: { sentFrom: 'cli', time: envelope.time },
+        }, false);
         this.enqueueSessionProtocolEnvelope(envelope);
     }
 

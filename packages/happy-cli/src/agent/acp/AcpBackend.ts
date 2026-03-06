@@ -6,7 +6,7 @@
  * error handling) is delegated to TransportHandler implementations.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { Readable, Writable } from 'node:stream';
 import {
   ClientSideConnection,
@@ -1292,25 +1292,44 @@ export class AcpBackend implements AgentBackend {
 
     // Kill the process
     if (this.process) {
-      // Try SIGTERM first, then SIGKILL after timeout
-      this.process.kill('SIGTERM');
-      
-      // Give process 1 second to terminate gracefully
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          if (this.process) {
-            logger.debug('[AcpBackend] Force killing process');
-            this.process.kill('SIGKILL');
-          }
-          resolve();
-        }, 1000);
-        
-        this.process?.once('exit', () => {
-          clearTimeout(timeout);
-          resolve();
+      const pid = this.process.pid;
+
+      if (process.platform === 'win32' && pid) {
+        // On Windows the process is spawned via cmd.exe (shell wrapper).
+        // A plain kill() only terminates cmd.exe — the actual agent process
+        // survives as an orphan. taskkill /T kills the entire process tree.
+        // Suppress EPIPE errors on the piped stdio streams — the force-kill
+        // breaks the pipes and any in-flight writes would crash the process.
+        const noop = () => {};
+        this.process.stdin?.on('error', noop);
+        this.process.stdout?.on('error', noop);
+        this.process.stderr?.on('error', noop);
+        try {
+          execSync(`taskkill /T /F /PID ${pid}`, { stdio: 'ignore' });
+        } catch {
+          this.process.kill('SIGTERM');
+        }
+      } else {
+        // Try SIGTERM first, then SIGKILL after timeout
+        this.process.kill('SIGTERM');
+
+        // Give process 1 second to terminate gracefully
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => {
+            if (this.process) {
+              logger.debug('[AcpBackend] Force killing process');
+              this.process.kill('SIGKILL');
+            }
+            resolve();
+          }, 1000);
+
+          this.process?.once('exit', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
         });
-      });
-      
+      }
+
       this.process = null;
     }
 

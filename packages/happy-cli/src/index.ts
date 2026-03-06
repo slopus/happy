@@ -342,6 +342,55 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'copilot') {
+    // Handle copilot command (local + remote with session continuity)
+    try {
+      const { runCopilot } = await import('@/copilot/runCopilot');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let startingMode: 'local' | 'remote' | undefined = undefined;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+          continue;
+        }
+        if (args[i] === '--remote') {
+          startingMode = 'remote';
+          continue;
+        }
+        if (args[i] === '--local') {
+          startingMode = 'local';
+          continue;
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      await runCopilot({
+        credentials,
+        startedBy,
+        startingMode,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'acp') {
     try {
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');

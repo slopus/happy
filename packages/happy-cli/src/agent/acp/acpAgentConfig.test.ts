@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { KNOWN_ACP_AGENTS, resolveAcpAgentConfig } from './acpAgentConfig';
 
 describe('KNOWN_ACP_AGENTS', () => {
-  it('defines built-in Gemini and OpenCode command mappings', () => {
+  it('defines built-in Gemini, OpenCode and Copilot command mappings', () => {
     expect(KNOWN_ACP_AGENTS).toEqual({
       gemini: { command: 'gemini', args: ['--experimental-acp'] },
       opencode: { command: 'opencode', args: ['acp'] },
+      copilot: { command: 'copilot', args: ['--acp'] },
     });
   });
 });
@@ -16,6 +17,22 @@ describe('resolveAcpAgentConfig', () => {
       agentName: 'gemini',
       command: 'gemini',
       args: ['--experimental-acp'],
+    });
+  });
+
+  it('resolves copilot to predefined command + args', () => {
+    expect(resolveAcpAgentConfig(['copilot'])).toEqual({
+      agentName: 'copilot',
+      command: 'copilot',
+      args: ['--acp'],
+    });
+  });
+
+  it('appends extra CLI args for copilot', () => {
+    expect(resolveAcpAgentConfig(['copilot', '--model', 'gpt-5'])).toEqual({
+      agentName: 'copilot',
+      command: 'copilot',
+      args: ['--acp', '--model', 'gpt-5'],
     });
   });
 
