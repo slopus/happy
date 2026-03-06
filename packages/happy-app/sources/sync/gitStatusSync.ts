@@ -13,6 +13,7 @@ import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { projectManager, createProjectKey } from './projectManager';
 import { getWorkspaceRepos, WorkspaceRepo } from '@/utils/workspaceRepos';
 import { shellEscape } from '@/utils/shellEscape';
+import { decideNotGitRefreshOutcome } from './gitStatusRefreshPolicy';
 
 export class GitStatusSync {
     // Map project keys to sync instances
@@ -29,6 +30,10 @@ export class GitStatusSync {
     private retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
     // Automatic retry attempts per project (for transient failures)
     private retryAttempts = new Map<string, number>();
+    // Projects that have completed at least one successful git status fetch.
+    private confirmedGitProjects = new Set<string>();
+    // Consecutive non-git detections for each project.
+    private consecutiveNotGitDetections = new Map<string, number>();
     // Maximum delay between retries (ms). Retries use exponential backoff and never stop.
     private readonly maxRetryDelay = 60_000;
 
@@ -148,6 +153,36 @@ export class GitStatusSync {
 
     private resetRetryAttempts(projectKey: string): void {
         this.retryAttempts.delete(projectKey);
+    }
+
+    private markGitFetchSucceeded(projectKey: string): void {
+        this.confirmedGitProjects.add(projectKey);
+        this.consecutiveNotGitDetections.delete(projectKey);
+    }
+
+    private handleNotGitRepository(
+        projectKey: string,
+        sessionId: string,
+        metadata: { machineId?: string; path?: string }
+    ): void {
+        const decision = decideNotGitRefreshOutcome({
+            hasConfirmedGitRepo: this.confirmedGitProjects.has(projectKey),
+            consecutiveNotGitDetections: this.consecutiveNotGitDetections.get(projectKey) || 0,
+        });
+        this.consecutiveNotGitDetections.set(projectKey, decision.nextConsecutiveNotGitDetections);
+
+        if (decision.action === 'preserve') {
+            this.scheduleRetry(projectKey);
+            return;
+        }
+
+        storage.getState().applyGitStatus(sessionId, null);
+        if (metadata.machineId && metadata.path) {
+            const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
+            projectManager.updateProjectGitStatus(targetProjectKey, null);
+        }
+        this.clearRetryTimer(projectKey);
+        this.resetRetryAttempts(projectKey);
     }
 
     private scheduleRetry(projectKey: string): void {
@@ -273,6 +308,8 @@ export class GitStatusSync {
             if (!hasOtherSessions) {
                 this.clearRetryTimer(projectKey);
                 this.resetRetryAttempts(projectKey);
+                this.consecutiveNotGitDetections.delete(projectKey);
+                this.confirmedGitProjects.delete(projectKey);
                 const sync = this.projectSyncMap.get(projectKey);
                 if (sync) {
                     sync.stop();
@@ -320,6 +357,7 @@ export class GitStatusSync {
                         return;
                     }
                     storage.getState().applyGitStatus(targetSessionId, aggregated);
+                    this.markGitFetchSucceeded(projectKey);
                     this.clearRetryTimer(projectKey);
                     this.resetRetryAttempts(projectKey);
                     if (metadata.machineId) {
@@ -338,14 +376,7 @@ export class GitStatusSync {
 
                 if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
                     if (this.isNotGitRepositoryResult(gitCheckResult)) {
-                        // Confirmed non-git directory: clear stale status.
-                        storage.getState().applyGitStatus(targetSessionId, null);
-                        if (metadata.machineId) {
-                            const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
-                            projectManager.updateProjectGitStatus(targetProjectKey, null);
-                        }
-                        this.clearRetryTimer(projectKey);
-                        this.resetRetryAttempts(projectKey);
+                        this.handleNotGitRepository(projectKey, targetSessionId, metadata);
                         return;
                     }
 
@@ -367,13 +398,7 @@ export class GitStatusSync {
 
                 if (!statusResult.success || statusResult.exitCode !== 0) {
                     if (this.isNotGitRepositoryResult(statusResult)) {
-                        storage.getState().applyGitStatus(targetSessionId, null);
-                        if (metadata.machineId) {
-                            const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
-                            projectManager.updateProjectGitStatus(targetProjectKey, null);
-                        }
-                        this.clearRetryTimer(projectKey);
-                        this.resetRetryAttempts(projectKey);
+                        this.handleNotGitRepository(projectKey, targetSessionId, metadata);
                         return;
                     }
 
@@ -401,13 +426,7 @@ export class GitStatusSync {
                 if (!diffStatResult.success || diffStatResult.exitCode !== 0 ||
                     !stagedDiffStatResult.success || stagedDiffStatResult.exitCode !== 0) {
                     if (this.isNotGitRepositoryResult(diffStatResult) || this.isNotGitRepositoryResult(stagedDiffStatResult)) {
-                        storage.getState().applyGitStatus(targetSessionId, null);
-                        if (metadata.machineId) {
-                            const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
-                            projectManager.updateProjectGitStatus(targetProjectKey, null);
-                        }
-                        this.clearRetryTimer(projectKey);
-                        this.resetRetryAttempts(projectKey);
+                        this.handleNotGitRepository(projectKey, targetSessionId, metadata);
                         return;
                     }
 
@@ -427,6 +446,7 @@ export class GitStatusSync {
 
                 // Apply to storage (this also updates the project git status via the modified applyGitStatus)
                 storage.getState().applyGitStatus(targetSessionId, gitStatus);
+                this.markGitFetchSucceeded(projectKey);
                 this.clearRetryTimer(projectKey);
                 this.resetRetryAttempts(projectKey);
 

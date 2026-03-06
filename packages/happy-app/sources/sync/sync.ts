@@ -49,6 +49,7 @@ import {
 } from '../openclaw/storage';
 import { resolveModelSelectionForFlavor } from '@/constants/modelCatalog';
 import { sessionUpdateMetadataFields } from './ops';
+import { shouldInvalidateGitStatusOnActivityTransition } from './gitStatusRefreshPolicy';
 
 type PermissionMode = NonNullable<Session['permissionMode']>;
 
@@ -2897,11 +2898,15 @@ class Sync {
         // log.log(`🔄 Flushing activity updates for ${updates.size} sessions - acquiring lock`);
 
         const sessions: Session[] = [];
+        const recoveredSessionIds: string[] = [];
         const state = storage.getState();
 
         for (const [sessionId, update] of updates) {
             const session = state.sessions[sessionId];
             if (session) {
+                if (shouldInvalidateGitStatusOnActivityTransition(session.active, update.active)) {
+                    recoveredSessionIds.push(sessionId);
+                }
                 sessions.push({
                     ...session,
                     active: update.active,
@@ -2923,6 +2928,9 @@ class Sync {
         if (sessions.length > 0) {
             // console.log('flushing activity updates ' + sessions.length);
             this.applySessions(sessions);
+            for (const sessionId of recoveredSessionIds) {
+                gitStatusSync.invalidate(sessionId);
+            }
             // log.log(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
         }
     }
