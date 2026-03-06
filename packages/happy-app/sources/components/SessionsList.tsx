@@ -9,6 +9,7 @@ import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarI
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
+import { ErrorBoundary } from './ErrorBoundary';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSetting } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
@@ -258,10 +259,12 @@ export function SessionsList() {
 
                 const ActiveComponent = compactSessionView ? ActiveSessionsGroupCompact : ActiveSessionsGroup;
                 return (
-                    <ActiveComponent
-                        sessions={item.sessions}
-                        selectedSessionId={selectedId}
-                    />
+                    <ErrorBoundary>
+                        <ActiveComponent
+                            sessions={item.sessions}
+                            selectedSessionId={selectedId}
+                        />
+                    </ErrorBoundary>
                 );
 
             case 'project-group':
@@ -286,13 +289,15 @@ export function SessionsList() {
                 const isSingle = isFirst && isLast;
 
                 return (
-                    <SessionItem
-                        session={item.session}
-                        selected={item.selected}
-                        isFirst={isFirst}
-                        isLast={isLast}
-                        isSingle={isSingle}
-                    />
+                    <ErrorBoundary>
+                        <SessionItem
+                            session={item.session}
+                            selected={item.selected}
+                            isFirst={isFirst}
+                            isLast={isLast}
+                            isSingle={isSingle}
+                        />
+                    </ErrorBoundary>
                 );
         }
     }, [pathname, dataWithSelected, compactSessionView]);

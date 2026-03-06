@@ -7,6 +7,7 @@ import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
+import { ErrorBoundary } from './ErrorBoundary';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useAllMachines, useSetting } from '@/sync/storage';
@@ -318,13 +319,14 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                 .map(([machineId, machineGroup]) => (
                                     <View key={`${projectPath}-${machineId}`}>
                                         {machineGroup.sessions.map((session, index) => (
-                                            <CompactSessionRow
-                                                key={session.id}
-                                                session={session}
-                                                selected={selectedSessionId === session.id}
-                                                showBorder={index < machineGroup.sessions.length - 1 ||
-                                                    Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
-                                            />
+                                            <ErrorBoundary key={session.id}>
+                                                <CompactSessionRow
+                                                    session={session}
+                                                    selected={selectedSessionId === session.id}
+                                                    showBorder={index < machineGroup.sessions.length - 1 ||
+                                                        Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
+                                                />
+                                            </ErrorBoundary>
                                         ))}
                                     </View>
                                 ))}
@@ -439,7 +441,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         {/* No longer showing git status per item - it's in the header */}
 
                         {/* Task status indicator */}
-                        {session.todos && session.todos.length > 0 && (() => {
+                        {Array.isArray(session.todos) && session.todos.length > 0 && (() => {
                             const totalTasks = session.todos.length;
                             const completedTasks = session.todos.filter(t => t.status === 'completed').length;
 

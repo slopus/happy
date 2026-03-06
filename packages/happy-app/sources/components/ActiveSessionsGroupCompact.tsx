@@ -7,6 +7,7 @@ import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
+import { ErrorBoundary } from './ErrorBoundary';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useAllMachines, useSetting } from '@/sync/storage';
@@ -272,13 +273,14 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                 .map(([machineId, machineGroup]) => (
                                     <View key={`${projectPath}-${machineId}`}>
                                         {machineGroup.sessions.map((session, index) => (
-                                            <CompactSessionRow
-                                                key={session.id}
-                                                session={session}
-                                                selected={selectedSessionId === session.id}
-                                                showBorder={index < machineGroup.sessions.length - 1 ||
-                                                    Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
-                                            />
+                                            <ErrorBoundary key={session.id}>
+                                                <CompactSessionRow
+                                                    session={session}
+                                                    selected={selectedSessionId === session.id}
+                                                    showBorder={index < machineGroup.sessions.length - 1 ||
+                                                        Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
+                                                />
+                                            </ErrorBoundary>
                                         ))}
                                     </View>
                                 ))}

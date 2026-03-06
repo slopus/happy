@@ -182,6 +182,17 @@ export function createReducer(): ReducerState {
     }
 };
 
+type TodoItem = { content: string; status: 'pending' | 'in_progress' | 'completed'; priority: 'high' | 'medium' | 'low'; id: string };
+
+// Safely extract todos array — handles cases where Claude sends it as a JSON string
+function parseTodos(raw: unknown): TodoItem[] | null {
+    let parsed = raw;
+    if (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } catch { return null; }
+    }
+    return Array.isArray(parsed) ? parsed as TodoItem[] : null;
+}
+
 const ENABLE_LOGGING = false;
 
 export type ReducerResult = {
@@ -690,10 +701,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                             // Track TodoWrite tool inputs when updating existing messages
                             if (message.tool.name === 'TodoWrite' && message.tool.state === 'running' && message.tool.input?.todos) {
+                                const todos = parseTodos(message.tool.input.todos);
                                 // Only update if this is newer than existing todos
-                                if (!state.latestTodos || message.tool.createdAt > state.latestTodos.timestamp) {
+                                if (todos && (!state.latestTodos || message.tool.createdAt > state.latestTodos.timestamp)) {
                                     state.latestTodos = {
-                                        todos: message.tool.input.todos,
+                                        todos,
                                         timestamp: message.tool.createdAt
                                     };
                                 }
@@ -758,10 +770,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                         // Track TodoWrite tool inputs
                         if (toolCall.name === 'TodoWrite' && toolCall.state === 'running' && toolCall.input?.todos) {
+                            const todos = parseTodos(toolCall.input.todos);
                             // Only update if this is newer than existing todos
-                            if (!state.latestTodos || toolCall.createdAt > state.latestTodos.timestamp) {
+                            if (todos && (!state.latestTodos || toolCall.createdAt > state.latestTodos.timestamp)) {
                                 state.latestTodos = {
-                                    todos: toolCall.input.todos,
+                                    todos,
                                     timestamp: toolCall.createdAt
                                 };
                             }
