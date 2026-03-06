@@ -55,6 +55,7 @@ import { ConversationHistory } from '@/gemini/utils/conversationHistory';
 import { GeminiSessionWriter } from '@/gemini/utils/sessionWriter';
 import { readGeminiSessionLog, buildResumeContextFromSessionLog } from '@/gemini/utils/sessionReader';
 import { backfillGeminiSessionHistory } from '@/gemini/utils/geminiBackfill';
+import { summarizeBashToolOutput } from '@/modules/common/loadableToolOutput';
 
 
 /**
@@ -789,7 +790,13 @@ export async function runGemini(opts: {
         // Trim large payloads for GeminiBash — app only needs exit_code
         let trimmedResult = msg.result;
         if (msg.toolName === 'GeminiBash' && typeof msg.result === 'object' && msg.result !== null) {
-          trimmedResult = { exit_code: (msg.result as any).exit_code ?? 0 };
+          trimmedResult = summarizeBashToolOutput({
+            sessionId: session.sessionId,
+            callId: msg.callId,
+            toolName: 'GeminiBash',
+            agent: 'gemini',
+            result: msg.result,
+          });
         }
 
         session.sendAgentMessage('gemini', {

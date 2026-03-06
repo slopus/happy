@@ -3,13 +3,14 @@ import { Text, View, ScrollView, Platform, useWindowDimensions } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
-import { ToolInputView, SmartDataView } from '../KeyValueView';
+import { ToolInputView } from '../KeyValueView';
 import { Metadata } from '@/sync/storageTypes';
 import { getToolFullViewComponent } from './views/_all';
 import { layout } from '../layout';
 import { useLocalSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
+import { ToolOutputDetail } from './ToolOutputDetail';
 
 interface ToolFullViewProps {
     tool: ToolCall;
@@ -61,7 +62,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                                 <Ionicons name="log-out" size={20} color="#34C759" />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.output')}</Text>
                             </View>
-                            <SmartDataView data={tool.result} />
+                            <ToolOutputDetail tool={tool} />
                         </View>
                     )}
 

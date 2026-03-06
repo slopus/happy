@@ -9,6 +9,7 @@
 import { logger } from '@/ui/logger';
 import { readGeminiSessionLog } from './sessionReader';
 import type { GeminiSessionLine } from './sessionTypes';
+import { summarizeBashToolOutput } from '@/modules/common/loadableToolOutput';
 
 export interface GeminiBackfillOptions {
     /** Gemini session ID (used to locate the JSONL file) */
@@ -77,7 +78,14 @@ function buildMessageContent(line: ConversationLine, callIdToName: Map<string, s
 
         // GeminiBash: only send exit_code (matches real-time behaviour)
         if (toolName === 'GeminiBash' && typeof output === 'object' && output !== null) {
-            output = { exit_code: (output as any).exit_code ?? 0 };
+            output = summarizeBashToolOutput({
+                sessionId: 'gemini-backfill',
+                callId: line.callId,
+                toolName: 'GeminiBash',
+                agent: 'gemini',
+                result: output,
+                persist: false,
+            });
         } else if (typeof output === 'string' && output.length > 500) {
             output = output.substring(0, 500) + '... [truncated]';
         } else if (typeof output === 'object' && output !== null) {

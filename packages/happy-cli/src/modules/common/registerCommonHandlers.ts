@@ -9,6 +9,7 @@ import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
 import { getDiffDetail } from './diffStore';
+import { getToolOutputRecord } from './toolOutputStore';
 
 const execAsync = promisify(exec);
 
@@ -571,6 +572,25 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
                 diff: result.diff,
                 additions: result.additions,
                 deletions: result.deletions,
+            };
+        });
+
+        rpcHandlerManager.registerHandler<
+            { callId: string },
+            { success: boolean; toolName?: string; agent?: 'claude' | 'codex' | 'gemini'; result?: unknown; error?: string }
+        >('getToolOutput', async (data) => {
+            logger.debug('getToolOutput request:', data.callId);
+
+            const record = getToolOutputRecord(sessionId, data.callId);
+            if (!record) {
+                return { success: false, error: 'not_found' };
+            }
+
+            return {
+                success: true,
+                toolName: record.toolName,
+                agent: record.agent,
+                result: record.result,
             };
         });
     }

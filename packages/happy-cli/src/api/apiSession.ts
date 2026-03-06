@@ -384,7 +384,7 @@ export class ApiSessionClient extends EventEmitter {
         if (firstToolResult && trimmedTUR !== undefined) {
             const toolName = this.toolIdToName.get(firstToolResult.tool_use_id);
             if (toolName) {
-                trimmedTUR = trimToolUseResult(toolName, trimmedTUR);
+                trimmedTUR = trimToolUseResult(toolName, trimmedTUR, this.sessionId, firstToolResult.tool_use_id);
             }
         }
 

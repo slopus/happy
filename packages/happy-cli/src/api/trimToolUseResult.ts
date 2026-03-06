@@ -1,4 +1,5 @@
 import { saveDiffRecords, DiffRecord } from '../modules/common/diffStore';
+import { saveToolOutputRecord } from '../modules/common/toolOutputStore';
 
 /**
  * Trims toolUseResult payload before sending to App.
@@ -9,12 +10,27 @@ import { saveDiffRecords, DiffRecord } from '../modules/common/diffStore';
  * - reducer.ts:808 assigns tool.result = c.content
  * - Each tool's view component has specific data expectations
  */
-export function trimToolUseResult(toolName: string, toolUseResult: unknown): unknown {
+export function trimToolUseResult(
+    toolName: string,
+    toolUseResult: unknown,
+    sessionId?: string,
+    callId?: string
+): unknown {
     if (toolUseResult == null) return toolUseResult;
 
     // Tools whose toolUseResult is completely unnecessary for App rendering.
     // Handles both string and object forms — e.g. LS returns a string listing.
     if (FULLY_TRIMMABLE_TUR.has(toolName)) {
+        if (sessionId && callId && LOADABLE_TRIMMED_TOOLS.has(toolName)) {
+            saveToolOutputRecord(sessionId, {
+                callId,
+                toolName,
+                agent: 'claude',
+                result: toolUseResult,
+                timestamp: Date.now(),
+            });
+            return createTrimmedOutputMarker(toolName, callId);
+        }
         return {};
     }
 
@@ -25,6 +41,7 @@ export function trimToolUseResult(toolName: string, toolUseResult: unknown): unk
     }
 
     const result = toolUseResult as Record<string, unknown>;
+    let trimmed: unknown;
 
     switch (toolName) {
         // Edit/MultiEdit/Write: remove originalFile (~40KB avg, never used by App)
@@ -34,7 +51,8 @@ export function trimToolUseResult(toolName: string, toolUseResult: unknown): unk
         case 'Write':
         case 'NotebookEdit': {
             const { originalFile, ...rest } = result;
-            return rest;
+            trimmed = rest;
+            break;
         }
 
         // Read: App never renders content (minimal: true)
@@ -43,7 +61,7 @@ export function trimToolUseResult(toolName: string, toolUseResult: unknown): unk
         case 'NotebookRead': {
             if (result.file && typeof result.file === 'object') {
                 const file = result.file as Record<string, unknown>;
-                return {
+                trimmed = {
                     type: result.type,
                     file: {
                         filePath: file.filePath,
@@ -52,38 +70,44 @@ export function trimToolUseResult(toolName: string, toolUseResult: unknown): unk
                         totalLines: file.totalLines,
                     },
                 };
+            } else {
+                trimmed = { type: result.type };
             }
-            return { type: result.type };
+            break;
         }
 
         // Grep: App never renders content (minimal: true)
         // Remove match results, keep metadata
         case 'Grep': {
             const { content, ...rest } = result;
-            return rest;
+            trimmed = rest;
+            break;
         }
 
         // Glob: App never renders content (minimal: true)
         // Remove filenames array, keep count
         case 'Glob': {
             const { filenames, ...rest } = result;
-            return {
+            trimmed = {
                 ...rest,
                 numFiles: Array.isArray(filenames) ? filenames.length : result.numFiles,
             };
+            break;
         }
 
         // Task: TaskView reads child messages, not tool.result.content
         // Remove subagent output (up to 55KB), keep metadata
         case 'Task': {
             const { content, prompt, ...rest } = result;
-            return rest;
+            trimmed = rest;
+            break;
         }
 
         // WebSearch: keep only query (used by Gemini's web_search for title)
         case 'WebSearch':
         case 'web_search':
-            return { query: result.query };
+            trimmed = { query: result.query };
+            break;
 
         // Bash: keep as-is — BashViewFull needs stdout/stderr
         // TodoWrite: keep as-is — TodoView reads result.newTodos
@@ -92,12 +116,33 @@ export function trimToolUseResult(toolName: string, toolUseResult: unknown): unk
         default:
             return toolUseResult;
     }
+
+    if (sessionId && callId && LOADABLE_TRIMMED_TOOLS.has(toolName)) {
+        saveToolOutputRecord(sessionId, {
+            callId,
+            toolName,
+            agent: 'claude',
+            result: toolUseResult,
+            timestamp: Date.now(),
+        });
+        return {
+            ...(trimmed as Record<string, unknown>),
+            ...createTrimmedOutputMarker(toolName, callId),
+        };
+    }
+
+    return trimmed;
 }
 
 /** Tools whose toolUseResult can be entirely replaced with {} regardless of type */
 const FULLY_TRIMMABLE_TUR = new Set([
     'LS', 'WebFetch', 'ToolSearch', 'Skill',
     'EnterPlanMode', 'enter_plan_mode',
+]);
+
+const LOADABLE_TRIMMED_TOOLS = new Set([
+    'Read', 'NotebookRead', 'Grep', 'Glob', 'LS',
+    'WebFetch', 'WebSearch', 'web_search',
 ]);
 
 const TRIMMABLE_TOOLS = new Set([
@@ -128,6 +173,28 @@ export function trimToolResultContent(toolName: string, content: unknown): unkno
     }
 
     return content;
+}
+
+function createTrimmedOutputMarker(toolName: string, callId: string): {
+    _outputTrimmed: true;
+    _callId: string;
+    _toolResultKind: 'command' | 'structured' | 'text';
+} {
+    return {
+        _outputTrimmed: true,
+        _callId: callId,
+        _toolResultKind: getToolResultKind(toolName),
+    };
+}
+
+function getToolResultKind(toolName: string): 'command' | 'structured' | 'text' {
+    switch (toolName) {
+        case 'WebSearch':
+        case 'web_search':
+            return 'structured';
+        default:
+            return 'text';
+    }
 }
 
 /**

@@ -7,7 +7,18 @@ vi.mock('../modules/common/diffStore', () => ({
 }));
 import { saveDiffRecords } from '../modules/common/diffStore';
 
+vi.mock('../modules/common/toolOutputStore', () => ({
+    saveToolOutputRecord: vi.fn(),
+}));
+import { saveToolOutputRecord } from '../modules/common/toolOutputStore';
+
 describe('trimToolUseResult', () => {
+    const mockSaveToolOutput = saveToolOutputRecord as ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        mockSaveToolOutput.mockClear();
+    });
+
     it('returns null/undefined unchanged', () => {
         expect(trimToolUseResult('Read', null)).toBeNull();
         expect(trimToolUseResult('Read', undefined)).toBeUndefined();
@@ -56,6 +67,34 @@ describe('trimToolUseResult', () => {
             expect(trimmed.file.content).toBeUndefined();
         });
 
+        it('stores full result and tags trimmed output when session metadata is provided', () => {
+            const result = {
+                type: 'text',
+                file: {
+                    filePath: '/src/app.ts',
+                    content: 'x'.repeat(50_000),
+                    numLines: 200,
+                    startLine: 1,
+                    totalLines: 200,
+                },
+            };
+            const trimmed = trimToolUseResult('Read', result, 'session-1', 'call-read') as any;
+
+            expect(trimmed).toEqual({
+                type: 'text',
+                file: {
+                    filePath: '/src/app.ts',
+                    numLines: 200,
+                    startLine: 1,
+                    totalLines: 200,
+                },
+                _outputTrimmed: true,
+                _callId: 'call-read',
+                _toolResultKind: 'text',
+            });
+            expect(mockSaveToolOutput).toHaveBeenCalledOnce();
+        });
+
         it('object without file field', () => {
             const result = { type: 'image' };
             const trimmed = trimToolUseResult('Read', result) as any;
@@ -77,6 +116,28 @@ describe('trimToolUseResult', () => {
             expect(trimmed.filenames).toEqual(['a.ts', 'b.ts']);
             expect(trimmed.numFiles).toBe(2);
             expect(trimmed.numLines).toBe(3);
+        });
+
+        it('stores full result and tags trimmed output when session metadata is provided', () => {
+            const result = {
+                content: 'line1\nline2\nline3',
+                filenames: ['a.ts', 'b.ts'],
+                numFiles: 2,
+                numLines: 3,
+                mode: 'content',
+            };
+            const trimmed = trimToolUseResult('Grep', result, 'session-1', 'call-grep') as any;
+
+            expect(trimmed).toEqual({
+                filenames: ['a.ts', 'b.ts'],
+                numFiles: 2,
+                numLines: 3,
+                mode: 'content',
+                _outputTrimmed: true,
+                _callId: 'call-grep',
+                _toolResultKind: 'text',
+            });
+            expect(mockSaveToolOutput).toHaveBeenCalledOnce();
         });
     });
 
@@ -102,6 +163,17 @@ describe('trimToolUseResult', () => {
 
         it('trims object toolUseResult', () => {
             expect(trimToolUseResult('LS', { files: ['a', 'b'] })).toEqual({});
+        });
+
+        it('stores full result and returns a loadable marker when session metadata is provided', () => {
+            const trimmed = trimToolUseResult('LS', '/src\n  app.ts\n', 'session-1', 'call-ls');
+
+            expect(trimmed).toEqual({
+                _outputTrimmed: true,
+                _callId: 'call-ls',
+                _toolResultKind: 'text',
+            });
+            expect(mockSaveToolOutput).toHaveBeenCalledOnce();
         });
     });
 
@@ -140,6 +212,19 @@ describe('trimToolUseResult', () => {
             const result = { query: 'test', results: [{ url: 'x' }] };
             expect(trimToolUseResult('WebSearch', result)).toEqual({ query: 'test' });
         });
+
+        it('stores full result and tags trimmed output when session metadata is provided', () => {
+            const result = { query: 'test', results: [{ url: 'x' }] };
+            const trimmed = trimToolUseResult('WebSearch', result, 'session-1', 'call-web-search');
+
+            expect(trimmed).toEqual({
+                query: 'test',
+                _outputTrimmed: true,
+                _callId: 'call-web-search',
+                _toolResultKind: 'structured',
+            });
+            expect(mockSaveToolOutput).toHaveBeenCalledOnce();
+        });
     });
 
     describe('Bash/TodoWrite — kept as-is', () => {
@@ -162,6 +247,14 @@ describe('trimToolUseResult', () => {
         it('passes through unknown tool', () => {
             const result = { data: 'some mcp result' };
             expect(trimToolUseResult('mcp__slack__send', result)).toBe(result);
+        });
+
+        it('does not store output for excluded tools', () => {
+            const result = { stdout: 'hello', stderr: '' };
+            const trimmed = trimToolUseResult('Bash', result, 'session-1', 'call-bash');
+
+            expect(trimmed).toBe(result);
+            expect(mockSaveToolOutput).not.toHaveBeenCalled();
         });
     });
 });

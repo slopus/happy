@@ -36,6 +36,7 @@ import type { SendPromptOptions } from '@/agent/core';
 import type { AgentMessage } from '@/agent/core';
 import { handleConfigMetadataEvent } from '@/agent/acp/sessionUpdateHandlers';
 import { findCodexSessionFile } from './utils/codexSessionReader';
+import { summarizeBashToolOutput } from '@/modules/common/loadableToolOutput';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -612,7 +613,13 @@ export async function runCodex(opts: {
                 // Trim large payloads for CodexBash — app only needs exit_code
                 let trimmedResult = msg.result;
                 if (msg.toolName === 'CodexBash' && typeof msg.result === 'object' && msg.result !== null) {
-                    trimmedResult = { exit_code: (msg.result as any).exit_code ?? 0 };
+                    trimmedResult = summarizeBashToolOutput({
+                        sessionId: session.sessionId,
+                        callId: msg.callId,
+                        toolName: 'CodexBash',
+                        agent: 'codex',
+                        result: msg.result,
+                    });
                 }
 
                 session.sendAgentMessage('codex', {
