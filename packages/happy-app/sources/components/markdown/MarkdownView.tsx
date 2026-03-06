@@ -1,7 +1,6 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
-import { Link } from 'expo-router';
 import * as React from 'react';
-import { Pressable, ScrollView, View, Platform } from 'react-native';
+import { Image, Pressable, ScrollView, View, Platform } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
@@ -12,6 +11,7 @@ import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 
@@ -66,6 +66,8 @@ export const MarkdownView = React.memo((props: {
                         return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} />;
                     } else if (block.type === 'table') {
                         return <RenderTableBlock headers={block.headers} rows={block.rows} key={index} first={index === 0} last={index === blocks.length - 1} />;
+                    } else if (block.type === 'image') {
+                        return <RenderImageBlock url={block.url} alt={block.alt} key={index} first={index === 0} last={index === blocks.length - 1} />;
                     } else {
                         return null;
                     }
@@ -181,6 +183,24 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
+function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
+    const accessibleLabel = props.alt || 'Markdown image';
+
+    return (
+        <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
+            <Image
+                source={{ uri: props.url }}
+                style={style.image}
+                accessibilityLabel={accessibleLabel}
+                resizeMode="contain"
+            />
+            {props.alt ? (
+                <Text style={style.imageCaption}>{props.alt}</Text>
+            ) : null}
+        </View>
+    );
+}
+
 function RenderOptionsBlock(props: { 
     items: string[], 
     first: boolean, 
@@ -220,7 +240,22 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
+                return (
+                    <Text
+                        key={index}
+                        selectable
+                        accessibilityRole="link"
+                        style={[props.baseStyle, style.link, span.styles.map(s => style[s])]}
+                        {...(Platform.OS === 'web' ? ({ href: span.url, target: '_blank', rel: 'noopener noreferrer' } as any) : {})}
+                        onPress={() => {
+                            if (Platform.OS !== 'web') {
+                                void WebBrowser.openBrowserAsync(span.url!);
+                            }
+                        }}
+                    >
+                        {span.text}
+                    </Text>
+                );
             } else {
                 return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }
@@ -310,14 +345,14 @@ const style = StyleSheet.create((theme) => ({
     code: {
         ...Typography.mono(),
         fontSize: 16,
-        lineHeight: 21,  // Reduced from 24 to 21
-        backgroundColor: theme.colors.surfaceHighest,
+        lineHeight: 24,
         color: theme.colors.text,
     },
     link: {
         ...Typography.default(),
-        color: theme.colors.textLink,
+        color: theme.colors.text,
         fontWeight: '400',
+        textDecorationLine: 'underline',
     },
 
     // Headers
@@ -430,6 +465,26 @@ const style = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.divider,
         marginTop: 8,
         marginBottom: 8,
+    },
+    imageBlock: {
+        width: '100%',
+        maxWidth: 520,
+        marginVertical: 8,
+        alignSelf: 'flex-start',
+        gap: 8,
+    },
+    image: {
+        width: '100%',
+        minHeight: 160,
+        height: 240,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surfaceHighest,
+    },
+    imageCaption: {
+        ...Typography.default(),
+        fontSize: 14,
+        lineHeight: 20,
+        color: theme.colors.textSecondary,
     },
     copyButtonContainer: {
         position: 'absolute',
