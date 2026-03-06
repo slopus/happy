@@ -39,6 +39,8 @@ Run From Source (Repo Checkout)
 
 ```bash
 # from repository root
+yarn install
+yarn workspace happy-coder build
 yarn cli --help
 yarn cli codex
 ```

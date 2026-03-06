@@ -16,9 +16,13 @@ From a repo checkout:
 
 ```bash
 # repository root
+yarn install
+yarn workspace happy-coder build
 yarn cli --help
 
 # package directory
+yarn install
+yarn build
 yarn cli --help
 ```
 
