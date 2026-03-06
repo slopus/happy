@@ -18,8 +18,11 @@ Source of truth:
 
 - `./product.md`
 
-## Deferred Work
+## happy-agent spawn
 
-Anything about `happy-agent spawn` lives in:
+`happy-agent spawn` is product-layer validation work.
 
-- `./backlog.md`
+Source of truth:
+
+- `./happy-agent.md`
+- `packages/happy-agent/src/happy-agent.integration.test.ts`

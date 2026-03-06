@@ -2,31 +2,44 @@
 
 import { Command } from 'commander';
 import { hostname } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig } from './config';
 import type { Config } from './config';
 import { requireCredentials } from './credentials';
 import type { Credentials } from './credentials';
 import { authLogin, authLogout, authStatus } from './auth';
-import { listSessions, listActiveSessions, createSession, getSessionMessages } from './api';
-import type { DecryptedSession } from './api';
+import { listSessions, listActiveSessions, createSession, getSessionMessages, listMachines } from './api';
+import type { DecryptedMachine, DecryptedSession } from './api';
+import { spawnSessionOnMachine, type SupportedAgent } from './machineRpc';
 import { SessionClient } from './session';
-import { formatSessionTable, formatSessionStatus, formatMessageHistory, formatJson } from './output';
+import { formatMachineTable, formatSessionTable, formatSessionStatus, formatMessageHistory, formatJson } from './output';
 
 // --- Helpers ---
 
-async function resolveSession(config: Config, creds: Credentials, sessionId: string): Promise<DecryptedSession> {
-    if (!sessionId || sessionId.trim().length === 0) {
-        throw new Error('Session ID is required');
+const SUPPORTED_AGENTS: SupportedAgent[] = ['claude', 'codex', 'gemini', 'openclaw'];
+
+function resolveByPrefix<T extends { id: string }>(items: T[], value: string, label: string): T {
+    if (!value || value.trim().length === 0) {
+        throw new Error(`${label} is required`);
     }
-    const sessions = await listSessions(config, creds);
-    const matches = sessions.filter(s => s.id.startsWith(sessionId));
+    const matches = items.filter(item => item.id.startsWith(value));
     if (matches.length === 0) {
-        throw new Error(`No session found matching "${sessionId}"`);
+        throw new Error(`No ${label.toLowerCase()} found matching "${value}"`);
     }
     if (matches.length > 1) {
-        throw new Error(`Ambiguous session ID "${sessionId}" matches ${matches.length} sessions. Be more specific.`);
+        throw new Error(`Ambiguous ${label.toLowerCase()} "${value}" matches ${matches.length} records. Be more specific.`);
     }
     return matches[0];
+}
+
+async function resolveSession(config: Config, creds: Credentials, sessionId: string): Promise<DecryptedSession> {
+    const sessions = await listSessions(config, creds);
+    return resolveByPrefix(sessions, sessionId, 'Session ID');
+}
+
+async function resolveMachine(config: Config, creds: Credentials, machineId: string): Promise<DecryptedMachine> {
+    const machines = await listMachines(config, creds);
+    return resolveByPrefix(machines, machineId, 'Machine ID');
 }
 
 function createClient(session: DecryptedSession, creds: Credentials, config: Config): SessionClient {
@@ -38,6 +51,38 @@ function createClient(session: DecryptedSession, creds: Credentials, config: Con
         serverUrl: config.serverUrl,
         initialAgentState: session.agentState ?? null,
     });
+}
+
+function resolveRemotePath(rawPath: string | undefined, machine: DecryptedMachine): string {
+    const metadata = (machine.metadata ?? {}) as { homeDir?: unknown };
+    const homeDir = typeof metadata.homeDir === 'string' && metadata.homeDir.trim().length > 0
+        ? metadata.homeDir
+        : undefined;
+    const path = rawPath ?? homeDir;
+
+    if (!path) {
+        throw new Error('Machine metadata does not include a home directory. Pass --path explicitly.');
+    }
+
+    if (path === '~') {
+        if (!homeDir) {
+            throw new Error('Machine metadata does not include a home directory, so `~` cannot be resolved. Pass an absolute --path.');
+        }
+        return homeDir;
+    }
+    if (path.startsWith('~/')) {
+        if (!homeDir) {
+            throw new Error('Machine metadata does not include a home directory, so `~/...` cannot be resolved. Pass an absolute --path.');
+        }
+        const normalizedHome = homeDir.endsWith('/') || homeDir.endsWith('\\')
+            ? homeDir.slice(0, -1)
+            : homeDir;
+        const separator = normalizedHome.includes('\\') && !normalizedHome.includes('/')
+            ? '\\'
+            : '/';
+        return join(normalizedHome, path.slice(2)).replaceAll('/', separator);
+    }
+    return path;
 }
 
 // --- CLI ---
@@ -70,6 +115,23 @@ program
             await authStatus(config);
         })
     );
+
+program
+    .command('machines')
+    .description('List all machines')
+    .option('--active', 'Show only active machines')
+    .option('--json', 'Output as JSON')
+    .action(async (opts: { active?: boolean; json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+        const machines = await listMachines(config, creds);
+        const filtered = opts.active ? machines.filter(machine => machine.active) : machines;
+        if (opts.json) {
+            console.log(formatJson(filtered));
+        } else {
+            console.log(formatMachineTable(filtered));
+        }
+    });
 
 program
     .command('list')
@@ -143,6 +205,70 @@ program
     });
 
 program
+    .command('spawn')
+    .description('Spawn a new session on a machine')
+    .requiredOption('--machine <machine-id>', 'Machine ID or prefix')
+    .option('--path <path>', 'Working directory path (defaults to machine home directory)')
+    .option('--agent <agent>', `Agent to start (${SUPPORTED_AGENTS.join(', ')})`, (value: string) => {
+        if (!SUPPORTED_AGENTS.includes(value as SupportedAgent)) {
+            throw new Error(`--agent must be one of: ${SUPPORTED_AGENTS.join(', ')}`);
+        }
+        return value as SupportedAgent;
+    })
+    .option('--create-dir', 'Allow creating the directory if it does not exist')
+    .option('--json', 'Output as JSON')
+    .action(async (opts: {
+        machine: string;
+        path?: string;
+        agent?: SupportedAgent;
+        createDir?: boolean;
+        json?: boolean;
+    }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+        const machine = await resolveMachine(config, creds, opts.machine);
+        const directory = resolveRemotePath(opts.path, machine);
+
+        const result = await spawnSessionOnMachine(config, machine, creds.token, {
+            directory,
+            approvedNewDirectoryCreation: opts.createDir,
+            agent: opts.agent,
+        });
+
+        const payload = {
+            machineId: machine.id,
+            directory,
+            agent: opts.agent ?? null,
+            ...result,
+        };
+
+        if (opts.json) {
+            console.log(formatJson(payload));
+            if (result.type !== 'success') {
+                process.exitCode = 1;
+            }
+            return;
+        }
+
+        switch (result.type) {
+            case 'success':
+                console.log([
+                    '## Session Spawned',
+                    '',
+                    `- Machine ID: \`${machine.id}\``,
+                    `- Session ID: \`${result.sessionId}\``,
+                    `- Path: ${directory}`,
+                    `- Agent: ${opts.agent ?? 'default'}`,
+                ].join('\n'));
+                break;
+            case 'requestToApproveDirectoryCreation':
+                throw new Error(`The directory '${result.directory}' does not exist. Re-run with --create-dir to allow creating it.`);
+            case 'error':
+                throw new Error(result.errorMessage);
+        }
+    });
+
+program
     .command('create')
     .description('Create a new session')
     .requiredOption('--tag <tag>', 'Session tag')
@@ -176,20 +302,23 @@ program
     .description('Send a message to a session')
     .argument('<session-id>', 'Session ID or prefix')
     .argument('<message>', 'Message text')
+    .option('--yolo', 'Send with permissionMode=yolo')
     .option('--wait', 'Wait for agent to become idle')
     .option('--json', 'Output as JSON')
-    .action(async (sessionId: string, message: string, opts: { wait?: boolean; json?: boolean }) => {
+    .action(async (sessionId: string, message: string, opts: { yolo?: boolean; wait?: boolean; json?: boolean }) => {
         const config = loadConfig();
         const creds = requireCredentials(config);
         const session = await resolveSession(config, creds, sessionId);
+        const permissionMode = opts.yolo ? 'yolo' : null;
 
         const client = createClient(session, creds, config);
         try {
             await client.waitForConnect();
-            client.sendMessage(message);
+            const completion = opts.wait ? client.waitForTurnCompletion() : null;
+            client.sendMessage(message, permissionMode ? { permissionMode } : undefined);
 
-            if (opts.wait) {
-                await client.waitForIdle();
+            if (completion) {
+                await completion;
             } else {
                 // Delay to allow the Socket.IO event to flush before closing
                 await new Promise(resolve => setTimeout(resolve, 500));
@@ -199,12 +328,13 @@ program
         }
 
         if (opts.json) {
-            console.log(formatJson({ sessionId: session.id, message, sent: true }));
+            console.log(formatJson({ sessionId: session.id, message, sent: true, permissionMode }));
         } else {
             console.log([
                 '## Message Sent',
                 '',
                 `- Session ID: \`${session.id}\``,
+                `- Permission Mode: ${permissionMode ?? 'default'}`,
                 `- Waited For Idle: ${opts.wait ? 'yes' : 'no'}`,
             ].join('\n'));
         }

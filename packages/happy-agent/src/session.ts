@@ -14,6 +14,76 @@ export type SessionClientOptions = {
     initialAgentState?: unknown | null;
 };
 
+type SessionContentEnvelope = {
+    role?: unknown;
+    content?: unknown;
+};
+
+function checkIdleState(
+    metadata: unknown | null,
+    agentState: unknown | null,
+): 'archived' | boolean {
+    const meta = metadata as Record<string, unknown> | null;
+    if (meta?.lifecycleState === 'archived') {
+        return 'archived';
+    }
+
+    const state = agentState as Record<string, unknown> | null;
+    if (!state) {
+        return false;
+    }
+    const controlledByUser = state.controlledByUser === true;
+    const requests = state.requests;
+    const hasRequests = requests != null
+        && typeof requests === 'object'
+        && !Array.isArray(requests)
+        && Object.keys(requests as Record<string, unknown>).length > 0;
+    return !controlledByUser && !hasRequests;
+}
+
+function getTurnEvent(content: unknown): { type: 'turn-start' | 'turn-end'; turnId: string | null } | null {
+    if (content == null || typeof content !== 'object' || Array.isArray(content)) {
+        return null;
+    }
+
+    const envelope = content as SessionContentEnvelope;
+    if (envelope.role !== 'session') {
+        return null;
+    }
+
+    const body = envelope.content as { turn?: unknown; ev?: { t?: unknown } } | null;
+    if (body == null || typeof body !== 'object' || Array.isArray(body)) {
+        return null;
+    }
+
+    if (body.ev?.t !== 'turn-start' && body.ev?.t !== 'turn-end') {
+        return null;
+    }
+
+    return {
+        type: body.ev.t,
+        turnId: typeof body.turn === 'string' ? body.turn : null,
+    };
+}
+
+function isReadyEvent(content: unknown): boolean {
+    if (content == null || typeof content !== 'object' || Array.isArray(content)) {
+        return false;
+    }
+
+    const envelope = content as SessionContentEnvelope;
+    if (envelope.role !== 'agent') {
+        return false;
+    }
+
+    const body = envelope.content as { type?: unknown; data?: { type?: unknown } } | null;
+    if (body == null || typeof body !== 'object' || Array.isArray(body)) {
+        return false;
+    }
+
+    return body.type === 'event' && body.data?.type === 'ready';
+}
+
 // --- SessionClient ---
 
 export class SessionClient extends EventEmitter {
@@ -174,30 +244,13 @@ export class SessionClient extends EventEmitter {
 
     waitForIdle(timeoutMs = 300_000): Promise<void> {
         return new Promise<void>((resolve, reject) => {
-            const checkIdle = (): 'archived' | boolean => {
-                // Check if session is archived (per plan: lifecycleState must not be 'archived')
-                const meta = this.metadata as Record<string, unknown> | null;
-                if (meta?.lifecycleState === 'archived') {
-                    return 'archived';
-                }
-
-                const state = this.agentState as Record<string, unknown> | null;
-                if (!state) {
-                    return false; // No state received yet, not known to be idle
-                }
-                const controlledByUser = state.controlledByUser === true;
-                const requests = state.requests;
-                const hasRequests = requests != null && typeof requests === 'object' && !Array.isArray(requests) && Object.keys(requests as Record<string, unknown>).length > 0;
-                return !controlledByUser && !hasRequests;
-            };
-
             const cleanup = () => {
                 clearTimeout(timeout);
                 this.removeListener('state-change', onStateChange);
                 this.removeListener('disconnected', onDisconnect);
             };
 
-            const result = checkIdle();
+            const result = checkIdleState(this.metadata, this.agentState);
             if (result === 'archived') {
                 reject(new Error('Session is archived'));
                 return;
@@ -213,7 +266,7 @@ export class SessionClient extends EventEmitter {
             }, timeoutMs);
 
             const onStateChange = () => {
-                const r = checkIdle();
+                const r = checkIdleState(this.metadata, this.agentState);
                 if (r === 'archived') {
                     cleanup();
                     reject(new Error('Session is archived'));
@@ -228,6 +281,84 @@ export class SessionClient extends EventEmitter {
                 reject(new Error('Socket disconnected while waiting for agent to become idle'));
             };
 
+            this.on('state-change', onStateChange);
+            this.on('disconnected', onDisconnect);
+        });
+    }
+
+    waitForTurnCompletion(timeoutMs = 300_000): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            let sawActivity = false;
+            let activeTurnId: string | null = null;
+            let sawTurnStart = false;
+            let sawNonReadyMessage = false;
+
+            const cleanup = () => {
+                clearTimeout(timeout);
+                this.removeListener('message', onMessage);
+                this.removeListener('state-change', onStateChange);
+                this.removeListener('disconnected', onDisconnect);
+            };
+
+            const finish = (error?: Error) => {
+                cleanup();
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve();
+                }
+            };
+
+            const timeout = setTimeout(() => {
+                finish(new Error('Timeout waiting for agent turn completion'));
+            }, timeoutMs);
+
+            const onMessage = (message: { content: unknown }) => {
+                sawActivity = true;
+
+                const turnEvent = getTurnEvent(message.content);
+                if (turnEvent) {
+                    if (turnEvent.type === 'turn-start') {
+                        sawTurnStart = true;
+                        sawNonReadyMessage = true;
+                        activeTurnId = turnEvent.turnId;
+                        return;
+                    }
+
+                    if (activeTurnId == null || turnEvent.turnId == null || turnEvent.turnId === activeTurnId) {
+                        finish();
+                    }
+                    return;
+                }
+
+                if (isReadyEvent(message.content)) {
+                    if (sawTurnStart || sawNonReadyMessage) {
+                        finish();
+                    }
+                    return;
+                }
+
+                sawNonReadyMessage = true;
+            };
+
+            const onStateChange = () => {
+                if (!sawActivity || sawTurnStart) {
+                    return;
+                }
+
+                const result = checkIdleState(this.metadata, this.agentState);
+                if (result === 'archived') {
+                    finish(new Error('Session is archived'));
+                } else if (result === true) {
+                    finish();
+                }
+            };
+
+            const onDisconnect = () => {
+                finish(new Error('Socket disconnected while waiting for agent turn completion'));
+            };
+
+            this.on('message', onMessage);
             this.on('state-change', onStateChange);
             this.on('disconnected', onDisconnect);
         });

@@ -1,11 +1,8 @@
 /**
- * Acceptance tests for happy-agent CLI — Task 10 verification.
+ * CLI smoke tests for happy-agent.
  *
- * Verifies:
- * 1. All 8 operations work: auth, create, send, stop, history, wait, status, list
- * 2. --json flag works on all applicable commands
- * 3. Error handling: no credentials, server unreachable, invalid session ID
- * 4. Interop: sessions with dataKey encryption (happy-agent) and legacy encryption (happy-cli)
+ * These are local command-shape and helper checks only.
+ * Real end-to-end coverage for auth + spawn lives in the integration test suite.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -123,9 +120,9 @@ function makeRawSessionLegacy(
     };
 }
 
-// --- Acceptance tests ---
+// --- Smoke tests ---
 
-describe('Acceptance: All 8 CLI operations', () => {
+describe('Smoke: CLI command surface', () => {
     describe('1. auth commands', () => {
         it('auth login help shows expected description', () => {
             const { stdout } = runCli('auth', 'login', '--help');
@@ -204,10 +201,11 @@ describe('Acceptance: All 8 CLI operations', () => {
     });
 
     describe('5. send command', () => {
-        it('shows help with session-id, message, --wait, --json', () => {
+        it('shows help with session-id, message, --yolo, --wait, --json', () => {
             const { stdout } = runCli('send', '--help');
             expect(stdout).toContain('session-id');
             expect(stdout).toContain('message');
+            expect(stdout).toContain('--yolo');
             expect(stdout).toContain('--wait');
             expect(stdout).toContain('--json');
         });
@@ -262,7 +260,7 @@ describe('Acceptance: All 8 CLI operations', () => {
     });
 });
 
-describe('Acceptance: --json flag on applicable commands', () => {
+describe('Smoke: --json flag on applicable commands', () => {
     it('list --json is documented in help', () => {
         const { stdout } = runCli('list', '--help');
         expect(stdout).toContain('--json');
@@ -300,7 +298,7 @@ describe('Acceptance: --json flag on applicable commands', () => {
     });
 });
 
-describe('Acceptance: Error handling', () => {
+describe('Smoke: Error handling', () => {
     describe('no credentials', () => {
         it('all authenticated commands fail with auth error message', () => {
             const commands = [
@@ -368,7 +366,7 @@ describe('Acceptance: Error handling', () => {
     });
 });
 
-describe('Acceptance: Interop — dataKey vs legacy encryption', () => {
+describe('Smoke: Interop — dataKey vs legacy encryption', () => {
     it('session created with dataKey encryption can be decrypted', () => {
         const creds = makeCredentials();
         const metadata = { tag: 'agent-session', path: '/home/user/project', host: 'laptop' };
@@ -466,7 +464,7 @@ describe('Acceptance: Interop — dataKey vs legacy encryption', () => {
     });
 });
 
-describe('Acceptance: Output formatting', () => {
+describe('Smoke: Output formatting', () => {
     it('formatSessionTable handles empty sessions list', () => {
         const result = formatSessionTable([]);
         expect(result).toContain('## Sessions');
@@ -518,7 +516,7 @@ describe('Acceptance: Output formatting', () => {
     });
 });
 
-describe('Acceptance: Full test suite runs', () => {
+describe('Smoke: Full test suite runs', () => {
     it('all encryption operations are functional', () => {
         // AES-256-GCM round-trip
         const aesKey = getRandomBytes(32);

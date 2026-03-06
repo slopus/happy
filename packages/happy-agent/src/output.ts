@@ -1,4 +1,4 @@
-import type { DecryptedSession, DecryptedMessage } from './api';
+import type { DecryptedMachine, DecryptedSession, DecryptedMessage } from './api';
 
 // --- Types ---
 
@@ -14,6 +14,19 @@ type SessionMetadata = {
 type AgentState = {
     controlledByUser?: boolean;
     requests?: Record<string, unknown>;
+    [key: string]: unknown;
+};
+
+type MachineMetadata = {
+    host?: string;
+    platform?: string;
+    homeDir?: string;
+    happyCliVersion?: string;
+    [key: string]: unknown;
+};
+
+type MachineState = {
+    status?: string;
     [key: string]: unknown;
 };
 
@@ -98,6 +111,33 @@ export function formatSessionTable(sessions: DecryptedSession[]): string {
     });
 
     return `## Sessions\n\n- Total: ${sessions.length}\n\n${sections.join('\n\n')}`;
+}
+
+export function formatMachineTable(machines: DecryptedMachine[]): string {
+    if (machines.length === 0) {
+        return '## Machines\n\n- Total: 0\n- Items: none';
+    }
+
+    const sections = machines.map((machine, index) => {
+        const metadata = (machine.metadata ?? {}) as MachineMetadata;
+        const daemonState = (machine.daemonState ?? null) as MachineState | null;
+        const host = normalizeListValue(toNonEmptyString(metadata.host) ?? '-');
+        const platform = normalizeListValue(toNonEmptyString(metadata.platform) ?? '-');
+        const status = machine.active ? (toNonEmptyString(daemonState?.status) ?? 'online') : 'offline';
+        const homeDir = normalizeListValue(toNonEmptyString(metadata.homeDir) ?? '-');
+
+        return [
+            `### Machine ${index + 1}`,
+            `- ID: ${toMarkdownInline(machine.id)}`,
+            `- Host: ${host}`,
+            `- Platform: ${platform}`,
+            `- Status: ${status}`,
+            `- Home: ${homeDir}`,
+            `- Last Active: ${normalizeListValue(formatLastActive(machine.activeAt))}`,
+        ].join('\n');
+    });
+
+    return `## Machines\n\n- Total: ${machines.length}\n\n${sections.join('\n\n')}`;
 }
 
 // --- Session status formatting ---
