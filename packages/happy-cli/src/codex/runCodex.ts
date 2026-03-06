@@ -121,6 +121,9 @@ export async function runCodex(opts: {
     // Permission handler declared here so it can be updated in onSessionSwap callback
     // (assigned later at line ~385 after client setup)
     let permissionHandler: CodexPermissionHandler;
+    let client!: CodexAppServerClient;
+    let reasoningProcessor!: ReasoningProcessor;
+    let abortInProgress: Promise<void> | null = null;
     const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
         api,
         sessionTag,
@@ -249,18 +252,50 @@ export async function runCodex(opts: {
      * happening but keeps the session alive for new prompts.
      */
     async function handleAbort() {
-        logger.debug('[Codex] Abort requested - stopping current task');
-        try {
-            // Interrupt the active turn (no-op if no turn active)
-            await client.interruptTurn();
-            reasoningProcessor.abort();
-            logger.debug('[Codex] Abort completed - session remains active');
-        } catch (error) {
-            logger.debug('[Codex] Error during abort:', error);
+        if (abortInProgress) {
+            await abortInProgress;
+            return;
         }
-        // Wake up message queue wait if idle
-        abortController.abort();
-        abortController = new AbortController();
+
+        logger.debug('[Codex] Abort requested - stopping current task');
+        abortInProgress = (async () => {
+            try {
+                // Resolve any pending permission requests as 'abort' first.
+                if (permissionHandler) {
+                    permissionHandler.abortAll();
+                }
+
+                // Request interruption, then force-restart Codex app-server if
+                // it doesn't settle quickly (long-running shell commands).
+                if (client) {
+                    const abortResult = await client.abortTurnWithFallback({
+                        gracePeriodMs: 3000,
+                        forceRestartOnTimeout: true,
+                    });
+                    if (abortResult.forcedRestart) {
+                        logger.warn('[Codex] Forced app-server restart after interrupt timeout');
+                        session.sendSessionEvent({
+                            type: 'message',
+                            message: 'Force-stopped active task after interrupt timeout. Codex backend was restarted.',
+                        });
+                    }
+                }
+
+                if (reasoningProcessor) {
+                    reasoningProcessor.abort();
+                }
+                logger.debug('[Codex] Abort completed - session remains active');
+            } catch (error) {
+                logger.debug('[Codex] Error during abort:', error);
+            } finally {
+                // Wake up message queue wait if idle
+                abortController.abort();
+                abortController = new AbortController();
+            }
+        })();
+
+        await abortInProgress;
+        abortInProgress = null;
     }
 
     /**
@@ -354,10 +389,10 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
-    const client = new CodexAppServerClient(sandboxConfig);
+    client = new CodexAppServerClient(sandboxConfig);
 
     permissionHandler = new CodexPermissionHandler(session);
-    const reasoningProcessor = new ReasoningProcessor((message) => {
+    reasoningProcessor = new ReasoningProcessor((message) => {
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
         for (const envelope of envelopes) {
             session.sendSessionProtocolMessage(envelope);

@@ -22,9 +22,9 @@ import type { ReviewDecision, EventMsg } from "./codexAppServerTypes";
 
 const DEFAULT_MODEL = "gpt-5.2-codex";
 
-type PermissionPolicy = "approve" | "deny" | "cancel";
+type PermissionPolicy = "approve" | "deny" | "cancel" | "hold";
 
-function policyToDecision(policy: PermissionPolicy): ReviewDecision {
+function policyToDecision(policy: Exclude<PermissionPolicy, "hold">): ReviewDecision {
     switch (policy) {
         case "approve":
             return "approved";
@@ -66,6 +66,7 @@ interface CodexEvent {
 class CodexDriver {
     private client: CodexAppServerClient;
     private threadStarted = false;
+    private heldApprovals: Array<(decision: ReviewDecision) => void> = [];
 
     events: CodexEvent[] = [];
     permissionPolicy: PermissionPolicy = "approve";
@@ -80,7 +81,33 @@ class CodexDriver {
 
         this.client.setApprovalHandler(async () => {
             this.permissionCount++;
+            if (this.permissionPolicy === "hold") {
+                return new Promise<ReviewDecision>((resolve) => {
+                    this.heldApprovals.push(resolve);
+                });
+            }
             return policyToDecision(this.permissionPolicy);
+        });
+    }
+
+    resolveHeldApprovals(decision: ReviewDecision): void {
+        for (const resolve of this.heldApprovals) {
+            resolve(decision);
+        }
+        this.heldApprovals = [];
+    }
+
+    /**
+     * Interrupt the active turn — mirrors the production handleAbort() flow:
+     * 1. Resolve pending approvals as 'abort' (like permissionHandler.abortAll())
+     * 2. Request turn interruption
+     * 3. Force-restart app-server if interrupt does not settle in time
+     */
+    async interrupt(): Promise<void> {
+        this.resolveHeldApprovals("abort");
+        await this.client.abortTurnWithFallback({
+            gracePeriodMs: 3_000,
+            forceRestartOnTimeout: true,
         });
     }
 
@@ -227,6 +254,75 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
 
             const text = driver.getMessages().join(" ").toLowerCase();
             expect(text).toContain("blue-falcon-42");
+        });
+
+        it("should abort turn via interruptTurn while permission is pending", async () => {
+            driver = new CodexDriver();
+            await driver.connect();
+
+            // Hold permissions — simulates user not responding to approval
+            driver.permissionPolicy = "hold";
+
+            const turnPromise = driver.send(
+                'Create a file called /tmp/codex-interrupt-test.txt with the text "hello". Use a shell command.',
+                { approvalPolicy: "on-request", sandbox: "read-only" }
+            );
+
+            // Wait for a permission request to arrive
+            const deadline = Date.now() + 30_000;
+            while (driver.permissionCount === 0 && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 100));
+            }
+            expect(driver.permissionCount).toBeGreaterThan(0);
+
+            // Simulate the web app abort button: abort held approvals + interrupt turn
+            await driver.interrupt();
+
+            const result = await turnPromise;
+            expect(result.aborted).toBe(true);
+            expect(result.elapsed_ms).toBeLessThan(30_000);
+        });
+
+        it("should preserve context when continuing after interruptTurn abort", async () => {
+            driver = new CodexDriver();
+            await driver.connect();
+
+            // Turn 1: establish context with a mundane phrase
+            driver.permissionPolicy = "approve";
+            await driver.send(
+                'The project codename is "golden-phoenix-77". Confirm by repeating the project codename. Do NOT use any tools or run any commands.',
+                { approvalPolicy: "on-request", sandbox: "read-only" }
+            );
+            expect(driver.getMessages().join(" ").toLowerCase()).toContain("golden-phoenix-77");
+
+            // Turn 2: hold permission, then abort via interruptTurn
+            driver.clearEvents();
+            driver.permissionPolicy = "hold";
+
+            const abortedTurn = driver.continue(
+                'Run this exact shell command: printf "test" > /tmp/codex-interrupt-context.txt',
+                { approvalPolicy: "on-request", sandbox: "read-only" }
+            );
+
+            const deadline = Date.now() + 30_000;
+            while (driver.permissionCount === 0 && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 100));
+            }
+            expect(driver.permissionCount).toBeGreaterThan(0);
+
+            await driver.interrupt();
+            const r2 = await abortedTurn;
+            expect(r2.aborted).toBe(true);
+
+            // Turn 3: context must be preserved — Codex should remember the project name
+            driver.clearEvents();
+            driver.permissionPolicy = "approve";
+            await driver.continue(
+                "What was the project codename I mentioned earlier? Reply with just the codename."
+            );
+
+            const text = driver.getMessages().join(" ").toLowerCase();
+            expect(text).toContain("golden-phoenix-77");
         });
     }
 );

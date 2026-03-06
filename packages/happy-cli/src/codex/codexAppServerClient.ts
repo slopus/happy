@@ -32,6 +32,7 @@ type PendingRequest = {
     resolve: (result: unknown) => void;
     reject: (error: Error) => void;
     method: string;
+    epoch: number;
 };
 
 export type ApprovalHandler = (params: {
@@ -65,6 +66,7 @@ export class CodexAppServerClient {
     private readline: ReadlineInterface | null = null;
     private nextId = 1;
     private pending = new Map<number, PendingRequest>();
+    private processEpoch = 0;
     private connected = false;
     private sandboxConfig?: SandboxConfig;
     private sandboxCleanup: (() => Promise<void>) | null = null;
@@ -74,8 +76,17 @@ export class CodexAppServerClient {
     private _threadId: string | null = null;
     private _turnId: string | null = null;
 
-    // Turn completion tracking — resolved when task_complete or turn_aborted arrives
-    private turnCompleteResolve: ((aborted: boolean) => void) | null = null;
+    // Turn completion tracking for the currently active sendTurnAndWait call.
+    // A completion event only resolves once we have seen task_started for this turn.
+    private pendingTurnCompletion: {
+        resolve: (aborted: boolean) => void;
+        started: boolean;
+        turnId: string | null;
+    } | null = null;
+
+    // Tracks in-flight interruptTurn() RPCs so sendTurnAndWait can wait for them
+    // before starting a new turn (prevents stale turn/interrupt from aborting the next turn).
+    private pendingInterrupt: Promise<void> | null = null;
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -150,39 +161,48 @@ export class CodexAppServerClient {
 
         logger.debug(`[CodexAppServer] Spawning: ${command} ${args.join(' ')}`);
 
-        this.process = spawn(command, args, {
+        const epoch = ++this.processEpoch;
+        const proc = spawn(command, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             env,
         });
+        this.process = proc;
 
-        this.process.on('error', (err) => {
+        proc.on('error', (err) => {
             logger.debug('[CodexAppServer] Process error:', err);
         });
 
-        this.process.on('exit', (code, signal) => {
+        proc.on('exit', (code, signal) => {
             logger.debug(`[CodexAppServer] Process exited: code=${code} signal=${signal}`);
+            // Ignore stale process exits from prior generations during reconnect.
+            if (this.process !== proc || this.processEpoch !== epoch) {
+                logger.debug('[CodexAppServer] Ignoring stale process exit');
+                return;
+            }
             this.connected = false;
             // Reject all pending requests
             for (const [id, req] of this.pending) {
+                if (req.epoch !== epoch) continue;
                 req.reject(new Error(`Codex process exited (code=${code}) while waiting for ${req.method}`));
                 this.pending.delete(id);
             }
             // Resolve pending turn completion (treat as abort)
-            if (this.turnCompleteResolve) {
-                this.turnCompleteResolve(true);
-                this.turnCompleteResolve = null;
-            }
+            this.resolvePendingTurn(true);
         });
 
         // Pipe stderr for debug logging
-        this.process.stderr?.on('data', (chunk: Buffer) => {
+        proc.stderr?.on('data', (chunk: Buffer) => {
+            if (this.process !== proc || this.processEpoch !== epoch) return;
             const text = chunk.toString().trim();
             if (text) logger.debug(`[CodexAppServer:stderr] ${text}`);
         });
 
         // Parse newline-delimited JSON from stdout
-        this.readline = createInterface({ input: this.process.stdout! });
-        this.readline.on('line', (line) => this.handleLine(line));
+        this.readline = createInterface({ input: proc.stdout! });
+        this.readline.on('line', (line) => {
+            if (this.process !== proc || this.processEpoch !== epoch) return;
+            this.handleLine(line, epoch);
+        });
 
         // Perform initialize handshake
         const initParams: InitializeParams = {
@@ -202,15 +222,17 @@ export class CodexAppServerClient {
     async disconnect(): Promise<void> {
         if (!this.connected && !this.process) return;
 
-        const pid = this.process?.pid;
+        const proc = this.process;
+        const pid = proc?.pid;
+        const epoch = this.processEpoch;
         logger.debug(`[CodexAppServer] Disconnecting; pid=${pid ?? 'none'}`);
 
         this.readline?.close();
         this.readline = null;
 
         try {
-            this.process?.stdin?.end();
-            this.process?.kill('SIGTERM');
+            proc?.stdin?.end();
+            proc?.kill('SIGTERM');
         } catch { /* ignore */ }
 
         // Force kill after 2s (unref so timer doesn't block process exit)
@@ -229,11 +251,15 @@ export class CodexAppServerClient {
         this._threadId = null;
         this._turnId = null;
 
-        // Resolve pending turn completion (treat as abort)
-        if (this.turnCompleteResolve) {
-            this.turnCompleteResolve(true);
-            this.turnCompleteResolve = null;
+        // Fail in-flight requests from this process generation.
+        for (const [id, req] of this.pending) {
+            if (req.epoch !== epoch) continue;
+            req.reject(new Error(`Codex process disconnected while waiting for ${req.method}`));
+            this.pending.delete(id);
         }
+
+        // Resolve pending turn completion (treat as abort)
+        this.resolvePendingTurn(true);
 
         if (this.sandboxCleanup) {
             try { await this.sandboxCleanup(); } catch { /* ignore */ }
@@ -274,6 +300,97 @@ export class CodexAppServerClient {
     }
 
     // ─── Turn management ────────────────────────────────────────
+
+    /** Default grace period after interrupt before forcing a restart (ms). */
+    private static readonly ABORT_GRACE_MS = 3_000;
+
+    private hasPendingTurnCompletion(): boolean {
+        return this.pendingTurnCompletion !== null;
+    }
+
+    private resolvePendingTurn(aborted: boolean): void {
+        if (!this.pendingTurnCompletion) return;
+        this.pendingTurnCompletion.resolve(aborted);
+        this.pendingTurnCompletion = null;
+    }
+
+    private markPendingTurnStarted(turnId?: string | null): void {
+        if (!this.pendingTurnCompletion) return;
+        this.pendingTurnCompletion.started = true;
+        if (turnId) {
+            this.pendingTurnCompletion.turnId = turnId;
+        }
+    }
+
+    private tryResolvePendingTurn(aborted: boolean, turnId: string | null, source: string): void {
+        const pending = this.pendingTurnCompletion;
+        if (!pending) return;
+
+        // Guard against stale completion notifications from the prior turn.
+        if (!pending.started) {
+            logger.debug(`[CodexAppServer] Ignoring ${source} before task_started`);
+            return;
+        }
+
+        if (pending.turnId && turnId && pending.turnId !== turnId) {
+            logger.debug(
+                `[CodexAppServer] Ignoring ${source} for turn ${turnId}; awaiting ${pending.turnId}`,
+            );
+            return;
+        }
+
+        this.resolvePendingTurn(aborted);
+    }
+
+    private async waitForTurnCompletion(timeoutMs: number): Promise<boolean> {
+        if (!this.hasPendingTurnCompletion()) {
+            return true;
+        }
+
+        const deadline = Date.now() + Math.max(0, timeoutMs);
+        while (this.hasPendingTurnCompletion()) {
+            if (Date.now() >= deadline) {
+                return false;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return true;
+    }
+
+    /**
+     * Request turn interruption and optionally force-restart the app-server if
+     * the turn does not settle within a short grace period.
+     */
+    async abortTurnWithFallback(opts?: {
+        gracePeriodMs?: number;
+        forceRestartOnTimeout?: boolean;
+    }): Promise<{ hadActiveTurn: boolean; aborted: boolean; forcedRestart: boolean }> {
+        const hadActiveTurn = this.hasPendingTurnCompletion();
+
+        // No active turn pending in this client call-site.
+        if (!hadActiveTurn) {
+            return { hadActiveTurn: false, aborted: false, forcedRestart: false };
+        }
+
+        // Best-effort interrupt request first.
+        await this.interruptTurn();
+
+        const gracePeriodMs = opts?.gracePeriodMs ?? CodexAppServerClient.ABORT_GRACE_MS;
+        const settled = await this.waitForTurnCompletion(gracePeriodMs);
+        if (settled) {
+            return { hadActiveTurn: true, aborted: true, forcedRestart: false };
+        }
+
+        const shouldForceRestart = opts?.forceRestartOnTimeout ?? true;
+        if (!shouldForceRestart) {
+            return { hadActiveTurn: true, aborted: false, forcedRestart: false };
+        }
+
+        logger.warn(`[CodexAppServer] interrupt did not settle turn in ${gracePeriodMs}ms; force-restarting app-server`);
+        await this.disconnect();
+        await this.connect();
+        return { hadActiveTurn: true, aborted: true, forcedRestart: true };
+    }
 
     /**
      * Send a user turn and wait for it to complete.
@@ -340,17 +457,31 @@ export class CodexAppServerClient {
         effort?: ReasoningEffort;
         turnTimeoutMs?: number;
     }): Promise<{ aborted: boolean }> {
+        // Wait for any in-flight interruptTurn() to complete before starting a new
+        // turn. Otherwise the stale turn/interrupt RPC can reach Codex after our
+        // turn/start and abort the wrong turn.
+        if (this.pendingInterrupt) {
+            await this.pendingInterrupt;
+            // Yield to the event loop so any stale turn_aborted/task_complete
+            // notifications queued by the interrupted turn are processed now
+            // (harmlessly, since pendingTurnCompletion is null at this point).
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
         const timeoutMs = opts?.turnTimeoutMs ?? CodexAppServerClient.TURN_TIMEOUT_MS;
         let timer: ReturnType<typeof setTimeout> | null = null;
 
         const completion = new Promise<boolean>((resolve) => {
-            this.turnCompleteResolve = resolve;
+            this.pendingTurnCompletion = {
+                resolve,
+                started: false,
+                turnId: null,
+            };
 
             timer = setTimeout(() => {
-                if (this.turnCompleteResolve) {
+                if (this.pendingTurnCompletion) {
                     logger.warn(`[CodexAppServer] Turn timed out after ${timeoutMs}ms — treating as abort`);
-                    this.turnCompleteResolve(true);
-                    this.turnCompleteResolve = null;
+                    this.resolvePendingTurn(true);
                 }
             }, timeoutMs);
         });
@@ -359,7 +490,7 @@ export class CodexAppServerClient {
             await this.sendTurn(prompt, opts);
         } catch (err) {
             if (timer) clearTimeout(timer);
-            this.turnCompleteResolve = null;
+            this.pendingTurnCompletion = null;
             throw err;
         }
 
@@ -373,12 +504,18 @@ export class CodexAppServerClient {
         const params: InterruptConversationParams = {
             threadId: this._threadId,
         };
-        try {
-            await this.request('turn/interrupt', params);
-        } catch (err) {
-            // Ignore if no turn is active
-            logger.debug('[CodexAppServer] interruptTurn error (may be expected):', err);
-        }
+        const doInterrupt = async () => {
+            try {
+                await this.request('turn/interrupt', params);
+            } catch (err) {
+                // Ignore if no turn is active
+                logger.debug('[CodexAppServer] interruptTurn error (may be expected):', err);
+            } finally {
+                this.pendingInterrupt = null;
+            }
+        };
+        this.pendingInterrupt = doInterrupt();
+        return this.pendingInterrupt;
     }
 
     // ─── State queries ──────────────────────────────────────────
@@ -410,6 +547,7 @@ export class CodexAppServerClient {
                 resolve: (result) => { clearTimeout(timer); resolve(result); },
                 reject: (err) => { clearTimeout(timer); reject(err); },
                 method,
+                epoch: this.processEpoch,
             });
 
             const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, params };
@@ -433,7 +571,10 @@ export class CodexAppServerClient {
         logger.debug(`[CodexAppServer] → response (id=${id})`);
     }
 
-    private handleLine(line: string): void {
+    private handleLine(line: string, sourceEpoch: number = this.processEpoch): void {
+        if (sourceEpoch !== this.processEpoch) {
+            return;
+        }
         if (!line.trim()) return;
 
         let msg: any;
@@ -448,6 +589,10 @@ export class CodexAppServerClient {
         if (msg.id != null && (msg.result !== undefined || msg.error !== undefined)) {
             const pending = this.pending.get(msg.id);
             if (pending) {
+                if (pending.epoch !== sourceEpoch) {
+                    logger.debug(`[CodexAppServer] Ignoring response from stale epoch for id=${msg.id}`);
+                    return;
+                }
                 this.pending.delete(msg.id);
                 if (msg.error) {
                     pending.reject(new Error(`${pending.method}: ${msg.error.message} (code=${msg.error.code})`));
@@ -549,24 +694,37 @@ export class CodexAppServerClient {
                 if (msg.type === 'task_started' && msg.turn_id) {
                     this._turnId = msg.turn_id;
                 }
+                if (msg.type === 'task_started') {
+                    this.markPendingTurnStarted(msg.turn_id ?? msg.turnId ?? null);
+                }
                 // Fire event handler first (so consumer processes the event)
                 this.eventHandler?.(msg);
                 // Then resolve turn completion promise
                 if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
-                    if (this.turnCompleteResolve) {
-                        this.turnCompleteResolve(msg.type === 'turn_aborted');
-                        this.turnCompleteResolve = null;
-                    }
+                    this.tryResolvePendingTurn(
+                        msg.type === 'turn_aborted',
+                        msg.turn_id ?? msg.turnId ?? null,
+                        `codex/event/${msg.type}`,
+                    );
                 }
             }
             return;
         }
 
-        // v2 lifecycle notifications — log but don't process (our event handler
-        // already gets task_started/task_complete via codex/event)
+        // v2 lifecycle notifications
         if (method === 'thread/started' || method === 'turn/started' ||
             method === 'turn/completed' || method === 'thread/status/changed') {
             logger.debug(`[CodexAppServer] Lifecycle notification: ${method}`);
+            // turn/completed is a fallback signal — for mid-inference interrupts,
+            // Codex may only signal completion here (not via codex/event turn_aborted).
+            if (method === 'turn/completed') {
+                const aborted = params?.status === 'cancelled' || params?.status === 'aborted';
+                this.tryResolvePendingTurn(
+                    aborted,
+                    params?.turnId ?? params?.turn_id ?? null,
+                    method,
+                );
+            }
             return;
         }
 

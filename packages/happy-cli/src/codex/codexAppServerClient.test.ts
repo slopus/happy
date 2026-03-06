@@ -38,8 +38,9 @@ vi.mock('../package.json', () => ({
 }));
 
 // Mock child process with stdin/stdout/stderr
-function createMockProcess() {
+function createMockProcess(opts?: { pid?: number; initializeDelayMs?: number }) {
     const { Readable, Writable } = require('stream');
+    const initializeDelayMs = opts?.initializeDelayMs ?? 5;
     const stdin = new Writable({ write: (_: any, __: any, cb: () => void) => cb() });
     const stdout = new Readable({ read() {} });
     const stderr = new Readable({ read() {} });
@@ -47,7 +48,7 @@ function createMockProcess() {
         stdin,
         stdout,
         stderr,
-        pid: 12345,
+        pid: opts?.pid ?? 12345,
         kill: vi.fn(),
     });
     // Send initialize response immediately when stdin is written to
@@ -59,7 +60,7 @@ function createMockProcess() {
                 // Send response on next tick
                 setTimeout(() => {
                     stdout.push(JSON.stringify({ id: msg.id, result: { userAgent: 'test' } }) + '\n');
-                }, 5);
+                }, initializeDelayMs);
             }
         } catch {}
         return origWrite(data, ...args);
@@ -171,6 +172,28 @@ describe('CodexAppServerClient sandbox integration', () => {
             }),
         );
 
+        await client.disconnect();
+    });
+
+    it('ignores stale process exit during reconnect initialize', async () => {
+        const proc1 = createMockProcess({ pid: 1001, initializeDelayMs: 5 });
+        const proc2 = createMockProcess({ pid: 1002, initializeDelayMs: 50 });
+        mockSpawn
+            .mockImplementationOnce(() => proc1)
+            .mockImplementationOnce(() => proc2);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.disconnect();
+
+        const reconnect = client.connect();
+        setTimeout(() => {
+            proc1.emit('exit', 0, null);
+        }, 10);
+
+        await expect(reconnect).resolves.toBeUndefined();
         await client.disconnect();
     });
 });

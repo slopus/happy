@@ -138,6 +138,51 @@ export abstract class BasePermissionHandler {
     }
 
     /**
+     * Abort all pending permission requests.
+     * Unlike reset(), this resolves (not rejects) pending promises with { decision: 'abort' },
+     * causing the approval response to send 'cancel' to the provider. This is used when the
+     * user presses the abort/stop button — it unblocks any pending tool approval so the provider
+     * can process the turn cancellation.
+     */
+    abortAll(): void {
+        const pendingSnapshot = Array.from(this.pendingRequests.entries());
+        if (pendingSnapshot.length === 0) return;
+
+        this.pendingRequests.clear();
+
+        for (const [id, pending] of pendingSnapshot) {
+            try {
+                pending.resolve({ decision: 'abort' });
+            } catch (err) {
+                logger.debug(`${this.getLogPrefix()} Error resolving aborted request ${id}:`, err);
+            }
+        }
+
+        // Move pending requests to completed as canceled in agent state
+        this.session.updateAgentState((currentState) => {
+            const pendingRequests = currentState.requests || {};
+            const completedRequests = { ...currentState.completedRequests };
+
+            for (const [id, request] of Object.entries(pendingRequests)) {
+                completedRequests[id] = {
+                    ...request,
+                    completedAt: Date.now(),
+                    status: 'canceled',
+                    reason: 'Aborted by user'
+                };
+            }
+
+            return {
+                ...currentState,
+                requests: {},
+                completedRequests
+            };
+        });
+
+        logger.debug(`${this.getLogPrefix()} Aborted ${pendingSnapshot.length} pending permission(s)`);
+    }
+
+    /**
      * Reset state for new sessions.
      * This method is idempotent - safe to call multiple times.
      */
