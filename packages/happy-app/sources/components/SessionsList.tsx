@@ -15,20 +15,19 @@ import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListView
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { t } from '@/text';
-import { useRouter } from 'expo-router';
-import { Item } from './Item';
-import { ItemGroup } from './ItemGroup';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { sessionDelete } from '@/sync/ops';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
+import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
+import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -200,11 +199,8 @@ export function SessionsList() {
     const data = useVisibleSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
-    const navigateToSession = useNavigateToSession();
     const compactSessionView = useSetting('compactSessionView');
-    const router = useRouter();
     const selectable = isTablet;
-    const experiments = useSetting('experiments');
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
             ...item,
@@ -335,9 +331,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
-    const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
+    const triggerRef = React.useRef<View | null>(null);
+    const suppressPressUntilRef = React.useRef(0);
     const swipeEnabled = Platform.OS !== 'web';
+    const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     const [deletingSession, performDelete] = useHappyAction(async () => {
         const result = await sessionDelete(session.id);
@@ -366,6 +364,55 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         return getSessionAvatarId(session);
     }, [session]);
 
+    const openActionsFromTrigger = React.useCallback(() => {
+        if (!triggerRef.current) {
+            return;
+        }
+
+        suppressPressUntilRef.current = Date.now() + 750;
+        triggerRef.current.measureInWindow((x, y, width, height) => {
+            setActionsAnchor({
+                type: 'rect',
+                x,
+                y,
+                width,
+                height,
+            });
+        });
+    }, []);
+
+    const handleContextMenu = React.useCallback((event: any) => {
+        event.preventDefault?.();
+        setActionsAnchor({
+            type: 'point',
+            x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,
+            y: event.nativeEvent.clientY ?? event.nativeEvent.pageY ?? 0,
+        });
+    }, []);
+
+    const handleKeyDown = React.useCallback((event: any) => {
+        const key = event.nativeEvent?.key;
+        const shiftKey = !!event.nativeEvent?.shiftKey;
+        if (key === 'ContextMenu' || (shiftKey && key === 'F10')) {
+            event.preventDefault?.();
+            openActionsFromTrigger();
+        }
+    }, [openActionsFromTrigger]);
+
+    const handlePress = React.useCallback(() => {
+        if (Date.now() < suppressPressUntilRef.current) {
+            return;
+        }
+        navigateToSession(session.id);
+    }, [navigateToSession, session.id]);
+
+    const webMenuProps = Platform.OS === 'web' ? {
+        'aria-expanded': !!actionsAnchor,
+        'aria-haspopup': 'menu',
+        onContextMenu: handleContextMenu,
+        onKeyDown: handleKeyDown,
+    } as any : {};
+
     const itemContent = (
         <Pressable
             style={[
@@ -375,16 +422,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
             ]}
-            onPressIn={() => {
-                if (isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
-            onPress={() => {
-                if (!isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
+            onLongPress={Platform.OS === 'web' ? openActionsFromTrigger : undefined}
+            onPress={handlePress}
+            {...webMenuProps}
         >
             <View style={styles.avatarContainer}>
                 <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
@@ -436,11 +476,24 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             isFirst ? styles.sessionItemContainerFirst :
                 isLast ? styles.sessionItemContainerLast : {}
     ];
+    const wrappedItemContent = (
+        <SessionActionsNativeMenu session={session}>
+            {itemContent}
+        </SessionActionsNativeMenu>
+    );
 
     if (!swipeEnabled) {
         return (
-            <View style={containerStyles}>
-                {itemContent}
+            <View collapsable={false} ref={triggerRef} style={containerStyles}>
+                {wrappedItemContent}
+                {Platform.OS === 'web' && (
+                    <SessionActionsPopover
+                        anchor={actionsAnchor}
+                        onClose={() => setActionsAnchor(null)}
+                        session={session}
+                        visible={!!actionsAnchor}
+                    />
+                )}
             </View>
         );
     }
@@ -459,15 +512,23 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     );
 
     return (
-        <View style={containerStyles}>
+        <View collapsable={false} ref={triggerRef} style={containerStyles}>
             <Swipeable
                 ref={swipeableRef}
                 renderRightActions={renderRightActions}
                 overshootRight={false}
                 enabled={!deletingSession}
             >
-                {itemContent}
+                {wrappedItemContent}
             </Swipeable>
+            {Platform.OS === 'web' && (
+                <SessionActionsPopover
+                    anchor={actionsAnchor}
+                    onClose={() => setActionsAnchor(null)}
+                    session={session}
+                    visible={!!actionsAnchor}
+                />
+            )}
         </View>
     );
 });

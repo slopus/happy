@@ -12,6 +12,7 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
@@ -50,6 +51,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+    const [sessionActionsAnchor, setSessionActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -125,6 +127,18 @@ export const SessionView = React.memo((props: { id: string }) => {
                     <ChatHeaderView
                         {...headerProps}
                         onBackPress={() => router.back()}
+                        avatarMenuExpanded={Platform.OS === 'web' && !!sessionActionsAnchor}
+                        avatarMenuSession={session}
+                        onAfterAvatarArchive={() => {
+                            setSessionActionsAnchor(null);
+                            router.replace('/');
+                        }}
+                        onAfterAvatarBugReport={() => setSessionActionsAnchor(null)}
+                        onAfterAvatarDelete={() => {
+                            setSessionActionsAnchor(null);
+                            router.replace('/');
+                        }}
+                        onAvatarMenuRequest={Platform.OS === 'web' && session ? setSessionActionsAnchor : undefined}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (
@@ -152,6 +166,22 @@ export const SessionView = React.memo((props: { id: string }) => {
                     <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
                 )}
             </View>
+            {Platform.OS === 'web' && session && (
+                <SessionActionsPopover
+                    anchor={sessionActionsAnchor}
+                    onAfterArchive={() => {
+                        setSessionActionsAnchor(null);
+                        router.replace('/');
+                    }}
+                    onAfterDelete={() => {
+                        setSessionActionsAnchor(null);
+                        router.replace('/');
+                    }}
+                    onClose={() => setSessionActionsAnchor(null)}
+                    session={session}
+                    visible={!!sessionActionsAnchor}
+                />
+            )}
         </>
     );
 });

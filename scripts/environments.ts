@@ -115,6 +115,10 @@ function writeEnvironmentConfig(config: EnvironmentConfig) {
         configPath,
         JSON.stringify({ ...config, cliCommand: buildCliCommand(envDir) }, null, 4) + "\n"
     );
+    fs.writeFileSync(
+        path.join(envDir, "env.sh"),
+        buildEnvSh(config.name, envDir, config.serverPort, config.expoPort),
+    );
 }
 
 function listEnvironments(): string[] {
@@ -131,6 +135,31 @@ function isPortInUse(port: number): boolean {
         return result.trim().length > 0;
     } catch {
         return false;
+    }
+}
+
+function readDevAuth(envDir: string): { secret: string; token: string } | null {
+    const accessKeyPath = path.join(envDir, "cli", "home", "access.key");
+    if (!fs.existsSync(accessKeyPath)) {
+        return null;
+    }
+
+    try {
+        const credentials = JSON.parse(fs.readFileSync(accessKeyPath, "utf-8")) as {
+            secret?: string;
+            token?: string;
+        };
+
+        if (!credentials.secret || !credentials.token) {
+            return null;
+        }
+
+        return {
+            token: credentials.token,
+            secret: Buffer.from(credentials.secret, "base64").toString("base64url"),
+        };
+    } catch {
+        return null;
     }
 }
 
@@ -241,10 +270,6 @@ async function commandNew() {
         template: "empty",
     };
     writeEnvironmentConfig(config);
-
-    // Write env.sh
-    const envSh = buildEnvSh(name, envDir, serverPort, expoPort);
-    fs.writeFileSync(path.join(envDir, "env.sh"), envSh);
 
     // Run migration
     console.log(`Running database migration for ${name}...`);
@@ -466,6 +491,8 @@ function commandRun(service: string) {
 // ============================================================================
 
 function buildEnvVars(envDir: string, serverPort: number, expoPort: number): Record<string, string> {
+    const devAuth = readDevAuth(envDir);
+
     return {
         // Server
         HANDY_MASTER_SECRET: "happy-dev-secret",
@@ -489,6 +516,10 @@ function buildEnvVars(envDir: string, serverPort: number, expoPort: number): Rec
         HAPPY_HOME_DIR: path.join(envDir, "cli", "home"),
         HAPPY_VARIANT: "dev",
         DEBUG: "1",
+        ...(devAuth ? {
+            EXPO_PUBLIC_DEV_TOKEN: devAuth.token,
+            EXPO_PUBLIC_DEV_SECRET: devAuth.secret,
+        } : {}),
     };
 }
 
@@ -517,6 +548,10 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
     lines.push(`export EXPO_PUBLIC_SERVER_URL="${vars.EXPO_PUBLIC_SERVER_URL}"`);
     lines.push(`export EXPO_PUBLIC_HAPPY_SERVER_URL="${vars.EXPO_PUBLIC_HAPPY_SERVER_URL}"`);
     lines.push(`export EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=true`);
+    if (vars.EXPO_PUBLIC_DEV_TOKEN && vars.EXPO_PUBLIC_DEV_SECRET) {
+        lines.push(`export EXPO_PUBLIC_DEV_TOKEN="${vars.EXPO_PUBLIC_DEV_TOKEN}"`);
+        lines.push(`export EXPO_PUBLIC_DEV_SECRET="${vars.EXPO_PUBLIC_DEV_SECRET}"`);
+    }
     lines.push(`export EXPO_PORT=${vars.EXPO_PORT}`);
     lines.push("");
 

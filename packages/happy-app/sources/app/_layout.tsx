@@ -151,6 +151,35 @@ async function loadFonts() {
     });
 }
 
+function getDevEnvironmentCredentials(): AuthCredentials | null {
+    if (!__DEV__) {
+        return null;
+    }
+
+    const token = process.env.EXPO_PUBLIC_DEV_TOKEN;
+    const secret = process.env.EXPO_PUBLIC_DEV_SECRET;
+    if (!token || !secret) {
+        return null;
+    }
+
+    return { token, secret };
+}
+
+function getDevWebQueryCredentials(): AuthCredentials | null {
+    if (!__DEV__ || Platform.OS !== 'web' || typeof window === 'undefined') {
+        return null;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('dev_token');
+    const secret = params.get('dev_secret');
+    if (!token || !secret) {
+        return null;
+    }
+
+    return { token, secret };
+}
+
 export default function RootLayout() {
     const { theme } = useUnistyles();
     const navigationTheme = React.useMemo(() => {
@@ -182,18 +211,25 @@ export default function RootLayout() {
                 await loadFonts();
                 await sodium.ready;
 
-                // Dev-only: auto-login via URL params (e.g. ?dev_token=xxx&dev_secret=xxx)
-                if (__DEV__ && Platform.OS === 'web' && typeof window !== 'undefined') {
-                    const params = new URLSearchParams(window.location.search);
-                    const devToken = params.get('dev_token');
-                    const devSecret = params.get('dev_secret');
-                    if (devToken && devSecret) {
-                        await TokenStorage.setCredentials({ token: devToken, secret: devSecret });
+                let credentials = await TokenStorage.getCredentials();
+                const devCredentials = getDevWebQueryCredentials() ?? getDevEnvironmentCredentials();
+
+                if (devCredentials) {
+                    const credentialsChanged = credentials?.token !== devCredentials.token
+                        || credentials?.secret !== devCredentials.secret;
+
+                    if (credentialsChanged) {
+                        const saved = await TokenStorage.setCredentials(devCredentials);
+                        if (saved) {
+                            credentials = devCredentials;
+                        }
+                    }
+
+                    if (Platform.OS === 'web' && typeof window !== 'undefined') {
                         window.history.replaceState({}, '', window.location.pathname);
                     }
                 }
 
-                const credentials = await TokenStorage.getCredentials();
                 console.log('credentials', credentials);
                 if (credentials) {
                     await syncRestore(credentials);
