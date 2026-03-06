@@ -14,7 +14,6 @@ import { StyleSheet } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
 import { storage } from '@/sync/storage';
-import { Modal } from '@/modal';
 import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { t } from '@/text';
@@ -356,18 +355,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
-        Modal.alert(
-            t('sessionInfo.archiveSession'),
-            t('sessionInfo.archiveSessionConfirm'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.archiveSession'),
-                    style: 'destructive',
-                    onPress: performArchive
-                }
-            ]
-        );
+        performArchive();
     }, [performArchive]);
 
     const avatarId = React.useMemo(() => {
