@@ -1072,7 +1072,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
     return {
         messages: newMessages,
-        todos: state.latestTodos?.todos,
+        todos: Array.isArray(state.latestTodos?.todos) ? state.latestTodos.todos : undefined,
         usage: state.latestUsage ? {
             inputTokens: state.latestUsage.inputTokens,
             outputTokens: state.latestUsage.outputTokens,
