@@ -1,0 +1,54 @@
+# Stage 1: install only the dependencies the server needs
+FROM node:20-slim AS deps
+
+# Build tools for native modules (sharp, etc.)
+RUN apt-get update && apt-get install -y python3 build-essential && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /repo
+
+COPY package.json yarn.lock ./
+COPY scripts ./scripts
+COPY patches ./patches
+
+RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-agent packages/happy-wire
+
+# Only copy real package.json for packages the server needs
+COPY packages/happy-server/package.json packages/happy-server/
+COPY packages/happy-wire/package.json packages/happy-wire/
+
+# Stub unused packages so Yarn skips their dependencies
+RUN echo '{"name":"happy-app","version":"0.0.0","private":true}' > packages/happy-app/package.json && \
+    echo '{"name":"happy-coder","version":"0.0.0","private":true}' > packages/happy-cli/package.json && \
+    echo '{"name":"@slopus/agent","version":"0.0.0","private":true}' > packages/happy-agent/package.json
+
+# Prisma generate runs in happy-server postinstall
+COPY packages/happy-server/prisma packages/happy-server/prisma
+
+RUN SKIP_HAPPY_WIRE_BUILD=1 yarn install --frozen-lockfile --ignore-engines
+
+# Stage 2: build the server
+FROM deps AS builder
+
+COPY packages/happy-wire ./packages/happy-wire
+COPY packages/happy-server ./packages/happy-server
+
+RUN yarn workspace @slopus/happy-wire build
+RUN yarn workspace happy-server build
+
+# Prune dev dependencies
+RUN yarn install --frozen-lockfile --ignore-engines --production --ignore-scripts
+
+# Stage 3: slim runtime
+FROM node:20-slim AS runner
+
+WORKDIR /repo
+
+ENV NODE_ENV=production
+
+COPY --from=builder /repo/node_modules /repo/node_modules
+COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
+COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
+
+EXPOSE 3005
+
+CMD ["yarn", "--cwd", "packages/happy-server", "start"]

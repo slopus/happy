@@ -1,8 +1,8 @@
 # Stage 1: install dependencies with workspace context
-FROM node:20-slim AS deps
+FROM node:20 AS deps
 
-# Install build dependencies (python3 + build tools needed for native modules)
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+# Install build dependencies
+RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /repo
 
@@ -34,21 +34,24 @@ COPY packages/happy-server ./packages/happy-server
 RUN yarn workspace @slopus/happy-wire build
 RUN yarn workspace happy-server build
 
-# Prune dev dependencies to reduce image size
-RUN yarn install --frozen-lockfile --ignore-engines --production
-
-# Stage 3: runtime (slim image, no build tools or FFmpeg)
-FROM node:20-slim AS runner
+# Stage 3: runtime
+FROM node:20 AS runner
 
 WORKDIR /repo
 
+# Runtime dependencies
+RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
+
+# Set environment to production
 ENV NODE_ENV=production
 
-# Copy only production node_modules and built packages
+# Copy necessary files from the builder stage
 COPY --from=builder /repo/node_modules /repo/node_modules
 COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
 COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 
-EXPOSE 3005
+# Expose the port the app will run on
+EXPOSE 3000
 
+# Command to run the application
 CMD ["yarn", "--cwd", "packages/happy-server", "start"]
