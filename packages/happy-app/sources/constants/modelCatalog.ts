@@ -273,6 +273,9 @@ export function formatModelNameLabel(model: string | null | undefined): string |
             return MODEL_NAME_LABELS[codexParsed.family] ?? codexParsed.family;
         }
     }
+    // Strip date suffix: YYYYMMDD (Claude) or YYYY-MM-DD (OpenAI/Codex)
+    const stripped = model.replace(/-\d{8}$/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    if (stripped !== model && MODEL_NAME_LABELS[stripped]) return MODEL_NAME_LABELS[stripped];
     return model;
 }
 
