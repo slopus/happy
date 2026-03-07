@@ -4,16 +4,12 @@ This file is the cross-product execution plan for the current Happy push.
 
 ## Working rules
 
-- `happy-agent` comes first. Do not fan out the other roadmap items into spawned worktrees until `happy-agent` is verified end-to-end in the current environment and current branch.
-- The first `happy-agent` milestone is not "build more features". It is "test what exists against the real stack, fix what is broken locally, then use that working path to dispatch the rest of the roadmap".
-- Spawned agents must run in this current Happy environment so their sessions show up under the same authenticated account/context that the current agent is using. The user should be able to come back later and see those chats directly in the same environment.
-- Web is the primary validation surface for now. Full validation still includes the real server and real CLI behavior, but manual product testing should be done on web before spending time on iOS.
-- No mock-only signoff for roadmap items delegated via `happy-agent`. A task is only done when it has real integration validation, a skeptical write-up of what was actually tested, and a browser link the user can click.
-- When writing back results from spawned agents, append the status directly under the relevant roadmap item with:
-  - what changed
-  - how it was tested
-  - the web link to verify
-  - any remaining risks or follow-up
+- Agent workflow is defined in `.agents/agents/manager.md` and
+  `.agents/agents/engineer.md`. The roadmap is product scope, not the source of
+  truth for orchestration behavior.
+- Web is the primary validation surface for now. Full validation still includes
+  the real server and real CLI behavior, but manual product testing should be
+  done on web before spending time on iOS.
 - Keyboard shortcuts are deprioritized.
 - Do not change individual chat ordering. If ordering work is done, it should apply to worktree or project groups, not to individual sessions.
 - Right-click archive already exists and should be preserved.
