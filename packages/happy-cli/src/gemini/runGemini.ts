@@ -305,8 +305,6 @@ export async function runGemini(opts: {
       // If message.meta.model is undefined, keep currentModel
     }
 
-    // Build the full prompt with appendSystemPrompt if provided
-    // Only include system prompt for the first message to avoid forcing tool usage on every message
     // Extract text and images based on content type (text-only or mixed)
     const isMixedContent = message.content.type === 'mixed';
     const originalUserMessage = message.content.text;
@@ -318,14 +316,13 @@ export async function runGemini(opts: {
         logger.debug(`[Gemini] Received mixed message with ${images.length} image(s)`);
     }
 
+    // Build the full prompt: prepend system prompt and change_title on first message only
     let fullPrompt = originalUserMessage;
-    if (isFirstMessage && message.meta?.appendSystemPrompt) {
-      // Prepend system prompt to user message only for first message
-      // Also add change_title instruction (like Codex does)
-      // Use EXACT same format as Codex: add instruction AFTER user message
-      // This matches Codex's approach exactly - instruction comes after user message
-      // Codex format: system prompt + user message + change_title instruction
-      fullPrompt = message.meta.appendSystemPrompt + '\n\n' + originalUserMessage + '\n\n' + CHANGE_TITLE_INSTRUCTION;
+    if (isFirstMessage) {
+      if (message.meta?.appendSystemPrompt) {
+        fullPrompt = message.meta.appendSystemPrompt + '\n\n' + fullPrompt;
+      }
+      fullPrompt = fullPrompt + '\n\n' + CHANGE_TITLE_INSTRUCTION;
       isFirstMessage = false;
     }
 

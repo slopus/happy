@@ -233,6 +233,7 @@ export async function runCodex(opts: {
     // Track current overrides to apply per message
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
+    let sessionSystemPrompt: string | undefined = undefined;
     let currentSessionModel: string | undefined = undefined;
     let currentSessionReasoningEffort: string | undefined = undefined;
 
@@ -314,6 +315,16 @@ export async function runCodex(opts: {
             logger.debug(`[Codex] User message received with no reasoning effort override, using current: ${currentSessionReasoningEffort || 'default'}`);
         }
         syncSessionModelInfo({ model: messageModel, reasoningEffort: messageReasoningEffort });
+
+        // Capture session-level system prompt from first message
+        // Combines appendSystemPrompt (Options, DooTask) with change_title instruction
+        // Both are passed as baseInstructions to Codex (true system prompt)
+        if (sessionSystemPrompt === undefined) {
+            const parts: string[] = [];
+            if (message.meta?.appendSystemPrompt) parts.push(message.meta.appendSystemPrompt);
+            parts.push(CHANGE_TITLE_INSTRUCTION);
+            sessionSystemPrompt = parts.join('\n\n');
+        }
 
         // Extract text and images based on content type (text-only or mixed)
         const isMixedContent = message.content.type === 'mixed';
@@ -817,6 +828,7 @@ export async function runCodex(opts: {
         approvalPolicy: ApprovalPolicy;
         sandbox: SandboxMode;
         resumeFile?: string | null;
+        baseInstructions?: string;
     }): Promise<CodexAppServerBackend> {
         // Dispose previous backend if exists
         if (backend?.isAlive) {
@@ -829,6 +841,7 @@ export async function runCodex(opts: {
             reasoningEffort: opts.reasoningEffort,
             approvalPolicy: opts.approvalPolicy,
             sandbox: opts.sandbox,
+            baseInstructions: opts.baseInstructions,
             mcpServers,
             permissionHandler,
             resumeFile: opts.resumeFile,
@@ -975,10 +988,8 @@ export async function runCodex(opts: {
                 }
 
                 if (!wasCreated) {
-                    // Build prompt
-                    const promptText = first
-                        ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
-                        : message.message;
+                    // System prompt (Options, DooTask, change_title) is passed via baseInstructions
+                    const promptText = message.message;
 
                     // Determine resume file
                     let resumeFile: string | null = null;
@@ -1007,6 +1018,7 @@ export async function runCodex(opts: {
                         approvalPolicy,
                         sandbox,
                         resumeFile,
+                        baseInstructions: sessionSystemPrompt,
                     });
 
                     // Start session — if images present, start without prompt

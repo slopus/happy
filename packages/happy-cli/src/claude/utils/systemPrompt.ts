@@ -5,6 +5,8 @@ import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
  * Base system prompt shared across all configurations
  */
 const BASE_SYSTEM_PROMPT = (() => trimIdent(`
+    # Chat title
+    
     On your first response, call "mcp__happy__change_title" to set a descriptive title based on the user's message. Update the title whenever the conversation's main focus shifts to a different topic or task.
 `))();
 
@@ -12,6 +14,8 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
  * Co-authored-by credits to append when enabled
  */
 const CO_AUTHORED_CREDITS = (() => trimIdent(`
+    # Commit
+
     When making commit messages, add this footer:
 
     Generated with [Claude Code](https://claude.ai/code)

@@ -28,6 +28,8 @@ export interface CodexBackendOptions extends AgentFactoryOptions {
   approvalPolicy?: ApprovalPolicy | null;
   /** Sandbox mode */
   sandbox?: SandboxMode | null;
+  /** Base instructions (system prompt) for the agent */
+  baseInstructions?: string | null;
   /** MCP servers to make available to the agent */
   mcpServers?: Record<string, McpServerConfig>;
   /** Permission handler for tool approvals */
@@ -72,6 +74,7 @@ export function createCodexBackend(options: CodexBackendOptions): CodexBackendRe
     reasoningEffort: options.reasoningEffort,
     approvalPolicy: options.approvalPolicy,
     sandbox: options.sandbox,
+    baseInstructions: options.baseInstructions,
     mcpServers: options.mcpServers,
     permissionHandler: options.permissionHandler,
     resumeFile: options.resumeFile,

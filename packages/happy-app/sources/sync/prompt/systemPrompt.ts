@@ -25,8 +25,7 @@ export function buildDootaskSystemPrompt(taskId: string): string {
 
         Current DooTask task_id: ${taskId} (fixed for this session)
 
-        1. Call send_task_ai_message after each major milestone,
-           when blocked, and when finished.
+        1. Call send_task_ai_message after each major milestone, when blocked, and when finished.
         2. When all work is done, update the task status accordingly.
     `);
 }

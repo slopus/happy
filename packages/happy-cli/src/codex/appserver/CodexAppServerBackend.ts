@@ -70,6 +70,8 @@ export interface CodexAppServerBackendOptions {
   approvalPolicy?: ApprovalPolicy | null;
   /** Sandbox mode */
   sandbox?: SandboxMode | null;
+  /** Base instructions (system prompt) for the agent */
+  baseInstructions?: string | null;
   /** MCP servers config (for happy change_title etc.) */
   mcpServers?: Record<string, McpServerConfig>;
   /** Rollout file path for session resume */
@@ -354,6 +356,7 @@ export class CodexAppServerBackend implements AgentBackend {
     if (this.options.model) params.model = this.options.model;
     if (this.options.approvalPolicy) params.approvalPolicy = this.options.approvalPolicy;
     if (this.options.sandbox) params.sandbox = this.options.sandbox;
+    if (this.options.baseInstructions) params.baseInstructions = this.options.baseInstructions;
 
     // Build config overrides (MCP servers + reasoning effort)
     const config: Record<string, unknown> = {};
