@@ -713,6 +713,12 @@ export const zhHant: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `已安裝版本 ${currentVersion}。請更新到 ${requiredVersion} 或更高版本`,
         updateCliInstructions: '請執行 npm install -g happy-next-cli@latest',
+        cliUpgradeAvailable: '有新的 CLI 版本可用',
+        cliUpgradeAvailableSubtitle: '點擊以使用最新 CLI 重新啟動工作階段',
+        cliUpgradeInProgress: '正在升級...',
+        cliUpgradeConfirm: '這將結束目前的工作階段並使用最新 CLI 版本啟動新的工作階段。對話記錄將會保留。',
+        cliUpgradeSessionBusy: '工作階段正在處理中，請等待完成後再升級。',
+        cliUpgradeSendBlocked: '工作階段正在升級至新版本 CLI，請稍候。',
         deleteSession: '刪除工作階段',
         deleteSessionSubtitle: '永久刪除此工作階段',
         deleteSessionConfirm: '永久刪除工作階段？',

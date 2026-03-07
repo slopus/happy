@@ -706,6 +706,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             metadata={session.metadata}
             connectionStatus={inputConnectionStatus}
             onSend={async (textSnapshot) => {
+                // Block sending during CLI upgrade
+                if (session.upgrading) {
+                    Modal.alert(
+                        t('sessionInfo.cliUpgradeAvailable'),
+                        t('sessionInfo.cliUpgradeSendBlocked')
+                    );
+                    return;
+                }
+
                 const messageToSend = (textSnapshot ?? message).trim();
                 if (messageToSend || images.length > 0) {
                     const socketStatus = storage.getState().socketStatus;

@@ -7,7 +7,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady, storage } from '@/sync/storage';
+import { useSession, useIsDataReady, useMachine, storage } from '@/sync/storage';
 import { generateCopyTitle, getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -89,6 +89,16 @@ function SessionInfoContent({ session }: { session: Session }) {
     // Check if CLI version is outdated
     const latestCliVersion = useLatestCliVersion();
     const isCliOutdated = session.metadata?.version && latestCliVersion && !isVersionSupported(session.metadata.version, latestCliVersion);
+
+    // Check if machine daemon has a newer CLI version than this session
+    const machineId = session.metadata?.machineId;
+    const machine = useMachine(machineId ?? '');
+    const machineDaemonVersion = machine?.metadata?.happyCliVersion;
+    const sessionVersion = session.metadata?.version;
+    const isUpgradeAvailable = sessionVersion && machineDaemonVersion
+        && !machineDaemonVersion.startsWith('0.14.0-dev.') // Skip legacy dev versions
+        && !isVersionSupported(sessionVersion, machineDaemonVersion)
+        && machineDaemonVersion !== sessionVersion;
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
@@ -393,15 +403,112 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, [session]);
 
-    const handleCopyUpdateCommand = useCallback(async () => {
-        const updateCommand = 'npm install -g happy-next-cli@latest';
-        try {
-            await Clipboard.setStringAsync(updateCommand);
-            Modal.alert(t('common.success'), updateCommand);
-        } catch (error) {
-            Modal.alert(t('common.error'), t('common.error'));
-        }
+    const handleCopyUpdateCommand = useCallback(() => {
+        Modal.alert(
+            t('sessionInfo.cliVersionOutdated'),
+            t('sessionInfo.updateCliInstructions'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('common.copy'),
+                    onPress: async () => {
+                        const updateCommand = 'npm install -g happy-next-cli@latest';
+                        await Clipboard.setStringAsync(updateCommand);
+                        hapticsLight();
+                        showCopiedToast();
+                    }
+                }
+            ]
+        );
     }, []);
+
+    const [isUpgrading, setIsUpgrading] = React.useState(false);
+    const handleUpgradeSession = useCallback(async () => {
+        if (!session || !machineId || isUpgrading) return;
+
+        // Block if session is thinking
+        if (session.thinking) {
+            Modal.alert(
+                t('sessionInfo.cliUpgradeAvailable'),
+                t('sessionInfo.cliUpgradeSessionBusy')
+            );
+            return;
+        }
+
+        // Confirm before upgrading
+        const confirmed = await Modal.confirm(
+            t('sessionInfo.cliUpgradeAvailable'),
+            t('sessionInfo.cliUpgradeConfirm')
+        );
+        if (!confirmed) return;
+
+        // Set upgrading flag only after confirmation
+        setIsUpgrading(true);
+        storage.getState().setSessionUpgrading(session.id, true);
+
+        try {
+            // Kill old session
+            await sessionKill(session.id);
+
+            // Fork and resume — mirrors the "resume session" flow exactly
+            const flavor = session.metadata?.flavor;
+            let resumeSessionId: string | undefined;
+            let agent: 'claude' | 'codex' | 'gemini' = 'claude';
+
+            if (flavor === 'gemini') {
+                const forkResult = await machineForkGeminiSession(machineId, session.id);
+                if (!forkResult.success || !forkResult.newSessionId) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newSessionId;
+                agent = 'gemini';
+            } else if (flavor === 'codex' && session.metadata?.codexSessionId) {
+                const forkResult = await machineForkCodexSession(machineId, session.metadata.codexSessionId);
+                if (!forkResult.success || !forkResult.newFilePath) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newFilePath;
+                agent = 'codex';
+            } else if (session.metadata?.claudeSessionId) {
+                const forkResult = await machineForkClaudeSession(machineId, session.metadata.claudeSessionId);
+                if (!forkResult.success || !forkResult.newSessionId) {
+                    Modal.alert(t('common.error'), forkResult.errorMessage || t('claudeHistory.resumeFailed'));
+                    return;
+                }
+                resumeSessionId = forkResult.newSessionId;
+                agent = 'claude';
+            } else {
+                Modal.alert(t('common.error'), t('claudeHistory.resumeFailed'));
+                return;
+            }
+
+            // Spawn new session with forked data
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory: session.metadata?.path || '',
+                agent,
+                resumeSessionId,
+                skipForkSession: true,
+                sessionTitle: session.metadata?.summary?.text,
+            });
+
+            if (result.type !== 'success') {
+                Modal.alert(t('common.error'), result.type === 'error' ? result.errorMessage : 'Upgrade failed');
+                return;
+            }
+
+            // Navigate to the new session: go back to root then push new session
+            try { router.dismissAll(); } catch (_) { /* stack may already be at root */ }
+            router.push(`/session/${result.sessionId}`);
+        } catch (e) {
+            Modal.alert(t('common.error'), e instanceof Error ? e.message : 'Unknown error');
+        } finally {
+            setIsUpgrading(false);
+            storage.getState().setSessionUpgrading(session.id, false);
+        }
+    }, [session, machineId, router, isUpgrading]);
 
     const [pushingBranch, handlePushBranch] = useHappyAction(async () => {
         if (!worktreeMachineId || !worktreeBranch || !worktreePath) return;
@@ -689,8 +796,8 @@ function SessionInfoContent({ session }: { session: Session }) {
                     </View>
                 </View>
 
-                {/* CLI Version Warning */}
-                {isCliOutdated && (
+                {/* CLI Version Warning - only show install instructions when machine hasn't updated yet */}
+                {isCliOutdated && !isUpgradeAvailable && session.active && (
                     <ItemGroup>
                         <Item
                             title={t('sessionInfo.cliVersionOutdated')}
@@ -698,6 +805,19 @@ function SessionInfoContent({ session }: { session: Session }) {
                             icon={<Ionicons name="warning-outline" size={29} color="#FF9500" />}
                             showChevron={false}
                             onPress={handleCopyUpdateCommand}
+                        />
+                    </ItemGroup>
+                )}
+
+                {/* CLI Upgrade Available - shown when machine has newer CLI than session */}
+                {isUpgradeAvailable && (session.active || isUpgrading) && (
+                    <ItemGroup>
+                        <Item
+                            title={isUpgrading ? t('sessionInfo.cliUpgradeInProgress') : t('sessionInfo.cliUpgradeAvailable')}
+                            subtitle={t('sessionInfo.cliUpgradeAvailableSubtitle')}
+                            icon={<Ionicons name="arrow-up-circle-outline" size={29} color="#34C759" />}
+                            showChevron={!isUpgrading}
+                            onPress={isUpgrading ? undefined : handleUpgradeSession}
                         />
                     </ItemGroup>
                 )}
@@ -929,8 +1049,8 @@ function SessionInfoContent({ session }: { session: Session }) {
                             <Item
                                 title={t('sessionInfo.cliVersion')}
                                 subtitle={session.metadata.version}
-                                detail={isCliOutdated ? '⚠️' : undefined}
-                                icon={<Ionicons name="git-branch-outline" size={29} color={isCliOutdated ? "#FF9500" : "#5856D6"} />}
+                                detail={isCliOutdated && session.active ? '⚠️' : undefined}
+                                icon={<Ionicons name="git-branch-outline" size={29} color={isCliOutdated && session.active ? "#FF9500" : "#5856D6"} />}
                                 showChevron={false}
                             />
                         )}

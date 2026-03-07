@@ -712,6 +712,12 @@ export const en = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
         updateCliInstructions: 'Please run npm install -g happy-next-cli@latest',
+        cliUpgradeAvailable: 'New CLI Version Available',
+        cliUpgradeAvailableSubtitle: 'Tap to restart session with the latest CLI',
+        cliUpgradeInProgress: 'Upgrading...',
+        cliUpgradeConfirm: 'This will end the current session and start a new one with the latest CLI version. Your conversation history will be preserved.',
+        cliUpgradeSessionBusy: 'Session is currently working. Please wait until it finishes before upgrading.',
+        cliUpgradeSendBlocked: 'Session is upgrading to new CLI version, please wait.',
         deleteSession: 'Delete Session',
         deleteSessionSubtitle: 'Permanently remove this session',
         deleteSessionConfirm: 'Delete Session Permanently?',

@@ -155,6 +155,7 @@ interface StorageState {
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionActivity: (sessionId: string, active: boolean) => void;
+    setSessionUpgrading: (sessionId: string, upgrading: boolean) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: string) => void;
     // Artifact methods
@@ -1048,6 +1049,17 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 sessions: updatedSessions,
                 sessionListViewData
+            };
+        }),
+        setSessionUpgrading: (sessionId: string, upgrading: boolean) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+            return {
+                ...state,
+                sessions: {
+                    ...state.sessions,
+                    [sessionId]: { ...session, upgrading }
+                }
             };
         }),
         updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => {

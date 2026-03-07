@@ -612,6 +612,12 @@ export const ru: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
         updateCliInstructions: 'Пожалуйста, выполните npm install -g happy-next-cli@latest',
+        cliUpgradeAvailable: 'Доступна новая версия CLI',
+        cliUpgradeAvailableSubtitle: 'Нажмите, чтобы перезапустить сессию с последней версией CLI',
+        cliUpgradeInProgress: 'Обновление...',
+        cliUpgradeConfirm: 'Текущая сессия будет завершена и запущена новая с последней версией CLI. История разговора сохранится.',
+        cliUpgradeSessionBusy: 'Сессия сейчас занята. Пожалуйста, дождитесь завершения перед обновлением.',
+        cliUpgradeSendBlocked: 'Сессия обновляется до новой версии CLI, пожалуйста, подождите.',
         deleteSession: 'Удалить сессию',
         deleteSessionSubtitle: 'Удалить эту сессию навсегда',
         deleteSessionConfirm: 'Удалить сессию навсегда?',

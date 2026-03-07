@@ -741,6 +741,12 @@ export const it: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versione ${currentVersion} installata. Aggiorna a ${requiredVersion} o successiva`,
         updateCliInstructions: 'Esegui npm install -g happy-next-cli@latest',
+        cliUpgradeAvailable: 'Nuova versione CLI disponibile',
+        cliUpgradeAvailableSubtitle: 'Tocca per riavviare la sessione con l\'ultima versione del CLI',
+        cliUpgradeInProgress: 'Aggiornamento in corso...',
+        cliUpgradeConfirm: 'Questo terminerà la sessione corrente e ne avvierà una nuova con l\'ultima versione del CLI. La cronologia della conversazione verrà preservata.',
+        cliUpgradeSessionBusy: 'La sessione è attualmente in esecuzione. Attendi il completamento prima di aggiornare.',
+        cliUpgradeSendBlocked: 'La sessione si sta aggiornando alla nuova versione del CLI, attendere prego.',
         deleteSession: 'Elimina sessione',
         deleteSessionSubtitle: 'Rimuovi definitivamente questa sessione',
         deleteSessionConfirm: 'Eliminare definitivamente la sessione?',

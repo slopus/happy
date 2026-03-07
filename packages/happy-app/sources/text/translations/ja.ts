@@ -744,6 +744,12 @@ export const ja: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `バージョン ${currentVersion} がインストールされています。${requiredVersion} 以降に更新してください`,
         updateCliInstructions: 'npm install -g happy-next-cli@latest を実行してください',
+        cliUpgradeAvailable: '新しい CLI バージョンが利用可能',
+        cliUpgradeAvailableSubtitle: 'タップして最新の CLI でセッションを再起動',
+        cliUpgradeInProgress: 'アップグレード中...',
+        cliUpgradeConfirm: '現在のセッションを終了し、最新のCLIバージョンで新しいセッションを開始します。会話履歴は保持されます。',
+        cliUpgradeSessionBusy: 'セッションは現在処理中です。完了するまでお待ちください。',
+        cliUpgradeSendBlocked: 'セッションを新しい CLI バージョンにアップグレード中です。しばらくお待ちください。',
         deleteSession: 'セッションを削除',
         deleteSessionSubtitle: 'このセッションを完全に削除',
         deleteSessionConfirm: 'セッションを完全に削除しますか？',

@@ -802,6 +802,11 @@ export async function startDaemon(): Promise<void> {
     // Connect to server
     apiMachine.connect();
 
+    // Update machine metadata on server (ensures version is current after daemon restart)
+    apiMachine.updateMachineMetadata(() => initialMachineMetadata).catch((error) => {
+      logger.debug('[DAEMON RUN] Failed to update machine metadata', error);
+    });
+
     // Every 60 seconds:
     // 1. Prune stale sessions
     // 2. Check if daemon needs update
