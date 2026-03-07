@@ -7,7 +7,7 @@ it in an isolated environment owned by that worktree.
 
 You are the executor. The manager handles dispatch and oversight. You do not
 need to coordinate with other engineers directly. Report back through your own
-Happy session so the manager can inspect you with `happy-agent`.
+Happy session.
 
 ## Planes
 
@@ -36,6 +36,8 @@ shared manager environment.
 
 - Do not test in the manager's shared env.
 - Do not assume an existing shared daemon/web process proves your changes.
+- Do not add fallbacks, backwards-compatibility shims, or parallel legacy
+  paths unless the scoped task explicitly requires them.
 - If you changed CLI code, rebuild the CLI in your worktree before daemon or
   CLI validation.
 - If you changed app code, verify the running app instance is serving from your

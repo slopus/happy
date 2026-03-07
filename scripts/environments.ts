@@ -119,6 +119,7 @@ function writeEnvironmentConfig(config: EnvironmentConfig) {
         path.join(envDir, "env.sh"),
         buildEnvSh(config.name, envDir, config.serverPort, config.expoPort),
     );
+    writeEnvCommands(envDir);
 }
 
 function listEnvironments(): string[] {
@@ -561,14 +562,41 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
     lines.push(`export HAPPY_HOME_DIR="${vars.HAPPY_HOME_DIR}"`);
     lines.push(`export HAPPY_VARIANT=dev`);
     lines.push(`export DEBUG=1`);
+    lines.push(`export PATH="${path.join(envDir, "bin")}:$PATH"`);
     lines.push("");
-
-    const cliBin = path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs");
-    lines.push("# 'happy' command — works from anywhere after sourcing");
-    lines.push(`alias happy='node ${cliBin}'`);
+    lines.push("# Commands exposed by this env");
+    lines.push("# - happy");
+    lines.push("# - happy-agent");
     lines.push("");
 
     return lines.join("\n");
+}
+
+function writeEnvCommands(envDir: string): void {
+    const binDir = path.join(envDir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+
+    const commands = [
+        {
+            name: "happy",
+            entrypoint: path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs"),
+        },
+        {
+            name: "happy-agent",
+            entrypoint: path.join(REPO_ROOT, "packages", "happy-agent", "bin", "happy-agent.mjs"),
+        },
+    ];
+
+    for (const command of commands) {
+        const wrapperPath = path.join(binDir, command.name);
+        const wrapper = [
+            "#!/usr/bin/env bash",
+            `exec node ${JSON.stringify(command.entrypoint)} "$@"`,
+            "",
+        ].join("\n");
+        fs.writeFileSync(wrapperPath, wrapper);
+        fs.chmodSync(wrapperPath, 0o755);
+    }
 }
 
 function buildAuthenticatedWebUrl(expoPort: number, token: string, secret: string): string {

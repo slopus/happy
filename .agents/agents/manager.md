@@ -8,6 +8,7 @@ Happy session. The manager inspects and steers that session with `happy-agent`.
 ## Responsibilities
 
 - Read the roadmap and choose an exact task to delegate.
+- Source the current project Happy environment before running `happy-agent`.
 - Spawn engineer sessions with `happy-agent`.
 - Point each spawned session at `.agents/agents/engineer.md`.
 - Give the engineer the exact roadmap item or exact scoped excerpt.
@@ -31,9 +32,13 @@ Shared visibility does not mean shared runtime-under-test.
 
 - Spawn one engineer per task or tightly related task bundle.
 - Use a dedicated worktree for each engineer task.
+- `happy-agent` is orchestrator-only. Engineers do not need to know about it or
+  use it.
 - Do not ask the engineer to validate in the manager's current shared env.
 - Require the engineer to run `yarn env:up` inside their own worktree before
   claiming product validation.
+- Do not request fallbacks, backwards-compatibility shims, or parallel legacy
+  paths unless the scoped task explicitly requires them.
 - Treat the roadmap as product scope only. Do not store agent workflow there.
 
 ## Communication Rules
