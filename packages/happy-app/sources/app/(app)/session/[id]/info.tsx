@@ -107,6 +107,11 @@ function SessionInfoContent({ session }: { session: Session }) {
         && !isVersionSupported(sessionVersion, machineDaemonVersion)
         && machineDaemonVersion !== sessionVersion;
 
+    const copyValue = useCallback(async (value: string) => {
+        await Clipboard.setStringAsync(value);
+        hapticsLight(); showCopiedToast();
+    }, []);
+
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
         try {
@@ -1054,12 +1059,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                             subtitle={session.metadata.host}
                             icon={<Ionicons name="desktop-outline" size={29} color="#5856D6" />}
                             showChevron={false}
+                            onPress={() => session.metadata?.host && copyValue(session.metadata.host)}
                         />
                         <Item
                             title={t('sessionInfo.path')}
                             subtitle={formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
                             icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
                             showChevron={false}
+                            onPress={() => session.metadata?.path && copyValue(session.metadata.path)}
                         />
                         {session.metadata.version && (
                             <Item
@@ -1068,6 +1075,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 detail={isCliOutdated && session.active ? '⚠️' : undefined}
                                 icon={<Ionicons name="git-branch-outline" size={29} color={isCliOutdated && session.active ? "#FF9500" : "#5856D6"} />}
                                 showChevron={false}
+                                onPress={() => session.metadata?.version && copyValue(session.metadata.version)}
                             />
                         )}
                         {session.metadata.os && (
@@ -1076,6 +1084,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 subtitle={formatOSPlatform(session.metadata.os)}
                                 icon={<Ionicons name="hardware-chip-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
+                                onPress={() => session.metadata?.os && copyValue(session.metadata.os)}
                             />
                         )}
                         <Item
@@ -1090,6 +1099,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             })()}
                             icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
                             showChevron={false}
+                            onPress={() => session.metadata?.flavor && copyValue(session.metadata.flavor)}
                         />
                         {modelSubtitle && (
                             <Item
@@ -1097,6 +1107,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 subtitle={modelSubtitle}
                                 icon={<Ionicons name="options-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
+                                onPress={() => session.metadata?.model && copyValue(session.metadata.model)}
                             />
                         )}
                         {session.metadata.hostPid && (
@@ -1105,6 +1116,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 subtitle={session.metadata.hostPid.toString()}
                                 icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
+                                onPress={() => session.metadata?.hostPid && copyValue(session.metadata.hostPid.toString())}
                             />
                         )}
                         {session.metadata.happyHomeDir && (
@@ -1113,6 +1125,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 subtitle={formatPathRelativeToHome(session.metadata.happyHomeDir, session.metadata.homeDir)}
                                 icon={<Ionicons name="home-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
+                                onPress={() => session.metadata?.happyHomeDir && copyValue(session.metadata.happyHomeDir)}
                             />
                         )}
                         <Item
