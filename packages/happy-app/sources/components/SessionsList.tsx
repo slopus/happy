@@ -6,7 +6,7 @@ import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, getSessionAutoName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
@@ -346,7 +346,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const { theme } = useUnistyles();
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
-    const sessionSubtitle = getSessionSubtitle(session);
+    const sessionAutoName = getSessionAutoName(session);
+    const sessionSubtitle = session.manualName && sessionAutoName ? sessionAutoName : getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -449,6 +450,20 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         );
     }, [performDelete]);
 
+    const handleRename = React.useCallback(async () => {
+        const newName = await Modal.prompt(
+            t('sessionInfo.renameSession'),
+            t('sessionInfo.renameSessionDescription'),
+            {
+                defaultValue: session.manualName || '',
+                placeholder: t('sessionInfo.sessionName'),
+            }
+        );
+        if (newName !== null) {
+            storage.getState().updateSessionManualName(session.id, newName || null);
+        }
+    }, [session.id, session.manualName]);
+
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
@@ -475,6 +490,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         navigateToSession(session.id);
                     }
                 }}
+                onLongPress={handleRename}
             >
                 <View style={styles.avatarContainer}>
                     <Avatar id={avatarId} size={20} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />

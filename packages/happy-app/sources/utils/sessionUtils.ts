@@ -77,6 +77,9 @@ export function useSessionStatus(session: Session): SessionStatus {
  * Returns the last segment of the path, or 'unknown' if no path is available.
  */
 export function getSessionName(session: Session): string {
+    if (session.manualName) {
+        return session.manualName;
+    }
     if (session.metadata?.summary) {
         return session.metadata.summary.text;
     } else if (session.metadata) {
@@ -88,6 +91,17 @@ export function getSessionName(session: Session): string {
         return lastSegment;
     }
     return t('status.unknown');
+}
+
+/**
+ * Returns the auto-generated session name (from summary or path),
+ * ignoring any manual name override.
+ */
+export function getSessionAutoName(session: Session): string | null {
+    if (session.metadata?.summary) {
+        return session.metadata.summary.text;
+    }
+    return null;
 }
 
 /**

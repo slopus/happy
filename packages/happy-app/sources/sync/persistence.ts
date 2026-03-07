@@ -188,6 +188,23 @@ export function saveSessionPermissionModes(modes: Record<string, PermissionMode>
     mmkv.set('session-permission-modes', JSON.stringify(modes));
 }
 
+export function loadSessionManualNames(): Record<string, string> {
+    const names = mmkv.getString('session-manual-names');
+    if (names) {
+        try {
+            return JSON.parse(names);
+        } catch (e) {
+            console.error('Failed to parse session manual names', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionManualNames(names: Record<string, string>) {
+    mmkv.set('session-manual-names', JSON.stringify(names));
+}
+
 export function loadSessionDisabledMcpServers(): Record<string, string[]> {
     const data = mmkv.getString('session-disabled-mcp-servers');
     if (data) {

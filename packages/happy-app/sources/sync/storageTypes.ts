@@ -69,6 +69,7 @@ export interface Session {
         id: string;
     }>;
     draft?: string | null; // Local draft message, not synced to server
+    manualName?: string | null; // User-set session name, takes priority over auto-generated summary
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'zen' | null; // Local permission mode, not synced to server
     modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | null; // Local model mode, not synced to server
     disabledMcpServers?: string[] | null; // Per-session MCP server overrides, not synced to server

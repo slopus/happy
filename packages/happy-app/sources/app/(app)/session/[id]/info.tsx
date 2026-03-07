@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, getSessionAutoName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete, sessionDeactivate, killSessionProcess, machineSpawnNewSession } from '@/sync/ops';
@@ -69,7 +69,22 @@ function SessionInfoContent({ session }: { session: Session }) {
     const navigateToSession = useNavigateToSession();
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
+    const sessionAutoName = getSessionAutoName(session);
     const sessionStatus = useSessionStatus(session);
+
+    const handleRenameSession = useCallback(async () => {
+        const newName = await Modal.prompt(
+            t('sessionInfo.renameSession'),
+            t('sessionInfo.renameSessionDescription'),
+            {
+                defaultValue: session.manualName || '',
+                placeholder: t('sessionInfo.sessionName'),
+            }
+        );
+        if (newName !== null) {
+            storage.getState().updateSessionManualName(session.id, newName || null);
+        }
+    }, [session.id, session.manualName]);
 
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -307,6 +322,17 @@ function SessionInfoContent({ session }: { session: Session }) {
                         }}>
                             {sessionName}
                         </Text>
+                        {session.manualName && sessionAutoName && (
+                            <Text style={{
+                                fontSize: 13,
+                                marginTop: 4,
+                                textAlign: 'center',
+                                color: theme.colors.textSecondary,
+                                ...Typography.default()
+                            }}>
+                                {sessionAutoName}
+                            </Text>
+                        )}
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                             <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} size={10} />
                             <Text style={{
@@ -385,6 +411,12 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Quick Actions */}
                 <ItemGroup title={t('sessionInfo.quickActions')}>
+                    <Item
+                        title={t('sessionInfo.renameSession')}
+                        subtitle={session.manualName ? t('sessionInfo.renameSessionClear') : t('sessionInfo.renameSessionDescription')}
+                        icon={<Ionicons name="pencil-outline" size={29} color="#007AFF" />}
+                        onPress={handleRenameSession}
+                    />
                     {session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}

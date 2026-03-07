@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, Pressable, Platform, ActivityIndicator, LayoutAnimation } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { router, useRouter } from 'expo-router';
@@ -161,6 +161,7 @@ interface ActiveSessionsGroupProps {
 export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
     const machines = useAllMachines();
+    const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(new Set());
 
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
@@ -245,11 +246,31 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                 const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
                 const avatarId = firstSession ? getSessionAvatarId(firstSession) : undefined;
 
+                const isCollapsed = collapsedGroups.has(projectPath);
+                const toggleCollapse = () => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setCollapsedGroups(prev => {
+                        const next = new Set(prev);
+                        if (next.has(projectPath)) {
+                            next.delete(projectPath);
+                        } else {
+                            next.add(projectPath);
+                        }
+                        return next;
+                    });
+                };
+
                 return (
                     <View key={projectPath}>
-                        {/* Section header on grouped background */}
-                        <View style={styles.sectionHeader}>
+                        {/* Section header - pressable to collapse/expand */}
+                        <Pressable style={styles.sectionHeader} onPress={toggleCollapse}>
                             <View style={styles.sectionHeaderLeft}>
+                                <Ionicons
+                                    name={isCollapsed ? 'chevron-forward' : 'chevron-down'}
+                                    size={12}
+                                    color={styles.sectionHeaderPath.color}
+                                    style={{ marginRight: 4 }}
+                                />
                                 {avatarId && (
                                     <View style={styles.sectionHeaderAvatar}>
                                         <Avatar id={avatarId} size={20} flavor={firstSession?.metadata?.flavor} />
@@ -263,10 +284,10 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                             {firstSession ? (
                                 <ProjectGitStatus sessionId={firstSession.id} />
                             ) : null}
-                        </View>
+                        </Pressable>
 
-                        {/* Card with just the sessions */}
-                        <View style={styles.projectCard}>
+                        {/* Card with just the sessions - hidden when collapsed */}
+                        {!isCollapsed && <View style={styles.projectCard}>
                             {/* Sessions grouped by machine within the card */}
                             {Array.from(projectGroup.machines.entries())
                                 .sort(([, machineA], [, machineB]) => machineA.machineName.localeCompare(machineB.machineName))
@@ -283,7 +304,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                         ))}
                                     </View>
                                 ))}
-                        </View>
+                        </View>}
                     </View>
                 );
             })}

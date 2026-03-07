@@ -247,6 +247,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     }
 
+    // Flag to inject change_title instruction on first message after resume
+    let pendingResumeChangeTitle = !!resumeSessionId;
+
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
@@ -425,6 +428,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
+        }
+
+        // Inject change_title instruction on first message after resume
+        if (pendingResumeChangeTitle) {
+            const resumeInstruction = '\n\nIMPORTANT: This is a resumed session. You MUST call the "mcp__happy__change_title" tool to set an appropriate chat title based on the conversation context. Do this before responding to the user message.';
+            messageAppendSystemPrompt = messageAppendSystemPrompt
+                ? messageAppendSystemPrompt + resumeInstruction
+                : resumeInstruction;
+            pendingResumeChangeTitle = false;
+            logger.debug('[start] Injected change_title instruction for resumed session');
         }
 
         // Push with resolved permission mode, model, system prompts, and tools

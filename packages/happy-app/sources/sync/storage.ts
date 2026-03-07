@@ -11,7 +11,7 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionManualNames, saveSessionManualNames } from "./persistence";
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -127,6 +127,7 @@ interface StorageState {
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
+    updateSessionManualName: (sessionId: string, name: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'zen') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => void;
     // Artifact methods
@@ -267,6 +268,7 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let sessionManualNames = loadSessionManualNames();
     return {
         settings,
         settingsVersion: version,
@@ -323,6 +325,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+            const savedManualNames = Object.keys(state.sessions).length === 0 ? sessionManualNames : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -337,6 +340,8 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+                const existingManualName = state.sessions[session.id]?.manualName;
+                const savedManualName = savedManualNames[session.id];
                 const existingSummary = state.sessions[session.id]?.metadata?.summary;
 
                 // Merge metadata, preserving existing summary if server doesn't have one
@@ -350,7 +355,8 @@ export const storage = create<StorageState>()((set, get) => {
                     presence,
                     metadata: mergedMetadata,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
+                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    manualName: existingManualName || savedManualName || null
                 };
             });
 
@@ -849,6 +855,42 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
+        updateSessionManualName: (sessionId: string, name: string | null) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const normalizedName = name?.trim() ? name.trim() : null;
+
+            // Collect all manual names for persistence
+            const allNames: Record<string, string> = {};
+            Object.entries(state.sessions).forEach(([id, sess]) => {
+                if (id === sessionId) {
+                    if (normalizedName) {
+                        allNames[id] = normalizedName;
+                    }
+                } else if (sess.manualName) {
+                    allNames[id] = sess.manualName;
+                }
+            });
+
+            saveSessionManualNames(allNames);
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    manualName: normalizedName
+                }
+            };
+
+            const sessionListViewData = buildSessionListViewData(updatedSessions);
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData
+            };
+        }),
         updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'zen') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -1002,7 +1044,11 @@ export const storage = create<StorageState>()((set, get) => {
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
-            
+
+            const names = loadSessionManualNames();
+            delete names[sessionId];
+            saveSessionManualNames(names);
+
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);
             
