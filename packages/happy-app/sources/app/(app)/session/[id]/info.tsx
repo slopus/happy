@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { View, Text, Animated, Pressable, Platform } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
+import { Ionicons, AntDesign } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -773,6 +773,15 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     return (
         <>
+            <Stack.Screen
+                options={{
+                    headerRight: () => (
+                        <Pressable onPress={handleRenameSession} hitSlop={10}>
+                            <AntDesign name="edit" size={22} color={theme.colors.text} />
+                        </Pressable>
+                    ),
+                }}
+            />
             <ItemList>
                 {/* Session Header */}
                 <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
