@@ -80,9 +80,16 @@ function SessionInfoContent({ session }: { session: Session }) {
     const isAdmin = isOwner || session.accessLevel === 'admin';
     const localModelDisplay = React.useMemo(() => resolveLocalModelDisplay(session.modelMode), [session.modelMode]);
     const modelSubtitle = React.useMemo(() => {
-        const model = localModelDisplay.model || session.metadata?.model;
-        const reasoningEffort = localModelDisplay.reasoningEffort || session.metadata?.reasoningEffort;
-        return formatModelDisplay(model, reasoningEffort);
+        const cliModel = session.metadata?.model;
+        const cliEffort = session.metadata?.reasoningEffort;
+        const cliLabel = formatModelDisplay(cliModel, cliEffort);
+
+        const localLabel = formatModelDisplay(localModelDisplay.model, localModelDisplay.reasoningEffort);
+
+        if (cliLabel && localLabel && cliLabel !== localLabel) {
+            return `${cliLabel} → ${localLabel}`;
+        }
+        return cliLabel || localLabel;
     }, [localModelDisplay.model, localModelDisplay.reasoningEffort, session.metadata?.model, session.metadata?.reasoningEffort]);
     const geminiSessionId = session.metadata?.flavor === 'gemini' ? session.id : undefined;
     
