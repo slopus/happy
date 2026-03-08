@@ -432,7 +432,8 @@ function commandRun(service: string) {
                 ["web", "--port", String(config.expoPort)],
                 {
                     cwd: path.join(REPO_ROOT, "packages", "happy-app"),
-                    env: mergedEnv,
+                    // Expo treats `--web` as "open in browser". Disable that for env-managed runs.
+                    env: { ...mergedEnv, BROWSER: "none" },
                     stdio: "inherit",
                 }
             );
@@ -784,7 +785,8 @@ async function commandUp(template: Template) {
     console.log(`Starting web on port ${config.expoPort}...`);
     const webPid = spawnService("yarn", ["web", "--port", String(config.expoPort)], {
         cwd: path.join(REPO_ROOT, "packages", "happy-app"),
-        env: mergedEnv,
+        // Expo treats `--web` as "open in browser". Disable that for env-managed runs.
+        env: { ...mergedEnv, BROWSER: "none" },
         logFile: webLogFile,
     });
     writePidFile(envDir, "web", webPid);
