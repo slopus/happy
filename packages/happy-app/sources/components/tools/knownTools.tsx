@@ -1001,6 +1001,17 @@ export const knownTools = {
         },
         icon: ICON_SKILL,
         minimal: true
+    },
+    'TaskOutput': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            let title = "TaskOutput";
+            if (opts.tool.input && opts.tool.input.task_id && typeof opts.tool.input.task_id === 'string') {
+                title += `: ${opts.tool.input.task_id}`;
+            }
+            return title;
+        },
+        icon: ICON_SKILL,
+        minimal: true
     }
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
