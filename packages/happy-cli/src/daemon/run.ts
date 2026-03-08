@@ -839,7 +839,15 @@ export async function startDaemon(): Promise<void> {
       // Check if daemon needs update
       // If version on disk is different from the one in package.json - we need to restart
       // BIG if - does this get updated from underneath us on npm upgrade?
-      const projectVersion = JSON.parse(readFileSync(join(projectPath(), 'package.json'), 'utf-8')).version;
+      let projectVersion: string;
+      try {
+        projectVersion = JSON.parse(readFileSync(join(projectPath(), 'package.json'), 'utf-8')).version;
+      } catch (error) {
+        // package.json may be temporarily missing or corrupted during npm upgrade
+        logger.debug('[DAEMON RUN] Failed to read package.json for version check, skipping this heartbeat', error);
+        heartbeatRunning = false;
+        return;
+      }
       if (projectVersion !== configuration.currentCliVersion) {
         logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version, clearing heartbeat interval');
 
