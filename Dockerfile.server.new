@@ -10,16 +10,11 @@ COPY package.json yarn.lock ./
 COPY scripts ./scripts
 COPY patches ./patches
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-agent packages/happy-wire
+# Narrow workspaces to only server + wire (no stubs needed for unused packages)
+RUN node -e "const p=require('./package.json'); p.workspaces.packages=['packages/happy-server','packages/happy-wire']; require('fs').writeFileSync('package.json',JSON.stringify(p,null,4)+'\n')"
 
-# Only copy real package.json for packages the server needs
 COPY packages/happy-server/package.json packages/happy-server/
 COPY packages/happy-wire/package.json packages/happy-wire/
-
-# Stub unused packages so Yarn skips their dependencies
-RUN echo '{"name":"happy-app","version":"0.0.0","private":true}' > packages/happy-app/package.json && \
-    echo '{"name":"happy-coder","version":"0.0.0","private":true}' > packages/happy-cli/package.json && \
-    echo '{"name":"@slopus/agent","version":"0.0.0","private":true}' > packages/happy-agent/package.json
 
 # Prisma generate runs in happy-server postinstall
 COPY packages/happy-server/prisma packages/happy-server/prisma
@@ -40,6 +35,8 @@ RUN yarn install --frozen-lockfile --ignore-engines --production --ignore-script
 
 # Stage 3: slim runtime
 FROM node:20-slim AS runner
+
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /repo
 
