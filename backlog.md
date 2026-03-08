@@ -181,6 +181,7 @@ Goal: reduce visual bloat, improve scanability, and make high-priority work easi
   - group them more cleanly once the relevant output is done
 - Eliminate the duplicated plan presentation where both raw file-edit content and the plan tool are effectively shown twice.
 - Fix the black stripe artifact in file edit tool-call rendering.
+- Fix markdown image rendering in session/chat messages so absolute-path screenshot syntax like `![](/absolute/path.png)` previews inline on web instead of failing silently during manager review.
 - Ensure long worktree paths do not overlap with git changes or other row content.
 - Add ordering by importance at the worktree/project level, not the individual chat level.
 - When implementing ordering, support dragging worktree/project groups on web first.
@@ -190,6 +191,7 @@ Goal: reduce visual bloat, improve scanability, and make high-priority work easi
 - Validate all UI changes on web.
 - When drag ordering ships, record a web video showing the interaction.
 - Confirm that session grouping and archive actions still work after the layout changes.
+- Verify that markdown image syntax using local absolute paths renders an actual inline preview in a real web session.
 
 ## P4. File links, changed-files review, and attachments
 
