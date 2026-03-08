@@ -1011,6 +1011,11 @@ export async function runCodex(opts: {
                         storedSessionIdForResume = null;
                     }
 
+                    // Notify frontend that the session is starting (npx download + init can be slow)
+                    thinking = true;
+                    sendRemoteKeepAlive(thinking);
+                    session.sendAgentMessage('codex', { type: 'task_started', id: randomUUID() });
+
                     // Create backend with the new configuration
                     await createBackend({
                         model: message.mode.model,
@@ -1075,6 +1080,12 @@ export async function runCodex(opts: {
                         logger.debug('[Codex] Stored session after unexpected error:', storedSessionIdForResume);
                     }
                 }
+
+                // Close the task lifecycle so the frontend doesn't stay stuck in "thinking"
+                session.sendAgentMessage('codex', {
+                    type: isAbortError ? 'turn_aborted' : 'task_complete',
+                    id: randomUUID(),
+                });
             } finally {
                 permissionHandler.reset();
                 reasoningProcessor.abort();
