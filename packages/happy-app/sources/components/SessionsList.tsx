@@ -11,7 +11,7 @@ import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSetting } from '@/sync/storage';
-import { useVisibleSessionListViewData, useSharedSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useVisibleSessionListViewData, useSharedSessionListViewData, useSharedByMeSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
@@ -249,13 +249,14 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-type SessionTab = 'all' | 'shared';
+type SessionTab = 'all' | 'shared' | 'sharedByMe';
 
 export function SessionsList() {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     const data = useVisibleSessionListViewData();
     const sharedData = useSharedSessionListViewData();
+    const sharedByMeData = useSharedByMeSessionListViewData();
     const [activeTab, setActiveTab] = React.useState<SessionTab>('all');
     const pathname = usePathname();
     const isTablet = useIsTablet();
@@ -272,14 +273,17 @@ export function SessionsList() {
             setRefreshing(false);
         }
     }, []);
-    // Reset to 'all' tab if shared sessions become empty
+    // Reset to 'all' tab if current tab's data becomes empty
     React.useEffect(() => {
         if (activeTab === 'shared' && sharedData && sharedData.length === 0) {
             setActiveTab('all');
         }
-    }, [activeTab, sharedData]);
+        if (activeTab === 'sharedByMe' && sharedByMeData && sharedByMeData.length === 0) {
+            setActiveTab('all');
+        }
+    }, [activeTab, sharedData, sharedByMeData]);
 
-    const tabData = activeTab === 'shared' ? sharedData : data;
+    const tabData = activeTab === 'shared' ? sharedData : activeTab === 'sharedByMe' ? sharedByMeData : data;
 
     const selectable = isTablet;
     const dataWithSelected = selectable ? React.useMemo(() => {
@@ -378,18 +382,27 @@ export function SessionsList() {
 
     const tabs: { key: SessionTab; label: string }[] = React.useMemo(() => [
         { key: 'all', label: t('common.all') },
-        { key: 'shared', label: t('session.sharing.sharedWithMe') },
+        { key: 'shared', label: t('session.sharing.sharedWithMeSessions') },
+        { key: 'sharedByMe', label: t('session.sharing.sharedByMeSessions') },
     ], []);
 
     const hasSharedSessions = sharedData && sharedData.length > 0;
+    const hasSharedByMeSessions = sharedByMeData && sharedByMeData.length > 0;
 
     const HeaderComponent = React.useCallback(() => {
+        const showFilterRow = hasSharedSessions || hasSharedByMeSessions;
+        const visibleTabs = tabs.filter(tab => {
+            if (tab.key === 'all') return true;
+            if (tab.key === 'shared') return hasSharedSessions;
+            if (tab.key === 'sharedByMe') return hasSharedByMeSessions;
+            return true;
+        });
         return (
             <>
                 <UpdateBanner />
-                {hasSharedSessions && (
+                {showFilterRow && (
                     <View style={styles.filterRow}>
-                        {tabs.map((tab) => (
+                        {visibleTabs.map((tab) => (
                             <Pressable
                                 key={tab.key}
                                 style={[
@@ -410,7 +423,7 @@ export function SessionsList() {
                 )}
             </>
         );
-    }, [activeTab, theme, hasSharedSessions]);
+    }, [activeTab, theme, hasSharedSessions, hasSharedByMeSessions]);
 
     // Footer removed - all sessions now shown inline
 

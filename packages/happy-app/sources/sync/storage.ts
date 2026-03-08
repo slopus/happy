@@ -2004,6 +2004,10 @@ export function useSharedSessions() {
     return storage(useShallow((state) => Object.values(state.sharedSessions)));
 }
 
+export function useOwnSessionsSharedByMe() {
+    return storage(useShallow((state) => Object.values(state.sessions).filter(s => s.isShared)));
+}
+
 export function useSessionAccessLevel(sessionId: string) {
     return storage((state) => state.sharedSessions[sessionId]?.accessLevel);
 }
