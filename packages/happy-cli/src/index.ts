@@ -28,11 +28,25 @@ import { handleConnectCommand } from './commands/connect'
 import { handleSandboxCommand } from './commands/sandbox'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
 
 
 (async () => {
+  // On Windows, PowerShell/cmd default to legacy code pages (e.g. CP437) which
+  // misrender the UTF-8 box-drawing characters used by Happy's TUI as garbage
+  // like "ΓöÇΓöÇΓöÇ". Force UTF-8 (code page 65001) at startup so the terminal
+  // renders correctly without requiring users to run `chcp 65001` manually.
+  if (process.platform === 'win32') {
+    try {
+      execSync('chcp 65001', { stdio: 'ignore' })
+    } catch {
+      // Non-fatal: terminal may still render correctly
+    }
+    process.stdout.setDefaultEncoding('utf8')
+    process.stderr.setDefaultEncoding('utf8')
+  }
+
   const args = process.argv.slice(2)
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
