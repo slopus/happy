@@ -446,8 +446,16 @@ function NewSessionWizard() {
         addImageFromUri,
         removeImage,
         clearImages,
+        initImages,
         canAddMore,
     } = useImagePicker({ maxImages: 4 });
+
+    // Restore images from persisted draft on mount
+    React.useEffect(() => {
+        if (persistedDraft?.images && persistedDraft.images.length > 0) {
+            initImages(persistedDraft.images);
+        }
+    }, []);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const [imagePickerSheetVisible, setImagePickerSheetVisible] = React.useState(false);
@@ -1409,6 +1417,7 @@ function NewSessionWizard() {
                 agentType,
                 permissionMode,
                 sessionType,
+                images: images.length > 0 ? images : undefined,
                 updatedAt: Date.now(),
             });
         }, 250);
@@ -1417,7 +1426,7 @@ function NewSessionWizard() {
                 clearTimeout(draftSaveTimerRef.current);
             }
         };
-    }, [tempSessionData, sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
+    }, [tempSessionData, sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType, images]);
 
     const externalContextBanner = tempSessionData?.externalContext ? (
         <View style={{

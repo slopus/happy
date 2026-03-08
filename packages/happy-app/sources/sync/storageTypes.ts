@@ -99,6 +99,11 @@ export const AgentStateSchema = z.object({
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
+export interface SessionDraft {
+    text: string;
+    images: Array<{ uri: string; width: number; height: number; mimeType: string }>;
+}
+
 export interface Session {
     id: string,
     seq: number,
@@ -120,7 +125,7 @@ export interface Session {
         priority: 'high' | 'medium' | 'low';
         id: string;
     }>;
-    draft?: string | null; // Local draft message, not synced to server
+    draft?: SessionDraft | null; // Local draft message with optional images, not synced to server
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | null; // Local permission mode, not synced to server
     modelMode?: string | null; // Local model mode, not synced to server
     upgrading?: boolean; // True while session is being upgraded to new CLI version

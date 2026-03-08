@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { Session, Machine, GitStatus } from "./storageTypes";
+import { Session, SessionDraft, Machine, GitStatus } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -153,7 +153,7 @@ interface StorageState {
     setMicrophoneMuted: (muted: boolean) => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
-    updateSessionDraft: (sessionId: string, draft: string | null) => void;
+    updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => void;
     updateSessionActivity: (sessionId: string, active: boolean) => void;
     setSessionUpgrading: (sessionId: string, upgrading: boolean) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
@@ -983,16 +983,17 @@ export const storage = create<StorageState>()((set, get) => {
                 ...updates
             };
         }),
-        updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
+        updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => set((state) => {
             const isShared = sessionId in state.sharedSessions;
             const session = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
             if (!session) return state;
 
-            // Don't store empty strings, convert to null
-            const normalizedDraft = draft?.trim() ? draft : null;
+            // Normalize: store null if both text and images are empty
+            const normalizedDraft = (draft && (draft.text.trim() || draft.images.length > 0))
+                ? draft : null;
 
             // Collect all drafts for persistence (from both own and shared sessions)
-            const allDrafts: Record<string, string> = {};
+            const allDrafts: Record<string, SessionDraft> = {};
             const allSessions = { ...state.sessions, ...state.sharedSessions };
             Object.entries(allSessions).forEach(([id, sess]) => {
                 if (id === sessionId) {

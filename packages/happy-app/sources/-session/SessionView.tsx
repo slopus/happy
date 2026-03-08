@@ -329,9 +329,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         };
     }, [silentRefreshPhase, isRefreshingStatus, sessionStatus, theme.colors.status.connecting, theme.colors.status.error, handleRetryStatusRefresh]);
 
-    // Use draft hook for auto-saving message drafts
-    const { clearDraft } = useDraft(sessionId, message, setMessage);
-
     // Ref for the input component (used for web auto-focus)
     const inputRef = React.useRef<MultiTextInputHandle>(null);
 
@@ -365,8 +362,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         addImageFromUri,
         removeImage,
         clearImages,
+        initImages,
         canAddMore,
     } = useImagePicker({ maxImages: 4 });
+
+    // Use draft hook for auto-saving message drafts
+    const { clearDraft } = useDraft(sessionId, message, setMessage, images, initImages);
+
     const [isUploadingImages, setIsUploadingImages] = React.useState(false);
     const [isSending, setIsSending] = React.useState(false);
 

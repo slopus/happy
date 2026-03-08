@@ -3,6 +3,7 @@ import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './set
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
+import type { SessionDraft } from './storageTypes';
 import { DooTaskProfile, DooTaskProfileSchema } from './dootask/types';
 
 const mmkv = new MMKV();
@@ -18,6 +19,7 @@ export interface NewSessionDraft {
     agentType: NewSessionAgentType;
     permissionMode: PermissionMode;
     sessionType: NewSessionSessionType;
+    images?: Array<{ uri: string; width: number; height: number; mimeType: string }>;
     updatedAt: number;
 }
 
@@ -90,11 +92,20 @@ export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
     return localSettingsDefaults.themePreference;
 }
 
-export function loadSessionDrafts(): Record<string, string> {
+export function loadSessionDrafts(): Record<string, SessionDraft> {
     const drafts = mmkv.getString('session-drafts');
     if (drafts) {
         try {
-            return JSON.parse(drafts);
+            const raw = JSON.parse(drafts);
+            const result: Record<string, SessionDraft> = {};
+            for (const [key, value] of Object.entries(raw)) {
+                if (typeof value === 'string') {
+                    result[key] = { text: value, images: [] };
+                } else if (value && typeof value === 'object' && 'text' in (value as any)) {
+                    result[key] = value as SessionDraft;
+                }
+            }
+            return result;
         } catch (e) {
             console.error('Failed to parse session drafts', e);
             return {};
@@ -103,7 +114,7 @@ export function loadSessionDrafts(): Record<string, string> {
     return {};
 }
 
-export function saveSessionDrafts(drafts: Record<string, string>) {
+export function saveSessionDrafts(drafts: Record<string, SessionDraft>) {
     mmkv.set('session-drafts', JSON.stringify(drafts));
 }
 
@@ -128,6 +139,10 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             ? (parsed.permissionMode as PermissionMode)
             : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
+        const images = Array.isArray(parsed.images) ? parsed.images.filter(
+            (img: any) => img && typeof img.uri === 'string' && typeof img.width === 'number'
+                && typeof img.height === 'number' && typeof img.mimeType === 'string'
+        ) : [];
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
         return {
@@ -137,6 +152,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             agentType,
             permissionMode,
             sessionType,
+            images,
             updatedAt,
         };
     } catch (e) {

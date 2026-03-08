@@ -23,6 +23,7 @@ interface UseImagePickerReturn {
     addImageFromUri: (uri: string, mimeType: string) => Promise<void>;
     removeImage: (index: number) => void;
     clearImages: () => void;
+    initImages: (images: LocalImage[]) => void;
     canAddMore: boolean;
 }
 
@@ -237,6 +238,10 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
         setImages([]);
     }, []);
 
+    const initImages = React.useCallback((newImages: LocalImage[]) => {
+        setImages(newImages.slice(0, maxImages));
+    }, [maxImages]);
+
     return {
         images,
         pickFromGallery,
@@ -244,6 +249,7 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
         addImageFromUri,
         removeImage,
         clearImages,
+        initImages,
         canAddMore,
     };
 }
