@@ -33,6 +33,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
 import { storage } from '@/sync/storage';
 import { usePathname } from 'expo-router';
+import { useDootaskGlobalWebSocket } from '@/hooks/useDootaskGlobalWebSocket';
 
 let currentAppState: string = AppState.currentState;
 let currentSessionId: string | null = null;
@@ -302,6 +303,9 @@ export default function RootLayout() {
 
     // Track the screens
     useTrackScreens()
+
+    // Global DooTask WebSocket connection
+    useDootaskGlobalWebSocket();
 
     //
     // Not inited

@@ -8,6 +8,7 @@ import * as Clipboard from 'expo-clipboard';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { AgentContentView } from '@/components/AgentContentView';
 import { storage, useDootaskProfile, useDootaskUserCache, useDootaskUserAvatars, useDootaskUserDisabledAt } from '@/sync/storage';
+import { useShallow } from 'zustand/react/shallow';
 import { dootaskFetchDialogMessages, dootaskSendTextMessage, dootaskSendFileMessage, dootaskSendFileByUri, dootaskToggleEmoji, dootaskFetchDialogOne, dootaskFetchDialogUsers } from '@/sync/dootask/api';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { DialogDetailModal } from '@/components/dootask/DialogDetailModal';
@@ -50,6 +51,12 @@ export default React.memo(function DooTaskChat() {
     const id = isMock ? 0 : Number(dialogId);
     const idRef = React.useRef(id);
     idRef.current = id;
+
+    // Live task name from store (updates when task title changes via WebSocket)
+    const liveTaskName = storage(useShallow((s) =>
+        s.dootaskTasks.find((t) => t.dialog_id === id)?.name
+    ));
+    const subtitle = liveTaskName || taskName;
 
     // Message state
     const [messages, setMessages] = React.useState<DooTaskDialogMsg[]>([]);
@@ -241,11 +248,9 @@ export default React.memo(function DooTaskChat() {
         }
     }, [profile, id, loadingMore, hasMore]);
 
-    // WebSocket for real-time — only connect after initial REST fetch completes
-    // to prevent WS messages from being overwritten by setMessages()
+    // WebSocket for real-time — subscribes to global WS,
+    // only enabled after initial REST fetch to prevent race conditions
     useDootaskWebSocket({
-        serverUrl: profile?.serverUrl || '',
-        token: profile?.token || '',
         dialogId: id,
         enabled: wsEnabled,
         onMessage: React.useCallback((msg: DooTaskDialogMsg) => {
@@ -561,7 +566,7 @@ export default React.memo(function DooTaskChat() {
     const header = React.useMemo(() => (
         <ChatHeaderView
             title={chatTitle}
-            subtitle={taskName}
+            subtitle={subtitle}
             onBackPress={() => router.back()}
             headerRight={() => (
                 <Pressable style={styles.headerIconButton} onPress={handleOpenDetail}>
@@ -581,7 +586,7 @@ export default React.memo(function DooTaskChat() {
                 </Pressable>
             )}
         />
-    ), [chatTitle, taskName, router, resolvedDialogAvatar, handleOpenDetail]);
+    ), [chatTitle, subtitle, router, resolvedDialogAvatar, handleOpenDetail]);
 
     // Image press -> open viewer
     // For file-upload images: show all file images as a gallery
@@ -671,7 +676,7 @@ export default React.memo(function DooTaskChat() {
             />
             <DialogDetailModal
                 ref={detailModalRef}
-                dialogName={dialogInfo?.name || taskName || ''}
+                dialogName={subtitle || dialogInfo?.name || ''}
                 dialogId={id}
                 groupType={dialogInfo?.group_type || ''}
                 ownerId={dialogInfo?.owner_id || 0}

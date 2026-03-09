@@ -1697,10 +1697,25 @@ export const storage = create<StorageState>()((set, get) => {
 
         updateDootaskTask: (taskId, updates) => set((state) => {
             const idx = state.dootaskTasks.findIndex((t) => t.id === taskId);
-            if (idx === -1) return state;
-            const updated = [...state.dootaskTasks];
-            updated[idx] = { ...updated[idx], ...updates };
-            return { ...state, dootaskTasks: updated };
+            const newState: Partial<StorageState> = {};
+
+            // Update task in list
+            if (idx !== -1) {
+                const updated = [...state.dootaskTasks];
+                updated[idx] = { ...updated[idx], ...updates };
+                newState.dootaskTasks = updated;
+            }
+
+            // Update task in detail cache (so detail page reacts too)
+            const cached = state.dootaskTaskDetailCache[taskId];
+            if (cached) {
+                newState.dootaskTaskDetailCache = {
+                    ...state.dootaskTaskDetailCache,
+                    [taskId]: { ...cached, task: { ...cached.task, ...updates } },
+                };
+            }
+
+            return Object.keys(newState).length > 0 ? { ...state, ...newState } : state;
         }),
 
         clearDootaskData: () => {

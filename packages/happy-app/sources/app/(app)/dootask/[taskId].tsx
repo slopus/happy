@@ -115,6 +115,11 @@ export default function DooTaskDetail() {
     const [loading, setLoading] = React.useState(!cached);
     const [refreshing, setRefreshing] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+
+    // Sync local task state when the global cache updates (e.g. via WebSocket)
+    React.useEffect(() => {
+        if (cached?.task) setTask(cached.task);
+    }, [cached?.task]);
     // Action menu
     const [menuVisible, setMenuVisible] = React.useState(false);
 

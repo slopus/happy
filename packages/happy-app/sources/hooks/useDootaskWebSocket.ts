@@ -1,21 +1,18 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import type { DooTaskDialogMsg } from '@/sync/dootask/types';
+import { dootaskWS } from '@/sync/dootask/dootaskWebSocket';
 
 /**
  * WebSocket hook for DooTask real-time chat.
  *
- * Connects to DooTask's Swoole WebSocket server and dispatches incoming
- * dialog messages (add/chat, update, delete) filtered by dialogId.
+ * Subscribes to the global dootaskWS singleton for 'dialog' messages
+ * filtered by dialogId, dispatching add/chat, update, and delete events.
  *
- * - Heartbeat every 30 seconds with { type: 'handshake' }
- * - Auto-reconnect after 3 seconds on close or error
- * - Callback refs prevent unnecessary reconnections when callback
- *   identities change between renders
+ * No longer creates its own WebSocket connection — relies on the global
+ * connection managed by useDootaskGlobalWebSocket in _layout.tsx.
  */
 
 type UseDootaskWebSocketParams = {
-    serverUrl: string;
-    token: string;
     dialogId: number;
     enabled?: boolean;
     onMessage: (msg: DooTaskDialogMsg) => void;
@@ -24,16 +21,11 @@ type UseDootaskWebSocketParams = {
 };
 
 export function useDootaskWebSocket({
-    serverUrl, token, dialogId,
+    dialogId,
     enabled = true,
     onMessage, onMessageUpdate, onMessageDelete,
 }: UseDootaskWebSocketParams) {
-    const wsRef = useRef<WebSocket | null>(null);
-    const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-    const heartbeatTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-    const unmountedRef = useRef(false);
-
-    // Use refs for callbacks to avoid reconnecting when callbacks change
+    // Use refs for callbacks to avoid re-subscribing when callbacks change
     const onMessageRef = useRef(onMessage);
     const onMessageUpdateRef = useRef(onMessageUpdate);
     const onMessageDeleteRef = useRef(onMessageDelete);
@@ -41,80 +33,24 @@ export function useDootaskWebSocket({
     onMessageUpdateRef.current = onMessageUpdate;
     onMessageDeleteRef.current = onMessageDelete;
 
-    const connect = useCallback(() => {
-        if (unmountedRef.current) return;
-        if (!serverUrl || !token || !enabled) return;
-
-        // Close any existing connection to prevent duplicates.
-        // Null out onclose first so the stale handler doesn't schedule a reconnect.
-        if (wsRef.current) {
-            wsRef.current.onclose = null;
-            wsRef.current.close();
-            wsRef.current = null;
-        }
-        if (heartbeatTimer.current !== undefined) clearInterval(heartbeatTimer.current);
-        if (reconnectTimer.current !== undefined) clearTimeout(reconnectTimer.current);
-
-        const wsUrl = serverUrl
-            .replace('https://', 'wss://')
-            .replace('http://', 'ws://')
-            .replace(/\/+$/, '');
-        const ws = new WebSocket(`${wsUrl}/ws?action=web&token=${token}&language=zh&platform=web`);
-
-        ws.onopen = () => {
-            heartbeatTimer.current = setInterval(() => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'handshake' }));
-                }
-            }, 30_000);
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const parsed = JSON.parse(event.data);
-                if (parsed.type !== 'dialog') return;
-                const msgData = parsed.data ?? parsed;
-                if (msgData.dialog_id !== dialogId && msgData.data?.dialog_id !== dialogId) return;
-                const payload = msgData.data ?? msgData;
-
-                const mode = parsed.mode ?? msgData.mode;
-                if (mode === 'add' || mode === 'chat') {
-                    onMessageRef.current(payload);
-                } else if (mode === 'update') {
-                    onMessageUpdateRef.current?.(payload);
-                } else if (mode === 'delete') {
-                    onMessageDeleteRef.current?.(payload.id ?? payload.msg_id);
-                }
-            } catch { /* ignore parse errors */ }
-        };
-
-        ws.onclose = () => {
-            if (heartbeatTimer.current !== undefined) clearInterval(heartbeatTimer.current);
-            // Only reconnect if this is still the active connection
-            if (!unmountedRef.current && wsRef.current === ws) {
-                reconnectTimer.current = setTimeout(connect, 3000);
-            }
-        };
-
-        ws.onerror = () => {
-            ws.close();
-        };
-
-        wsRef.current = ws;
-    }, [serverUrl, token, dialogId, enabled]);
-
     useEffect(() => {
-        unmountedRef.current = false;
-        connect();
-        return () => {
-            unmountedRef.current = true;
-            if (reconnectTimer.current !== undefined) clearTimeout(reconnectTimer.current);
-            if (heartbeatTimer.current !== undefined) clearInterval(heartbeatTimer.current);
-            if (wsRef.current) {
-                wsRef.current.onclose = null;
-                wsRef.current.close();
-                wsRef.current = null;
+        if (!enabled) return;
+
+        const unsub = dootaskWS.onMessage('dialog', (parsed) => {
+            const msgData = parsed.data ?? parsed;
+            if (msgData.dialog_id !== dialogId && msgData.data?.dialog_id !== dialogId) return;
+            const payload = msgData.data ?? msgData;
+
+            const mode = parsed.mode ?? msgData.mode;
+            if (mode === 'add' || mode === 'chat') {
+                onMessageRef.current(payload);
+            } else if (mode === 'update') {
+                onMessageUpdateRef.current?.(payload);
+            } else if (mode === 'delete') {
+                onMessageDeleteRef.current?.(payload.id ?? payload.msg_id);
             }
-        };
-    }, [connect]);
+        });
+
+        return unsub;
+    }, [dialogId, enabled]);
 }
