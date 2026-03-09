@@ -576,6 +576,8 @@ export const ja: TranslationStructure = {
         copyConfirmMessage: ({ provider }: { provider: string }) => `接続済みのデバイス上に${provider}セッションのコピーを作成します。`,
         searchPlaceholder: 'セッションを検索...',
         noResults: '一致するセッションがありません',
+        allDevices: 'すべてのデバイス',
+        allAgents: 'すべてのエージェント',
     },
 
     claudeHistory: {

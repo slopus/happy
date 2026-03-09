@@ -545,6 +545,8 @@ export const zhHant: TranslationStructure = {
         copyConfirmMessage: ({ provider }: { provider: string }) => `這將在你已連接的裝置上建立此 ${provider} 工作階段的副本。`,
         searchPlaceholder: '搜尋工作階段...',
         noResults: '沒有匹配的工作階段',
+        allDevices: '所有裝置',
+        allAgents: '所有代理',
     },
 
     claudeHistory: {

@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, FlatList, Pressable, ActivityIndicator, TextInput } from 'react-native';
+import { Image } from 'expo-image';
 import { Text } from '@/components/StyledText';
-import { useAllSessions } from '@/sync/storage';
+import { useAllSessions, useAllMachines } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { Avatar } from '@/components/Avatar';
 import { generateCopyTitle, getSessionName, getSessionSubtitle, getSessionAvatarId, useSessionStatus, copySessionMetadata } from '@/utils/sessionUtils';
 import { StatusDot } from '@/components/StatusDot';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -16,6 +18,26 @@ import { Modal } from '@/modal';
 import { machineForkClaudeSession, machineForkGeminiSession, machineForkCodexSession, machineSpawnNewSession } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { MMKV } from 'react-native-mmkv';
+
+const mmkv = new MMKV();
+const SELECTED_MACHINE_KEY = 'session-history-selected-machine';
+const SELECTED_AGENT_KEY = 'session-history-selected-agent';
+
+type AgentFilter = 'all' | 'claude' | 'gemini' | 'codex';
+
+const AGENT_FILTERS: { key: AgentFilter; label: () => string }[] = [
+    { key: 'all', label: () => t('sessionHistory.allAgents') },
+    { key: 'claude', label: () => t('agentHistory.tabClaude') },
+    { key: 'gemini', label: () => t('agentHistory.tabGemini') },
+    { key: 'codex', label: () => t('agentHistory.tabCodex') },
+];
+
+const agentIcons: Record<string, any> = {
+    claude: require('@/assets/images/icon-claude.png'),
+    gemini: require('@/assets/images/icon-gemini.png'),
+    codex: require('@/assets/images/icon-gpt.png'),
+};
 
 type ForkMode = 'resume' | 'copy';
 
@@ -161,6 +183,28 @@ const styles = StyleSheet.create((theme) => ({
     clearButton: {
         padding: 4,
     },
+    filterRow: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingTop: 6,
+        paddingBottom: 4,
+        gap: 8,
+    },
+    filterTrigger: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        height: 36,
+    },
+    filterTriggerText: {
+        flex: 1,
+        fontSize: 14,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
 }));
 
 function formatDateHeader(date: Date): string {
@@ -227,23 +271,71 @@ function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
     return items;
 }
 
-export default function SessionHistory() {
+function SessionHistory() {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const allSessions = useAllSessions();
+    const machines = useAllMachines();
     const navigateToSession = useNavigateToSession();
     const [resumingSessionId, setResumingSessionId] = React.useState<string | null>(null);
     const [searchQuery, setSearchQuery] = React.useState('');
+    const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
+        return mmkv.getString(SELECTED_MACHINE_KEY) || null;
+    });
+    const [selectedAgent, setSelectedAgent] = React.useState<AgentFilter>(() => {
+        const saved = mmkv.getString(SELECTED_AGENT_KEY);
+        if (saved === 'claude' || saved === 'gemini' || saved === 'codex') return saved;
+        return 'all';
+    });
+    const [machineMenuVisible, setMachineMenuVisible] = React.useState(false);
+    const [agentMenuVisible, setAgentMenuVisible] = React.useState(false);
+
+    const selectedMachine = React.useMemo(
+        () => machines.find((m) => m.id === selectedMachineId) || null,
+        [machines, selectedMachineId]
+    );
+
+    // Clear stale machineId if it no longer exists in the machines list
+    React.useEffect(() => {
+        if (selectedMachineId && machines.length > 0 && !machines.some(m => m.id === selectedMachineId)) {
+            setSelectedMachineId(null);
+        }
+    }, [machines, selectedMachineId]);
+
+    React.useEffect(() => {
+        if (selectedMachineId) {
+            mmkv.set(SELECTED_MACHINE_KEY, selectedMachineId);
+        } else {
+            mmkv.delete(SELECTED_MACHINE_KEY);
+        }
+    }, [selectedMachineId]);
+
+    React.useEffect(() => {
+        mmkv.set(SELECTED_AGENT_KEY, selectedAgent);
+    }, [selectedAgent]);
 
     const filteredSessions = React.useMemo(() => {
+        let result = allSessions;
+
+        if (selectedMachineId) {
+            result = result.filter(s => s.metadata?.machineId === selectedMachineId);
+        }
+
+        if (selectedAgent !== 'all') {
+            result = result.filter(s => s.metadata?.flavor === selectedAgent);
+        }
+
         const query = searchQuery.trim().toLowerCase();
-        if (!query) return allSessions;
-        return allSessions.filter(session => {
-            const name = getSessionName(session).toLowerCase();
-            const subtitle = getSessionSubtitle(session).toLowerCase();
-            return name.includes(query) || subtitle.includes(query);
-        });
-    }, [allSessions, searchQuery]);
+        if (query) {
+            result = result.filter(session => {
+                const name = getSessionName(session).toLowerCase();
+                const subtitle = getSessionSubtitle(session).toLowerCase();
+                return name.includes(query) || subtitle.includes(query);
+            });
+        }
+
+        return result;
+    }, [allSessions, selectedMachineId, selectedAgent, searchQuery]);
 
     const groupedItems = React.useMemo(() => {
         return groupSessionsByDate(filteredSessions);
@@ -393,6 +485,64 @@ export default function SessionHistory() {
         return `item-${index}`;
     }, []);
     
+    const searchHeader = React.useMemo(() => (
+        <View>
+            <View style={styles.searchContainer}>
+                <View style={styles.searchInputWrapper}>
+                    <Ionicons name="search" size={16} color={theme.colors.textSecondary} style={styles.searchIcon} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder={t('sessionHistory.searchPlaceholder')}
+                        placeholderTextColor={theme.colors.textSecondary}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        autoCorrect={false}
+                        autoCapitalize="none"
+                    />
+                    {searchQuery.length > 0 && (
+                        <Pressable style={styles.clearButton} onPress={() => setSearchQuery('')}>
+                            <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
+                        </Pressable>
+                    )}
+                </View>
+            </View>
+            <View style={styles.filterRow}>
+                <Pressable
+                    style={styles.filterTrigger}
+                    onPress={() => setMachineMenuVisible(true)}
+                >
+                    <Ionicons name="desktop-outline" size={16} color={theme.colors.textSecondary} style={{ marginRight: 6 }} />
+                    <Text style={styles.filterTriggerText} numberOfLines={1}>
+                        {selectedMachine
+                            ? (selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Unknown')
+                            : t('sessionHistory.allDevices')}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} />
+                </Pressable>
+
+                <Pressable
+                    style={styles.filterTrigger}
+                    onPress={() => setAgentMenuVisible(true)}
+                >
+                    {selectedAgent !== 'all' ? (
+                        <Image
+                            source={agentIcons[selectedAgent]}
+                            style={{ width: 16, height: 16, marginRight: 6 }}
+                            contentFit="contain"
+                            tintColor={selectedAgent === 'codex' ? theme.colors.text : undefined}
+                        />
+                    ) : (
+                        <Ionicons name="grid-outline" size={16} color={theme.colors.textSecondary} style={{ marginRight: 6 }} />
+                    )}
+                    <Text style={styles.filterTriggerText} numberOfLines={1}>
+                        {AGENT_FILTERS.find(f => f.key === selectedAgent)?.label() || selectedAgent}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} />
+                </Pressable>
+            </View>
+        </View>
+    ), [searchQuery, theme, selectedMachine, selectedAgent]);
+
     if (!allSessions) {
         return (
             <View style={styles.container}>
@@ -400,81 +550,84 @@ export default function SessionHistory() {
             </View>
         );
     }
-    
-    const searchHeader = React.useMemo(() => (
-        <View style={styles.searchContainer}>
-            <View style={styles.searchInputWrapper}>
-                <Ionicons name="search" size={16} color={theme.colors.textSecondary} style={styles.searchIcon} />
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder={t('sessionHistory.searchPlaceholder')}
-                    placeholderTextColor={theme.colors.textSecondary}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                />
-                {searchQuery.length > 0 && (
-                    <Pressable style={styles.clearButton} onPress={() => setSearchQuery('')}>
-                        <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
-                    </Pressable>
-                )}
-            </View>
-        </View>
-    ), [searchQuery, theme]);
 
-    if (groupedItems.length === 0) {
-        return (
-            <View style={styles.container}>
-                <View style={styles.contentContainer}>
-                    {allSessions.length > 0 ? (
-                        <FlatList
-                            data={[]}
-                            renderItem={() => null}
-                            ListHeaderComponent={searchHeader}
-                            ListEmptyComponent={
-                                <View style={styles.emptyContainer}>
-                                    <Text style={styles.emptyText}>
-                                        {t('sessionHistory.noResults')}
-                                    </Text>
-                                </View>
-                            }
-                            contentContainerStyle={{
-                                paddingBottom: safeArea.bottom + 16,
-                                paddingTop: 8,
-                                flex: 1,
-                            }}
-                        />
-                    ) : (
-                        <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyText}>
-                                {t('sessionHistory.empty')}
-                            </Text>
-                        </View>
-                    )}
-                </View>
+    const listContent = groupedItems.length === 0 ? (
+        allSessions.length > 0 ? (
+            <FlatList
+                data={[]}
+                renderItem={() => null}
+                ListHeaderComponent={searchHeader}
+                ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyText}>
+                            {t('sessionHistory.noResults')}
+                        </Text>
+                    </View>
+                }
+                contentContainerStyle={{
+                    paddingBottom: safeArea.bottom + 16,
+                    paddingTop: 8,
+                    flex: 1,
+                }}
+            />
+        ) : (
+            <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>
+                    {t('sessionHistory.empty')}
+                </Text>
             </View>
-        );
-    }
+        )
+    ) : (
+        <FlatList
+            data={groupedItems}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            ListHeaderComponent={searchHeader}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{
+                paddingBottom: safeArea.bottom + 16,
+                paddingTop: 8,
+            }}
+        />
+    );
 
     return (
         <View style={styles.container}>
             <View style={styles.contentContainer}>
-                <FlatList
-                    data={groupedItems}
-                    renderItem={renderItem}
-                    keyExtractor={keyExtractor}
-                    ListHeaderComponent={searchHeader}
-                    keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={{
-                        paddingBottom: safeArea.bottom + 16,
-                        paddingTop: 8,
-                    }}
-                />
+                {listContent}
             </View>
+            <ActionMenuModal
+                visible={machineMenuVisible}
+                title={t('sessionHistory.allDevices')}
+                items={[
+                    {
+                        label: t('sessionHistory.allDevices'),
+                        selected: selectedMachineId === null,
+                        onPress: () => setSelectedMachineId(null),
+                    },
+                    ...machines.map((machine) => ({
+                        label: machine.metadata?.displayName || machine.metadata?.host || 'Unknown',
+                        selected: machine.id === selectedMachineId,
+                        onPress: () => setSelectedMachineId(machine.id),
+                    })),
+                ]}
+                onClose={() => setMachineMenuVisible(false)}
+            />
+            <ActionMenuModal
+                visible={agentMenuVisible}
+                title={t('sessionHistory.allAgents')}
+                items={AGENT_FILTERS.map((filter) => ({
+                    label: filter.label(),
+                    selected: selectedAgent === filter.key,
+                    onPress: () => setSelectedAgent(filter.key),
+                }))}
+                onClose={() => setAgentMenuVisible(false)}
+            />
         </View>
     );
 }
+
+export default React.memo(SessionHistory);
 
 const SessionHistoryItemCard = React.memo(({ session, isFirst, isLast, isSingle, isResuming, onPress, onFork }: {
     session: Session;

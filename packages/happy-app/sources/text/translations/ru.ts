@@ -508,6 +508,8 @@ export const ru: TranslationStructure = {
         copyConfirmMessage: ({ provider }: { provider: string }) => `Это создаст копию сеанса ${provider} на вашем подключённом устройстве.`,
         searchPlaceholder: 'Поиск сессий...',
         noResults: 'Совпадений не найдено',
+        allDevices: 'Все устройства',
+        allAgents: 'Все агенты',
     },
 
     claudeHistory: {

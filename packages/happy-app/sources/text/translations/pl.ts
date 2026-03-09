@@ -555,6 +555,8 @@ export const pl: TranslationStructure = {
         copyConfirmMessage: ({ provider }: { provider: string }) => `Spowoduje to utworzenie kopii sesji ${provider} na twoim podłączonym urządzeniu.`,
         searchPlaceholder: 'Szukaj sesji...',
         noResults: 'Brak pasujących sesji',
+        allDevices: 'Wszystkie urządzenia',
+        allAgents: 'Wszyscy agenci',
     },
 
     claudeHistory: {

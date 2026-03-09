@@ -544,6 +544,8 @@ export const ca: TranslationStructure = {
         copyConfirmMessage: ({ provider }: { provider: string }) => `Això crearà una còpia de la sessió de ${provider} al teu dispositiu connectat.`,
         searchPlaceholder: 'Cerca sessions...',
         noResults: 'Cap sessió coincident',
+        allDevices: 'Tots els dispositius',
+        allAgents: 'Tots els agents',
     },
 
     claudeHistory: {

@@ -546,6 +546,8 @@ export const zhHans: TranslationStructure = {
         copyConfirmMessage: ({ provider }: { provider: string }) => `这将在你已连接的设备上创建该 ${provider} 会话的副本。`,
         searchPlaceholder: '搜索会话...',
         noResults: '没有匹配的会话',
+        allDevices: '全部设备',
+        allAgents: '全部智能体',
     },
 
     claudeHistory: {
