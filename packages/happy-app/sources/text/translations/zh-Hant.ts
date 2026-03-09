@@ -686,6 +686,7 @@ export const zhHant: TranslationStructure = {
         created: '建立時間',
         lastUpdated: '最後更新',
         sequence: '序列',
+        relatedTask: '關聯任務',
         quickActions: '快速操作',
         viewMachine: '查看裝置',
         viewMachineSubtitle: '查看裝置詳情和工作階段',

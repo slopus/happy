@@ -685,6 +685,7 @@ export const en = {
         created: 'Created',
         lastUpdated: 'Last Updated',
         sequence: 'Sequence',
+        relatedTask: 'Related Task',
         quickActions: 'Quick Actions',
         viewMachine: 'View Machine',
         viewMachineSubtitle: 'View machine details and sessions',

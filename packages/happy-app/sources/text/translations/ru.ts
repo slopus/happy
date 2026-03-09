@@ -585,6 +585,7 @@ export const ru: TranslationStructure = {
         created: 'Создано',
         lastUpdated: 'Последнее обновление',
         sequence: 'Последовательность',
+        relatedTask: 'Связанная задача',
         quickActions: 'Быстрые действия',
         viewMachine: 'Посмотреть машину',
         viewMachineSubtitle: 'Посмотреть детали машины и сессии',

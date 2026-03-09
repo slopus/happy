@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { View, Text, Animated, Pressable, Platform } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons, AntDesign } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -916,6 +917,18 @@ function SessionInfoContent({ session }: { session: Session }) {
                         showChevron={false}
                     />
                 </ItemGroup>
+
+                {/* Related DooTask task - show when session is linked to a task */}
+                {session.metadata?.externalContext?.source === 'dootask' && (
+                    <ItemGroup title={t('sessionInfo.relatedTask')}>
+                        <Item
+                            title={session.metadata.externalContext.title || `#${session.metadata.externalContext.resourceId}`}
+                            subtitle={(session.metadata.externalContext.extra as Record<string, unknown> | undefined)?.projectName as string | undefined}
+                            icon={<Image source={require('@/assets/images/icon-dootask-outline.png')} style={{ width: 29, height: 29 }} contentFit="contain" />}
+                            onPress={() => router.navigate(`/dootask/${session.metadata!.externalContext!.resourceId}`)}
+                        />
+                    </ItemGroup>
+                )}
 
                 {/* Quick Actions - only show when user has admin/owner permissions */}
                 {isAdmin && (

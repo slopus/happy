@@ -685,6 +685,7 @@ export const ca: TranslationStructure = {
         created: 'Creat',
         lastUpdated: 'Última actualització',
         sequence: 'Seqüència',
+        relatedTask: 'Tasca relacionada',
         quickActions: 'Accions ràpides',
         viewMachine: 'Veure la màquina',
         viewMachineSubtitle: 'Veure detalls de la màquina i sessions',

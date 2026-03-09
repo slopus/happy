@@ -687,6 +687,7 @@ export const zhHans: TranslationStructure = {
         created: '创建时间',
         lastUpdated: '最后更新',
         sequence: '序列',
+        relatedTask: '关联任务',
         quickActions: '快速操作',
         viewMachine: '查看设备',
         viewMachineSubtitle: '查看设备详情和会话',

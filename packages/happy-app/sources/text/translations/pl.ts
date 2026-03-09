@@ -696,6 +696,7 @@ export const pl: TranslationStructure = {
         created: 'Utworzono',
         lastUpdated: 'Ostatnia aktualizacja',
         sequence: 'Sekwencja',
+        relatedTask: 'Powiązane zadanie',
         quickActions: 'Szybkie akcje',
         viewMachine: 'Zobacz maszynę',
         viewMachineSubtitle: 'Zobacz szczegóły maszyny i sesje',

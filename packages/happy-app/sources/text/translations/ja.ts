@@ -717,6 +717,7 @@ export const ja: TranslationStructure = {
         created: '作成日時',
         lastUpdated: '最終更新',
         sequence: 'シーケンス',
+        relatedTask: '関連タスク',
         quickActions: 'クイックアクション',
         viewMachine: 'マシンを表示',
         viewMachineSubtitle: 'マシンの詳細とセッションを表示',
