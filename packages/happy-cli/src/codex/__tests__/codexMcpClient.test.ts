@@ -10,6 +10,8 @@ const {
     mockClientConnect,
     mockClientClose,
     mockStdioCtor,
+    mockNotificationHandler,
+    mockRequestHandler,
 } = vi.hoisted(() => ({
     mockExecSync: vi.fn(),
     mockInitializeSandbox: vi.fn(),
@@ -18,6 +20,12 @@ const {
     mockClientConnect: vi.fn(),
     mockClientClose: vi.fn(),
     mockStdioCtor: vi.fn(),
+    mockNotificationHandler: {
+        current: null as ((data: any) => void) | null,
+    },
+    mockRequestHandler: {
+        current: null as ((request: any) => Promise<any>) | null,
+    },
 }));
 
 vi.mock('child_process', () => ({
@@ -39,8 +47,12 @@ vi.mock('@/ui/logger', () => ({
 
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
     Client: class MockClient {
-        setNotificationHandler = vi.fn();
-        setRequestHandler = vi.fn();
+        setNotificationHandler = vi.fn((_schema: any, handler: (data: any) => void) => {
+            mockNotificationHandler.current = handler;
+        });
+        setRequestHandler = vi.fn((_schema: any, handler: (request: any) => Promise<any>) => {
+            mockRequestHandler.current = handler;
+        });
         connect = mockClientConnect;
         close = mockClientClose;
         callTool = vi.fn();
@@ -83,6 +95,8 @@ describe('CodexMcpClient sandbox integration', () => {
         mockClientClose.mockResolvedValue(undefined);
         mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
         mockWrapForMcpTransport.mockResolvedValue({ command: 'sh', args: ['-c', 'wrapped codex mcp'] });
+        mockNotificationHandler.current = null;
+        mockRequestHandler.current = null;
     });
 
     afterAll(() => {
@@ -151,5 +165,116 @@ describe('CodexMcpClient sandbox integration', () => {
                 }),
             }),
         );
+    });
+
+    it('maps permission decisions to Codex elicitation actions', async () => {
+        const client = new CodexMcpClient();
+        client.setPermissionHandler({
+            handleToolCall: vi.fn().mockResolvedValue({ decision: 'approved_for_session' }),
+        } as any);
+
+        await client.connect();
+
+        expect(mockRequestHandler.current).toBeTruthy();
+        const response = await mockRequestHandler.current!({
+            params: {
+                codex_call_id: 'call_123',
+                codex_command: ['echo', 'hi'],
+                codex_cwd: '/tmp/project',
+            },
+        });
+
+        expect(response).toEqual({ action: 'accept' });
+    });
+
+    it('falls back to exec_approval_request metadata when elicitation params omit Codex fields', async () => {
+        const permissionHandler = {
+            handleToolCall: vi.fn().mockResolvedValue({ decision: 'approved' }),
+        };
+        const client = new CodexMcpClient();
+        client.setPermissionHandler(permissionHandler as any);
+
+        await client.connect();
+
+        expect(mockNotificationHandler.current).toBeTruthy();
+        expect(mockRequestHandler.current).toBeTruthy();
+
+        mockNotificationHandler.current!({
+            params: {
+                msg: {
+                    type: 'exec_approval_request',
+                    call_id: 'call_from_event',
+                    command: ['/bin/zsh', '-lc', 'mkdir -p ../02-mobliecoding'],
+                    cwd: '/tmp/project',
+                },
+            },
+        });
+
+        const response = await mockRequestHandler.current!({
+            params: {
+                message: 'Allow Codex to run mkdir?',
+                requestedSchema: { type: 'object', properties: {} },
+            },
+        });
+
+        expect(permissionHandler.handleToolCall).toHaveBeenCalledWith(
+            'call_from_event',
+            'CodexBash',
+            {
+                command: ['/bin/zsh', '-lc', 'mkdir -p ../02-mobliecoding'],
+                cwd: '/tmp/project',
+            },
+        );
+        expect(response).toEqual({ action: 'accept' });
+    });
+
+    it('falls back to patch approval metadata when elicitation params omit Codex fields', async () => {
+        const permissionHandler = {
+            handleToolCall: vi.fn().mockResolvedValue({ decision: 'approved' }),
+        };
+        const client = new CodexMcpClient();
+        client.setPermissionHandler(permissionHandler as any);
+
+        await client.connect();
+
+        expect(mockNotificationHandler.current).toBeTruthy();
+        expect(mockRequestHandler.current).toBeTruthy();
+
+        mockNotificationHandler.current!({
+            params: {
+                msg: {
+                    type: 'apply_patch_approval_request',
+                    call_id: 'call_patch_event',
+                    changes: {
+                        '/tmp/project/README.md': {
+                            type: 'add',
+                            content: '# hello\n',
+                        },
+                    },
+                },
+            },
+        });
+
+        const response = await mockRequestHandler.current!({
+            params: {
+                message: 'Allow Codex to apply patch?',
+                requestedSchema: { type: 'object', properties: {} },
+            },
+        });
+
+        expect(permissionHandler.handleToolCall).toHaveBeenCalledWith(
+            'call_patch_event',
+            'CodexPatch',
+            {
+                changes: {
+                    '/tmp/project/README.md': {
+                        type: 'add',
+                        content: '# hello\n',
+                    },
+                },
+                autoApproved: undefined,
+            },
+        );
+        expect(response).toEqual({ action: 'accept' });
     });
 });

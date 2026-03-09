@@ -57,6 +57,14 @@ export class CodexMcpClient {
     private conversationId: string | null = null;
     private handler: ((event: any) => void) | null = null;
     private permissionHandler: CodexPermissionHandler | null = null;
+    private lastApprovalRequest: {
+        callId: string;
+        toolName: 'CodexBash' | 'CodexPatch';
+        command?: string[];
+        cwd?: string;
+        changes?: Record<string, unknown>;
+        autoApproved?: boolean;
+    } | null = null;
     private sandboxConfig?: SandboxConfig;
     private sandboxCleanup: (() => Promise<void>) | null = null;
     public sandboxEnabled: boolean = false;
@@ -75,6 +83,26 @@ export class CodexMcpClient {
             })
         }).passthrough(), (data) => {
             const msg = data.params.msg;
+            if (typeof msg?.call_id === 'string') {
+                if (msg.type === 'exec_approval_request') {
+                    this.lastApprovalRequest = {
+                        callId: msg.call_id,
+                        toolName: 'CodexBash',
+                        command: Array.isArray(msg.command) ? msg.command : undefined,
+                        cwd: typeof msg.cwd === 'string' ? msg.cwd : undefined,
+                    };
+                }
+                if (msg.type === 'patch_apply_begin' || msg.type === 'apply_patch_approval_request') {
+                    this.lastApprovalRequest = {
+                        callId: msg.call_id,
+                        toolName: 'CodexPatch',
+                        changes: msg.changes && typeof msg.changes === 'object'
+                            ? msg.changes as Record<string, unknown>
+                            : undefined,
+                        autoApproved: typeof msg.auto_approved === 'boolean' ? msg.auto_approved : undefined,
+                    };
+                }
+            }
             this.updateIdentifiersFromEvent(msg);
             this.handler?.(msg);
         });
@@ -200,38 +228,67 @@ export class CodexMcpClient {
                     codex_event_id: string,
                     codex_call_id: string,
                     codex_command: string[],
-                    codex_cwd: string
+                    codex_cwd: string,
+                    codex_changes?: Record<string, unknown>,
+                    codex_auto_approved?: boolean,
                 }
-                const toolName = 'CodexBash';
+                const toolName = this.lastApprovalRequest?.toolName
+                    ?? (params.codex_changes ? 'CodexPatch' : 'CodexBash');
+                const permissionRequestId = params.codex_call_id
+                    || params.codex_mcp_tool_call_id
+                    || this.lastApprovalRequest?.callId;
+                const command = params.codex_command ?? this.lastApprovalRequest?.command;
+                const cwd = params.codex_cwd ?? this.lastApprovalRequest?.cwd;
+                const changes = params.codex_changes ?? this.lastApprovalRequest?.changes;
+                const autoApproved = params.codex_auto_approved ?? this.lastApprovalRequest?.autoApproved;
+
+                const mapDecisionToAction = (decision: 'approved' | 'approved_for_session' | 'denied' | 'abort') => {
+                    if (decision === 'approved' || decision === 'approved_for_session') return 'accept' as const;
+                    if (decision === 'denied') return 'decline' as const;
+                    return 'cancel' as const;
+                };
 
                 // If no permission handler set, deny by default
                 if (!this.permissionHandler) {
                     logger.debug('[CodexMCP] No permission handler set, denying by default');
                     return {
-                        decision: 'denied' as const,
+                        action: 'decline' as const,
+                    };
+                }
+
+                if (!permissionRequestId) {
+                    logger.debug('[CodexMCP] Missing approval request identifier in elicitation payload');
+                    return {
+                        action: 'decline' as const,
                     };
                 }
 
                 try {
                     // Request permission through the handler
                     const result = await this.permissionHandler.handleToolCall(
-                        params.codex_call_id,
+                        permissionRequestId,
                         toolName,
-                        {
-                            command: params.codex_command,
-                            cwd: params.codex_cwd
-                        }
+                        toolName === 'CodexPatch'
+                            ? {
+                                changes,
+                                autoApproved,
+                            }
+                            : {
+                                command,
+                                cwd,
+                            }
                     );
 
+                    this.lastApprovalRequest = null;
                     logger.debug('[CodexMCP] Permission result:', result);
                     return {
-                        decision: result.decision
+                        action: mapDecisionToAction(result.decision),
                     }
                 } catch (error) {
+                    this.lastApprovalRequest = null;
                     logger.debug('[CodexMCP] Error handling permission request:', error);
                     return {
-                        decision: 'denied' as const,
-                        reason: error instanceof Error ? error.message : 'Permission request failed'
+                        action: 'decline' as const,
                     };
                 }
             }
@@ -363,6 +420,7 @@ export class CodexMcpClient {
         const previousSessionId = this.sessionId;
         this.sessionId = null;
         this.conversationId = null;
+        this.lastApprovalRequest = null;
         logger.debug('[CodexMCP] Session cleared, previous sessionId:', previousSessionId);
     }
 
