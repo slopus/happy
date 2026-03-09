@@ -13,12 +13,14 @@ import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/regist
 
 export function startDaemonControlServer({
   getChildren,
+  pruneStaleSessions,
   stopSession,
   spawnSession,
   requestShutdown,
   onHappySessionWebhook
 }: {
   getChildren: () => TrackedSession[];
+  pruneStaleSessions: () => number;
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
@@ -70,8 +72,9 @@ export function startDaemonControlServer({
         }
       }
     }, async () => {
+      const pruned = pruneStaleSessions();
       const children = getChildren();
-      logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions`);
+      logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions (pruned ${pruned})`);
       return { 
         children: children
           .filter(child => child.happySessionId !== undefined)
@@ -97,8 +100,9 @@ export function startDaemonControlServer({
       }
     }, async (request) => {
       const { sessionId } = request.body;
+      const pruned = pruneStaleSessions();
 
-      logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`);
+      logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId} (pruned ${pruned})`);
       const success = stopSession(sessionId);
       return { success };
     });
