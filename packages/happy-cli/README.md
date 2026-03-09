@@ -56,6 +56,7 @@ happy connect gemini
 - `happy` – Start Claude Code session (default)
 - `happy gemini` – Start Gemini CLI session
 - `happy codex` – Start Codex mode
+- `happy droid` – Start Droid mode (ACP-compatible)
 - `happy acp` – Start a generic ACP-compatible agent
 
 ### Utility Commands
@@ -84,6 +85,7 @@ happy gemini model set <model>    # Set default model
 happy gemini model get            # Show current model
 happy gemini project set <id>     # Set Google Cloud Project ID (for Workspace accounts)
 happy gemini project get          # Show current Google Cloud Project ID
+happy droid                       # Start Droid session (ACP-compatible)
 ```
 
 **Available models:** `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
