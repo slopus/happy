@@ -15,6 +15,7 @@ import { EmptyMessages } from '@/components/EmptyMessages';
 import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -231,6 +232,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
+    const {
+        canResume,
+        canShowResume,
+        resumeSession,
+        resumeSessionSubtitle,
+        resumingSession,
+    } = useSessionQuickActions(session);
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -327,7 +335,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     ) : null;
 
-    const input = (
+    const input = sessionStatus.isConnected ? (
         <AgentInput
             placeholder={t('session.inputPlaceholder')}
             value={message}
@@ -359,7 +367,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
-            // Autocomplete configuration
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
             usageData={sessionUsage ? {
@@ -377,7 +384,54 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
         />
-    );
+    ) : canShowResume ? (
+        <View style={{
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 10,
+            gap: 10,
+        }}>
+            <Pressable
+                onPress={resumeSession}
+                style={{
+                    minHeight: 48,
+                    borderRadius: 14,
+                    backgroundColor: canResume ? theme.colors.button.primary.background : theme.colors.surfaceHigh,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 8,
+                    opacity: resumingSession ? 0.7 : 1,
+                }}
+            >
+                {resumingSession ? (
+                    <ActivityIndicator size="small" color={canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary} />
+                ) : (
+                    <Ionicons
+                        name="play-circle-outline"
+                        size={18}
+                        color={canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                    />
+                )}
+                <Text style={{
+                    color: canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary,
+                    fontSize: 15,
+                    fontWeight: '600',
+                }}>
+                    {t('sessionInfo.resumeSession')}
+                </Text>
+            </Pressable>
+            <Text style={{
+                color: theme.colors.textSecondary,
+                fontSize: 13,
+                lineHeight: 18,
+                textAlign: 'center',
+                paddingHorizontal: 8,
+            }}>
+                {resumeSessionSubtitle}
+            </Text>
+        </View>
+    ) : null;
 
 
     return (

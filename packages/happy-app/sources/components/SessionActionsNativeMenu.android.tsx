@@ -25,8 +25,10 @@ export function SessionActionsNativeMenu({
         archiveSession,
         canArchive,
         canBugReport,
+        canShowResume,
         openDetails,
         reportBug,
+        resumeSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterBugReport,
@@ -47,6 +49,18 @@ export function SessionActionsNativeMenu({
                 onPress={archiveSession}
             >
                 Archive
+            </Button>,
+        );
+    }
+
+    if (canShowResume) {
+        items.push(
+            <Button
+                key="resume"
+                leadingIcon={androidIcon('outlined.PlayCircle')}
+                onPress={resumeSession}
+            >
+                Resume
             </Button>,
         );
     }

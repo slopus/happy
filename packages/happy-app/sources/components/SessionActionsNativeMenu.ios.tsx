@@ -25,8 +25,10 @@ export function SessionActionsNativeMenu({
         archiveSession,
         canArchive,
         canBugReport,
+        canShowResume,
         openDetails,
         reportBug,
+        resumeSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterBugReport,
@@ -43,6 +45,11 @@ export function SessionActionsNativeMenu({
                     {canArchive && (
                         <Button onPress={archiveSession} systemImage={iosSymbol('archivebox')}>
                             Archive
+                        </Button>
+                    )}
+                    {canShowResume && (
+                        <Button onPress={resumeSession} systemImage={iosSymbol('play.circle')}>
+                            Resume
                         </Button>
                     )}
                     {canBugReport && (

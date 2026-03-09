@@ -1,18 +1,15 @@
 import axios, { AxiosError } from 'axios';
-import { createHash, createHmac } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import tweetnacl from 'tweetnacl';
 import { z } from 'zod';
 
 import { decodeBase64, decryptLegacy, decryptWithDataKey } from '@/api/encryption';
 import type { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
-
-const AgentCredentialsSchema = z.object({
-    token: z.string().min(1),
-    secret: z.string().min(1),
-});
+import {
+    getLocalHappyAgentCredentialPath,
+    readLocalHappyAgentCredentials,
+    type LocalHappyAgentCredentials,
+} from './localHappyAgentAuth';
 
 const ResumableMetadataSchema = z.object({
     path: z.string().min(1),
@@ -26,15 +23,6 @@ type RawSession = {
     active: boolean;
     metadata: string;
     dataEncryptionKey: string | null;
-};
-
-type AgentCredentials = {
-    token: string;
-    secret: Uint8Array;
-    contentKeyPair: {
-        publicKey: Uint8Array;
-        secretKey: Uint8Array;
-    };
 };
 
 type RecordEncryption = {
@@ -64,42 +52,6 @@ export function resolveSessionRecordByPrefix<T extends { id: string }>(records: 
     return matches[0];
 }
 
-function hmacSha512(key: Uint8Array, data: Uint8Array): Uint8Array {
-    const hmac = createHmac('sha512', key);
-    hmac.update(data);
-    return new Uint8Array(hmac.digest());
-}
-
-function deriveKey(master: Uint8Array, usage: string, path: string[]): Uint8Array {
-    const root = hmacSha512(new TextEncoder().encode(`${usage} Master Seed`), master);
-    let state = {
-        key: root.slice(0, 32),
-        chainCode: root.slice(32),
-    };
-
-    for (const index of path) {
-        const data = new Uint8Array([0x00, ...new TextEncoder().encode(index)]);
-        const derived = hmacSha512(state.chainCode, data);
-        state = {
-            key: derived.slice(0, 32),
-            chainCode: derived.slice(32),
-        };
-    }
-
-    return state.key;
-}
-
-function deriveContentKeyPair(secret: Uint8Array): { publicKey: Uint8Array; secretKey: Uint8Array } {
-    const seed = deriveKey(secret, 'Happy EnCoder', ['content']);
-    const hashedSeed = new Uint8Array(createHash('sha512').update(seed).digest());
-    const secretKey = hashedSeed.slice(0, 32);
-    const keyPair = tweetnacl.box.keyPair.fromSecretKey(secretKey);
-    return {
-        publicKey: keyPair.publicKey,
-        secretKey: keyPair.secretKey,
-    };
-}
-
 function decryptBoxBundle(bundle: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array | null {
     if (bundle.length < 56) {
         return null;
@@ -113,30 +65,18 @@ function decryptBoxBundle(bundle: Uint8Array, recipientSecretKey: Uint8Array): U
     return decrypted ? new Uint8Array(decrypted) : null;
 }
 
-function readAgentCredentials(): AgentCredentials {
-    const credentialPath = join(configuration.happyHomeDir, 'agent.key');
-    if (!existsSync(credentialPath)) {
+function readAgentCredentials() {
+    const credentialPath = getLocalHappyAgentCredentialPath();
+    const credentials = readLocalHappyAgentCredentials();
+    if (!credentials) {
         throw new Error(
             `Cannot resume historical Happy sessions without ${credentialPath}. Run \`happy-agent auth login\` in this environment first.`,
         );
     }
-
-    let parsed: z.infer<typeof AgentCredentialsSchema>;
-    try {
-        parsed = AgentCredentialsSchema.parse(JSON.parse(readFileSync(credentialPath, 'utf8')));
-    } catch {
-        throw new Error(`Failed to read ${credentialPath}. Re-authenticate with \`happy-agent auth login\`.`);
-    }
-
-    const secret = decodeBase64(parsed.secret);
-    return {
-        token: parsed.token,
-        secret,
-        contentKeyPair: deriveContentKeyPair(secret),
-    };
+    return credentials;
 }
 
-function resolveSessionEncryption(session: RawSession, credentials: AgentCredentials): RecordEncryption {
+function resolveSessionEncryption(session: RawSession, credentials: LocalHappyAgentCredentials): RecordEncryption {
     if (session.dataEncryptionKey) {
         const encrypted = decodeBase64(session.dataEncryptionKey);
         const sessionKey = decryptBoxBundle(encrypted.slice(1), credentials.contentKeyPair.secretKey);
@@ -155,7 +95,7 @@ function resolveSessionEncryption(session: RawSession, credentials: AgentCredent
     };
 }
 
-function decryptSessionMetadata(session: RawSession, credentials: AgentCredentials): Metadata {
+function decryptSessionMetadata(session: RawSession, credentials: LocalHappyAgentCredentials): Metadata {
     const encryption = resolveSessionEncryption(session, credentials);
     const encryptedMetadata = decodeBase64(session.metadata);
     const metadata = encryption.variant === 'dataKey'

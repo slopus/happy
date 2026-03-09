@@ -127,8 +127,10 @@ export function SessionActionsPopover({
         archiveSession,
         canArchive,
         canBugReport,
+        canShowResume,
         openDetails,
         reportBug,
+        resumeSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterBugReport: onClose,
@@ -154,6 +156,15 @@ export function SessionActionsPopover({
             });
         }
 
+        if (canShowResume) {
+            items.push({
+                id: 'resume',
+                icon: 'play-circle-outline',
+                label: t('sessionInfo.resumeSession'),
+                onPress: resumeSession,
+            });
+        }
+
         if (canBugReport) {
             items.push({
                 id: 'bug-report',
@@ -168,8 +179,10 @@ export function SessionActionsPopover({
         archiveSession,
         canArchive,
         canBugReport,
+        canShowResume,
         openDetails,
         reportBug,
+        resumeSession,
     ]);
 
     const position = React.useMemo(() => {

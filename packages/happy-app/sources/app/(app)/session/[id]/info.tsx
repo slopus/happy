@@ -20,6 +20,7 @@ import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { HappyError } from '@/utils/errors';
 
 // Animated status dot component
@@ -127,6 +128,11 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
+    const {
+        canShowResume,
+        resumeSession,
+        resumeSessionSubtitle,
+    } = useSessionQuickActions(session);
     
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -335,6 +341,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                             subtitle={t('sessionInfo.viewMachineSubtitle')}
                             icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
+                        />
+                    )}
+                    {canShowResume && (
+                        <Item
+                            title={t('sessionInfo.resumeSession')}
+                            subtitle={resumeSessionSubtitle}
+                            icon={<Ionicons name="play-circle-outline" size={29} color="#007AFF" />}
+                            onPress={resumeSession}
                         />
                     )}
                     {sessionStatus.isConnected && (

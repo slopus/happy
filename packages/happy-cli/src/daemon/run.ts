@@ -23,6 +23,9 @@ import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
+import { buildResumeLaunch } from '@/resume/handleResumeCommand';
+import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
+import { resolveHappySession } from '@/resume/resolveHappySession';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -33,6 +36,7 @@ export const initialMachineMetadata: MachineMetadata = {
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath(),
   cliAvailability: detectCLIAvailability(),
+  resumeSupport: detectResumeSupport(),
 };
 
 export async function startDaemon(): Promise<void> {
@@ -435,85 +439,15 @@ export async function startDaemon(): Promise<void> {
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
           // For now, we ignore it - each spawn creates a new session
-          const happyProcess = spawnHappyCLI(args, {
+          return spawnTrackedHappyProcess({
+            args,
             cwd: directory,
-            detached: true,  // Sessions stay alive when daemon stops
-            stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
             env: {
               ...process.env,
               ...extraEnv
-            }
-          });
-
-          // Log output for debugging
-          if (process.env.DEBUG) {
-            happyProcess.stdout?.on('data', (data) => {
-              logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
-            });
-            happyProcess.stderr?.on('data', (data) => {
-              logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
-            });
-          }
-
-          if (!happyProcess.pid) {
-            logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
-            return {
-              type: 'error',
-              errorMessage: 'Failed to spawn Happy process - no PID returned'
-            };
-          }
-
-          logger.debug(`[DAEMON RUN] Spawned process with PID ${happyProcess.pid}`);
-
-          const trackedSession: TrackedSession = {
-            startedBy: 'daemon',
-            pid: happyProcess.pid,
-            childProcess: happyProcess,
+            },
             directoryCreated,
-            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
-          };
-
-          pidToTrackedSession.set(happyProcess.pid, trackedSession);
-
-          happyProcess.on('exit', (code, signal) => {
-            logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
-            if (happyProcess.pid) {
-              onChildExited(happyProcess.pid);
-            }
-          });
-
-          happyProcess.on('error', (error) => {
-            logger.debug(`[DAEMON RUN] Child process error:`, error);
-            if (happyProcess.pid) {
-              onChildExited(happyProcess.pid);
-            }
-          });
-
-          // Wait for webhook to populate session with happySessionId
-          logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
-
-          return new Promise((resolve) => {
-            // Set timeout for webhook
-            const timeout = setTimeout(() => {
-              pidToAwaiter.delete(happyProcess.pid!);
-              logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
-              resolve({
-                type: 'error',
-                errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
-              });
-              // 15 second timeout - I have seen timeouts on 10 seconds
-              // even though session was still created successfully in ~2 more seconds
-            }, 15_000);
-
-            // Register awaiter
-            pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
-              clearTimeout(timeout);
-              logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
-              resolve({
-                type: 'success',
-                sessionId: completedSession.happySessionId!
-              });
-            });
+            message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
           });
         }
 
@@ -528,6 +462,117 @@ export async function startDaemon(): Promise<void> {
         return {
           type: 'error',
           errorMessage: `Failed to spawn session: ${errorMessage}`
+        };
+      }
+    };
+
+    const spawnTrackedHappyProcess = ({
+      args,
+      cwd,
+      env,
+      directoryCreated = false,
+      message,
+    }: {
+      args: string[];
+      cwd: string;
+      env: NodeJS.ProcessEnv;
+      directoryCreated?: boolean;
+      message?: string;
+    }): Promise<SpawnSessionResult> => {
+      const happyProcess = spawnHappyCLI(args, {
+        cwd,
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env,
+      });
+
+      if (process.env.DEBUG) {
+        happyProcess.stdout?.on('data', (data) => {
+          logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
+        });
+        happyProcess.stderr?.on('data', (data) => {
+          logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
+        });
+      }
+
+      if (!happyProcess.pid) {
+        logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
+        return Promise.resolve({
+          type: 'error',
+          errorMessage: 'Failed to spawn Happy process - no PID returned'
+        });
+      }
+
+      logger.debug(`[DAEMON RUN] Spawned process with PID ${happyProcess.pid}`);
+
+      const trackedSession: TrackedSession = {
+        startedBy: 'daemon',
+        pid: happyProcess.pid,
+        childProcess: happyProcess,
+        directoryCreated,
+        message,
+      };
+
+      pidToTrackedSession.set(happyProcess.pid, trackedSession);
+
+      happyProcess.on('exit', (code, signal) => {
+        logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
+        if (happyProcess.pid) {
+          onChildExited(happyProcess.pid);
+        }
+      });
+
+      happyProcess.on('error', (error) => {
+        logger.debug(`[DAEMON RUN] Child process error:`, error);
+        if (happyProcess.pid) {
+          onChildExited(happyProcess.pid);
+        }
+      });
+
+      logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          pidToAwaiter.delete(happyProcess.pid!);
+          logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
+          resolve({
+            type: 'error',
+            errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
+          });
+        }, 15_000);
+
+        pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
+          clearTimeout(timeout);
+          logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
+          resolve({
+            type: 'success',
+            sessionId: completedSession.happySessionId!
+          });
+        });
+      });
+    };
+
+    const resumeSession = async (happySessionId: string): Promise<SpawnSessionResult> => {
+      try {
+        const previousSession = await resolveHappySession(happySessionId);
+        const launch = buildResumeLaunch(previousSession, {
+          startedBy: 'daemon',
+          claudeStartingMode: 'remote',
+        });
+
+        await fs.access(launch.cwd);
+
+        return spawnTrackedHappyProcess({
+          args: launch.args,
+          cwd: launch.cwd,
+          env: { ...process.env },
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.debug('[DAEMON RUN] Failed to resume session:', error);
+        return {
+          type: 'error',
+          errorMessage: `Failed to resume session: ${errorMessage}`,
         };
       }
     };
@@ -619,6 +664,7 @@ export async function startDaemon(): Promise<void> {
     // Set RPC handlers
     apiMachine.setRPCHandlers({
       spawnSession,
+      resumeSession,
       stopSession,
       requestShutdown: () => requestShutdown('happy-app')
     });

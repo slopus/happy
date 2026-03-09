@@ -141,6 +141,11 @@ export interface SpawnSessionOptions {
     agent?: 'codex' | 'claude' | 'gemini' | 'openclaw';
 }
 
+export interface ResumeSessionOptions {
+    machineId: string;
+    sessionId: string;
+}
+
 // Exported session operation functions
 
 /**
@@ -168,6 +173,24 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
+        };
+    }
+}
+
+export async function machineResumeSession(options: ResumeSessionOptions): Promise<SpawnSessionResult> {
+    const { machineId, sessionId } = options;
+
+    try {
+        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string }>(
+            machineId,
+            'resume-happy-session',
+            { sessionId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to resume session',
         };
     }
 }

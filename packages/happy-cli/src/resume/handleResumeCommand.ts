@@ -10,6 +10,11 @@ export type ResumeLaunch = {
     args: string[];
 };
 
+export type ResumeLaunchOptions = {
+    claudeStartingMode?: 'local' | 'remote';
+    startedBy?: 'daemon' | 'terminal';
+};
+
 export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; sessionId: string } {
     if (args.includes('-h') || args.includes('--help')) {
         return {
@@ -41,7 +46,7 @@ function resolveFlavor(metadata: Metadata): 'codex' | 'claude' | null {
     return null;
 }
 
-export function buildResumeLaunch(session: ResumableHappySession): ResumeLaunch {
+export function buildResumeLaunch(session: ResumableHappySession, options: ResumeLaunchOptions = {}): ResumeLaunch {
     const { metadata } = session;
     const flavor = resolveFlavor(metadata);
 
@@ -49,9 +54,13 @@ export function buildResumeLaunch(session: ResumableHappySession): ResumeLaunch 
         if (!metadata.codexThreadId) {
             throw new Error(`Happy session ${session.id} is missing its Codex thread ID.`);
         }
+        const args = ['codex', '--resume', metadata.codexThreadId];
+        if (options.startedBy) {
+            args.push('--started-by', options.startedBy);
+        }
         return {
             cwd: metadata.path,
-            args: ['codex', '--resume', metadata.codexThreadId],
+            args,
         };
     }
 
@@ -59,9 +68,17 @@ export function buildResumeLaunch(session: ResumableHappySession): ResumeLaunch 
         if (!metadata.claudeSessionId) {
             throw new Error(`Happy session ${session.id} is missing its Claude session ID.`);
         }
+        const args = ['claude'];
+        if (options.claudeStartingMode) {
+            args.push('--happy-starting-mode', options.claudeStartingMode);
+        }
+        if (options.startedBy) {
+            args.push('--started-by', options.startedBy);
+        }
+        args.push('--resume', metadata.claudeSessionId);
         return {
             cwd: metadata.path,
-            args: ['claude', '--resume', metadata.claudeSessionId],
+            args,
         };
     }
 
