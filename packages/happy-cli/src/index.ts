@@ -30,6 +30,10 @@ import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { delay } from './utils/time'
 
 
 (async () => {
@@ -100,6 +104,11 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
+      if (args[1] === 'resume') {
+        await handleCodexResumeCommand(args.slice(2));
+        return;
+      }
+
       const { runCodex } = await import('@/codex/runCodex');
       
       // Parse startedBy argument
@@ -633,6 +642,7 @@ ${chalk.bold('Usage:')}
   happy [options]         Start Claude with mobile control
   happy auth              Manage authentication
   happy codex             Start Codex mode
+  happy codex resume      Resume Happy Codex session
   happy gemini            Start Gemini mode (ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
@@ -722,6 +732,287 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     }
   }
 })();
+
+function printCodexResumeHelp(): void {
+  console.log(`
+${chalk.bold('happy codex resume')} - Resume Happy Codex session
+
+${chalk.bold('Usage:')}
+  happy codex resume <session-id> --metadata-file <metadata.json>
+  happy codex resume <session-id> --path <workdir> --pid <hostPid>
+
+${chalk.bold('Options:')}
+  --metadata-file <path>   Read Happy metadata JSON from file
+  --path <path>            Override metadata.path
+  --pid <pid>              Override metadata.hostPid
+  --session-tag <tag>      Use known session tag directly
+  --home-dir <path>        Override metadata.homeDir
+  --happy-home-dir <path>  Override metadata.happyHomeDir
+  --dry-run                Resolve parameters and print without launching
+  -h, --help               Show help
+
+${chalk.bold('Examples:')}
+  happy codex resume cmmexample --metadata-file ./metadata.json
+  happy codex resume cmmexample --path /Users/me/project --pid 12345
+`);
+}
+
+function listHappyLogFiles(happyHomeDir: string): string[] {
+  try {
+    const logDir = join(happyHomeDir, 'logs')
+    return readdirSync(logDir)
+      .map((entry) => join(logDir, entry))
+      .filter((fullPath) => {
+        try {
+          return statSync(fullPath).isFile() && fullPath.endsWith('.log')
+        } catch {
+          return false
+        }
+      })
+      .sort((a, b) => {
+        try {
+          return statSync(b).mtimeMs - statSync(a).mtimeMs
+        } catch {
+          return 0
+        }
+      })
+  } catch {
+    return []
+  }
+}
+
+function extractSessionTagFromLog(logPath: string): string | null {
+  try {
+    const raw = readFileSync(logPath, 'utf8')
+    const matches = [...raw.matchAll(/tag: ([0-9a-f-]+)/g)]
+      .map((match) => match[1])
+      .filter(Boolean)
+    return matches.length > 0 ? matches[matches.length - 1] : null
+  } catch {
+    return null
+  }
+}
+
+function findLatestLogForPid(happyHomeDir: string, pid: string | null): string | null {
+  if (!pid) {
+    return null
+  }
+  const needle = `pid-${pid}.log`
+  return listHappyLogFiles(happyHomeDir).find((fullPath) => fullPath.includes(needle)) || null
+}
+
+function findLatestLogForSessionId(happyHomeDir: string, sessionId: string): string | null {
+  const needle = `Session created/loaded: ${sessionId}`
+  for (const logPath of listHappyLogFiles(happyHomeDir)) {
+    try {
+      if (readFileSync(logPath, 'utf8').includes(needle)) {
+        return logPath
+      }
+    } catch {
+    }
+  }
+  return null
+}
+
+function parseCodexResumeArgs(args: string[]) {
+  let sessionId: string | null = null
+  let metadataFile: string | null = null
+  let workdir: string | null = null
+  let pid: string | null = null
+  let sessionTag: string | null = null
+  let homeDir: string | null = null
+  let happyHomeDir: string | null = null
+  let dryRun = false
+  let showHelp = false
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '-h' || arg === '--help') {
+      showHelp = true
+    } else if (arg === '--metadata-file') {
+      metadataFile = args[++i]
+    } else if (arg === '--path') {
+      workdir = args[++i]
+    } else if (arg === '--pid') {
+      pid = args[++i]
+    } else if (arg === '--session-tag') {
+      sessionTag = args[++i]
+    } else if (arg === '--home-dir') {
+      homeDir = args[++i]
+    } else if (arg === '--happy-home-dir') {
+      happyHomeDir = args[++i]
+    } else if (arg === '--dry-run') {
+      dryRun = true
+    } else if (!sessionId) {
+      sessionId = arg
+    } else {
+      throw new Error(`Unknown argument for codex resume: ${arg}`)
+    }
+  }
+
+  return {
+    sessionId,
+    metadataFile,
+    workdir,
+    pid,
+    sessionTag,
+    homeDir,
+    happyHomeDir,
+    dryRun,
+    showHelp
+  }
+}
+
+async function resolveCodexResumeParameters(args: string[]) {
+  const parsed = parseCodexResumeArgs(args)
+  if (parsed.showHelp) {
+    printCodexResumeHelp()
+    return { exit: 0 as number | null }
+  }
+
+  if (!parsed.sessionId) {
+    printCodexResumeHelp()
+    return { exit: 1 as number | null }
+  }
+
+  let metadata: Record<string, any> = {}
+  if (parsed.metadataFile) {
+    try {
+      metadata = JSON.parse(readFileSync(resolve(parsed.metadataFile), 'utf8'))
+    } catch (error) {
+      throw new Error(`Failed to read metadata file: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  const homeDir = parsed.homeDir || metadata.homeDir || homedir()
+  const happyHomeDir = parsed.happyHomeDir || metadata.happyHomeDir || join(homeDir, '.happy')
+  const workdir = parsed.workdir || metadata.path
+  const pidValue = parsed.pid || metadata.hostPid
+  const hostPid = pidValue === undefined || pidValue === null || pidValue === '' ? null : String(pidValue)
+
+  const sessionSnapshotPath = join(homeDir, '.happy-session-crypto', `session-${parsed.sessionId}.json`)
+  let snapshot: Record<string, any> | null = null
+  if (existsSync(sessionSnapshotPath)) {
+    try {
+      snapshot = JSON.parse(readFileSync(sessionSnapshotPath, 'utf8'))
+    } catch {
+    }
+  }
+
+  const logPathFromPid = hostPid ? findLatestLogForPid(happyHomeDir, hostPid) : null
+  const logPath = logPathFromPid || findLatestLogForSessionId(happyHomeDir, parsed.sessionId)
+  const resolvedSessionTag = parsed.sessionTag || snapshot?.sessionTag || (logPath ? extractSessionTagFromLog(logPath) : null)
+
+  if (!workdir) {
+    throw new Error('Could not resolve workdir. Provide --path or metadata.path')
+  }
+  if (!existsSync(workdir)) {
+    throw new Error(`Workdir does not exist: ${workdir}`)
+  }
+  if (!resolvedSessionTag) {
+    throw new Error('Could not resolve session tag. Provide --session-tag or metadata.hostPid with available logs')
+  }
+
+  const tagSnapshotPath = join(homeDir, '.happy-session-crypto', `tag-${resolvedSessionTag}.json`)
+  if (!existsSync(sessionSnapshotPath) && !existsSync(tagSnapshotPath)) {
+    throw new Error(`No restore snapshot found for session ${parsed.sessionId}. Expected ${sessionSnapshotPath} or ${tagSnapshotPath}`)
+  }
+
+  const settings = await readSettings()
+  if (metadata.machineId && settings?.machineId && metadata.machineId !== settings.machineId) {
+    logger.warn(`[codex resume] metadata.machineId (${metadata.machineId}) differs from local machineId (${settings.machineId})`)
+  }
+
+  return {
+    exit: null as number | null,
+    sessionId: parsed.sessionId,
+    sessionTag: resolvedSessionTag,
+    workdir,
+    hostPid,
+    homeDir,
+    happyHomeDir,
+    logPath,
+    sessionSnapshotPath,
+    tagSnapshotPath,
+    metadata,
+    dryRun: parsed.dryRun
+  }
+}
+
+async function handleCodexResumeCommand(args: string[]): Promise<void> {
+  const resolved = await resolveCodexResumeParameters(args)
+  if (resolved.exit !== null) {
+    process.exit(resolved.exit)
+  }
+
+  const env = {
+    ...process.env,
+    HAPPY_RESTORE_SESSION_ID: resolved.sessionId,
+    HAPPY_RESTORE_SESSION_TAG: resolved.sessionTag,
+    HAPPY_SESSION_TAG_OVERRIDE: resolved.sessionTag
+  }
+
+  const commandPreview =
+    `cd ${JSON.stringify(resolved.workdir)} && ` +
+    `HAPPY_RESTORE_SESSION_ID=${JSON.stringify(resolved.sessionId)} ` +
+    `HAPPY_RESTORE_SESSION_TAG=${JSON.stringify(resolved.sessionTag)} ` +
+    `HAPPY_SESSION_TAG_OVERRIDE=${JSON.stringify(resolved.sessionTag)} ` +
+    `happy codex --happy-starting-mode remote --started-by daemon`
+
+  if (resolved.dryRun) {
+    console.log('Resolved Happy Codex resume parameters:')
+    console.log(`  Session ID: ${resolved.sessionId}`)
+    console.log(`  Session tag: ${resolved.sessionTag}`)
+    console.log(`  Workdir: ${resolved.workdir}`)
+    console.log(`  Home dir: ${resolved.homeDir}`)
+    console.log(`  Happy home: ${resolved.happyHomeDir}`)
+    console.log(`  Prior log: ${resolved.logPath || 'not found'}`)
+    console.log(`  Session snapshot: ${resolved.sessionSnapshotPath}`)
+    console.log(`  Tag snapshot: ${resolved.tagSnapshotPath}`)
+    console.log('')
+    console.log(commandPreview)
+    return
+  }
+
+  try {
+    const sessions = await listDaemonSessions()
+    const existing = sessions.find((session) => session.happySessionId === resolved.sessionId)
+    if (existing) {
+      console.log(`Stopping existing session ${resolved.sessionId} (pid ${existing.pid})...`)
+      await stopDaemonSession(resolved.sessionId!)
+      await delay(500)
+    }
+  } catch {
+  }
+
+  const child = spawnHappyCLI(
+    ['codex', '--happy-starting-mode', 'remote', '--started-by', 'daemon'],
+    {
+      cwd: resolved.workdir,
+      detached: true,
+      stdio: 'ignore',
+      env
+    }
+  )
+  child.unref()
+
+  if (!child.pid) {
+    throw new Error('Failed to spawn happy codex resume process')
+  }
+
+  await delay(1200)
+  const newLogPath = findLatestLogForPid(resolved.happyHomeDir, String(child.pid))
+
+  console.log('Happy Codex resume started')
+  console.log(`  Session ID: ${resolved.sessionId}`)
+  console.log(`  Session tag: ${resolved.sessionTag}`)
+  console.log(`  Workdir: ${resolved.workdir}`)
+  console.log(`  PID: ${child.pid}`)
+  if (newLogPath) {
+    console.log(`  Log: ${newLogPath}`)
+  }
+  console.log(`  Command: ${commandPreview}`)
+}
 
 
 /**

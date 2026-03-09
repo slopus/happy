@@ -2,6 +2,7 @@ import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
 import { CodexMcpClient } from './codexMcpClient';
+import { CodexAppServerClient } from './codexAppServerClient';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
@@ -31,6 +32,7 @@ import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
+import type { Session as HappySession } from '@/api/types';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 
@@ -81,7 +83,7 @@ export async function runCodex(opts: {
     // Define session
     //
 
-    const sessionTag = randomUUID();
+    const sessionTag = process.env.HAPPY_SESSION_TAG_OVERRIDE || randomUUID();
 
     // Set backend for offline warnings (before any API calls)
     connectionState.setBackend('Codex');
@@ -118,7 +120,156 @@ export async function runCodex(opts: {
         startedBy: opts.startedBy,
         sandbox: sandboxConfig,
     });
-    const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+    let currentCodexSessionId: string | null = null;
+    let currentCodexConversationId: string | null = null;
+    let bootResumeFile: string | null = null;
+
+    const loadCodexIdentifiersFromSnapshot = (): boolean => {
+        const restoreSessionId = process.env.HAPPY_RESTORE_SESSION_ID;
+        const restoreSessionTag = process.env.HAPPY_RESTORE_SESSION_TAG || sessionTag;
+        const candidates: string[] = [];
+        if (restoreSessionId) {
+            candidates.push(join(os.homedir(), '.happy-session-crypto', `session-${restoreSessionId}.json`));
+        }
+        if (restoreSessionTag) {
+            candidates.push(join(os.homedir(), '.happy-session-crypto', `tag-${restoreSessionTag}.json`));
+        }
+
+        for (const candidatePath of candidates) {
+            try {
+                if (!fs.existsSync(candidatePath)) {
+                    continue;
+                }
+                const parsed = JSON.parse(fs.readFileSync(candidatePath, 'utf8'));
+                const sid = typeof parsed?.codexSessionId === 'string' && parsed.codexSessionId.length > 0
+                    ? parsed.codexSessionId
+                    : null;
+                const cid = typeof parsed?.codexConversationId === 'string' && parsed.codexConversationId.length > 0
+                    ? parsed.codexConversationId
+                    : null;
+                if (!sid && !cid) {
+                    continue;
+                }
+                currentCodexSessionId = sid || cid;
+                currentCodexConversationId = cid || sid;
+                logger.debug('[SessionCrypto] Loaded codex identifiers from snapshot', {
+                    source: candidatePath,
+                    codexSessionId: currentCodexSessionId,
+                    codexConversationId: currentCodexConversationId
+                });
+                return true;
+            } catch (error) {
+                logger.debug(`[SessionCrypto] Failed loading codex identifiers from ${candidatePath}`, error);
+            }
+        }
+
+        return false;
+    };
+
+    const persistSessionSnapshot = (sessionToPersist: ApiSessionClient | HappySession): void => {
+        try {
+            const rawSession = sessionToPersist as any;
+            const persistedSessionId = rawSession?.id || rawSession?.sessionId;
+            const persistedEncryptionKey = rawSession?.encryptionKey;
+            const persistedEncryptionVariant = rawSession?.encryptionVariant;
+
+            if (!persistedSessionId || !persistedEncryptionKey || !persistedEncryptionVariant) {
+                return;
+            }
+            const snapshotDir = join(os.homedir(), '.happy-session-crypto');
+            if (!fs.existsSync(snapshotDir)) {
+                fs.mkdirSync(snapshotDir, { recursive: true, mode: 0o700 });
+            }
+
+            const payload: Record<string, any> = {
+                sessionId: persistedSessionId,
+                sessionTag,
+                encryptionVariant: persistedEncryptionVariant,
+                encryptionKeyBase64: Buffer.from(persistedEncryptionKey).toString('base64'),
+                savedAt: Date.now()
+            };
+
+            if (currentCodexSessionId) {
+                payload.codexSessionId = currentCodexSessionId;
+            }
+            if (currentCodexConversationId) {
+                payload.codexConversationId = currentCodexConversationId;
+            }
+
+            const sessionPath = join(snapshotDir, `session-${persistedSessionId}.json`);
+            const tagPath = join(snapshotDir, `tag-${sessionTag}.json`);
+            fs.writeFileSync(sessionPath, JSON.stringify(payload, null, 2), { mode: 0o600 });
+            fs.writeFileSync(tagPath, JSON.stringify(payload, null, 2), { mode: 0o600 });
+            logger.debug(`[SessionCrypto] Persisted session snapshot: ${persistedSessionId} (tag: ${sessionTag})`);
+        } catch (error) {
+            logger.debug('[SessionCrypto] Failed to persist session snapshot', error);
+        }
+    };
+
+    const loadFallbackSessionFromSnapshot = (): HappySession | null => {
+        const restoreSessionId = process.env.HAPPY_RESTORE_SESSION_ID;
+        const restoreSessionTag = process.env.HAPPY_RESTORE_SESSION_TAG || sessionTag;
+        const candidates: string[] = [];
+        if (restoreSessionId) {
+            candidates.push(join(os.homedir(), '.happy-session-crypto', `session-${restoreSessionId}.json`));
+        }
+        if (restoreSessionTag) {
+            candidates.push(join(os.homedir(), '.happy-session-crypto', `tag-${restoreSessionTag}.json`));
+        }
+
+        for (const candidatePath of candidates) {
+            try {
+                if (!fs.existsSync(candidatePath)) {
+                    continue;
+                }
+                const parsed = JSON.parse(fs.readFileSync(candidatePath, 'utf8'));
+                if (!parsed?.sessionId || !parsed?.encryptionKeyBase64 || !parsed?.encryptionVariant) {
+                    continue;
+                }
+
+                if (typeof parsed.codexSessionId === 'string' && parsed.codexSessionId.length > 0) {
+                    currentCodexSessionId = parsed.codexSessionId;
+                }
+                if (typeof parsed.codexConversationId === 'string' && parsed.codexConversationId.length > 0) {
+                    currentCodexConversationId = parsed.codexConversationId;
+                }
+                if (!currentCodexSessionId && currentCodexConversationId) {
+                    currentCodexSessionId = currentCodexConversationId;
+                }
+                if (!currentCodexConversationId && currentCodexSessionId) {
+                    currentCodexConversationId = currentCodexSessionId;
+                }
+
+                const encryptionKey = Uint8Array.from(Buffer.from(parsed.encryptionKeyBase64, 'base64'));
+                logger.debug(`[SessionCrypto] Loaded fallback snapshot from ${candidatePath}`);
+                return {
+                    id: parsed.sessionId,
+                    seq: 0,
+                    metadata,
+                    metadataVersion: 0,
+                    agentState: state,
+                    agentStateVersion: 0,
+                    encryptionKey,
+                    encryptionVariant: parsed.encryptionVariant
+                };
+            } catch (error) {
+                logger.debug(`[SessionCrypto] Failed loading fallback snapshot from ${candidatePath}`, error);
+            }
+        }
+
+        return null;
+    };
+
+    loadCodexIdentifiersFromSnapshot();
+
+    let response: HappySession | null = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+    if (!response) {
+        const fallbackResponse = loadFallbackSessionFromSnapshot();
+        if (fallbackResponse) {
+            response = fallbackResponse;
+            logger.debug(`[SessionCrypto] Using fallback snapshot session: ${fallbackResponse.id}`);
+        }
+    }
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
@@ -133,6 +284,16 @@ export async function runCodex(opts: {
         response,
         onSessionSwap: (newSession) => {
             session = newSession;
+            persistSessionSnapshot(newSession);
+            notifyDaemonSessionStarted(newSession.sessionId, metadata).then((result) => {
+                if (result?.error) {
+                    logger.debug(`[START] Failed to report swapped session to daemon:`, result.error);
+                } else {
+                    logger.debug(`[START] Reported swapped session ${newSession.sessionId} to daemon`);
+                }
+            }).catch((error) => {
+                logger.debug('[START] Failed to report swapped session to daemon (exception):', error);
+            });
             // Update permission handler with new session to avoid stale reference
             if (permissionHandler) {
                 permissionHandler.updateSession(newSession);
@@ -140,6 +301,7 @@ export async function runCodex(opts: {
         }
     });
     session = initialSession;
+    persistSessionSnapshot(initialSession);
 
     // Always report to daemon if it exists (skip if offline)
     if (response) {
@@ -361,7 +523,11 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
-    const client = new CodexMcpClient(sandboxConfig);
+    const useRestoreClient = Boolean(currentCodexSessionId || currentCodexConversationId);
+    logger.debug(useRestoreClient ? '[Codex] Using app-server restore client' : '[Codex] Using MCP client');
+    const client: CodexMcpClient | CodexAppServerClient = useRestoreClient
+        ? new CodexAppServerClient()
+        : new CodexMcpClient(sandboxConfig);
 
     // Helper: find Codex session transcript for a given sessionId
     function findCodexResumeFile(sessionId: string | null): string | null {
@@ -404,6 +570,93 @@ export async function runCodex(opts: {
             return null;
         }
     }
+
+    function buildResumePromptContext(resumeFile: string | null): string {
+        if (!resumeFile) return '';
+        try {
+            const raw = fs.readFileSync(resumeFile, 'utf8');
+            const lines = raw.split('\n').filter((line) => line.trim().length > 0);
+            const messages: Array<{ role: 'User' | 'Assistant'; text: string }> = [];
+            for (const line of lines) {
+                let parsed: any;
+                try {
+                    parsed = JSON.parse(line);
+                } catch {
+                    continue;
+                }
+
+                if (parsed?.type !== 'response_item' || parsed?.payload?.type !== 'message') {
+                    continue;
+                }
+
+                const role = parsed.payload.role === 'user'
+                    ? 'User'
+                    : parsed.payload.role === 'assistant'
+                        ? 'Assistant'
+                        : null;
+                if (!role || !Array.isArray(parsed.payload.content)) {
+                    continue;
+                }
+
+                const text = parsed.payload.content
+                    .map((item: any) => {
+                        if (role === 'User' && item?.type === 'input_text' && typeof item.text === 'string') {
+                            return item.text;
+                        }
+                        if (role === 'Assistant' && item?.type === 'output_text' && typeof item.text === 'string') {
+                            return item.text;
+                        }
+                        return '';
+                    })
+                    .filter(Boolean)
+                    .join('\n')
+                    .trim();
+                if (!text) {
+                    continue;
+                }
+
+                const last = messages[messages.length - 1];
+                if (last && last.role === role && last.text === text) {
+                    continue;
+                }
+                messages.push({ role, text });
+            }
+
+            if (!messages.length) {
+                return '';
+            }
+
+            const selected: string[] = [];
+            let totalChars = 0;
+            for (let i = messages.length - 1; i >= 0; i -= 1) {
+                const formatted = `${messages[i].role}: ${messages[i].text}`;
+                if (selected.length >= 24 || totalChars + formatted.length > 12000) {
+                    break;
+                }
+                selected.push(formatted);
+                totalChars += formatted.length + 2;
+            }
+            selected.reverse();
+
+            return [
+                'Restored context from the previous unavailable Codex thread.',
+                'Treat the following transcript as prior conversation state and preserved memory.',
+                ...selected
+            ].join('\n\n');
+        } catch (error) {
+            logger.debug('[Codex] Failed to build resume prompt context', error);
+            return '';
+        }
+    }
+
+    if (currentCodexSessionId) {
+        bootResumeFile = findCodexResumeFile(currentCodexSessionId);
+        if (bootResumeFile) {
+            logger.debug('[Codex] Found resume file from session snapshot:', bootResumeFile);
+        } else {
+            logger.debug(`[Codex] No resume file found for snapshot codex session ${currentCodexSessionId}`);
+        }
+    }
     permissionHandler = new CodexPermissionHandler(session);
     const reasoningProcessor = new ReasoningProcessor((message) => {
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
@@ -419,6 +672,18 @@ export async function runCodex(opts: {
     });
     client.setPermissionHandler(permissionHandler);
     client.setHandler((msg) => {
+        const messageThreadId = typeof msg?.thread_id === 'string' && msg.thread_id.length > 0 ? msg.thread_id : null;
+        if (messageThreadId && (messageThreadId !== currentCodexSessionId || messageThreadId !== currentCodexConversationId)) {
+            currentCodexSessionId = messageThreadId;
+            currentCodexConversationId = messageThreadId;
+            logger.debug('[SessionCrypto] Updated codex identifiers', {
+                sessionId: session.sessionId,
+                codexSessionId: currentCodexSessionId,
+                codexConversationId: currentCodexConversationId
+            });
+            persistSessionSnapshot(session);
+        }
+
         logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
 
         // Add messages to the ink UI buffer based on message type
@@ -539,6 +804,12 @@ export async function runCodex(opts: {
         await client.connect();
         logger.debug('[codex]: client.connect done');
         let wasCreated = false;
+        if (currentCodexSessionId || currentCodexConversationId) {
+            client.seedSessionIdentifiers(currentCodexSessionId, currentCodexConversationId);
+            wasCreated = true;
+            logger.debug('[Codex] Seeded client with saved identifiers; first turn will attempt continueSession');
+            messageBuffer.addMessage('Attempting to resume saved Codex thread...', 'status');
+        }
         let currentModeHash: string | null = null;
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
         // If we restart (e.g., mode change), use this to carry a resume file
@@ -612,10 +883,10 @@ export async function runCodex(opts: {
                     message.mode.permissionMode,
                     sandboxManagedByHappy,
                 );
-
-                if (!wasCreated) {
+                const startNewSession = async () => {
+                    const basePrompt = first ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION : message.message;
                     const startConfig: CodexSessionConfig = {
-                        prompt: first ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION : message.message,
+                        prompt: basePrompt,
                         sandbox: executionPolicy.sandbox,
                         'approval-policy': executionPolicy.approvalPolicy,
                         config: { mcp_servers: mcpServers }
@@ -623,44 +894,105 @@ export async function runCodex(opts: {
                     if (message.mode.model) {
                         startConfig.model = message.mode.model;
                     }
-                    
-                    // Check for resume file from multiple sources
+
                     let resumeFile: string | null = null;
-                    
-                    // Priority 1: Explicit resume file from mode change
+
                     if (nextExperimentalResume) {
                         resumeFile = nextExperimentalResume;
-                        nextExperimentalResume = null; // consume once
+                        nextExperimentalResume = null;
                         logger.debug('[Codex] Using resume file from mode change:', resumeFile);
-                    }
-                    // Priority 2: Resume from stored abort session
-                    else if (storedSessionIdForResume) {
+                    } else if (storedSessionIdForResume) {
                         const abortResumeFile = findCodexResumeFile(storedSessionIdForResume);
                         if (abortResumeFile) {
                             resumeFile = abortResumeFile;
                             logger.debug('[Codex] Using resume file from aborted session:', resumeFile);
                             messageBuffer.addMessage('Resuming from aborted session...', 'status');
                         }
-                        storedSessionIdForResume = null; // consume once
+                        storedSessionIdForResume = null;
+                    } else if (bootResumeFile) {
+                        resumeFile = bootResumeFile;
+                        bootResumeFile = null;
+                        logger.debug('[Codex] Using resume file from session snapshot:', resumeFile);
+                        messageBuffer.addMessage('Resuming saved context...', 'status');
                     }
-                    
-                    // Apply resume file if found
+
                     if (resumeFile) {
                         (startConfig.config as any).experimental_resume = resumeFile;
+                        const resumePromptContext = buildResumePromptContext(resumeFile);
+                        if (resumePromptContext) {
+                            startConfig.prompt = `${resumePromptContext}\n\nCurrent user message:\n${basePrompt}`;
+                        }
                     }
-                    
+
                     await client.startSession(
                         startConfig,
                         { signal: abortController.signal }
                     );
                     wasCreated = true;
                     first = false;
+                };
+
+                if (!wasCreated) {
+                    await startNewSession();
                 } else {
-                    const response = await client.continueSession(
-                        message.message,
-                        { signal: abortController.signal }
-                    );
-                    logger.debug('[Codex] continueSession response:', response);
+                    try {
+                        const continueConfig: Partial<CodexSessionConfig> = {
+                            sandbox: executionPolicy.sandbox,
+                            'approval-policy': executionPolicy.approvalPolicy
+                        };
+                        if (message.mode.model) {
+                            continueConfig.model = message.mode.model;
+                        }
+
+                        const response = await client.continueSession(
+                            message.message,
+                            {
+                                signal: abortController.signal,
+                                happyConfig: continueConfig
+                            }
+                        );
+                        logger.debug('[Codex] continueSession response:', response);
+
+                        const continueErrorText = (() => {
+                            const typedResponse = response as any;
+                            if (!typedResponse?.isError) {
+                                return '';
+                            }
+                            if (typeof typedResponse?.structuredContent?.content === 'string') {
+                                return typedResponse.structuredContent.content;
+                            }
+                            if (Array.isArray(typedResponse?.content)) {
+                                return typedResponse.content
+                                    .map((item: any) => typeof item?.text === 'string' ? item.text : '')
+                                    .filter(Boolean)
+                                    .join('\n');
+                            }
+                            return '';
+                        })();
+
+                        if (continueErrorText && (/session not found/i.test(continueErrorText) || /thread_id/i.test(continueErrorText))) {
+                            throw new Error(continueErrorText);
+                        }
+
+                        first = false;
+                    } catch (continueError) {
+                        const continueMessage = continueError instanceof Error
+                            ? `${continueError.name}: ${continueError.message}`
+                            : String(continueError);
+                        const shouldStartNewSession =
+                            /no active session/i.test(continueMessage) ||
+                            /not found/i.test(continueMessage) ||
+                            /invalid/i.test(continueMessage);
+                        if (!shouldStartNewSession) {
+                            throw continueError;
+                        }
+
+                        logger.debug('[Codex] continueSession failed; falling back to startSession', continueError);
+                        messageBuffer.addMessage('Resume failed, starting a new session...', 'status');
+                        client.clearSession();
+                        wasCreated = false;
+                        await startNewSession();
+                    }
                 }
             } catch (error) {
                 logger.warn('Error in codex session:', error);

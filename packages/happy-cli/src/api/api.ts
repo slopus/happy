@@ -9,6 +9,9 @@ import { configuration } from '@/configuration';
 import chalk from 'chalk';
 import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 export class ApiClient {
 
@@ -33,15 +36,66 @@ export class ApiClient {
     state: AgentState | null
   }): Promise<Session | null> {
 
+    const loadRestoreSessionSnapshot = (): { encryptionKey: Uint8Array; encryptionVariant: 'dataKey' } | null => {
+      const restoreSessionId = process.env.HAPPY_RESTORE_SESSION_ID;
+      const restoreSessionTag = process.env.HAPPY_RESTORE_SESSION_TAG || process.env.HAPPY_SESSION_TAG_OVERRIDE;
+      if (!restoreSessionId && !restoreSessionTag) {
+        return null;
+      }
+
+      const candidates: string[] = [];
+      if (restoreSessionId) {
+        candidates.push(join(homedir(), '.happy-session-crypto', `session-${restoreSessionId}.json`));
+      }
+      if (restoreSessionTag) {
+        candidates.push(join(homedir(), '.happy-session-crypto', `tag-${restoreSessionTag}.json`));
+      }
+
+      for (const candidatePath of candidates) {
+        try {
+          if (!existsSync(candidatePath)) {
+            continue;
+          }
+          const parsed = JSON.parse(readFileSync(candidatePath, 'utf8'));
+          if (parsed?.encryptionVariant !== 'dataKey' || !parsed?.encryptionKeyBase64) {
+            continue;
+          }
+          const restoredKey = Uint8Array.from(Buffer.from(parsed.encryptionKeyBase64, 'base64'));
+          if (restoredKey.length !== 32) {
+            continue;
+          }
+          logger.debug('[SessionCrypto] Reusing saved session encryption key for restore', {
+            source: candidatePath,
+            sessionId: parsed.sessionId,
+            encryptionVariant: parsed.encryptionVariant
+          });
+          return {
+            encryptionKey: restoredKey,
+            encryptionVariant: parsed.encryptionVariant
+          };
+        } catch (error) {
+          logger.debug(`[SessionCrypto] Failed loading restore snapshot from ${candidatePath}`, error);
+        }
+      }
+
+      return null;
+    };
+
+    const restoreSnapshot = loadRestoreSessionSnapshot();
+
     // Resolve encryption key
     let dataEncryptionKey: Uint8Array | null = null;
     let encryptionKey: Uint8Array;
     let encryptionVariant: 'legacy' | 'dataKey';
     if (this.credential.encryption.type === 'dataKey') {
-
-      // Generate new encryption key
-      encryptionKey = getRandomBytes(32);
-      encryptionVariant = 'dataKey';
+      if (restoreSnapshot) {
+        encryptionKey = restoreSnapshot.encryptionKey;
+        encryptionVariant = restoreSnapshot.encryptionVariant;
+      } else {
+        // Generate new encryption key
+        encryptionKey = getRandomBytes(32);
+        encryptionVariant = 'dataKey';
+      }
 
       // Derive and encrypt data encryption key
       // const contentDataKey = await deriveKey(this.secret, 'Happy EnCoder', ['content']);
