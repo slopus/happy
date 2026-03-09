@@ -31,6 +31,7 @@ import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { extractCodexResumeFlag } from '@/codex/cliArgs'
+import { handleResumeCommand } from '@/resume/handleResumeCommand'
 
 
 (async () => {
@@ -98,6 +99,17 @@ import { extractCodexResumeFlag } from '@/codex/cliArgs'
   } else if (subcommand === 'bye') {
     console.log('Bye!');
     process.exit(0);
+  } else if (subcommand === 'resume') {
+    try {
+      await handleResumeCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
@@ -692,6 +704,7 @@ ${chalk.bold('happy')} - Claude Code On the Go
 ${chalk.bold('Usage:')}
   happy [options]         Start Claude with mobile control
   happy auth              Manage authentication
+  happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
   happy acp               Start a generic ACP-compatible agent
@@ -704,6 +717,7 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Examples:')}
   happy                    Start session
+  happy resume cmmij8      Resume a previous session by Happy session ID
   happy --yolo             Start with bypassing permissions
                             happy sugar for --dangerously-skip-permissions
   happy --chrome           Enable Chrome browser access for this session
