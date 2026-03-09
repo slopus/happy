@@ -29,6 +29,7 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
+import { resumeExistingThread } from './resumeExistingThread';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -65,6 +66,7 @@ export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
+    resumeThreadId?: string;
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
@@ -535,6 +537,19 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect begin');
         await client.connect();
         logger.debug('[codex]: client.connect done');
+
+        if (opts.resumeThreadId) {
+            await resumeExistingThread({
+                client,
+                session,
+                messageBuffer,
+                threadId: opts.resumeThreadId,
+                cwd: process.cwd(),
+                mcpServers,
+            });
+            first = false;
+        }
+
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
 
         while (!shouldExit) {
