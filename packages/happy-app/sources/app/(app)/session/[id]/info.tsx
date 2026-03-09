@@ -9,7 +9,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady, useMachine, storage } from '@/sync/storage';
-import { generateCopyTitle, getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
+import { generateCopyTitle, getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, copySessionMetadata } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { hapticsLight } from '@/components/haptics';
@@ -364,6 +364,7 @@ function SessionInfoContent({ session }: { session: Session }) {
             }
             if (result.type === 'success') {
                 await sync.refreshSessions();
+                await copySessionMetadata(session, result.sessionId).catch(e => console.warn('copySessionMetadata failed:', e));
                 router.push(`/session/${result.sessionId}`);
             }
         } catch (error) {
@@ -511,6 +512,8 @@ function SessionInfoContent({ session }: { session: Session }) {
                 Modal.alert(t('common.error'), result.type === 'error' ? result.errorMessage : 'Upgrade failed');
                 return;
             }
+
+            await copySessionMetadata(session, result.sessionId).catch(e => console.warn('copySessionMetadata failed:', e));
 
             // Navigate to the new session: go back to root then push new session
             try { router.dismissAll(); } catch (_) { /* stack may already be at root */ }

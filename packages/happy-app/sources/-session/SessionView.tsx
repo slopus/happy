@@ -25,7 +25,7 @@ import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, generateCopyTitle, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, generateCopyTitle, getSessionAvatarId, getSessionName, useSessionStatus, copySessionMetadata } from '@/utils/sessionUtils';
 import { isVersionSupported, useLatestCliVersion } from '@/utils/versionUtils';
 import { log } from '@/log';
 import { Ionicons } from '@expo/vector-icons';
@@ -515,6 +515,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             });
 
             if (spawnResult.type === 'success' && spawnResult.sessionId) {
+                await copySessionMetadata(session, spawnResult.sessionId).catch(e => console.warn('copySessionMetadata failed:', e));
+
                 // Close the sheet and navigate to the new Happy session
                 setDuplicateSheetVisible(false);
                 setDuplicateConfirming(false);
@@ -528,7 +530,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             setDuplicateConfirming(false);
             Modal.alert(t('common.error'), t('duplicate.failed'));
         }
-    }, [machineId, session.id, session.metadata?.flavor, session.metadata?.claudeSessionId, session.metadata?.codexSessionId, session.metadata?.path, router]);
+    }, [machineId, session.id, session.metadata?.flavor, session.metadata?.claudeSessionId, session.metadata?.codexSessionId, session.metadata?.path, session.metadata?.externalContext, session.metadata?.sessionIcon, router]);
 
     // Handle closing the duplicate sheet (prevent closing while confirming)
     const handleCloseDuplicateSheet = React.useCallback(() => {

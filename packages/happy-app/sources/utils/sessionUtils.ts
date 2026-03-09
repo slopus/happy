@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { storage } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
-import { sessionLastViewedAt } from '@/sync/sync';
+import { sessionLastViewedAt, sync } from '@/sync/sync';
+import { sessionUpdateMetadataFields } from '@/sync/ops';
 import { t } from '@/text';
 
 export type SessionState = 'disconnected' | 'syncing' | 'thinking' | 'waiting' | 'permission_required';
@@ -263,6 +264,43 @@ export function formatLastSeen(activeAt: number, isActive: boolean = false): str
         };
         return date.toLocaleDateString(undefined, options);
     }
+}
+
+/**
+ * Copy externalContext and sessionIcon from an original session to a newly forked/duplicated session.
+ * Tries storage first (caller may have already refreshed), then retries with refreshSessions.
+ */
+export async function copySessionMetadata(
+    originalSession: Session,
+    newSessionId: string,
+): Promise<void> {
+    const externalContext = originalSession.metadata?.externalContext;
+    const sessionIcon = originalSession.metadata?.sessionIcon;
+    if (!externalContext && !sessionIcon) return;
+
+    const updates = {
+        ...(externalContext ? { externalContext } : {}),
+        ...(sessionIcon ? { sessionIcon } : {}),
+    };
+
+    // Try storage first (caller likely already called refreshSessions), then retry with refresh
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+            await sync.refreshSessions();
+        }
+        const freshSession = storage.getState().sessions[newSessionId];
+        if (freshSession?.metadata) {
+            await sessionUpdateMetadataFields(
+                newSessionId,
+                freshSession.metadata,
+                updates,
+                freshSession.metadataVersion
+            );
+            return;
+        }
+        await new Promise(r => setTimeout(r, 500));
+    }
+    console.warn('copySessionMetadata: new session not found after retries, sessionId:', newSessionId);
 }
 
 const vibingMessages = ["Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing", "Calculating", "Cerebrating", "Channelling", "Churning", "Clauding", "Coalescing", "Cogitating", "Computing", "Combobulating", "Concocting", "Conjuring", "Considering", "Contemplating", "Cooking", "Crafting", "Creating", "Crunching", "Deciphering", "Deliberating", "Determining", "Discombobulating", "Divining", "Doing", "Effecting", "Elucidating", "Enchanting", "Envisioning", "Finagling", "Flibbertigibbeting", "Forging", "Forming", "Frolicking", "Generating", "Germinating", "Hatching", "Herding", "Honking", "Ideating", "Imagining", "Incubating", "Inferring", "Manifesting", "Marinating", "Meandering", "Moseying", "Mulling", "Mustering", "Musing", "Noodling", "Percolating", "Perusing", "Philosophising", "Pontificating", "Pondering", "Processing", "Puttering", "Puzzling", "Reticulating", "Ruminating", "Scheming", "Schlepping", "Shimmying", "Simmering", "Smooshing", "Spelunking", "Spinning", "Stewing", "Sussing", "Synthesizing", "Thinking", "Tinkering", "Transmuting", "Unfurling", "Unravelling", "Vibing", "Wandering", "Whirring", "Wibbling", "Wizarding", "Working", "Wrangling"];
