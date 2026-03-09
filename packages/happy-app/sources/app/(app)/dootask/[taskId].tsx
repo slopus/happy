@@ -24,33 +24,8 @@ import * as Clipboard from 'expo-clipboard';
 import { hapticsLight } from '@/components/haptics';
 import { showCopiedToast } from '@/components/Toast';
 import { layout } from '@/components/layout';
+import { parseFlowItem, getFlowColor, FLOW_STATUS_COLORS } from '@/sync/dootask/types';
 import type { DooTaskItem, DooTaskFile } from '@/sync/dootask/types';
-
-/**
- * Parse DooTask flow_item_name "status|name|color" format.
- * Matches DooTask's convertWorkflow() logic.
- */
-function parseFlowItem(raw: string): { status: string | null; name: string; color: string | null } {
-    if (raw.indexOf('|') !== -1) {
-        const arr = `${raw}||`.split('|');
-        return { status: arr[0] || null, name: arr[1] || raw, color: arr[2] || null };
-    }
-    return { status: null, name: raw, color: null };
-}
-
-/** Default colors per workflow status type, matching DooTask's SCSS variables. */
-const FLOW_STATUS_COLORS: Record<string, string> = {
-    start: '#FF7070',
-    progress: '#fc984b',
-    test: '#2f99ec',
-    end: '#0bc037',
-};
-
-function getFlowColor(status: string | null, color: string | null): string {
-    if (color) return color;
-    if (status && FLOW_STATUS_COLORS[status]) return FLOW_STATUS_COLORS[status];
-    return '#7f7f7f';
-}
 
 function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;

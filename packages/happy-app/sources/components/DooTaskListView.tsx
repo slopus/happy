@@ -11,21 +11,9 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage, useDootaskTasks, useDootaskFilters, useDootaskProfile, useDootaskProjects, useDootaskUserCache } from '@/sync/storage';
 import { dootaskFetchProjects } from '@/sync/dootask/api';
+import { parseFlowItem, FLOW_STATUS_COLORS } from '@/sync/dootask/types';
 import type { DooTaskItem, DooTaskProject } from '@/sync/dootask/types';
 import { useShallow } from 'zustand/react/shallow';
-
-/**
- * Parse DooTask flow_item_name which comes as "status|name|color" from the API.
- * E.g. "end|已完成|#52c41a" or "start|待处理|".
- * Returns parsed { status, name, color } matching DooTask's convertWorkflow().
- */
-function parseFlowItem(raw: string): { status: string | null; name: string; color: string | null } {
-    if (raw.indexOf('|') !== -1) {
-        const arr = `${raw}||`.split('|');
-        return { status: arr[0] || null, name: arr[1] || raw, color: arr[2] || null };
-    }
-    return { status: null, name: raw, color: null };
-}
 
 /**
  * Format end_at date as countdown or short date (matches DooTask dashboard logic).
@@ -466,7 +454,13 @@ const TaskCard = React.memo(({ item, projectName, columnName, userCache, flavors
                             {flow.name}
                         </Text>
                     </View>
-                ) : null}
+                ) : (
+                    <View style={[styles.statusBadge, { backgroundColor: (isCompleted ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start) + '20' }]}>
+                        <Text style={[styles.statusBadgeText, { color: isCompleted ? FLOW_STATUS_COLORS.end : FLOW_STATUS_COLORS.start }]}>
+                            {isCompleted ? t('dootask.completed') : t('dootask.uncompleted')}
+                        </Text>
+                    </View>
+                )}
                 {projectName ? (
                     <Text style={[styles.metaText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                         {projectName}{columnName ? ` · ${columnName}` : ''}
