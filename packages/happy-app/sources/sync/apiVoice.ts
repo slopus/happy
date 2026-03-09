@@ -93,6 +93,7 @@ export async function transcribeAudio(audioUri: string): Promise<TranscriptionRe
     formData.append('model', 'Systran/faster-whisper-base');
     formData.append('response_format', 'json');
     formData.append('language', 'en');
+    formData.append('prompt', 'Debian, GlusterFS, Portainer, macvlan, Wazuh, VLAN, Proxmox, erying, nginx, Milvus, Claude, Whisper, Fastify, Prisma, MinIO, Tailscale');
 
     let result: Response;
     try {
