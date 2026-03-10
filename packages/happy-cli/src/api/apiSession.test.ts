@@ -71,7 +71,14 @@ vi.mock('@/utils/time', () => ({
 type SocketHandler = (...args: any[]) => void;
 type SocketHandlers = Record<string, SocketHandler[]>;
 
-function makeSession() {
+function makeSession(overrides: Partial<ReturnType<typeof makeSessionBase>> = {}) {
+    return {
+        ...makeSessionBase(),
+        ...overrides
+    };
+}
+
+function makeSessionBase() {
     return {
         id: 'test-session-id',
         seq: 0,
@@ -857,6 +864,25 @@ describe('ApiSessionClient v3 messages API migration', () => {
             expect(mockAxiosGet).toHaveBeenCalledTimes(1);
         });
         expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(0);
+    });
+
+    it('starts receive cursor from the existing session seq on reconnect', async () => {
+        const resumedSession = makeSession({ seq: 23 });
+        new ApiSessionClient('fake-token', resumedSession);
+
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [],
+                hasMore: false
+            }
+        });
+
+        emitSocketEvent('connect');
+
+        await waitForCheck(() => {
+            expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+        });
+        expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(23);
     });
 
     it('stops send and receive sync loops on close', async () => {
