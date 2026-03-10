@@ -1463,31 +1463,46 @@ export const storage = create<StorageState>()((set, get) => {
         })),
         // DooTask methods
         setDootaskProfile: (profile) => {
+            const prev = get().dootaskProfile;
+            const isSameAccount = prev && profile
+                && prev.serverUrl === profile.serverUrl
+                && prev.userId === profile.userId;
+
             saveDooTaskProfile(profile);
-            clearDooTaskUserCache();
-            clearDooTaskProjects();
-            clearDooTaskPriorities();
-            clearDooTaskColumns();
-            set((state) => ({
-                ...state,
-                dootaskProfile: profile,
-                dootaskError: null,
-                // Clear all data on login to avoid stale data from previous account
-                dootaskTasks: [],
-                dootaskLoading: false,
-                dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
-                dootaskProjects: [],
-                dootaskProjectsFetchedAt: null,
-                dootaskUserCache: {},
-                dootaskUserAvatars: {},
-                dootaskUserDisabledAt: {},
-                dootaskUserCacheFetchedAt: null,
-                dootaskTaskDetailCache: {},
-                dootaskPriorities: [],
-                dootaskPrioritiesFetchedAt: null,
-                dootaskColumns: {},
-                dootaskColumnsFetchedAt: {},
-            }));
+
+            if (isSameAccount) {
+                // Same account (token refresh): keep existing data
+                set((state) => ({
+                    ...state,
+                    dootaskProfile: profile,
+                    dootaskError: null,
+                }));
+            } else {
+                // Account switch or first login: clear all data
+                clearDooTaskUserCache();
+                clearDooTaskProjects();
+                clearDooTaskPriorities();
+                clearDooTaskColumns();
+                set((state) => ({
+                    ...state,
+                    dootaskProfile: profile,
+                    dootaskError: null,
+                    dootaskTasks: [],
+                    dootaskLoading: false,
+                    dootaskPager: { page: 1, pagesize: 20, total: 0, hasMore: false },
+                    dootaskProjects: [],
+                    dootaskProjectsFetchedAt: null,
+                    dootaskUserCache: {},
+                    dootaskUserAvatars: {},
+                    dootaskUserDisabledAt: {},
+                    dootaskUserCacheFetchedAt: null,
+                    dootaskTaskDetailCache: {},
+                    dootaskPriorities: [],
+                    dootaskPrioritiesFetchedAt: null,
+                    dootaskColumns: {},
+                    dootaskColumnsFetchedAt: {},
+                }));
+            }
         },
 
         fetchDootaskProjects: async () => {
