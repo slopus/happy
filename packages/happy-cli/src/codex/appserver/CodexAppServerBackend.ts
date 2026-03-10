@@ -700,12 +700,15 @@ export class CodexAppServerBackend implements AgentBackend {
         break;
 
       // ── Errors/warnings ──
+      // Codex may emit transient errors (e.g. "Reconnecting... 1/5") while recovering
+      // internally.  Don't terminate the turn — just surface the error to the UI and
+      // keep waiting for `task_complete`.  If Codex truly crashes the process will
+      // exit, which is handled separately by the process-exit path.
       case 'stream_error':
       case 'error': {
         const errorDetail = typeof event.message === 'string' ? event.message : JSON.stringify(event.message);
         const message = errorDetail && errorDetail !== 'undefined' ? errorDetail : 'Codex event error';
         this.emit({ type: 'status', status: 'error', detail: message });
-        this.resolveTurnComplete(new Error(`Codex event error: ${message}`));
         break;
       }
 

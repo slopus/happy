@@ -78,21 +78,24 @@ describe('CodexAppServerBackend.waitForResponseComplete', () => {
     expect((err as Error).message).toContain('lastProgressEvent=turn_start');
   });
 
-  it('fails immediately when an error event is received', async () => {
+  it('does not terminate turn on error event (waits for task_complete)', async () => {
     const backend = createBackend();
     const anyBackend = backend as any;
 
     anyBackend.resetTurnComplete();
-    const waitPromise = backend.waitForResponseComplete(5000).then(
-      () => null,
+    const waitPromise = backend.waitForResponseComplete(120).then(
+      () => 'resolved',
       (error: Error) => error
     );
 
-    anyBackend.handleCodexEvent({ type: 'error', message: 'boom' });
-    const err = await waitPromise;
+    // Error event should NOT resolve the turn
+    anyBackend.handleCodexEvent({ type: 'error', message: 'Reconnecting... 1/5' });
 
-    expect(err).toBeInstanceOf(Error);
-    expect((err as Error).message).toContain('Codex event error: boom');
+    // Turn should still be pending — only task_complete resolves it
+    anyBackend.handleCodexEvent({ type: 'task_complete' });
+    const result = await waitPromise;
+
+    expect(result).toBe('resolved');
   });
 });
 
