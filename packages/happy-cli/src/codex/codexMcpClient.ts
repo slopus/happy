@@ -262,7 +262,7 @@ export class CodexMcpClient {
         return response as CodexToolResponse;
     }
 
-    async continueSession(prompt: string, options?: { signal?: AbortSignal }): Promise<CodexToolResponse> {
+    async continueSession(prompt: string, options?: { signal?: AbortSignal; happyConfig?: Partial<CodexSessionConfig> }): Promise<CodexToolResponse> {
         if (!this.connected) await this.connect();
 
         if (!this.sessionId) {
@@ -290,6 +290,20 @@ export class CodexMcpClient {
         this.extractIdentifiers(response);
 
         return response as CodexToolResponse;
+    }
+
+    seedSessionIdentifiers(sessionId: string | null, conversationId: string | null): void {
+        const normalizedSessionId = typeof sessionId === 'string' && sessionId.length > 0 ? sessionId : null;
+        const normalizedConversationId =
+            typeof conversationId === 'string' && conversationId.length > 0
+                ? conversationId
+                : normalizedSessionId;
+        this.sessionId = normalizedSessionId;
+        this.conversationId = normalizedConversationId;
+        logger.debug('[CodexMCP] Session identifiers seeded', {
+            sessionId: this.sessionId,
+            conversationId: this.conversationId,
+        });
     }
 
 
