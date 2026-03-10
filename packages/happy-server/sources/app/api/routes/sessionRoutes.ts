@@ -7,8 +7,6 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
-import { sessionArchive } from "@/app/session/sessionArchive";
-import { Context } from "@/context";
 
 export function sessionRoutes(app: Fastify) {
 
@@ -354,26 +352,6 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: v.updatedAt.getTime()
             }))
         });
-    });
-
-    // Delete session
-    app.post('/v1/sessions/:sessionId/archive', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const archived = await sessionArchive(Context.create(userId), sessionId);
-        if (!archived.found) {
-            return reply.code(404).send({ error: 'Session not found or not owned by user' });
-        }
-
-        return reply.send({ success: true });
     });
 
     // Delete session
