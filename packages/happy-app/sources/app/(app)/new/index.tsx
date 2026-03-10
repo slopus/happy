@@ -929,19 +929,19 @@ function NewSessionWizard() {
         }
     }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini]);
 
-    // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
+    // Restore saved permission mode when agent type changes
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
         const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const validModes = (agentType === 'codex' || agentType === 'gemini') ? validCodexGeminiModes : validClaudeModes;
 
-        const isValidForCurrentAgent = (agentType === 'codex' || agentType === 'gemini')
-            ? validCodexGeminiModes.includes(permissionMode)
-            : validClaudeModes.includes(permissionMode);
-
-        if (!isValidForCurrentAgent) {
+        const saved = storage.getState().settings.lastUsedPermissionMode;
+        if (saved && typeof saved === 'string' && validModes.includes(saved as PermissionMode)) {
+            setPermissionMode(saved as PermissionMode);
+        } else if (!validModes.includes(permissionMode)) {
             setPermissionMode('default');
         }
-    }, [agentType, permissionMode]);
+    }, [agentType]);
 
     // Restore saved model mode when agent type changes
     React.useEffect(() => {
