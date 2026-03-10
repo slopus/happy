@@ -621,7 +621,7 @@ export const DooTaskListView = React.memo(() => {
                     }}
                     onEndReachedThreshold={0.5}
                     ListEmptyComponent={
-                        loading ? (
+                        loading && !isPullRefreshing ? (
                             <ActivityIndicator style={{ marginTop: 40 }} />
                         ) : (
                             <View style={styles.empty}>
@@ -635,7 +635,7 @@ export const DooTaskListView = React.memo(() => {
                         )
                     }
                     ListFooterComponent={
-                        loading && tasks.length > 0 ? <ActivityIndicator style={{ padding: 16 }} /> : null
+                        loading && !isPullRefreshing && tasks.length > 0 ? <ActivityIndicator style={{ padding: 16 }} /> : null
                     }
                     contentContainerStyle={styles.list}
                 />
