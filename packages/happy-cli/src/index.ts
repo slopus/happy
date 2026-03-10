@@ -748,12 +748,14 @@ ${chalk.bold('Options:')}
   --session-tag <tag>      Use known session tag directly
   --home-dir <path>        Override metadata.homeDir
   --happy-home-dir <path>  Override metadata.happyHomeDir
+  --detach                 Launch restored session in background instead of attaching UI
   --dry-run                Resolve parameters and print without launching
   -h, --help               Show help
 
 ${chalk.bold('Examples:')}
   happy codex resume cmmexample --metadata-file ./metadata.json
   happy codex resume cmmexample --path /Users/me/project --pid 12345
+  happy codex resume cmmexample --metadata-file ./metadata.json --detach
 `);
 }
 
@@ -822,6 +824,7 @@ function parseCodexResumeArgs(args: string[]) {
   let sessionTag: string | null = null
   let homeDir: string | null = null
   let happyHomeDir: string | null = null
+  let detach = false
   let dryRun = false
   let showHelp = false
 
@@ -841,6 +844,8 @@ function parseCodexResumeArgs(args: string[]) {
       homeDir = args[++i]
     } else if (arg === '--happy-home-dir') {
       happyHomeDir = args[++i]
+    } else if (arg === '--detach') {
+      detach = true
     } else if (arg === '--dry-run') {
       dryRun = true
     } else if (!sessionId) {
@@ -858,6 +863,7 @@ function parseCodexResumeArgs(args: string[]) {
     sessionTag,
     homeDir,
     happyHomeDir,
+    detach,
     dryRun,
     showHelp
   }
@@ -935,6 +941,7 @@ async function resolveCodexResumeParameters(args: string[]) {
     sessionSnapshotPath,
     tagSnapshotPath,
     metadata,
+    detach: parsed.detach,
     dryRun: parsed.dryRun
   }
 }
@@ -966,6 +973,7 @@ async function handleCodexResumeCommand(args: string[]): Promise<void> {
     console.log(`  Workdir: ${resolved.workdir}`)
     console.log(`  Home dir: ${resolved.homeDir}`)
     console.log(`  Happy home: ${resolved.happyHomeDir}`)
+    console.log(`  Launch mode: ${resolved.detach ? 'detached' : 'attached'}`)
     console.log(`  Prior log: ${resolved.logPath || 'not found'}`)
     console.log(`  Session snapshot: ${resolved.sessionSnapshotPath}`)
     console.log(`  Tag snapshot: ${resolved.tagSnapshotPath}`)
@@ -983,6 +991,36 @@ async function handleCodexResumeCommand(args: string[]): Promise<void> {
       await delay(500)
     }
   } catch {
+  }
+
+  if (!resolved.detach) {
+    console.log('Starting restored Happy Codex session in attached mode...')
+    const child = spawnHappyCLI(
+      ['codex', '--happy-starting-mode', 'remote', '--started-by', 'daemon'],
+      {
+        cwd: resolved.workdir,
+        stdio: 'inherit',
+        env
+      }
+    )
+
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      child.once('error', reject)
+      child.once('exit', (code, signal) => {
+        if (typeof code === 'number') {
+          resolve(code)
+          return
+        }
+        if (signal) {
+          console.error(`Restored Happy Codex exited with signal ${signal}`)
+          resolve(1)
+          return
+        }
+        resolve(0)
+      })
+    })
+
+    process.exit(exitCode)
   }
 
   const child = spawnHappyCLI(
