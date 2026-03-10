@@ -156,6 +156,16 @@ export class CodexAppServerClient {
         return this.sessionId;
     }
 
+    async resumeSavedThread(
+        config?: Partial<CodexSessionConfig>,
+        options?: { timeout?: number; signal?: AbortSignal }
+    ): Promise<void> {
+        if (!this.connected) {
+            await this.connect();
+        }
+        await this.ensureThreadResumed(config, options);
+    }
+
     async forceCloseSession(): Promise<void> {
         logger.debug('[CodexAppServer] Force closing session');
         try {

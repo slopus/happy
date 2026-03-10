@@ -64,6 +64,19 @@ export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, not
     return true;
 }
 
+export function normalizeResumeUserText(text: string): string {
+    return text.replace(/\r\n/g, '\n').trim();
+}
+
+export function filterBufferedResumeMessages<T extends { text: string }>(
+    messages: T[],
+    recentResumeUserTexts: Set<string>,
+): T[] {
+    return messages.filter(({ text }) => (
+        !recentResumeUserTexts.has(normalizeResumeUserText(text))
+    ));
+}
+
 /**
  * Main entry point for the codex command with ink UI
  */
@@ -327,6 +340,30 @@ export async function runCodex(opts: {
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
+    let resumeBootstrapPending = false;
+    let recentResumeUserTexts = new Set<string>();
+    const bufferedResumeMessages: Array<{ text: string; mode: EnhancedMode }> = [];
+
+    function flushBufferedResumeMessages() {
+        if (!bufferedResumeMessages.length) {
+            return;
+        }
+
+        const pendingMessages = bufferedResumeMessages.splice(0);
+        const filteredMessages = filterBufferedResumeMessages(pendingMessages, recentResumeUserTexts);
+        const droppedCount = pendingMessages.length - filteredMessages.length;
+
+        if (droppedCount > 0) {
+            logger.debug('[Codex] Dropped duplicate pre-resume user messages', {
+                droppedCount,
+                keptCount: filteredMessages.length
+            });
+        }
+
+        for (const { text, mode } of filteredMessages) {
+            messageQueue.push(text, mode);
+        }
+    }
 
     session.onUserMessage((message) => {
         // Resolve permission mode (accept all modes, will be mapped in switch statement)
@@ -353,6 +390,14 @@ export async function runCodex(opts: {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
         };
+        if (resumeBootstrapPending) {
+            logger.debug('[Codex] Buffering user message until saved Codex thread resume completes');
+            bufferedResumeMessages.push({
+                text: message.content.text,
+                mode: enhancedMode
+            });
+            return;
+        }
         messageQueue.push(message.content.text, enhancedMode);
     });
     let thinking = false;
@@ -571,8 +616,8 @@ export async function runCodex(opts: {
         }
     }
 
-    function buildResumePromptContext(resumeFile: string | null): string {
-        if (!resumeFile) return '';
+    function readResumeTranscriptMessages(resumeFile: string | null): Array<{ role: 'User' | 'Assistant'; text: string }> {
+        if (!resumeFile) return [];
         try {
             const raw = fs.readFileSync(resumeFile, 'utf8');
             const lines = raw.split('\n').filter((line) => line.trim().length > 0);
@@ -622,37 +667,53 @@ export async function runCodex(opts: {
                 messages.push({ role, text });
             }
 
-            if (!messages.length) {
-                return '';
-            }
-
-            const selected: string[] = [];
-            let totalChars = 0;
-            for (let i = messages.length - 1; i >= 0; i -= 1) {
-                const formatted = `${messages[i].role}: ${messages[i].text}`;
-                if (selected.length >= 24 || totalChars + formatted.length > 12000) {
-                    break;
-                }
-                selected.push(formatted);
-                totalChars += formatted.length + 2;
-            }
-            selected.reverse();
-
-            return [
-                'Restored context from the previous unavailable Codex thread.',
-                'Treat the following transcript as prior conversation state and preserved memory.',
-                ...selected
-            ].join('\n\n');
+            return messages;
         } catch (error) {
             logger.debug('[Codex] Failed to build resume prompt context', error);
+            return [];
+        }
+    }
+
+    function buildRecentResumeUserTexts(resumeFile: string | null): Set<string> {
+        const messages = readResumeTranscriptMessages(resumeFile);
+        const recentUsers = messages
+            .filter((message) => message.role === 'User')
+            .slice(-24)
+            .map((message) => normalizeResumeUserText(message.text))
+            .filter(Boolean);
+        return new Set(recentUsers);
+    }
+
+    function buildResumePromptContext(resumeFile: string | null): string {
+        const messages = readResumeTranscriptMessages(resumeFile);
+        if (!messages.length) {
             return '';
         }
+
+        const selected: string[] = [];
+        let totalChars = 0;
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const formatted = `${messages[i].role}: ${messages[i].text}`;
+            if (selected.length >= 24 || totalChars + formatted.length > 12000) {
+                break;
+            }
+            selected.push(formatted);
+            totalChars += formatted.length + 2;
+        }
+        selected.reverse();
+
+        return [
+            'Restored context from the previous unavailable Codex thread.',
+            'Treat the following transcript as prior conversation state and preserved memory.',
+            ...selected
+        ].join('\n\n');
     }
 
     if (currentCodexSessionId) {
         bootResumeFile = findCodexResumeFile(currentCodexSessionId);
         if (bootResumeFile) {
             logger.debug('[Codex] Found resume file from session snapshot:', bootResumeFile);
+            recentResumeUserTexts = buildRecentResumeUserTexts(bootResumeFile);
         } else {
             logger.debug(`[Codex] No resume file found for snapshot codex session ${currentCodexSessionId}`);
         }
@@ -807,8 +868,36 @@ export async function runCodex(opts: {
         if (currentCodexSessionId || currentCodexConversationId) {
             client.seedSessionIdentifiers(currentCodexSessionId, currentCodexConversationId);
             wasCreated = true;
+            resumeBootstrapPending = true;
             logger.debug('[Codex] Seeded client with saved identifiers; first turn will attempt continueSession');
             messageBuffer.addMessage('Attempting to resume saved Codex thread...', 'status');
+            if (client instanceof CodexAppServerClient) {
+                const bootstrapExecutionPolicy = resolveCodexExecutionPolicy(
+                    currentPermissionMode ?? 'default',
+                    client.sandboxEnabled,
+                );
+                const bootstrapConfig: Partial<CodexSessionConfig> = {
+                    sandbox: bootstrapExecutionPolicy.sandbox,
+                    'approval-policy': bootstrapExecutionPolicy.approvalPolicy,
+                };
+                if (currentModel) {
+                    bootstrapConfig.model = currentModel;
+                }
+                try {
+                    await client.resumeSavedThread(
+                        bootstrapConfig,
+                        { signal: abortController.signal }
+                    );
+                } catch (error) {
+                    logger.debug('[Codex] Initial saved-thread resume bootstrap failed', error);
+                } finally {
+                    resumeBootstrapPending = false;
+                    flushBufferedResumeMessages();
+                }
+            } else {
+                resumeBootstrapPending = false;
+                flushBufferedResumeMessages();
+            }
         }
         let currentModeHash: string | null = null;
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
