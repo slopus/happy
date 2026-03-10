@@ -12,6 +12,7 @@ import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
+import { markDisconnectedSessionInactive } from "@/app/session/markDisconnectedSessionInactive";
 
 export function startSocket(app: Fastify) {
     const io = new Server(app.server, {
@@ -119,6 +120,12 @@ export function startSocket(app: Fastify) {
             decrementWebSocketConnection(connection.connectionType);
 
             log({ module: 'websocket' }, `User disconnected: ${userId}`);
+
+            if (connection.connectionType === 'session-scoped') {
+                void markDisconnectedSessionInactive(userId, connection.sessionId, Date.now()).catch((error) => {
+                    log({ module: 'websocket', level: 'error' }, `Failed to mark disconnected session inactive: ${error}`);
+                });
+            }
 
             // Broadcast daemon offline status
             if (connection.connectionType === 'machine-scoped') {

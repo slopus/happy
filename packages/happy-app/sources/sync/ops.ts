@@ -126,6 +126,36 @@ interface SessionKillResponse {
     message: string;
 }
 
+function shouldFallbackToServerArchive(message: string): boolean {
+    return /rpc method not available|session encryption not found|socket not connected/i.test(message);
+}
+
+async function archiveSessionOnServer(sessionId: string, fallbackMessage: string): Promise<SessionKillResponse> {
+    try {
+        const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            return {
+                success: true,
+                message: 'Session archived'
+            };
+        }
+
+        const errorText = await response.text();
+        return {
+            success: false,
+            message: errorText || fallbackMessage
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : fallbackMessage
+        };
+    }
+}
+
 // Response types for spawn session
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
@@ -484,9 +514,15 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
         );
         return response;
     } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+
+        if (shouldFallbackToServerArchive(message)) {
+            return archiveSessionOnServer(sessionId, message);
+        }
+
         return {
             success: false,
-            message: error instanceof Error ? error.message : 'Unknown error'
+            message
         };
     }
 }
