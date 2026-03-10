@@ -112,16 +112,6 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
   });
 
   it('should track session-started webhook from terminal session', async () => {
-    const fakeTerminalProcess = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
-      detached: true,
-      stdio: 'ignore'
-    });
-    fakeTerminalProcess.unref();
-
-    if (!fakeTerminalProcess.pid) {
-      throw new Error('Failed to spawn fake terminal process');
-    }
-
     // Simulate a terminal-started session reporting to daemon
     const mockMetadata: Metadata = {
       path: '/test/path',
@@ -130,61 +120,21 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       happyHomeDir: '/test/happy-home',
       happyLibDir: '/test/happy-lib',
       happyToolsDir: '/test/happy-tools',
-      hostPid: fakeTerminalProcess.pid,
+      hostPid: 99999,
       startedBy: 'terminal',
       machineId: 'test-machine-123'
     };
 
-    try {
-      await notifyDaemonSessionStarted('test-session-123', mockMetadata);
+    await notifyDaemonSessionStarted('test-session-123', mockMetadata);
 
-      // Verify session is tracked
-      const sessions = await listDaemonSessions();
-      expect(sessions).toHaveLength(1);
-      
-      const tracked = sessions[0];
-      expect(tracked.startedBy).toBe('happy directly - likely by user from terminal');
-      expect(tracked.happySessionId).toBe('test-session-123');
-      expect(tracked.pid).toBe(fakeTerminalProcess.pid);
-    } finally {
-      try {
-        process.kill(fakeTerminalProcess.pid, 'SIGTERM');
-      } catch {
-        // Process may already be gone
-      }
-    }
-  });
-
-  it('should prune dead terminal sessions immediately when listing sessions', async () => {
-    const fakeTerminalProcess = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
-      detached: true,
-      stdio: 'ignore'
-    });
-    fakeTerminalProcess.unref();
-
-    if (!fakeTerminalProcess.pid) {
-      throw new Error('Failed to spawn fake terminal process');
-    }
-
-    const mockMetadata: Metadata = {
-      path: '/test/path',
-      host: 'test-host',
-      homeDir: '/test/home',
-      happyHomeDir: '/test/happy-home',
-      happyLibDir: '/test/happy-lib',
-      happyToolsDir: '/test/happy-tools',
-      hostPid: fakeTerminalProcess.pid,
-      startedBy: 'terminal',
-      machineId: 'test-machine-123'
-    };
-
-    await notifyDaemonSessionStarted('dead-terminal-session', mockMetadata);
-    expect(await listDaemonSessions()).toHaveLength(1);
-
-    process.kill(fakeTerminalProcess.pid, 'SIGTERM');
-    await new Promise(resolve => setTimeout(resolve, 200));
-
-    expect(await listDaemonSessions()).toEqual([]);
+    // Verify session is tracked
+    const sessions = await listDaemonSessions();
+    expect(sessions).toHaveLength(1);
+    
+    const tracked = sessions[0];
+    expect(tracked.startedBy).toBe('happy directly - likely by user from terminal');
+    expect(tracked.happySessionId).toBe('test-session-123');
+    expect(tracked.pid).toBe(99999);
   });
 
   it('should spawn & stop a session via HTTP (not testing RPC route, but similar enough)', async () => {

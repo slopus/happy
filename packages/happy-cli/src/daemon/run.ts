@@ -17,7 +17,6 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
-import { pruneStaleTrackedSessions } from './sessionTracking';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
@@ -173,13 +172,6 @@ export async function startDaemon(): Promise<void> {
 
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
-    const pruneStaleSessions = () => {
-      const removed = pruneStaleTrackedSessions(pidToTrackedSession);
-      if (removed > 0) {
-        logger.debug(`[DAEMON RUN] Pruned ${removed} stale tracked sessions`);
-      }
-      return removed;
-    };
 
     // Handle webhook from happy session reporting itself
     const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
@@ -605,7 +597,6 @@ export async function startDaemon(): Promise<void> {
     // Stop a session by sessionId or PID fallback
     const stopSession = (sessionId: string): boolean => {
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
-      pruneStaleSessions();
 
       // Try to find by sessionId first
       for (const [pid, session] of pidToTrackedSession.entries()) {
@@ -643,13 +634,11 @@ export async function startDaemon(): Promise<void> {
     const onChildExited = (pid: number) => {
       logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
       pidToTrackedSession.delete(pid);
-      pidToAwaiter.delete(pid);
     };
 
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
       getChildren: getCurrentChildren,
-      pruneStaleSessions,
       stopSession,
       spawnSession,
       requestShutdown: () => requestShutdown('happy-cli'),
@@ -716,7 +705,17 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
       }
 
-      pruneStaleSessions();
+      // Prune stale sessions
+      for (const [pid, _] of pidToTrackedSession.entries()) {
+        try {
+          // Check if process is still alive (signal 0 doesn't kill, just checks)
+          process.kill(pid, 0);
+        } catch (error) {
+          // Process is dead, remove from tracking
+          logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
+          pidToTrackedSession.delete(pid);
+        }
+      }
 
       // Check if daemon needs update
       // If version on disk is different from the one in package.json - we need to restart
