@@ -230,11 +230,7 @@ class Sync {
                                 }).catch(() => {});
                             }
                         }).catch(() => {
-                            // Update lastCheckedAt even on failure to avoid retry storm
-                            storage.getState().setDootaskProfile({
-                                ...dootaskProfile,
-                                lastCheckedAt: new Date().toISOString(),
-                            });
+                            // No-op: keep existing data, retry on next foreground resume
                         });
                     }
                 }
