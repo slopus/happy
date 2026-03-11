@@ -4,6 +4,11 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import type { Dirent } from 'node:fs';
+import {
+    loadSessionMetadataCache,
+    normalizeSessionTitle,
+    saveSessionMetadataCache
+} from '@/cache/sessionMetadataCache';
 
 export interface ClaudeSessionIndexEntry {
     sessionId: string;
@@ -22,6 +27,40 @@ type ParsedSession = {
     messageCount?: number;
     gitBranch?: string | null;
 };
+
+type ClaudeConversationNodeType = 'user' | 'assistant' | 'attachment' | 'system';
+
+interface ClaudeConversationNode {
+    uuid: string;
+    parentUuid: string | null;
+    timestamp?: number;
+    type: ClaudeConversationNodeType;
+    isMeta: boolean;
+    isSidechain: boolean;
+    userContent?: unknown;
+}
+
+interface ClaudeParsedSessionFileMetadata {
+    title: string | null;
+    messageCount: number;
+    updatedAt?: number;
+    gitBranch?: string | null;
+}
+
+interface ClaudeSessionMetadataCacheEntry {
+    fileMtimeMs: number;
+    fileSize: number;
+    title: string | null;
+    titleExtracted: boolean;
+    messageCount?: number;
+    updatedAt?: number;
+    gitBranch?: string | null;
+}
+
+const CLAUDE_SESSION_METADATA_CACHE_VERSION = 1;
+const CLAUDE_SESSION_METADATA_CACHE_FILENAME = 'claude-session-metadata-cache.json';
+const CONTINUATION_PREFIX = 'This session is being continued';
+const IDE_MESSAGE_PREFIX = '<ide_';
 
 function parseTimestamp(value: unknown): number | undefined {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -102,19 +141,190 @@ function extractGitBranch(entry: any): string | null {
     return null;
 }
 
-/**
- * Quickly count user messages in a JSONL file by scanning for "type":"user" patterns
- * This is much faster than parsing every line as JSON
- */
-async function countMessagesInJsonl(jsonlPath: string): Promise<number> {
-    try {
-        const content = await readFile(jsonlPath, 'utf8');
-        // Count lines that contain "type":"user" - these are user messages
-        const matches = content.match(/"type"\s*:\s*"user"/g);
-        return matches ? matches.length : 0;
-    } catch {
-        return 0;
+function extractTextFromUserContent(content: unknown, skipContinuation: boolean): string | null {
+    const sanitize = (raw: string): string | null => {
+        const text = raw.trim();
+        if (!text) return null;
+        if (text.startsWith(IDE_MESSAGE_PREFIX)) return null;
+        if (skipContinuation && text.startsWith(CONTINUATION_PREFIX)) return null;
+        return text;
+    };
+
+    if (typeof content === 'string') {
+        return sanitize(content);
     }
+
+    if (!Array.isArray(content)) {
+        return null;
+    }
+
+    for (const block of content) {
+        if (typeof block === 'string') {
+            const text = sanitize(block);
+            if (text) return text;
+            continue;
+        }
+        if (!block || typeof block !== 'object') continue;
+        if ((block as { type?: unknown }).type !== 'text') continue;
+        const textValue = (block as { text?: unknown }).text;
+        if (typeof textValue !== 'string') continue;
+        const text = sanitize(textValue);
+        if (text) return text;
+    }
+
+    return null;
+}
+
+function getTranscript(nodes: Map<string, ClaudeConversationNode>, leafUuid: string): ClaudeConversationNode[] {
+    const chain: ClaudeConversationNode[] = [];
+    let current: ClaudeConversationNode | undefined = nodes.get(leafUuid);
+    while (current) {
+        chain.push(current);
+        if (!current.parentUuid) break;
+        current = nodes.get(current.parentUuid);
+    }
+    return chain.reverse();
+}
+
+function isSidechainBranch(nodes: Map<string, ClaudeConversationNode>, leafUuid: string): boolean {
+    let current: ClaudeConversationNode | undefined = nodes.get(leafUuid);
+    while (current) {
+        if (!current.parentUuid) {
+            return current.isSidechain;
+        }
+        current = nodes.get(current.parentUuid);
+    }
+    return false;
+}
+
+function getFirstMeaningfulUserMessage(transcript: ClaudeConversationNode[]): string | null {
+    for (const node of transcript) {
+        if (node.type !== 'user' || node.isMeta) continue;
+        const strictText = extractTextFromUserContent(node.userContent, true);
+        if (strictText) return normalizeSessionTitle(strictText);
+        const fallbackText = extractTextFromUserContent(node.userContent, false);
+        if (fallbackText) return normalizeSessionTitle(fallbackText);
+    }
+    return null;
+}
+
+function pickConversationTitleFromGraph(
+    nodes: Map<string, ClaudeConversationNode>,
+    parentUuids: Set<string>,
+    summariesByLeaf: Map<string, string>
+): string | null {
+    const leafUuids: string[] = [];
+    for (const uuid of nodes.keys()) {
+        if (!parentUuids.has(uuid)) {
+            leafUuids.push(uuid);
+        }
+    }
+    if (leafUuids.length === 0) return null;
+
+    const nonSidechainLeafUuids = leafUuids.filter((leafUuid) => !isSidechainBranch(nodes, leafUuid));
+    const candidateLeafs = nonSidechainLeafUuids.length > 0 ? nonSidechainLeafUuids : leafUuids;
+    candidateLeafs.sort((a, b) => (nodes.get(b)?.timestamp || 0) - (nodes.get(a)?.timestamp || 0));
+    const latestLeafUuid = candidateLeafs[0];
+    if (!latestLeafUuid) return null;
+
+    const summary = summariesByLeaf.get(latestLeafUuid);
+    if (summary) {
+        const normalized = normalizeSessionTitle(summary);
+        if (normalized) return normalized;
+    }
+
+    const transcript = getTranscript(nodes, latestLeafUuid);
+    return getFirstMeaningfulUserMessage(transcript);
+}
+
+function isConversationNodeType(value: unknown): value is ClaudeConversationNodeType {
+    return value === 'user' || value === 'assistant' || value === 'attachment' || value === 'system';
+}
+
+async function parseClaudeSessionFileMetadata(jsonlPath: string): Promise<ClaudeParsedSessionFileMetadata> {
+    const fileStream = createReadStream(jsonlPath, { encoding: 'utf8' });
+    const rl = createInterface({
+        input: fileStream,
+        crlfDelay: Infinity
+    });
+
+    const nodes = new Map<string, ClaudeConversationNode>();
+    const parentUuids = new Set<string>();
+    const summariesByLeaf = new Map<string, string>();
+    let messageCount = 0;
+    let latestTimestamp: number | undefined;
+    let gitBranch: string | null = null;
+
+    try {
+        for await (const line of rl) {
+            if (!line.trim()) continue;
+
+            let entry: any;
+            try {
+                entry = JSON.parse(line);
+            } catch {
+                continue;
+            }
+
+            if (entry?.type === 'summary' && typeof entry?.leafUuid === 'string') {
+                const rawSummary = typeof entry?.summary === 'string' ? entry.summary.trim() : '';
+                if (rawSummary) {
+                    summariesByLeaf.set(entry.leafUuid, rawSummary);
+                }
+                continue;
+            }
+
+            if (!isConversationNodeType(entry?.type)) {
+                continue;
+            }
+            if (typeof entry?.uuid !== 'string' || !entry.uuid) {
+                continue;
+            }
+
+            const parentUuid = typeof entry?.parentUuid === 'string' && entry.parentUuid.trim()
+                ? entry.parentUuid
+                : null;
+            if (parentUuid) {
+                parentUuids.add(parentUuid);
+            }
+
+            const timestamp = parseTimestamp(entry?.timestamp);
+            if (timestamp !== undefined) {
+                latestTimestamp = Math.max(latestTimestamp ?? 0, timestamp);
+            }
+
+            if (!gitBranch && typeof entry?.gitBranch === 'string' && entry.gitBranch.trim()) {
+                gitBranch = entry.gitBranch.trim();
+            }
+
+            if (entry.type === 'user') {
+                messageCount++;
+            }
+
+            nodes.set(entry.uuid, {
+                uuid: entry.uuid,
+                parentUuid,
+                timestamp,
+                type: entry.type,
+                isMeta: entry?.isMeta === true,
+                isSidechain: entry?.isSidechain === true,
+                userContent: entry?.type === 'user' ? entry?.message?.content : undefined
+            });
+        }
+    } catch {
+        // If parsing fails we still return whatever we gathered.
+    } finally {
+        rl.close();
+        fileStream.destroy();
+    }
+
+    const title = pickConversationTitleFromGraph(nodes, parentUuids, summariesByLeaf);
+    return {
+        title,
+        messageCount,
+        updatedAt: latestTimestamp,
+        gitBranch
+    };
 }
 
 function extractSessionsFromIndex(data: any): ParsedSession[] {
@@ -197,9 +407,20 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
     let dirents: Dirent[];
     try {
         dirents = await readdir(projectsDir, { withFileTypes: true }) as Dirent[];
-    } catch (error) {
+    } catch {
         return [];
     }
+
+    const existingCacheEntries = await loadSessionMetadataCache<ClaudeSessionMetadataCacheEntry>({
+        cacheFileName: CLAUDE_SESSION_METADATA_CACHE_FILENAME,
+        cacheVersion: CLAUDE_SESSION_METADATA_CACHE_VERSION,
+        scopeKey: 'claudeConfigDir',
+        scopeValue: claudeConfigDir
+    });
+    const nextCacheEntries: Record<string, ClaudeSessionMetadataCacheEntry> = { ...existingCacheEntries };
+    const seenCacheKeys = new Set<string>();
+    const scannedProjectIds = new Set<string>();
+    let cacheDirty = false;
 
     const results: ClaudeSessionIndexEntry[] = [];
     const seen = new Set<string>();
@@ -210,18 +431,18 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
         const indexPath = join(projectsDir, projectId, 'sessions-index.json');
         const projectDir = join(projectsDir, projectId);
 
-        let raw: string;
+        let raw = '';
         try {
             raw = await readFile(indexPath, 'utf8');
-        } catch (error) {
+        } catch {
             raw = '';
         }
 
-        let data: any;
+        let data: any = null;
         if (raw) {
             try {
                 data = JSON.parse(raw);
-            } catch (error) {
+            } catch {
                 data = null;
             }
         }
@@ -230,59 +451,104 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
         if (!originalPath) {
             continue;
         }
-        // Get sessions from index (has title/summary info)
+
         const indexedSessions = extractSessionsFromIndex(data);
         const indexedMap = new Map<string, ParsedSession>();
         for (const session of indexedSessions) {
             indexedMap.set(session.sessionId, session);
         }
 
-        // Always scan .jsonl files to find all sessions (like Claude Code /resume does)
-        // Then merge with index data for title/summary info
         const sessions: ParsedSession[] = [];
         try {
+            scannedProjectIds.add(projectId);
             const projectEntries = await readdir(projectDir, { withFileTypes: true }) as Dirent[];
             for (const entry of projectEntries) {
                 if (!entry.isFile()) continue;
                 if (!entry.name.endsWith('.jsonl')) continue;
+                if (entry.name.startsWith('agent-')) continue;
+
                 const sessionId = entry.name.replace(/\.jsonl$/, '');
                 if (!sessionId) continue;
 
-                // Get metadata from index if available, otherwise use file stats
                 const indexed = indexedMap.get(sessionId);
-                let updatedAt: number | undefined = indexed?.updatedAt;
-                let messageCount: number | undefined = indexed?.messageCount;
-
                 const filePath = join(projectDir, entry.name);
+                const cacheKey = `${projectId}:${sessionId}`;
+                seenCacheKeys.add(cacheKey);
 
-                if (updatedAt === undefined) {
-                    try {
-                        const stats = await stat(filePath);
-                        updatedAt = stats.mtime.getTime();
-                    } catch {
-                        // ignore stat errors
-                    }
+                let stats;
+                try {
+                    stats = await stat(filePath);
+                } catch {
+                    stats = null;
                 }
 
-                // If messageCount is not in index, count from JSONL file
-                if (messageCount === undefined) {
-                    messageCount = await countMessagesInJsonl(filePath);
+                let cached = nextCacheEntries[cacheKey];
+                const cacheMatchesFile = !!(
+                    cached &&
+                    stats &&
+                    cached.fileMtimeMs === stats.mtimeMs &&
+                    cached.fileSize === stats.size
+                );
+
+                const needsTitleFromFile = indexed?.title == null && (!cacheMatchesFile || cached?.titleExtracted !== true);
+                const needsMessageCountFromFile = indexed?.messageCount === undefined && (!cacheMatchesFile || cached?.messageCount === undefined);
+                const needsUpdatedAtFromFile = indexed?.updatedAt === undefined && (!cacheMatchesFile || cached?.updatedAt === undefined);
+                const needsGitBranchFromFile = indexed?.gitBranch == null && (!cacheMatchesFile || cached?.gitBranch == null);
+                const shouldParseFile = !!stats && (needsTitleFromFile || needsMessageCountFromFile || needsUpdatedAtFromFile || needsGitBranchFromFile);
+
+                if (shouldParseFile && stats) {
+                    const parsedMetadata = await parseClaudeSessionFileMetadata(filePath);
+                    cached = {
+                        fileMtimeMs: stats.mtimeMs,
+                        fileSize: stats.size,
+                        title: parsedMetadata.title,
+                        titleExtracted: true,
+                        messageCount: parsedMetadata.messageCount,
+                        updatedAt: parsedMetadata.updatedAt,
+                        gitBranch: parsedMetadata.gitBranch ?? null
+                    };
+                    nextCacheEntries[cacheKey] = cached;
+                    cacheDirty = true;
+                } else if (!cacheMatchesFile && stats && indexed?.messageCount !== undefined && indexed?.title != null) {
+                    // Keep cache in sync with file metadata even if we didn't need to parse the file.
+                    cached = {
+                        fileMtimeMs: stats.mtimeMs,
+                        fileSize: stats.size,
+                        title: null,
+                        titleExtracted: false,
+                        messageCount: undefined,
+                        updatedAt: undefined,
+                        gitBranch: null
+                    };
+                    nextCacheEntries[cacheKey] = cached;
+                    cacheDirty = true;
                 }
+
+                const updatedAt = indexed?.updatedAt
+                    ?? cached?.updatedAt
+                    ?? stats?.mtimeMs;
+                const messageCount = indexed?.messageCount
+                    ?? cached?.messageCount;
+                const title = indexed?.title
+                    ?? cached?.title
+                    ?? null;
+                const gitBranch = indexed?.gitBranch
+                    ?? cached?.gitBranch
+                    ?? null;
 
                 sessions.push({
                     sessionId,
                     updatedAt,
-                    title: indexed?.title ?? null,
+                    title,
                     messageCount,
-                    gitBranch: indexed?.gitBranch ?? null
+                    gitBranch
                 });
             }
-        } catch (error) {
+        } catch {
             // If scan fails, fall back to index-only sessions
             sessions.push(...indexedSessions);
         }
 
-        // Extract directory name from originalPath as fallback title
         const dirName = originalPath.split(/[\\/]/).filter(Boolean).pop() || null;
 
         for (const session of sessions) {
@@ -302,6 +568,27 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
                 gitBranch: session.gitBranch
             });
         }
+    }
+
+    // Remove stale cache entries for projects we successfully scanned.
+    for (const cacheKey of Object.keys(nextCacheEntries)) {
+        const separator = cacheKey.indexOf(':');
+        if (separator <= 0) continue;
+        const projectId = cacheKey.slice(0, separator);
+        if (!scannedProjectIds.has(projectId)) continue;
+        if (seenCacheKeys.has(cacheKey)) continue;
+        delete nextCacheEntries[cacheKey];
+        cacheDirty = true;
+    }
+
+    if (cacheDirty) {
+        await saveSessionMetadataCache({
+            cacheFileName: CLAUDE_SESSION_METADATA_CACHE_FILENAME,
+            cacheVersion: CLAUDE_SESSION_METADATA_CACHE_VERSION,
+            scopeKey: 'claudeConfigDir',
+            scopeValue: claudeConfigDir,
+            entries: nextCacheEntries
+        });
     }
 
     results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));

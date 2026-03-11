@@ -8,7 +8,14 @@
 
 import { readFile, readdir, stat } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
+import { createReadStream } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { logger } from '@/ui/logger';
+import {
+  loadSessionMetadataCache,
+  normalizeSessionTitle,
+  saveSessionMetadataCache,
+} from '@/cache/sessionMetadataCache';
 import { GeminiSessionLineSchema, type GeminiSessionLine } from './sessionTypes';
 import { getGeminiSessionFilePath, getGeminiSessionsDir } from './sessionWriter';
 
@@ -79,6 +86,64 @@ export interface SessionPreviewMessage {
   timestamp?: string;
 }
 
+interface GeminiSessionMetadataCacheEntry {
+  fileMtimeMs: number;
+  fileSize: number;
+  originalPath: string | null;
+  title: string | null;
+  messageCount: number;
+  updatedAt?: number;
+}
+
+const GEMINI_SESSION_METADATA_CACHE_VERSION = 1;
+const GEMINI_SESSION_METADATA_CACHE_FILENAME = 'gemini-session-metadata-cache.json';
+
+async function parseGeminiSessionMetadata(filePath: string): Promise<Omit<GeminiSessionMetadataCacheEntry, 'fileMtimeMs' | 'fileSize'>> {
+  const fileStream = createReadStream(filePath, { encoding: 'utf8' });
+  const rl = createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
+
+  let originalPath: string | null = null;
+  let title: string | null = null;
+  let messageCount = 0;
+  let updatedAt: number | undefined;
+
+  try {
+    for await (const line of rl) {
+      if (!line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+
+        if (parsed.type === 'meta' && parsed.key === 'sessionStart') {
+          originalPath = typeof parsed.value?.cwd === 'string' ? parsed.value.cwd : null;
+        }
+
+        if (parsed.type === 'user') {
+          messageCount++;
+          if (!title && typeof parsed.message === 'string' && parsed.message.trim()) {
+            title = normalizeSessionTitle(parsed.message);
+          }
+        }
+
+        if (typeof parsed.timestamp === 'number') {
+          updatedAt = parsed.timestamp;
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+  } catch {
+    // Return partial metadata collected so far.
+  } finally {
+    rl.close();
+    fileStream.destroy();
+  }
+
+  return { originalPath, title, messageCount, updatedAt };
+}
+
 /**
  * List all Gemini sessions from the local JSONL directory.
  * For each file, parses the first few lines to extract metadata.
@@ -93,6 +158,16 @@ export async function listGeminiSessions(): Promise<GeminiSessionIndexEntry[]> {
     return [];
   }
 
+  const existingCacheEntries = await loadSessionMetadataCache<GeminiSessionMetadataCacheEntry>({
+    cacheFileName: GEMINI_SESSION_METADATA_CACHE_FILENAME,
+    cacheVersion: GEMINI_SESSION_METADATA_CACHE_VERSION,
+    scopeKey: 'sessionsDir',
+    scopeValue: sessionsDir,
+  });
+  const nextCacheEntries: Record<string, GeminiSessionMetadataCacheEntry> = { ...existingCacheEntries };
+  const seenCacheKeys = new Set<string>();
+  let cacheDirty = false;
+
   const results: GeminiSessionIndexEntry[] = [];
 
   for (const dirent of dirents) {
@@ -100,59 +175,62 @@ export async function listGeminiSessions(): Promise<GeminiSessionIndexEntry[]> {
 
     const sessionId = dirent.name.replace(/\.jsonl$/, '');
     const filePath = getGeminiSessionFilePath(sessionId);
+    seenCacheKeys.add(sessionId);
 
-    let content: string;
+    let stats;
     try {
-      content = await readFile(filePath, 'utf-8');
+      stats = await stat(filePath);
     } catch {
       continue;
     }
 
-    const lines = content.split('\n');
-    let originalPath: string | null = null;
-    let title: string | null = null;
-    let messageCount = 0;
-    let updatedAt: number | undefined;
+    const cached = nextCacheEntries[sessionId];
+    const isCacheValid = !!(
+      cached &&
+      cached.fileMtimeMs === stats.mtimeMs &&
+      cached.fileSize === stats.size
+    );
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const parsed = JSON.parse(line);
-
-        if (parsed.type === 'meta' && parsed.key === 'sessionStart') {
-          originalPath = typeof parsed.value?.cwd === 'string' ? parsed.value.cwd : null;
-        }
-
-        if (parsed.type === 'user') {
-          messageCount++;
-          if (!title && typeof parsed.message === 'string' && parsed.message.trim()) {
-            title = parsed.message.trim().substring(0, 80);
-          }
-        }
-
-        // Track last timestamp for updatedAt
-        if (typeof parsed.timestamp === 'number') {
-          updatedAt = parsed.timestamp;
-        }
-      } catch {
-        // skip malformed lines
-      }
+    let metadata: GeminiSessionMetadataCacheEntry;
+    if (isCacheValid && cached) {
+      metadata = cached;
+    } else {
+      const parsed = await parseGeminiSessionMetadata(filePath);
+      metadata = {
+        fileMtimeMs: stats.mtimeMs,
+        fileSize: stats.size,
+        ...parsed,
+      };
+      nextCacheEntries[sessionId] = metadata;
+      cacheDirty = true;
     }
 
-    // Skip sessions with no user messages
-    if (messageCount === 0) continue;
+    if (metadata.messageCount === 0) continue;
+    const updatedAt = metadata.updatedAt ?? stats.mtimeMs;
 
-    // Use file mtime as fallback for updatedAt
-    if (updatedAt === undefined) {
-      try {
-        const stats = await stat(filePath);
-        updatedAt = stats.mtimeMs;
-      } catch {
-        // ignore
-      }
-    }
+    results.push({
+      sessionId,
+      originalPath: metadata.originalPath,
+      title: metadata.title,
+      updatedAt,
+      messageCount: metadata.messageCount,
+    });
+  }
 
-    results.push({ sessionId, originalPath, title, updatedAt, messageCount });
+  for (const cacheKey of Object.keys(nextCacheEntries)) {
+    if (seenCacheKeys.has(cacheKey)) continue;
+    delete nextCacheEntries[cacheKey];
+    cacheDirty = true;
+  }
+
+  if (cacheDirty) {
+    await saveSessionMetadataCache({
+      cacheFileName: GEMINI_SESSION_METADATA_CACHE_FILENAME,
+      cacheVersion: GEMINI_SESSION_METADATA_CACHE_VERSION,
+      scopeKey: 'sessionsDir',
+      scopeValue: sessionsDir,
+      entries: nextCacheEntries,
+    });
   }
 
   results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));

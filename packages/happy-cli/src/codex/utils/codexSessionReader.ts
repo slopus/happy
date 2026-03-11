@@ -12,12 +12,18 @@
  * - compacted: compaction markers
  */
 
-import fs from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import fs, { createReadStream } from 'node:fs';
+import { readFile, stat as statFile } from 'node:fs/promises';
 import os from 'node:os';
 import { basename, join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { createInterface } from 'node:readline';
 import { logger } from '@/ui/logger';
+import {
+  loadSessionMetadataCache,
+  normalizeSessionTitle,
+  saveSessionMetadataCache,
+} from '@/cache/sessionMetadataCache';
 
 export interface CodexUserMessage {
   uuid: string;
@@ -212,36 +218,37 @@ export interface CodexPreviewMessage {
   timestamp?: string;
 }
 
-/**
- * List all Codex sessions from the native session directory.
- * Scans ~/.codex/sessions/ recursively, reads first line (session_meta) and
- * counts user messages for each JSONL file.
- */
-export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
-  const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
-  const rootDir = join(codexHomeDir, 'sessions');
+interface CodexSessionMetadataCacheEntry {
+  fileMtimeMs: number;
+  fileSize: number;
+  sessionId: string;
+  originalPath: string | null;
+  title: string | null;
+  updatedAt?: number;
+  messageCount: number;
+  gitBranch?: string | null;
+}
 
-  const files = collectFilesRecursive(rootDir).filter(f => f.endsWith('.jsonl'));
-  const results: CodexSessionIndexEntry[] = [];
+const CODEX_SESSION_METADATA_CACHE_VERSION = 1;
+const CODEX_SESSION_METADATA_CACHE_FILENAME = 'codex-session-metadata-cache.json';
 
-  for (const filePath of files) {
-    let content: string;
-    try {
-      content = await readFile(filePath, 'utf-8');
-    } catch {
-      continue;
-    }
+async function parseCodexSessionMetadata(filePath: string): Promise<Omit<CodexSessionMetadataCacheEntry, 'fileMtimeMs' | 'fileSize'> | null> {
+  const fileStream = createReadStream(filePath, { encoding: 'utf8' });
+  const rl = createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
 
-    const lines = content.split('\n');
-    const fileSessionId = extractSessionIdFromFilename(filePath);
-    let sessionId: string | null = null;
-    let originalPath: string | null = null;
-    let updatedAt: number | undefined;
-    let gitBranch: string | null = null;
-    let title: string | null = null;
-    let messageCount = 0;
+  const fileSessionId = extractSessionIdFromFilename(filePath);
+  let sessionId: string | null = null;
+  let originalPath: string | null = null;
+  let updatedAt: number | undefined;
+  let gitBranch: string | null = null;
+  let title: string | null = null;
+  let messageCount = 0;
 
-    for (const line of lines) {
+  try {
+    for await (const line of rl) {
       if (!line.trim()) continue;
       try {
         const parsed = JSON.parse(line);
@@ -252,7 +259,10 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
           originalPath = typeof payload?.cwd === 'string' ? payload.cwd : null;
           gitBranch = typeof payload?.git?.branch === 'string' ? payload.git.branch : null;
           if (typeof payload?.timestamp === 'string') {
-            updatedAt = Date.parse(payload.timestamp);
+            const ts = Date.parse(payload.timestamp);
+            if (!Number.isNaN(ts)) {
+              updatedAt = ts;
+            }
           }
         }
 
@@ -261,12 +271,11 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
           if (text && !isSystemMessage(text)) {
             messageCount++;
             if (!title) {
-              title = text.trim().substring(0, 80);
+              title = normalizeSessionTitle(text);
             }
           }
         }
 
-        // Track last timestamp for better updatedAt
         if (typeof parsed.timestamp === 'string') {
           const ts = Date.parse(parsed.timestamp);
           if (!Number.isNaN(ts)) updatedAt = ts;
@@ -275,25 +284,113 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
         // skip malformed lines
       }
     }
+  } catch {
+    // Return partial metadata collected so far.
+  } finally {
+    rl.close();
+    fileStream.destroy();
+  }
 
-    // Codex filenames carry the real unique conversation id.
-    // session_meta.payload.id may be reused after forks/restarts.
-    const rawSessionId = fileSessionId || sessionId;
-    sessionId = rawSessionId ? extractDisplaySessionId(rawSessionId) : null;
+  const rawSessionId = fileSessionId || sessionId;
+  const displaySessionId = rawSessionId ? extractDisplaySessionId(rawSessionId) : null;
+  if (!displaySessionId || messageCount === 0) {
+    return null;
+  }
 
-    if (!sessionId || messageCount === 0) continue;
+  return {
+    sessionId: displaySessionId,
+    originalPath,
+    title,
+    updatedAt,
+    messageCount,
+    gitBranch,
+  };
+}
 
-    // Use file mtime as fallback
-    if (updatedAt === undefined) {
-      try {
-        const stats = fs.statSync(filePath);
-        updatedAt = stats.mtimeMs;
-      } catch {
-        // ignore
+/**
+ * List all Codex sessions from the native session directory.
+ * Scans ~/.codex/sessions/ recursively, reads first line (session_meta) and
+ * counts user messages for each JSONL file.
+ */
+export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
+  const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
+  const rootDir = join(codexHomeDir, 'sessions');
+
+  const files = collectFilesRecursive(rootDir).filter(f => f.endsWith('.jsonl'));
+  const existingCacheEntries = await loadSessionMetadataCache<CodexSessionMetadataCacheEntry>({
+    cacheFileName: CODEX_SESSION_METADATA_CACHE_FILENAME,
+    cacheVersion: CODEX_SESSION_METADATA_CACHE_VERSION,
+    scopeKey: 'rootDir',
+    scopeValue: rootDir,
+  });
+  const nextCacheEntries: Record<string, CodexSessionMetadataCacheEntry> = { ...existingCacheEntries };
+  const seenCacheKeys = new Set<string>();
+  let cacheDirty = false;
+  const results: CodexSessionIndexEntry[] = [];
+
+  for (const filePath of files) {
+    seenCacheKeys.add(filePath);
+
+    let stats;
+    try {
+      stats = await statFile(filePath);
+    } catch {
+      continue;
+    }
+
+    const cached = nextCacheEntries[filePath];
+    const isCacheValid = !!(
+      cached &&
+      cached.fileMtimeMs === stats.mtimeMs &&
+      cached.fileSize === stats.size
+    );
+
+    let metadata: CodexSessionMetadataCacheEntry | null = null;
+    if (isCacheValid && cached) {
+      metadata = cached;
+    } else {
+      const parsed = await parseCodexSessionMetadata(filePath);
+      if (parsed) {
+        metadata = {
+          fileMtimeMs: stats.mtimeMs,
+          fileSize: stats.size,
+          ...parsed,
+        };
+        nextCacheEntries[filePath] = metadata;
+        cacheDirty = true;
+      } else {
+        if (nextCacheEntries[filePath]) {
+          delete nextCacheEntries[filePath];
+          cacheDirty = true;
+        }
+        continue;
       }
     }
 
-    results.push({ sessionId, originalPath, title, updatedAt, messageCount, gitBranch });
+    results.push({
+      sessionId: metadata.sessionId,
+      originalPath: metadata.originalPath,
+      title: metadata.title,
+      updatedAt: metadata.updatedAt ?? stats.mtimeMs,
+      messageCount: metadata.messageCount,
+      gitBranch: metadata.gitBranch ?? null,
+    });
+  }
+
+  for (const cacheKey of Object.keys(nextCacheEntries)) {
+    if (seenCacheKeys.has(cacheKey)) continue;
+    delete nextCacheEntries[cacheKey];
+    cacheDirty = true;
+  }
+
+  if (cacheDirty) {
+    await saveSessionMetadataCache({
+      cacheFileName: CODEX_SESSION_METADATA_CACHE_FILENAME,
+      cacheVersion: CODEX_SESSION_METADATA_CACHE_VERSION,
+      scopeKey: 'rootDir',
+      scopeValue: rootDir,
+      entries: nextCacheEntries,
+    });
   }
 
   results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));

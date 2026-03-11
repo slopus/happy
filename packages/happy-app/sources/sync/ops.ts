@@ -268,7 +268,7 @@ export async function machineListClaudeSessions(
     machineId: string,
     options?: { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean; timeoutMs?: number }
 ): Promise<{ sessions: ClaudeSessionIndexEntry[]; total: number; fromCache?: boolean }> {
-    const timeoutMs = options?.timeoutMs ?? 10000;
+    const timeoutMs = options?.timeoutMs ?? 30000;
 
     const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean }>(
         machineId,
@@ -343,7 +343,7 @@ export async function machineListGeminiSessions(
     machineId: string,
     options?: { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean; timeoutMs?: number }
 ): Promise<{ sessions: AgentSessionIndexEntry[]; total: number; fromCache?: boolean }> {
-    const timeoutMs = options?.timeoutMs ?? 15000;
+    const timeoutMs = options?.timeoutMs ?? 30000;
 
     const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean }>(
         machineId,
@@ -409,7 +409,7 @@ export async function machineListCodexSessions(
     machineId: string,
     options?: { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean; timeoutMs?: number }
 ): Promise<{ sessions: AgentSessionIndexEntry[]; total: number; fromCache?: boolean }> {
-    const timeoutMs = options?.timeoutMs ?? 15000;
+    const timeoutMs = options?.timeoutMs ?? 30000;
 
     const rpcPromise = apiSocket.machineRPC<any, { offset?: number; limit?: number; query?: string; waitForRefresh?: boolean }>(
         machineId,
