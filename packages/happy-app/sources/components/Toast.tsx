@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Animated, Text, StyleSheet, Platform } from 'react-native';
+import { Animated, Text, StyleSheet, Platform, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
 
@@ -19,10 +19,24 @@ export function showCopiedToast() {
  * Mount this component once at the app root.
  * It renders an absolutely-positioned toast that auto-fades.
  */
+const BASE_BOTTOM = Platform.OS === 'ios' ? 100 : 80;
+
 export function ToastHost() {
     const opacity = React.useRef(new Animated.Value(0)).current;
     const timeout = React.useRef<ReturnType<typeof setTimeout>>(undefined);
     const [message, setMessage] = React.useState('');
+    const [bottomOffset, setBottomOffset] = React.useState(BASE_BOTTOM);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'ios') return;
+        const showSub = Keyboard.addListener('keyboardWillShow', (e) => {
+            setBottomOffset(e.endCoordinates.height + 20);
+        });
+        const hideSub = Keyboard.addListener('keyboardWillHide', () => {
+            setBottomOffset(BASE_BOTTOM);
+        });
+        return () => { showSub.remove(); hideSub.remove(); };
+    }, []);
 
     const show = React.useCallback((msg?: string) => {
         if (timeout.current) clearTimeout(timeout.current);
@@ -39,7 +53,7 @@ export function ToastHost() {
     }, [show]);
 
     return (
-        <Animated.View pointerEvents="none" style={[toastStyles.container, { opacity }]}>
+        <Animated.View pointerEvents="none" style={[toastStyles.container, { opacity, bottom: bottomOffset }]}>
             <Ionicons name="checkmark-circle" size={16} color="#fff" style={{ marginRight: 6 }} />
             <Text style={toastStyles.text}>{message}</Text>
         </Animated.View>
@@ -49,7 +63,7 @@ export function ToastHost() {
 const toastStyles = StyleSheet.create({
     container: {
         position: 'absolute',
-        bottom: Platform.OS === 'ios' ? 100 : 80,
+        bottom: BASE_BOTTOM,
         alignSelf: 'center',
         flexDirection: 'row',
         alignItems: 'center',

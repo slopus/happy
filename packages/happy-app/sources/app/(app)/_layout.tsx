@@ -379,6 +379,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dev/toast-demo"
+                options={{
+                    headerTitle: 'Toast Demo',
+                }}
+            />
+            <Stack.Screen
                 name="session/recent"
                 options={{
                     headerShown: true,

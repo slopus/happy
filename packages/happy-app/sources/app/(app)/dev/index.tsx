@@ -230,6 +230,12 @@ export default function DevScreen() {
                     onPress={() => router.push('/dev/input-styles')}
                 />
                 <Item
+                    title="Toast"
+                    subtitle="Toast notifications and keyboard avoidance"
+                    icon={<Ionicons name="notifications-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/toast-demo')}
+                />
+                <Item
                     title="Modal System"
                     subtitle="Alert, confirm, and custom modals"
                     icon={<Ionicons name="albums-outline" size={28} color="#007AFF" />}
