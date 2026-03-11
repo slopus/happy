@@ -53,6 +53,13 @@ import { shouldInvalidateGitStatusOnActivityTransition } from './gitStatusRefres
 
 type PermissionMode = NonNullable<Session['permissionMode']>;
 
+type SessionMessageDispatchTask = {
+    reason: string;
+    generation: number;
+    run: () => Promise<void> | void;
+    resolve: () => void;
+};
+
 /**
  * Tracks when the user last viewed each session (in-memory only).
  * Used by useSessionStatus to decide if taskCompleted should show a blue dot:
@@ -91,8 +98,8 @@ function markSessionViewed(sessionId: string) {
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
-    // Per-session pacing for websocket new-message updates to avoid autoscroll race.
-    private static readonly NEW_MESSAGE_PROCESS_INTERVAL_MS = 800;
+    // Per-session pacing for all message-list updates to avoid autoscroll races across websocket and fetch paths.
+    private static readonly MESSAGE_LIST_DISPATCH_INTERVAL_MS = 400;
     // First load for a session should stay bounded; older history is loaded on demand.
     private static readonly INITIAL_MESSAGES_LIMIT = 100;
 
@@ -107,8 +114,10 @@ class Sync {
     private messageSyncTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
     private sessionMessageUpdateQueues = new Map<string, ApiUpdateContainer[]>();
     private sessionMessageQueueRunning = new Set<string>();
-    private sessionMessageQueueTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    private sessionLastMessageProcessedAt = new Map<string, number>();
+    private sessionMessageDispatchQueues = new Map<string, SessionMessageDispatchTask[]>();
+    private sessionMessageDispatchRunning = new Set<string>();
+    private sessionMessageDispatchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private sessionMessageDispatchGeneration = new Map<string, number>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     /** Per-session last-known seq for v3 incremental fetch */
     private sessionLastSeq = new Map<string, number>();
@@ -569,9 +578,11 @@ class Sync {
                 pending();
             }
 
-            // Apply message to local storage
+            // Apply message to local storage through the unified dispatcher
             if (normalizedMessage) {
-                this.applyMessages(sessionId, [normalizedMessage]);
+                void this.enqueueSessionMessageDispatch(sessionId, 'sendMessage:local-ack', async () => {
+                    this.applyMessages(sessionId, [normalizedMessage!]);
+                });
             }
 
             // Update seq tracking from response (advisory — don't fail if JSON is malformed)
@@ -1932,25 +1943,28 @@ class Sync {
                 const data = await response.json();
                 const apiMessages = data.messages as ApiMessage[];
                 const hasMoreOlder: boolean = data.hasMore ?? false;
+                const normalizedMessages = apiMessages.length > 0
+                    ? await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption)
+                    : [];
 
                 if (apiMessages.length > 0) {
-                    const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption);
-                    this.applyMessages(sessionId, normalizedMessages);
-
                     const maxSeq = Math.max(...apiMessages.map((m) => m.seq));
                     this.sessionLastSeq.set(sessionId, Math.max(this.sessionLastSeq.get(sessionId) ?? 0, maxSeq));
-                } else {
-                    if (!this.sessionLastSeq.has(sessionId)) {
-                        this.sessionLastSeq.set(sessionId, 0);
-                    }
+                } else if (!this.sessionLastSeq.has(sessionId)) {
+                    this.sessionLastSeq.set(sessionId, 0);
                 }
-
-                storage.getState().applyMessagesLoaded(sessionId);
 
                 const minSeq = apiMessages.length > 0
                     ? Math.min(...apiMessages.map((m) => m.seq))
                     : null;
-                storage.getState().setSessionPagination(sessionId, minSeq, hasMoreOlder);
+
+                await this.enqueueSessionMessageDispatch(sessionId, 'fetchMessagesV3:bootstrap', async () => {
+                    if (normalizedMessages.length > 0) {
+                        this.applyMessages(sessionId, normalizedMessages);
+                    }
+                    storage.getState().applyMessagesLoaded(sessionId);
+                    storage.getState().setSessionPagination(sessionId, minSeq, hasMoreOlder);
+                });
 
                 log.log(`💬 fetchMessagesV3 bootstrap completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
                 return;
@@ -1958,6 +1972,7 @@ class Sync {
 
             let afterSeq = currentCursor;
             let hasMore = true;
+            const pendingNormalizedMessages: NormalizedMessage[] = [];
 
             while (hasMore) {
                 const API_ENDPOINT = getServerUrl();
@@ -1980,17 +1995,7 @@ class Sync {
 
                 if (messages.length > 0) {
                     const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, messages, encryption);
-                    // Flush any pending send callbacks for messages in this batch
-                    for (const msg of normalizedMessages) {
-                        if (msg.localId) {
-                            const pending = this.pendingSendCallbacks.get(msg.localId);
-                            if (pending) {
-                                this.pendingSendCallbacks.delete(msg.localId);
-                                pending();
-                            }
-                        }
-                    }
-                    this.applyMessages(sessionId, normalizedMessages);
+                    pendingNormalizedMessages.push(...normalizedMessages);
 
                     const maxSeq = Math.max(...messages.map((m: any) => m.seq));
                     this.sessionLastSeq.set(sessionId, Math.max(this.sessionLastSeq.get(sessionId) ?? 0, maxSeq));
@@ -2000,14 +2005,30 @@ class Sync {
                 }
             }
 
-            storage.getState().applyMessagesLoaded(sessionId);
+            await this.enqueueSessionMessageDispatch(sessionId, 'fetchMessagesV3:incremental', async () => {
+                for (const msg of pendingNormalizedMessages) {
+                    if (msg.localId) {
+                        const pending = this.pendingSendCallbacks.get(msg.localId);
+                        if (pending) {
+                            this.pendingSendCallbacks.delete(msg.localId);
+                            pending();
+                        }
+                    }
+                }
 
-            // If we got here, cursor-based incremental sync is active and older pagination
-            // state should already be established by the initial bootstrap load.
-            const sessionState = storage.getState().sessionMessages[sessionId];
-            if (sessionState && sessionState.oldestSeq === null) {
-                storage.getState().setSessionPagination(sessionId, 1, false);
-            }
+                if (pendingNormalizedMessages.length > 0) {
+                    this.applyMessages(sessionId, pendingNormalizedMessages);
+                }
+
+                storage.getState().applyMessagesLoaded(sessionId);
+
+                // If we got here, cursor-based incremental sync is active and older pagination
+                // state should already be established by the initial bootstrap load.
+                const sessionState = storage.getState().sessionMessages[sessionId];
+                if (sessionState && sessionState.oldestSeq === null) {
+                    storage.getState().setSessionPagination(sessionId, 1, false);
+                }
+            });
 
             log.log(`💬 fetchMessagesV3 completed for session ${sessionId}, lastSeq=${this.sessionLastSeq.get(sessionId) ?? 0}`);
         });
@@ -2047,14 +2068,16 @@ class Sync {
             // Decrypt and normalize
             const normalizedMessages = await this.decryptAndNormalizeMessages(sessionId, apiMessages, encryption);
 
-            // Apply to storage (merge logic handles dedup and sorting)
-            this.applyMessages(sessionId, normalizedMessages);
-
-            // Update pagination cursor
+            // Update pagination together with the queued list update
             const minSeq = apiMessages.length > 0
                 ? Math.min(...apiMessages.map(m => m.seq))
                 : sessionState.oldestSeq;
-            storage.getState().setSessionPagination(sessionId, minSeq, hasMore);
+            await this.enqueueSessionMessageDispatch(sessionId, 'fetchOlderMessages', async () => {
+                if (normalizedMessages.length > 0) {
+                    this.applyMessages(sessionId, normalizedMessages);
+                }
+                storage.getState().setSessionPagination(sessionId, minSeq, hasMore);
+            });
 
             log.log(`💬 fetchOlderMessages completed for session ${sessionId} - loaded ${normalizedMessages.length} older messages, hasMore=${hasMore}`);
         } catch (error) {
@@ -2197,6 +2220,9 @@ class Sync {
             this.messagesSync.delete(sessionId);
             this.sessionLastSeq.delete(sessionId);
             this.sessionMessageLocks.delete(sessionId);
+            this.sessionMessageUpdateQueues.delete(sessionId);
+            this.sessionMessageQueueRunning.delete(sessionId);
+            this.resetSessionMessageDispatch(sessionId);
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
@@ -2237,7 +2263,9 @@ class Sync {
                     storage.getState().addSharedSession(updatedSession);
                     // Re-process messages when agentState changes so permission buttons appear
                     if (updateData.body.agentState && storage.getState().sessionMessages[sessionId]?.isLoaded) {
-                        storage.getState().applyMessages(sessionId, []);
+                        void this.enqueueSessionMessageDispatch(sessionId, 'update-session:shared-agent-state', async () => {
+                            storage.getState().applyMessages(sessionId, []);
+                        });
                     }
                 } else {
                     this.applySessions([updatedSession]);
@@ -2757,36 +2785,120 @@ class Sync {
                     break;
                 }
 
-                // Enforce minimum interval since last processed message
-                const lastProcessedAt = this.sessionLastMessageProcessedAt.get(sessionId) ?? 0;
-                const elapsed = Date.now() - lastProcessedAt;
-                if (elapsed < Sync.NEW_MESSAGE_PROCESS_INTERVAL_MS) {
-                    await new Promise<void>((resolve) => {
-                        const existingTimer = this.sessionMessageQueueTimers.get(sessionId);
-                        if (existingTimer) {
-                            clearTimeout(existingTimer);
-                        }
-                        const delay = Sync.NEW_MESSAGE_PROCESS_INTERVAL_MS - elapsed;
-                        const timer = setTimeout(() => {
-                            this.sessionMessageQueueTimers.delete(sessionId);
-                            resolve();
-                        }, delay);
-                        this.sessionMessageQueueTimers.set(sessionId, timer);
-                    });
-                }
-
                 await this.applyNewMessageUpdate(next);
-                this.sessionLastMessageProcessedAt.set(sessionId, Date.now());
             }
         } finally {
             this.sessionMessageQueueRunning.delete(sessionId);
-            const timer = this.sessionMessageQueueTimers.get(sessionId);
-            if (timer) {
-                clearTimeout(timer);
-                this.sessionMessageQueueTimers.delete(sessionId);
-            }
             if ((this.sessionMessageUpdateQueues.get(sessionId)?.length ?? 0) > 0) {
                 void this.processSessionMessageQueue(sessionId);
+            }
+        }
+    }
+
+    private resetSessionMessageDispatch = (sessionId: string) => {
+        const queue = this.sessionMessageDispatchQueues.get(sessionId);
+        if (queue) {
+            for (const task of queue) {
+                task.resolve();
+            }
+            this.sessionMessageDispatchQueues.delete(sessionId);
+        }
+
+        // Don't clear an in-flight delay timer here: processSessionMessageDispatchQueue may
+        // already be awaiting it. Let the timer resolve naturally, then generation-check skip
+        // any stale work and continue with the fresh queue state.
+        this.sessionMessageDispatchGeneration.set(sessionId, (this.sessionMessageDispatchGeneration.get(sessionId) ?? 0) + 1);
+    }
+
+    private enqueueSessionMessageDispatch = (
+        sessionId: string,
+        reason: string,
+        run: () => Promise<void> | void,
+    ): Promise<void> => {
+        const generation = this.sessionMessageDispatchGeneration.get(sessionId) ?? 0;
+
+        return new Promise<void>((resolve) => {
+            const queue = this.sessionMessageDispatchQueues.get(sessionId);
+            const task: SessionMessageDispatchTask = {
+                reason,
+                generation,
+                run,
+                resolve,
+            };
+
+            if (queue) {
+                queue.push(task);
+            } else {
+                this.sessionMessageDispatchQueues.set(sessionId, [task]);
+            }
+
+            if (!this.sessionMessageDispatchRunning.has(sessionId)) {
+                void this.processSessionMessageDispatchQueue(sessionId);
+            }
+        });
+    }
+
+    private waitForSessionMessageDispatchInterval = (sessionId: string) => {
+        return new Promise<void>((resolve) => {
+            const existingTimer = this.sessionMessageDispatchTimers.get(sessionId);
+            if (existingTimer) {
+                clearTimeout(existingTimer);
+            }
+
+            const timer = setTimeout(() => {
+                this.sessionMessageDispatchTimers.delete(sessionId);
+                resolve();
+            }, Sync.MESSAGE_LIST_DISPATCH_INTERVAL_MS);
+
+            this.sessionMessageDispatchTimers.set(sessionId, timer);
+        });
+    }
+
+    private processSessionMessageDispatchQueue = async (sessionId: string) => {
+        if (this.sessionMessageDispatchRunning.has(sessionId)) {
+            return;
+        }
+
+        this.sessionMessageDispatchRunning.add(sessionId);
+        let first = true;
+
+        try {
+            while (true) {
+                const queue = this.sessionMessageDispatchQueues.get(sessionId);
+                const next = queue?.shift();
+                if (!next) {
+                    this.sessionMessageDispatchQueues.delete(sessionId);
+                    break;
+                }
+
+                if (!first) {
+                    await this.waitForSessionMessageDispatchInterval(sessionId);
+                }
+                first = false;
+
+                const currentGeneration = this.sessionMessageDispatchGeneration.get(sessionId) ?? 0;
+                if (next.generation !== currentGeneration) {
+                    next.resolve();
+                    continue;
+                }
+
+                try {
+                    await next.run();
+                } catch (error) {
+                    console.error(`Failed to run session message dispatch (${next.reason}) for ${sessionId}:`, error);
+                } finally {
+                    next.resolve();
+                }
+            }
+        } finally {
+            this.sessionMessageDispatchRunning.delete(sessionId);
+            const timer = this.sessionMessageDispatchTimers.get(sessionId);
+            if (timer) {
+                clearTimeout(timer);
+                this.sessionMessageDispatchTimers.delete(sessionId);
+            }
+            if ((this.sessionMessageDispatchQueues.get(sessionId)?.length ?? 0) > 0) {
+                void this.processSessionMessageDispatchQueue(sessionId);
             }
         }
     }
@@ -2843,46 +2955,48 @@ class Sync {
             }
         }
 
-        // Apply to storage under lock (serialized with fetchMessagesV3)
+        // Enqueue message-list updates through the unified dispatcher (serialized with fetchMessagesV3)
         const hasDecryptedContent = lastMessage !== null || isTaskComplete || isTaskStarted;
         if (hasDecryptedContent) {
             const lock = this.getSessionMessageLock(sid);
-            await lock.inLock(() => {
-                // Update session metadata (updatedAt, seq, thinking state)
-                const session = storage.getState().sessions[sid];
-                if (session) {
-                    this.applySessions([{
-                        ...session,
-                        updatedAt: updateData.createdAt,
-                        seq: updateData.seq,
-                        ...(isTaskComplete ? { thinking: false } : {}),
-                        ...(isTaskStarted ? { thinking: true } : {})
-                    }]);
-                } else {
-                    this.fetchSessions();
-                }
+            await lock.inLock(async () => {
+                await this.enqueueSessionMessageDispatch(sid, 'websocket:new-message', async () => {
+                    // Update session metadata (updatedAt, seq, thinking state)
+                    const session = storage.getState().sessions[sid];
+                    if (session) {
+                        this.applySessions([{
+                            ...session,
+                            updatedAt: updateData.createdAt,
+                            seq: updateData.seq,
+                            ...(isTaskComplete ? { thinking: false } : {}),
+                            ...(isTaskStarted ? { thinking: true } : {})
+                        }]);
+                    } else {
+                        this.fetchSessions();
+                    }
 
-                // Update messages
-                if (lastMessage) {
-                    // If this is an echo of our own send, invoke the pending callback
-                    // (e.g. clear input) before the message appears in the list.
-                    if (lastMessage.localId) {
-                        const pending = this.pendingSendCallbacks.get(lastMessage.localId);
-                        if (pending) {
-                            this.pendingSendCallbacks.delete(lastMessage.localId);
-                            pending();
+                    // Update messages
+                    if (lastMessage) {
+                        // If this is an echo of our own send, invoke the pending callback
+                        // (e.g. clear input) before the message appears in the list.
+                        if (lastMessage.localId) {
+                            const pending = this.pendingSendCallbacks.get(lastMessage.localId);
+                            if (pending) {
+                                this.pendingSendCallbacks.delete(lastMessage.localId);
+                                pending();
+                            }
+                        }
+                        console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
+                        this.applyMessages(sid, [lastMessage]);
+                        let hasMutableTool = false;
+                        if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
+                            hasMutableTool = storage.getState().isMutableToolCall(sid, lastMessage.content[0].tool_use_id);
+                        }
+                        if (hasMutableTool) {
+                            gitStatusSync.invalidate(sid);
                         }
                     }
-                    console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
-                    this.applyMessages(sid, [lastMessage]);
-                    let hasMutableTool = false;
-                    if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
-                        hasMutableTool = storage.getState().isMutableToolCall(sid, lastMessage.content[0].tool_use_id);
-                    }
-                    if (hasMutableTool) {
-                        gitStatusSync.invalidate(sid);
-                    }
-                }
+                });
             });
         }
 
@@ -2955,6 +3069,8 @@ class Sync {
                 clearTimeout(existing);
             }
             storage.getState().setSessionMessageSyncing(sessionId, true);
+            this.resetSessionMessageDispatch(sessionId);
+            this.sessionMessageUpdateQueues.delete(sessionId);
             storage.getState().clearSessionMessages(sessionId);
             this.sessionReceivedMessages.delete(sessionId);
             // Reset seq cursor so the subsequent re-fetch starts from seq 0
