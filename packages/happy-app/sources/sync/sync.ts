@@ -60,6 +60,13 @@ type SessionMessageDispatchTask = {
     resolve: () => void;
 };
 
+type PreparedNewMessageUpdate = {
+    updateData: ApiUpdateContainer;
+    lastMessage: NormalizedMessage | null;
+    isTaskComplete: boolean;
+    isTaskStarted: boolean;
+};
+
 /**
  * Tracks when the user last viewed each session (in-memory only).
  * Used by useSessionStatus to decide if taskCompleted should show a blue dot:
@@ -580,8 +587,9 @@ class Sync {
 
             // Apply message to local storage through the unified dispatcher
             if (normalizedMessage) {
+                const msg = normalizedMessage;
                 void this.enqueueSessionMessageDispatch(sessionId, 'sendMessage:local-ack', async () => {
-                    this.applyMessages(sessionId, [normalizedMessage!]);
+                    this.applyMessages(sessionId, [msg]);
                 });
             }
 
@@ -2779,13 +2787,13 @@ class Sync {
         try {
             while (true) {
                 const queue = this.sessionMessageUpdateQueues.get(sessionId);
-                const next = queue?.shift();
-                if (!next) {
+                if (!queue || queue.length === 0) {
                     this.sessionMessageUpdateQueues.delete(sessionId);
                     break;
                 }
 
-                await this.applyNewMessageUpdate(next);
+                const batch = queue.splice(0, queue.length);
+                await this.applyNewMessageUpdates(sessionId, batch);
             }
         } finally {
             this.sessionMessageQueueRunning.delete(sessionId);
@@ -2903,105 +2911,142 @@ class Sync {
         }
     }
 
-    private applyNewMessageUpdate = async (updateData: ApiUpdateContainer) => {
-        if (updateData.body.t !== 'new-message') {
+    private applyNewMessageUpdates = async (sessionId: string, updates: ApiUpdateContainer[]) => {
+        if (updates.length === 0) {
             return;
         }
 
-        const sid = updateData.body.sid;
-
         // Get encryption
-        const encryption = this.encryption.getSessionEncryption(sid);
+        const encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) { // Should never happen
-            console.error(`Session ${sid} not found`);
+            console.error(`Session ${sessionId} not found`);
             this.fetchSessions(); // Just fetch sessions again
             return;
         }
 
-        // Decrypt message (outside lock — idempotent and potentially slow)
-        let lastMessage: NormalizedMessage | null = null;
-        let isTaskComplete = false;
-        let isTaskStarted = false;
-        if (updateData.body.message) {
-            const decrypted = await encryption.decryptMessage(updateData.body.message);
-            if (decrypted) {
-                lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                if (lastMessage) {
-                    lastMessage.sentBy = decrypted.sentBy;
-                    lastMessage.sentByName = decrypted.sentByName;
+        const preparedUpdates: PreparedNewMessageUpdate[] = [];
+
+        for (const updateData of updates) {
+            if (updateData.body.t !== 'new-message' || updateData.body.sid !== sessionId) {
+                continue;
+            }
+
+            // Decrypt message (outside lock — idempotent and potentially slow)
+            let lastMessage: NormalizedMessage | null = null;
+            let isTaskComplete = false;
+            let isTaskStarted = false;
+            if (updateData.body.message) {
+                const decrypted = await encryption.decryptMessage(updateData.body.message);
+                if (decrypted) {
+                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                    if (lastMessage) {
+                        lastMessage.sentBy = decrypted.sentBy;
+                        lastMessage.sentByName = decrypted.sentByName;
+                    }
+
+                    // Check for task lifecycle events to update thinking state
+                    // This ensures UI updates even if volatile activity updates are lost
+                    const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
+                    const contentType = rawContent?.content?.type;
+                    const dataType = rawContent?.content?.data?.type;
+
+                    // Debug logging to trace lifecycle events
+                    if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {
+                        console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
+                    }
+
+                    isTaskComplete =
+                        ((contentType === 'acp' || contentType === 'codex') &&
+                            (dataType === 'task_complete' || dataType === 'turn_aborted'));
+
+                    isTaskStarted =
+                        ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
+
+                    if (isTaskComplete || isTaskStarted) {
+                        console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
+                    }
                 }
+            }
 
-                // Check for task lifecycle events to update thinking state
-                // This ensures UI updates even if volatile activity updates are lost
-                const rawContent = decrypted.content as { role?: string; content?: { type?: string; data?: { type?: string } } } | null;
-                const contentType = rawContent?.content?.type;
-                const dataType = rawContent?.content?.data?.type;
-
-                // Debug logging to trace lifecycle events
-                if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started') {
-                    console.log(`🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}`);
-                }
-
-                isTaskComplete =
-                    ((contentType === 'acp' || contentType === 'codex') &&
-                        (dataType === 'task_complete' || dataType === 'turn_aborted'));
-
-                isTaskStarted =
-                    ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started');
-
-                if (isTaskComplete || isTaskStarted) {
-                    console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
-                }
+            if (lastMessage !== null || isTaskComplete || isTaskStarted) {
+                preparedUpdates.push({
+                    updateData,
+                    lastMessage,
+                    isTaskComplete,
+                    isTaskStarted,
+                });
             }
         }
 
         // Enqueue message-list updates through the unified dispatcher (serialized with fetchMessagesV3)
-        const hasDecryptedContent = lastMessage !== null || isTaskComplete || isTaskStarted;
-        if (hasDecryptedContent) {
-            const lock = this.getSessionMessageLock(sid);
+        if (preparedUpdates.length > 0) {
+            const lock = this.getSessionMessageLock(sessionId);
             await lock.inLock(async () => {
-                await this.enqueueSessionMessageDispatch(sid, 'websocket:new-message', async () => {
+                await this.enqueueSessionMessageDispatch(sessionId, `websocket:new-message-batch:${preparedUpdates.length}`, async () => {
+                    const latestUpdate = preparedUpdates[preparedUpdates.length - 1].updateData;
+                    let thinkingUpdate: boolean | null = null;
+                    for (const prepared of preparedUpdates) {
+                        if (prepared.isTaskStarted) {
+                            thinkingUpdate = true;
+                        }
+                        if (prepared.isTaskComplete) {
+                            thinkingUpdate = false;
+                        }
+                    }
+
                     // Update session metadata (updatedAt, seq, thinking state)
-                    const session = storage.getState().sessions[sid];
+                    const session = storage.getState().sessions[sessionId];
                     if (session) {
                         this.applySessions([{
                             ...session,
-                            updatedAt: updateData.createdAt,
-                            seq: updateData.seq,
-                            ...(isTaskComplete ? { thinking: false } : {}),
-                            ...(isTaskStarted ? { thinking: true } : {})
+                            updatedAt: latestUpdate.createdAt,
+                            seq: latestUpdate.seq,
+                            ...(thinkingUpdate === false ? { thinking: false } : {}),
+                            ...(thinkingUpdate === true ? { thinking: true } : {})
                         }]);
                     } else {
                         this.fetchSessions();
                     }
 
-                    // Update messages
-                    if (lastMessage) {
+                    const messagesToApply = preparedUpdates
+                        .map((prepared) => prepared.lastMessage)
+                        .filter((message): message is NormalizedMessage => message !== null);
+
+                    for (const message of messagesToApply) {
                         // If this is an echo of our own send, invoke the pending callback
                         // (e.g. clear input) before the message appears in the list.
-                        if (lastMessage.localId) {
-                            const pending = this.pendingSendCallbacks.get(lastMessage.localId);
+                        if (message.localId) {
+                            const pending = this.pendingSendCallbacks.get(message.localId);
                             if (pending) {
-                                this.pendingSendCallbacks.delete(lastMessage.localId);
+                                this.pendingSendCallbacks.delete(message.localId);
                                 pending();
                             }
                         }
-                        console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
-                        this.applyMessages(sid, [lastMessage]);
+                    }
+
+                    if (messagesToApply.length > 0) {
+                        console.log(`🔄 Sync: Applying websocket batch (${messagesToApply.length} messages) for session ${sessionId}`);
+                        this.applyMessages(sessionId, messagesToApply);
+
                         let hasMutableTool = false;
-                        if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
-                            hasMutableTool = storage.getState().isMutableToolCall(sid, lastMessage.content[0].tool_use_id);
+                        for (const message of messagesToApply) {
+                            if (message.role === 'agent' && message.content[0] && message.content[0].type === 'tool-result') {
+                                hasMutableTool = storage.getState().isMutableToolCall(sessionId, message.content[0].tool_use_id);
+                                if (hasMutableTool) {
+                                    break;
+                                }
+                            }
                         }
                         if (hasMutableTool) {
-                            gitStatusSync.invalidate(sid);
+                            gitStatusSync.invalidate(sessionId);
                         }
                     }
                 });
             });
         }
 
-        // Ping session
-        this.onSessionVisible(sid);
+        // Ping session once per websocket batch
+        this.onSessionVisible(sessionId);
     }
 
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
