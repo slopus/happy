@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
@@ -8,6 +9,7 @@ import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { trimIdent } from '@/utils/trimIdent';
 import { StyleSheet } from 'react-native-unistyles';
 import { resolvePath } from '@/utils/pathUtils';
+import { t } from '@/text';
 
 interface EditViewFullProps {
     tool: ToolCall;
@@ -16,10 +18,30 @@ interface EditViewFullProps {
 
 export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) => {
     const { input } = tool;
+    const filePath = typeof input?.file_path === 'string' ? resolvePath(input.file_path, metadata) : '';
+
+    // Error state: show error message
+    if (tool.state === 'error' && tool.result) {
+        return (
+            <View style={toolFullViewStyles.section}>
+                {filePath ? (
+                    <View style={trimmedStyles.container}>
+                        <Text style={trimmedStyles.fileName}>{filePath}</Text>
+                    </View>
+                ) : null}
+                <View style={toolFullViewStyles.sectionHeader}>
+                    <Ionicons name="close-circle" size={20} color="#FF3B30" />
+                    <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.error')}</Text>
+                </View>
+                <View style={toolFullViewStyles.errorContainer}>
+                    <Text style={toolFullViewStyles.errorText}>{String(tool.result)}</Text>
+                </View>
+            </View>
+        );
+    }
 
     // Trimmed mode: diff data was offloaded, view in session conversation instead
     if (input?._trimmed === true) {
-        const filePath = typeof input.file_path === 'string' ? resolvePath(input.file_path, metadata) : '';
         return (
             <View style={toolFullViewStyles.sectionFullWidth}>
                 <View style={trimmedStyles.container}>
