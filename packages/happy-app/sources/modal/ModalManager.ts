@@ -190,7 +190,7 @@ class ModalManagerClass implements IModal {
                         },
                         {
                             text: options?.confirmText || t('common.ok'),
-                            onPress: (text?: string) => resolve(text || null)
+                            onPress: (text?: string) => resolve(text ?? null)
                         }
                     ],
                     'plain-text',

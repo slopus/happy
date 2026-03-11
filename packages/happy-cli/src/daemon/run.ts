@@ -803,7 +803,8 @@ export async function startDaemon(): Promise<void> {
     apiMachine.connect();
 
     // Update machine metadata on server (ensures version is current after daemon restart)
-    apiMachine.updateMachineMetadata(() => initialMachineMetadata).catch((error) => {
+    // Merge with current metadata to preserve fields set by the app (e.g. displayName)
+    apiMachine.updateMachineMetadata((current) => ({ ...current, ...initialMachineMetadata })).catch((error) => {
       logger.debug('[DAEMON RUN] Failed to update machine metadata', error);
     });
 

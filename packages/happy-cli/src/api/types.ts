@@ -178,7 +178,8 @@ export const MachineMetadataSchema = z.object({
   happyCliVersion: z.string(),
   homeDir: z.string(),
   happyHomeDir: z.string(),
-  happyLibDir: z.string()
+  happyLibDir: z.string(),
+  displayName: z.string().optional(),
 })
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
