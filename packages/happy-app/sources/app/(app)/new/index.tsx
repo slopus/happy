@@ -358,16 +358,18 @@ function NewSessionWizard() {
     const addDirBranchResolveRef = React.useRef<((value: string | undefined) => void) | null>(null);
     const folderPickerRef = React.useRef<BottomSheetModal>(null);
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        // Initialize with last used permission mode if valid, otherwise default to 'default'
+        // Support per-agent object format and legacy string format
+        const saved = lastUsedPermissionMode;
+        const mode = typeof saved === 'object' && saved !== null
+            ? (saved as Record<string, string>)[agentType]
+            : typeof saved === 'string' ? saved : undefined;
+
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
         const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const validModes = (agentType === 'codex' || agentType === 'gemini') ? validCodexGeminiModes : validClaudeModes;
 
-        if (lastUsedPermissionMode) {
-            if ((agentType === 'codex' || agentType === 'gemini') && validCodexGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            }
+        if (mode && validModes.includes(mode as PermissionMode)) {
+            return mode as PermissionMode;
         }
         return 'default';
     });
@@ -409,9 +411,11 @@ function NewSessionWizard() {
 
     const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
         setPermissionMode(mode);
-        // Save the new selection immediately
-        sync.applySettings({ lastUsedPermissionMode: mode });
-    }, []);
+        // Save the new selection immediately, per agent type
+        const prev = storage.getState().settings.lastUsedPermissionMode;
+        const prevObj = typeof prev === 'object' && prev !== null ? prev as Record<string, string> : {};
+        sync.applySettings({ lastUsedPermissionMode: { ...prevObj, [agentType]: mode } });
+    }, [agentType]);
 
     const handleModelModeChange = React.useCallback((mode: ModelMode) => {
         setModelMode(mode);
@@ -936,9 +940,11 @@ function NewSessionWizard() {
         const validModes = (agentType === 'codex' || agentType === 'gemini') ? validCodexGeminiModes : validClaudeModes;
 
         const saved = storage.getState().settings.lastUsedPermissionMode;
-        if (saved && typeof saved === 'string' && validModes.includes(saved as PermissionMode)) {
-            setPermissionMode(saved as PermissionMode);
-        } else if (!validModes.includes(permissionMode)) {
+        const savedObj = typeof saved === 'object' && saved !== null ? saved as Record<string, string> : {};
+        const savedMode = savedObj[agentType];
+        if (savedMode && validModes.includes(savedMode as PermissionMode)) {
+            setPermissionMode(savedMode as PermissionMode);
+        } else {
             setPermissionMode('default');
         }
     }, [agentType]);
@@ -950,7 +956,7 @@ function NewSessionWizard() {
         const savedMode = savedObj[agentType];
         if (savedMode && isModelModeForAgent(agentType, savedMode)) {
             setModelMode(savedMode as ModelMode);
-        } else if (!isModelModeForAgent(agentType, modelMode)) {
+        } else {
             setModelMode('default');
         }
     }, [agentType]);
@@ -1288,11 +1294,13 @@ function NewSessionWizard() {
 
             // Save settings
             const updatedPaths = [{ machineId: selectedMachineId, path: selectedPath }, ...recentMachinePaths.filter(rp => rp.machineId !== selectedMachineId)].slice(0, 10);
+            const prevPerm = storage.getState().settings.lastUsedPermissionMode;
+            const prevPermObj = typeof prevPerm === 'object' && prevPerm !== null ? prevPerm as Record<string, string> : {};
             sync.applySettings({
                 recentMachinePaths: updatedPaths,
                 lastUsedAgent: agentType,
                 lastUsedProfile: selectedProfileId,
-                lastUsedPermissionMode: permissionMode,
+                lastUsedPermissionMode: { ...prevPermObj, [agentType]: permissionMode },
             });
 
             // Get environment variables from selected profile

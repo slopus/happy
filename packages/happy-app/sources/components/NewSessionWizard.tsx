@@ -552,7 +552,21 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
         return 'claude';
     });
-    const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
+        const saved = lastUsedPermissionMode;
+        const mode = typeof saved === 'object' && saved !== null
+            ? (saved as Record<string, string>)[agentType]
+            : typeof saved === 'string' ? saved : undefined;
+
+        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
+        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const validModes = (agentType === 'codex' || agentType === 'gemini') ? validCodexGeminiModes : validClaudeModes;
+
+        if (mode && validModes.includes(mode as PermissionMode)) {
+            return mode as PermissionMode;
+        }
+        return 'default';
+    });
     const [modelMode, setModelMode] = useState<ModelMode>(() => {
         const saved = lastUsedModelMode;
         const mode = typeof saved === 'object' && saved !== null
