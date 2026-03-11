@@ -75,6 +75,8 @@ export const ja: TranslationStructure = {
         renameMachine: 'マシン名を変更',
         renameMachineDescription: 'マシンにカスタム名を設定します。空欄にするとデフォルトのホスト名が使用されます。',
         machineNamePlaceholder: 'マシン名',
+        machineRenamedSuccess: 'マシン名を変更しました',
+        machineRenameFailed: 'マシン名の変更に失敗しました',
         deleteMachineConfirm: 'このマシンを削除してもよろしいですか？',
         deleteMachineConfirmMessage: 'この操作は取り消せません。',
         editGatewayUrl: 'ゲートウェイURLを編集',

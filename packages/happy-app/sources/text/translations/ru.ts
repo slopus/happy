@@ -83,6 +83,8 @@ export const ru: TranslationStructure = {
         renameMachine: 'Переименовать машину',
         renameMachineDescription: 'Задайте пользовательское имя для этой машины. Оставьте пустым, чтобы использовать имя хоста по умолчанию.',
         machineNamePlaceholder: 'Название машины',
+        machineRenamedSuccess: 'Машина успешно переименована',
+        machineRenameFailed: 'Не удалось переименовать машину',
         deleteMachineConfirm: 'Вы уверены, что хотите удалить эту машину?',
         deleteMachineConfirmMessage: 'Это действие нельзя отменить.',
         editGatewayUrl: 'Редактировать URL шлюза',

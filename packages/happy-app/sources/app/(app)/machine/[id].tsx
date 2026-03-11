@@ -212,7 +212,7 @@ export default function MachineDetailScreen() {
             t('openclaw.renameMachineDescription'),
             {
                 defaultValue: machine.metadata?.displayName || '',
-                placeholder: machine.metadata?.host || 'Enter machine name',
+                placeholder: machine.metadata?.host || t('openclaw.machineNamePlaceholder'),
                 cancelText: t('common.cancel'),
                 confirmText: t('common.rename')
             }
@@ -232,11 +232,11 @@ export default function MachineDetailScreen() {
                     machine.metadataVersion
                 );
                 
-                hapticsLight(); showToast('Machine renamed successfully');
+                hapticsLight(); showToast(t('openclaw.machineRenamedSuccess'));
             } catch (error) {
                 Modal.alert(
-                    'Error',
-                    error instanceof Error ? error.message : 'Failed to rename machine'
+                    t('common.error'),
+                    error instanceof Error ? error.message : t('openclaw.machineRenameFailed')
                 );
                 // Refresh to get latest state
                 await sync.refreshMachines();

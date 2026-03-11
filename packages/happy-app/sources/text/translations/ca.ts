@@ -72,6 +72,8 @@ export const ca: TranslationStructure = {
         renameMachine: 'Canviar nom de la màquina',
         renameMachineDescription: "Dona un nom personalitzat a aquesta màquina. Deixa'l buit per utilitzar el nom d'amfitrió predeterminat.",
         machineNamePlaceholder: 'Nom de la màquina',
+        machineRenamedSuccess: 'Màquina reanomenada correctament',
+        machineRenameFailed: "No s'ha pogut reanomenar la màquina",
         deleteMachineConfirm: 'Estàs segur que vols eliminar aquesta màquina?',
         deleteMachineConfirmMessage: 'Aquesta acció no es pot desfer.',
         editGatewayUrl: 'Edita l\'URL de la passarel·la',

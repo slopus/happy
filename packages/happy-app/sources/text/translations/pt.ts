@@ -72,6 +72,8 @@ export const pt: TranslationStructure = {
         renameMachine: 'Renomear máquina',
         renameMachineDescription: 'Dê um nome personalizado a esta máquina. Deixe vazio para usar o nome de host padrão.',
         machineNamePlaceholder: 'Nome da máquina',
+        machineRenamedSuccess: 'Máquina renomeada com sucesso',
+        machineRenameFailed: 'Falha ao renomear a máquina',
         deleteMachineConfirm: 'Tem certeza de que deseja excluir esta máquina?',
         deleteMachineConfirmMessage: 'Esta ação não pode ser desfeita.',
         editGatewayUrl: 'Editar URL do gateway',
