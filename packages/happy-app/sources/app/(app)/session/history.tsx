@@ -406,15 +406,15 @@ export default function AgentHistoryPage() {
 
             if (entry.agent === 'claude' && entry.projectId) {
                 result = await machineGetClaudeSessionPreview(
-                    selectedMachineId, entry.projectId, entry.sessionId, { limit: 10 }
+                    selectedMachineId, entry.projectId, entry.sessionId, { limit: 30 }
                 );
             } else if (entry.agent === 'gemini') {
                 result = await machineGetGeminiSessionPreview(
-                    selectedMachineId, entry.sessionId, { limit: 10 }
+                    selectedMachineId, entry.sessionId, { limit: 30 }
                 );
             } else {
                 result = await machineGetCodexSessionPreview(
-                    selectedMachineId, entry.sessionId, { limit: 10 }
+                    selectedMachineId, entry.sessionId, { limit: 30 }
                 );
             }
 

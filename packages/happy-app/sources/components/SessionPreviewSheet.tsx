@@ -50,6 +50,11 @@ const ANIMATION_DURATION = 250;
 const MIN_HEIGHT_RATIO = 0.3;
 const MAX_HEIGHT_RATIO = 0.9;
 const DEFAULT_HEIGHT_RATIO = 0.7;
+const PREVIEW_COLLAPSED_LINES = 6;
+
+function getPreviewMessageKey(message: ClaudeSessionPreviewMessage, index?: number): string {
+    return `${message.role}:${message.timestamp || 'no-ts'}:${index ?? 0}`;
+}
 
 export function SessionPreviewSheet({
     visible,
@@ -64,11 +69,13 @@ export function SessionPreviewSheet({
     const { height: windowHeight } = useWindowDimensions();
     const [modalVisible, setModalVisible] = useState(false);
     const [sheetHeight, setSheetHeight] = useState(windowHeight * DEFAULT_HEIGHT_RATIO);
+    const [expandedMessageKeys, setExpandedMessageKeys] = useState<Set<string>>(new Set());
     const currentHeightRef = useRef(windowHeight * DEFAULT_HEIGHT_RATIO);
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(300)).current;
     const dragStartY = useRef(0);
     const dragStartHeight = useRef(0);
+    const lastLongPressAtRef = useRef(0);
     // Cache entry for display during close animation
     const cachedEntryRef = useRef<ClaudeSessionIndexEntry | AgentSessionIndexEntry | null>(null);
     if (entry) {
@@ -145,6 +152,10 @@ export function SessionPreviewSheet({
         }
     }, [visible, onClosed]);
 
+    useEffect(() => {
+        setExpandedMessageKeys(new Set());
+    }, [entry?.sessionId, visible]);
+
     const handleClose = () => {
         onClose();
     };
@@ -152,6 +163,20 @@ export function SessionPreviewSheet({
     const handleResume = () => {
         onResume();
     };
+
+    const handleToggleMessageExpanded = useCallback((messageKey: string) => {
+        setExpandedMessageKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(messageKey)) {
+                next.delete(messageKey);
+            } else {
+                next.add(messageKey);
+            }
+            return next;
+        });
+    }, []);
+
+    const previewMessages = messages ? [...messages].reverse() : [];
 
     if (!modalVisible) {
         return null;
@@ -231,37 +256,54 @@ export function SessionPreviewSheet({
                         </View>
                     ) : (
                         <FlatList
-                            data={messages ? [...messages].reverse() : []}
+                            data={previewMessages}
                             inverted={true}
                             style={styles.content as ViewStyle}
                             contentContainerStyle={styles.contentContainer as ViewStyle}
                             showsVerticalScrollIndicator={false}
-                            keyExtractor={(_, index) => index.toString()}
-                            renderItem={({ item: msg }: ListRenderItemInfo<ClaudeSessionPreviewMessage>) => (
-                                <View
-                                    style={[
-                                        styles.message as ViewStyle,
-                                        msg.role === 'user' ? styles.userMessage as ViewStyle : styles.assistantMessage as ViewStyle,
-                                    ]}
-                                >
+                            keyExtractor={getPreviewMessageKey}
+                            renderItem={({ item: msg, index }: ListRenderItemInfo<ClaudeSessionPreviewMessage>) => {
+                                const messageKey = getPreviewMessageKey(msg, index);
+                                const isExpanded = expandedMessageKeys.has(messageKey);
+
+                                return (
                                     <View
                                         style={[
-                                            styles.messageBubble as ViewStyle,
-                                            msg.role === 'user' ? styles.userBubble as ViewStyle : styles.assistantBubble as ViewStyle,
+                                            styles.message as ViewStyle,
+                                            msg.role === 'user' ? styles.userMessage as ViewStyle : styles.assistantMessage as ViewStyle,
                                         ]}
                                     >
-                                        <Text
+                                        <View
                                             style={[
-                                                styles.messageText as TextStyle,
-                                                msg.role === 'user' ? styles.userText as TextStyle : styles.assistantText as TextStyle,
+                                                styles.messageBubble as ViewStyle,
+                                                msg.role === 'user' ? styles.userBubble as ViewStyle : styles.assistantBubble as ViewStyle,
                                             ]}
-                                            numberOfLines={6}
                                         >
-                                            {msg.content}
-                                        </Text>
+                                            <Text
+                                                style={[
+                                                    styles.messageText as TextStyle,
+                                                    msg.role === 'user' ? styles.userText as TextStyle : styles.assistantText as TextStyle,
+                                                ]}
+                                                selectable={true}
+                                                suppressHighlighting={true}
+                                                onLongPress={() => {
+                                                    lastLongPressAtRef.current = Date.now();
+                                                }}
+                                                onPress={() => {
+                                                    // Ignore the press that may be fired after long press.
+                                                    if (Date.now() - lastLongPressAtRef.current < 800) {
+                                                        return;
+                                                    }
+                                                    handleToggleMessageExpanded(messageKey);
+                                                }}
+                                                numberOfLines={isExpanded ? undefined : PREVIEW_COLLAPSED_LINES}
+                                            >
+                                                {msg.content}
+                                            </Text>
+                                        </View>
                                     </View>
-                                </View>
-                            )}
+                                );
+                            }}
                             ListEmptyComponent={
                                 <View style={styles.emptyContainer as ViewStyle}>
                                     <Text style={styles.emptyText as TextStyle}>{t('sessionPreview.noMessages')}</Text>
