@@ -11,7 +11,7 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus, useSessionProjectGitStatus, getSession } from '@/sync/storage';
+import { useSessionGitStatus, useSessionProjectGitStatus, useSession } from '@/sync/storage';
 import { sessionBash } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
@@ -40,7 +40,8 @@ export default function FilesScreen() {
     const { theme } = useUnistyles();
     const isWeb = Platform.OS === 'web';
 
-    const session = getSession(sessionId);
+    const session = useSession(sessionId);
+    const isOnline = session?.presence === "online";
     const commandCwd = session?.metadata?.path || '';
 
     // Multi-repo workspace support
@@ -374,6 +375,33 @@ export default function FilesScreen() {
         return <FileIcon fileName={file.fileName} size={29} />;
     };
 
+    if (!isOnline) {
+        return (
+            <View style={[styles.container, { backgroundColor: theme.colors.surface, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 }]}>
+                <Ionicons name="cloud-offline-outline" size={48} color={theme.colors.textSecondary} />
+                <Text style={{
+                    fontSize: 16,
+                    color: theme.colors.textSecondary,
+                    textAlign: 'center',
+                    marginTop: 16,
+                    ...Typography.default()
+                }}>
+                    {t('files.sessionOffline')}
+                </Text>
+                <Text style={{
+                    fontSize: 14,
+                    color: theme.colors.textSecondary,
+                    textAlign: 'center',
+                    marginTop: 8,
+                    marginBottom: 56,
+                    ...Typography.default()
+                }}>
+                    {t('files.sessionOfflineDescription')}
+                </Text>
+            </View>
+        );
+    }
+
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
             <Stack.Screen
@@ -403,7 +431,7 @@ export default function FilesScreen() {
                 </View>
             )}
 
-            {/* Search Input - Always Visible */}
+            {/* Search Input */}
             <View style={{
                 padding: 16,
                 borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),

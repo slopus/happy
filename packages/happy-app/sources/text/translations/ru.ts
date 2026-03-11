@@ -947,6 +947,8 @@ export const ru: TranslationStructure = {
         searchPlaceholder: 'Поиск файлов...',
         detachedHead: 'отделённый HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} подготовлено • ${unstaged} не подготовлено`,
+        sessionOffline: 'Сессия не в сети',
+        sessionOfflineDescription: 'Для просмотра файлов сессия должна быть в сети',
         notRepo: 'Не является git-репозиторием',
         notUnderGit: 'Эта папка не находится под управлением git',
         searching: 'Поиск файлов...',

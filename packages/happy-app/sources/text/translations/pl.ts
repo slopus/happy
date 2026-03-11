@@ -947,6 +947,8 @@ export const pl: TranslationStructure = {
         searchPlaceholder: 'Wyszukaj pliki...',
         detachedHead: 'odłączony HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} przygotowanych • ${unstaged} nieprzygotowanych`,
+        sessionOffline: 'Sesja jest offline',
+        sessionOfflineDescription: 'Sesja musi być online, aby przeglądać pliki',
         notRepo: 'To nie jest repozytorium git',
         notUnderGit: 'Ten katalog nie jest pod kontrolą wersji git',
         searching: 'Wyszukiwanie plików...',

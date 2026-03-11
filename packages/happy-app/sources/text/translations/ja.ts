@@ -969,6 +969,8 @@ export const ja: TranslationStructure = {
         searchPlaceholder: 'ファイルを検索...',
         detachedHead: 'detached HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `ステージ済み ${staged} • 未ステージ ${unstaged}`,
+        sessionOffline: 'セッションがオフラインです',
+        sessionOfflineDescription: 'ファイルを閲覧するにはセッションがオンラインである必要があります',
         notRepo: 'Gitリポジトリではありません',
         notUnderGit: 'このディレクトリはGitバージョン管理下にありません',
         searching: 'ファイルを検索中...',

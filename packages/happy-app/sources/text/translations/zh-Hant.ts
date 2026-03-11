@@ -938,6 +938,8 @@ export const zhHant: TranslationStructure = {
         searchPlaceholder: '搜尋檔案...',
         detachedHead: '游離 HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} 已暫存 • ${unstaged} 未暫存`,
+        sessionOffline: '工作階段已離線',
+        sessionOfflineDescription: '需要工作階段在線才能瀏覽檔案',
         notRepo: '不是 git 倉庫',
         notUnderGit: '此目錄不在 git 版本控制下',
         searching: '正在搜尋檔案...',

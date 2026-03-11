@@ -954,6 +954,8 @@ export const en: TranslationStructure = {
         searchPlaceholder: 'Search files...',
         detachedHead: 'detached HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} staged • ${unstaged} unstaged`,
+        sessionOffline: 'Session is offline',
+        sessionOfflineDescription: 'The session needs to be online to browse files',
         notRepo: 'Not a git repository',
         notUnderGit: 'This directory is not under git version control',
         searching: 'Searching files...',

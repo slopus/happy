@@ -937,6 +937,8 @@ export const ca: TranslationStructure = {
         searchPlaceholder: 'Cerca fitxers...',
         detachedHead: 'HEAD separat',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} preparats • ${unstaged} sense preparar`,
+        sessionOffline: 'La sessió està fora de línia',
+        sessionOfflineDescription: 'La sessió ha d\'estar en línia per navegar pels fitxers',
         notRepo: 'No és un repositori git',
         notUnderGit: 'Aquest directori no està sota control de versions git',
         searching: 'Cercant fitxers...',
