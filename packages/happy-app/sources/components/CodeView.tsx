@@ -1,20 +1,25 @@
 import * as React from 'react';
 import { Text, View, Platform } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
+import { LongPressCopy, useCopySelectable } from './LongPressCopy';
 
 interface CodeViewProps {
     code: string;
     language?: string;
 }
 
-export const CodeView = React.memo<CodeViewProps>(({ 
-    code, 
+export const CodeView = React.memo<CodeViewProps>(({
+    code,
     language
 }) => {
+    const selectable = useCopySelectable();
+
     return (
-        <View style={styles.codeBlock}>
-            <Text style={styles.codeText}>{code}</Text>
-        </View>
+        <LongPressCopy text={code}>
+            <View style={styles.codeBlock}>
+                <Text selectable={selectable} style={styles.codeText}>{code}</Text>
+            </View>
+        </LongPressCopy>
     );
 });
 

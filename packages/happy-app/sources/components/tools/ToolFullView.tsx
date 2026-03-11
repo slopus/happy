@@ -11,6 +11,7 @@ import { useLocalSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ToolOutputDetail } from './ToolOutputDetail';
+import { CopyableText, LongPressCopy, useCopySelectable } from '../LongPressCopy';
 
 interface ToolFullViewProps {
     tool: ToolCall;
@@ -23,8 +24,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
     const devModeEnabled = (useLocalSetting('devModeEnabled') || __DEV__);
-    console.log('ToolFullView', devModeEnabled);
-
+    const selectable = useCopySelectable();
     return (
         <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
             <View style={styles.contentWrapper}>
@@ -41,7 +41,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                                 <Ionicons name="information-circle" size={20} color="#5856D6" />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.description')}</Text>
                             </View>
-                            <Text style={styles.description}>{tool.description}</Text>
+                            <CopyableText style={styles.description}>{tool.description}</CopyableText>
                         </View>
                     )}
                     {/* Input Parameters */}
@@ -73,9 +73,11 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                                 <Ionicons name="close-circle" size={20} color="#FF3B30" />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.error')}</Text>
                             </View>
-                            <View style={styles.errorContainer}>
-                                <Text style={styles.errorText}>{String(tool.result)}</Text>
-                            </View>
+                            <LongPressCopy text={String(tool.result)}>
+                                <View style={styles.errorContainer}>
+                                    <Text selectable={selectable} style={styles.errorText}>{String(tool.result)}</Text>
+                                </View>
+                            </LongPressCopy>
                         </View>
                     )}
 

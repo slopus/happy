@@ -10,6 +10,7 @@ import { trimIdent } from '@/utils/trimIdent';
 import { StyleSheet } from 'react-native-unistyles';
 import { resolvePath } from '@/utils/pathUtils';
 import { t } from '@/text';
+import { CopyableText, LongPressCopy, useCopySelectable } from '@/components/LongPressCopy';
 
 interface EditViewFullProps {
     tool: ToolCall;
@@ -19,23 +20,27 @@ interface EditViewFullProps {
 export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) => {
     const { input } = tool;
     const filePath = typeof input?.file_path === 'string' ? resolvePath(input.file_path, metadata) : '';
+    const selectable = useCopySelectable();
 
     // Error state: show error message
     if (tool.state === 'error' && tool.result) {
+        const errorText = String(tool.result);
         return (
             <View style={toolFullViewStyles.section}>
                 {filePath ? (
                     <View style={trimmedStyles.container}>
-                        <Text style={trimmedStyles.fileName}>{filePath}</Text>
+                        <CopyableText style={trimmedStyles.fileName}>{filePath}</CopyableText>
                     </View>
                 ) : null}
                 <View style={toolFullViewStyles.sectionHeader}>
                     <Ionicons name="close-circle" size={20} color="#FF3B30" />
                     <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.error')}</Text>
                 </View>
-                <View style={toolFullViewStyles.errorContainer}>
-                    <Text style={toolFullViewStyles.errorText}>{String(tool.result)}</Text>
-                </View>
+                <LongPressCopy text={errorText}>
+                    <View style={toolFullViewStyles.errorContainer}>
+                        <Text selectable={selectable} style={toolFullViewStyles.errorText}>{errorText}</Text>
+                    </View>
+                </LongPressCopy>
             </View>
         );
     }
@@ -45,7 +50,9 @@ export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) =
         return (
             <View style={toolFullViewStyles.sectionFullWidth}>
                 <View style={trimmedStyles.container}>
-                    <Text style={trimmedStyles.fileName}>{filePath}</Text>
+                    <LongPressCopy text={filePath}>
+                        <Text selectable={selectable} style={trimmedStyles.fileName}>{filePath}</Text>
+                    </LongPressCopy>
                     <Text style={trimmedStyles.hint}>Diff available in session view</Text>
                 </View>
             </View>

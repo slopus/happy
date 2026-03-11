@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Text, View, Platform } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { CodeView } from './CodeView';
+import { LongPressCopy, useCopySelectable } from './LongPressCopy';
 
 interface KeyValueViewProps {
     data: Record<string, unknown>;
@@ -25,22 +26,26 @@ function isSimpleValue(value: unknown): boolean {
 
 export const KeyValueView = React.memo<KeyValueViewProps>(({ data }) => {
     const entries = Object.entries(data);
+    const selectable = useCopySelectable();
+    const allText = entries.map(([key, value]) => `${key}: ${formatValue(value)}`).join('\n');
 
     return (
-        <View style={styles.container}>
-            {entries.map(([key, value], index) => (
-                <View key={key} style={[styles.row, index < entries.length - 1 && styles.rowBorder]}>
-                    <Text style={styles.key} numberOfLines={1}>{key}</Text>
-                    {isSimpleValue(value) ? (
-                        <Text style={styles.value} selectable>{formatValue(value)}</Text>
-                    ) : (
-                        <View style={styles.complexValue}>
-                            <CodeView code={formatValue(value)} />
-                        </View>
-                    )}
-                </View>
-            ))}
-        </View>
+        <LongPressCopy text={allText}>
+            <View style={styles.container}>
+                {entries.map(([key, value], index) => (
+                    <View key={key} style={[styles.row, index < entries.length - 1 && styles.rowBorder]}>
+                        <Text style={styles.key} numberOfLines={1}>{key}</Text>
+                        {isSimpleValue(value) ? (
+                            <Text style={styles.value} selectable={selectable}>{formatValue(value)}</Text>
+                        ) : (
+                            <View style={styles.complexValue}>
+                                <CodeView code={formatValue(value)} />
+                            </View>
+                        )}
+                    </View>
+                ))}
+            </View>
+        </LongPressCopy>
     );
 });
 

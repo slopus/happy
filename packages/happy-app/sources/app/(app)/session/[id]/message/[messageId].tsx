@@ -12,6 +12,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import { layout } from '@/components/layout';
+import { LongPressCopy, useCopySelectable } from '@/components/LongPressCopy';
 
 // Header button width constants
 const HEADER_BUTTON_WIDTH = 60;
@@ -126,24 +127,28 @@ export default React.memo(() => {
 });
 
 function FullView(props: { message: Message }) {
-    const { theme } = useUnistyles();
     const styles = stylesheet;
-    
+    const selectable = useCopySelectable();
+
     if (props.message.kind === 'tool-call') {
         return <ToolFullView tool={props.message.tool} messages={props.message.children} />
     }
     if (props.message.kind === 'agent-text') {
         return (
-            <View style={styles.fullViewContainer}>
-                <Text style={styles.messageText}>{props.message.text}</Text>
-            </View>
+            <LongPressCopy text={props.message.text}>
+                <View style={styles.fullViewContainer}>
+                    <Text selectable={selectable} style={styles.messageText}>{props.message.text}</Text>
+                </View>
+            </LongPressCopy>
         )
     }
     if (props.message.kind === 'user-text') {
         return (
-            <View style={styles.fullViewContainer}>
-                <Text style={styles.messageText}>{props.message.text}</Text>
-            </View>
+            <LongPressCopy text={props.message.text}>
+                <View style={styles.fullViewContainer}>
+                    <Text selectable={selectable} style={styles.messageText}>{props.message.text}</Text>
+                </View>
+            </LongPressCopy>
         )
     }
     return null;

@@ -10,6 +10,7 @@ import { trimIdent } from '@/utils/trimIdent';
 import { t } from '@/text';
 import { useSetting } from '@/sync/storage';
 import { resolvePath } from '@/utils/pathUtils';
+import { CopyableText } from '@/components/LongPressCopy';
 
 interface MultiEditViewFullProps {
     tool: ToolCall;
@@ -19,7 +20,6 @@ interface MultiEditViewFullProps {
 export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, metadata }) => {
     const { input } = tool;
     const wrapLinesInDiffs = useSetting('wrapLinesInDiffs');
-
     // Trimmed mode: diff data was offloaded, view in session conversation instead
     if (input?._trimmed === true) {
         const filePath = typeof input.file_path === 'string' ? resolvePath(input.file_path, metadata) : '';
@@ -27,7 +27,7 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
         return (
             <View style={toolFullViewStyles.sectionFullWidth}>
                 <View style={trimmedStyles.container}>
-                    <Text style={trimmedStyles.fileName}>{filePath}</Text>
+                    <CopyableText style={trimmedStyles.fileName}>{filePath}</CopyableText>
                     {editCount > 0 && (
                         <Text style={trimmedStyles.hint}>
                             {editCount} {editCount === 1 ? 'edit' : 'edits'} — available in session view

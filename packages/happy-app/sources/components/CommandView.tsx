@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Text, View, StyleSheet, Platform } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { LongPressCopy, useCopySelectable } from './LongPressCopy';
 
 interface CommandViewProps {
     command: string;
@@ -27,8 +28,11 @@ export const CommandView = React.memo<CommandViewProps>(({
     hideEmptyOutput,
 }) => {
     const { theme } = useUnistyles();
+    const selectable = useCopySelectable();
     // Use legacy output if new props aren't provided
     const hasNewProps = stdout !== undefined || stderr !== undefined || error !== undefined;
+
+    const copyText = [command, stdout, stderr, error, output].filter(Boolean).join('\n');
 
     const styles = StyleSheet.create({
         container: {
@@ -90,46 +94,47 @@ export const CommandView = React.memo<CommandViewProps>(({
     });
 
     return (
-        <View style={[
-            styles.container, 
-            maxHeight ? { maxHeight } : undefined,
-            fullWidth ? { width: '100%' } : undefined
-        ]}>
-            {/* Command Line */}
-            <View style={styles.line}>
-                <Text style={styles.promptText}>{prompt} </Text>
-                <Text style={styles.commandText}>{command}</Text>
+        <LongPressCopy text={copyText}>
+            <View style={[
+                styles.container,
+                maxHeight ? { maxHeight } : undefined,
+                fullWidth ? { width: '100%' } : undefined
+            ]}>
+                {/* Command Line */}
+                <View style={styles.line}>
+                    <Text style={styles.promptText}>{prompt} </Text>
+                    <Text selectable={selectable} style={styles.commandText}>{command}</Text>
+                </View>
+
+                {hasNewProps ? (
+                    <>
+                        {/* Standard Output */}
+                        {stdout && stdout.trim() && (
+                            <Text selectable={selectable} style={styles.stdout}>{stdout}</Text>
+                        )}
+
+                        {/* Standard Error */}
+                        {stderr && stderr.trim() && (
+                            <Text selectable={selectable} style={styles.stderr}>{stderr}</Text>
+                        )}
+
+                        {/* Error Message */}
+                        {error && (
+                            <Text selectable={selectable} style={styles.error}>{error}</Text>
+                        )}
+
+                        {/* Empty output indicator */}
+                        {!stdout && !stderr && !error && !hideEmptyOutput && (
+                            <Text style={styles.emptyOutput}>[Command completed with no output]</Text>
+                        )}
+                    </>
+                ) : (
+                    /* Legacy output format */
+                    output && (
+                        <Text selectable={selectable} style={styles.commandText}>{'\n---\n' + output}</Text>
+                    )
+                )}
             </View>
-
-            {hasNewProps ? (
-                <>
-                    {/* Standard Output */}
-                    {stdout && stdout.trim() && (
-                        <Text style={styles.stdout}>{stdout}</Text>
-                    )}
-
-                    {/* Standard Error */}
-                    {stderr && stderr.trim() && (
-                        <Text style={styles.stderr}>{stderr}</Text>
-                    )}
-
-                    {/* Error Message */}
-                    {error && (
-                        <Text style={styles.error}>{error}</Text>
-                    )}
-
-                    {/* Empty output indicator */}
-                    {!stdout && !stderr && !error && !hideEmptyOutput && (
-                        <Text style={styles.emptyOutput}>[Command completed with no output]</Text>
-                    )}
-                </>
-            ) : (
-                /* Legacy output format */
-                output && (
-                    <Text style={styles.commandText}>{'\n---\n' + output}</Text>
-                )
-            )}
-        </View>
+        </LongPressCopy>
     );
 });
-

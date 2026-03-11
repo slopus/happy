@@ -9,6 +9,7 @@ import { CodeView } from '../CodeView';
 import { SmartDataView } from '../KeyValueView';
 import { formatToolOutputContent, isTrimmedToolOutput } from './toolOutputContent';
 import { createToolOutputLoadingCardStyles, formatToolOutputSummaryValue } from './toolOutputLoadingCard';
+import { LongPressCopy, useCopySelectable } from '../LongPressCopy';
 
 interface ToolOutputDetailProps {
     tool: ToolCall;
@@ -21,6 +22,7 @@ interface GetToolOutputResponse {
 }
 
 export const ToolOutputDetail = React.memo<ToolOutputDetailProps>(({ tool }) => {
+    const selectable = useCopySelectable();
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
     const marker = isTrimmedToolOutput(tool.result) ? tool.result : null;
     const [loading, setLoading] = React.useState(Boolean(marker));
@@ -95,22 +97,25 @@ export const ToolOutputDetail = React.memo<ToolOutputDetailProps>(({ tool }) => 
 
     if (error) {
         const summary = getSummaryData(marker);
+        const copyText = [error, ...Object.entries(summary || {}).map(([k, v]) => `${k}: ${formatToolOutputSummaryValue(v)}`)].join('\n');
         return (
-            <View style={styles.errorCard}>
-                <Text style={styles.errorText}>{error}</Text>
-                {summary ? (
-                    <View style={styles.summarySection}>
-                        {Object.entries(summary).map(([key, value]) => (
-                            <View key={key} style={styles.summaryRow}>
-                                <Text style={styles.summaryKey}>{key}</Text>
-                                <Text style={styles.summaryValue} selectable>
-                                    {formatToolOutputSummaryValue(value)}
-                                </Text>
-                            </View>
-                        ))}
-                    </View>
-                ) : null}
-            </View>
+            <LongPressCopy text={copyText}>
+                <View style={styles.errorCard}>
+                    <Text selectable={selectable} style={styles.errorText}>{error}</Text>
+                    {summary ? (
+                        <View style={styles.summarySection}>
+                            {Object.entries(summary).map(([key, value]) => (
+                                <View key={key} style={styles.summaryRow}>
+                                    <Text style={styles.summaryKey}>{key}</Text>
+                                    <Text style={styles.summaryValue} selectable={selectable}>
+                                        {formatToolOutputSummaryValue(value)}
+                                    </Text>
+                                </View>
+                            ))}
+                        </View>
+                    ) : null}
+                </View>
+            </LongPressCopy>
         );
     }
 

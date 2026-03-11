@@ -10,6 +10,7 @@ import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
 import { trimIdent } from '@/utils/trimIdent';
+import { LongPressCopy, useCopySelectable } from '@/components/LongPressCopy';
 
 interface DiffDetailResponse {
     success: boolean;
@@ -63,6 +64,25 @@ const UnifiedDiffContent = React.memo<{ diff: string }>(({ diff }) => {
     );
 });
 
+function getDiffCopyText(params: {
+    mode: string;
+    unifiedDiff: string | null;
+    editDiff: { oldString: string; newString: string } | null;
+    writeContent: string | null;
+    multiEdits: Array<{ oldString: string; newString: string; failed?: boolean }> | null;
+}): string {
+    const { mode, unifiedDiff, editDiff, writeContent, multiEdits } = params;
+    if (mode === 'unified' && unifiedDiff) return unifiedDiff;
+    if (mode === 'edit' && editDiff) return `--- old\n${editDiff.oldString}\n\n+++ new\n${editDiff.newString}`;
+    if (mode === 'write' && writeContent) return writeContent;
+    if (mode === 'multi-edit' && multiEdits) {
+        return multiEdits
+            .map((edit, i) => edit.failed ? `Edit ${i + 1}: failed` : `--- old\n${edit.oldString}\n\n+++ new\n${edit.newString}`)
+            .join('\n\n');
+    }
+    return '';
+}
+
 function ToolDiffScreen() {
     const { theme } = useUnistyles();
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
@@ -74,6 +94,7 @@ function ToolDiffScreen() {
 
     const showLineNumbers = useSetting('showLineNumbersInToolViews');
     const wrapLines = useSetting('wrapLinesInDiffs');
+    const selectable = useCopySelectable();
 
     const fileName = filePath?.split('/').pop() || 'Unknown file';
 
@@ -202,9 +223,11 @@ function ToolDiffScreen() {
             }}>
                 <FileIcon fileName={fileName} size={20} />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, color: theme.colors.textSecondary, ...Typography.mono() }} numberOfLines={1}>
-                        {filePath}
-                    </Text>
+                    <LongPressCopy text={filePath}>
+                        <Text selectable={selectable} style={{ fontSize: 14, color: theme.colors.textSecondary, ...Typography.mono() }} numberOfLines={1}>
+                            {filePath}
+                        </Text>
+                    </LongPressCopy>
                 </ScrollView>
             </View>
 
@@ -223,57 +246,59 @@ function ToolDiffScreen() {
             )}
 
             {!loading && !error && (
-                <ScrollView style={{ flex: 1 }}>
-                    <ScrollView
-                        horizontal={!wrapLines}
-                        scrollEnabled={!wrapLines}
-                        showsHorizontalScrollIndicator={!wrapLines}
-                    >
-                        {mode === 'unified' && unifiedDiff && (
-                            <UnifiedDiffContent diff={unifiedDiff} />
-                        )}
+                <LongPressCopy text={getDiffCopyText({ mode, unifiedDiff, editDiff, writeContent, multiEdits })} style={{ flex: 1 }}>
+                    <ScrollView style={{ flex: 1 }}>
+                        <ScrollView
+                            horizontal={!wrapLines}
+                            scrollEnabled={!wrapLines}
+                            showsHorizontalScrollIndicator={!wrapLines}
+                        >
+                            {mode === 'unified' && unifiedDiff && (
+                                <UnifiedDiffContent diff={unifiedDiff} />
+                            )}
 
-                        {mode === 'edit' && editDiff && (
-                            <ToolDiffView
-                                oldText={trimIdent(editDiff.oldString)}
-                                newText={trimIdent(editDiff.newString)}
-                                showLineNumbers={showLineNumbers}
-                                showPlusMinusSymbols={showLineNumbers}
-                            />
-                        )}
+                            {mode === 'edit' && editDiff && (
+                                <ToolDiffView
+                                    oldText={trimIdent(editDiff.oldString)}
+                                    newText={trimIdent(editDiff.newString)}
+                                    showLineNumbers={showLineNumbers}
+                                    showPlusMinusSymbols={showLineNumbers}
+                                />
+                            )}
 
-                        {mode === 'write' && writeContent !== null && (
-                            <ToolDiffView
-                                oldText={''}
-                                newText={writeContent}
-                                showLineNumbers={showLineNumbers}
-                                showPlusMinusSymbols={showLineNumbers}
-                            />
-                        )}
+                            {mode === 'write' && writeContent !== null && (
+                                <ToolDiffView
+                                    oldText={''}
+                                    newText={writeContent}
+                                    showLineNumbers={showLineNumbers}
+                                    showPlusMinusSymbols={showLineNumbers}
+                                />
+                            )}
 
-                        {mode === 'multi-edit' && multiEdits && (
-                            <View style={{ flex: 1 }}>
-                                {multiEdits.map((edit, index) => (
-                                    <View key={index}>
-                                        {edit.failed ? (
-                                            <Text style={{ fontSize: 12, padding: 8, color: theme.colors.textSecondary }}>
-                                                Edit {index + 1}: failed to load
-                                            </Text>
-                                        ) : (
-                                            <ToolDiffView
-                                                oldText={trimIdent(edit.oldString)}
-                                                newText={trimIdent(edit.newString)}
-                                                showLineNumbers={showLineNumbers}
-                                                showPlusMinusSymbols={showLineNumbers}
-                                            />
-                                        )}
-                                        {index < multiEdits.length - 1 && <View style={{ height: 8 }} />}
-                                    </View>
-                                ))}
-                            </View>
-                        )}
+                            {mode === 'multi-edit' && multiEdits && (
+                                <View style={{ flex: 1 }}>
+                                    {multiEdits.map((edit, index) => (
+                                        <View key={index}>
+                                            {edit.failed ? (
+                                                <Text style={{ fontSize: 12, padding: 8, color: theme.colors.textSecondary }}>
+                                                    Edit {index + 1}: failed to load
+                                                </Text>
+                                            ) : (
+                                                <ToolDiffView
+                                                    oldText={trimIdent(edit.oldString)}
+                                                    newText={trimIdent(edit.newString)}
+                                                    showLineNumbers={showLineNumbers}
+                                                    showPlusMinusSymbols={showLineNumbers}
+                                                />
+                                            )}
+                                            {index < multiEdits.length - 1 && <View style={{ height: 8 }} />}
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+                        </ScrollView>
                     </ScrollView>
-                </ScrollView>
+                </LongPressCopy>
             )}
         </View>
     );
