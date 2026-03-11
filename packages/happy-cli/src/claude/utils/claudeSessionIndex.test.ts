@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -38,6 +38,7 @@ describe('listClaudeSessionsFromIndex', () => {
             process.env.HAPPY_HOME_DIR = oldHappyHomeDir;
         }
 
+        vi.restoreAllMocks();
         vi.resetModules();
         if (tempRoot && existsSync(tempRoot)) {
             rmSync(tempRoot, { recursive: true, force: true });
@@ -78,6 +79,11 @@ describe('listClaudeSessionsFromIndex', () => {
 
         const cachePath = join(happyHomeDir, 'claude-session-metadata-cache.json');
         expect(existsSync(cachePath)).toBe(true);
+        const cache = JSON.parse(readFileSync(cachePath, 'utf8'));
+        expect(cache.lastRun.filesProcessed).toBe(1);
+        expect(cache.lastRun.filesReparsed).toBe(1);
+        expect(cache.lastRun.resultCount).toBe(1);
+        expect(cache.lastRun.extra.indexFilesRead).toBe(1);
     });
 
     it('falls back to first meaningful user message when no summary exists', async () => {
@@ -136,5 +142,61 @@ describe('listClaudeSessionsFromIndex', () => {
         const cachePath = join(happyHomeDir, 'claude-session-metadata-cache.json');
         const cache = JSON.parse(readFileSync(cachePath, 'utf8'));
         expect(cache.entries[`${projectId}:session-b`].titleExtracted).toBe(true);
+        expect(cache.lastRun.filesProcessed).toBe(1);
+        expect(cache.lastRun.filesReparsed).toBe(1);
+    });
+
+    it('does not reparse unchanged file when updatedAt/gitBranch are already extracted as missing', async () => {
+        const projectId = 'project-no-metadata';
+        const projectDir = join(claudeConfigDir, 'projects', projectId);
+        mkdirSync(projectDir, { recursive: true });
+
+        writeFileSync(
+            join(projectDir, 'sessions-index.json'),
+            JSON.stringify({
+                originalPath: '/repo/no-meta',
+                entries: [{ sessionId: 'session-c', title: 'Indexed title', messageCount: 1 }]
+            })
+        );
+
+        const jsonlLines = [
+            {
+                type: 'user',
+                uuid: 'u1',
+                parentUuid: null,
+                isMeta: false,
+                isSidechain: false,
+                message: { content: [{ type: 'text', text: 'Hello without timestamp and branch' }] }
+            },
+            {
+                type: 'assistant',
+                uuid: 'a1',
+                parentUuid: 'u1',
+                message: { content: [{ type: 'text', text: 'Ack' }] }
+            }
+        ];
+        writeFileSync(
+            join(projectDir, 'session-c.jsonl'),
+            jsonlLines.map((line) => JSON.stringify(line)).join('\n') + '\n'
+        );
+
+        vi.resetModules();
+        const { listClaudeSessionsFromIndex } = await import('./claudeSessionIndex');
+        await listClaudeSessionsFromIndex();
+
+        const cachePath = join(happyHomeDir, 'claude-session-metadata-cache.json');
+        const firstWriteMtimeMs = statSync(cachePath).mtimeMs;
+        const firstCache = JSON.parse(readFileSync(cachePath, 'utf8'));
+        const firstEntry = firstCache.entries[`${projectId}:session-c`];
+        expect(firstEntry.updatedAtExtracted).toBe(true);
+        expect(firstEntry.gitBranchExtracted).toBe(true);
+        expect(firstEntry.updatedAt).toBeUndefined();
+        expect(firstEntry.gitBranch).toBeNull();
+
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        await listClaudeSessionsFromIndex();
+
+        const secondWriteMtimeMs = statSync(cachePath).mtimeMs;
+        expect(secondWriteMtimeMs).toBe(firstWriteMtimeMs);
     });
 });

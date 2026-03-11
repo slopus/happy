@@ -7,8 +7,10 @@ import type { Dirent } from 'node:fs';
 import {
     loadSessionMetadataCache,
     normalizeSessionTitle,
-    saveSessionMetadataCache
+    saveSessionMetadataCache,
+    updateSessionMetadataCacheDiagnostics
 } from '@/cache/sessionMetadataCache';
+import type { SessionCacheRuntimeStats } from '@/cache/SessionCache';
 
 export interface ClaudeSessionIndexEntry {
     sessionId: string;
@@ -54,13 +56,26 @@ interface ClaudeSessionMetadataCacheEntry {
     titleExtracted: boolean;
     messageCount?: number;
     updatedAt?: number;
+    updatedAtExtracted: boolean;
     gitBranch?: string | null;
+    gitBranchExtracted: boolean;
 }
 
 const CLAUDE_SESSION_METADATA_CACHE_VERSION = 1;
 const CLAUDE_SESSION_METADATA_CACHE_FILENAME = 'claude-session-metadata-cache.json';
 const CONTINUATION_PREFIX = 'This session is being continued';
 const IDE_MESSAGE_PREFIX = '<ide_';
+
+export async function saveClaudeSessionCacheStats(sessionCache: SessionCacheRuntimeStats): Promise<void> {
+    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+    await updateSessionMetadataCacheDiagnostics({
+        cacheFileName: CLAUDE_SESSION_METADATA_CACHE_FILENAME,
+        cacheVersion: CLAUDE_SESSION_METADATA_CACHE_VERSION,
+        scopeKey: 'claudeConfigDir',
+        scopeValue: claudeConfigDir,
+        sessionCache
+    });
+}
 
 function parseTimestamp(value: unknown): number | undefined {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -403,6 +418,8 @@ function extractSessionsFromIndex(data: any): ParsedSession[] {
 export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexEntry[]> {
     const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const projectsDir = join(claudeConfigDir, 'projects');
+    const startedAt = new Date().toISOString();
+    const startedAtMs = Date.now();
 
     let dirents: Dirent[];
     try {
@@ -421,6 +438,12 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
     const seenCacheKeys = new Set<string>();
     const scannedProjectIds = new Set<string>();
     let cacheDirty = false;
+    let filesProcessed = 0;
+    let filesReparsed = 0;
+    let cacheHitCount = 0;
+    let cacheMissCount = 0;
+    let staleEntryCount = 0;
+    let indexFilesRead = 0;
 
     const results: ClaudeSessionIndexEntry[] = [];
     const seen = new Set<string>();
@@ -430,6 +453,7 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
         const projectId = dirent.name;
         const indexPath = join(projectsDir, projectId, 'sessions-index.json');
         const projectDir = join(projectsDir, projectId);
+        indexFilesRead++;
 
         let raw = '';
         try {
@@ -469,6 +493,7 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
 
                 const sessionId = entry.name.replace(/\.jsonl$/, '');
                 if (!sessionId) continue;
+                filesProcessed++;
 
                 const indexed = indexedMap.get(sessionId);
                 const filePath = join(projectDir, entry.name);
@@ -492,11 +517,13 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
 
                 const needsTitleFromFile = indexed?.title == null && (!cacheMatchesFile || cached?.titleExtracted !== true);
                 const needsMessageCountFromFile = indexed?.messageCount === undefined && (!cacheMatchesFile || cached?.messageCount === undefined);
-                const needsUpdatedAtFromFile = indexed?.updatedAt === undefined && (!cacheMatchesFile || cached?.updatedAt === undefined);
-                const needsGitBranchFromFile = indexed?.gitBranch == null && (!cacheMatchesFile || cached?.gitBranch == null);
+                const needsUpdatedAtFromFile = indexed?.updatedAt === undefined && (!cacheMatchesFile || cached?.updatedAtExtracted !== true);
+                const needsGitBranchFromFile = indexed?.gitBranch == null && (!cacheMatchesFile || cached?.gitBranchExtracted !== true);
                 const shouldParseFile = !!stats && (needsTitleFromFile || needsMessageCountFromFile || needsUpdatedAtFromFile || needsGitBranchFromFile);
 
                 if (shouldParseFile && stats) {
+                    filesReparsed++;
+                    cacheMissCount++;
                     const parsedMetadata = await parseClaudeSessionFileMetadata(filePath);
                     cached = {
                         fileMtimeMs: stats.mtimeMs,
@@ -505,11 +532,14 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
                         titleExtracted: true,
                         messageCount: parsedMetadata.messageCount,
                         updatedAt: parsedMetadata.updatedAt,
-                        gitBranch: parsedMetadata.gitBranch ?? null
+                        updatedAtExtracted: true,
+                        gitBranch: parsedMetadata.gitBranch ?? null,
+                        gitBranchExtracted: true
                     };
                     nextCacheEntries[cacheKey] = cached;
                     cacheDirty = true;
                 } else if (!cacheMatchesFile && stats && indexed?.messageCount !== undefined && indexed?.title != null) {
+                    cacheMissCount++;
                     // Keep cache in sync with file metadata even if we didn't need to parse the file.
                     cached = {
                         fileMtimeMs: stats.mtimeMs,
@@ -518,10 +548,14 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
                         titleExtracted: false,
                         messageCount: undefined,
                         updatedAt: undefined,
-                        gitBranch: null
+                        updatedAtExtracted: false,
+                        gitBranch: null,
+                        gitBranchExtracted: false
                     };
                     nextCacheEntries[cacheKey] = cached;
                     cacheDirty = true;
+                } else if (cacheMatchesFile) {
+                    cacheHitCount++;
                 }
 
                 const updatedAt = indexed?.updatedAt
@@ -579,7 +613,10 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
         if (seenCacheKeys.has(cacheKey)) continue;
         delete nextCacheEntries[cacheKey];
         cacheDirty = true;
+        staleEntryCount++;
     }
+
+    results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
     if (cacheDirty) {
         await saveSessionMetadataCache({
@@ -587,11 +624,26 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
             cacheVersion: CLAUDE_SESSION_METADATA_CACHE_VERSION,
             scopeKey: 'claudeConfigDir',
             scopeValue: claudeConfigDir,
-            entries: nextCacheEntries
+            entries: nextCacheEntries,
+            lastRun: {
+                startedAt,
+                finishedAt: new Date().toISOString(),
+                durationMs: Date.now() - startedAtMs,
+                filesProcessed,
+                filesReparsed,
+                cacheHitCount,
+                cacheMissCount,
+                staleEntryCount,
+                resultCount: results.length,
+                cacheEntryCount: Object.keys(nextCacheEntries).length,
+                extra: {
+                    projectsScanned: scannedProjectIds.size,
+                    indexFilesRead
+                }
+            }
         });
     }
 
-    results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     return results;
 }
 

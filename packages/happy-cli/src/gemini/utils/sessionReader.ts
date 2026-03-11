@@ -15,7 +15,9 @@ import {
   loadSessionMetadataCache,
   normalizeSessionTitle,
   saveSessionMetadataCache,
+  updateSessionMetadataCacheDiagnostics,
 } from '@/cache/sessionMetadataCache';
+import type { SessionCacheRuntimeStats } from '@/cache/SessionCache';
 import { GeminiSessionLineSchema, type GeminiSessionLine } from './sessionTypes';
 import { getGeminiSessionFilePath, getGeminiSessionsDir } from './sessionWriter';
 
@@ -98,6 +100,17 @@ interface GeminiSessionMetadataCacheEntry {
 const GEMINI_SESSION_METADATA_CACHE_VERSION = 1;
 const GEMINI_SESSION_METADATA_CACHE_FILENAME = 'gemini-session-metadata-cache.json';
 
+export async function saveGeminiSessionCacheStats(sessionCache: SessionCacheRuntimeStats): Promise<void> {
+  const sessionsDir = getGeminiSessionsDir();
+  await updateSessionMetadataCacheDiagnostics({
+    cacheFileName: GEMINI_SESSION_METADATA_CACHE_FILENAME,
+    cacheVersion: GEMINI_SESSION_METADATA_CACHE_VERSION,
+    scopeKey: 'sessionsDir',
+    scopeValue: sessionsDir,
+    sessionCache,
+  });
+}
+
 async function parseGeminiSessionMetadata(filePath: string): Promise<Omit<GeminiSessionMetadataCacheEntry, 'fileMtimeMs' | 'fileSize'>> {
   const fileStream = createReadStream(filePath, { encoding: 'utf8' });
   const rl = createInterface({
@@ -150,6 +163,8 @@ async function parseGeminiSessionMetadata(filePath: string): Promise<Omit<Gemini
  */
 export async function listGeminiSessions(): Promise<GeminiSessionIndexEntry[]> {
   const sessionsDir = getGeminiSessionsDir();
+  const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
 
   let dirents: Dirent[];
   try {
@@ -167,11 +182,17 @@ export async function listGeminiSessions(): Promise<GeminiSessionIndexEntry[]> {
   const nextCacheEntries: Record<string, GeminiSessionMetadataCacheEntry> = { ...existingCacheEntries };
   const seenCacheKeys = new Set<string>();
   let cacheDirty = false;
+  let filesProcessed = 0;
+  let filesReparsed = 0;
+  let cacheHitCount = 0;
+  let cacheMissCount = 0;
+  let staleEntryCount = 0;
 
   const results: GeminiSessionIndexEntry[] = [];
 
   for (const dirent of dirents) {
     if (!dirent.isFile() || !dirent.name.endsWith('.jsonl')) continue;
+    filesProcessed++;
 
     const sessionId = dirent.name.replace(/\.jsonl$/, '');
     const filePath = getGeminiSessionFilePath(sessionId);
@@ -193,8 +214,11 @@ export async function listGeminiSessions(): Promise<GeminiSessionIndexEntry[]> {
 
     let metadata: GeminiSessionMetadataCacheEntry;
     if (isCacheValid && cached) {
+      cacheHitCount++;
       metadata = cached;
     } else {
+      filesReparsed++;
+      cacheMissCount++;
       const parsed = await parseGeminiSessionMetadata(filePath);
       metadata = {
         fileMtimeMs: stats.mtimeMs,
@@ -221,7 +245,10 @@ export async function listGeminiSessions(): Promise<GeminiSessionIndexEntry[]> {
     if (seenCacheKeys.has(cacheKey)) continue;
     delete nextCacheEntries[cacheKey];
     cacheDirty = true;
+    staleEntryCount++;
   }
+
+  results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
   if (cacheDirty) {
     await saveSessionMetadataCache({
@@ -230,10 +257,21 @@ export async function listGeminiSessions(): Promise<GeminiSessionIndexEntry[]> {
       scopeKey: 'sessionsDir',
       scopeValue: sessionsDir,
       entries: nextCacheEntries,
+      lastRun: {
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAtMs,
+        filesProcessed,
+        filesReparsed,
+        cacheHitCount,
+        cacheMissCount,
+        staleEntryCount,
+        resultCount: results.length,
+        cacheEntryCount: Object.keys(nextCacheEntries).length,
+      },
     });
   }
 
-  results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return results;
 }
 

@@ -93,5 +93,8 @@ describe('listCodexSessions', () => {
     expect(existsSync(cachePath)).toBe(true);
     const cache = JSON.parse(readFileSync(cachePath, 'utf8'));
     expect(cache.entries[filePath].sessionId).toBe('555555');
+    expect(cache.lastRun.filesProcessed).toBe(1);
+    expect(cache.lastRun.filesReparsed).toBe(1);
+    expect(cache.lastRun.resultCount).toBe(1);
   });
 });

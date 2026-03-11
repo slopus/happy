@@ -55,7 +55,20 @@ describe('listGeminiSessions', () => {
 
     const cachePath = join(happyHomeDir, 'gemini-session-metadata-cache.json');
     expect(existsSync(cachePath)).toBe(true);
-    const cache = JSON.parse(readFileSync(cachePath, 'utf8'));
+    let cache = JSON.parse(readFileSync(cachePath, 'utf8'));
     expect(cache.entries[sessionId].messageCount).toBe(1);
+    expect(cache.lastRun.filesProcessed).toBe(1);
+    expect(cache.lastRun.filesReparsed).toBe(1);
+    expect(cache.lastRun.resultCount).toBe(1);
+    expect(typeof cache.lastRun.durationMs).toBe('number');
+
+    const firstFinishedAt = cache.lastRun.finishedAt;
+
+    await listGeminiSessions();
+
+    cache = JSON.parse(readFileSync(cachePath, 'utf8'));
+    expect(cache.lastRun.finishedAt).toBe(firstFinishedAt);
+    expect(cache.lastRun.filesProcessed).toBe(1);
+    expect(cache.lastRun.filesReparsed).toBe(1);
   });
 });

@@ -10,18 +10,62 @@ import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { registerOpenClawHandlers, openClawTunnelManager } from '../modules/openclaw';
-import { listClaudeSessionsFromIndex, getClaudeSessionPreview, findClaudeProjectId, getClaudeSessionUserMessages } from '@/claude/utils/claudeSessionIndex';
+import { listClaudeSessionsFromIndex, getClaudeSessionPreview, findClaudeProjectId, getClaudeSessionUserMessages, saveClaudeSessionCacheStats } from '@/claude/utils/claudeSessionIndex';
 import { forkAndTruncateSession, forkSession } from '@/claude/utils/claudeSessionFork';
-import { readGeminiSessionLog, listGeminiSessions, getGeminiSessionPreview } from '@/gemini/utils/sessionReader';
+import { readGeminiSessionLog, listGeminiSessions, getGeminiSessionPreview, saveGeminiSessionCacheStats } from '@/gemini/utils/sessionReader';
 import { forkGeminiSession, forkAndTruncateGeminiSession } from '@/gemini/utils/sessionFork';
-import { readCodexSessionUserMessages, listCodexSessions, getCodexSessionPreview } from '@/codex/utils/codexSessionReader';
+import { readCodexSessionUserMessages, listCodexSessions, getCodexSessionPreview, saveCodexSessionCacheStats } from '@/codex/utils/codexSessionReader';
 import { forkCodexSession, forkAndTruncateCodexSession } from '@/codex/utils/codexSessionFork';
-import { SessionCache, matchFields } from '@/cache/SessionCache';
+import { SessionCache, matchFields, type SessionCacheRuntimeStats } from '@/cache/SessionCache';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { execSync, execFileSync } from 'node:child_process';
 import { readdirSync, rmdirSync } from 'node:fs';
+
+function createSessionCacheStatsReporter(
+    saveStats: (stats: SessionCacheRuntimeStats) => Promise<void>,
+    label: string
+): (stats: SessionCacheRuntimeStats) => void {
+    let pendingStats: SessionCacheRuntimeStats | null = null;
+    let flushPromise: Promise<void> | null = null;
+    let flushTimer: NodeJS.Timeout | null = null;
+
+    const flush = async (): Promise<void> => {
+        if (flushPromise || !pendingStats) {
+            return;
+        }
+
+        const stats = pendingStats;
+        pendingStats = null;
+        flushPromise = saveStats(stats).catch((error) => {
+            logger.debug(`[API MACHINE] Failed to persist ${label} session cache stats`, error);
+        }).then(() => {
+            flushPromise = null;
+        });
+
+        await flushPromise;
+        if (pendingStats) {
+            await flush();
+        }
+    };
+
+    const scheduleFlush = (): void => {
+        if (flushTimer) {
+            return;
+        }
+
+        flushTimer = setTimeout(() => {
+            flushTimer = null;
+            void flush();
+        }, 100);
+    };
+
+    return (stats: SessionCacheRuntimeStats) => {
+        pendingStats = stats;
+        scheduleFlush();
+    };
+}
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -95,18 +139,21 @@ export class ApiMachineClient {
         loader: listClaudeSessionsFromIndex,
         staleTTL: 30_000,
         matchFn: (s, q) => matchFields(q, [s.sessionId, s.title, s.projectId]),
+        onStatsChanged: createSessionCacheStatsReporter(saveClaudeSessionCacheStats, 'claude'),
     });
 
     private geminiCache = new SessionCache({
         loader: listGeminiSessions,
         staleTTL: 30_000,
         matchFn: (s, q) => matchFields(q, [s.sessionId, s.title]),
+        onStatsChanged: createSessionCacheStatsReporter(saveGeminiSessionCacheStats, 'gemini'),
     });
 
     private codexCache = new SessionCache({
         loader: listCodexSessions,
         staleTTL: 30_000,
         matchFn: (s, q) => matchFields(q, [s.sessionId, s.title]),
+        onStatsChanged: createSessionCacheStatsReporter(saveCodexSessionCacheStats, 'codex'),
     });
 
     constructor(

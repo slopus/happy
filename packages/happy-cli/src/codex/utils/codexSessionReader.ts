@@ -23,7 +23,9 @@ import {
   loadSessionMetadataCache,
   normalizeSessionTitle,
   saveSessionMetadataCache,
+  updateSessionMetadataCacheDiagnostics,
 } from '@/cache/sessionMetadataCache';
+import type { SessionCacheRuntimeStats } from '@/cache/SessionCache';
 
 export interface CodexUserMessage {
   uuid: string;
@@ -232,6 +234,18 @@ interface CodexSessionMetadataCacheEntry {
 const CODEX_SESSION_METADATA_CACHE_VERSION = 1;
 const CODEX_SESSION_METADATA_CACHE_FILENAME = 'codex-session-metadata-cache.json';
 
+export async function saveCodexSessionCacheStats(sessionCache: SessionCacheRuntimeStats): Promise<void> {
+  const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
+  const rootDir = join(codexHomeDir, 'sessions');
+  await updateSessionMetadataCacheDiagnostics({
+    cacheFileName: CODEX_SESSION_METADATA_CACHE_FILENAME,
+    cacheVersion: CODEX_SESSION_METADATA_CACHE_VERSION,
+    scopeKey: 'rootDir',
+    scopeValue: rootDir,
+    sessionCache,
+  });
+}
+
 async function parseCodexSessionMetadata(filePath: string): Promise<Omit<CodexSessionMetadataCacheEntry, 'fileMtimeMs' | 'fileSize'> | null> {
   const fileStream = createReadStream(filePath, { encoding: 'utf8' });
   const rl = createInterface({
@@ -315,6 +329,8 @@ async function parseCodexSessionMetadata(filePath: string): Promise<Omit<CodexSe
 export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
   const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
   const rootDir = join(codexHomeDir, 'sessions');
+  const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
 
   const files = collectFilesRecursive(rootDir).filter(f => f.endsWith('.jsonl'));
   const existingCacheEntries = await loadSessionMetadataCache<CodexSessionMetadataCacheEntry>({
@@ -326,6 +342,10 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
   const nextCacheEntries: Record<string, CodexSessionMetadataCacheEntry> = { ...existingCacheEntries };
   const seenCacheKeys = new Set<string>();
   let cacheDirty = false;
+  let filesReparsed = 0;
+  let cacheHitCount = 0;
+  let cacheMissCount = 0;
+  let staleEntryCount = 0;
   const results: CodexSessionIndexEntry[] = [];
 
   for (const filePath of files) {
@@ -347,8 +367,11 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
 
     let metadata: CodexSessionMetadataCacheEntry | null = null;
     if (isCacheValid && cached) {
+      cacheHitCount++;
       metadata = cached;
     } else {
+      filesReparsed++;
+      cacheMissCount++;
       const parsed = await parseCodexSessionMetadata(filePath);
       if (parsed) {
         metadata = {
@@ -381,7 +404,10 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
     if (seenCacheKeys.has(cacheKey)) continue;
     delete nextCacheEntries[cacheKey];
     cacheDirty = true;
+    staleEntryCount++;
   }
+
+  results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
   if (cacheDirty) {
     await saveSessionMetadataCache({
@@ -390,10 +416,21 @@ export async function listCodexSessions(): Promise<CodexSessionIndexEntry[]> {
       scopeKey: 'rootDir',
       scopeValue: rootDir,
       entries: nextCacheEntries,
+      lastRun: {
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAtMs,
+        filesProcessed: files.length,
+        filesReparsed,
+        cacheHitCount,
+        cacheMissCount,
+        staleEntryCount,
+        resultCount: results.length,
+        cacheEntryCount: Object.keys(nextCacheEntries).length,
+      },
     });
   }
 
-  results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return results;
 }
 
