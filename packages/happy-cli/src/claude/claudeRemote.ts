@@ -165,6 +165,11 @@ export async function claudeRemote(opts: {
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
+        // Track whether we're already waiting for user input.
+        // This lets the for-await loop keep forwarding SDK messages (e.g. background
+        // task completions) to the phone instead of blocking on nextMessage().
+        let waitingForInput = false;
+
         for await (const message of response) {
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
 
@@ -192,7 +197,7 @@ export async function claudeRemote(opts: {
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                logger.debug('[claudeRemote] Result received');
 
                 // Send completion messages
                 if (isCompactCommand) {
@@ -206,14 +211,26 @@ export async function claudeRemote(opts: {
                 // Send ready event
                 opts.onReady();
 
-                // Push next message
-                const next = await opts.nextMessage();
-                if (!next) {
-                    messages.end();
-                    return;
+                // Wait for next user message WITHOUT blocking the for-await loop.
+                // If we awaited nextMessage() here, the loop would stall and any SDK
+                // messages emitted while waiting (background task completions, system
+                // notifications) would pile up unsent until the user types something.
+                if (!waitingForInput) {
+                    waitingForInput = true;
+                    opts.nextMessage().then(next => {
+                        waitingForInput = false;
+                        if (!next) {
+                            messages.end();
+                        } else {
+                            mode = next.mode;
+                            messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                        }
+                    }).catch(err => {
+                        waitingForInput = false;
+                        logger.debug('[claudeRemote] nextMessage() error, ending', err);
+                        messages.end();
+                    });
                 }
-                mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
             }
 
             // Handle tool result
