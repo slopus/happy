@@ -27,8 +27,10 @@ RUN yarn install --frozen-lockfile --ignore-engines
 # Stage 2: build the server
 FROM deps AS builder
 
-COPY packages/happy-server ./packages/happy-server
+COPY packages/happy-wire ./packages/happy-wire
+RUN yarn workspace happy-wire build
 
+COPY packages/happy-server ./packages/happy-server
 RUN yarn workspace happy-server build
 
 # Stage 3: runtime
@@ -45,6 +47,7 @@ ENV NODE_ENV=production
 # Copy necessary files from the builder stage
 COPY --from=builder /repo/node_modules /repo/node_modules
 COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
+COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
 
 # Expose the port the app will run on
 EXPOSE 3000
