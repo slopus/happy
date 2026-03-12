@@ -3,6 +3,7 @@ services:
     image: ghcr.io/speaches-ai/speaches:latest-cuda
     container_name: whisper-stt
     restart: unless-stopped
+    oom_score_adj: -500
     environment:
       - WHISPER__MODEL=Systran/faster-whisper-base
     volumes:
@@ -19,6 +20,7 @@ services:
     image: nginx:alpine
     container_name: whisper-tunnel
     restart: unless-stopped
+    oom_score_adj: -500
     depends_on:
       - whisper
     ports:
