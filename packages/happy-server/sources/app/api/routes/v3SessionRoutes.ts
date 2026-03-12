@@ -17,7 +17,7 @@ const sendMessagesBodySchema = z.object({
     messages: z.array(z.object({
         content: z.string(),
         localId: z.string().min(1)
-    })).min(1).max(100)
+    })).min(1).max(200)
 });
 
 type SelectedMessage = {
