@@ -140,6 +140,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/[id]/preview"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Preview',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="session/[id]/tool-diff"
                 options={{
                     headerShown: true,

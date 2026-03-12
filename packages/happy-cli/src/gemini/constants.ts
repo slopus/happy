@@ -27,3 +27,4 @@ export const CHANGE_TITLE_INSTRUCTION = trimIdent(
   `On your first response, call "functions.happy__change_title" to set a descriptive title based on the user's message. Update the title whenever the conversation's main focus shifts to a different topic or task.`
 );
 
+

@@ -1,8 +1,8 @@
 /**
  * Happy MCP STDIO Bridge
  *
- * Minimal STDIO MCP server exposing a single tool `change_title`.
- * On invocation it forwards the tool call to an existing Happy HTTP MCP server
+ * Minimal STDIO MCP server exposing Happy tools (`change_title`, `preview_html`).
+ * On invocation it forwards tool calls to an existing Happy HTTP MCP server
  * using the StreamableHTTPClientTransport.
  *
  * Configure the target HTTP MCP URL via env var `HAPPY_HTTP_MCP_URL` or
@@ -63,32 +63,43 @@ async function main() {
     version: '1.0.0',
   });
 
-  // Register the single tool and forward to HTTP MCP
-  server.registerTool(
-    'change_title',
-    {
-      description: 'Change the title of the current chat session',
-      title: 'Change Chat Title',
-      inputSchema: {
-        title: z.string().describe('The new title for the chat session'),
-      },
-    },
-    async (args) => {
+  // Helper to register a tool that forwards calls to the HTTP MCP server
+  function registerForwardedTool(
+    name: string,
+    opts: { description: string; title: string; inputSchema: Record<string, z.ZodType> },
+  ) {
+    server.registerTool(name, opts, async (args) => {
       try {
         const client = await ensureHttpClient();
-        const response = await client.callTool({ name: 'change_title', arguments: args });
-        // Pass-through response from HTTP server
+        const response = await client.callTool({ name, arguments: args });
         return response as any;
       } catch (error) {
         return {
           content: [
-            { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
+            { type: 'text', text: `Failed to call ${name}: ${error instanceof Error ? error.message : String(error)}` },
           ],
           isError: true,
         };
       }
-    }
-  );
+    });
+  }
+
+  registerForwardedTool('change_title', {
+    description: 'Change the title of the current chat session',
+    title: 'Change Chat Title',
+    inputSchema: {
+      title: z.string().describe('The new title for the chat session'),
+    },
+  });
+
+  registerForwardedTool('preview_html', {
+    description: 'Preview an HTML page in the client app. The HTML must be a complete, self-contained document with all CSS and JS inlined.',
+    title: 'Preview HTML',
+    inputSchema: {
+      html: z.string().describe('Complete self-contained HTML document string'),
+      title: z.string().optional().describe('Display title for the preview'),
+    },
+  });
 
   // Start STDIO transport
   const stdio = new StdioServerTransport();

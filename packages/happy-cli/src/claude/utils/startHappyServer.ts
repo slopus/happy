@@ -74,6 +74,24 @@ function createMcpServer(client: ApiSessionClient): McpServer {
         }
     });
 
+    mcp.registerTool('preview_html', {
+        description: 'Preview an HTML page in the client app. The HTML must be a complete, self-contained document with all CSS and JS inlined.',
+        title: 'Preview HTML',
+        inputSchema: {
+            html: z.string().describe('Complete self-contained HTML document string'),
+            title: z.string().optional().describe('Display title for the preview'),
+        },
+    }, async (args) => {
+        logger.debug('[happyMCP] Preview HTML:', args.title || 'Untitled');
+        return {
+            content: [{
+                type: 'text',
+                text: `HTML preview ready: ${args.title || 'Untitled'}`,
+            }],
+            isError: false,
+        };
+    });
+
     return mcp;
 }
 
@@ -195,7 +213,7 @@ export async function startHappyServer(client: ApiSessionClient) {
 
     return {
         url: baseUrl.toString(),
-        toolNames: ['change_title'],
+        toolNames: ['change_title', 'preview_html'],
         stop: async () => {
             logger.debug('[happyMCP] Stopping server');
             // Close all active transports

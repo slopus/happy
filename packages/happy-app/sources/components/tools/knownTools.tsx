@@ -1012,6 +1012,36 @@ export const knownTools = {
         },
         icon: ICON_SKILL,
         minimal: true
+    },
+    'mcp__happy__preview_html': {
+        title: 'Happy Preview Html',
+        icon: ICON_WEB,
+        noStatus: true,
+        input: z.object({
+            html: z.string().optional().describe('HTML content'),
+            title: z.string().optional().describe('Preview title')
+        }).partial().passthrough(),
+        result: z.object({}).partial().passthrough()
+    },
+    'preview_html': {
+        title: 'Happy Preview Html',
+        icon: ICON_WEB,
+        noStatus: true,
+        input: z.object({
+            html: z.string().optional().describe('HTML content'),
+            title: z.string().optional().describe('Preview title')
+        }).partial().passthrough(),
+        result: z.object({}).partial().passthrough()
+    },
+    'happy__preview_html': {
+        title: 'Happy Preview Html',
+        icon: ICON_WEB,
+        noStatus: true,
+        input: z.object({
+            html: z.string().optional().describe('HTML content'),
+            title: z.string().optional().describe('Preview title')
+        }).partial().passthrough(),
+        result: z.object({}).partial().passthrough()
     }
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);

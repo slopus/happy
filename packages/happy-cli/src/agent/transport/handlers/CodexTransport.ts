@@ -58,6 +58,10 @@ export class CodexTransport implements TransportHandler {
         patterns: ['change_title', 'happy__change_title', 'mcp__happy__change_title'],
       },
       {
+        name: 'preview_html',
+        patterns: ['preview_html', 'happy__preview_html', 'mcp__happy__preview_html'],
+      },
+      {
         name: 'bash',
         patterns: ['bash', 'shell', 'terminal', 'exec'],
       },

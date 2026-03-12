@@ -6,7 +6,7 @@ import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
  */
 const BASE_SYSTEM_PROMPT = (() => trimIdent(`
     # Chat title
-    
+
     On your first response, call "mcp__happy__change_title" to set a descriptive title based on the user's message. Update the title whenever the conversation's main focus shifts to a different topic or task.
 `))();
 

@@ -17,6 +17,7 @@ import { CodexDiffView } from './CodexDiffView';
 import { AskUserQuestionView } from './AskUserQuestionView';
 import { GeminiEditView } from './GeminiEditView';
 import { GeminiExecuteView } from './GeminiExecuteView';
+import { PreviewHtmlViewFull } from './PreviewHtmlViewFull';
 
 export type ToolViewProps = {
     tool: ToolCall;
@@ -51,7 +52,10 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Bash: BashViewFull,
     Edit: EditViewFull,
-    MultiEdit: MultiEditViewFull
+    MultiEdit: MultiEditViewFull,
+    'mcp__happy__preview_html': PreviewHtmlViewFull,
+    'preview_html': PreviewHtmlViewFull,
+    'happy__preview_html': PreviewHtmlViewFull,
 };
 
 // Helper function to get the appropriate view component for a tool
@@ -79,3 +83,4 @@ export { TaskView } from './TaskView';
 export { AskUserQuestionView } from './AskUserQuestionView';
 export { GeminiEditView } from './GeminiEditView';
 export { GeminiExecuteView } from './GeminiExecuteView';
+export { PreviewHtmlViewFull } from './PreviewHtmlViewFull';

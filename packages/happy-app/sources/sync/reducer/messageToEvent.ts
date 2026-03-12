@@ -58,7 +58,7 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
             // Hide ToolSearch calls that are only for loading change_title tool
             if (content.type === 'tool-call' && content.name === 'ToolSearch') {
                 const query = content.input?.query;
-                if (typeof query === 'string' && query.includes('change_title')) {
+                if (typeof query === 'string' && (query.includes('change_title') || query.includes('preview_html'))) {
                     return {
                         type: 'hidden',
                     } as AgentEvent;

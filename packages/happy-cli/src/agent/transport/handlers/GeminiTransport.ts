@@ -63,6 +63,11 @@ const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
     emptyInputDefault: true, // change_title often has empty input (title extracted from context)
   },
   {
+    name: 'preview_html',
+    patterns: ['preview_html', 'preview-html', 'happy__preview_html', 'mcp__happy__preview_html'],
+    inputFields: ['html'],
+  },
+  {
     name: 'save_memory',
     patterns: ['save_memory', 'save-memory'],
     inputFields: ['memory', 'content'],
