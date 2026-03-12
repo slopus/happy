@@ -42,6 +42,7 @@ vi.mock("@/app/events/eventRouter", () => ({
                     connectionType: "session-scoped" as const,
                     userId: "owner-1",
                     sessionId: "session-1",
+                    supportsMessageReceipt: false,
                     socket: { emit: emitMock },
                 },
             ]);
@@ -93,6 +94,7 @@ describe("replayFirstMessageToCliWhenConnected", () => {
                     connectionType: "session-scoped" as const,
                     userId: "owner-1",
                     sessionId: "session-1",
+                    supportsMessageReceipt: false,
                     socket: { emit: emitMock },
                 },
             ]) as any;

@@ -105,7 +105,8 @@ export class ApiSessionClient extends EventEmitter {
             auth: {
                 token: this.token,
                 clientType: 'session-scoped' as const,
-                sessionId: this.sessionId
+                sessionId: this.sessionId,
+                supportsMessageReceipt: true
             },
             path: '/v1/updates',
             reconnection: true,

@@ -49,6 +49,13 @@ const {
         nextMessageId: 1,
         nextDeliveryIssueId: 1,
         emitOwnerSessionScoped: 1,
+        connections: [] as Array<{
+            connectionType: "session-scoped";
+            userId: string;
+            sessionId: string;
+            supportsMessageReceipt: boolean;
+            socket: { emit: (...args: unknown[]) => void };
+        }>,
         nowMs: 1700000000000
     };
 
@@ -61,6 +68,7 @@ const {
         state.nextMessageId = 1;
         state.nextDeliveryIssueId = 1;
         state.emitOwnerSessionScoped = 1;
+        state.connections = [];
         state.nowMs = 1700000000000;
     };
 
@@ -366,6 +374,10 @@ vi.mock("@/utils/randomKeyNaked", () => ({
 
 vi.mock("@/app/events/eventRouter", () => ({
     eventRouter: {
+        getConnections: vi.fn((userId: string) => {
+            const matches = state.connections.filter((connection) => connection.userId === userId);
+            return new Set(matches);
+        }),
         emitToSessionSubscribers: emitToSessionSubscribersMock,
         emitEphemeralToSessionSubscribers: vi.fn(async () => undefined)
     },
@@ -645,6 +657,13 @@ describe("v3SessionRoutes", () => {
     it("creates waiting delivery issue when trackCliDelivery=true and cli is connected", async () => {
         seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
         state.emitOwnerSessionScoped = 1;
+        state.connections.push({
+            connectionType: "session-scoped",
+            userId: "user-1",
+            sessionId: "session-1",
+            supportsMessageReceipt: true,
+            socket: { emit: vi.fn() }
+        });
 
         app = await createApp();
         const response = await app.inject({
@@ -703,6 +722,33 @@ describe("v3SessionRoutes", () => {
             payload: {
                 messages: [
                     { localId: "l1", content: "enc-content-1", trackCliDelivery: false }
+                ]
+            }
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(state.deliveryIssues).toHaveLength(0);
+    });
+
+    it("skips waiting tracking when only legacy cli connection is present", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        state.emitOwnerSessionScoped = 1;
+        state.connections.push({
+            connectionType: "session-scoped",
+            userId: "user-1",
+            sessionId: "session-1",
+            supportsMessageReceipt: false,
+            socket: { emit: vi.fn() }
+        });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                messages: [
+                    { localId: "l1", content: "enc-content-1", trackCliDelivery: true }
                 ]
             }
         });

@@ -13,6 +13,7 @@ export interface SessionScopedConnection {
     socket: Socket;
     userId: string;
     sessionId: string;
+    supportsMessageReceipt: boolean;
 }
 
 export interface UserScopedConnection {

@@ -165,7 +165,8 @@ describe("sessionUpdateHandler message-receipt", () => {
         connectionType: "session-scoped",
         socket,
         userId: "user-1",
-        sessionId: "session-1"
+        sessionId: "session-1",
+        supportsMessageReceipt: true
     });
 
     it("removes waiting issue when receipt ok=true", async () => {

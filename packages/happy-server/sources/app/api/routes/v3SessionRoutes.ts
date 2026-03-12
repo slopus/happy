@@ -69,6 +69,19 @@ function toSendResponseMessage(message: SendResponseMessage) {
     };
 }
 
+function hasReceiptCapableCliConnection(userId: string, sessionId: string): boolean {
+    const connections = eventRouter.getConnections(userId);
+    if (!connections) {
+        return false;
+    }
+
+    return Array.from(connections).some((connection) => (
+        connection.connectionType === 'session-scoped' &&
+        connection.sessionId === sessionId &&
+        connection.supportsMessageReceipt
+    ));
+}
+
 export function v3SessionRoutes(app: Fastify) {
     app.get('/v3/sessions/:sessionId/messages', {
         preHandler: app.authenticate,
@@ -175,6 +188,7 @@ export function v3SessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
         const ownerId = session.accountId;
+        const ownerHasReceiptCapableCli = hasReceiptCapableCliConnection(ownerId, sessionId);
 
         const senderAccount = await db.account.findUnique({
             where: { id: userId },
@@ -220,9 +234,10 @@ export function v3SessionRoutes(app: Fastify) {
             const newMessages = uniqueMessages.filter((message) => !existingByLocalId.has(message.localId));
             const seqs = await allocateSessionSeqBatch(sessionId, newMessages.length, tx);
 
-            const createdMessages: Array<SendResponseMessage & { trackCliDelivery: boolean }> = [];
+            const createdMessages: Array<SendResponseMessage & { trackCliDelivery: boolean; shouldTrackCliDelivery: boolean }> = [];
             for (let i = 0; i < newMessages.length; i += 1) {
                 const message = newMessages[i];
+                const shouldTrackCliDelivery = message.trackCliDelivery && ownerHasReceiptCapableCli;
                 const createdMessage = await tx.sessionMessage.create({
                     data: {
                         sessionId,
@@ -246,7 +261,7 @@ export function v3SessionRoutes(app: Fastify) {
                         updatedAt: true
                     }
                 });
-                if (message.trackCliDelivery) {
+                if (shouldTrackCliDelivery) {
                     await tx.sessionMessageDeliveryIssue.create({
                         data: {
                             sessionMessageId: createdMessage.id,
@@ -256,7 +271,8 @@ export function v3SessionRoutes(app: Fastify) {
                 }
                 createdMessages.push({
                     ...createdMessage,
-                    trackCliDelivery: message.trackCliDelivery
+                    trackCliDelivery: message.trackCliDelivery,
+                    shouldTrackCliDelivery
                 });
             }
 

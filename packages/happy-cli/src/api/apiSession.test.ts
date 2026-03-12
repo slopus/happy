@@ -68,6 +68,21 @@ describe('ApiSessionClient connection handling', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
     });
 
+    it('should advertise supportsMessageReceipt capability in socket auth', () => {
+        new ApiSessionClient('fake-token', mockSession);
+
+        expect(mockIo).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                auth: expect.objectContaining({
+                    clientType: 'session-scoped',
+                    sessionId: 'test-session-id',
+                    supportsMessageReceipt: true,
+                }),
+            }),
+        );
+    });
+
     afterEach(() => {
         consoleSpy.mockRestore();
         vi.restoreAllMocks();
