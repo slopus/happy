@@ -15,31 +15,52 @@ type MessageRecord = {
     seq: number;
     localId: string | null;
     content: unknown;
+    sentBy: string | null;
+    sentByName: string | null;
     createdAt: Date;
     updatedAt: Date;
 };
 
+type DeliveryIssueRecord = {
+    id: string;
+    sessionMessageId: string;
+    status: "waiting" | "error";
+    reason: string | null;
+    extra: unknown;
+};
+
 const {
     state,
-    emitUpdateMock,
+    emitToSessionSubscribersMock,
+    canSendMessagesMock,
+    scheduleFirstMessageReplayMock,
     dbMock,
     resetState,
     seedSession,
-    seedMessage
+    seedMessage,
+    seedDeliveryIssue
 } = vi.hoisted(() => {
     const state = {
         sessions: [] as SessionRecord[],
         messages: [] as MessageRecord[],
+        deliveryIssues: [] as DeliveryIssueRecord[],
+        accounts: [] as Array<{ id: string; firstName: string | null; username: string | null }>,
         accountSeqById: new Map<string, number>(),
         nextMessageId: 1,
+        nextDeliveryIssueId: 1,
+        emitOwnerSessionScoped: 1,
         nowMs: 1700000000000
     };
 
     const resetState = () => {
         state.sessions = [];
         state.messages = [];
+        state.deliveryIssues = [];
+        state.accounts = [];
         state.accountSeqById = new Map<string, number>();
         state.nextMessageId = 1;
+        state.nextDeliveryIssueId = 1;
+        state.emitOwnerSessionScoped = 1;
         state.nowMs = 1700000000000;
     };
 
@@ -52,6 +73,13 @@ const {
         if (!state.accountSeqById.has(input.accountId)) {
             state.accountSeqById.set(input.accountId, 0);
         }
+        if (!state.accounts.some((account) => account.id === input.accountId)) {
+            state.accounts.push({
+                id: input.accountId,
+                firstName: null,
+                username: `user-${input.accountId}`
+            });
+        }
     };
 
     const seedMessage = (input: {
@@ -59,6 +87,8 @@ const {
         seq: number;
         localId: string | null;
         content: unknown;
+        sentBy?: string | null;
+        sentByName?: string | null;
     }) => {
         const createdAt = new Date(state.nowMs);
         state.nowMs += 1;
@@ -68,11 +98,29 @@ const {
             seq: input.seq,
             localId: input.localId,
             content: input.content,
+            sentBy: input.sentBy ?? null,
+            sentByName: input.sentByName ?? null,
             createdAt,
             updatedAt: createdAt
         };
         state.nextMessageId += 1;
         state.messages.push(msg);
+    };
+
+    const seedDeliveryIssue = (input: {
+        sessionMessageId: string;
+        status: "waiting" | "error";
+        reason?: string | null;
+        extra?: unknown;
+    }) => {
+        state.deliveryIssues.push({
+            id: `issue-${state.nextDeliveryIssueId}`,
+            sessionMessageId: input.sessionMessageId,
+            status: input.status,
+            reason: input.reason ?? null,
+            extra: input.extra ?? null
+        });
+        state.nextDeliveryIssueId += 1;
     };
 
     const selectFields = <T extends Record<string, unknown>>(row: T, select?: Record<string, boolean>) => {
@@ -89,14 +137,26 @@ const {
     };
 
     const sessionFindFirst = vi.fn(async (args: any) => {
+        const ownerId = args?.where?.OR?.find((item: any) => typeof item?.accountId === "string")?.accountId;
         const row = state.sessions.find((session) => (
             session.id === args?.where?.id &&
-            session.accountId === args?.where?.accountId
+            (!ownerId || session.accountId === ownerId)
         ));
         if (!row) {
             return null;
         }
         return selectFields(row as unknown as Record<string, unknown>, args?.select) as SessionRecord;
+    });
+
+    const sessionFindUnique = vi.fn(async (args: any) => {
+        const row = state.sessions.find((session) => (
+            session.id === args?.where?.id &&
+            (!args?.where?.accountId || session.accountId === args.where.accountId)
+        ));
+        if (!row) {
+            return null;
+        }
+        return selectFields(row as unknown as Record<string, unknown>, args?.select);
     });
 
     const sessionUpdate = vi.fn(async (args: any) => {
@@ -116,6 +176,14 @@ const {
         const next = current + increment;
         state.accountSeqById.set(accountId, next);
         return selectFields({ seq: next }, args?.select);
+    });
+
+    const accountFindUnique = vi.fn(async (args: any) => {
+        const account = state.accounts.find((item) => item.id === args?.where?.id);
+        if (!account) {
+            return null;
+        }
+        return selectFields(account as unknown as Record<string, unknown>, args?.select);
     });
 
     const sessionMessageFindMany = vi.fn(async (args: any) => {
@@ -147,7 +215,18 @@ const {
             rows = rows.slice(0, args.take);
         }
 
-        return rows.map((row) => selectFields(row as unknown as Record<string, unknown>, args?.select));
+        return rows.map((row) => {
+            const selected = selectFields(row as unknown as Record<string, unknown>, args?.select) as Record<string, unknown>;
+            if (args?.select?.deliveryIssue) {
+                const issue = state.deliveryIssues.find((item) => item.sessionMessageId === row.id) ?? null;
+                if (typeof args.select.deliveryIssue === "object" && issue) {
+                    selected.deliveryIssue = selectFields(issue as unknown as Record<string, unknown>, args.select.deliveryIssue.select);
+                } else {
+                    selected.deliveryIssue = issue;
+                }
+            }
+            return selected;
+        });
     });
 
     const sessionMessageCreate = vi.fn(async (args: any) => {
@@ -159,12 +238,58 @@ const {
             seq: args?.data?.seq,
             localId: args?.data?.localId ?? null,
             content: args?.data?.content,
+            sentBy: args?.data?.sentBy ?? null,
+            sentByName: args?.data?.sentByName ?? null,
             createdAt,
             updatedAt: createdAt
         };
         state.nextMessageId += 1;
         state.messages.push(row);
         return selectFields(row as unknown as Record<string, unknown>, args?.select);
+    });
+
+    const deliveryIssueCreate = vi.fn(async (args: any) => {
+        const record: DeliveryIssueRecord = {
+            id: `issue-${state.nextDeliveryIssueId}`,
+            sessionMessageId: args?.data?.sessionMessageId,
+            status: args?.data?.status,
+            reason: args?.data?.reason ?? null,
+            extra: args?.data?.extra ?? null
+        };
+        state.nextDeliveryIssueId += 1;
+        state.deliveryIssues.push(record);
+        return record;
+    });
+
+    const deliveryIssueUpsert = vi.fn(async (args: any) => {
+        const sessionMessageId = args?.where?.sessionMessageId;
+        const existing = state.deliveryIssues.find((item) => item.sessionMessageId === sessionMessageId);
+        if (existing) {
+            existing.status = args?.update?.status ?? existing.status;
+            existing.reason = args?.update?.reason ?? existing.reason;
+            existing.extra = args?.update?.extra ?? existing.extra;
+            return existing;
+        }
+
+        const created: DeliveryIssueRecord = {
+            id: `issue-${state.nextDeliveryIssueId}`,
+            sessionMessageId,
+            status: args?.create?.status,
+            reason: args?.create?.reason ?? null,
+            extra: args?.create?.extra ?? null
+        };
+        state.nextDeliveryIssueId += 1;
+        state.deliveryIssues.push(created);
+        return created;
+    });
+
+    const deliveryIssueDelete = vi.fn(async (args: any) => {
+        const index = state.deliveryIssues.findIndex((item) => item.sessionMessageId === args?.where?.sessionMessageId);
+        if (index === -1) {
+            throw new Error("Delivery issue not found");
+        }
+        const [deleted] = state.deliveryIssues.splice(index, 1);
+        return deleted;
     });
 
     const txClient = {
@@ -175,6 +300,11 @@ const {
             findMany: sessionMessageFindMany,
             create: sessionMessageCreate
         },
+        sessionMessageDeliveryIssue: {
+            create: deliveryIssueCreate,
+            upsert: deliveryIssueUpsert,
+            delete: deliveryIssueDelete
+        },
         account: {
             update: accountUpdate
         }
@@ -183,27 +313,46 @@ const {
     const dbMock = {
         session: {
             findFirst: sessionFindFirst,
+            findUnique: sessionFindUnique,
             update: sessionUpdate
         },
         account: {
-            update: accountUpdate
+            update: accountUpdate,
+            findUnique: accountFindUnique
         },
         sessionMessage: {
             findMany: sessionMessageFindMany,
             create: sessionMessageCreate
         },
+        sessionMessageDeliveryIssue: {
+            create: deliveryIssueCreate,
+            upsert: deliveryIssueUpsert,
+            delete: deliveryIssueDelete
+        },
         $transaction: vi.fn(async (fn: any) => fn(txClient))
     };
 
-    const emitUpdateMock = vi.fn();
+    const emitToSessionSubscribersMock = vi.fn(async () => ({
+        ownerDelivery: {
+            total: 1,
+            sessionScoped: state.emitOwnerSessionScoped
+        }
+    }));
+    const canSendMessagesMock = vi.fn(async (userId: string, sessionId: string) => {
+        return state.sessions.some((session) => session.id === sessionId && session.accountId === userId);
+    });
+    const scheduleFirstMessageReplayMock = vi.fn();
 
     return {
         state,
-        emitUpdateMock,
+        emitToSessionSubscribersMock,
+        canSendMessagesMock,
+        scheduleFirstMessageReplayMock,
         dbMock,
         resetState,
         seedSession,
-        seedMessage
+        seedMessage,
+        seedDeliveryIssue
     };
 });
 
@@ -217,7 +366,8 @@ vi.mock("@/utils/randomKeyNaked", () => ({
 
 vi.mock("@/app/events/eventRouter", () => ({
     eventRouter: {
-        emitUpdate: emitUpdateMock
+        emitToSessionSubscribers: emitToSessionSubscribersMock,
+        emitEphemeralToSessionSubscribers: vi.fn(async () => undefined)
     },
     buildNewMessageUpdate: vi.fn((message: unknown, sessionId: string, updateSeq: number, updateId: string) => ({
         id: updateId,
@@ -228,7 +378,22 @@ vi.mock("@/app/events/eventRouter", () => ({
             message
         },
         createdAt: Date.now()
+    })),
+    buildMessageDeliveryErrorEphemeral: vi.fn((sid: string, messageId: string, localId: string | null, error: string) => ({
+        type: "message-delivery-error",
+        sid,
+        messageId,
+        localId,
+        error
     }))
+}));
+
+vi.mock("@/app/share/accessControl", () => ({
+    canSendMessages: canSendMessagesMock
+}));
+
+vi.mock("./firstMessageReplay", () => ({
+    scheduleFirstMessageReplay: scheduleFirstMessageReplayMock
 }));
 
 import { v3SessionRoutes } from "./v3SessionRoutes";
@@ -257,7 +422,9 @@ describe("v3SessionRoutes", () => {
 
     beforeEach(() => {
         resetState();
-        emitUpdateMock.mockClear();
+        emitToSessionSubscribersMock.mockClear();
+        canSendMessagesMock.mockClear();
+        scheduleFirstMessageReplayMock.mockClear();
     });
 
     afterEach(async () => {
@@ -424,7 +591,7 @@ describe("v3SessionRoutes", () => {
 
         expect(state.messages).toHaveLength(1);
         expect(state.messages[0].content).toEqual({ t: "encrypted", c: "enc-content-1" });
-        expect(emitUpdateMock).toHaveBeenCalledTimes(1);
+        expect(emitToSessionSubscribersMock).toHaveBeenCalledTimes(1);
     });
 
     it("sends multiple messages with sequential seq numbers", async () => {
@@ -447,7 +614,7 @@ describe("v3SessionRoutes", () => {
         expect(response.statusCode).toBe(200);
         const body = response.json();
         expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2, 3]);
-        expect(emitUpdateMock).toHaveBeenCalledTimes(3);
+        expect(emitToSessionSubscribersMock).toHaveBeenCalledTimes(3);
     });
 
     it("deduplicates by localId and returns mixed existing/new messages sorted by seq", async () => {
@@ -472,7 +639,100 @@ describe("v3SessionRoutes", () => {
         expect(body.messages.map((message: any) => message.localId)).toEqual(["existing", "new-1"]);
         expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2]);
         expect(state.messages).toHaveLength(2);
-        expect(emitUpdateMock).toHaveBeenCalledTimes(1);
+        expect(emitToSessionSubscribersMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("creates waiting delivery issue when trackCliDelivery=true and cli is connected", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        state.emitOwnerSessionScoped = 1;
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                messages: [
+                    { localId: "l1", content: "enc-content-1", trackCliDelivery: true }
+                ]
+            }
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(state.deliveryIssues).toHaveLength(1);
+        expect(state.deliveryIssues[0]).toMatchObject({
+            sessionMessageId: state.messages[0].id,
+            status: "waiting",
+            reason: null
+        });
+    });
+
+    it("marks delivery issue as error/no_cli_connection when no cli connection", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        state.emitOwnerSessionScoped = 0;
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                messages: [
+                    { localId: "l1", content: "enc-content-1", trackCliDelivery: true }
+                ]
+            }
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(state.deliveryIssues).toHaveLength(1);
+        expect(state.deliveryIssues[0]).toMatchObject({
+            sessionMessageId: state.messages[0].id,
+            status: "error",
+            reason: "no_cli_connection"
+        });
+    });
+
+    it("does not create delivery issue when trackCliDelivery=false", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                messages: [
+                    { localId: "l1", content: "enc-content-1", trackCliDelivery: false }
+                ]
+            }
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(state.deliveryIssues).toHaveLength(0);
+    });
+
+    it("returns deliveryIssue in GET when issue record exists", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 1 });
+        seedMessage({ sessionId: "session-1", seq: 1, localId: "l1", content: { t: "encrypted", c: "a" } });
+        seedDeliveryIssue({
+            sessionMessageId: state.messages[0].id,
+            status: "error",
+            reason: "ack_timeout"
+        });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" }
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        expect(body.messages[0].deliveryIssue).toEqual({
+            status: "error",
+            reason: "ack_timeout"
+        });
     });
 
     it("enforces send validation limits and auth/session ownership", async () => {
@@ -492,7 +752,7 @@ describe("v3SessionRoutes", () => {
             url: "/v3/sessions/session-1/messages",
             headers: { "x-user-id": "owner-user" },
             payload: {
-                messages: Array.from({ length: 101 }, (_, index) => ({
+                messages: Array.from({ length: 201 }, (_, index) => ({
                     localId: `l-${index}`,
                     content: `enc-${index}`
                 }))

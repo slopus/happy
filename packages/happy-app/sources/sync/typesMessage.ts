@@ -34,6 +34,7 @@ export type UserTextMessage = {
     meta?: MessageMeta;
     sentBy?: string | null;
     sentByName?: string | null;
+    deliveryError?: string | null;
 }
 
 export type ModeSwitchMessage = {

@@ -565,7 +565,8 @@ class Sync {
                     body: JSON.stringify({
                         messages: [{
                             content: encryptedRawRecord,
-                            localId
+                            localId,
+                            trackCliDelivery: true
                         }]
                     })
                 }
@@ -1901,6 +1902,10 @@ class Sync {
                 if (normalized) {
                     normalized.sentBy = decrypted.sentBy;
                     normalized.sentByName = decrypted.sentByName;
+                    const deliveryIssue = messagesToDecrypt[i]?.deliveryIssue;
+                    if (deliveryIssue?.status === 'error') {
+                        normalized.deliveryError = deliveryIssue.reason || 'unknown_error';
+                    }
                     normalizedMessages.push(normalized);
                 }
             }
@@ -2942,6 +2947,9 @@ class Sync {
                     if (lastMessage) {
                         lastMessage.sentBy = decrypted.sentBy;
                         lastMessage.sentByName = decrypted.sentByName;
+                        if (updateData.body.message.deliveryIssue?.status === 'error') {
+                            lastMessage.deliveryError = updateData.body.message.deliveryIssue.reason || 'unknown_error';
+                        }
                     }
 
                     // Check for task lifecycle events to update thinking state
@@ -3150,6 +3158,15 @@ class Sync {
             }
             storage.getState().setSessionMessageSyncing(sessionId, false);
             this.invalidateMessagesSync(sessionId);
+        }
+
+        if (updateData.type === 'message-delivery-error') {
+            storage.getState().setMessageDeliveryError(
+                updateData.sid,
+                updateData.messageId,
+                updateData.localId ?? null,
+                updateData.error
+            );
         }
 
         // Handle machine activity updates

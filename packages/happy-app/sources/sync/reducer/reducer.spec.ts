@@ -54,6 +54,28 @@ describe('reducer', () => {
             expect(state.localIds.has('local123')).toBe(true);
         });
 
+        it('should carry deliveryError onto user-text messages', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'msg1',
+                    localId: 'local123',
+                    createdAt: 1000,
+                    role: 'user',
+                    content: { type: 'text', text: 'Hello' },
+                    isSidechain: false,
+                    deliveryError: 'ack_timeout'
+                } as NormalizedMessage
+            ];
+
+            const result = reducer(state, messages);
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('user-text');
+            if (result.messages[0].kind === 'user-text') {
+                expect(result.messages[0].deliveryError).toBe('ack_timeout');
+            }
+        });
+
         it('should deduplicate user messages by localId', () => {
             const state = createReducer();
             

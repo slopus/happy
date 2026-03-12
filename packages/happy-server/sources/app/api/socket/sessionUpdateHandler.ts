@@ -1,6 +1,6 @@
 import { sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
-import { buildMessageErrorEphemeral, buildMessageSyncingEphemeral, buildMessageSyncedEphemeral, buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
+import { buildMessageDeliveryErrorEphemeral, buildMessageErrorEphemeral, buildMessageSyncingEphemeral, buildMessageSyncedEphemeral, buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
 import { allocateSessionSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
@@ -210,6 +210,83 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             });
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in session-alive: ${error}`);
+        }
+    });
+
+    socket.on('message-receipt', async (data: any) => {
+        try {
+            const sid = typeof data?.sid === 'string' ? data.sid : null;
+            const messageId = typeof data?.messageId === 'string' ? data.messageId : null;
+            const localId = typeof data?.localId === 'string' ? data.localId : null;
+            const ok = typeof data?.ok === 'boolean' ? data.ok : null;
+            const error = typeof data?.error === 'string' ? data.error : null;
+
+            if (!sid || ok === null || (!messageId && !localId)) {
+                return;
+            }
+
+            if (connection.connectionType !== 'session-scoped' || connection.sessionId !== sid) {
+                return;
+            }
+
+            const session = await db.session.findUnique({
+                where: {
+                    id: sid,
+                    accountId: userId
+                },
+                select: { id: true }
+            });
+            if (!session) {
+                return;
+            }
+
+            const message = await db.sessionMessage.findFirst({
+                where: {
+                    sessionId: sid,
+                    ...(messageId ? { id: messageId } : { localId: localId! })
+                },
+                select: {
+                    id: true,
+                    localId: true
+                }
+            });
+            if (!message) {
+                return;
+            }
+
+            if (ok) {
+                await db.sessionMessageDeliveryIssue.deleteMany({
+                    where: {
+                        sessionMessageId: message.id
+                    }
+                });
+                return;
+            }
+
+            const reason = error || 'unknown_error';
+            await db.sessionMessageDeliveryIssue.upsert({
+                where: {
+                    sessionMessageId: message.id
+                },
+                create: {
+                    sessionMessageId: message.id,
+                    status: 'error',
+                    reason
+                },
+                update: {
+                    status: 'error',
+                    reason
+                }
+            });
+
+            await eventRouter.emitEphemeralToSessionSubscribers({
+                ownerId: userId,
+                sessionId: sid,
+                payload: buildMessageDeliveryErrorEphemeral(sid, message.id, message.localId, reason),
+                recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
+            });
+        } catch (error) {
+            log({ module: 'websocket', level: 'error' }, `Error in message-receipt: ${error}`);
         }
     });
 

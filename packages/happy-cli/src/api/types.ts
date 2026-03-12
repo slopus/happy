@@ -89,6 +89,7 @@ export interface ServerToClientEvents {
     | { type: 'message-syncing', id: string, count: number }
     | { type: 'message-synced', id: string, count: number }
     | { type: 'message-errored', id: string, error: string }
+    | { type: 'message-delivery-error', sid: string, messageId: string, localId?: string | null, error: string }
     | { type: 'machine-activity', id: string, active: boolean, activeAt: number }
     | { type: 'usage', id: string, key: string, tokens: Record<string, number>, cost: Record<string, number>, timestamp: number }
     | { type: 'machine-status', machineId: string, online: boolean, timestamp: number }
@@ -103,6 +104,13 @@ export interface ServerToClientEvents {
  */
 export interface ClientToServerEvents {
   message: (data: { sid: string, message: any, localId?: string }) => void
+  'message-receipt': (data: {
+    sid: string
+    messageId: string
+    localId?: string | null
+    ok: boolean
+    error?: string
+  }) => void
   'message-batch': (data: { sid: string, messages: { message: string, localId?: string | null }[], mode?: 'replace' | 'append' }, callback: (response: { result: 'success' | 'error', inserted?: number }) => void) => void
   'session-alive': (data: {
     sid: string;

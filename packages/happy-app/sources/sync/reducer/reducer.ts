@@ -131,6 +131,7 @@ type ReducerMessage = {
     meta?: MessageMeta;
     sentBy?: string | null;
     sentByName?: string | null;
+    deliveryError?: string | null;
 }
 
 type StoredPermission = {
@@ -632,6 +633,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 meta: msg.meta,
                 sentBy: msg.sentBy,
                 sentByName: msg.sentByName,
+                deliveryError: msg.deliveryError ?? null,
             });
 
             // Track both localId and messageId
@@ -1177,6 +1179,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             meta: reducerMsg.meta,
             sentBy: reducerMsg.sentBy,
             sentByName: reducerMsg.sentByName,
+            ...(reducerMsg.deliveryError ? { deliveryError: reducerMsg.deliveryError } : {}),
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
         return {

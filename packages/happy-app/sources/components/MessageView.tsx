@@ -204,6 +204,9 @@ function UserTextBlock(props: {
           optionsLoadingState={props.readOnly ? undefined : optionsLoadingState}
           hideOptions={props.readOnly}
         />
+        {props.message.deliveryError ? (
+          <Text style={styles.deliveryErrorText}>{props.message.deliveryError}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -366,6 +369,12 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 12,
     marginBottom: 2,
     paddingRight: 4,
+  },
+  deliveryErrorText: {
+    color: theme.colors.textDestructive,
+    fontSize: 12,
+    marginTop: 4,
+    marginBottom: 4,
   },
   agentMessageContainer: {
     paddingHorizontal: 16,

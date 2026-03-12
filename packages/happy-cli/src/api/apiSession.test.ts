@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiSessionClient } from './apiSession';
 import * as trimToolUseResultModule from './trimToolUseResult';
 import * as toolOutputStoreModule from '../modules/common/toolOutputStore';
+import * as encryptionModule from './encryption';
 
 // Use vi.hoisted to ensure mock function is available when vi.mock factory runs
 const { mockIo } = vi.hoisted(() => ({
@@ -287,5 +288,115 @@ describe('ApiSessionClient v3 outbox', () => {
         });
 
         saveSpy.mockRestore();
+    });
+});
+
+describe('ApiSessionClient message receipt', () => {
+    let mockSocket: any;
+    let mockSession: any;
+
+    beforeEach(() => {
+        mockSocket = {
+            connect: vi.fn(),
+            on: vi.fn(),
+            off: vi.fn(),
+            close: vi.fn(),
+            disconnect: vi.fn(),
+            emit: vi.fn(),
+            connected: true
+        };
+
+        mockIo.mockReturnValue(mockSocket);
+
+        mockSession = {
+            id: 'test-session-id',
+            seq: 0,
+            metadata: {
+                path: '/tmp',
+                host: 'localhost',
+                homeDir: '/home/user',
+                happyHomeDir: '/home/user/.happy',
+                happyLibDir: '/home/user/.happy/lib',
+                happyToolsDir: '/home/user/.happy/tools'
+            },
+            metadataVersion: 0,
+            agentState: null,
+            agentStateVersion: 0,
+            encryptionKey: new Uint8Array(32),
+            encryptionVariant: 'legacy' as const
+        };
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function getUpdateHandler() {
+        const call = mockSocket.on.mock.calls.find((args: any[]) => args[0] === 'update');
+        if (!call) {
+            throw new Error('update handler not registered');
+        }
+        return call[1];
+    }
+
+    it('emits message-receipt ok=true when app-originated user message is accepted', () => {
+        new ApiSessionClient('fake-token', mockSession);
+
+        vi.spyOn(encryptionModule, 'decodeBase64').mockReturnValue(new Uint8Array([1, 2, 3]));
+        vi.spyOn(encryptionModule, 'decrypt').mockReturnValue({
+            role: 'user',
+            content: { type: 'text', text: 'hello' },
+            meta: { sentFrom: 'web' }
+        } as any);
+
+        const updateHandler = getUpdateHandler();
+        updateHandler({
+            body: {
+                t: 'new-message',
+                sid: 'test-session-id',
+                message: {
+                    id: 'msg-1',
+                    localId: 'local-1',
+                    content: { t: 'encrypted', c: 'abc' }
+                }
+            }
+        });
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('message-receipt', {
+            sid: 'test-session-id',
+            messageId: 'msg-1',
+            localId: 'local-1',
+            ok: true
+        });
+    });
+
+    it('emits message-receipt ok=false with original error on decrypt/parse failure', () => {
+        new ApiSessionClient('fake-token', mockSession);
+
+        vi.spyOn(encryptionModule, 'decodeBase64').mockReturnValue(new Uint8Array([1, 2, 3]));
+        vi.spyOn(encryptionModule, 'decrypt').mockImplementation(() => {
+            throw new Error('decrypt failed: invalid payload');
+        });
+
+        const updateHandler = getUpdateHandler();
+        updateHandler({
+            body: {
+                t: 'new-message',
+                sid: 'test-session-id',
+                message: {
+                    id: 'msg-1',
+                    localId: 'local-1',
+                    content: { t: 'encrypted', c: 'abc' }
+                }
+            }
+        });
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('message-receipt', {
+            sid: 'test-session-id',
+            messageId: 'msg-1',
+            localId: 'local-1',
+            ok: false,
+            error: 'decrypt failed: invalid payload'
+        });
     });
 });

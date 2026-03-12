@@ -140,6 +140,7 @@ interface StorageState {
     setSessionPagination: (sessionId: string, oldestSeq: number | null, hasMore: boolean) => void;
     clearSessionMessages: (sessionId: string) => void;
     setSessionMessageSyncing: (sessionId: string, syncing: boolean) => void;
+    setMessageDeliveryError: (sessionId: string, messageId: string, localId: string | null, error: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
@@ -879,6 +880,53 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 sessions: updatedSessions,
                 sessionListViewData
+            };
+        }),
+        setMessageDeliveryError: (sessionId: string, messageId: string, localId: string | null, error: string) => set((state) => {
+            const existingSession = state.sessionMessages[sessionId];
+            if (!existingSession) {
+                return state;
+            }
+
+            const byMessageId = existingSession.reducerState.messageIds.get(messageId);
+            const byLocalId = localId ? existingSession.reducerState.localIds.get(localId) : undefined;
+            const targetId = byMessageId ?? byLocalId;
+            if (!targetId) {
+                return state;
+            }
+
+            const message = existingSession.messagesMap[targetId];
+            if (!message || message.kind !== 'user-text') {
+                return state;
+            }
+
+            if (message.deliveryError === error) {
+                return state;
+            }
+
+            const updatedMessage: Message = {
+                ...message,
+                deliveryError: error
+            };
+
+            const updatedMessagesMap = {
+                ...existingSession.messagesMap,
+                [targetId]: updatedMessage
+            };
+            const updatedMessages = existingSession.messages.map((item) => (
+                item.id === targetId ? updatedMessage : item
+            ));
+
+            return {
+                ...state,
+                sessionMessages: {
+                    ...state.sessionMessages,
+                    [sessionId]: {
+                        ...existingSession,
+                        messages: updatedMessages,
+                        messagesMap: updatedMessagesMap
+                    }
+                }
             };
         }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {

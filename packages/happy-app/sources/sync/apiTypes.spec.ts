@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiEphemeralUpdateSchema } from './apiTypes';
+import { ApiEphemeralUpdateSchema, ApiMessageSchema } from './apiTypes';
 
 describe('ApiEphemeralUpdateSchema usage payload compatibility', () => {
     it('accepts usage payload with only total cost and extra token keys', () => {
@@ -57,5 +57,36 @@ describe('ApiEphemeralUpdateSchema usage payload compatibility', () => {
 
         const parsed = ApiEphemeralUpdateSchema.safeParse(payload);
         expect(parsed.success).toBe(true);
+    });
+});
+
+describe('ApiMessageSchema delivery issue compatibility', () => {
+    it('accepts message payload with deliveryIssue', () => {
+        const payload = {
+            id: 'msg-1',
+            seq: 1,
+            localId: 'local-1',
+            content: {
+                t: 'encrypted',
+                c: 'abc'
+            },
+            createdAt: 1771931751300,
+            sentBy: 'user-1',
+            sentByName: 'Alice',
+            deliveryIssue: {
+                status: 'error',
+                reason: 'ack_timeout'
+            }
+        };
+
+        const parsed = ApiMessageSchema.safeParse(payload);
+        expect(parsed.success).toBe(true);
+        if (!parsed.success) {
+            throw new Error(parsed.error.message);
+        }
+        expect(parsed.data.deliveryIssue).toEqual({
+            status: 'error',
+            reason: 'ack_timeout'
+        });
     });
 });

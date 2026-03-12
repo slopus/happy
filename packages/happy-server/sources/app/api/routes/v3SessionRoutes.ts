@@ -1,4 +1,4 @@
-import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
+import { buildMessageDeliveryErrorEphemeral, buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
 import { canSendMessages } from "@/app/share/accessControl";
 import { db } from "@/storage/db";
 import { allocateSessionSeqBatch } from "@/storage/seq";
@@ -16,7 +16,8 @@ const getMessagesQuerySchema = z.object({
 const sendMessagesBodySchema = z.object({
     messages: z.array(z.object({
         content: z.string(),
-        localId: z.string().min(1)
+        localId: z.string().min(1),
+        trackCliDelivery: z.boolean().optional().default(false)
     })).min(1).max(200)
 });
 
@@ -27,9 +28,15 @@ type SelectedMessage = {
     localId: string | null;
     sentBy: string | null;
     sentByName: string | null;
+    deliveryIssue?: {
+        status: "waiting" | "error";
+        reason: string | null;
+    } | null;
     createdAt: Date;
     updatedAt: Date;
 };
+
+type SendResponseMessage = Omit<SelectedMessage, "content" | "deliveryIssue">;
 
 function toResponseMessage(message: SelectedMessage) {
     return {
@@ -39,12 +46,18 @@ function toResponseMessage(message: SelectedMessage) {
         localId: message.localId,
         sentBy: message.sentBy,
         sentByName: message.sentByName,
+        deliveryIssue: message.deliveryIssue
+            ? {
+                status: message.deliveryIssue.status,
+                reason: message.deliveryIssue.reason
+            }
+            : undefined,
         createdAt: message.createdAt.getTime(),
         updatedAt: message.updatedAt.getTime()
     };
 }
 
-function toSendResponseMessage(message: Omit<SelectedMessage, "content">) {
+function toSendResponseMessage(message: SendResponseMessage) {
     return {
         id: message.id,
         seq: message.seq,
@@ -115,6 +128,12 @@ export function v3SessionRoutes(app: Fastify) {
                 localId: true,
                 sentBy: true,
                 sentByName: true,
+                deliveryIssue: {
+                    select: {
+                        status: true,
+                        reason: true
+                    }
+                },
                 createdAt: true,
                 updatedAt: true
             }
@@ -163,7 +182,7 @@ export function v3SessionRoutes(app: Fastify) {
         });
         const sentByName = senderAccount?.firstName || senderAccount?.username || null;
 
-        const firstMessageByLocalId = new Map<string, { localId: string; content: string }>();
+        const firstMessageByLocalId = new Map<string, { localId: string; content: string; trackCliDelivery: boolean }>();
         for (const message of messages) {
             if (!firstMessageByLocalId.has(message.localId)) {
                 firstMessageByLocalId.set(message.localId, message);
@@ -201,7 +220,7 @@ export function v3SessionRoutes(app: Fastify) {
             const newMessages = uniqueMessages.filter((message) => !existingByLocalId.has(message.localId));
             const seqs = await allocateSessionSeqBatch(sessionId, newMessages.length, tx);
 
-            const createdMessages: Omit<SelectedMessage, 'content'>[] = [];
+            const createdMessages: Array<SendResponseMessage & { trackCliDelivery: boolean }> = [];
             for (let i = 0; i < newMessages.length; i += 1) {
                 const message = newMessages[i];
                 const createdMessage = await tx.sessionMessage.create({
@@ -227,7 +246,18 @@ export function v3SessionRoutes(app: Fastify) {
                         updatedAt: true
                     }
                 });
-                createdMessages.push(createdMessage);
+                if (message.trackCliDelivery) {
+                    await tx.sessionMessageDeliveryIssue.create({
+                        data: {
+                            sessionMessageId: createdMessage.id,
+                            status: 'waiting'
+                        }
+                    });
+                }
+                createdMessages.push({
+                    ...createdMessage,
+                    trackCliDelivery: message.trackCliDelivery
+                });
             }
 
             const responseMessages = [...existing, ...createdMessages].sort((a, b) => a.seq - b.seq);
@@ -255,6 +285,30 @@ export function v3SessionRoutes(app: Fastify) {
                 buildPayload: (_uid, seq) => buildNewMessageUpdate(payloadMessage, sessionId, seq, randomKeyNaked(12)),
                 recipientFilter: { type: 'all-interested-in-session', sessionId }
             });
+
+            if (message.trackCliDelivery && emitResult.ownerDelivery.sessionScoped === 0) {
+                await db.sessionMessageDeliveryIssue.upsert({
+                    where: {
+                        sessionMessageId: message.id
+                    },
+                    create: {
+                        sessionMessageId: message.id,
+                        status: 'error',
+                        reason: 'no_cli_connection'
+                    },
+                    update: {
+                        status: 'error',
+                        reason: 'no_cli_connection'
+                    }
+                });
+
+                await eventRouter.emitEphemeralToSessionSubscribers({
+                    ownerId,
+                    sessionId,
+                    payload: buildMessageDeliveryErrorEphemeral(sessionId, message.id, message.localId ?? null, 'no_cli_connection'),
+                    recipientFilter: { type: 'all-interested-in-session', sessionId }
+                });
+            }
 
             // Narrow fix: replay only the first message of a newly created
             // session, and only if no CLI session connection received it live.

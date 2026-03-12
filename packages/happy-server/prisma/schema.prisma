@@ -126,20 +126,32 @@ model Session {
 }
 
 model SessionMessage {
-  id         String   @id @default(cuid())
-  sessionId  String
-  session    Session  @relation(fields: [sessionId], references: [id])
-  localId    String?
-  seq        Int
+  id            String                       @id @default(cuid())
+  sessionId     String
+  session       Session                      @relation(fields: [sessionId], references: [id])
+  localId       String?
+  seq           Int
   /// [SessionMessageContent]
-  content    Json
-  sentBy     String?
-  sentByName String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  content       Json
+  sentBy        String?
+  sentByName    String?
+  deliveryIssue SessionMessageDeliveryIssue?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
 
   @@unique([sessionId, localId])
   @@index([sessionId, seq])
+}
+
+model SessionMessageDeliveryIssue {
+  id               String                            @id @default(cuid())
+  sessionMessageId String                            @unique
+  sessionMessage   SessionMessage                    @relation(fields: [sessionMessageId], references: [id], onDelete: Cascade)
+  status           SessionMessageDeliveryIssueStatus
+  reason           String?
+  extra            Json?
+
+  @@index([status])
 }
 
 //
@@ -423,6 +435,11 @@ enum ShareAccessLevel {
   view
   edit
   admin
+}
+
+enum SessionMessageDeliveryIssueStatus {
+  waiting
+  error
 }
 
 model SessionShare {

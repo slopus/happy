@@ -246,6 +246,12 @@ export type EphemeralEvent = {
     id: string;
     error: string;
 } | {
+    type: 'message-delivery-error';
+    sid: string;
+    messageId: string;
+    localId: string | null;
+    error: string;
+} | {
     type: 'machine-activity';
     id: string;
     active: boolean;
@@ -687,6 +693,16 @@ export function buildMessageErrorEphemeral(sessionId: string, error: string): Ep
     return {
         type: 'message-errored',
         id: sessionId,
+        error
+    };
+}
+
+export function buildMessageDeliveryErrorEphemeral(sessionId: string, messageId: string, localId: string | null, error: string): EphemeralPayload {
+    return {
+        type: 'message-delivery-error',
+        sid: sessionId,
+        messageId,
+        localId,
         error
     };
 }

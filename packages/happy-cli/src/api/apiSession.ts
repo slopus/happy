@@ -143,6 +143,16 @@ export class ApiSessionClient extends EventEmitter {
 
         // Server events
         this.socket.on('update', (data: Update) => {
+            const emitMessageReceipt = (params: { sid: string; messageId: string; localId: string | null; ok: boolean; error?: string }) => {
+                this.socket.emit('message-receipt', {
+                    sid: params.sid,
+                    messageId: params.messageId,
+                    localId: params.localId,
+                    ok: params.ok,
+                    ...(params.error ? { error: params.error } : {}),
+                });
+            };
+
             try {
                 logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', data);
 
@@ -167,8 +177,20 @@ export class ApiSessionClient extends EventEmitter {
                             logger.debug('[SOCKET] [UPDATE] Ignoring echo of CLI-originated user message');
                         } else if (this.pendingMessageCallback) {
                             this.pendingMessageCallback(userResult.data);
+                            emitMessageReceipt({
+                                sid: data.body.sid,
+                                messageId: data.body.message.id,
+                                localId: data.body.message.localId ?? null,
+                                ok: true,
+                            });
                         } else {
                             this.pendingMessages.push(userResult.data);
+                            emitMessageReceipt({
+                                sid: data.body.sid,
+                                messageId: data.body.message.id,
+                                localId: data.body.message.localId ?? null,
+                                ok: true,
+                            });
                         }
                     } else {
                         // If not a user message, it might be a permission response or other message type
@@ -193,6 +215,16 @@ export class ApiSessionClient extends EventEmitter {
                 }
             } catch (error) {
                 logger.debug('[SOCKET] [UPDATE] [ERROR] Error handling update', { error });
+                if (data?.body?.t === 'new-message') {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    emitMessageReceipt({
+                        sid: data.body.sid,
+                        messageId: data.body.message.id,
+                        localId: data.body.message.localId ?? null,
+                        ok: false,
+                        error: errorMessage,
+                    });
+                }
             }
         });
 
