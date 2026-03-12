@@ -5,7 +5,7 @@ paths:
 
 ## Gotchas
 
-- Never create Prisma migrations yourself — only a human can do that. Run `yarn generate` when new types are needed
+- Create Prisma migrations when schema changes — follow existing naming convention (`YYYYMMDDHHMMSS_description`). Run `yarn generate` when new types are needed
 - Avoid enums — use maps instead
 
 ## Patterns to Follow
