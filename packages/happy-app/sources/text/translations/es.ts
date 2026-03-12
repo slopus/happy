@@ -788,6 +788,12 @@ export const es: TranslationStructure = {
             scanQrCode: 'Escanee el código QR',
             openCamera: 'Abrir cámara',
         },
+        emptySessions: {
+            noActiveSessions: 'No active sessions',
+            startOnConnectedMachines: 'Start a new session on any of your connected machines.',
+            startNewSession: 'Start New Session',
+            openTerminalToStart: 'Open a new terminal on your computer to start session.',
+        },
     },
 
     agentInput: {

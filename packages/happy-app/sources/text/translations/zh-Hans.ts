@@ -790,6 +790,12 @@ export const zhHans: TranslationStructure = {
             scanQrCode: '扫描二维码',
             openCamera: '打开相机',
         },
+        emptySessions: {
+            noActiveSessions: '没有活跃会话',
+            startOnConnectedMachines: '在任意已连接设备上启动新会话。',
+            startNewSession: '启动新会话',
+            openTerminalToStart: '在你的电脑上打开新终端以启动会话。',
+        },
     },
 
     agentInput: {

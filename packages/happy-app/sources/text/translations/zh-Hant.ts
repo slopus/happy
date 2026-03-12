@@ -789,6 +789,12 @@ export const zhHant: TranslationStructure = {
             scanQrCode: '掃描 QR Code',
             openCamera: '開啟相機',
         },
+        emptySessions: {
+            noActiveSessions: '沒有活躍工作階段',
+            startOnConnectedMachines: '可在任一已連線裝置上啟動新工作階段。',
+            startNewSession: '啟動新工作階段',
+            openTerminalToStart: '在電腦上開啟新的終端機以啟動工作階段。',
+        },
     },
 
     agentInput: {

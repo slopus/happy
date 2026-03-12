@@ -687,6 +687,12 @@ export const ru: TranslationStructure = {
             scanQrCode: 'Отсканируйте QR-код',
             openCamera: 'Открыть камеру',
         },
+        emptySessions: {
+            noActiveSessions: 'No active sessions',
+            startOnConnectedMachines: 'Start a new session on any of your connected machines.',
+            startNewSession: 'Start New Session',
+            openTerminalToStart: 'Open a new terminal on your computer to start session.',
+        },
     },
 
     profile: {
