@@ -78,6 +78,84 @@ describe('CodexAppServerBackend.waitForResponseComplete', () => {
     expect((err as Error).message).toContain('lastProgressEvent=turn_start');
   });
 
+  it('does not timeout while approval is pending', async () => {
+    const permissionHandler = {
+      handleToolCall: vi.fn().mockImplementation(
+        () => new Promise(() => {}) // never resolves — simulates user not responding
+      ),
+    };
+    const backend = new CodexAppServerBackend({
+      cwd: process.cwd(),
+      command: 'codex',
+      permissionHandler,
+    });
+    const anyBackend = backend as any;
+    anyBackend.peer = { respond: vi.fn() };
+
+    anyBackend.resetTurnComplete();
+
+    // Simulate an exec approval request arriving — adds to pendingApprovals
+    anyBackend.handleExecApproval(
+      { call_id: 'call-1', command: ['ls'], cwd: '/tmp' },
+      999
+    );
+
+    const waitPromise = backend.waitForResponseComplete(120).then(
+      () => 'resolved',
+      (error: Error) => error
+    );
+
+    // Advance well past the idle timeout — should NOT timeout
+    await vi.advanceTimersByTimeAsync(500);
+
+    // Still pending (no task_complete yet, no timeout)
+    expect(await Promise.race([waitPromise, Promise.resolve('still-waiting')])).toBe('still-waiting');
+  });
+
+  it('resumes idle timeout after approval is resolved', async () => {
+    let resolveApproval!: (v: { decision: string }) => void;
+    const permissionHandler = {
+      handleToolCall: vi.fn().mockImplementation(
+        () => new Promise((resolve) => { resolveApproval = resolve; })
+      ),
+    };
+    const backend = new CodexAppServerBackend({
+      cwd: process.cwd(),
+      command: 'codex',
+      permissionHandler,
+    });
+    const anyBackend = backend as any;
+    anyBackend.peer = { respond: vi.fn() };
+
+    anyBackend.resetTurnComplete();
+
+    // Approval request arrives
+    anyBackend.handleExecApproval(
+      { call_id: 'call-1', command: ['ls'], cwd: '/tmp' },
+      999
+    );
+
+    const waitPromise = backend.waitForResponseComplete(120).then(
+      () => 'resolved',
+      (error: Error) => error
+    );
+
+    // Wait a long time while approval is pending — should NOT timeout
+    await vi.advanceTimersByTimeAsync(300);
+    expect(await Promise.race([waitPromise, Promise.resolve('still-waiting')])).toBe('still-waiting');
+
+    // User approves — pendingApprovals becomes empty
+    resolveApproval({ decision: 'approved' });
+    await vi.advanceTimersByTimeAsync(1); // flush microtasks
+
+    // Now idle timeout should resume — advance past timeout
+    await vi.advanceTimersByTimeAsync(200);
+
+    const result = await waitPromise;
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toContain('idle timeout');
+  });
+
   it('does not terminate turn on error event (waits for task_complete)', async () => {
     const backend = createBackend();
     const anyBackend = backend as any;

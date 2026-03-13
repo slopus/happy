@@ -299,6 +299,12 @@ export class CodexAppServerBackend implements AgentBackend {
     let timer: ReturnType<typeof setInterval> | undefined;
     const timeout = new Promise<void>((_, reject) => {
       timer = setInterval(() => {
+        // Don't timeout while waiting for user to approve/deny a request
+        if (this.pendingApprovals.size > 0) {
+          this.turnLastProgressAt = Date.now();
+          return;
+        }
+
         const now = Date.now();
         const lastProgressAt = this.turnLastProgressAt || this.turnStartedAt || now;
         const idleMs = now - lastProgressAt;
