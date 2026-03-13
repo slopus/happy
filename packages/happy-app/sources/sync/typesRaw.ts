@@ -95,6 +95,14 @@ const sessionStopEventSchema = z.object({
     t: z.literal('stop'),
 });
 
+const sessionUsageEventSchema = z.object({
+    t: z.literal('usage'),
+    input_tokens: z.number(),
+    output_tokens: z.number(),
+    cache_creation_input_tokens: z.number().optional(),
+    cache_read_input_tokens: z.number().optional(),
+});
+
 const sessionEventSchema = z.discriminatedUnion('t', [
     sessionTextEventSchema,
     sessionServiceMessageEventSchema,
@@ -105,6 +113,7 @@ const sessionEventSchema = z.discriminatedUnion('t', [
     sessionStartEventSchema,
     sessionTurnEndEventSchema,
     sessionStopEventSchema,
+    sessionUsageEventSchema,
 ]);
 
 const sessionEnvelopeSchema = z.object({
@@ -555,6 +564,25 @@ function normalizeSessionEnvelope(
     if (envelope.ev.t === 'start' || envelope.ev.t === 'stop') {
         // Lifecycle marker for subagent boundaries; currently not rendered as chat content.
         return null;
+    }
+
+    if (envelope.ev.t === 'usage') {
+        // Usage data from assistant messages — not rendered but feeds the reducer's processUsageData
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'agent',
+            isSidechain: false,
+            content: [],
+            meta,
+            usage: {
+                input_tokens: envelope.ev.input_tokens,
+                output_tokens: envelope.ev.output_tokens,
+                cache_creation_input_tokens: envelope.ev.cache_creation_input_tokens,
+                cache_read_input_tokens: envelope.ev.cache_read_input_tokens,
+            }
+        } satisfies NormalizedMessage;
     }
 
     if (envelope.ev.t === 'turn-end') {

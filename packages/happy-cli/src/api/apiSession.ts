@@ -11,7 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
-import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
+import { createEnvelope, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -362,6 +362,17 @@ export class ApiSessionClient extends EventEmitter {
             } catch (error) {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
+
+            // Send usage as a session protocol envelope so the app can display context size
+            const usage = body.message.usage;
+            const usageEnvelope = createEnvelope('agent', {
+                t: 'usage',
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                cache_read_input_tokens: usage.cache_read_input_tokens,
+            }, { turn: this.claudeSessionProtocolState.currentTurnId ?? undefined });
+            this.sendSessionProtocolMessage(usageEnvelope);
         }
 
         // Update metadata with summary if this is a summary message
