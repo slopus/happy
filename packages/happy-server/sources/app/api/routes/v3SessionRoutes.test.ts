@@ -1,6 +1,7 @@
 import fastify from "fastify";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { __resetSessionTurnRuntimeForTests, markTurnStarted } from "@/app/presence/sessionTurnRuntime";
 import { type Fastify } from "../types";
 
 type SessionRecord = {
@@ -29,6 +30,19 @@ type DeliveryIssueRecord = {
     extra: unknown;
 };
 
+type PendingMessageRecord = {
+    id: string;
+    sessionId: string;
+    localId: string;
+    content: unknown;
+    sentBy: string | null;
+    sentByName: string | null;
+    trackCliDelivery: boolean;
+    pinnedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+};
+
 const {
     state,
     emitToSessionSubscribersMock,
@@ -38,15 +52,18 @@ const {
     resetState,
     seedSession,
     seedMessage,
+    seedPendingMessage,
     seedDeliveryIssue
 } = vi.hoisted(() => {
     const state = {
         sessions: [] as SessionRecord[],
         messages: [] as MessageRecord[],
+        pendingMessages: [] as PendingMessageRecord[],
         deliveryIssues: [] as DeliveryIssueRecord[],
         accounts: [] as Array<{ id: string; firstName: string | null; username: string | null }>,
         accountSeqById: new Map<string, number>(),
         nextMessageId: 1,
+        nextPendingMessageId: 1,
         nextDeliveryIssueId: 1,
         emitOwnerSessionScoped: 1,
         connections: [] as Array<{
@@ -62,10 +79,12 @@ const {
     const resetState = () => {
         state.sessions = [];
         state.messages = [];
+        state.pendingMessages = [];
         state.deliveryIssues = [];
         state.accounts = [];
         state.accountSeqById = new Map<string, number>();
         state.nextMessageId = 1;
+        state.nextPendingMessageId = 1;
         state.nextDeliveryIssueId = 1;
         state.emitOwnerSessionScoped = 1;
         state.connections = [];
@@ -113,6 +132,35 @@ const {
         };
         state.nextMessageId += 1;
         state.messages.push(msg);
+    };
+
+    const seedPendingMessage = (input: {
+        sessionId: string;
+        localId: string;
+        content: unknown;
+        sentBy?: string | null;
+        sentByName?: string | null;
+        trackCliDelivery?: boolean;
+        pinnedAt?: Date | null;
+        createdAt?: Date;
+    }) => {
+        const createdAt = input.createdAt ?? new Date(state.nowMs);
+        state.nowMs = Math.max(state.nowMs + 1, createdAt.getTime() + 1);
+        const msg: PendingMessageRecord = {
+            id: `pending-${state.nextPendingMessageId}`,
+            sessionId: input.sessionId,
+            localId: input.localId,
+            content: input.content,
+            sentBy: input.sentBy ?? null,
+            sentByName: input.sentByName ?? null,
+            trackCliDelivery: input.trackCliDelivery ?? false,
+            pinnedAt: input.pinnedAt ?? null,
+            createdAt,
+            updatedAt: createdAt,
+        };
+        state.nextPendingMessageId += 1;
+        state.pendingMessages.push(msg);
+        return msg;
     };
 
     const seedDeliveryIssue = (input: {
@@ -256,6 +304,128 @@ const {
         return selectFields(row as unknown as Record<string, unknown>, args?.select);
     });
 
+    const sessionPendingMessageFindMany = vi.fn(async (args: any) => {
+        let rows = [...state.pendingMessages];
+        if (args?.where?.sessionId) {
+            rows = rows.filter((message) => message.sessionId === args.where.sessionId);
+        }
+        if (typeof args?.where?.localId === "string") {
+            rows = rows.filter((message) => message.localId === args.where.localId);
+        }
+        if (Array.isArray(args?.where?.localId?.in)) {
+            const localIds = new Set(args.where.localId.in);
+            rows = rows.filter((message) => localIds.has(message.localId));
+        }
+        if (args?.where?.pinnedAt?.not === null) {
+            rows = rows.filter((message) => message.pinnedAt !== null);
+        }
+        if (args?.where?.pinnedAt === null) {
+            rows = rows.filter((message) => message.pinnedAt === null);
+        }
+
+        const orderBy = args?.orderBy;
+        if (Array.isArray(orderBy)) {
+            rows.sort((a, b) => {
+                for (const order of orderBy) {
+                    if (order.pinnedAt) {
+                        const aPinned = a.pinnedAt ? a.pinnedAt.getTime() : null;
+                        const bPinned = b.pinnedAt ? b.pinnedAt.getTime() : null;
+                        if (aPinned !== bPinned) {
+                            if (aPinned === null) return 1;
+                            if (bPinned === null) return -1;
+                            return order.pinnedAt === "desc" ? bPinned - aPinned : aPinned - bPinned;
+                        }
+                    }
+                    if (order.createdAt) {
+                        const delta = a.createdAt.getTime() - b.createdAt.getTime();
+                        if (delta !== 0) {
+                            return order.createdAt === "desc" ? -delta : delta;
+                        }
+                    }
+                }
+                return 0;
+            });
+        }
+
+        return rows.map((row) => selectFields(row as unknown as Record<string, unknown>, args?.select));
+    });
+
+    const sessionPendingMessageFindFirst = vi.fn(async (args: any) => {
+        const rows = await sessionPendingMessageFindMany(args);
+        return rows[0] ?? null;
+    });
+
+    const sessionPendingMessageFindUnique = vi.fn(async (args: any) => {
+        const where = args?.where;
+        let row: PendingMessageRecord | undefined;
+        if (where?.id) {
+            row = state.pendingMessages.find((message) => message.id === where.id);
+        } else if (where?.sessionId_localId) {
+            row = state.pendingMessages.find((message) => (
+                message.sessionId === where.sessionId_localId.sessionId &&
+                message.localId === where.sessionId_localId.localId
+            ));
+        }
+        if (!row) return null;
+        return selectFields(row as unknown as Record<string, unknown>, args?.select);
+    });
+
+    const sessionPendingMessageCreate = vi.fn(async (args: any) => {
+        const createdAt = new Date(state.nowMs);
+        state.nowMs += 1;
+        const row: PendingMessageRecord = {
+            id: `pending-${state.nextPendingMessageId}`,
+            sessionId: args?.data?.sessionId,
+            localId: args?.data?.localId,
+            content: args?.data?.content,
+            sentBy: args?.data?.sentBy ?? null,
+            sentByName: args?.data?.sentByName ?? null,
+            trackCliDelivery: args?.data?.trackCliDelivery ?? false,
+            pinnedAt: args?.data?.pinnedAt ?? null,
+            createdAt,
+            updatedAt: createdAt,
+        };
+        state.nextPendingMessageId += 1;
+        state.pendingMessages.push(row);
+        return selectFields(row as unknown as Record<string, unknown>, args?.select);
+    });
+
+    const sessionPendingMessageUpdate = vi.fn(async (args: any) => {
+        const row = state.pendingMessages.find((message) => message.id === args?.where?.id);
+        if (!row) {
+            throw new Error("Pending message not found");
+        }
+        if (args?.data?.pinnedAt !== undefined) {
+            row.pinnedAt = args.data.pinnedAt;
+        }
+        row.updatedAt = new Date(state.nowMs);
+        state.nowMs += 1;
+        return selectFields(row as unknown as Record<string, unknown>, args?.select);
+    });
+
+    const sessionPendingMessageDelete = vi.fn(async (args: any) => {
+        const index = state.pendingMessages.findIndex((message) => message.id === args?.where?.id);
+        if (index === -1) {
+            throw new Error("Pending message not found");
+        }
+        const [deleted] = state.pendingMessages.splice(index, 1);
+        return selectFields(deleted as unknown as Record<string, unknown>, args?.select);
+    });
+
+    const sessionPendingMessageDeleteMany = vi.fn(async (args: any) => {
+        const before = state.pendingMessages.length;
+        state.pendingMessages = state.pendingMessages.filter((message) => {
+            if (args?.where?.id && message.id !== args.where.id) {
+                return true;
+            }
+            if (args?.where?.sessionId && message.sessionId !== args.where.sessionId) {
+                return true;
+            }
+            return false;
+        });
+        return { count: before - state.pendingMessages.length };
+    });
+
     const deliveryIssueCreate = vi.fn(async (args: any) => {
         const record: DeliveryIssueRecord = {
             id: `issue-${state.nextDeliveryIssueId}`,
@@ -308,6 +478,15 @@ const {
             findMany: sessionMessageFindMany,
             create: sessionMessageCreate
         },
+        sessionPendingMessage: {
+            findMany: sessionPendingMessageFindMany,
+            findFirst: sessionPendingMessageFindFirst,
+            findUnique: sessionPendingMessageFindUnique,
+            create: sessionPendingMessageCreate,
+            update: sessionPendingMessageUpdate,
+            delete: sessionPendingMessageDelete,
+            deleteMany: sessionPendingMessageDeleteMany,
+        },
         sessionMessageDeliveryIssue: {
             create: deliveryIssueCreate,
             upsert: deliveryIssueUpsert,
@@ -331,6 +510,15 @@ const {
         sessionMessage: {
             findMany: sessionMessageFindMany,
             create: sessionMessageCreate
+        },
+        sessionPendingMessage: {
+            findMany: sessionPendingMessageFindMany,
+            findFirst: sessionPendingMessageFindFirst,
+            findUnique: sessionPendingMessageFindUnique,
+            create: sessionPendingMessageCreate,
+            update: sessionPendingMessageUpdate,
+            delete: sessionPendingMessageDelete,
+            deleteMany: sessionPendingMessageDeleteMany,
         },
         sessionMessageDeliveryIssue: {
             create: deliveryIssueCreate,
@@ -360,6 +548,7 @@ const {
         resetState,
         seedSession,
         seedMessage,
+        seedPendingMessage,
         seedDeliveryIssue
     };
 });
@@ -397,7 +586,17 @@ vi.mock("@/app/events/eventRouter", () => ({
         messageId,
         localId,
         error
-    }))
+    })),
+    buildPendingMessageUpsertEphemeral: vi.fn((sid: string, pending: unknown) => ({
+        type: "pending-message-upsert",
+        sid,
+        pending,
+    })),
+    buildPendingMessageDeleteEphemeral: vi.fn((sid: string, pendingId: string) => ({
+        type: "pending-message-delete",
+        sid,
+        pendingId,
+    })),
 }));
 
 vi.mock("@/app/share/accessControl", () => ({
@@ -433,6 +632,7 @@ describe("v3SessionRoutes", () => {
     let app: Fastify;
 
     beforeEach(() => {
+        __resetSessionTurnRuntimeForTests();
         resetState();
         emitToSessionSubscribersMock.mockClear();
         canSendMessagesMock.mockClear();
@@ -824,5 +1024,172 @@ describe("v3SessionRoutes", () => {
             }
         });
         expect(wrongOwner.statusCode).toBe(404);
+    });
+
+    it("lists pending messages with pinned first then createdAt asc", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        seedPendingMessage({
+            sessionId: "session-1",
+            localId: "normal-old",
+            content: { t: "encrypted", c: "normal-old" },
+            createdAt: new Date("2026-03-12T10:00:00.000Z")
+        });
+        seedPendingMessage({
+            sessionId: "session-1",
+            localId: "pinned-old",
+            content: { t: "encrypted", c: "pinned-old" },
+            pinnedAt: new Date("2026-03-12T11:00:00.000Z"),
+            createdAt: new Date("2026-03-12T10:05:00.000Z")
+        });
+        seedPendingMessage({
+            sessionId: "session-1",
+            localId: "pinned-new",
+            content: { t: "encrypted", c: "pinned-new" },
+            pinnedAt: new Date("2026-03-12T12:00:00.000Z"),
+            createdAt: new Date("2026-03-12T10:10:00.000Z")
+        });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "GET",
+            url: "/v3/sessions/session-1/pending-messages",
+            headers: { "x-user-id": "user-1" }
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        expect(body.messages.map((message: any) => message.localId)).toEqual([
+            "pinned-new",
+            "pinned-old",
+            "normal-old",
+        ]);
+    });
+
+    it("routes /send to queued mode when pending queue is non-empty", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        seedPendingMessage({
+            sessionId: "session-1",
+            localId: "already-pending",
+            content: { t: "encrypted", c: "pending-1" },
+        });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/send",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                localId: "new-send",
+                content: "enc-content-new",
+                trackCliDelivery: true,
+            },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        expect(body.mode).toBe("queued");
+        expect(state.pendingMessages.map((message) => message.localId)).toEqual(["new-send"]);
+        expect(state.messages).toHaveLength(1);
+        expect(state.messages[0].localId).toBe("already-pending");
+    });
+
+    it("routes /send to sent mode when queue empty and idle", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        app = await createApp();
+
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/send",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                localId: "direct-send",
+                content: "enc-content-direct",
+                trackCliDelivery: false,
+            },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        expect(body.mode).toBe("sent");
+        expect(state.messages).toHaveLength(1);
+        expect(state.messages[0].localId).toBe("direct-send");
+    });
+
+    it("routes /send to queued mode when session is busy (thinking/awaiting)", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        markTurnStarted("session-1");
+        app = await createApp();
+
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/send",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                localId: "queued-by-thinking",
+                content: "enc-content-thinking",
+                trackCliDelivery: false,
+            },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        expect(body.mode).toBe("queued");
+        expect(state.messages).toHaveLength(0);
+        expect(state.pendingMessages).toHaveLength(1);
+        expect(state.pendingMessages[0].localId).toBe("queued-by-thinking");
+    });
+
+    it("send-now dispatches target pending message and keeps others", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        const p1 = seedPendingMessage({
+            sessionId: "session-1",
+            localId: "pending-1",
+            content: { t: "encrypted", c: "pending-content-1" },
+        });
+        const p2 = seedPendingMessage({
+            sessionId: "session-1",
+            localId: "pending-2",
+            content: { t: "encrypted", c: "pending-content-2" },
+        });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: `/v3/sessions/session-1/pending-messages/${p2.id}/send-now`,
+            headers: { "x-user-id": "user-1" },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        expect(body.mode).toBe("sent");
+        expect(state.messages).toHaveLength(1);
+        expect(state.messages[0].localId).toBe("pending-2");
+        expect(state.pendingMessages.map((message) => message.id)).toEqual([p1.id]);
+    });
+
+    it("pin and delete pending message endpoints update queue", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        const pending = seedPendingMessage({
+            sessionId: "session-1",
+            localId: "pending-a",
+            content: { t: "encrypted", c: "pending-content-a" },
+        });
+
+        app = await createApp();
+        const pinResponse = await app.inject({
+            method: "POST",
+            url: `/v3/sessions/session-1/pending-messages/${pending.id}/pin`,
+            headers: { "x-user-id": "user-1" },
+        });
+        expect(pinResponse.statusCode).toBe(200);
+        expect(state.pendingMessages[0].pinnedAt).not.toBeNull();
+
+        const deleteResponse = await app.inject({
+            method: "DELETE",
+            url: `/v3/sessions/session-1/pending-messages/${pending.id}`,
+            headers: { "x-user-id": "user-1" },
+        });
+        expect(deleteResponse.statusCode).toBe(200);
+        expect(state.pendingMessages).toHaveLength(0);
     });
 });

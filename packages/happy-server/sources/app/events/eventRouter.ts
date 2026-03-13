@@ -253,6 +253,24 @@ export type EphemeralEvent = {
     localId: string | null;
     error: string;
 } | {
+    type: 'pending-message-upsert';
+    sid: string;
+    pending: {
+        id: string;
+        localId: string;
+        content: any;
+        sentBy: string | null;
+        sentByName: string | null;
+        trackCliDelivery: boolean;
+        pinnedAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+} | {
+    type: 'pending-message-delete';
+    sid: string;
+    pendingId: string;
+} | {
     type: 'machine-activity';
     id: string;
     active: boolean;
@@ -705,6 +723,42 @@ export function buildMessageDeliveryErrorEphemeral(sessionId: string, messageId:
         messageId,
         localId,
         error
+    };
+}
+
+export function buildPendingMessageUpsertEphemeral(sessionId: string, pending: {
+    id: string;
+    localId: string;
+    content: any;
+    sentBy: string | null;
+    sentByName: string | null;
+    trackCliDelivery: boolean;
+    pinnedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+}): EphemeralPayload {
+    return {
+        type: 'pending-message-upsert',
+        sid: sessionId,
+        pending: {
+            id: pending.id,
+            localId: pending.localId,
+            content: pending.content,
+            sentBy: pending.sentBy,
+            sentByName: pending.sentByName,
+            trackCliDelivery: pending.trackCliDelivery,
+            pinnedAt: pending.pinnedAt ? pending.pinnedAt.getTime() : null,
+            createdAt: pending.createdAt.getTime(),
+            updatedAt: pending.updatedAt.getTime(),
+        },
+    };
+}
+
+export function buildPendingMessageDeleteEphemeral(sessionId: string, pendingId: string): EphemeralPayload {
+    return {
+        type: 'pending-message-delete',
+        sid: sessionId,
+        pendingId,
     };
 }
 

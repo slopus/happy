@@ -5,6 +5,7 @@ const {
     state,
     dbMock,
     emitEphemeralToSessionSubscribersMock,
+    dispatchNextPendingIfPossibleMock,
     resetState,
     createSocket
 } = vi.hoisted(() => {
@@ -72,6 +73,7 @@ const {
     };
 
     const emitEphemeralToSessionSubscribersMock = vi.fn(async () => undefined);
+    const dispatchNextPendingIfPossibleMock = vi.fn(async () => ({ dispatched: false }));
 
     const createSocket = () => {
         const handlers = new Map<string, (...args: any[]) => unknown>();
@@ -96,6 +98,7 @@ const {
         state,
         dbMock,
         emitEphemeralToSessionSubscribersMock,
+        dispatchNextPendingIfPossibleMock,
         resetState,
         createSocket
     };
@@ -153,12 +156,19 @@ vi.mock("@/utils/delay", () => ({
     delay: vi.fn(async () => undefined)
 }));
 
+vi.mock("@/app/session/pendingMessageAutoDispatch", () => ({
+    dispatchNextPendingIfPossible: dispatchNextPendingIfPossibleMock
+}));
+
 import { sessionUpdateHandler } from "./sessionUpdateHandler";
+import { __resetSessionTurnRuntimeForTests } from "@/app/presence/sessionTurnRuntime";
 
 describe("sessionUpdateHandler message-receipt", () => {
     beforeEach(() => {
+        __resetSessionTurnRuntimeForTests();
         resetState();
         emitEphemeralToSessionSubscribersMock.mockClear();
+        dispatchNextPendingIfPossibleMock.mockClear();
     });
 
     const createConnection = (socket: any): ClientConnection => ({
@@ -235,5 +245,55 @@ describe("sessionUpdateHandler message-receipt", () => {
             }
         ]);
         expect(emitEphemeralToSessionSubscribersMock).not.toHaveBeenCalled();
+    });
+});
+
+describe("sessionUpdateHandler session-alive auto-dispatch", () => {
+    beforeEach(() => {
+        __resetSessionTurnRuntimeForTests();
+        resetState();
+        emitEphemeralToSessionSubscribersMock.mockClear();
+        dispatchNextPendingIfPossibleMock.mockClear();
+    });
+
+    const createConnection = (socket: any): ClientConnection => ({
+        connectionType: "session-scoped",
+        socket,
+        userId: "user-1",
+        sessionId: "session-1",
+        supportsMessageReceipt: true
+    });
+
+    it("dispatches once on thinking true->false and ignores repeated idle heartbeats", async () => {
+        state.sessions.push({ id: "session-1", accountId: "user-1" });
+
+        const { socket, trigger } = createSocket();
+        sessionUpdateHandler("user-1", socket, createConnection(socket));
+
+        const baseTime = Date.now();
+        await trigger("session-alive", { sid: "session-1", time: baseTime, thinking: true });
+        await trigger("session-alive", { sid: "session-1", time: baseTime + 1, thinking: false });
+        await trigger("session-alive", { sid: "session-1", time: baseTime + 2, thinking: false });
+
+        expect(dispatchNextPendingIfPossibleMock).toHaveBeenCalledTimes(1);
+        expect(dispatchNextPendingIfPossibleMock).toHaveBeenCalledWith({
+            ownerId: "user-1",
+            sessionId: "session-1",
+        });
+    });
+
+    it("allows next dispatch after a new thinking turn starts then ends", async () => {
+        state.sessions.push({ id: "session-1", accountId: "user-1" });
+
+        const { socket, trigger } = createSocket();
+        sessionUpdateHandler("user-1", socket, createConnection(socket));
+
+        const baseTime = Date.now();
+        await trigger("session-alive", { sid: "session-1", time: baseTime, thinking: true });
+        await trigger("session-alive", { sid: "session-1", time: baseTime + 1, thinking: false });
+        await trigger("session-alive", { sid: "session-1", time: baseTime + 2, thinking: true });
+        await trigger("session-alive", { sid: "session-1", time: baseTime + 3, thinking: false });
+
+        expect(dispatchNextPendingIfPossibleMock).toHaveBeenCalledTimes(2);
     });
 });

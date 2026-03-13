@@ -1,8 +1,21 @@
-import { buildMessageDeliveryErrorEphemeral, buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
+import {
+    buildPendingMessageDeleteEphemeral,
+    buildPendingMessageUpsertEphemeral,
+    eventRouter,
+} from "@/app/events/eventRouter";
 import { canSendMessages } from "@/app/share/accessControl";
+import { isSessionBusy, markDispatched } from "@/app/presence/sessionTurnRuntime";
+import {
+    deletePendingMessage,
+    enqueuePendingMessage,
+    findPendingMessageById,
+    listPendingMessages,
+    pinPendingMessage,
+    type PendingMessageRecord,
+} from "@/app/session/pendingMessageService";
+import { dispatchNextPendingIfPossible } from "@/app/session/pendingMessageAutoDispatch";
+import { dispatchSessionMessage } from "@/app/session/sessionMessageDispatch";
 import { db } from "@/storage/db";
-import { allocateSessionSeqBatch } from "@/storage/seq";
-import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
 import { scheduleFirstMessageReplay } from "./firstMessageReplay";
@@ -10,15 +23,26 @@ import { scheduleFirstMessageReplay } from "./firstMessageReplay";
 const getMessagesQuerySchema = z.object({
     after_seq: z.coerce.number().int().min(0).optional(),
     before_seq: z.coerce.number().int().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(500).default(100)
+    limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 
 const sendMessagesBodySchema = z.object({
     messages: z.array(z.object({
         content: z.string(),
         localId: z.string().min(1),
-        trackCliDelivery: z.boolean().optional().default(false)
-    })).min(1).max(200)
+        trackCliDelivery: z.boolean().optional().default(false),
+    })).min(1).max(200),
+});
+
+const sendMessageBodySchema = z.object({
+    content: z.string(),
+    localId: z.string().min(1),
+    trackCliDelivery: z.boolean().optional().default(false),
+});
+
+const pendingMessageParamsSchema = z.object({
+    sessionId: z.string(),
+    pendingId: z.string(),
 });
 
 type SelectedMessage = {
@@ -38,6 +62,16 @@ type SelectedMessage = {
 
 type SendResponseMessage = Omit<SelectedMessage, "content" | "deliveryIssue">;
 
+type ExistingSendMessage = {
+    id: string;
+    seq: number;
+    localId: string | null;
+    sentBy: string | null;
+    sentByName: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+};
+
 function toResponseMessage(message: SelectedMessage) {
     return {
         id: message.id,
@@ -49,11 +83,11 @@ function toResponseMessage(message: SelectedMessage) {
         deliveryIssue: message.deliveryIssue
             ? {
                 status: message.deliveryIssue.status,
-                reason: message.deliveryIssue.reason
+                reason: message.deliveryIssue.reason,
             }
             : undefined,
         createdAt: message.createdAt.getTime(),
-        updatedAt: message.updatedAt.getTime()
+        updatedAt: message.updatedAt.getTime(),
     };
 }
 
@@ -65,39 +99,124 @@ function toSendResponseMessage(message: SendResponseMessage) {
         sentBy: message.sentBy,
         sentByName: message.sentByName,
         createdAt: message.createdAt.getTime(),
-        updatedAt: message.updatedAt.getTime()
+        updatedAt: message.updatedAt.getTime(),
     };
 }
 
-function hasReceiptCapableCliConnection(userId: string, sessionId: string): boolean {
-    const connections = eventRouter.getConnections(userId);
-    if (!connections) {
-        return false;
+function toPendingResponseMessage(message: PendingMessageRecord) {
+    return {
+        id: message.id,
+        localId: message.localId,
+        content: message.content,
+        sentBy: message.sentBy,
+        sentByName: message.sentByName,
+        trackCliDelivery: message.trackCliDelivery,
+        pinnedAt: message.pinnedAt ? message.pinnedAt.getTime() : null,
+        createdAt: message.createdAt.getTime(),
+        updatedAt: message.updatedAt.getTime(),
+    };
+}
+
+function extractEncryptedText(content: unknown): string {
+    if (typeof content === "string") {
+        return content;
     }
 
-    return Array.from(connections).some((connection) => (
-        connection.connectionType === 'session-scoped' &&
-        connection.sessionId === sessionId &&
-        connection.supportsMessageReceipt
-    ));
+    if (
+        content &&
+        typeof content === "object" &&
+        "t" in content &&
+        "c" in content &&
+        (content as { t?: unknown }).t === "encrypted" &&
+        typeof (content as { c?: unknown }).c === "string"
+    ) {
+        return (content as { c: string }).c;
+    }
+
+    return "";
+}
+
+async function getSessionOwnerId(sessionId: string): Promise<string | null> {
+    const session = await db.session.findUnique({
+        where: { id: sessionId },
+        select: { accountId: true },
+    });
+
+    return session?.accountId ?? null;
+}
+
+async function getSenderName(userId: string): Promise<string | null> {
+    const senderAccount = await db.account.findUnique({
+        where: { id: userId },
+        select: { firstName: true, username: true },
+    });
+
+    return senderAccount?.firstName || senderAccount?.username || null;
+}
+
+async function findExistingSentMessageByLocalId(sessionId: string, localId: string): Promise<ExistingSendMessage | null> {
+    const existingMessages = await db.sessionMessage.findMany({
+        where: {
+            sessionId,
+            localId: { in: [localId] },
+        },
+        take: 1,
+        select: {
+            id: true,
+            seq: true,
+            localId: true,
+            sentBy: true,
+            sentByName: true,
+            createdAt: true,
+            updatedAt: true,
+        },
+    });
+
+    return (existingMessages[0] as ExistingSendMessage | undefined) ?? null;
+}
+
+async function emitPendingUpsert(ownerId: string, sessionId: string, pending: PendingMessageRecord) {
+    await eventRouter.emitEphemeralToSessionSubscribers({
+        ownerId,
+        sessionId,
+        payload: buildPendingMessageUpsertEphemeral(sessionId, pending),
+        recipientFilter: { type: "all-interested-in-session", sessionId },
+    });
+}
+
+async function emitPendingDelete(ownerId: string, sessionId: string, pendingId: string) {
+    await eventRouter.emitEphemeralToSessionSubscribers({
+        ownerId,
+        sessionId,
+        payload: buildPendingMessageDeleteEphemeral(sessionId, pendingId),
+        recipientFilter: { type: "all-interested-in-session", sessionId },
+    });
+}
+
+export function resolveSendMode(input: { hasPending: boolean; isThinking: boolean }): "queued" | "sent" {
+    if (input.hasPending || input.isThinking) {
+        return "queued";
+    }
+
+    return "sent";
 }
 
 export function v3SessionRoutes(app: Fastify) {
-    app.get('/v3/sessions/:sessionId/messages', {
+    app.get("/v3/sessions/:sessionId/messages", {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                sessionId: z.string()
+                sessionId: z.string(),
             }),
-            querystring: getMessagesQuerySchema
-        }
+            querystring: getMessagesQuerySchema,
+        },
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
         const { after_seq, before_seq, limit } = request.query;
 
         if (after_seq !== undefined && before_seq !== undefined) {
-            return reply.code(400).send({ error: 'Cannot specify both after_seq and before_seq' });
+            return reply.code(400).send({ error: "Cannot specify both after_seq and before_seq" });
         }
 
         const session = await db.session.findFirst({
@@ -105,32 +224,28 @@ export function v3SessionRoutes(app: Fastify) {
                 id: sessionId,
                 OR: [
                     { accountId: userId },
-                    { shares: { some: { sharedWithUserId: userId } } }
-                ]
+                    { shares: { some: { sharedWithUserId: userId } } },
+                ],
             },
-            select: { id: true }
+            select: { id: true },
         });
 
         if (!session) {
-            return reply.code(404).send({ error: 'Session not found' });
+            return reply.code(404).send({ error: "Session not found" });
         }
 
-        // Three modes:
-        // 1. after_seq=X  → forward pagination (seq > X, asc)  — incremental sync
-        // 2. before_seq=X → backward pagination (seq < X, desc) — scroll-up / older messages
-        // 3. no params    → latest messages (desc)               — bootstrap
         const isForward = after_seq !== undefined;
         const seqFilter = after_seq !== undefined
             ? { gt: after_seq }
             : before_seq !== undefined
                 ? { lt: before_seq }
                 : undefined;
-        const orderBy = isForward ? 'asc' as const : 'desc' as const;
+        const orderBy = isForward ? "asc" as const : "desc" as const;
 
         const messages = await db.sessionMessage.findMany({
             where: {
                 sessionId,
-                ...(seqFilter ? { seq: seqFilter } : {})
+                ...(seqFilter ? { seq: seqFilter } : {}),
             },
             orderBy: { seq: orderBy },
             take: limit + 1,
@@ -144,12 +259,12 @@ export function v3SessionRoutes(app: Fastify) {
                 deliveryIssue: {
                     select: {
                         status: true,
-                        reason: true
-                    }
+                        reason: true,
+                    },
                 },
                 createdAt: true,
-                updatedAt: true
-            }
+                updatedAt: true,
+            },
         });
 
         const hasMore = messages.length > limit;
@@ -157,44 +272,33 @@ export function v3SessionRoutes(app: Fastify) {
 
         return reply.send({
             messages: page.map(toResponseMessage),
-            hasMore
+            hasMore,
         });
     });
 
-    app.post('/v3/sessions/:sessionId/messages', {
+    app.post("/v3/sessions/:sessionId/messages", {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                sessionId: z.string()
+                sessionId: z.string(),
             }),
-            body: sendMessagesBodySchema
-        }
+            body: sendMessagesBodySchema,
+        },
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
         const { messages } = request.body;
 
-        // Check if user can send messages (owner or shared with edit/admin access)
         if (!await canSendMessages(userId, sessionId)) {
-            return reply.code(404).send({ error: 'Session not found' });
+            return reply.code(404).send({ error: "Session not found" });
         }
 
-        // Get session owner for broadcasting
-        const session = await db.session.findUnique({
-            where: { id: sessionId },
-            select: { accountId: true }
-        });
-        if (!session) {
-            return reply.code(404).send({ error: 'Session not found' });
+        const ownerId = await getSessionOwnerId(sessionId);
+        if (!ownerId) {
+            return reply.code(404).send({ error: "Session not found" });
         }
-        const ownerId = session.accountId;
-        const ownerHasReceiptCapableCli = hasReceiptCapableCliConnection(ownerId, sessionId);
 
-        const senderAccount = await db.account.findUnique({
-            where: { id: userId },
-            select: { firstName: true, username: true }
-        });
-        const sentByName = senderAccount?.firstName || senderAccount?.username || null;
+        const sentByName = await getSenderName(userId);
 
         const firstMessageByLocalId = new Map<string, { localId: string; content: string; trackCliDelivery: boolean }>();
         for (const message of messages) {
@@ -204,141 +308,307 @@ export function v3SessionRoutes(app: Fastify) {
         }
 
         const uniqueMessages = Array.from(firstMessageByLocalId.values());
-        const contentByLocalId = new Map(uniqueMessages.map((message) => [message.localId, message.content]));
-
-        const txResult = await db.$transaction(async (tx) => {
-            const localIds = uniqueMessages.map((message) => message.localId);
-            const existing = await tx.sessionMessage.findMany({
-                where: {
-                    sessionId,
-                    localId: { in: localIds }
-                },
-                select: {
-                    id: true,
-                    seq: true,
-                    localId: true,
-                    sentBy: true,
-                    sentByName: true,
-                    createdAt: true,
-                    updatedAt: true
-                }
-            });
-
-            const existingByLocalId = new Map<string, Omit<SelectedMessage, 'content'>>();
-            for (const message of existing) {
-                if (message.localId) {
-                    existingByLocalId.set(message.localId, message);
-                }
-            }
-
-            const newMessages = uniqueMessages.filter((message) => !existingByLocalId.has(message.localId));
-            const seqs = await allocateSessionSeqBatch(sessionId, newMessages.length, tx);
-
-            const createdMessages: Array<SendResponseMessage & { trackCliDelivery: boolean; shouldTrackCliDelivery: boolean }> = [];
-            for (let i = 0; i < newMessages.length; i += 1) {
-                const message = newMessages[i];
-                const shouldTrackCliDelivery = message.trackCliDelivery && ownerHasReceiptCapableCli;
-                const createdMessage = await tx.sessionMessage.create({
-                    data: {
-                        sessionId,
-                        seq: seqs[i],
-                        content: {
-                            t: 'encrypted',
-                            c: message.content
-                        },
-                        localId: message.localId,
-                        sentBy: userId,
-                        sentByName,
-                    },
-                    select: {
-                        id: true,
-                        seq: true,
-                        content: true,
-                        localId: true,
-                        sentBy: true,
-                        sentByName: true,
-                        createdAt: true,
-                        updatedAt: true
-                    }
-                });
-                if (shouldTrackCliDelivery) {
-                    await tx.sessionMessageDeliveryIssue.create({
-                        data: {
-                            sessionMessageId: createdMessage.id,
-                            status: 'waiting'
-                        }
-                    });
-                }
-                createdMessages.push({
-                    ...createdMessage,
-                    trackCliDelivery: message.trackCliDelivery,
-                    shouldTrackCliDelivery
-                });
-            }
-
-            const responseMessages = [...existing, ...createdMessages].sort((a, b) => a.seq - b.seq);
-
-            return {
-                responseMessages,
-                createdMessages
-            };
-        });
-
-        for (const message of txResult.createdMessages) {
-            const content = message.localId ? contentByLocalId.get(message.localId) : null;
-            if (!content) {
-                continue;
-            }
-
-            const payloadMessage = {
-                ...message,
-                content: { t: 'encrypted', c: content }
-            };
-
-            const emitResult = await eventRouter.emitToSessionSubscribers({
-                ownerId,
+        const existingMessages = await db.sessionMessage.findMany({
+            where: {
                 sessionId,
-                buildPayload: (_uid, seq) => buildNewMessageUpdate(payloadMessage, sessionId, seq, randomKeyNaked(12)),
-                recipientFilter: { type: 'all-interested-in-session', sessionId }
-            });
-
-            if (message.trackCliDelivery && emitResult.ownerDelivery.sessionScoped === 0) {
-                await db.sessionMessageDeliveryIssue.upsert({
-                    where: {
-                        sessionMessageId: message.id
-                    },
-                    create: {
-                        sessionMessageId: message.id,
-                        status: 'error',
-                        reason: 'no_cli_connection'
-                    },
-                    update: {
-                        status: 'error',
-                        reason: 'no_cli_connection'
-                    }
-                });
-
-                await eventRouter.emitEphemeralToSessionSubscribers({
-                    ownerId,
-                    sessionId,
-                    payload: buildMessageDeliveryErrorEphemeral(sessionId, message.id, message.localId ?? null, 'no_cli_connection'),
-                    recipientFilter: { type: 'all-interested-in-session', sessionId }
-                });
-            }
-
-            // Narrow fix: replay only the first message of a newly created
-            // session, and only if no CLI session connection received it live.
-            if (message.seq === 1 && emitResult.ownerDelivery.sessionScoped === 0) {
-                scheduleFirstMessageReplay({
-                    ownerId,
-                    sessionId,
-                    message: payloadMessage
-                });
+                localId: { in: uniqueMessages.map((message) => message.localId) },
+            },
+            select: {
+                id: true,
+                seq: true,
+                localId: true,
+                sentBy: true,
+                sentByName: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+        const existingByLocalId = new Map<string, ExistingSendMessage>();
+        for (const message of existingMessages) {
+            if (message.localId) {
+                existingByLocalId.set(message.localId, message as ExistingSendMessage);
             }
         }
 
+        const responseMessages: ExistingSendMessage[] = [];
+        for (const message of uniqueMessages) {
+            const existing = existingByLocalId.get(message.localId);
+            if (existing) {
+                responseMessages.push(existing);
+                continue;
+            }
+
+            const dispatched = await dispatchSessionMessage({
+                ownerId,
+                sessionId,
+                content: message.content,
+                localId: message.localId,
+                sentBy: userId,
+                sentByName,
+                trackCliDelivery: message.trackCliDelivery,
+            });
+
+            if (dispatched.message.seq === 1 && dispatched.ownerSessionScopedDeliveries === 0) {
+                scheduleFirstMessageReplay({
+                    ownerId,
+                    sessionId,
+                    message: {
+                        ...dispatched.message,
+                        content: {
+                            t: "encrypted",
+                            c: message.content,
+                        },
+                    },
+                });
+            }
+
+            responseMessages.push(dispatched.message);
+        }
+
+        responseMessages.sort((a, b) => a.seq - b.seq);
+
         return reply.send({
-            messages: txResult.responseMessages.map(toSendResponseMessage)
+            messages: responseMessages.map(toSendResponseMessage),
+        });
+    });
+
+    app.get("/v3/sessions/:sessionId/pending-messages", {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                sessionId: z.string(),
+            }),
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+
+        if (!await canSendMessages(userId, sessionId)) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const messages = await listPendingMessages(sessionId);
+        return reply.send({
+            messages: messages.map(toPendingResponseMessage),
+        });
+    });
+
+    app.post("/v3/sessions/:sessionId/send", {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                sessionId: z.string(),
+            }),
+            body: sendMessageBodySchema,
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const { localId, content, trackCliDelivery } = request.body;
+
+        if (!await canSendMessages(userId, sessionId)) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const ownerId = await getSessionOwnerId(sessionId);
+        if (!ownerId) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const existingSentMessage = await findExistingSentMessageByLocalId(sessionId, localId);
+        if (existingSentMessage) {
+            return reply.send({
+                mode: "sent",
+                message: toSendResponseMessage(existingSentMessage),
+            });
+        }
+
+        const sentByName = await getSenderName(userId);
+
+        const hasPending = !!await db.sessionPendingMessage.findFirst({
+            where: {
+                sessionId,
+            },
+            select: {
+                id: true,
+            },
+        });
+
+        const mode = resolveSendMode({
+            hasPending,
+            isThinking: isSessionBusy(sessionId),
+        });
+
+        if (mode === "queued") {
+            const { message: pendingMessage, created } = await enqueuePendingMessage({
+                sessionId,
+                localId,
+                content,
+                sentBy: userId,
+                sentByName,
+                trackCliDelivery,
+            });
+
+            if (created) {
+                await emitPendingUpsert(ownerId, sessionId, pendingMessage);
+            }
+
+            await dispatchNextPendingIfPossible({
+                ownerId,
+                sessionId,
+            });
+
+            return reply.send({
+                mode,
+                pending: toPendingResponseMessage(pendingMessage),
+            });
+        }
+
+        const dispatched = await dispatchSessionMessage({
+            ownerId,
+            sessionId,
+            content,
+            localId,
+            sentBy: userId,
+            sentByName,
+            trackCliDelivery,
+        });
+
+        if (dispatched.message.seq === 1 && dispatched.ownerSessionScopedDeliveries === 0) {
+            scheduleFirstMessageReplay({
+                ownerId,
+                sessionId,
+                message: {
+                    ...dispatched.message,
+                    content: {
+                        t: "encrypted",
+                        c: content,
+                    },
+                },
+            });
+        }
+
+        markDispatched(sessionId);
+
+        return reply.send({
+            mode,
+            message: toSendResponseMessage(dispatched.message),
+        });
+    });
+
+    app.post("/v3/sessions/:sessionId/pending-messages/:pendingId/pin", {
+        preHandler: app.authenticate,
+        schema: {
+            params: pendingMessageParamsSchema,
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId, pendingId } = request.params;
+
+        if (!await canSendMessages(userId, sessionId)) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const ownerId = await getSessionOwnerId(sessionId);
+        if (!ownerId) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const pending = await pinPendingMessage(sessionId, pendingId);
+        if (!pending) {
+            return reply.code(404).send({ error: "Pending message not found" });
+        }
+
+        await emitPendingUpsert(ownerId, sessionId, pending);
+
+        return reply.send({
+            message: toPendingResponseMessage(pending),
+        });
+    });
+
+    app.delete("/v3/sessions/:sessionId/pending-messages/:pendingId", {
+        preHandler: app.authenticate,
+        schema: {
+            params: pendingMessageParamsSchema,
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId, pendingId } = request.params;
+
+        if (!await canSendMessages(userId, sessionId)) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const ownerId = await getSessionOwnerId(sessionId);
+        if (!ownerId) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const pending = await deletePendingMessage(sessionId, pendingId);
+        if (!pending) {
+            return reply.code(404).send({ error: "Pending message not found" });
+        }
+
+        await emitPendingDelete(ownerId, sessionId, pending.id);
+
+        return reply.send({
+            ok: true,
+            pendingId: pending.id,
+        });
+    });
+
+    app.post("/v3/sessions/:sessionId/pending-messages/:pendingId/send-now", {
+        preHandler: app.authenticate,
+        schema: {
+            params: pendingMessageParamsSchema,
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId, pendingId } = request.params;
+
+        if (!await canSendMessages(userId, sessionId)) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const ownerId = await getSessionOwnerId(sessionId);
+        if (!ownerId) {
+            return reply.code(404).send({ error: "Session not found" });
+        }
+
+        const pending = await findPendingMessageById(sessionId, pendingId);
+        if (!pending) {
+            return reply.code(404).send({ error: "Pending message not found" });
+        }
+
+        await deletePendingMessage(sessionId, pendingId);
+        await emitPendingDelete(ownerId, sessionId, pending.id);
+
+        const dispatched = await dispatchSessionMessage({
+            ownerId,
+            sessionId,
+            content: extractEncryptedText(pending.content),
+            localId: pending.localId,
+            sentBy: pending.sentBy,
+            sentByName: pending.sentByName,
+            trackCliDelivery: pending.trackCliDelivery,
+        });
+
+        if (dispatched.message.seq === 1 && dispatched.ownerSessionScopedDeliveries === 0) {
+            scheduleFirstMessageReplay({
+                ownerId,
+                sessionId,
+                message: {
+                    ...dispatched.message,
+                    content: pending.content,
+                },
+            });
+        }
+
+        markDispatched(sessionId);
+
+        return reply.send({
+            mode: "sent",
+            message: toSendResponseMessage(dispatched.message),
         });
     });
 }
