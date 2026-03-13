@@ -551,6 +551,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         return 'claude';
     });
     const lastUsedSessionMode = useSessionModeLastUsed(agentType);
+    const manualPermissionModeByAgentRef = React.useRef<Partial<Record<'claude' | 'codex' | 'gemini', PermissionMode>>>({});
+    const manualModelModeByAgentRef = React.useRef<Partial<Record<'claude' | 'codex' | 'gemini', ModelMode>>>({});
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
         const mode = lastUsedSessionMode?.permissionMode;
 
@@ -568,10 +570,18 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         if (mode && isModelModeForAgent(agentType, mode)) {
             return mode as ModelMode;
         }
-        return 'default';
+        return MODEL_MODE_DEFAULT;
     });
-    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
+    const applyManualPermissionMode = React.useCallback((mode: PermissionMode) => {
+        manualPermissionModeByAgentRef.current[agentType] = mode;
         setPermissionMode(mode);
+    }, [agentType]);
+    const applyManualModelMode = React.useCallback((mode: ModelMode) => {
+        manualModelModeByAgentRef.current[agentType] = mode;
+        setModelMode(mode);
+    }, [agentType]);
+    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
+        applyManualPermissionMode(mode);
         sync.queueSessionModeConfigUpdate({
             agentType,
             permissionMode: mode,
@@ -579,9 +589,9 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             includeSessionEntry: false,
             includeLastUsed: true,
         });
-    }, [agentType, modelMode]);
+    }, [agentType, applyManualPermissionMode, modelMode]);
     const handleModelModeChange = React.useCallback((mode: ModelMode) => {
-        setModelMode(mode);
+        applyManualModelMode(mode);
         sync.queueSessionModeConfigUpdate({
             agentType,
             permissionMode: permissionMode || 'default',
@@ -589,26 +599,38 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             includeSessionEntry: false,
             includeLastUsed: true,
         });
-    }, [agentType, permissionMode]);
+    }, [agentType, applyManualModelMode, permissionMode]);
 
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
         const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
         const validModes = (agentType === 'codex' || agentType === 'gemini') ? validCodexGeminiModes : validClaudeModes;
+        const manualMode = manualPermissionModeByAgentRef.current[agentType];
+        if (manualMode && validModes.includes(manualMode)) {
+            setPermissionMode((prev) => (prev === manualMode ? prev : manualMode));
+            return;
+        }
+
         const savedMode = lastUsedSessionMode?.permissionMode;
         if (savedMode && validModes.includes(savedMode)) {
-            setPermissionMode(savedMode);
+            setPermissionMode((prev) => (prev === savedMode ? prev : savedMode));
         } else {
-            setPermissionMode('default');
+            setPermissionMode((prev) => (prev === 'default' ? prev : 'default'));
         }
     }, [agentType, lastUsedSessionMode?.permissionMode]);
 
     React.useEffect(() => {
+        const manualMode = manualModelModeByAgentRef.current[agentType];
+        if (manualMode && isModelModeForAgent(agentType, manualMode)) {
+            setModelMode((prev) => (prev === manualMode ? prev : manualMode));
+            return;
+        }
+
         const savedMode = lastUsedSessionMode?.modelMode;
         if (savedMode && isModelModeForAgent(agentType, savedMode)) {
-            setModelMode(savedMode as ModelMode);
+            setModelMode((prev) => (prev === savedMode ? prev : (savedMode as ModelMode)));
         } else {
-            setModelMode('default');
+            setModelMode((prev) => (prev === MODEL_MODE_DEFAULT ? prev : MODEL_MODE_DEFAULT));
         }
     }, [agentType, lastUsedSessionMode?.modelMode]);
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {

@@ -280,22 +280,6 @@ export const SettingsSchema = z.object({
         path: z.string()
     })).describe('Last 10 machine-path combinations, ordered by most recent first'),
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
-    lastUsedPermissionMode: z.union([
-        z.string().nullable(),
-        z.object({
-            claude: z.string().optional(),
-            codex: z.string().optional(),
-            gemini: z.string().optional(),
-        }),
-    ]).describe('Last selected permission mode for new sessions, per agent type'),
-    lastUsedModelMode: z.union([
-        z.string().nullable(),
-        z.object({
-            claude: z.string().optional(),
-            codex: z.string().optional(),
-            gemini: z.string().optional(),
-        }),
-    ]).describe('Last selected model mode for new sessions, per agent type'),
     // Profile management settings
     profiles: z.array(AIBackendProfileSchema).describe('User-defined profiles for AI backend and environment variables'),
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
@@ -361,8 +345,6 @@ export const settingsDefaults: Settings = {
     preferredLanguage: null,
     recentMachinePaths: [],
     lastUsedAgent: null,
-    lastUsedPermissionMode: {},
-    lastUsedModelMode: {},
     // Profile management defaults
     profiles: [],
     lastUsedProfile: null,

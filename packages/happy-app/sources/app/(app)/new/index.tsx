@@ -44,7 +44,7 @@ import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
-import { isModelModeForAgent } from '@/constants/modelCatalog';
+import { MODEL_MODE_DEFAULT, isModelModeForAgent } from '@/constants/modelCatalog';
 import { FolderPickerSheet } from '@/components/FolderPickerSheet';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 
@@ -333,6 +333,8 @@ function NewSessionWizard() {
         return 'claude';
     });
     const lastUsedSessionMode = useSessionModeLastUsed(agentType);
+    const manualPermissionModeByAgentRef = React.useRef<Partial<Record<'claude' | 'codex' | 'gemini', PermissionMode>>>({});
+    const manualModelModeByAgentRef = React.useRef<Partial<Record<'claude' | 'codex' | 'gemini', ModelMode>>>({});
 
     // Agent cycling handler (for cycling through claude -> codex -> gemini)
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
@@ -378,8 +380,16 @@ function NewSessionWizard() {
         if (mode && isModelModeForAgent(agentType, mode)) {
             return mode as ModelMode;
         }
-        return 'default';
+        return MODEL_MODE_DEFAULT;
     });
+    const applyManualPermissionMode = React.useCallback((mode: PermissionMode) => {
+        manualPermissionModeByAgentRef.current[agentType] = mode;
+        setPermissionMode(mode);
+    }, [agentType]);
+    const applyManualModelMode = React.useCallback((mode: ModelMode) => {
+        manualModelModeByAgentRef.current[agentType] = mode;
+        setModelMode(mode);
+    }, [agentType]);
 
     // Session details state
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
@@ -401,18 +411,18 @@ function NewSessionWizard() {
     });
 
     const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
-        setPermissionMode(mode);
+        applyManualPermissionMode(mode);
         sync.queueSessionModeConfigUpdate({
             agentType,
             permissionMode: mode,
-            modelMode: modelMode || 'default',
+            modelMode: modelMode || MODEL_MODE_DEFAULT,
             includeSessionEntry: false,
             includeLastUsed: true,
         });
-    }, [agentType, modelMode]);
+    }, [agentType, applyManualPermissionMode, modelMode]);
 
     const handleModelModeChange = React.useCallback((mode: ModelMode) => {
-        setModelMode(mode);
+        applyManualModelMode(mode);
         sync.queueSessionModeConfigUpdate({
             agentType,
             permissionMode: permissionMode || 'default',
@@ -420,7 +430,7 @@ function NewSessionWizard() {
             includeSessionEntry: false,
             includeLastUsed: true,
         });
-    }, [agentType, permissionMode]);
+    }, [agentType, applyManualModelMode, permissionMode]);
 
     //
     // Path selection
@@ -925,32 +935,44 @@ function NewSessionWizard() {
             }
             // Set permission mode from profile's default
             if (profile.defaultPermissionMode) {
-                setPermissionMode(profile.defaultPermissionMode as PermissionMode);
+                applyManualPermissionMode(profile.defaultPermissionMode as PermissionMode);
             }
         }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini]);
+    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, applyManualPermissionMode]);
 
     // Restore saved permission mode when agent type changes
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
         const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
         const validModes = (agentType === 'codex' || agentType === 'gemini') ? validCodexGeminiModes : validClaudeModes;
+        const manualMode = manualPermissionModeByAgentRef.current[agentType];
+
+        if (manualMode && validModes.includes(manualMode)) {
+            setPermissionMode((prev) => (prev === manualMode ? prev : manualMode));
+            return;
+        }
 
         const savedMode = lastUsedSessionMode?.permissionMode;
         if (savedMode && validModes.includes(savedMode)) {
-            setPermissionMode(savedMode);
+            setPermissionMode((prev) => (prev === savedMode ? prev : savedMode));
         } else {
-            setPermissionMode('default');
+            setPermissionMode((prev) => (prev === 'default' ? prev : 'default'));
         }
     }, [agentType, lastUsedSessionMode?.permissionMode]);
 
     // Restore saved model mode when agent type changes
     React.useEffect(() => {
+        const manualMode = manualModelModeByAgentRef.current[agentType];
+        if (manualMode && isModelModeForAgent(agentType, manualMode)) {
+            setModelMode((prev) => (prev === manualMode ? prev : manualMode));
+            return;
+        }
+
         const savedMode = lastUsedSessionMode?.modelMode;
         if (savedMode && isModelModeForAgent(agentType, savedMode)) {
-            setModelMode(savedMode as ModelMode);
+            setModelMode((prev) => (prev === savedMode ? prev : (savedMode as ModelMode)));
         } else {
-            setModelMode('default');
+            setModelMode((prev) => (prev === MODEL_MODE_DEFAULT ? prev : MODEL_MODE_DEFAULT));
         }
     }, [agentType, lastUsedSessionMode?.modelMode]);
 
@@ -987,9 +1009,9 @@ function NewSessionWizard() {
     }, [scrollToSection]);
 
     const handleAgentInputPermissionChange = React.useCallback((mode: PermissionMode) => {
-        setPermissionMode(mode);
+        applyManualPermissionMode(mode);
         scrollToSection(permissionSectionRef);
-    }, [scrollToSection]);
+    }, [scrollToSection, applyManualPermissionMode]);
 
     const handleAgentInputAgentClick = React.useCallback(() => {
         scrollToSection(profileSectionRef); // Agent tied to profile section
@@ -1350,14 +1372,14 @@ function NewSessionWizard() {
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                if (modelMode && modelMode !== 'default') {
+                if (modelMode && modelMode !== MODEL_MODE_DEFAULT) {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode);
                 }
                 sync.queueSessionModeConfigUpdate({
                     sessionId: result.sessionId,
                     agentType,
                     permissionMode,
-                    modelMode: modelMode || 'default',
+                    modelMode: modelMode || MODEL_MODE_DEFAULT,
                     includeSessionEntry: true,
                     includeLastUsed: true,
                 });
@@ -2258,7 +2280,7 @@ function NewSessionWizard() {
                                             />
                                         }
                                         rightElement={null}
-                                        onPress={() => setPermissionMode(option.value)}
+                                        onPress={() => handlePermissionModeChange(option.value)}
                                         showChevron={false}
                                         selected={permissionMode === option.value}
                                         hideSelectedCheckmark={true}

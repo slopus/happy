@@ -1714,6 +1714,7 @@ class Sync {
         let pending = this.pendingSessionModePatches.splice(0);
         const maxRetries = 3;
         let retryCount = 0;
+        let didWriteSuccessfully = false;
 
         if (pending.length > 0) {
             let baseVersion = storage.getState().sessionModeConfigVersion;
@@ -1733,6 +1734,7 @@ class Sync {
                     const nextVersion = result.results[0]?.version ?? baseVersion;
                     storage.getState().applySessionModeConfigFromCloud(mergedDoc, nextVersion);
                     pending = [];
+                    didWriteSuccessfully = true;
                     break;
                 }
 
@@ -1755,6 +1757,10 @@ class Sync {
                 this.pendingSessionModePatches = [...pending, ...this.pendingSessionModePatches];
                 throw new Error(`Session mode config sync failed after ${maxRetries} retries due to version conflicts`);
             }
+        }
+
+        if (didWriteSuccessfully) {
+            return;
         }
 
         const latest = await kvGet(this.credentials, SESSION_MODE_CONFIG_KV_KEY);

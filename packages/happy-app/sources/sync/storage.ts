@@ -998,11 +998,7 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             if (!sessionsChanged && !sharedChanged && state.sessionModeConfigVersion === version) {
-                return {
-                    ...state,
-                    sessionModeConfig: doc,
-                    sessionModeConfigVersion: version,
-                };
+                return state;
             }
 
             const nextSessions = sessionsChanged ? updatedSessions : state.sessions;
@@ -1297,13 +1293,23 @@ export const storage = create<StorageState>()((set, get) => {
             const s = get();
             const session = s.sessions[sessionId] ?? s.sharedSessions[sessionId];
             if (!session) return;
-            const agentType = resolveSessionModeAgentType(session.metadata?.flavor);
             const normalizedMode = mode || 'default';
+            // Capture data derived from the latest state inside Zustand's synchronous set() callback,
+            // then enqueue sync with that exact snapshot after set() returns.
+            const queuedPatchRef: {
+                current:
+                | {
+                    agentType: SessionModeAgentType;
+                    permissionMode: PermissionMode;
+                }
+                | null;
+            } = { current: null };
 
             set((state) => {
                 const isShared = sessionId in state.sharedSessions;
                 const existing = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
                 if (!existing) return state;
+                const agentType = resolveSessionModeAgentType(existing.metadata?.flavor);
 
                 const updatedSession = { ...existing, modelMode: normalizedMode };
                 const updatedConfig = applySessionModeConfigPatch(state.sessionModeConfig, {
@@ -1315,6 +1321,10 @@ export const storage = create<StorageState>()((set, get) => {
                     includeSessionEntry: true,
                     includeLastUsed: false,
                 });
+                queuedPatchRef.current = {
+                    agentType,
+                    permissionMode: (existing.permissionMode || 'default') as PermissionMode,
+                };
 
                 if (isShared) {
                     return {
@@ -1329,11 +1339,13 @@ export const storage = create<StorageState>()((set, get) => {
                     sessions: { ...state.sessions, [sessionId]: updatedSession }
                 };
             });
+            const queuedPatch = queuedPatchRef.current;
+            if (!queuedPatch) return;
 
             sync.queueSessionModeConfigUpdate({
                 sessionId,
-                agentType,
-                permissionMode: session.permissionMode || 'default',
+                agentType: queuedPatch.agentType,
+                permissionMode: queuedPatch.permissionMode,
                 modelMode: normalizedMode,
                 includeSessionEntry: true,
                 includeLastUsed: false,
@@ -1481,17 +1493,12 @@ export const storage = create<StorageState>()((set, get) => {
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions, state.sharedSessions);
-            const filteredSessionModeConfig: SessionModeConfigDocument = {
-                ...state.sessionModeConfig,
-                sessions: state.sessionModeConfig.sessions.filter((entry) => entry.sessionId !== sessionId),
-            };
             
             return {
                 ...state,
                 sessions: remainingSessions,
                 sessionMessages: remainingSessionMessages,
                 sessionGitStatus: remainingGitStatus,
-                sessionModeConfig: filteredSessionModeConfig,
                 sessionListViewData
             };
         }),
