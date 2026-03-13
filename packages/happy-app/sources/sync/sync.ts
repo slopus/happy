@@ -839,6 +839,9 @@ class Sync {
         }
 
         const { localId, encryptedRawRecord, normalizedMessage } = prepared;
+        if (!this.credentials) {
+            return { success: false, localId, error: 'Not authenticated' };
+        }
         if (onBeforeApply) {
             this.pendingSendCallbacks.set(localId, onBeforeApply);
         }

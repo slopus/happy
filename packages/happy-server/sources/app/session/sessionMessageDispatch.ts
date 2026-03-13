@@ -11,7 +11,6 @@ export type DispatchSessionMessageParams = {
     sentBy: string | null;
     sentByName: string | null;
     trackCliDelivery: boolean;
-    shouldTrackCliDelivery?: boolean;
 };
 
 export type DispatchedSessionMessage = {
@@ -39,11 +38,10 @@ function hasReceiptCapableCliConnection(userId: string, sessionId: string): bool
 
 export async function dispatchSessionMessage(params: DispatchSessionMessageParams): Promise<{
     message: DispatchedSessionMessage;
-    shouldTrackCliDelivery: boolean;
     ownerSessionScopedDeliveries: number;
 }> {
-    const shouldTrackCliDelivery = params.shouldTrackCliDelivery
-        ?? (params.trackCliDelivery && hasReceiptCapableCliConnection(params.ownerId, params.sessionId));
+    const shouldTrackCliDelivery = params.trackCliDelivery
+        && hasReceiptCapableCliConnection(params.ownerId, params.sessionId);
 
     const createdMessage = await db.$transaction(async (tx) => {
         const [seq] = await allocateSessionSeqBatch(params.sessionId, 1, tx);
@@ -120,7 +118,6 @@ export async function dispatchSessionMessage(params: DispatchSessionMessageParam
 
     return {
         message: createdMessage,
-        shouldTrackCliDelivery,
         ownerSessionScopedDeliveries: emitResult.ownerDelivery.sessionScoped,
     };
 }

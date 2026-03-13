@@ -142,44 +142,61 @@ export async function pinPendingMessage(sessionId: string, pendingId: string): P
 }
 
 export async function deletePendingMessage(sessionId: string, pendingId: string): Promise<PendingMessageRecord | null> {
-    const message = await findPendingMessageById(sessionId, pendingId);
-    if (!message) {
-        return null;
-    }
+    return db.$transaction(async (tx) => {
+        const message = await tx.sessionPendingMessage.findUnique({
+            where: {
+                id: pendingId,
+            },
+            select: pendingMessageSelect,
+        });
 
-    const deleted = await db.sessionPendingMessage.delete({
-        where: {
-            id: pendingId,
-        },
-        select: pendingMessageSelect,
+        if (!message || message.sessionId !== sessionId) {
+            return null;
+        }
+
+        const deleted = await tx.sessionPendingMessage.deleteMany({
+            where: {
+                id: pendingId,
+                sessionId,
+            },
+        });
+
+        if (deleted.count === 0) {
+            return null;
+        }
+
+        return message as PendingMessageRecord;
     });
-
-    return deleted as PendingMessageRecord;
 }
 
 export async function takeNextPendingMessageForDispatch(sessionId: string): Promise<PendingMessageRecord | null> {
-    const candidate = await db.sessionPendingMessage.findFirst({
-        where: {
-            sessionId,
-        },
-        orderBy: [
-            { pinnedAt: "desc" },
-            { createdAt: "asc" },
-        ],
-        select: pendingMessageSelect,
+    return db.$transaction(async (tx) => {
+        const candidate = await tx.sessionPendingMessage.findFirst({
+            where: {
+                sessionId,
+            },
+            orderBy: [
+                { pinnedAt: "desc" },
+                { createdAt: "asc" },
+            ],
+            select: pendingMessageSelect,
+        });
+
+        if (!candidate) {
+            return null;
+        }
+
+        const deleted = await tx.sessionPendingMessage.deleteMany({
+            where: {
+                id: candidate.id,
+                sessionId,
+            },
+        });
+
+        if (deleted.count === 0) {
+            return null;
+        }
+
+        return candidate as PendingMessageRecord;
     });
-
-    if (!candidate) {
-        return null;
-    }
-
-    const deleted = await db.sessionPendingMessage.delete({
-        where: {
-            id: candidate.id,
-        },
-        select: pendingMessageSelect,
-    });
-
-    return deleted as PendingMessageRecord;
 }
-

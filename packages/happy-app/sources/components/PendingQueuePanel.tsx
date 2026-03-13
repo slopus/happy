@@ -184,10 +184,10 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     sendNowText: {
-        color: '#007AFF',
+        color: theme.colors.textLink,
     },
     pinText: {
-        color: '#5856D6',
+        color: theme.colors.status.connecting,
     },
     deleteText: {
         color: theme.colors.textDestructive,

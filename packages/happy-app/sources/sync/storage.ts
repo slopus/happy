@@ -944,7 +944,10 @@ export const storage = create<StorageState>()((set, get) => {
             const existing = state.sessionPendingMessages[sessionId] ?? [];
             const unchanged = (
                 existing.length === sorted.length &&
-                existing.every((item, index) => item === sorted[index])
+                existing.every((item, index) => (
+                    item.id === sorted[index]?.id &&
+                    item.updatedAt === sorted[index]?.updatedAt
+                ))
             );
 
             if (unchanged) {

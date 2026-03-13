@@ -1167,6 +1167,28 @@ describe("v3SessionRoutes", () => {
         expect(state.pendingMessages.map((message) => message.id)).toEqual([p1.id]);
     });
 
+    it("send-now returns 404 when pending item is consumed concurrently", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        const pending = seedPendingMessage({
+            sessionId: "session-1",
+            localId: "pending-race",
+            content: { t: "encrypted", c: "pending-content-race" },
+        });
+
+        dbMock.sessionPendingMessage.deleteMany.mockImplementationOnce(async () => ({ count: 0 }));
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: `/v3/sessions/session-1/pending-messages/${pending.id}/send-now`,
+            headers: { "x-user-id": "user-1" },
+        });
+
+        expect(response.statusCode).toBe(404);
+        expect(state.messages).toHaveLength(0);
+        expect(state.pendingMessages.map((message) => message.id)).toEqual([pending.id]);
+    });
+
     it("pin and delete pending message endpoints update queue", async () => {
         seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
         const pending = seedPendingMessage({

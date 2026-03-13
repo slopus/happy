@@ -8,7 +8,6 @@ import { isSessionBusy, markDispatched } from "@/app/presence/sessionTurnRuntime
 import {
     deletePendingMessage,
     enqueuePendingMessage,
-    findPendingMessageById,
     listPendingMessages,
     pinPendingMessage,
     type PendingMessageRecord,
@@ -488,6 +487,9 @@ export function v3SessionRoutes(app: Fastify) {
             });
         }
 
+        // Direct send doesn't pass through the auto-dispatch worker, but we still
+        // mark the runtime as awaiting turn start so subsequent /send calls queue
+        // until we observe the next thinking=true heartbeat.
         markDispatched(sessionId);
 
         return reply.send({
@@ -575,12 +577,10 @@ export function v3SessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: "Session not found" });
         }
 
-        const pending = await findPendingMessageById(sessionId, pendingId);
+        const pending = await deletePendingMessage(sessionId, pendingId);
         if (!pending) {
             return reply.code(404).send({ error: "Pending message not found" });
         }
-
-        await deletePendingMessage(sessionId, pendingId);
         await emitPendingDelete(ownerId, sessionId, pending.id);
 
         const dispatched = await dispatchSessionMessage({

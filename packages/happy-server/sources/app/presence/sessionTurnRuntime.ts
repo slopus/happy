@@ -5,6 +5,17 @@ export type SessionTurnState = {
     lastHeartbeatAt: number;
 };
 
+/**
+ * Per-session runtime state machine:
+ * - idle (thinking=false, awaitingTurnStart=false, dispatching=false)
+ * - dispatching (beginDispatch -> dispatching=true)
+ * - awaitingTurnStart (markDispatched after enqueue/send-now/direct-send)
+ * - thinking (markTurnStarted / thinking heartbeat true)
+ * - back to idle (thinking heartbeat false and no awaiting/dispatching)
+ *
+ * Note: this is an in-memory coordination guard for a single server process.
+ * Cross-process ordering must be enforced by database-side operations.
+ */
 const runtimeBySession = new Map<string, SessionTurnState>();
 
 function ensureSessionState(sessionId: string): SessionTurnState {
