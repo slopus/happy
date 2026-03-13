@@ -8,7 +8,7 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { PermissionModeSelector, PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
+import { useAllMachines, useSessionModeLastUsed, useSessions, useSetting, storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariables } from '@/sync/settings';
 import { Modal } from '@/modal';
@@ -538,8 +538,6 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const sessions = useSessions();
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
-    const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
-    const lastUsedModelMode = useSetting('lastUsedModelMode');
     const profiles = useSetting('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
 
@@ -552,11 +550,9 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
         return 'claude';
     });
+    const lastUsedSessionMode = useSessionModeLastUsed(agentType);
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
-        const saved = lastUsedPermissionMode;
-        const mode = typeof saved === 'object' && saved !== null
-            ? (saved as Record<string, string>)[agentType]
-            : typeof saved === 'string' ? saved : undefined;
+        const mode = lastUsedSessionMode?.permissionMode;
 
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
         const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
@@ -568,21 +564,53 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         return 'default';
     });
     const [modelMode, setModelMode] = useState<ModelMode>(() => {
-        const saved = lastUsedModelMode;
-        const mode = typeof saved === 'object' && saved !== null
-            ? (saved as Record<string, string>)[agentType]
-            : typeof saved === 'string' ? saved : undefined;
+        const mode = lastUsedSessionMode?.modelMode;
         if (mode && isModelModeForAgent(agentType, mode)) {
             return mode as ModelMode;
         }
         return 'default';
     });
+    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
+        setPermissionMode(mode);
+        sync.queueSessionModeConfigUpdate({
+            agentType,
+            permissionMode: mode,
+            modelMode: modelMode || MODEL_MODE_DEFAULT,
+            includeSessionEntry: false,
+            includeLastUsed: true,
+        });
+    }, [agentType, modelMode]);
     const handleModelModeChange = React.useCallback((mode: ModelMode) => {
         setModelMode(mode);
-        const prev = storage.getState().settings.lastUsedModelMode;
-        const prevObj = typeof prev === 'object' && prev !== null ? prev as Record<string, string> : {};
-        sync.applySettings({ lastUsedModelMode: { ...prevObj, [agentType]: mode } });
-    }, [agentType]);
+        sync.queueSessionModeConfigUpdate({
+            agentType,
+            permissionMode: permissionMode || 'default',
+            modelMode: mode,
+            includeSessionEntry: false,
+            includeLastUsed: true,
+        });
+    }, [agentType, permissionMode]);
+
+    React.useEffect(() => {
+        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
+        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const validModes = (agentType === 'codex' || agentType === 'gemini') ? validCodexGeminiModes : validClaudeModes;
+        const savedMode = lastUsedSessionMode?.permissionMode;
+        if (savedMode && validModes.includes(savedMode)) {
+            setPermissionMode(savedMode);
+        } else {
+            setPermissionMode('default');
+        }
+    }, [agentType, lastUsedSessionMode?.permissionMode]);
+
+    React.useEffect(() => {
+        const savedMode = lastUsedSessionMode?.modelMode;
+        if (savedMode && isModelModeForAgent(agentType, savedMode)) {
+            setModelMode(savedMode as ModelMode);
+        } else {
+            setModelMode('default');
+        }
+    }, [agentType, lastUsedSessionMode?.modelMode]);
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
         return lastUsedProfile;
     });
@@ -1668,7 +1696,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                             color={theme.colors.button.primary.background}
                                         />
                                     ) : null}
-                                    onPress={() => setPermissionMode(option.value as PermissionMode)}
+                                    onPress={() => handlePermissionModeChange(option.value as PermissionMode)}
                                     showChevron={false}
                                     selected={permissionMode === option.value}
                                     showDivider={index < array.length - 1}

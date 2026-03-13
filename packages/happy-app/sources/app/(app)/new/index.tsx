@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
 import Constants from 'expo-constants';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
+import { useAllMachines, storage, useSessionModeLastUsed, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
@@ -299,8 +299,6 @@ function NewSessionWizard() {
     // Control A (false): Simpler AgentInput-driven layout
     // Variant B (true): Enhanced profile-first wizard with sections
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
-    const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
-    const lastUsedModelMode = useSetting('lastUsedModelMode');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
     const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
@@ -334,6 +332,7 @@ function NewSessionWizard() {
         }
         return 'claude';
     });
+    const lastUsedSessionMode = useSessionModeLastUsed(agentType);
 
     // Agent cycling handler (for cycling through claude -> codex -> gemini)
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
@@ -358,11 +357,7 @@ function NewSessionWizard() {
     const addDirBranchResolveRef = React.useRef<((value: string | undefined) => void) | null>(null);
     const folderPickerRef = React.useRef<BottomSheetModal>(null);
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        // Support per-agent object format and legacy string format
-        const saved = lastUsedPermissionMode;
-        const mode = typeof saved === 'object' && saved !== null
-            ? (saved as Record<string, string>)[agentType]
-            : typeof saved === 'string' ? saved : undefined;
+        const mode = lastUsedSessionMode?.permissionMode;
 
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo'];
         const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
@@ -379,11 +374,7 @@ function NewSessionWizard() {
     // A duplicate unconditional reset here was removed to prevent race conditions.
 
     const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-        // Support per-agent object format and legacy string format
-        const saved = lastUsedModelMode;
-        const mode = typeof saved === 'object' && saved !== null
-            ? (saved as Record<string, string>)[agentType]
-            : typeof saved === 'string' ? saved : undefined;
+        const mode = lastUsedSessionMode?.modelMode;
         if (mode && isModelModeForAgent(agentType, mode)) {
             return mode as ModelMode;
         }
@@ -411,19 +402,25 @@ function NewSessionWizard() {
 
     const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
         setPermissionMode(mode);
-        // Save the new selection immediately, per agent type
-        const prev = storage.getState().settings.lastUsedPermissionMode;
-        const prevObj = typeof prev === 'object' && prev !== null ? prev as Record<string, string> : {};
-        sync.applySettings({ lastUsedPermissionMode: { ...prevObj, [agentType]: mode } });
-    }, [agentType]);
+        sync.queueSessionModeConfigUpdate({
+            agentType,
+            permissionMode: mode,
+            modelMode: modelMode || 'default',
+            includeSessionEntry: false,
+            includeLastUsed: true,
+        });
+    }, [agentType, modelMode]);
 
     const handleModelModeChange = React.useCallback((mode: ModelMode) => {
         setModelMode(mode);
-        // Save the new selection immediately, per agent type
-        const prev = storage.getState().settings.lastUsedModelMode;
-        const prevObj = typeof prev === 'object' && prev !== null ? prev as Record<string, string> : {};
-        sync.applySettings({ lastUsedModelMode: { ...prevObj, [agentType]: mode } });
-    }, [agentType]);
+        sync.queueSessionModeConfigUpdate({
+            agentType,
+            permissionMode: permissionMode || 'default',
+            modelMode: mode,
+            includeSessionEntry: false,
+            includeLastUsed: true,
+        });
+    }, [agentType, permissionMode]);
 
     //
     // Path selection
@@ -939,27 +936,23 @@ function NewSessionWizard() {
         const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
         const validModes = (agentType === 'codex' || agentType === 'gemini') ? validCodexGeminiModes : validClaudeModes;
 
-        const saved = storage.getState().settings.lastUsedPermissionMode;
-        const savedObj = typeof saved === 'object' && saved !== null ? saved as Record<string, string> : {};
-        const savedMode = savedObj[agentType];
-        if (savedMode && validModes.includes(savedMode as PermissionMode)) {
-            setPermissionMode(savedMode as PermissionMode);
+        const savedMode = lastUsedSessionMode?.permissionMode;
+        if (savedMode && validModes.includes(savedMode)) {
+            setPermissionMode(savedMode);
         } else {
             setPermissionMode('default');
         }
-    }, [agentType]);
+    }, [agentType, lastUsedSessionMode?.permissionMode]);
 
     // Restore saved model mode when agent type changes
     React.useEffect(() => {
-        const saved = storage.getState().settings.lastUsedModelMode;
-        const savedObj = typeof saved === 'object' && saved !== null ? saved as Record<string, string> : {};
-        const savedMode = savedObj[agentType];
+        const savedMode = lastUsedSessionMode?.modelMode;
         if (savedMode && isModelModeForAgent(agentType, savedMode)) {
             setModelMode(savedMode as ModelMode);
         } else {
             setModelMode('default');
         }
-    }, [agentType]);
+    }, [agentType, lastUsedSessionMode?.modelMode]);
 
     // Scroll to section helpers - for AgentInput button clicks
     const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
@@ -1294,13 +1287,10 @@ function NewSessionWizard() {
 
             // Save settings
             const updatedPaths = [{ machineId: selectedMachineId, path: selectedPath }, ...recentMachinePaths.filter(rp => rp.machineId !== selectedMachineId)].slice(0, 10);
-            const prevPerm = storage.getState().settings.lastUsedPermissionMode;
-            const prevPermObj = typeof prevPerm === 'object' && prevPerm !== null ? prevPerm as Record<string, string> : {};
             sync.applySettings({
                 recentMachinePaths: updatedPaths,
                 lastUsedAgent: agentType,
                 lastUsedProfile: selectedProfileId,
-                lastUsedPermissionMode: { ...prevPermObj, [agentType]: permissionMode },
             });
 
             // Get environment variables from selected profile
@@ -1363,6 +1353,14 @@ function NewSessionWizard() {
                 if (modelMode && modelMode !== 'default') {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode);
                 }
+                sync.queueSessionModeConfigUpdate({
+                    sessionId: result.sessionId,
+                    agentType,
+                    permissionMode,
+                    modelMode: modelMode || 'default',
+                    includeSessionEntry: true,
+                    includeLastUsed: true,
+                });
 
                 // Send initial message if provided
                 if (promptToSend || images.length > 0) {

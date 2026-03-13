@@ -50,6 +50,17 @@ import {
 import { resolveModelSelectionForFlavor } from '@/constants/modelCatalog';
 import { sessionUpdateMetadataFields } from './ops';
 import { shouldInvalidateGitStatusOnActivityTransition } from './gitStatusRefreshPolicy';
+import { kvGet, kvMutate } from './apiKv';
+import {
+    SESSION_MODE_CONFIG_KV_KEY,
+    applySessionModeConfigPatches,
+    createEmptySessionModeConfig,
+    decodeSessionModeConfigValue,
+    encodeSessionModeConfigValue,
+    normalizeSessionModeConfig,
+    type SessionModeAgentType,
+    type SessionModeConfigPatch,
+} from './sessionModeConfig';
 
 type PermissionMode = NonNullable<Session['permissionMode']>;
 
@@ -137,6 +148,7 @@ class Sync {
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
     private settingsSync: InvalidateSync;
+    private sessionModeConfigSync: InvalidateSync;
     private profileSync: InvalidateSync;
     private machinesSync: InvalidateSync;
     private pushTokenSync: InvalidateSync;
@@ -151,6 +163,7 @@ class Sync {
     private openClawMachineDataKeys = new Map<string, Uint8Array>(); // Store OpenClaw machine data encryption keys
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
+    private pendingSessionModePatches: SessionModeConfigPatch[] = [];
 
     // Track which session the user is currently viewing
     private viewingSessionId: string | null = null;
@@ -162,6 +175,7 @@ class Sync {
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
         this.settingsSync = new InvalidateSync(this.syncSettings);
+        this.sessionModeConfigSync = new InvalidateSync(this.syncSessionModeConfig);
         this.profileSync = new InvalidateSync(this.fetchProfile);
         this.machinesSync = new InvalidateSync(this.fetchMachines);
         this.nativeUpdateSync = new InvalidateSync(this.fetchNativeUpdate);
@@ -265,6 +279,7 @@ class Sync {
 
         // Await settings sync to have fresh settings
         await this.settingsSync.awaitQueue();
+        await this.sessionModeConfigSync.awaitQueue();
 
         // Await profile sync to have fresh profile
         await this.profileSync.awaitQueue();
@@ -317,6 +332,7 @@ class Sync {
         log.log('🔄 #init: Invalidating all syncs');
         this.sessionsSync.invalidate();
         this.settingsSync.invalidate();
+        this.sessionModeConfigSync.invalidate();
         this.profileSync.invalidate();
         this.machinesSync.invalidate();
         this.openClawMachinesSync.invalidate();
@@ -650,6 +666,34 @@ class Sync {
 
         // Invalidate settings sync
         this.settingsSync.invalidate();
+    }
+
+    queueSessionModeConfigUpdate = (params: {
+        sessionId?: string;
+        permissionMode: PermissionMode;
+        modelMode: string;
+        agentType: SessionModeAgentType;
+        includeSessionEntry: boolean;
+        includeLastUsed: boolean;
+        updatedAt?: number;
+        applyLocalPatch?: boolean;
+    }) => {
+        const patch: SessionModeConfigPatch = {
+            sessionId: params.sessionId,
+            permissionMode: params.permissionMode,
+            modelMode: params.modelMode || 'default',
+            agentType: params.agentType,
+            includeSessionEntry: params.includeSessionEntry,
+            includeLastUsed: params.includeLastUsed,
+            updatedAt: params.updatedAt ?? Date.now(),
+        };
+
+        if (params.applyLocalPatch !== false) {
+            storage.getState().applySessionModeConfigPatchLocal(patch);
+        }
+
+        this.pendingSessionModePatches.push(patch);
+        this.sessionModeConfigSync.invalidate();
     }
 
     refreshProfile = async () => {
@@ -1664,6 +1708,64 @@ class Sync {
         }
     }
 
+    private syncSessionModeConfig = async () => {
+        if (!this.credentials) return;
+
+        let pending = this.pendingSessionModePatches.splice(0);
+        const maxRetries = 3;
+        let retryCount = 0;
+
+        if (pending.length > 0) {
+            let baseVersion = storage.getState().sessionModeConfigVersion;
+            let baseDoc = normalizeSessionModeConfig(storage.getState().sessionModeConfig);
+
+            while (retryCount < maxRetries) {
+                const mergedDoc = applySessionModeConfigPatches(baseDoc, pending);
+                const value = encodeSessionModeConfigValue(mergedDoc);
+
+                const result = await kvMutate(this.credentials, [{
+                    key: SESSION_MODE_CONFIG_KV_KEY,
+                    value,
+                    version: baseVersion,
+                }]);
+
+                if (result.success) {
+                    const nextVersion = result.results[0]?.version ?? baseVersion;
+                    storage.getState().applySessionModeConfigFromCloud(mergedDoc, nextVersion);
+                    pending = [];
+                    break;
+                }
+
+                const mismatch = result.errors.find(e => e.key === SESSION_MODE_CONFIG_KV_KEY);
+                if (!mismatch) {
+                    this.pendingSessionModePatches = [...pending, ...this.pendingSessionModePatches];
+                    throw new Error('Failed to update session mode config: missing mismatch payload');
+                }
+
+                baseVersion = mismatch.version;
+                baseDoc = mismatch.value
+                    ? decodeSessionModeConfigValue(mismatch.value)
+                    : createEmptySessionModeConfig();
+
+                storage.getState().applySessionModeConfigFromCloud(baseDoc, baseVersion);
+                retryCount += 1;
+            }
+
+            if (pending.length > 0) {
+                this.pendingSessionModePatches = [...pending, ...this.pendingSessionModePatches];
+                throw new Error(`Session mode config sync failed after ${maxRetries} retries due to version conflicts`);
+            }
+        }
+
+        const latest = await kvGet(this.credentials, SESSION_MODE_CONFIG_KV_KEY);
+        if (!latest) {
+            storage.getState().applySessionModeConfigFromCloud(createEmptySessionModeConfig(), -1);
+            return;
+        }
+        const doc = decodeSessionModeConfigValue(latest.value);
+        storage.getState().applySessionModeConfigFromCloud(doc, latest.version);
+    }
+
     private syncSettings = async () => {
         if (!this.credentials) return;
 
@@ -2350,6 +2452,14 @@ class Sync {
                     console.error('❌ Failed to process settings update:', error);
                     // Don't crash on settings sync errors, just log
                 }
+            }
+        } else if (updateData.body.t === 'kv-batch-update') {
+            const change = updateData.body.changes.find((item) => item.key === SESSION_MODE_CONFIG_KV_KEY);
+            if (change) {
+                const doc = change.value
+                    ? decodeSessionModeConfigValue(change.value)
+                    : createEmptySessionModeConfig();
+                storage.getState().applySessionModeConfigFromCloud(doc, change.version);
             }
         } else if (updateData.body.t === 'new-machine') {
             // Re-fetch all machines to pick up the newly registered device

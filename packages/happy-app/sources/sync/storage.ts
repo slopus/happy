@@ -9,7 +9,7 @@ import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Profile } from "./profile";
 import { UserProfile } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadDooTaskProfile, saveDooTaskProfile, loadDooTaskUserCache, saveDooTaskUserCache, clearDooTaskUserCache, loadDooTaskProjects, saveDooTaskProjects, clearDooTaskProjects, loadDooTaskPriorities, saveDooTaskPriorities, clearDooTaskPriorities, loadDooTaskColumns, saveDooTaskColumns, clearDooTaskColumns, loadRegisteredReposLocal, saveRegisteredReposLocal } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadDooTaskProfile, saveDooTaskProfile, loadDooTaskUserCache, saveDooTaskUserCache, clearDooTaskUserCache, loadDooTaskProjects, saveDooTaskProjects, clearDooTaskProjects, loadDooTaskPriorities, saveDooTaskPriorities, clearDooTaskPriorities, loadDooTaskColumns, saveDooTaskColumns, clearDooTaskColumns, loadRegisteredReposLocal, saveRegisteredReposLocal } from "./persistence";
 import { DooTaskProfile, DooTaskProject, DooTaskItem, DooTaskFilters, DooTaskPager, DooTaskPriority, DooTaskColumn } from './dootask/types';
 import { dootaskFetchProjects, dootaskFetchTasks, dootaskFetchUsersBasic, dootaskFetchPriorities, dootaskFetchProjectColumns } from './dootask/api';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
@@ -22,6 +22,14 @@ import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import type { OpenClawMachine, OpenClawConnectionStatus } from "../openclaw/types";
 import type { RegisteredRepo } from "@/utils/workspaceRepos";
+import {
+    applySessionModeConfigPatch,
+    createEmptySessionModeConfig,
+    getSessionModeForSession,
+    type SessionModeAgentType,
+    type SessionModeConfigDocument,
+    type SessionModeConfigPatch,
+} from "./sessionModeConfig";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -51,6 +59,13 @@ function isSessionActive(session: { active: boolean; activeAt: number }): boolea
     return session.active;
 }
 
+function resolveSessionModeAgentType(flavor: string | null | undefined): SessionModeAgentType {
+    if (flavor === 'codex' || flavor === 'gemini') {
+        return flavor;
+    }
+    return 'claude';
+}
+
 interface SessionMessages {
     messages: Message[];
     messagesMap: Record<string, Message>;
@@ -76,6 +91,8 @@ export type SessionListItem = string | Session;
 interface StorageState {
     settings: Settings;
     settingsVersion: number | null;
+    sessionModeConfig: SessionModeConfigDocument;
+    sessionModeConfigVersion: number;
     localSettings: LocalSettings;
     profile: Profile;
     sessions: Record<string, Session>;
@@ -143,6 +160,8 @@ interface StorageState {
     setMessageDeliveryError: (sessionId: string, messageId: string, localId: string | null, error: string | null) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
+    applySessionModeConfigFromCloud: (doc: SessionModeConfigDocument, version: number) => void;
+    applySessionModeConfigPatchLocal: (patch: SessionModeConfigPatch) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyProfile: (profile: Profile) => void;
     applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
@@ -365,12 +384,12 @@ export const storage = create<StorageState>()((set, get) => {
     const _cachedUsers = loadDooTaskUserCache();
     const _cachedPriorities = loadDooTaskPriorities();
     const _cachedColumns = loadDooTaskColumns();
-    let sessionPermissionModes = loadSessionPermissionModes();
-    let sessionModelModes = loadSessionModelModes();
     const cachedRepos = loadRegisteredReposLocal();
     return {
         settings,
         settingsVersion: version,
+        sessionModeConfig: createEmptySessionModeConfig(),
+        sessionModeConfigVersion: -1,
         localSettings,
         profile,
         sessions: {},
@@ -442,10 +461,8 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
-            // Load drafts and permission modes if sessions are empty (initial load)
+            // Load drafts if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
-            const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
-            const savedModelModes = Object.keys(state.sessions).length === 0 ? sessionModelModes : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -465,14 +482,11 @@ export const storage = create<StorageState>()((set, get) => {
                 const useExistingAgentState = existing &&
                     existing.agentStateVersion >= session.agentStateVersion;
 
-                // Preserve existing draft and permission mode if they exist, or load from saved data
+                // Preserve existing draft if it exists, or load from saved data
                 const existingDraft = existing?.draft;
                 const savedDraft = savedDrafts[session.id];
-                const existingPermissionMode = existing?.permissionMode;
-                const savedPermissionMode = savedPermissionModes[session.id];
-                const existingModelMode = existing?.modelMode;
-                const savedModelMode = savedModelModes[session.id];
                 const existingMessageSyncing = existing?.messageSyncing;
+                const cloudSessionMode = getSessionModeForSession(state.sessionModeConfig, session.id);
 
                 // If this session has a pending optimistic archive, preserve local active: false
                 // to prevent stale server heartbeats from reverting the archive.
@@ -501,8 +515,8 @@ export const storage = create<StorageState>()((set, get) => {
                     agentStateVersion: useExistingAgentState ? existing.agentStateVersion : session.agentStateVersion,
                     presence: resolvedPresence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
-                    modelMode: existingModelMode || savedModelMode || session.modelMode || 'default',
+                    permissionMode: cloudSessionMode?.permissionMode ?? existing?.permissionMode ?? session.permissionMode ?? 'default',
+                    modelMode: cloudSessionMode?.modelMode ?? existing?.modelMode ?? session.modelMode ?? 'default',
                     messageSyncing: existingMessageSyncing ?? session.messageSyncing
                 };
 
@@ -950,6 +964,123 @@ export const storage = create<StorageState>()((set, get) => {
                 return state;
             }
         }),
+        applySessionModeConfigFromCloud: (doc: SessionModeConfigDocument, version: number) => set((state) => {
+            if (version < state.sessionModeConfigVersion) {
+                return state;
+            }
+
+            let sessionsChanged = false;
+            const updatedSessions: Record<string, Session> = {};
+            Object.entries(state.sessions).forEach(([id, sess]) => {
+                const mode = getSessionModeForSession(doc, id);
+                const permissionMode = mode?.permissionMode ?? 'default';
+                const modelMode = mode?.modelMode ?? 'default';
+                if (sess.permissionMode !== permissionMode || sess.modelMode !== modelMode) {
+                    sessionsChanged = true;
+                    updatedSessions[id] = { ...sess, permissionMode, modelMode };
+                } else {
+                    updatedSessions[id] = sess;
+                }
+            });
+
+            let sharedChanged = false;
+            const updatedSharedSessions: Record<string, Session> = {};
+            Object.entries(state.sharedSessions).forEach(([id, sess]) => {
+                const mode = getSessionModeForSession(doc, id);
+                const permissionMode = mode?.permissionMode ?? 'default';
+                const modelMode = mode?.modelMode ?? 'default';
+                if (sess.permissionMode !== permissionMode || sess.modelMode !== modelMode) {
+                    sharedChanged = true;
+                    updatedSharedSessions[id] = { ...sess, permissionMode, modelMode };
+                } else {
+                    updatedSharedSessions[id] = sess;
+                }
+            });
+
+            if (!sessionsChanged && !sharedChanged && state.sessionModeConfigVersion === version) {
+                return {
+                    ...state,
+                    sessionModeConfig: doc,
+                    sessionModeConfigVersion: version,
+                };
+            }
+
+            const nextSessions = sessionsChanged ? updatedSessions : state.sessions;
+            const nextSharedSessions = sharedChanged ? updatedSharedSessions : state.sharedSessions;
+            const sessionListViewData = (sessionsChanged || sharedChanged)
+                ? buildSessionListViewData(nextSessions, nextSharedSessions)
+                : state.sessionListViewData;
+
+            return {
+                ...state,
+                sessionModeConfig: doc,
+                sessionModeConfigVersion: version,
+                sessions: nextSessions,
+                sharedSessions: nextSharedSessions,
+                sessionListViewData,
+            };
+        }),
+        applySessionModeConfigPatchLocal: (patch: SessionModeConfigPatch) => set((state) => {
+            const nextDoc = applySessionModeConfigPatch(state.sessionModeConfig, patch);
+
+            if (!patch.includeSessionEntry || !patch.sessionId) {
+                return {
+                    ...state,
+                    sessionModeConfig: nextDoc,
+                };
+            }
+
+            const sessionId = patch.sessionId.trim();
+            if (!sessionId) {
+                return {
+                    ...state,
+                    sessionModeConfig: nextDoc,
+                };
+            }
+
+            const existingSession = state.sessions[sessionId];
+            const existingShared = state.sharedSessions[sessionId];
+            const permissionMode = patch.permissionMode;
+            const modelMode = patch.modelMode || 'default';
+
+            let sessions = state.sessions;
+            let sharedSessions = state.sharedSessions;
+            let hasSessionChange = false;
+
+            if (existingSession && (existingSession.permissionMode !== permissionMode || existingSession.modelMode !== modelMode)) {
+                sessions = {
+                    ...state.sessions,
+                    [sessionId]: {
+                        ...existingSession,
+                        permissionMode,
+                        modelMode,
+                    },
+                };
+                hasSessionChange = true;
+            }
+
+            if (existingShared && (existingShared.permissionMode !== permissionMode || existingShared.modelMode !== modelMode)) {
+                sharedSessions = {
+                    ...state.sharedSessions,
+                    [sessionId]: {
+                        ...existingShared,
+                        permissionMode,
+                        modelMode,
+                    },
+                };
+                hasSessionChange = true;
+            }
+
+            return {
+                ...state,
+                sessionModeConfig: nextDoc,
+                sessions,
+                sharedSessions,
+                sessionListViewData: hasSessionChange
+                    ? buildSessionListViewData(sessions, sharedSessions)
+                    : state.sessionListViewData,
+            };
+        }),
         applyLocalSettings: (delta: Partial<LocalSettings>) => set((state) => {
             const updatedLocalSettings = applyLocalSettings(state.localSettings, delta);
             saveLocalSettings(updatedLocalSettings);
@@ -1118,6 +1249,7 @@ export const storage = create<StorageState>()((set, get) => {
             const session = s.sessions[sessionId] ?? s.sharedSessions[sessionId];
             if (!session) return;
             const flavor = session.metadata?.flavor;
+            const agentType = resolveSessionModeAgentType(flavor);
             if (flavor === 'claude' || flavor === 'gemini') {
                 void sync.changePermissionMode(sessionId, mode);
             }
@@ -1127,47 +1259,87 @@ export const storage = create<StorageState>()((set, get) => {
                 if (!existing) return state;
 
                 const updatedSession = { ...existing, permissionMode: mode };
-
-                // Collect all permission modes for persistence
-                const allSessions = { ...state.sessions, ...state.sharedSessions };
-                const allModes: Record<string, PermissionMode> = {};
-                Object.entries(allSessions).forEach(([id, sess]) => {
-                    const pm = id === sessionId ? mode : sess.permissionMode;
-                    if (pm && pm !== 'default') {
-                        allModes[id] = pm;
-                    }
+                const updatedConfig = applySessionModeConfigPatch(state.sessionModeConfig, {
+                    sessionId,
+                    agentType,
+                    permissionMode: mode,
+                    modelMode: existing.modelMode || 'default',
+                    updatedAt: Date.now(),
+                    includeSessionEntry: true,
+                    includeLastUsed: false,
                 });
-                saveSessionPermissionModes(allModes);
 
                 if (isShared) {
-                    return { ...state, sharedSessions: { ...state.sharedSessions, [sessionId]: updatedSession } };
+                    return {
+                        ...state,
+                        sessionModeConfig: updatedConfig,
+                        sharedSessions: { ...state.sharedSessions, [sessionId]: updatedSession }
+                    };
                 }
-                return { ...state, sessions: { ...state.sessions, [sessionId]: updatedSession } };
+                return {
+                    ...state,
+                    sessionModeConfig: updatedConfig,
+                    sessions: { ...state.sessions, [sessionId]: updatedSession }
+                };
+            });
+
+            sync.queueSessionModeConfigUpdate({
+                sessionId,
+                agentType,
+                permissionMode: mode,
+                modelMode: session.modelMode || 'default',
+                includeSessionEntry: true,
+                includeLastUsed: false,
+                applyLocalPatch: false,
             });
         },
-        updateSessionModelMode: (sessionId: string, mode: string) => set((state) => {
-            const isShared = sessionId in state.sharedSessions;
-            const session = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
-            if (!session) return state;
+        updateSessionModelMode: (sessionId: string, mode: string) => {
+            const s = get();
+            const session = s.sessions[sessionId] ?? s.sharedSessions[sessionId];
+            if (!session) return;
+            const agentType = resolveSessionModeAgentType(session.metadata?.flavor);
+            const normalizedMode = mode || 'default';
 
-            const updatedSession = { ...session, modelMode: mode };
+            set((state) => {
+                const isShared = sessionId in state.sharedSessions;
+                const existing = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
+                if (!existing) return state;
 
-            // Persist model modes (only non-default values to save space)
-            const allSessions = { ...state.sessions, ...state.sharedSessions };
-            const allModes: Record<string, string> = {};
-            Object.entries(allSessions).forEach(([id, sess]) => {
-                const mm = id === sessionId ? mode : sess.modelMode;
-                if (mm && mm !== 'default') {
-                    allModes[id] = mm;
+                const updatedSession = { ...existing, modelMode: normalizedMode };
+                const updatedConfig = applySessionModeConfigPatch(state.sessionModeConfig, {
+                    sessionId,
+                    agentType,
+                    permissionMode: existing.permissionMode || 'default',
+                    modelMode: normalizedMode,
+                    updatedAt: Date.now(),
+                    includeSessionEntry: true,
+                    includeLastUsed: false,
+                });
+
+                if (isShared) {
+                    return {
+                        ...state,
+                        sessionModeConfig: updatedConfig,
+                        sharedSessions: { ...state.sharedSessions, [sessionId]: updatedSession }
+                    };
                 }
+                return {
+                    ...state,
+                    sessionModeConfig: updatedConfig,
+                    sessions: { ...state.sessions, [sessionId]: updatedSession }
+                };
             });
-            saveSessionModelModes(allModes);
 
-            if (isShared) {
-                return { ...state, sharedSessions: { ...state.sharedSessions, [sessionId]: updatedSession } };
-            }
-            return { ...state, sessions: { ...state.sessions, [sessionId]: updatedSession } };
-        }),
+            sync.queueSessionModeConfigUpdate({
+                sessionId,
+                agentType,
+                permissionMode: session.permissionMode || 'default',
+                modelMode: normalizedMode,
+                includeSessionEntry: true,
+                includeLastUsed: false,
+                applyLocalPatch: false,
+            });
+        },
         // Project management methods
         getProjects: () => projectManager.getProjects(),
         getProject: (projectId: string) => projectManager.getProject(projectId),
@@ -1307,22 +1479,19 @@ export const storage = create<StorageState>()((set, get) => {
             delete drafts[sessionId];
             saveSessionDrafts(drafts);
             
-            const modes = loadSessionPermissionModes();
-            delete modes[sessionId];
-            saveSessionPermissionModes(modes);
-
-            const modelModes = loadSessionModelModes();
-            delete modelModes[sessionId];
-            saveSessionModelModes(modelModes);
-            
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions, state.sharedSessions);
+            const filteredSessionModeConfig: SessionModeConfigDocument = {
+                ...state.sessionModeConfig,
+                sessions: state.sessionModeConfig.sessions.filter((entry) => entry.sessionId !== sessionId),
+            };
             
             return {
                 ...state,
                 sessions: remainingSessions,
                 sessionMessages: remainingSessionMessages,
                 sessionGitStatus: remainingGitStatus,
+                sessionModeConfig: filteredSessionModeConfig,
                 sessionListViewData
             };
         }),
@@ -1869,6 +2038,14 @@ export function useSessionUsage(sessionId: string) {
 
 export function useSettings(): Settings {
     return storage(useShallow((state) => state.settings));
+}
+
+export function useSessionModeConfig(): SessionModeConfigDocument {
+    return storage(useShallow((state) => state.sessionModeConfig));
+}
+
+export function useSessionModeLastUsed(agentType: SessionModeAgentType) {
+    return storage(useShallow((state) => state.sessionModeConfig.lastUsedByAgent[agentType] ?? null));
 }
 
 export function useSettingMutable<K extends keyof Settings>(name: K): [Settings[K], (value: Settings[K]) => void] {

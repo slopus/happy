@@ -126,8 +126,8 @@ export interface Session {
         id: string;
     }>;
     draft?: SessionDraft | null; // Local draft message with optional images, not synced to server
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | null; // Local permission mode, not synced to server
-    modelMode?: string | null; // Local model mode, not synced to server
+    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | null; // Session permission mode (cached locally; source of truth is UserKV)
+    modelMode?: string | null; // Session model mode (cached locally; source of truth is UserKV)
     upgrading?: boolean; // True while session is being upgraded to new CLI version
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
