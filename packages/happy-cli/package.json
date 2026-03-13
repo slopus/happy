@@ -1,16 +1,19 @@
 {
-  "name": "happy-coder",
-  "version": "0.14.0-0",
-  "description": "Mobile and Web client for Claude Code and Codex",
-  "author": "Kirill Dubovitskiy",
+  "name": "@dragonkid/happy-coder",
+  "version": "0.14.0",
+  "description": "Mobile and Web client for Claude Code and Codex (optimized fork)",
+  "author": "dragonkid",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy-cli",
-  "bugs": "https://github.com/slopus/happy-cli/issues",
-  "repository": "slopus/happy-cli",
+  "homepage": "https://github.com/dragonkid/happy",
+  "bugs": "https://github.com/dragonkid/happy/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dragonkid/happy.git"
+  },
   "bin": {
-    "happy": "./bin/happy.mjs",
-    "happy-mcp": "./bin/happy-mcp.mjs"
+    "happy": "bin/happy.mjs",
+    "happy-mcp": "bin/happy-mcp.mjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -51,7 +54,8 @@
     "dist",
     "bin",
     "scripts",
-    "tools",
+    "tools/archives",
+    "tools/licenses",
     "package.json"
   ],
   "scripts": {
@@ -144,7 +148,8 @@
     "@types/parse-path": "7.0.3"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org"
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "packageManager": "yarn@1.22.22"
 }
