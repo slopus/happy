@@ -120,7 +120,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                start below the safe area). */}
             {!(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') && (
                 <View style={{
-                    position: Platform.OS === 'web' ? 'fixed' as any : 'absolute',
+                    position: 'absolute',
                     top: 0,
                     left: 0,
                     right: 0,
