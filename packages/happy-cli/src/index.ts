@@ -30,6 +30,22 @@ import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
 
+/** Spawn a detached daemon process and poll until it writes its state file (up to 5s). */
+async function spawnAndWaitForDaemon(): Promise<boolean> {
+  const child = spawnHappyCLI(['daemon', 'start-sync'], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+
+  for (let i = 0; i < 50; i++) {
+    if (await checkIfDaemonRunningAndCleanupStaleState()) {
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return false;
+}
 
 (async () => {
   const args = process.argv.slice(2)
@@ -411,37 +427,20 @@ import { execFileSync } from 'node:child_process'
       return
 
     } else if (daemonSubcommand === 'start') {
-      // Spawn detached daemon process
-      const child = spawnHappyCLI(['daemon', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env
-      });
-      child.unref();
-
-      // Wait for daemon to write state file (up to 5 seconds)
-      let started = false;
-      for (let i = 0; i < 50; i++) {
-        if (await checkIfDaemonRunningAndCleanupStaleState()) {
-          started = true;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      if (started) {
-        console.log('Daemon started successfully');
-      } else {
-        console.error('Failed to start daemon');
-        process.exit(1);
-      }
-      process.exit(0);
+      const started = await spawnAndWaitForDaemon();
+      console.log(started ? 'Daemon started successfully' : 'Failed to start daemon');
+      process.exit(started ? 0 : 1);
     } else if (daemonSubcommand === 'start-sync') {
       await startDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'stop') {
       await stopDaemon()
       process.exit(0)
+    } else if (daemonSubcommand === 'restart') {
+      await stopDaemon()
+      const started = await spawnAndWaitForDaemon();
+      console.log(started ? 'Daemon restarted successfully' : 'Failed to restart daemon');
+      process.exit(started ? 0 : 1)
     } else if (daemonSubcommand === 'status') {
       // Show daemon-specific doctor output
       await runDoctorCommand('daemon')
@@ -478,6 +477,7 @@ ${chalk.bold('happy daemon')} - Daemon management
 ${chalk.bold('Usage:')}
   happy daemon start              Start the daemon (detached)
   happy daemon stop               Stop the daemon (sessions stay alive)
+  happy daemon restart            Restart the daemon
   happy daemon status             Show daemon status
   happy daemon list               List active sessions
   happy daemon enable             Enable auto-start on boot
