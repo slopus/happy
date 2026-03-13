@@ -640,6 +640,15 @@ export const zhHant: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: '待發佇列',
+        empty: '無文字內容',
+        sendNow: '立即發送',
+        pin: '置頂',
+        delete: '刪除',
+        confirmSendNow: '立即發送這條待發訊息？這會中斷目前 AI 輪次。',
+    },
+
     commandPalette: {
         placeholder: '輸入命令或搜尋...',
     },

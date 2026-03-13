@@ -671,6 +671,15 @@ export const ja: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: '送信待ちキュー',
+        empty: 'テキスト内容はありません',
+        sendNow: '今すぐ送信',
+        pin: '先頭に固定',
+        delete: '削除',
+        confirmSendNow: 'このキュー済みメッセージを今すぐ送信しますか？現在のAIターンは中断されます。',
+    },
+
     commandPalette: {
         placeholder: 'コマンドを入力または検索...',
     },

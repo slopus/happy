@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { Session, SessionDraft, Machine, GitStatus } from "./storageTypes";
+import { Session, SessionDraft, Machine, GitStatus, PendingMessage } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -22,6 +22,11 @@ import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import type { OpenClawMachine, OpenClawConnectionStatus } from "../openclaw/types";
 import type { RegisteredRepo } from "@/utils/workspaceRepos";
+import {
+    removePendingMessageFromQueue,
+    sortPendingQueue,
+    upsertPendingMessageInQueue,
+} from "./pendingQueue";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +87,7 @@ interface StorageState {
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
+    sessionPendingMessages: Record<string, PendingMessage[]>;
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
     openClawMachines: Record<string, OpenClawMachine>;  // OpenClaw machine configurations
@@ -141,6 +147,9 @@ interface StorageState {
     clearSessionMessages: (sessionId: string) => void;
     setSessionMessageSyncing: (sessionId: string, syncing: boolean) => void;
     setMessageDeliveryError: (sessionId: string, messageId: string, localId: string | null, error: string) => void;
+    applyPendingMessages: (sessionId: string, messages: PendingMessage[]) => void;
+    upsertPendingMessage: (sessionId: string, message: PendingMessage) => void;
+    removePendingMessage: (sessionId: string, pendingId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
@@ -393,6 +402,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
+        sessionPendingMessages: {},
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
@@ -929,6 +939,51 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
         }),
+        applyPendingMessages: (sessionId: string, messages: PendingMessage[]) => set((state) => {
+            const sorted = sortPendingQueue(messages);
+            const existing = state.sessionPendingMessages[sessionId] ?? [];
+            const unchanged = (
+                existing.length === sorted.length &&
+                existing.every((item, index) => item === sorted[index])
+            );
+
+            if (unchanged) {
+                return state;
+            }
+
+            return {
+                ...state,
+                sessionPendingMessages: {
+                    ...state.sessionPendingMessages,
+                    [sessionId]: sorted
+                }
+            };
+        }),
+        upsertPendingMessage: (sessionId: string, message: PendingMessage) => set((state) => {
+            const existing = state.sessionPendingMessages[sessionId] ?? [];
+            const updated = upsertPendingMessageInQueue(existing, message);
+            return {
+                ...state,
+                sessionPendingMessages: {
+                    ...state.sessionPendingMessages,
+                    [sessionId]: updated
+                }
+            };
+        }),
+        removePendingMessage: (sessionId: string, pendingId: string) => set((state) => {
+            const existing = state.sessionPendingMessages[sessionId] ?? [];
+            const updated = removePendingMessageFromQueue(existing, pendingId);
+            if (updated.length === existing.length) {
+                return state;
+            }
+            return {
+                ...state,
+                sessionPendingMessages: {
+                    ...state.sessionPendingMessages,
+                    [sessionId]: updated
+                }
+            };
+        }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
             saveSettings(applySettings(state.settings, settings), state.settingsVersion ?? 0);
             return {
@@ -1296,6 +1351,9 @@ export const storage = create<StorageState>()((set, get) => {
             
             // Remove session messages if they exist
             const { [sessionId]: deletedMessages, ...remainingSessionMessages } = state.sessionMessages;
+
+            // Remove pending queue if it exists
+            const { [sessionId]: deletedPendingMessages, ...remainingPendingMessages } = state.sessionPendingMessages;
             
             // Remove session git status if it exists
             const { [sessionId]: deletedGitStatus, ...remainingGitStatus } = state.sessionGitStatus;
@@ -1320,6 +1378,7 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 sessions: remainingSessions,
                 sessionMessages: remainingSessionMessages,
+                sessionPendingMessages: remainingPendingMessages,
                 sessionGitStatus: remainingGitStatus,
                 sessionListViewData
             };
@@ -1838,6 +1897,7 @@ export function getSession(id: string): Session | undefined {
 }
 
 const emptyArray: unknown[] = [];
+const emptyPendingQueue: PendingMessage[] = [];
 
 export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean, hasMore: boolean, fetchVersion: number } {
     return storage(useShallow((state) => {
@@ -1849,6 +1909,10 @@ export function useSessionMessages(sessionId: string): { messages: Message[], is
             fetchVersion: session?.fetchVersion ?? 0,
         };
     }));
+}
+
+export function useSessionPendingMessages(sessionId: string): PendingMessage[] {
+    return storage(useShallow((state) => state.sessionPendingMessages[sessionId] ?? emptyPendingQueue));
 }
 
 export function useMessage(sessionId: string, messageId: string): Message | null {

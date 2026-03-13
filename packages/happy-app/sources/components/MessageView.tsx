@@ -141,7 +141,7 @@ function UserTextBlock(props: {
     setOptionsLoadingState({ loadingIndex: index });
 
     try {
-      await sync.sendMessage(props.sessionId, option.title);
+      await sync.sendOrQueueMessage(props.sessionId, option.title);
     } finally {
       setOptionsLoadingState({ loadingIndex: null });
     }
@@ -245,7 +245,7 @@ function AgentTextBlock(props: {
     setOptionsLoadingState({ loadingIndex: index });
 
     try {
-      await sync.sendMessage(props.sessionId, option.title);
+      await sync.sendOrQueueMessage(props.sessionId, option.title);
     } finally {
       setOptionsLoadingState({ loadingIndex: null });
     }

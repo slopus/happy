@@ -163,6 +163,19 @@ export interface DecryptedMessage {
     sentByName?: string | null,
 }
 
+export interface PendingMessage {
+    id: string;
+    localId: string;
+    content: unknown | null;
+    previewText: string;
+    sentBy: string | null;
+    sentByName: string | null;
+    trackCliDelivery: boolean;
+    pinnedAt: number | null;
+    createdAt: number;
+    updatedAt: number;
+}
+
 //
 // Machine states
 //

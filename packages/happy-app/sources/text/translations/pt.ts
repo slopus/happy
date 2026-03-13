@@ -639,6 +639,15 @@ export const pt: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: 'Fila pendente',
+        empty: 'Sem conteúdo de texto',
+        sendNow: 'Enviar agora',
+        pin: 'Fixar',
+        delete: 'Excluir',
+        confirmSendNow: 'Enviar agora esta mensagem da fila? Isso interromperá o turno atual da IA.',
+    },
+
     commandPalette: {
         placeholder: 'Digite um comando ou pesquise...',
     },

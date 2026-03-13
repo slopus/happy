@@ -9,6 +9,7 @@ import { DuplicateSheet } from '@/components/DuplicateSheet';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { PendingQueuePanel } from '@/components/PendingQueuePanel';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
@@ -17,7 +18,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, machineGetClaudeSessionUserMessages, machineDuplicateClaudeSession, machineSpawnNewSession, machineGetGeminiSessionUserMessages, machineDuplicateGeminiSession, machineGetCodexSessionUserMessages, machineDuplicateCodexSession, type UserMessageWithUuid } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -214,6 +215,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded, fetchVersion } = useSessionMessages(sessionId);
+    const pendingMessages = useSessionPendingMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
 
     // Check if CLI version is outdated and not already acknowledged
@@ -696,6 +698,46 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     const canEdit = !session.accessLevel || session.accessLevel !== 'view';
 
+    const handleSendNowPending = React.useCallback(async (pendingId: string) => {
+        const confirmed = await Modal.confirm(
+            t('pendingQueue.sendNow'),
+            t('pendingQueue.confirmSendNow'),
+            { confirmText: t('common.yes'), cancelText: t('common.cancel') }
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        const success = await sync.sendNowPendingMessage(sessionId, pendingId);
+        if (!success) {
+            Modal.alert(t('common.error'), t('status.operationFailed'));
+        }
+    }, [sessionId]);
+
+    const handlePinPending = React.useCallback(async (pendingId: string) => {
+        const success = await sync.pinPendingMessage(sessionId, pendingId);
+        if (!success) {
+            Modal.alert(t('common.error'), t('status.operationFailed'));
+        }
+    }, [sessionId]);
+
+    const handleDeletePending = React.useCallback(async (pendingId: string) => {
+        const success = await sync.deletePendingMessage(sessionId, pendingId);
+        if (!success) {
+            Modal.alert(t('common.error'), t('status.operationFailed'));
+        }
+    }, [sessionId]);
+
+    const pendingQueuePanel = pendingMessages.length > 0 ? (
+        <PendingQueuePanel
+            messages={pendingMessages}
+            canManage={canEdit}
+            onSendNow={handleSendNowPending}
+            onPin={handlePinPending}
+            onDelete={handleDeletePending}
+        />
+    ) : null;
+
     const input = canEdit ? (
         <AgentInput
             ref={inputRef}
@@ -747,7 +789,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     }
 
                     try {
-                        const result = await sync.sendMessage(
+                        const result = await sync.sendOrQueueMessage(
                             sessionId, messageToSend, undefined, imagesToSend, existingLocalId,
                             // Clear input before message appears in the list
                             () => {
@@ -756,7 +798,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                                 clearImages();
                             }
                         );
-                        log.log(`[SEND_DEBUG][UI] send_result sid=${sessionId} success=${result.success} localId=${result.localId} error=${result.error || 'none'}`);
+                        const mode = result.success ? result.mode : 'failed';
+                        const errorText = result.success ? 'none' : (result.error || 'none');
+                        log.log(`[SEND_DEBUG][UI] send_result sid=${sessionId} success=${result.success} mode=${mode} localId=${result.localId} error=${errorText}`);
 
                         if (result.success) {
                             failedMessageRef.current = null;
@@ -870,6 +914,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     content={content}
                     input={input}
                     placeholder={placeholder}
+                    betweenContentAndInput={pendingQueuePanel}
                 />
             </View >
 
