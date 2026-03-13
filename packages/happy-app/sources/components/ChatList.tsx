@@ -5,6 +5,7 @@ import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
+import { ErrorBoundary } from './ErrorBoundary';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
@@ -40,7 +41,9 @@ const ChatListInternal = React.memo((props: {
 }) => {
     const keyExtractor = useCallback((item: any) => item.id, []);
     const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
+        <ErrorBoundary>
+            <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
+        </ErrorBoundary>
     ), [props.metadata, props.sessionId]);
     return (
         <FlatList

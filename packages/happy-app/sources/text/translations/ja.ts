@@ -267,6 +267,8 @@ export const ja: TranslationStructure = {
         userNotFound: 'ユーザーが見つかりません',
         sessionDeleted: 'セッションは削除されました',
         sessionDeletedDescription: 'このセッションは完全に削除されました',
+        chatRenderFailed: 'チャットを読み込めませんでした',
+        chatRenderFailedDescription: 'このチャットの表示中にエラーが発生しました。もう一度お試しいただくか、他のチャットに戻ってください。',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
