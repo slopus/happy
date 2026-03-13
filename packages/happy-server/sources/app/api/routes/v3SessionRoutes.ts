@@ -1,4 +1,5 @@
 import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
+import { messageEncryptedBytesHistogram, messageBatchSizeHistogram } from "@/app/monitoring/metrics2";
 import { db } from "@/storage/db";
 import { allocateSessionSeqBatch, allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
@@ -111,6 +112,12 @@ export function v3SessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
         const { messages } = request.body;
+
+        // Record message size metrics for compression baseline
+        messageBatchSizeHistogram.observe(messages.length);
+        for (const msg of messages) {
+            messageEncryptedBytesHistogram.observe(Buffer.byteLength(msg.content, 'utf8'));
+        }
 
         const session = await db.session.findFirst({
             where: {
