@@ -1,5 +1,5 @@
 import { Context } from "@/context";
-import { FeedOptions, FeedResult } from "./types";
+import { FeedBody, FeedOptions, FeedResult } from "./types";
 import { Prisma } from "@prisma/client";
 import { Tx } from "@/storage/inTx";
 
@@ -47,6 +47,7 @@ export async function feedGet(
     return {
         items: items.slice(0, limit).map(item => ({
             ...item,
+            body: item.body as FeedBody,
             createdAt: item.createdAt.getTime(),
             cursor: '0-' + item.counter.toString(10)
         })),

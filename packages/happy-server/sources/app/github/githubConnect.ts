@@ -8,6 +8,7 @@ import { allocateUserSeq } from "@/storage/seq";
 import { buildUpdateAccountUpdate, eventRouter } from "@/app/events/eventRouter";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { githubDisconnect } from "./githubDisconnect";
+import { Prisma } from "@prisma/client";
 
 /**
  * Connects a GitHub account to a user profile.
@@ -67,12 +68,12 @@ export async function githubConnect(
         await tx.githubUser.upsert({
             where: { id: githubUserId },
             update: {
-                profile: githubProfile,
+                profile: githubProfile as unknown as Prisma.InputJsonValue,
                 token: encryptString(['user', userId, 'github', 'token'], accessToken)
             },
             create: {
                 id: githubUserId,
-                profile: githubProfile,
+                profile: githubProfile as unknown as Prisma.InputJsonValue,
                 token: encryptString(['user', userId, 'github', 'token'], accessToken)
             }
         });
