@@ -47,6 +47,7 @@ export async function feedPost(
 
     const result = {
         ...item,
+        body: item.body as FeedBody,
         createdAt: item.createdAt.getTime(),
         cursor: '0-' + item.counter.toString(10)
     };

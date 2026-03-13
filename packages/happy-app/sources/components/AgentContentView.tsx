@@ -9,9 +9,10 @@ interface AgentContentViewProps {
     input?: React.ReactNode | null;
     content?: React.ReactNode | null;
     placeholder?: React.ReactNode | null;
+    betweenContentAndInput?: React.ReactNode | null;
 }
 
-export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ input, content, placeholder }) => {
+export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ input, content, placeholder, betweenContentAndInput }) => {
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const state = useKeyboardState();
@@ -35,6 +36,7 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ i
                 )}
             </View>
             <View>
+                {betweenContentAndInput}
                 {input}
             </View>
         </View>

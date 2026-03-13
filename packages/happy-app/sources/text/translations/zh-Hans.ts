@@ -641,6 +641,15 @@ export const zhHans: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: '待发队列',
+        empty: '无文本内容',
+        sendNow: '立即发送',
+        pin: '置顶',
+        delete: '删除',
+        confirmSendNow: '立即发送该待发消息？这会中断当前 AI 轮次。',
+    },
+
     commandPalette: {
         placeholder: '输入命令或搜索...',
     },

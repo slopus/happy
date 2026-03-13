@@ -11,7 +11,7 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus, useSessionProjectGitStatus, useSession } from '@/sync/storage';
+import { useSessionGitStatus, useSessionProjectGitStatus, useSession, getSession } from '@/sync/storage';
 import { sessionBash } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
@@ -60,6 +60,18 @@ export default function FilesScreen() {
     // Load git status files
     const loadGitStatusFiles = React.useCallback(async (silent: boolean = false) => {
         try {
+            // Check if the session is offline
+            const currentSession = getSession(sessionId);
+            if (currentSession?.presence !== 'online') {
+                Modal.alert(
+                    t('files.sessionOffline'),
+                    t('files.sessionOfflineDescription'),
+                    [{ text: t('common.ok'), onPress: () => router.back() }]
+                );
+                setIsLoading(false);
+                return;
+            }
+
             // Only show loading indicator on initial load (when no data exists)
             if (!silent && !gitStatusFiles) {
                 setIsLoading(true);
@@ -81,7 +93,7 @@ export default function FilesScreen() {
             initialLoadDone.current = true;
             setIsLoading(false);
         }
-    }, [sessionId, gitStatusFiles, selectedRepo?.path]);
+    }, [sessionId, gitStatusFiles, selectedRepo?.path, router]);
 
     // Stage a file
     const handleStageFile = React.useCallback(async (file: GitFileStatus) => {

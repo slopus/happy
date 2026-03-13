@@ -639,6 +639,15 @@ export const es: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: 'Cola pendiente',
+        empty: 'Sin contenido de texto',
+        sendNow: 'Enviar ahora',
+        pin: 'Fijar',
+        delete: 'Eliminar',
+        confirmSendNow: '¿Enviar ahora este mensaje en cola? Esto interrumpirá el turno actual de la IA.',
+    },
+
     commandPalette: {
         placeholder: 'Escriba un comando o busque...',
     },

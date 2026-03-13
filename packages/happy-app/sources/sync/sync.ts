@@ -4,9 +4,17 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage, getSession } from './storage';
-import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+import {
+    ApiEphemeralUpdateSchema,
+    ApiMessage,
+    ApiPendingMessage,
+    ApiPendingMessageSchema,
+    ApiPendingMessagesResponseSchema,
+    ApiSendOrQueueResponseSchema,
+    ApiUpdateContainerSchema
+} from './apiTypes';
 import type { ApiEphemeralActivityUpdate, ApiUpdateContainer } from './apiTypes';
-import { Session, Machine } from './storageTypes';
+import { Session, Machine, PendingMessage } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID, getRandomBytes } from 'expo-crypto';
@@ -14,7 +22,7 @@ import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
-import { NormalizedMessage, normalizeRawMessage, RawRecord, ImageContent } from './typesRaw';
+import { NormalizedMessage, normalizeRawMessage, RawRecord, RawRecordSchema, ImageContent } from './typesRaw';
 import { uploadChatImage } from './uploadChatImage';
 import { LocalImage } from '@/components/ImagePreview';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
@@ -48,7 +56,7 @@ import {
     processUpdateOpenClawMachineEvent,
 } from '../openclaw/storage';
 import { resolveModelSelectionForFlavor } from '@/constants/modelCatalog';
-import { sessionUpdateMetadataFields } from './ops';
+import { sessionAbort, sessionUpdateMetadataFields } from './ops';
 import { shouldInvalidateGitStatusOnActivityTransition } from './gitStatusRefreshPolicy';
 import { kvGet, kvMutate } from './apiKv';
 import {
@@ -76,6 +84,24 @@ type PreparedNewMessageUpdate = {
     lastMessage: NormalizedMessage | null;
     isTaskComplete: boolean;
     isTaskStarted: boolean;
+};
+
+type SendMessageResult = {
+    success: boolean;
+    error?: string;
+    localId: string;
+};
+
+type SendOrQueueResult = (
+    { success: true; mode: 'sent'; localId: string; }
+    | { success: true; mode: 'queued'; localId: string; pendingId: string; }
+    | { success: false; localId: string; error?: string; }
+);
+
+type PreparedOutgoingMessage = {
+    localId: string;
+    encryptedRawRecord: string;
+    normalizedMessage: NormalizedMessage | null;
 };
 
 /**
@@ -128,6 +154,7 @@ class Sync {
     public encryptionCache = new EncryptionCache();
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
+    private pendingMessagesSync = new Map<string, InvalidateSync>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
     private messageSyncTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
     private sessionMessageUpdateQueues = new Map<string, ApiUpdateContainer[]>();
@@ -400,6 +427,7 @@ class Sync {
             this.messagesSync.set(sessionId, ex);
         }
         ex.invalidate();
+        this.invalidatePendingMessagesSync(sessionId);
 
         // Also invalidate git status sync for this session.
         // Uses gitStatusSync.invalidate() (not getSync().invalidate()) to also reset
@@ -444,6 +472,15 @@ class Sync {
         ex.invalidate();
     }
 
+    private invalidatePendingMessagesSync = (sessionId: string) => {
+        let ex = this.pendingMessagesSync.get(sessionId);
+        if (!ex) {
+            ex = new InvalidateSync(() => this.fetchPendingMessages(sessionId));
+            this.pendingMessagesSync.set(sessionId, ex);
+        }
+        ex.invalidate();
+    }
+
 
     private buildSystemPrompt(sessionId: string): string {
         const session = storage.getState().sessions[sessionId];
@@ -454,58 +491,221 @@ class Sync {
         return systemPrompt;
     }
 
-    async sendMessage(sessionId: string, text: string, displayText?: string, images?: LocalImage[], existingLocalId?: string, onBeforeApply?: () => void): Promise<{ success: boolean; error?: string; localId: string }> {
-
-        // Get encryption
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) { // Should never happen
-            console.error(`Session ${sessionId} not found`);
-            return { success: false, error: 'Session encryption not found', localId: '' };
+    private buildPendingPreviewText(rawContent: unknown): string {
+        const parsed = RawRecordSchema.safeParse(rawContent);
+        if (!parsed.success) {
+            return '';
         }
 
-        // Get session data from storage (check both owned and shared sessions)
+        const raw = parsed.data;
+        if (raw.role !== 'user') {
+            return '';
+        }
+
+        if (raw.meta?.displayText) {
+            return raw.meta.displayText;
+        }
+
+        if (raw.content.type === 'text') {
+            return raw.content.text;
+        }
+
+        if (raw.content.type === 'mixed') {
+            return raw.content.text;
+        }
+
+        return '';
+    }
+
+    private async decryptPendingMessage(sessionId: string, pending: ApiPendingMessage): Promise<PendingMessage | null> {
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            return null;
+        }
+
+        const content = await encryption.decryptRaw(pending.content.c);
+        return {
+            id: pending.id,
+            localId: pending.localId,
+            content,
+            previewText: this.buildPendingPreviewText(content),
+            sentBy: pending.sentBy ?? null,
+            sentByName: pending.sentByName ?? null,
+            trackCliDelivery: pending.trackCliDelivery,
+            pinnedAt: pending.pinnedAt,
+            createdAt: pending.createdAt,
+            updatedAt: pending.updatedAt,
+        };
+    }
+
+    fetchPendingMessages = async (sessionId: string) => {
+        if (!this.credentials) {
+            return;
+        }
+
+        if (!this.encryption.getSessionEncryption(sessionId)) {
+            throw new Error(`Session encryption not ready for ${sessionId}`);
+        }
+
+        const API_ENDPOINT = getServerUrl();
+        const response = await fetch(
+            `${API_ENDPOINT}/v3/sessions/${sessionId}/pending-messages`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${this.credentials.token}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch pending messages: ${response.status}`);
+        }
+
+        const data = ApiPendingMessagesResponseSchema.parse(await response.json());
+        const decrypted = await Promise.all(data.messages.map((pending) => this.decryptPendingMessage(sessionId, pending)));
+        storage.getState().applyPendingMessages(sessionId, decrypted.filter((item): item is PendingMessage => item !== null));
+    }
+
+    async pinPendingMessage(sessionId: string, pendingId: string): Promise<boolean> {
+        if (!this.credentials) {
+            return false;
+        }
+
+        try {
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(
+                `${API_ENDPOINT}/v3/sessions/${sessionId}/pending-messages/${pendingId}/pin`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                return false;
+            }
+
+            const body = await response.json();
+            const pending = ApiPendingMessageSchema.safeParse(body?.message);
+            if (!pending.success) {
+                return false;
+            }
+
+            const decrypted = await this.decryptPendingMessage(sessionId, pending.data);
+            if (decrypted) {
+                storage.getState().upsertPendingMessage(sessionId, decrypted);
+            }
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    async deletePendingMessage(sessionId: string, pendingId: string): Promise<boolean> {
+        if (!this.credentials) {
+            return false;
+        }
+
+        try {
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(
+                `${API_ENDPOINT}/v3/sessions/${sessionId}/pending-messages/${pendingId}`,
+                {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                return false;
+            }
+
+            storage.getState().removePendingMessage(sessionId, pendingId);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    async sendNowPendingMessage(sessionId: string, pendingId: string): Promise<boolean> {
+        if (!this.credentials) {
+            return false;
+        }
+
+        try {
+            await sessionAbort(sessionId);
+        } catch {
+            // best effort: send-now should still proceed
+        }
+
+        try {
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(
+                `${API_ENDPOINT}/v3/sessions/${sessionId}/pending-messages/${pendingId}/send-now`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                return false;
+            }
+
+            storage.getState().removePendingMessage(sessionId, pendingId);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private async prepareOutgoingMessage(
+        sessionId: string,
+        text: string,
+        displayText?: string,
+        images?: LocalImage[],
+        existingLocalId?: string
+    ): Promise<PreparedOutgoingMessage | { error: string; localId: string }> {
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            return { error: 'Session encryption not found', localId: '' };
+        }
+
         const session = getSession(sessionId);
         if (!session) {
-            console.error(`Session ${sessionId} not found in storage`);
-            return { success: false, error: 'Session not found', localId: '' };
+            return { error: 'Session not found', localId: '' };
         }
 
-        // Read permission mode from session state
         const permissionMode = session.permissionMode || 'default';
-
-        // Read model mode - default maps to CLI-configured model
         const flavor = session.metadata?.flavor;
         const modelMode = session.modelMode || 'default';
-
-        // Use existing localId for retry, or generate new one
         const localId = existingLocalId || randomUUID();
-        const sendStartedAt = Date.now();
-        log.log(`[SEND_DEBUG][SYNC] start sid=${sessionId} localId=${localId} textLen=${text.length} images=${images?.length || 0} existingLocalId=${existingLocalId ? 'yes' : 'no'}`);
 
-        // Determine sentFrom based on platform
         let sentFrom: string;
         if (Platform.OS === 'web') {
             sentFrom = 'web';
         } else if (Platform.OS === 'android') {
             sentFrom = 'android';
         } else if (Platform.OS === 'ios') {
-            // Check if running on Mac (Catalyst or Designed for iPad on Mac)
-            if (isRunningOnMac()) {
-                sentFrom = 'mac';
-            } else {
-                sentFrom = 'ios';
-            }
+            sentFrom = isRunningOnMac() ? 'mac' : 'ios';
         } else {
-            sentFrom = 'web'; // fallback
+            sentFrom = 'web';
         }
 
-        // Model settings - pass explicit model overrides when selected, otherwise defer to CLI profile/default.
         const { model, reasoningEffort } = resolveModelSelectionForFlavor(flavor, modelMode);
         const fallbackModel: string | null = null;
 
-        // Upload images if present
         let messageContent: { type: 'text'; text: string } | { type: 'mixed'; text: string; images: ImageContent[] };
-
         if (images && images.length > 0) {
             const uploadedImages: ImageContent[] = [];
             const apiUrl = getServerUrl();
@@ -528,7 +728,6 @@ class Sync {
             };
         }
 
-        // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
             content: messageContent,
@@ -539,12 +738,11 @@ class Sync {
                 reasoningEffort,
                 fallbackModel,
                 appendSystemPrompt: this.buildSystemPrompt(sessionId),
-                ...(displayText && { displayText }) // Add displayText if provided
+                ...(displayText && { displayText })
             }
         };
-        const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
-        // Prepare normalized message for later use
+        const encryptedRawRecord = await encryption.encryptRawRecord(content);
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
         if (normalizedMessage) {
@@ -553,21 +751,34 @@ class Sync {
             normalizedMessage.sentByName = profile.firstName || null;
         }
 
-        // Check if session is active before sending
-        const sessionState = getSession(sessionId);
-        if (sessionState && !sessionState.active) {
-            log.log(`Session ${sessionId} is not active, sending anyway`);
+        return {
+            localId,
+            encryptedRawRecord,
+            normalizedMessage,
+        };
+    }
+
+    async sendMessage(
+        sessionId: string,
+        text: string,
+        displayText?: string,
+        images?: LocalImage[],
+        existingLocalId?: string,
+        onBeforeApply?: () => void
+    ): Promise<SendMessageResult> {
+        const prepared = await this.prepareOutgoingMessage(sessionId, text, displayText, images, existingLocalId);
+        if ('error' in prepared) {
+            return { success: false, error: prepared.error, localId: prepared.localId };
         }
 
-        // Register onBeforeApply so the WebSocket echo path can also trigger it.
-        // Whichever path (HTTP response or WebSocket) reaches applyMessages first
-        // will invoke and remove the callback, ensuring input clears before the
-        // message appears in the list.
+        const { localId, encryptedRawRecord, normalizedMessage } = prepared;
+        const sendStartedAt = Date.now();
+        log.log(`[SEND_DEBUG][SYNC] start sid=${sessionId} localId=${localId} textLen=${text.length} images=${images?.length || 0} existingLocalId=${existingLocalId ? 'yes' : 'no'}`);
+
         if (onBeforeApply) {
             this.pendingSendCallbacks.set(localId, onBeforeApply);
         }
 
-        // Send via v3 HTTP API
         try {
             const API_ENDPOINT = getServerUrl();
             const response = await fetch(
@@ -595,14 +806,12 @@ class Sync {
                 return { success: false, error: `Send failed: ${response.status}`, localId };
             }
 
-            // Invoke pending callback if WebSocket echo hasn't already consumed it
             const pending = this.pendingSendCallbacks.get(localId);
             if (pending) {
                 this.pendingSendCallbacks.delete(localId);
                 pending();
             }
 
-            // Apply message to local storage through the unified dispatcher
             if (normalizedMessage) {
                 const msg = normalizedMessage;
                 void this.enqueueSessionMessageDispatch(sessionId, 'sendMessage:local-ack', async () => {
@@ -610,7 +819,6 @@ class Sync {
                 });
             }
 
-            // Update seq tracking from response (advisory — don't fail if JSON is malformed)
             try {
                 const responseData = await response.json();
                 if (responseData.messages?.length > 0) {
@@ -621,7 +829,7 @@ class Sync {
                     }
                 }
             } catch {
-                // Seq tracking is best-effort; v3 re-fetch will resync if needed
+                // no-op
             }
 
             log.log(`[SEND_DEBUG][SYNC] success sid=${sessionId} localId=${localId} via=v3-http elapsedMs=${Date.now() - sendStartedAt}`);
@@ -630,6 +838,96 @@ class Sync {
             log.log(`[SEND_DEBUG][SYNC] fail sid=${sessionId} localId=${localId} via=v3-exception error=${error instanceof Error ? error.message : 'Unknown error'}`);
             this.pendingSendCallbacks.delete(localId);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error', localId };
+        }
+    }
+
+    async sendOrQueueMessage(
+        sessionId: string,
+        text: string,
+        displayText?: string,
+        images?: LocalImage[],
+        existingLocalId?: string,
+        onBeforeApply?: () => void
+    ): Promise<SendOrQueueResult> {
+        const prepared = await this.prepareOutgoingMessage(sessionId, text, displayText, images, existingLocalId);
+        if ('error' in prepared) {
+            return { success: false, error: prepared.error, localId: prepared.localId };
+        }
+
+        const { localId, encryptedRawRecord, normalizedMessage } = prepared;
+        if (!this.credentials) {
+            return { success: false, localId, error: 'Not authenticated' };
+        }
+        if (onBeforeApply) {
+            this.pendingSendCallbacks.set(localId, onBeforeApply);
+        }
+
+        try {
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(
+                `${API_ENDPOINT}/v3/sessions/${sessionId}/send`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content: encryptedRawRecord,
+                        localId,
+                        trackCliDelivery: true
+                    })
+                }
+            );
+
+            if (!response.ok) {
+                this.pendingSendCallbacks.delete(localId);
+                return { success: false, localId, error: `Send failed: ${response.status}` };
+            }
+
+            const parsed = ApiSendOrQueueResponseSchema.safeParse(await response.json());
+            if (!parsed.success) {
+                this.pendingSendCallbacks.delete(localId);
+                return { success: false, localId, error: 'Invalid send response' };
+            }
+
+            const responseData = parsed.data;
+            if (responseData.mode === 'queued') {
+                const pending = this.pendingSendCallbacks.get(localId);
+                if (pending) {
+                    this.pendingSendCallbacks.delete(localId);
+                    pending();
+                }
+
+                const decryptedPending = await this.decryptPendingMessage(sessionId, responseData.pending);
+                if (decryptedPending) {
+                    storage.getState().upsertPendingMessage(sessionId, decryptedPending);
+                }
+                return { success: true, mode: 'queued', localId, pendingId: responseData.pending.id };
+            }
+
+            const pending = this.pendingSendCallbacks.get(localId);
+            if (pending) {
+                this.pendingSendCallbacks.delete(localId);
+                pending();
+            }
+
+            if (normalizedMessage) {
+                const msg = normalizedMessage;
+                void this.enqueueSessionMessageDispatch(sessionId, 'sendOrQueueMessage:sent-local-ack', async () => {
+                    this.applyMessages(sessionId, [msg]);
+                });
+            }
+
+            const currentSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+            if (responseData.message.seq > currentSeq) {
+                this.sessionLastSeq.set(sessionId, responseData.message.seq);
+            }
+
+            return { success: true, mode: 'sent', localId };
+        } catch (error) {
+            this.pendingSendCallbacks.delete(localId);
+            return { success: false, localId, error: error instanceof Error ? error.message : 'Unknown error' };
         }
     }
 
@@ -2339,6 +2637,7 @@ class Sync {
 
             // Clear message sync state
             this.messagesSync.delete(sessionId);
+            this.pendingMessagesSync.delete(sessionId);
             this.sessionLastSeq.delete(sessionId);
             this.sessionMessageLocks.delete(sessionId);
             this.sessionMessageUpdateQueues.delete(sessionId);
@@ -3292,6 +3591,21 @@ class Sync {
                 updateData.localId ?? null,
                 null
             );
+        }
+
+        if (updateData.type === 'pending-message-upsert') {
+            void (async () => {
+                const pending = await this.decryptPendingMessage(updateData.sid, updateData.pending);
+                if (pending) {
+                    storage.getState().upsertPendingMessage(updateData.sid, pending);
+                } else {
+                    this.invalidatePendingMessagesSync(updateData.sid);
+                }
+            })();
+        }
+
+        if (updateData.type === 'pending-message-delete') {
+            storage.getState().removePendingMessage(updateData.sid, updateData.pendingId);
         }
 
         // Handle machine activity updates

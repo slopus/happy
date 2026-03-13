@@ -639,6 +639,15 @@ export const en = {
         },
     },
 
+    pendingQueue: {
+        title: 'Pending queue',
+        empty: 'No text content',
+        sendNow: 'Send now',
+        pin: 'Pin',
+        delete: 'Delete',
+        confirmSendNow: 'Send this queued message now? This will interrupt the current AI turn.',
+    },
+
     commandPalette: {
         placeholder: 'Type a command or search...',
     },

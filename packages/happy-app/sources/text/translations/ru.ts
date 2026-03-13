@@ -802,6 +802,15 @@ export const ru: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: 'Очередь ожидания',
+        empty: 'Нет текста',
+        sendNow: 'Отправить сейчас',
+        pin: 'Закрепить',
+        delete: 'Удалить',
+        confirmSendNow: 'Отправить это сообщение из очереди сейчас? Это прервёт текущий ход ИИ.',
+    },
+
     commandPalette: {
         placeholder: 'Введите команду или поиск...',
     },

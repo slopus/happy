@@ -24,13 +24,16 @@ export function accountRoutes(app: Fastify) {
             }
         });
         const connectedVendors = new Set((await db.serviceAccountToken.findMany({ where: { accountId: userId } })).map(t => t.vendor));
+        const avatar = (user.avatar && typeof user.avatar === 'object' && 'path' in user.avatar)
+            ? user.avatar as { path: string; width?: number; height?: number; thumbhash?: string }
+            : null;
         return reply.send({
             id: userId,
             timestamp: Date.now(),
             firstName: user.firstName,
             lastName: user.lastName,
             username: user.username,
-            avatar: user.avatar ? { ...user.avatar, url: getPublicUrl(user.avatar.path) } : null,
+            avatar: avatar ? { ...avatar, url: getPublicUrl(avatar.path) } : null,
             github: user.githubUser ? user.githubUser.profile : null,
             connectedServices: Array.from(connectedVendors)
         });

@@ -27,16 +27,16 @@ export function buildUserProfile(
         firstName: string | null;
         lastName: string | null;
         username: string | null;
-        avatar: ImageRef | null;
-        githubUser: { profile: GitHubProfile } | null;
+        avatar: unknown;
+        githubUser: { profile: unknown } | null;
         publicKey: string;
         contentPublicKey: Uint8Array | null;
         contentPublicKeySig: Uint8Array | null;
     },
     status: RelationshipStatus
 ): UserProfile {
-    const githubProfile = account.githubUser?.profile;
-    const avatarJson = account.avatar;
+    const githubProfile = (account.githubUser?.profile ?? null) as GitHubProfile | null;
+    const avatarJson = account.avatar as ImageRef | null;
 
     let avatar: UserProfile['avatar'] = null;
     if (avatarJson) {

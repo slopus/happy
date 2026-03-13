@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claudeRemote } from './claudeRemote';
-import { query } from '@/claude/sdk';
+import { AbortError, query } from '@/claude/sdk';
 import type { SDKMessage } from '@/claude/sdk';
 
 vi.mock('@/claude/sdk', async () => {
@@ -123,5 +123,83 @@ describe('claudeRemote', () => {
 
         resolveSecondNextMessage(null);
         await remotePromise;
+    });
+
+    it('does not auto-interrupt at tool_result boundaries', async () => {
+        const response = createMockResponse([
+            {
+                message: {
+                    type: 'assistant',
+                    message: {
+                        role: 'assistant',
+                        content: [{ type: 'text', text: 'working' }]
+                    }
+                } as SDKMessage
+            },
+            {
+                message: {
+                    type: 'user',
+                    message: {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'tool_result',
+                                tool_use_id: 'tool-1',
+                                content: [{ type: 'text', text: 'ok' }],
+                            } as any
+                        ]
+                    }
+                } as SDKMessage
+            }
+        ]);
+        vi.mocked(query).mockReturnValue(response as any);
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/fake-settings.json',
+            nextMessage: async () => ({
+                message: 'hello',
+                mode: { permissionMode: 'default' }
+            }),
+            onReady: vi.fn(),
+            isAborted: () => false,
+            canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
+            onSessionFound: vi.fn(),
+            onMessage: vi.fn(),
+            signal: new AbortController().signal,
+        });
+
+        expect(response.interrupt).not.toHaveBeenCalled();
+    });
+
+    it('still exits cleanly on explicit AbortError', async () => {
+        const response = {
+            async *[Symbol.asyncIterator]() {
+                throw new AbortError('aborted');
+            },
+            interrupt: vi.fn(async () => undefined),
+        };
+        vi.mocked(query).mockReturnValue(response as any);
+
+        await expect(
+            claudeRemote({
+                sessionId: null,
+                path: process.cwd(),
+                allowedTools: [],
+                hookSettingsPath: '/tmp/fake-settings.json',
+                nextMessage: async () => ({
+                    message: 'hello',
+                    mode: { permissionMode: 'default' }
+                }),
+                onReady: vi.fn(),
+                isAborted: () => false,
+                canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
+                onSessionFound: vi.fn(),
+                onMessage: vi.fn(),
+                signal: new AbortController().signal,
+            })
+        ).resolves.toBeUndefined();
     });
 });

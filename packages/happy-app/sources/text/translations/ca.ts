@@ -639,6 +639,15 @@ export const ca: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: 'Cua pendent',
+        empty: 'Sense contingut de text',
+        sendNow: 'Envia ara',
+        pin: 'Fixa',
+        delete: 'Suprimeix',
+        confirmSendNow: 'Vols enviar ara aquest missatge en cua? Això interromprà el torn actual de la IA.',
+    },
+
     commandPalette: {
         placeholder: 'Escriu una comanda o cerca...',
     },

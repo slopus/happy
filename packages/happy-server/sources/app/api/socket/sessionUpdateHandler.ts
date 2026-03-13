@@ -1,5 +1,7 @@
 import { sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
+import { updateThinkingState } from "@/app/presence/sessionTurnRuntime";
+import { dispatchNextPendingIfPossible } from "@/app/session/pendingMessageAutoDispatch";
 import { buildMessageDeliveryClearedEphemeral, buildMessageDeliveryErrorEphemeral, buildMessageErrorEphemeral, buildMessageSyncingEphemeral, buildMessageSyncedEphemeral, buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
 import { allocateSessionSeq } from "@/storage/seq";
@@ -199,6 +201,14 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
             // Queue database update (will only update if time difference is significant)
             activityCache.queueSessionUpdate(sid, t);
+
+            const thinkingState = updateThinkingState(sid, !!thinking, t);
+            if (thinkingState.turnEnded) {
+                await dispatchNextPendingIfPossible({
+                    ownerId: userId,
+                    sessionId: sid,
+                });
+            }
 
             // Emit session activity update to owner and shared users
             const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);

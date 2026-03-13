@@ -650,6 +650,15 @@ export const pl: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: 'Kolejka oczekujących',
+        empty: 'Brak treści tekstowej',
+        sendNow: 'Wyślij teraz',
+        pin: 'Przypnij',
+        delete: 'Usuń',
+        confirmSendNow: 'Wysłać teraz tę wiadomość z kolejki? To przerwie bieżącą turę AI.',
+    },
+
     commandPalette: {
         placeholder: 'Wpisz polecenie lub wyszukaj...',
     },

@@ -668,6 +668,15 @@ export const it: TranslationStructure = {
         },
     },
 
+    pendingQueue: {
+        title: 'Coda in attesa',
+        empty: 'Nessun contenuto testuale',
+        sendNow: 'Invia ora',
+        pin: 'Metti in cima',
+        delete: 'Elimina',
+        confirmSendNow: 'Inviare ora questo messaggio in coda? Questo interromperà il turno AI corrente.',
+    },
+
     commandPalette: {
         placeholder: 'Digita un comando o cerca...',
     },
