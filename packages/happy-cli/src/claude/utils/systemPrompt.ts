@@ -1,5 +1,5 @@
 import { trimIdent } from "@/utils/trimIdent";
-import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
+import { getCommitAttribution } from "./claudeSettings";
 
 /**
  * Base system prompt shared across all configurations
@@ -11,28 +11,16 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
 `))();
 
 /**
- * Co-authored-by credits to append when enabled
- */
-const CO_AUTHORED_CREDITS = (() => trimIdent(`
-    # Commit
-
-    When making commit messages, add this footer:
-
-    Generated with [Claude Code](https://claude.ai/code)
-
-    Co-Authored-By: Claude <noreply@anthropic.com>
-`))();
-
-/**
- * System prompt with conditional Co-Authored-By lines based on Claude's settings.json configuration.
+ * System prompt with conditional commit attribution based on Claude's settings.json configuration.
+ * Supports both the new `attribution` object and deprecated `includeCoAuthoredBy` boolean.
  * Settings are read once on startup for performance.
  */
 export const systemPrompt = (() => {
-  const includeCoAuthored = shouldIncludeCoAuthoredBy();
-  
-  if (includeCoAuthored) {
-    return BASE_SYSTEM_PROMPT + '\n\n' + CO_AUTHORED_CREDITS;
-  } else {
+  const attribution = getCommitAttribution();
+
+  if (!attribution) {
     return BASE_SYSTEM_PROMPT;
   }
+
+  return BASE_SYSTEM_PROMPT + '\n\n# Commit\n\nWhen making commit messages, add this footer:\n\n' + attribution;
 })();
