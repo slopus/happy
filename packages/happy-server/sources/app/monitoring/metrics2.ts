@@ -60,6 +60,21 @@ export const httpRequestDurationHistogram = new Histogram({
     registers: [register]
 });
 
+// Message size metrics (for compression baseline)
+export const messageEncryptedBytesHistogram = new Histogram({
+    name: 'happy_message_encrypted_bytes',
+    help: 'Size of encrypted message content in bytes (base64-encoded ciphertext)',
+    buckets: [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144],
+    registers: [register]
+});
+
+export const messageBatchSizeHistogram = new Histogram({
+    name: 'happy_message_batch_count',
+    help: 'Number of messages per batch POST',
+    buckets: [1, 2, 3, 5, 10, 20, 50, 100],
+    registers: [register]
+});
+
 // Database count metrics
 export const databaseRecordCountGauge = new Gauge({
     name: 'database_records_total',
