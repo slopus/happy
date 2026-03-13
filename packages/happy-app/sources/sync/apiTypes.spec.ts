@@ -90,3 +90,21 @@ describe('ApiMessageSchema delivery issue compatibility', () => {
         });
     });
 });
+
+describe('ApiEphemeralUpdateSchema message delivery cleared compatibility', () => {
+    it('accepts message-delivery-cleared payload', () => {
+        const payload = {
+            type: 'message-delivery-cleared',
+            sid: 'session-1',
+            messageId: 'msg-1',
+            localId: 'local-1',
+        };
+
+        const parsed = ApiEphemeralUpdateSchema.safeParse(payload);
+        expect(parsed.success).toBe(true);
+        if (!parsed.success) {
+            throw new Error(parsed.error.message);
+        }
+        expect(parsed.data).toEqual(payload);
+    });
+});

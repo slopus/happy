@@ -253,6 +253,11 @@ export type EphemeralEvent = {
     localId: string | null;
     error: string;
 } | {
+    type: 'message-delivery-cleared';
+    sid: string;
+    messageId: string;
+    localId: string | null;
+} | {
     type: 'machine-activity';
     id: string;
     active: boolean;
@@ -705,6 +710,15 @@ export function buildMessageDeliveryErrorEphemeral(sessionId: string, messageId:
         messageId,
         localId,
         error
+    };
+}
+
+export function buildMessageDeliveryClearedEphemeral(sessionId: string, messageId: string, localId: string | null): EphemeralPayload {
+    return {
+        type: 'message-delivery-cleared',
+        sid: sessionId,
+        messageId,
+        localId
     };
 }
 

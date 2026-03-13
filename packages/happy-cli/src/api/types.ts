@@ -90,6 +90,7 @@ export interface ServerToClientEvents {
     | { type: 'message-synced', id: string, count: number }
     | { type: 'message-errored', id: string, error: string }
     | { type: 'message-delivery-error', sid: string, messageId: string, localId?: string | null, error: string }
+    | { type: 'message-delivery-cleared', sid: string, messageId: string, localId?: string | null }
     | { type: 'machine-activity', id: string, active: boolean, activeAt: number }
     | { type: 'usage', id: string, key: string, tokens: Record<string, number>, cost: Record<string, number>, timestamp: number }
     | { type: 'machine-status', machineId: string, online: boolean, timestamp: number }

@@ -33,7 +33,7 @@ const {
     state,
     emitToSessionSubscribersMock,
     canSendMessagesMock,
-    scheduleFirstMessageReplayMock,
+    replayFirstMessageToCliWhenConnectedMock,
     dbMock,
     resetState,
     seedSession,
@@ -349,13 +349,13 @@ const {
     const canSendMessagesMock = vi.fn(async (userId: string, sessionId: string) => {
         return state.sessions.some((session) => session.id === sessionId && session.accountId === userId);
     });
-    const scheduleFirstMessageReplayMock = vi.fn();
+    const replayFirstMessageToCliWhenConnectedMock = vi.fn(async () => false);
 
     return {
         state,
         emitToSessionSubscribersMock,
         canSendMessagesMock,
-        scheduleFirstMessageReplayMock,
+        replayFirstMessageToCliWhenConnectedMock,
         dbMock,
         resetState,
         seedSession,
@@ -405,7 +405,7 @@ vi.mock("@/app/share/accessControl", () => ({
 }));
 
 vi.mock("./firstMessageReplay", () => ({
-    scheduleFirstMessageReplay: scheduleFirstMessageReplayMock
+    replayFirstMessageToCliWhenConnected: replayFirstMessageToCliWhenConnectedMock
 }));
 
 import { v3SessionRoutes } from "./v3SessionRoutes";
@@ -431,12 +431,16 @@ async function createApp() {
 
 describe("v3SessionRoutes", () => {
     let app: Fastify;
+    const flushAsync = async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+    };
 
     beforeEach(() => {
         resetState();
         emitToSessionSubscribersMock.mockClear();
         canSendMessagesMock.mockClear();
-        scheduleFirstMessageReplayMock.mockClear();
+        replayFirstMessageToCliWhenConnectedMock.mockClear();
     });
 
     afterEach(async () => {
@@ -689,6 +693,14 @@ describe("v3SessionRoutes", () => {
     it("marks delivery issue as error/no_cli_connection when no cli connection", async () => {
         seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
         state.emitOwnerSessionScoped = 0;
+        replayFirstMessageToCliWhenConnectedMock.mockResolvedValueOnce(false);
+        state.connections.push({
+            connectionType: "session-scoped",
+            userId: "user-1",
+            sessionId: "session-1",
+            supportsMessageReceipt: true,
+            socket: { emit: vi.fn() }
+        });
 
         app = await createApp();
         const response = await app.inject({
@@ -703,9 +715,111 @@ describe("v3SessionRoutes", () => {
         });
 
         expect(response.statusCode).toBe(200);
+        await flushAsync();
         expect(state.deliveryIssues).toHaveLength(1);
         expect(state.deliveryIssues[0]).toMatchObject({
             sessionMessageId: state.messages[0].id,
+            status: "error",
+            reason: "no_cli_connection"
+        });
+    });
+
+    it("does not mark no_cli_connection for first message when replay succeeds within grace period", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        state.emitOwnerSessionScoped = 0;
+        replayFirstMessageToCliWhenConnectedMock.mockResolvedValueOnce(true);
+        state.connections.push({
+            connectionType: "session-scoped",
+            userId: "user-1",
+            sessionId: "session-1",
+            supportsMessageReceipt: true,
+            socket: { emit: vi.fn() }
+        });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                messages: [
+                    { localId: "l1", content: "enc-content-1", trackCliDelivery: true }
+                ]
+            }
+        });
+
+        expect(response.statusCode).toBe(200);
+        await flushAsync();
+        expect(state.deliveryIssues).toHaveLength(1);
+        expect(state.deliveryIssues[0]).toMatchObject({
+            sessionMessageId: state.messages[0].id,
+            status: "waiting",
+            reason: null
+        });
+    });
+
+    it("marks no_cli_connection when first-message replay throws", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
+        state.emitOwnerSessionScoped = 0;
+        replayFirstMessageToCliWhenConnectedMock.mockRejectedValueOnce(new Error("replay_failed"));
+        state.connections.push({
+            connectionType: "session-scoped",
+            userId: "user-1",
+            sessionId: "session-1",
+            supportsMessageReceipt: true,
+            socket: { emit: vi.fn() }
+        });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                messages: [
+                    { localId: "l1", content: "enc-content-1", trackCliDelivery: true }
+                ]
+            }
+        });
+
+        expect(response.statusCode).toBe(200);
+        await flushAsync();
+        expect(state.deliveryIssues).toHaveLength(1);
+        expect(state.deliveryIssues[0]).toMatchObject({
+            sessionMessageId: state.messages[0].id,
+            status: "error",
+            reason: "no_cli_connection"
+        });
+    });
+
+    it("marks no_cli_connection immediately for non-first message without cli connection", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 1 });
+        seedMessage({ sessionId: "session-1", seq: 1, localId: "existing", content: { t: "encrypted", c: "old" } });
+        state.emitOwnerSessionScoped = 0;
+        state.connections.push({
+            connectionType: "session-scoped",
+            userId: "user-1",
+            sessionId: "session-1",
+            supportsMessageReceipt: true,
+            socket: { emit: vi.fn() }
+        });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                messages: [
+                    { localId: "l2", content: "enc-content-2", trackCliDelivery: true }
+                ]
+            }
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(state.deliveryIssues).toHaveLength(1);
+        expect(state.deliveryIssues[0]).toMatchObject({
+            sessionMessageId: state.messages.find((msg) => msg.localId === "l2")!.id,
             status: "error",
             reason: "no_cli_connection"
         });

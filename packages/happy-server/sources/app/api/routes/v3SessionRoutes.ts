@@ -2,10 +2,11 @@ import { buildMessageDeliveryErrorEphemeral, buildNewMessageUpdate, eventRouter 
 import { canSendMessages } from "@/app/share/accessControl";
 import { db } from "@/storage/db";
 import { allocateSessionSeqBatch } from "@/storage/seq";
+import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
-import { scheduleFirstMessageReplay } from "./firstMessageReplay";
+import { replayFirstMessageToCliWhenConnected } from "./firstMessageReplay";
 
 const getMessagesQuerySchema = z.object({
     after_seq: z.coerce.number().int().min(0).optional(),
@@ -80,6 +81,35 @@ function hasReceiptCapableCliConnection(userId: string, sessionId: string): bool
         connection.sessionId === sessionId &&
         connection.supportsMessageReceipt
     ));
+}
+
+async function markNoCliConnectionDeliveryIssue(params: {
+    ownerId: string;
+    sessionId: string;
+    messageId: string;
+    localId: string | null;
+}) {
+    await db.sessionMessageDeliveryIssue.upsert({
+        where: {
+            sessionMessageId: params.messageId
+        },
+        create: {
+            sessionMessageId: params.messageId,
+            status: 'error',
+            reason: 'no_cli_connection'
+        },
+        update: {
+            status: 'error',
+            reason: 'no_cli_connection'
+        }
+    });
+
+    await eventRouter.emitEphemeralToSessionSubscribers({
+        ownerId: params.ownerId,
+        sessionId: params.sessionId,
+        payload: buildMessageDeliveryErrorEphemeral(params.sessionId, params.messageId, params.localId, 'no_cli_connection'),
+        recipientFilter: { type: 'all-interested-in-session', sessionId: params.sessionId }
+    });
 }
 
 export function v3SessionRoutes(app: Fastify) {
@@ -302,38 +332,55 @@ export function v3SessionRoutes(app: Fastify) {
                 recipientFilter: { type: 'all-interested-in-session', sessionId }
             });
 
-            if (message.trackCliDelivery && emitResult.ownerDelivery.sessionScoped === 0) {
-                await db.sessionMessageDeliveryIssue.upsert({
-                    where: {
-                        sessionMessageId: message.id
-                    },
-                    create: {
-                        sessionMessageId: message.id,
-                        status: 'error',
-                        reason: 'no_cli_connection'
-                    },
-                    update: {
-                        status: 'error',
-                        reason: 'no_cli_connection'
-                    }
-                });
+            if (emitResult.ownerDelivery.sessionScoped === 0) {
+                if (message.seq === 1) {
+                    void (async () => {
+                        let replayed = false;
+                        try {
+                            replayed = await replayFirstMessageToCliWhenConnected({
+                                ownerId,
+                                sessionId,
+                                message: payloadMessage
+                            });
+                        } catch (error) {
+                            log({
+                                module: "session-message",
+                                level: "error",
+                                ownerId,
+                                sessionId,
+                                messageId: message.id,
+                                error: error instanceof Error ? error.message : String(error)
+                            }, "Failed to replay first message to CLI");
+                        }
 
-                await eventRouter.emitEphemeralToSessionSubscribers({
-                    ownerId,
-                    sessionId,
-                    payload: buildMessageDeliveryErrorEphemeral(sessionId, message.id, message.localId ?? null, 'no_cli_connection'),
-                    recipientFilter: { type: 'all-interested-in-session', sessionId }
-                });
-            }
-
-            // Narrow fix: replay only the first message of a newly created
-            // session, and only if no CLI session connection received it live.
-            if (message.seq === 1 && emitResult.ownerDelivery.sessionScoped === 0) {
-                scheduleFirstMessageReplay({
-                    ownerId,
-                    sessionId,
-                    message: payloadMessage
-                });
+                        if (!replayed && message.shouldTrackCliDelivery) {
+                            try {
+                                await markNoCliConnectionDeliveryIssue({
+                                    ownerId,
+                                    sessionId,
+                                    messageId: message.id,
+                                    localId: message.localId ?? null
+                                });
+                            } catch (error) {
+                                log({
+                                    module: "session-message",
+                                    level: "error",
+                                    ownerId,
+                                    sessionId,
+                                    messageId: message.id,
+                                    error: error instanceof Error ? error.message : String(error)
+                                }, "Failed to persist no_cli_connection delivery issue");
+                            }
+                        }
+                    })();
+                } else if (message.shouldTrackCliDelivery) {
+                    await markNoCliConnectionDeliveryIssue({
+                        ownerId,
+                        sessionId,
+                        messageId: message.id,
+                        localId: message.localId ?? null
+                    });
+                }
             }
         }
 

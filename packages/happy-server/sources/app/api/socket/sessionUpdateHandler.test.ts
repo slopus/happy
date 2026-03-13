@@ -122,6 +122,12 @@ vi.mock("@/app/events/eventRouter", () => ({
         messageId,
         localId,
         error
+    })),
+    buildMessageDeliveryClearedEphemeral: vi.fn((sid: string, messageId: string, localId: string | null) => ({
+        type: "message-delivery-cleared",
+        sid,
+        messageId,
+        localId
     }))
 }));
 
@@ -184,6 +190,15 @@ describe("sessionUpdateHandler message-receipt", () => {
         });
 
         expect(state.deliveryIssues).toEqual([]);
+        expect(emitEphemeralToSessionSubscribersMock).toHaveBeenCalledTimes(1);
+        expect(emitEphemeralToSessionSubscribersMock).toHaveBeenCalledWith(expect.objectContaining({
+            payload: {
+                type: "message-delivery-cleared",
+                sid: "session-1",
+                messageId: "msg-1",
+                localId: "l1"
+            }
+        }));
     });
 
     it("stores error reason and emits ephemeral when receipt ok=false", async () => {

@@ -3169,6 +3169,15 @@ class Sync {
             );
         }
 
+        if (updateData.type === 'message-delivery-cleared') {
+            storage.getState().setMessageDeliveryError(
+                updateData.sid,
+                updateData.messageId,
+                updateData.localId ?? null,
+                null
+            );
+        }
+
         // Handle machine activity updates
         if (updateData.type === 'machine-activity') {
             // Update machine's active status and lastActiveAt

@@ -340,6 +340,13 @@ export const ApiEphemeralMessageDeliveryErrorSchema = z.object({
     error: z.string(),
 });
 
+export const ApiEphemeralMessageDeliveryClearedSchema = z.object({
+    type: z.literal('message-delivery-cleared'),
+    sid: z.string(),
+    messageId: z.string(),
+    localId: z.string().nullable().optional(),
+});
+
 export const ApiEphemeralMachineActivityUpdateSchema = z.object({
     type: z.literal('machine-activity'),
     id: z.string(), // machine id
@@ -354,6 +361,7 @@ export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralMessageSyncedSchema,
     ApiEphemeralMessageErrorSchema,
     ApiEphemeralMessageDeliveryErrorSchema,
+    ApiEphemeralMessageDeliveryClearedSchema,
     ApiEphemeralMachineActivityUpdateSchema,
 ]);
 
@@ -362,6 +370,7 @@ export type ApiEphemeralMessageSyncingUpdate = z.infer<typeof ApiEphemeralMessag
 export type ApiEphemeralMessageSyncedUpdate = z.infer<typeof ApiEphemeralMessageSyncedSchema>;
 export type ApiEphemeralMessageErrorUpdate = z.infer<typeof ApiEphemeralMessageErrorSchema>;
 export type ApiEphemeralMessageDeliveryErrorUpdate = z.infer<typeof ApiEphemeralMessageDeliveryErrorSchema>;
+export type ApiEphemeralMessageDeliveryClearedUpdate = z.infer<typeof ApiEphemeralMessageDeliveryClearedSchema>;
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;
 
 // Machine metadata updates use Partial<MachineMetadata> from storageTypes

@@ -1,6 +1,6 @@
 import { sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
-import { buildMessageDeliveryErrorEphemeral, buildMessageErrorEphemeral, buildMessageSyncingEphemeral, buildMessageSyncedEphemeral, buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
+import { buildMessageDeliveryClearedEphemeral, buildMessageDeliveryErrorEphemeral, buildMessageErrorEphemeral, buildMessageSyncingEphemeral, buildMessageSyncedEphemeral, buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
 import { allocateSessionSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
@@ -259,6 +259,13 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     where: {
                         sessionMessageId: message.id
                     }
+                });
+
+                await eventRouter.emitEphemeralToSessionSubscribers({
+                    ownerId: userId,
+                    sessionId: sid,
+                    payload: buildMessageDeliveryClearedEphemeral(sid, message.id, message.localId),
+                    recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
                 });
                 return;
             }

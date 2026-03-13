@@ -140,7 +140,7 @@ interface StorageState {
     setSessionPagination: (sessionId: string, oldestSeq: number | null, hasMore: boolean) => void;
     clearSessionMessages: (sessionId: string) => void;
     setSessionMessageSyncing: (sessionId: string, syncing: boolean) => void;
-    setMessageDeliveryError: (sessionId: string, messageId: string, localId: string | null, error: string) => void;
+    setMessageDeliveryError: (sessionId: string, messageId: string, localId: string | null, error: string | null) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
@@ -882,7 +882,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        setMessageDeliveryError: (sessionId: string, messageId: string, localId: string | null, error: string) => set((state) => {
+        setMessageDeliveryError: (sessionId: string, messageId: string, localId: string | null, error: string | null) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];
             if (!existingSession) {
                 return state;
@@ -900,13 +900,15 @@ export const storage = create<StorageState>()((set, get) => {
                 return state;
             }
 
-            if (message.deliveryError === error) {
+            const currentError = message.deliveryError ?? null;
+            const nextError = error ?? null;
+            if (currentError === nextError) {
                 return state;
             }
 
             const updatedMessage: Message = {
                 ...message,
-                deliveryError: error
+                deliveryError: nextError
             };
 
             const updatedMessagesMap = {
