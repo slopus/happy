@@ -477,6 +477,27 @@ export const knownTools = {
                 const path = resolvePath(opts.tool.input.parsed_cmd[0].name, opts.metadata);
                 return path;
             }
+            // command may be an array of strings or a single string
+            if (opts.tool.input?.command) {
+                let cmdArray: string[] = [];
+                let cmdStr: string = '';
+                if (typeof opts.tool.input.command === 'string') {
+                    cmdArray = [opts.tool.input.command];
+                } else if (Array.isArray(opts.tool.input.command)) {
+                    cmdArray = opts.tool.input.command;
+                }
+                // Remove shell wrapper prefix if present (bash/zsh with -lc flag)
+                if (cmdArray.length >= 3 && (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') && cmdArray[1] === '-lc') {
+                    cmdStr = cmdArray[2];
+                } else {
+                    cmdStr = cmdArray.join(' ');
+                }
+                // Processing /bin/bash -lc 'xxxx'
+                cmdStr = cmdStr.replace(/^((\/usr\/bin\/|\/bin\/)?(bash|zsh|sh))\s+-l?c\s+['"]?/, '').replace(/['"]?$/, '');
+                // For other commands, show truncated version
+                const truncated = cmdStr.length > 20 ? cmdStr.substring(0, 20) + '...' : cmdStr;
+                return t('tools.desc.terminalCmd', { cmd: truncated });
+            }
             return t('tools.names.terminal');
         },
         icon: ICON_TERMINAL,
@@ -496,14 +517,12 @@ export const knownTools = {
             // For single read commands, show the actual command
             if (opts.tool.input?.parsed_cmd && 
                 Array.isArray(opts.tool.input.parsed_cmd) && 
-                opts.tool.input.parsed_cmd.length === 1 &&
-                opts.tool.input.parsed_cmd[0].type === 'read') {
-                const parsedCmd = opts.tool.input.parsed_cmd[0];
-                if (parsedCmd.cmd) {
-                    // Show the command but truncate if too long
-                    const cmd = parsedCmd.cmd;
-                    return cmd.length > 50 ? cmd.substring(0, 50) + '...' : cmd;
-                }
+                opts.tool.input.parsed_cmd.length === 1 && 
+                opts.tool.input.parsed_cmd[0].type === 'read' &&
+                opts.tool.input.parsed_cmd[0].name) {
+                // Display the file name being read
+                const path = resolvePath(opts.tool.input.parsed_cmd[0].name, opts.metadata);
+                return path;
             }
             // Show the actual command being executed for other cases
             if (opts.tool.input?.parsed_cmd && Array.isArray(opts.tool.input.parsed_cmd) && opts.tool.input.parsed_cmd.length > 0) {
@@ -512,14 +531,23 @@ export const knownTools = {
                     return parsedCmd.cmd;
                 }
             }
-            if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-                let cmdArray = opts.tool.input.command;
+            // command may be an array of strings or a single string
+            if (opts.tool.input?.command) {
+                let cmdArray: string[] = [];
+                let cmdStr: string = '';
+                if (typeof opts.tool.input.command === 'string') {
+                    cmdArray = [opts.tool.input.command];
+                } else if (Array.isArray(opts.tool.input.command)) {
+                    cmdArray = opts.tool.input.command;
+                }
                 // Remove shell wrapper prefix if present (bash/zsh with -lc flag)
                 if (cmdArray.length >= 3 && (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') && cmdArray[1] === '-lc') {
-                    // The actual command is in the third element
-                    return cmdArray[2];
+                    cmdStr = cmdArray[2];
+                } else {
+                    cmdStr = cmdArray.join(' ');
                 }
-                return cmdArray.join(' ');
+                // Processing /bin/bash -lc 'xxxx'
+                return cmdStr.replace(/^((\/usr\/bin\/|\/bin\/)?(bash|zsh|sh))\s+-l?c\s+['"]?/, '').replace(/['"]?$/, '');
             }
             return null;
         },
