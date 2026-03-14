@@ -262,6 +262,9 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 type SessionTab = 'active' | 'inactive' | 'shared' | 'sharedByMe';
 
+// Persists selected tab across navigation (survives component unmount/remount)
+let lastActiveTab: SessionTab = 'active';
+
 export function SessionsList() {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
@@ -269,7 +272,11 @@ export function SessionsList() {
     const inactiveData = useInactiveSessionListViewData();
     const sharedData = useSharedSessionListViewData();
     const sharedByMeData = useSharedByMeSessionListViewData();
-    const [activeTab, setActiveTab] = React.useState<SessionTab>('active');
+    const [activeTab, _setActiveTab] = React.useState<SessionTab>(lastActiveTab);
+    const setActiveTab = React.useCallback((tab: SessionTab) => {
+        lastActiveTab = tab;
+        _setActiveTab(tab);
+    }, []);
     const pathname = usePathname();
     const isTablet = useIsTablet();
     const navigateToSession = useNavigateToSession();
