@@ -429,10 +429,11 @@ class Sync {
         ex.invalidate();
         this.invalidatePendingMessagesSync(sessionId);
 
-        // Also invalidate git status sync for this session.
-        // Uses gitStatusSync.invalidate() (not getSync().invalidate()) to also reset
-        // the retry counter, ensuring recovery after transient failures.
-        gitStatusSync.invalidate(sessionId);
+        // Invalidate git status only on user-initiated navigation (not on every
+        // websocket message batch) to avoid flooding the shell with git commands.
+        if (userInitiated) {
+            gitStatusSync.invalidate(sessionId);
+        }
 
         // Track which session user is viewing
         if (userInitiated) {

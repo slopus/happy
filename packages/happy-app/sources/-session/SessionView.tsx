@@ -16,7 +16,6 @@ import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
-import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, machineGetClaudeSessionUserMessages, machineDuplicateClaudeSession, machineSpawnNewSession, machineGetGeminiSessionUserMessages, machineDuplicateGeminiSession, machineGetCodexSessionUserMessages, machineDuplicateCodexSession, type UserMessageWithUuid } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
@@ -666,7 +665,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             void sync.refreshSessions().catch(() => {
                 // Silent refresh indicator handles delayed feedback if status stays stale.
             });
-            gitStatusSync.invalidate(sessionId);
         }, [sessionId, startSilentRefreshTracking])
     );
 

@@ -37,6 +37,19 @@ export class GitStatusSync {
     private consecutiveNotGitDetections = new Map<string, number>();
     // Maximum delay between retries (ms). Retries use exponential backoff and never stop.
     private readonly maxRetryDelay = 60_000;
+    // Trailing-edge debounce: coalesce rapid invalidations within a cooldown window
+    // and fire once at the end of the window, so no invalidation is ever permanently lost.
+    private lastFetchCompletedAt = new Map<string, number>();
+    private readonly fetchCooldownMs = 3_000;
+    private deferredInvalidations = new Map<string, ReturnType<typeof setTimeout>>();
+    // Delimiter for combining multiple git commands into a single shell call.
+    // Uses a hash-like string that cannot collide with git output or filenames.
+    private static readonly GIT_SECTION_DELIMITER = '__GIT_SECT_d4e8f2a1b7c3__';
+    // Combined timeout covers all 4 serial git commands (old: 5s + 10s + 10s + 10s).
+    private static readonly COMBINED_GIT_TIMEOUT = 30_000;
+    // Expected section count after splitting combined output by delimiter.
+    // sections[0]=rev-parse, [1]=status, [2]=diff, [3]=cached-diff
+    private static readonly EXPECTED_SECTION_COUNT = 4;
 
     /**
      * Get project key string for a session
@@ -144,6 +157,48 @@ export class GitStatusSync {
         }
     }
 
+    private clearDeferredInvalidation(projectKey: string): void {
+        const timer = this.deferredInvalidations.get(projectKey);
+        if (timer) {
+            clearTimeout(timer);
+            this.deferredInvalidations.delete(projectKey);
+        }
+    }
+
+    /**
+     * Build a combined shell command that runs rev-parse, status, diff, and
+     * cached-diff in one call, separated by the section delimiter.
+     */
+    private buildCombinedGitCommand(gitPrefix: string = 'git'): string {
+        const delim = GitStatusSync.GIT_SECTION_DELIMITER;
+        return [
+            `${gitPrefix} rev-parse --is-inside-work-tree`,
+            `echo '${delim}'`,
+            `${gitPrefix} status --porcelain=v2 --branch --show-stash --untracked-files=all`,
+            `echo '${delim}'`,
+            `${gitPrefix} diff --numstat`,
+            `echo '${delim}'`,
+            `${gitPrefix} diff --cached --numstat`,
+        ].join(' && ');
+    }
+
+    /**
+     * Immediately trigger a git status fetch cycle for a project.
+     * Shared by `invalidate()` and deferred invalidation callbacks.
+     */
+    private invalidateProject(projectKey: string, resetRetry: boolean = true): void {
+        if (resetRetry) {
+            this.resetRetryAttempts(projectKey);
+        }
+
+        let sync = this.projectSyncMap.get(projectKey);
+        if (!sync) {
+            sync = new InvalidateSync(() => this.fetchGitStatusForProject(projectKey));
+            this.projectSyncMap.set(projectKey, sync);
+        }
+        sync.invalidate();
+    }
+
     private clearRetryTimer(projectKey: string): void {
         const timer = this.retryTimers.get(projectKey);
         if (!timer) {
@@ -157,9 +212,16 @@ export class GitStatusSync {
         this.retryAttempts.delete(projectKey);
     }
 
+    /** Bundle retry timer + attempt counter cleanup (always called as a pair). */
+    private clearRetryState(projectKey: string): void {
+        this.clearRetryTimer(projectKey);
+        this.resetRetryAttempts(projectKey);
+    }
+
     private markGitFetchSucceeded(projectKey: string): void {
         this.confirmedGitProjects.add(projectKey);
         this.consecutiveNotGitDetections.delete(projectKey);
+        this.lastFetchCompletedAt.set(projectKey, Date.now());
     }
 
     private handleNotGitRepository(
@@ -183,8 +245,7 @@ export class GitStatusSync {
             const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
             projectManager.updateProjectGitStatus(targetProjectKey, null);
         }
-        this.clearRetryTimer(projectKey);
-        this.resetRetryAttempts(projectKey);
+        this.clearRetryState(projectKey);
     }
 
     private scheduleRetry(projectKey: string): void {
@@ -200,10 +261,8 @@ export class GitStatusSync {
 
         const timer = setTimeout(() => {
             this.retryTimers.delete(projectKey);
-            const sync = this.projectSyncMap.get(projectKey);
-            if (sync) {
-                sync.invalidate();
-            }
+            // Retry without resetting the attempt counter (preserves backoff).
+            this.invalidateProject(projectKey, false);
         }, delayMs);
         this.retryTimers.set(projectKey, timer);
     }
@@ -271,15 +330,28 @@ export class GitStatusSync {
             return;
         }
 
-        // Explicit invalidation starts a fresh retry cycle.
-        this.resetRetryAttempts(projectKey);
-
-        let sync = this.projectSyncMap.get(projectKey);
-        if (!sync) {
-            sync = new InvalidateSync(() => this.fetchGitStatusForProject(projectKey));
-            this.projectSyncMap.set(projectKey, sync);
+        // Trailing-edge debounce: if within cooldown, schedule a deferred
+        // invalidation at the end of the window so nothing is permanently lost.
+        const lastFetch = this.lastFetchCompletedAt.get(projectKey);
+        if (lastFetch) {
+            const elapsed = Date.now() - lastFetch;
+            if (elapsed < this.fetchCooldownMs) {
+                if (!this.deferredInvalidations.has(projectKey)) {
+                    const remaining = this.fetchCooldownMs - elapsed;
+                    const timer = setTimeout(() => {
+                        this.deferredInvalidations.delete(projectKey);
+                        this.invalidateProject(projectKey);
+                    }, remaining);
+                    this.deferredInvalidations.set(projectKey, timer);
+                }
+                return;
+            }
         }
-        sync.invalidate();
+
+        // Clear any pending deferred invalidation since we're proceeding now.
+        this.clearDeferredInvalidation(projectKey);
+
+        this.invalidateProject(projectKey);
     }
 
     /**
@@ -305,13 +377,16 @@ export class GitStatusSync {
         if (projectKey) {
             const remainingSessions = this.projectToSessionIds.get(projectKey);
             const hasOtherSessions = !!remainingSessions && remainingSessions.size > 0;
-            
-            // Only stop the project sync if no other sessions are using it
+
+            // Only tear down project-scoped state when no sessions remain.
+            // deferredInvalidations is project-keyed, so clearing it while other
+            // sessions are alive would silently drop a pending refresh they need.
             if (!hasOtherSessions) {
-                this.clearRetryTimer(projectKey);
-                this.resetRetryAttempts(projectKey);
+                this.clearRetryState(projectKey);
+                this.clearDeferredInvalidation(projectKey);
                 this.consecutiveNotGitDetections.delete(projectKey);
                 this.confirmedGitProjects.delete(projectKey);
+                this.lastFetchCompletedAt.delete(projectKey);
                 const sync = this.projectSyncMap.get(projectKey);
                 if (sync) {
                     sync.stop();
@@ -360,8 +435,7 @@ export class GitStatusSync {
                     }
                     storage.getState().applyGitStatus(targetSessionId, aggregated);
                     this.markGitFetchSucceeded(projectKey);
-                    this.clearRetryTimer(projectKey);
-                    this.resetRetryAttempts(projectKey);
+                    this.clearRetryState(projectKey);
                     if (metadata.machineId) {
                         const targetProjectKey = createProjectKey(metadata.machineId, metadata.path);
                         projectManager.updateProjectGitStatus(targetProjectKey, aggregated);
@@ -369,88 +443,46 @@ export class GitStatusSync {
                     return;
                 }
 
-                // Single-repo path: check if we're in a git repository
-                const gitCheckResult = await sessionBash(targetSessionId, {
-                    command: 'git rev-parse --is-inside-work-tree',
+                // Single-repo path: run all git commands in a single shell call
+                // to reduce RPC overhead (4 calls → 1 call).
+                const combinedCommand = this.buildCombinedGitCommand();
+
+                const result = await sessionBash(targetSessionId, {
+                    command: combinedCommand,
                     cwd: metadata.path,
-                    timeout: 5000
+                    timeout: GitStatusSync.COMBINED_GIT_TIMEOUT
                 });
 
-                if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
-                    if (this.isNotGitRepositoryResult(gitCheckResult)) {
+                if (!result.success || result.exitCode !== 0) {
+                    if (this.isNotGitRepositoryResult(result)) {
                         this.handleNotGitRepository(projectKey, targetSessionId, metadata);
                         return;
                     }
-
-                    // Transient failure (RPC/network/session hiccup): keep previous status and retry.
-                    if (!this.isRpcNotAvailable(gitCheckResult)) {
-                        console.warn('Transient git check failure, keeping previous git status:', gitCheckResult.error || gitCheckResult.stderr);
+                    if (!this.isRpcNotAvailable(result)) {
+                        console.warn('Transient git status failure, keeping previous status:', result.error || result.stderr);
                     }
                     this.scheduleRetry(projectKey);
                     return;
                 }
 
-                // Get git status in porcelain v2 format (includes branch info)
-                // --untracked-files=all ensures we get individual files, not directories
-                const statusResult = await sessionBash(targetSessionId, {
-                    command: 'git status --porcelain=v2 --branch --show-stash --untracked-files=all',
-                    cwd: metadata.path,
-                    timeout: 10000
-                });
-
-                if (!statusResult.success || statusResult.exitCode !== 0) {
-                    if (this.isNotGitRepositoryResult(statusResult)) {
-                        this.handleNotGitRepository(projectKey, targetSessionId, metadata);
-                        return;
-                    }
-
-                    if (!this.isRpcNotAvailable(statusResult)) {
-                        console.warn('Transient git status failure, keeping previous git status:', statusResult.error || statusResult.stderr);
-                    }
+                // Parse combined output: [rev-parse, status, diff, cached-diff]
+                const sections = result.stdout.split(GitStatusSync.GIT_SECTION_DELIMITER);
+                if (sections.length !== GitStatusSync.EXPECTED_SECTION_COUNT) {
+                    console.warn('Unexpected git combined output format, retrying');
                     this.scheduleRetry(projectKey);
                     return;
                 }
 
-                // Get git diff statistics for unstaged changes
-                const diffStatResult = await sessionBash(targetSessionId, {
-                    command: 'git diff --numstat',
-                    cwd: metadata.path,
-                    timeout: 10000
-                });
-
-                // Get git diff statistics for staged changes
-                const stagedDiffStatResult = await sessionBash(targetSessionId, {
-                    command: 'git diff --cached --numstat',
-                    cwd: metadata.path,
-                    timeout: 10000
-                });
-
-                if (!diffStatResult.success || diffStatResult.exitCode !== 0 ||
-                    !stagedDiffStatResult.success || stagedDiffStatResult.exitCode !== 0) {
-                    if (this.isNotGitRepositoryResult(diffStatResult) || this.isNotGitRepositoryResult(stagedDiffStatResult)) {
-                        this.handleNotGitRepository(projectKey, targetSessionId, metadata);
-                        return;
-                    }
-
-                    if (!this.isRpcNotAvailable(diffStatResult) && !this.isRpcNotAvailable(stagedDiffStatResult)) {
-                        console.warn('Transient git diff-stat failure, keeping previous git status');
-                    }
-                    this.scheduleRetry(projectKey);
-                    return;
-                }
-
-                // Parse the git status output with diff statistics
                 const gitStatus = this.parseGitStatusV2(
-                    statusResult.stdout,
-                    diffStatResult.stdout,
-                    stagedDiffStatResult.stdout
+                    sections[1].trim(),
+                    sections[2].trim(),
+                    sections[3].trim()
                 );
 
                 // Apply to storage (this also updates the project git status via the modified applyGitStatus)
                 storage.getState().applyGitStatus(targetSessionId, gitStatus);
                 this.markGitFetchSucceeded(projectKey);
-                this.clearRetryTimer(projectKey);
-                this.resetRetryAttempts(projectKey);
+                this.clearRetryState(projectKey);
 
                 // Additionally, update the project directly for efficiency
                 if (metadata.machineId) {
@@ -476,51 +508,33 @@ export class GitStatusSync {
     ): Promise<GitStatus | 'retry'> {
         const statuses: GitStatus[] = [];
 
-        for (const repo of repos) {
+        // Fire all per-repo combined commands in parallel (restores old Promise.all concurrency).
+        const repoResults = await Promise.all(repos.map(repo => {
             const repoPath = shellEscape(repo.path);
             const gitPrefix = `git -C ${repoPath}`;
-
-            const gitCheckResult = await sessionBash(sessionId, {
-                command: `${gitPrefix} rev-parse --is-inside-work-tree`,
+            return sessionBash(sessionId, {
+                command: this.buildCombinedGitCommand(gitPrefix),
                 cwd: '/',
-                timeout: 5000
+                timeout: GitStatusSync.COMBINED_GIT_TIMEOUT,
             });
-            if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
-                if (this.isNotGitRepositoryResult(gitCheckResult)) continue;
+        }));
+
+        for (const result of repoResults) {
+            if (!result.success || result.exitCode !== 0) {
+                if (this.isNotGitRepositoryResult(result)) continue;
                 return 'retry';
             }
 
-            const [statusResult, diffResult, stagedDiffResult] = await Promise.all([
-                sessionBash(sessionId, {
-                    command: `${gitPrefix} status --porcelain=v2 --branch --show-stash --untracked-files=all`,
-                    cwd: '/',
-                    timeout: 10000,
-                }),
-                sessionBash(sessionId, {
-                    command: `${gitPrefix} diff --numstat`,
-                    cwd: '/',
-                    timeout: 10000,
-                }),
-                sessionBash(sessionId, {
-                    command: `${gitPrefix} diff --cached --numstat`,
-                    cwd: '/',
-                    timeout: 10000,
-                }),
-            ]);
-
-            if (!statusResult.success || statusResult.exitCode !== 0) {
-                if (this.isNotGitRepositoryResult(statusResult)) continue;
-                return 'retry';
-            }
-            if (!diffResult.success || !stagedDiffResult.success) {
-                if (this.isNotGitRepositoryResult(diffResult) || this.isNotGitRepositoryResult(stagedDiffResult)) continue;
+            const sections = result.stdout.split(GitStatusSync.GIT_SECTION_DELIMITER);
+            if (sections.length !== GitStatusSync.EXPECTED_SECTION_COUNT) {
+                // Exit code 0 but unexpected format — treat as transient failure.
                 return 'retry';
             }
 
             statuses.push(this.parseGitStatusV2(
-                statusResult.stdout,
-                diffResult.stdout,
-                stagedDiffResult.stdout,
+                sections[1].trim(),
+                sections[2].trim(),
+                sections[3].trim(),
             ));
         }
 
