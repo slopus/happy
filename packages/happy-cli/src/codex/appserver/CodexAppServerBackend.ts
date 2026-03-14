@@ -613,7 +613,7 @@ export class CodexAppServerBackend implements AgentBackend {
           type: 'tool-call',
           toolName: 'web_search',
           callId: item.id,
-          args: { query: item.query },
+          args: {},
         });
         break;
 

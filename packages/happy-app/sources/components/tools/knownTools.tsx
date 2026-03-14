@@ -430,8 +430,11 @@ export const knownTools = {
     },
     'WebSearch': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input?.query === 'string') {
+            if (typeof opts.tool.input?.query === 'string' && opts.tool.input.query) {
                 return opts.tool.input.query;
+            }
+            if (typeof opts.tool.result?.query === 'string' && opts.tool.result.query) {
+                return opts.tool.result.query;
             }
             return t('tools.names.webSearch');
         },
@@ -454,10 +457,10 @@ export const knownTools = {
     },
     'web_search': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input?.query === 'string') {
+            if (typeof opts.tool.input?.query === 'string' && opts.tool.input.query) {
                 return opts.tool.input.query;
             }
-            if (typeof opts.tool.result?.query === 'string') {
+            if (typeof opts.tool.result?.query === 'string' && opts.tool.result.query) {
                 return opts.tool.result.query;
             }
             return t('tools.names.webSearch');
