@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { View, Text, Animated, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
-import { Ionicons, AntDesign } from '@expo/vector-icons';
+import { Ionicons, AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -30,7 +30,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { formatModelDisplay, resolveLocalModelDisplay } from '@/constants/modelCatalog';
+import { formatModelDisplay, resolveLocalModelDisplay, isModelFast, FAST_MODE_ICON_COLOR } from '@/constants/modelCatalog';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -87,11 +87,18 @@ function SessionInfoContent({ session }: { session: Session }) {
 
         const localLabel = formatModelDisplay(localModelDisplay.model, localModelDisplay.reasoningEffort);
 
+        let text: string | null;
         if (cliLabel && localLabel && cliLabel !== localLabel) {
-            return `${cliLabel} → ${localLabel}`;
+            text = `${cliLabel} → ${localLabel}`;
+        } else {
+            text = cliLabel || localLabel;
         }
-        return cliLabel || localLabel;
-    }, [localModelDisplay.model, localModelDisplay.reasoningEffort, session.metadata?.model, session.metadata?.reasoningEffort]);
+        if (!text) return null;
+
+        const fast = session.fastMode === true || isModelFast(cliModel) || isModelFast(localModelDisplay.model);
+        if (!fast) return text;
+        return <>{text} <MaterialCommunityIcons name="lightning-bolt" size={14} color={FAST_MODE_ICON_COLOR} /></>;
+    }, [localModelDisplay.model, localModelDisplay.reasoningEffort, session.metadata?.model, session.metadata?.reasoningEffort, session.fastMode]);
     const geminiSessionId = session.metadata?.flavor === 'gemini' ? session.id : undefined;
     
     // Check if CLI version is outdated

@@ -185,6 +185,7 @@ interface StorageState {
     updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => void;
     updateSessionActivity: (sessionId: string, active: boolean) => void;
     setSessionUpgrading: (sessionId: string, upgrading: boolean) => void;
+    setSessionFastMode: (sessionId: string, fastMode: boolean) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: string) => void;
     // Artifact methods
@@ -365,6 +366,7 @@ function areSessionsShallowEqual(a: Session, b: Session): boolean {
         a.draft === b.draft &&
         a.permissionMode === b.permissionMode &&
         a.modelMode === b.modelMode &&
+        a.fastMode === b.fastMode &&
         a.latestUsage === b.latestUsage &&
         a.isShared === b.isShared
     );
@@ -527,6 +529,7 @@ export const storage = create<StorageState>()((set, get) => {
                     draft: existingDraft || savedDraft || session.draft || null,
                     permissionMode: cloudSessionMode?.permissionMode ?? existing?.permissionMode ?? session.permissionMode ?? 'default',
                     modelMode: cloudSessionMode?.modelMode ?? existing?.modelMode ?? session.modelMode ?? 'default',
+                    fastMode: cloudSessionMode?.fastMode ?? existing?.fastMode ?? session.fastMode,
                     messageSyncing: existingMessageSyncing ?? session.messageSyncing
                 };
 
@@ -1033,9 +1036,10 @@ export const storage = create<StorageState>()((set, get) => {
                 const mode = getSessionModeForSession(doc, id);
                 const permissionMode = mode?.permissionMode ?? 'default';
                 const modelMode = mode?.modelMode ?? 'default';
-                if (sess.permissionMode !== permissionMode || sess.modelMode !== modelMode) {
+                const fastMode = mode?.fastMode;
+                if (sess.permissionMode !== permissionMode || sess.modelMode !== modelMode || sess.fastMode !== fastMode) {
                     sessionsChanged = true;
-                    updatedSessions[id] = { ...sess, permissionMode, modelMode };
+                    updatedSessions[id] = { ...sess, permissionMode, modelMode, fastMode };
                 } else {
                     updatedSessions[id] = sess;
                 }
@@ -1047,9 +1051,10 @@ export const storage = create<StorageState>()((set, get) => {
                 const mode = getSessionModeForSession(doc, id);
                 const permissionMode = mode?.permissionMode ?? 'default';
                 const modelMode = mode?.modelMode ?? 'default';
-                if (sess.permissionMode !== permissionMode || sess.modelMode !== modelMode) {
+                const fastMode = mode?.fastMode;
+                if (sess.permissionMode !== permissionMode || sess.modelMode !== modelMode || sess.fastMode !== fastMode) {
                     sharedChanged = true;
-                    updatedSharedSessions[id] = { ...sess, permissionMode, modelMode };
+                    updatedSharedSessions[id] = { ...sess, permissionMode, modelMode, fastMode };
                 } else {
                     updatedSharedSessions[id] = sess;
                 }
@@ -1096,30 +1101,33 @@ export const storage = create<StorageState>()((set, get) => {
             const existingShared = state.sharedSessions[sessionId];
             const permissionMode = patch.permissionMode;
             const modelMode = patch.modelMode || 'default';
+            const fastMode = typeof patch.fastMode === 'boolean' ? patch.fastMode : undefined;
 
             let sessions = state.sessions;
             let sharedSessions = state.sharedSessions;
             let hasSessionChange = false;
 
-            if (existingSession && (existingSession.permissionMode !== permissionMode || existingSession.modelMode !== modelMode)) {
+            if (existingSession && (existingSession.permissionMode !== permissionMode || existingSession.modelMode !== modelMode || (fastMode !== undefined && existingSession.fastMode !== fastMode))) {
                 sessions = {
                     ...state.sessions,
                     [sessionId]: {
                         ...existingSession,
                         permissionMode,
                         modelMode,
+                        ...(fastMode !== undefined ? { fastMode } : {}),
                     },
                 };
                 hasSessionChange = true;
             }
 
-            if (existingShared && (existingShared.permissionMode !== permissionMode || existingShared.modelMode !== modelMode)) {
+            if (existingShared && (existingShared.permissionMode !== permissionMode || existingShared.modelMode !== modelMode || (fastMode !== undefined && existingShared.fastMode !== fastMode))) {
                 sharedSessions = {
                     ...state.sharedSessions,
                     [sessionId]: {
                         ...existingShared,
                         permissionMode,
                         modelMode,
+                        ...(fastMode !== undefined ? { fastMode } : {}),
                     },
                 };
                 hasSessionChange = true;
@@ -1298,6 +1306,54 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
         }),
+        setSessionFastMode: (sessionId: string, fastMode: boolean) => {
+            const s = get();
+            const session = s.sessions[sessionId] ?? s.sharedSessions[sessionId];
+            if (!session || session.fastMode === fastMode) return;
+            const agentType = resolveSessionModeAgentType(session.metadata?.flavor);
+
+            set((state) => {
+                const isShared = sessionId in state.sharedSessions;
+                const existing = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
+                if (!existing) return state;
+
+                const updatedSession = { ...existing, fastMode };
+                const updatedConfig = applySessionModeConfigPatch(state.sessionModeConfig, {
+                    sessionId,
+                    agentType,
+                    permissionMode: existing.permissionMode || 'default',
+                    modelMode: existing.modelMode || 'default',
+                    fastMode,
+                    updatedAt: Date.now(),
+                    includeSessionEntry: true,
+                    includeLastUsed: false,
+                });
+
+                if (isShared) {
+                    return {
+                        ...state,
+                        sessionModeConfig: updatedConfig,
+                        sharedSessions: { ...state.sharedSessions, [sessionId]: updatedSession },
+                    };
+                }
+                return {
+                    ...state,
+                    sessionModeConfig: updatedConfig,
+                    sessions: { ...state.sessions, [sessionId]: updatedSession },
+                };
+            });
+
+            sync.queueSessionModeConfigUpdate({
+                sessionId,
+                agentType,
+                permissionMode: session.permissionMode || 'default',
+                modelMode: session.modelMode || 'default',
+                fastMode,
+                includeSessionEntry: true,
+                includeLastUsed: false,
+                applyLocalPatch: false,
+            });
+        },
         updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => {
             const s = get();
             const session = s.sessions[sessionId] ?? s.sharedSessions[sessionId];
@@ -1318,6 +1374,7 @@ export const storage = create<StorageState>()((set, get) => {
                     agentType,
                     permissionMode: mode,
                     modelMode: existing.modelMode || 'default',
+                    fastMode: existing.fastMode,
                     updatedAt: Date.now(),
                     includeSessionEntry: true,
                     includeLastUsed: false,
@@ -1342,6 +1399,7 @@ export const storage = create<StorageState>()((set, get) => {
                 agentType,
                 permissionMode: mode,
                 modelMode: session.modelMode || 'default',
+                fastMode: session.fastMode,
                 includeSessionEntry: true,
                 includeLastUsed: false,
                 applyLocalPatch: false,
@@ -1359,6 +1417,7 @@ export const storage = create<StorageState>()((set, get) => {
                 | {
                     agentType: SessionModeAgentType;
                     permissionMode: PermissionMode;
+                    fastMode?: boolean;
                 }
                 | null;
             } = { current: null };
@@ -1375,6 +1434,7 @@ export const storage = create<StorageState>()((set, get) => {
                     agentType,
                     permissionMode: existing.permissionMode || 'default',
                     modelMode: normalizedMode,
+                    fastMode: existing.fastMode,
                     updatedAt: Date.now(),
                     includeSessionEntry: true,
                     includeLastUsed: false,
@@ -1382,6 +1442,7 @@ export const storage = create<StorageState>()((set, get) => {
                 queuedPatchRef.current = {
                     agentType,
                     permissionMode: (existing.permissionMode || 'default') as PermissionMode,
+                    fastMode: existing.fastMode,
                 };
 
                 if (isShared) {
@@ -1405,6 +1466,7 @@ export const storage = create<StorageState>()((set, get) => {
                 agentType: queuedPatch.agentType,
                 permissionMode: queuedPatch.permissionMode,
                 modelMode: normalizedMode,
+                fastMode: queuedPatch.fastMode,
                 includeSessionEntry: true,
                 includeLastUsed: false,
                 applyLocalPatch: false,

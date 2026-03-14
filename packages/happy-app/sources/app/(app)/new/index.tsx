@@ -382,6 +382,7 @@ function NewSessionWizard() {
         }
         return MODEL_MODE_DEFAULT;
     });
+    const [fastMode, setFastMode] = React.useState(() => lastUsedSessionMode?.fastMode ?? false);
     const applyManualPermissionMode = React.useCallback((mode: PermissionMode) => {
         manualPermissionModeByAgentRef.current[agentType] = mode;
         setPermissionMode(mode);
@@ -416,10 +417,23 @@ function NewSessionWizard() {
             agentType,
             permissionMode: mode,
             modelMode: modelMode || MODEL_MODE_DEFAULT,
+            fastMode,
             includeSessionEntry: false,
             includeLastUsed: true,
         });
-    }, [agentType, applyManualPermissionMode, modelMode]);
+    }, [agentType, applyManualPermissionMode, modelMode, fastMode]);
+
+    const handleFastModeChange = React.useCallback((enabled: boolean) => {
+        setFastMode(enabled);
+        sync.queueSessionModeConfigUpdate({
+            agentType,
+            permissionMode: permissionMode || 'default',
+            modelMode: modelMode || MODEL_MODE_DEFAULT,
+            fastMode: enabled,
+            includeSessionEntry: false,
+            includeLastUsed: true,
+        });
+    }, [agentType, permissionMode, modelMode]);
 
     const handleModelModeChange = React.useCallback((mode: ModelMode) => {
         applyManualModelMode(mode);
@@ -427,10 +441,11 @@ function NewSessionWizard() {
             agentType,
             permissionMode: permissionMode || 'default',
             modelMode: mode,
+            fastMode,
             includeSessionEntry: false,
             includeLastUsed: true,
         });
-    }, [agentType, applyManualModelMode, permissionMode]);
+    }, [agentType, applyManualModelMode, permissionMode, fastMode]);
 
     //
     // Path selection
@@ -976,6 +991,12 @@ function NewSessionWizard() {
         }
     }, [agentType, lastUsedSessionMode?.modelMode]);
 
+    // Restore saved fast mode when agent type changes
+    React.useEffect(() => {
+        const next = lastUsedSessionMode?.fastMode ?? false;
+        setFastMode((prev) => (prev === next ? prev : next));
+    }, [agentType, lastUsedSessionMode?.fastMode]);
+
     // Scroll to section helpers - for AgentInput button clicks
     const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
         if (!ref.current || !scrollViewRef.current) return;
@@ -1380,6 +1401,7 @@ function NewSessionWizard() {
                     agentType,
                     permissionMode,
                     modelMode: modelMode || MODEL_MODE_DEFAULT,
+                    fastMode,
                     includeSessionEntry: true,
                     includeLastUsed: true,
                 });
@@ -1411,7 +1433,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, images, clearImages, tempSessionData, selectedRepos]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, agentType, selectedProfileId, permissionMode, modelMode, fastMode, recentMachinePaths, profileMap, router, images, clearImages, tempSessionData, selectedRepos]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1551,6 +1573,8 @@ function NewSessionWizard() {
                                 onPermissionModeChange={handlePermissionModeChange}
                                 modelMode={modelMode}
                                 onModelModeChange={handleModelModeChange}
+                                fastMode={fastMode}
+                                onFastModeChange={handleFastModeChange}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
@@ -2317,6 +2341,8 @@ function NewSessionWizard() {
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
                             onModelModeChange={handleModelModeChange}
+                            fastMode={fastMode}
+                            onFastModeChange={handleFastModeChange}
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}

@@ -273,8 +273,8 @@ export function formatModelNameLabel(model: string | null | undefined): string |
             return MODEL_NAME_LABELS[codexParsed.family] ?? codexParsed.family;
         }
     }
-    // Strip date suffix: YYYYMMDD (Claude) or YYYY-MM-DD (OpenAI/Codex)
-    const stripped = model.replace(/-\d{8}$/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    // Strip date suffix (YYYYMMDD / YYYY-MM-DD) then -fast suffix (order matters for "model-fast-20250101")
+    const stripped = model.replace(/-\d{8}$/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '').replace(/-fast$/, '');
     if (stripped !== model && MODEL_NAME_LABELS[stripped]) return MODEL_NAME_LABELS[stripped];
     return model;
 }
@@ -282,6 +282,12 @@ export function formatModelNameLabel(model: string | null | undefined): string |
 export function formatReasoningEffortLabel(effort: string | null | undefined): string | null {
     if (!effort) return null;
     return REASONING_EFFORT_LABELS[effort] ?? effort;
+}
+
+export const FAST_MODE_ICON_COLOR = '#F5A623';
+
+export function isModelFast(model: string | null | undefined): boolean {
+    return typeof model === 'string' && /-fast(?:-\d{8}|-\d{4}-\d{2}-\d{2})?$/.test(model);
 }
 
 export function formatModelDisplay(model: string | null | undefined, reasoningEffort: string | null | undefined): string | null {

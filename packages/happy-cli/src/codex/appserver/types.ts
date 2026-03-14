@@ -1,12 +1,11 @@
 /**
- * Codex App-Server JSON-RPC Protocol Types (V1)
+ * Codex App-Server JSON-RPC Protocol Types (V2 — thread/turn model)
  *
- * Type definitions for the Codex CLI app-server mode, which uses
- * a non-standard JSON-RPC protocol over stdin/stdout (no "jsonrpc" field).
+ * Type definitions for the Codex CLI app-server mode (≥ v0.112.0), which uses
+ * a JSON-RPC protocol over stdin/stdout with a thread/turn lifecycle.
  *
  * References:
- * - codex-rs/app-server-protocol at rust-v0.98.0
- * - vibe-kanban/crates/executors/src/executors/codex/
+ * - docs/codex-app-server-0.112.0/ (generated JSON schemas)
  */
 
 // ─── Wire Format ───────────────────────────────────────────────
@@ -64,75 +63,126 @@ export interface InitializeResponse {
   userAgent: string;
 }
 
-// ─── Conversation Management ───────────────────────────────────
+// ─── Thread Management ─────────────────────────────────────────
 
-export interface NewConversationParams {
+export interface ThreadStartParams {
+  cwd?: string | null;
   model?: string | null;
   modelProvider?: string | null;
-  profile?: string | null;
-  cwd?: string | null;
-  approvalPolicy?: ApprovalPolicy | null;
-  sandbox?: SandboxMode | null;
-  config?: Record<string, unknown> | null;
   baseInstructions?: string | null;
   developerInstructions?: string | null;
-  compactPrompt?: string | null;
-  includeApplyPatchTool?: boolean | null;
+  config?: Record<string, unknown> | null;
+  approvalPolicy?: ApprovalPolicy | null;
+  sandbox?: SandboxMode | null;
+  serviceTier?: ServiceTier | null;
+  ephemeral?: boolean | null;
 }
 
 export type ApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+export type ServiceTier = 'fast' | 'flex';
 
-export interface NewConversationResponse {
-  conversationId: string;
-  model: string;
-  reasoningEffort?: string | null;
-  rolloutPath: string;
-}
-
-export interface ResumeConversationParams {
+export interface Thread {
+  id: string;
+  name?: string | null;
+  cwd: string;
+  status: unknown;
+  source: unknown;
+  preview: string;
+  turns: Turn[];
+  createdAt: number;
+  updatedAt: number;
+  cliVersion: string;
+  modelProvider: string;
+  ephemeral: boolean;
   path?: string | null;
-  conversationId?: string | null;
-  history?: unknown[] | null;
-  overrides?: NewConversationParams | null;
+  gitInfo?: unknown;
+  agentNickname?: string | null;
+  agentRole?: string | null;
 }
 
-export interface ResumeConversationResponse {
-  conversationId: string;
+export interface ThreadStartResponse {
+  thread: Thread;
   model: string;
+  modelProvider: string;
+  cwd: string;
+  approvalPolicy: ApprovalPolicy;
+  sandbox: unknown;
   reasoningEffort?: string | null;
-  initialMessages?: EventMsg[] | null;
-  rolloutPath: string;
+  serviceTier?: ServiceTier | null;
 }
 
-export interface AddConversationListenerParams {
-  conversationId: string;
-  experimentalRawEvents?: boolean;
+export interface ThreadResumeParams {
+  threadId: string;
+  cwd?: string | null;
+  model?: string | null;
+  modelProvider?: string | null;
+  baseInstructions?: string | null;
+  developerInstructions?: string | null;
+  config?: Record<string, unknown> | null;
+  approvalPolicy?: ApprovalPolicy | null;
+  sandbox?: SandboxMode | null;
+  serviceTier?: ServiceTier | null;
 }
 
-export interface AddConversationListenerResponse {
-  subscriptionId: string;
+export interface ThreadResumeResponse {
+  thread: Thread;
+  model: string;
+  modelProvider: string;
+  cwd: string;
+  approvalPolicy: ApprovalPolicy;
+  sandbox: unknown;
+  reasoningEffort?: string | null;
+  serviceTier?: ServiceTier | null;
 }
 
-// ─── User Messages ─────────────────────────────────────────────
+// ─── Turn Management ───────────────────────────────────────────
 
-export interface SendUserMessageParams {
-  conversationId: string;
-  items: InputItem[];
+export interface TurnStartParams {
+  threadId: string;
+  input: UserInput[];
+  cwd?: string | null;
+  model?: string | null;
+  approvalPolicy?: ApprovalPolicy | null;
+  effort?: string | null;
+  serviceTier?: ServiceTier | null;
 }
 
-export type InputItem =
-  | { type: 'text'; data: { text: string; textElements?: unknown[] } }
-  | { type: 'image'; data: { image_url: string } }
-  | { type: 'localImage'; data: { path: string } };
+export type UserInput =
+  | { type: 'text'; text: string }
+  | { type: 'image'; url: string }
+  | { type: 'localImage'; path: string };
 
-export interface SendUserMessageResponse {}
-
-// ─── Interrupt ─────────────────────────────────────────────────
-
-export interface InterruptConversationParams {
-  conversationId: string;
+export interface TurnStartResponse {
+  turn: Turn;
 }
+
+export interface Turn {
+  id: string;
+  status: TurnStatus;
+  items: ThreadItem[];
+  error?: TurnError | null;
+}
+
+export type TurnStatus = 'completed' | 'interrupted' | 'failed' | 'inProgress';
+
+export interface TurnError {
+  message: string;
+  codexErrorInfo?: unknown;
+  additionalDetails?: string | null;
+}
+
+export interface TurnInterruptParams {
+  threadId: string;
+  turnId: string;
+}
+
+export interface TurnInterruptResponse {}
+
+// ─── ThreadItem ────────────────────────────────────────────────
+
+/** Discriminated union of thread item types */
+export type ThreadItem = { id: string; type: string; [key: string]: unknown };
 
 // ─── Auth ──────────────────────────────────────────────────────
 
@@ -149,6 +199,19 @@ export interface GetAuthStatusResponse {
 
 // ─── Approval Requests (server → client) ───────────────────────
 
+// New v2 approval decisions (shared by command execution and file change)
+export type V2ApprovalDecision =
+  | 'accept'
+  | 'acceptForSession'
+  | 'decline'
+  | 'cancel';
+
+/** @deprecated Use V2ApprovalDecision */
+export type CommandExecutionApprovalDecision = V2ApprovalDecision;
+/** @deprecated Use V2ApprovalDecision */
+export type FileChangeApprovalDecision = V2ApprovalDecision;
+
+// Legacy approval decision (kept for deprecated handlers)
 export type ReviewDecision =
   | 'approved'
   | 'approved_for_session'
@@ -180,6 +243,26 @@ export interface ExecCommandApprovalResponse {
   decision: ReviewDecision;
 }
 
+// New v2 approval requests
+export interface CommandExecutionApprovalParams {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  approvalId?: string | null;
+  command?: string | null;
+  commandActions?: unknown[] | null;
+  cwd?: string | null;
+  reason?: string | null;
+}
+
+export interface FileChangeApprovalParams {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  grantRoot?: string | null;
+  reason?: string | null;
+}
+
 export interface ParsedCommand {
   [key: string]: unknown;
 }
@@ -188,92 +271,65 @@ export interface FileChange {
   [key: string]: unknown;
 }
 
-// ─── Event Notifications ───────────────────────────────────────
+// ─── Token Usage ───────────────────────────────────────────────
 
-/** Union of all Codex event types, discriminated by `type` field */
-export type EventMsg =
-  | { type: 'agent_message_delta'; delta: string }
-  | { type: 'agent_message_content_delta'; delta: string; item_id: string; thread_id?: string; turn_id?: string }
-  | { type: 'agent_message'; message: string }
-  | { type: 'agent_reasoning_delta'; delta: string }
-  | { type: 'reasoning_content_delta'; delta: string; item_id: string; summary_index?: number; thread_id?: string; turn_id?: string }
-  | { type: 'agent_reasoning'; text: string }
-  | { type: 'agent_reasoning_section_break'; item_id: string; summary_index: number }
-  | { type: 'exec_approval_request'; call_id: string; turn_id?: string; command: string[]; cwd: string; reason?: string; parsed_cmd?: ParsedCommand[] }
-  | { type: 'apply_patch_approval_request'; call_id: string; turn_id?: string; changes: Record<string, FileChange>; reason?: string; grant_root?: string }
-  | { type: 'exec_command_begin'; call_id: string; process_id?: string; turn_id?: string; command: string[]; cwd: string; parsed_cmd?: ParsedCommand[]; source?: string; interaction_input?: string }
-  | { type: 'exec_command_output_delta'; call_id: string; stream: 'stdout' | 'stderr'; chunk: number[] }
-  | { type: 'exec_command_end'; call_id: string; process_id?: string; turn_id?: string; command: string[]; cwd: string; stdout: string; stderr: string; aggregated_output?: string; exit_code: number; duration?: unknown; formatted_output?: string }
-  | { type: 'patch_apply_begin'; call_id: string; turn_id?: string; auto_approved: boolean; changes: Record<string, FileChange> }
-  | { type: 'patch_apply_end'; call_id: string; turn_id?: string; stdout: string; stderr: string; success: boolean; changes?: Record<string, FileChange> }
-  | { type: 'mcp_tool_call_begin'; call_id: string; invocation: { server: string; tool: string; arguments?: unknown } }
-  | { type: 'mcp_tool_call_end'; call_id: string; invocation: { server: string; tool: string; arguments?: unknown }; duration?: unknown; result: unknown }
-  | { type: 'web_search_begin'; call_id: string }
-  | { type: 'web_search_end'; call_id: string; query: string; action?: unknown }
-  | { type: 'view_image_tool_call'; call_id: string; path: string }
-  | { type: 'background_event'; message: string }
-  | { type: 'stream_error'; message: string; codex_error_info?: unknown; additional_details?: string }
-  | { type: 'error'; message: string; codex_error_info?: unknown }
-  | { type: 'warning'; message: string }
-  | { type: 'session_configured'; session_id: string; model: string; approval_policy?: string; sandbox_policy?: string; cwd?: string; reasoning_effort?: unknown; rollout_path?: string }
-  | { type: 'token_count'; info?: TokenUsageInfo; rate_limits?: unknown }
-  | { type: 'plan_update'; explanation?: string; plan: PlanStep[] }
-  | { type: 'context_compacted'; [key: string]: unknown }
-  | { type: 'task_started'; [key: string]: unknown }
-  | { type: 'task_complete'; [key: string]: unknown }
-  | { type: 'turn_aborted'; [key: string]: unknown }
-  | { type: 'turn_diff'; unified_diff?: string; [key: string]: unknown }
-  | { type: 'skills_update_available' }
-  | { type: 'item_started'; item: unknown; thread_id?: string; turn_id?: string }
-  | { type: 'item_completed'; item: unknown; thread_id?: string; turn_id?: string }
-  | { type: 'mcp_startup_update'; server: string; status: unknown }
-  | { type: 'mcp_startup_complete'; ready: string[]; failed: unknown[]; cancelled: string[] }
-  | { type: 'user_message'; message: string }
-  | { type: 'shutdown_complete' };
-
-/** Raw event from Codex (may include unknown event types) */
-export type RawCodexEvent = EventMsg | { type: string; [key: string]: unknown };
-
-/** Per-request or cumulative token usage breakdown from OpenAI */
-export interface TokenUsage {
-  input_tokens: number;
-  cached_input_tokens: number;
-  output_tokens: number;
-  reasoning_output_tokens: number;
-  total_tokens: number;
+export interface TokenUsageBreakdown {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  totalTokens: number;
 }
 
-/** Token usage info from Codex token_count event */
-export interface TokenUsageInfo {
-  total_token_usage?: TokenUsage;
-  last_token_usage?: TokenUsage;
-  model_context_window?: number | null;
-  [key: string]: unknown;
-}
-
-export interface PlanStep {
-  step: string;
-  status: 'pending' | 'in_progress' | 'completed';
+export interface ThreadTokenUsage {
+  last: TokenUsageBreakdown;
+  total: TokenUsageBreakdown;
+  modelContextWindow?: number | null;
 }
 
 // ─── Constants ─────────────────────────────────────────────────
 
-/** Well-known JSON-RPC method names */
+/** Well-known JSON-RPC method names (v2 — thread/turn model) */
 export const Methods = {
   // Client → Server
   INITIALIZE: 'initialize',
   INITIALIZED: 'initialized',
-  NEW_CONVERSATION: 'newConversation',
-  RESUME_CONVERSATION: 'resumeConversation',
-  ADD_CONVERSATION_LISTENER: 'addConversationListener',
-  SEND_USER_MESSAGE: 'sendUserMessage',
+  THREAD_START: 'thread/start',
+  THREAD_RESUME: 'thread/resume',
+  TURN_START: 'turn/start',
+  TURN_INTERRUPT: 'turn/interrupt',
   GET_AUTH_STATUS: 'getAuthStatus',
-  INTERRUPT_CONVERSATION: 'interruptConversation',
 
-  // Server → Client (approval requests)
+  // Server → Client (legacy approval requests — deprecated but still sent)
   APPLY_PATCH_APPROVAL: 'applyPatchApproval',
   EXEC_COMMAND_APPROVAL: 'execCommandApproval',
 
-  // Notification prefix
-  EVENT_PREFIX: 'codex/event',
+  // Server → Client (v2 approval requests)
+  COMMAND_EXECUTION_APPROVAL: 'item/commandExecution/requestApproval',
+  FILE_CHANGE_APPROVAL: 'item/fileChange/requestApproval',
+  MCP_ELICITATION: 'mcpServer/elicitation/request',
+  TOOL_CALL: 'item/tool/call',
+
+  // Server notifications (v2)
+  NOTIFY_THREAD_STARTED: 'thread/started',
+  NOTIFY_THREAD_STATUS_CHANGED: 'thread/status/changed',
+  NOTIFY_THREAD_CLOSED: 'thread/closed',
+  NOTIFY_THREAD_TOKEN_USAGE: 'thread/tokenUsage/updated',
+  NOTIFY_TURN_STARTED: 'turn/started',
+  NOTIFY_TURN_COMPLETED: 'turn/completed',
+  NOTIFY_TURN_DIFF: 'turn/diff/updated',
+  NOTIFY_TURN_PLAN: 'turn/plan/updated',
+  NOTIFY_ITEM_STARTED: 'item/started',
+  NOTIFY_ITEM_COMPLETED: 'item/completed',
+  NOTIFY_AGENT_MESSAGE_DELTA: 'item/agentMessage/delta',
+  NOTIFY_COMMAND_OUTPUT_DELTA: 'item/commandExecution/outputDelta',
+  NOTIFY_FILE_CHANGE_DELTA: 'item/fileChange/outputDelta',
+  NOTIFY_REASONING_DELTA: 'item/reasoning/textDelta',
+  NOTIFY_REASONING_SUMMARY_DELTA: 'item/reasoning/summaryTextDelta',
+  NOTIFY_REASONING_SUMMARY_ADDED: 'item/reasoning/summaryPartAdded',
+  NOTIFY_PLAN_DELTA: 'item/plan/delta',
+  NOTIFY_MCP_PROGRESS: 'item/mcpToolCall/progress',
+  NOTIFY_ERROR: 'error',
+  NOTIFY_DEPRECATION: 'deprecationNotice',
+  NOTIFY_CONFIG_WARNING: 'configWarning',
 } as const;

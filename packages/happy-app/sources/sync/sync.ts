@@ -707,6 +707,7 @@ class Sync {
         const permissionMode = session.permissionMode || 'default';
         const flavor = session.metadata?.flavor;
         const modelMode = session.modelMode || 'default';
+        const fastMode = session.fastMode ?? false;
         const localId = existingLocalId || randomUUID();
 
         let sentFrom: string;
@@ -720,7 +721,8 @@ class Sync {
             sentFrom = 'web';
         }
 
-        const { model, reasoningEffort } = resolveModelSelectionForFlavor(flavor, modelMode);
+        const { model: resolvedModel, reasoningEffort } = resolveModelSelectionForFlavor(flavor, modelMode);
+        const model = (resolvedModel && fastMode) ? `${resolvedModel}-fast` : resolvedModel;
         const fallbackModel: string | null = null;
 
         let messageContent: { type: 'text'; text: string } | { type: 'mixed'; text: string; images: ImageContent[] };
@@ -988,6 +990,7 @@ class Sync {
         sessionId?: string;
         permissionMode: PermissionMode;
         modelMode: string;
+        fastMode?: boolean;
         agentType: SessionModeAgentType;
         includeSessionEntry: boolean;
         includeLastUsed: boolean;
@@ -998,6 +1001,7 @@ class Sync {
             sessionId: params.sessionId,
             permissionMode: params.permissionMode,
             modelMode: params.modelMode || 'default',
+            ...(typeof params.fastMode === 'boolean' ? { fastMode: params.fastMode } : {}),
             agentType: params.agentType,
             includeSessionEntry: params.includeSessionEntry,
             includeLastUsed: params.includeLastUsed,

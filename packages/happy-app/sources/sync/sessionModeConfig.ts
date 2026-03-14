@@ -10,12 +10,14 @@ export interface SessionModeEntry {
     sessionId: string;
     permissionMode: PermissionMode;
     modelMode: string;
+    fastMode?: boolean;
     updatedAt: number;
 }
 
 export interface SessionModeLastUsedEntry {
     permissionMode: PermissionMode;
     modelMode: string;
+    fastMode?: boolean;
     updatedAt: number;
 }
 
@@ -30,6 +32,7 @@ export interface SessionModeConfigPatch {
     sessionId?: string;
     permissionMode: PermissionMode;
     modelMode: string;
+    fastMode?: boolean;
     agentType: SessionModeAgentType;
     updatedAt: number;
     includeSessionEntry: boolean;
@@ -104,6 +107,7 @@ function normalizeLastUsedEntry(raw: unknown): SessionModeLastUsedEntry | null {
     return {
         permissionMode: record.permissionMode,
         modelMode: sanitizeModelMode(record.modelMode),
+        ...(typeof record.fastMode === 'boolean' ? { fastMode: record.fastMode } : {}),
         updatedAt: sanitizeTimestamp(record.updatedAt, Date.now()),
     };
 }
@@ -117,6 +121,7 @@ function normalizeSessionEntry(raw: unknown): SessionModeEntry | null {
         sessionId,
         permissionMode: record.permissionMode,
         modelMode: sanitizeModelMode(record.modelMode),
+        ...(typeof record.fastMode === 'boolean' ? { fastMode: record.fastMode } : {}),
         updatedAt: sanitizeTimestamp(record.updatedAt, Date.now()),
     };
 }
@@ -196,6 +201,7 @@ export function applySessionModeConfigPatch(
                     sessionId,
                     permissionMode: patch.permissionMode,
                     modelMode: sanitizeModelMode(patch.modelMode),
+                    ...(typeof patch.fastMode === 'boolean' ? { fastMode: patch.fastMode } : {}),
                     updatedAt: patch.updatedAt,
                 },
             ]);
@@ -207,6 +213,7 @@ export function applySessionModeConfigPatch(
         lastUsedByAgent[patch.agentType] = {
             permissionMode: patch.permissionMode,
             modelMode: sanitizeModelMode(patch.modelMode),
+            ...(typeof patch.fastMode === 'boolean' ? { fastMode: patch.fastMode } : {}),
             updatedAt: patch.updatedAt,
         };
     }

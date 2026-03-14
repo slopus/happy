@@ -4,10 +4,9 @@
  * Communicates with the Codex CLI in app-server mode via JSON-RPC over stdin/stdout.
  * Implements the AgentBackend interface so it can be used interchangeably with AcpBackend.
  *
- * Protocol flow:
- *   initialize → initialized → newConversation/resumeConversation
- *   → addConversationListener → sendUserMessage → [events stream]
- *   → task_complete/turn_aborted
+ * Protocol flow (v2 — thread/turn model, Codex ≥ v0.112.0):
+ *   initialize → initialized → thread/start (or thread/resume)
+ *   → turn/start → [notifications stream] → turn/completed
  */
 
 import { CodexJsonRpcPeer } from './CodexJsonRpcPeer';
@@ -15,22 +14,23 @@ import {
   Methods,
   type InitializeParams,
   type InitializeResponse,
-  type NewConversationParams,
-  type NewConversationResponse,
-  type ResumeConversationParams,
-  type ResumeConversationResponse,
-  type AddConversationListenerParams,
-  type AddConversationListenerResponse,
-  type SendUserMessageParams,
-  type SendUserMessageResponse,
-  type InputItem,
+  type ThreadStartParams,
+  type ThreadStartResponse,
+  type ThreadResumeParams,
+  type ThreadResumeResponse,
+  type TurnStartParams,
+  type TurnStartResponse,
+  type TurnInterruptParams,
+  type UserInput,
   type ApplyPatchApprovalParams,
   type ExecCommandApprovalParams,
+  type CommandExecutionApprovalParams,
+  type FileChangeApprovalParams,
+  type V2ApprovalDecision,
   type ReviewDecision,
   type ApprovalPolicy,
   type SandboxMode,
-  type InterruptConversationParams,
-  type RawCodexEvent,
+  type ThreadTokenUsage,
 } from './types';
 import type {
   AgentBackend,
@@ -49,40 +49,66 @@ export interface CodexPermissionHandler {
   handleToolCall(
     toolCallId: string,
     toolName: string,
-    input: unknown
-  ): Promise<{ decision: 'approved' | 'approved_for_session' | 'denied' | 'abort' }>;
+    args: Record<string, unknown>,
+  ): Promise<{ decision: string; reason?: string }>;
 }
 
 export interface CodexAppServerBackendOptions {
-  /** Working directory for the agent */
+  /** Working directory for the Codex session */
   cwd: string;
-  /** Command to run (e.g. 'codex') */
+  /** Executable command (e.g. 'npx') */
   command: string;
-  /** Arguments (e.g. ['app-server']) */
+  /** Arguments for the command (e.g. ['-y', '@openai/codex@0.114.0', 'app-server']) */
   args?: string[];
-  /** Environment variables */
+  /** Environment variables passed to the spawned process */
   env?: Record<string, string>;
-  /** Model to use */
+  /** Optional model override */
   model?: string | null;
-  /** Model reasoning effort */
-  reasoningEffort?: string | null;
-  /** Approval policy */
+  /** Optional approval policy */
   approvalPolicy?: ApprovalPolicy | null;
-  /** Sandbox mode */
+  /** Optional sandbox mode */
   sandbox?: SandboxMode | null;
-  /** Base instructions (system prompt) for the agent */
-  baseInstructions?: string | null;
-  /** MCP servers config (for happy change_title etc.) */
-  mcpServers?: Record<string, McpServerConfig>;
-  /** Rollout file path for session resume */
-  resumeFile?: string | null;
-  /** Permission handler for tool approvals */
-  permissionHandler?: CodexPermissionHandler;
-  /** Abort signal */
+  /** Optional abort signal */
   signal?: AbortSignal;
+  /** Optional reasoning effort */
+  reasoningEffort?: string | null;
+  /** Optional base instructions */
+  baseInstructions?: string | null;
+  /** Optional permission handler for tool call approvals */
+  permissionHandler?: CodexPermissionHandler;
+  /** Optional MCP servers configuration */
+  mcpServers?: Record<string, McpServerConfig>;
+  /** Optional resume file path for session restoration */
+  resumeFile?: string | null;
+  /** Optional thread ID for resuming a specific thread */
+  resumeThreadId?: string | null;
 }
 
-// ─── Pending Approval ───────────────────────────────────────────
+// ─── Model Resolution ──────────────────────────────────────────
+
+/** Strip `-fast` suffix from model name and extract service tier. */
+const FAST_SUFFIX = '-fast';
+export function resolveModel(model: string | null | undefined): { model: string | null; isFast: boolean } {
+  if (!model) return { model: null, isFast: false };
+  if (model.endsWith(FAST_SUFFIX)) return { model: model.slice(0, -FAST_SUFFIX.length), isFast: true };
+  return { model, isFast: false };
+}
+
+// Event types that indicate real turn progress and should reset idle timeout.
+const TURN_PROGRESS_NOTIFICATIONS = new Set<string>([
+  Methods.NOTIFY_TURN_STARTED,
+  Methods.NOTIFY_ITEM_STARTED,
+  Methods.NOTIFY_ITEM_COMPLETED,
+  Methods.NOTIFY_AGENT_MESSAGE_DELTA,
+  Methods.NOTIFY_COMMAND_OUTPUT_DELTA,
+  Methods.NOTIFY_FILE_CHANGE_DELTA,
+  Methods.NOTIFY_REASONING_DELTA,
+  Methods.NOTIFY_REASONING_SUMMARY_DELTA,
+  Methods.NOTIFY_TURN_DIFF,
+  Methods.NOTIFY_TURN_PLAN,
+  Methods.NOTIFY_PLAN_DELTA,
+  Methods.NOTIFY_MCP_PROGRESS,
+]);
 
 interface PendingApproval {
   jsonRpcId: number | string;
@@ -91,49 +117,13 @@ interface PendingApproval {
 
 type ApprovalParams = Record<string, unknown>;
 
-// Event types that indicate real turn progress and should reset idle timeout.
-const TURN_PROGRESS_EVENT_TYPES = new Set<string>([
-  'task_started',
-  'agent_message_delta',
-  'agent_message_content_delta',
-  'agent_message',
-  'agent_reasoning_delta',
-  'reasoning_content_delta',
-  'agent_reasoning',
-  'agent_reasoning_section_break',
-  'exec_command_begin',
-  'exec_command_end',
-  'exec_command_output_delta',
-  'exec_approval_request',
-  'patch_apply_begin',
-  'patch_apply_end',
-  'apply_patch_approval_request',
-  'mcp_tool_call_begin',
-  'mcp_tool_call_end',
-  'web_search_begin',
-  'web_search_end',
-  'view_image_tool_call',
-  'turn_diff',
-  'plan_update',
-  'context_compacted',
-  'item_started',
-  'item_completed',
-  'background_event',
-  'task_complete',
-  'turn_aborted',
-  'shutdown_complete',
-]);
-
-export function isTurnProgressEvent(eventType: string): boolean {
-  return TURN_PROGRESS_EVENT_TYPES.has(eventType);
-}
-
-// ─── Backend ────────────────────────────────────────────────────
+// ─── Backend ─────────────────────────────────────────────────
 
 export class CodexAppServerBackend implements AgentBackend {
   private peer: CodexJsonRpcPeer;
   private listeners: AgentMessageHandler[] = [];
-  private conversationId: string | null = null;
+  private threadId: string | null = null;
+  private currentTurnId: string | null = null;
   private sessionId: string | null = null;
   private pendingApprovals = new Map<string, PendingApproval>();
   private feedbackQueue: string[] = [];
@@ -142,7 +132,6 @@ export class CodexAppServerBackend implements AgentBackend {
   // Resolvers for waitForResponseComplete()
   private turnCompleteResolve: (() => void) | null = null;
   private turnCompletePromise: Promise<void> | null = null;
-  private turnCompleteSettled = false;
   private turnCompletionError: Error | null = null;
   private turnStartedAt = 0;
   private turnLastProgressAt = 0;
@@ -169,7 +158,7 @@ export class CodexAppServerBackend implements AgentBackend {
     this.peer.onNotification((method, params) => this.handleNotification(method, params));
     this.peer.onServerRequest((method, params, id) => this.handleServerRequest(method, params, id));
     this.peer.onClose(() => {
-      if (!this.turnCompletePromise || this.turnCompleteSettled) {
+      if (!this.turnCompleteResolve) {
         return;
       }
       if (this.disposed) {
@@ -190,53 +179,52 @@ export class CodexAppServerBackend implements AgentBackend {
 
     this.peer.notify(Methods.INITIALIZED);
 
-    // 4. Create or resume conversation
-    let convId: string;
+    // 4. Create or resume thread
+    let threadId: string;
 
-    if (this.options.resumeFile) {
-      const resumeResult = await this.peer.request<ResumeConversationResponse>(
-        Methods.RESUME_CONVERSATION,
+    if (this.options.resumeThreadId) {
+      const resumeResult = await this.peer.request<ThreadResumeResponse>(
+        Methods.THREAD_RESUME,
         {
-          path: this.options.resumeFile,
-          overrides: this.buildConversationParams(),
-        } satisfies ResumeConversationParams
+          threadId: this.options.resumeThreadId,
+          ...this.buildThreadParams(),
+        } satisfies ThreadResumeParams
       );
-      convId = resumeResult.conversationId;
-      this.handleSessionConfigured({ sessionId: convId, model: resumeResult.model, reasoningEffort: resumeResult.reasoningEffort });
+      threadId = resumeResult.thread.id;
+      this.handleSessionConfigured({
+        sessionId: threadId,
+        model: resumeResult.model,
+        reasoningEffort: resumeResult.reasoningEffort,
+      });
     } else {
-      const newResult = await this.peer.request<NewConversationResponse>(
-        Methods.NEW_CONVERSATION,
-        this.buildConversationParams()
+      const newResult = await this.peer.request<ThreadStartResponse>(
+        Methods.THREAD_START,
+        this.buildThreadParams()
       );
-      convId = newResult.conversationId;
-      logger.info(`[CodexBackend] New conversation: id=${convId}, model=${newResult.model}`);
-      this.handleSessionConfigured({ sessionId: convId, model: newResult.model, reasoningEffort: newResult.reasoningEffort });
+      threadId = newResult.thread.id;
+      logger.info(`[CodexBackend] New thread: id=${threadId}, model=${newResult.model}`);
+      this.handleSessionConfigured({
+        sessionId: threadId,
+        model: newResult.model,
+        reasoningEffort: newResult.reasoningEffort,
+      });
     }
 
-    this.conversationId = convId;
-    this.sessionId = convId; // Use conversationId as sessionId
+    this.threadId = threadId;
+    this.sessionId = threadId;
 
-    // 5. Subscribe to events
-    await this.peer.request<AddConversationListenerResponse>(
-      Methods.ADD_CONVERSATION_LISTENER,
-      {
-        conversationId: convId,
-        experimentalRawEvents: false,
-      } satisfies AddConversationListenerParams
-    );
-
-    // 6. Send initial prompt if provided
+    // 5. Send initial prompt if provided
     if (initialPrompt) {
       this.resetTurnComplete();
       await this.doSendMessage(initialPrompt);
     }
 
-    return { sessionId: convId };
+    return { sessionId: threadId };
   }
 
   async sendPrompt(_sessionId: SessionId, prompt: string, options?: SendPromptOptions): Promise<void> {
-    if (!this.conversationId) {
-      throw new Error('CodexAppServerBackend: no active conversation');
+    if (!this.threadId) {
+      throw new Error('CodexAppServerBackend: no active thread');
     }
 
     // Flush feedback queue (denied approval reasons from previous turn)
@@ -249,12 +237,13 @@ export class CodexAppServerBackend implements AgentBackend {
   }
 
   async cancel(_sessionId: SessionId): Promise<void> {
-    if (!this.conversationId || !this.peer.isAlive) return;
+    if (!this.threadId || !this.peer.isAlive) return;
 
     try {
-      await this.peer.request(Methods.INTERRUPT_CONVERSATION, {
-        conversationId: this.conversationId,
-      } satisfies InterruptConversationParams, 5000);
+      await this.peer.request(Methods.TURN_INTERRUPT, {
+        threadId: this.threadId,
+        turnId: this.currentTurnId ?? '',
+      } satisfies TurnInterruptParams, 5000);
     } catch {
       // Interrupt may fail if already completed - ignore
       logger.debug('[CodexBackend] Interrupt failed (process may have already exited)');
@@ -288,51 +277,45 @@ export class CodexAppServerBackend implements AgentBackend {
     this.emit({ type: 'permission-response', id: requestId, approved });
   }
 
-  async waitForResponseComplete(timeoutMs = 300_000): Promise<void> {
-    if (!this.turnCompletePromise) {
-      this.resetTurnComplete();
-    }
-
-    const idleTimeoutMs = timeoutMs;
-    const checkIntervalMs = Math.max(100, Math.min(1000, Math.floor(idleTimeoutMs / 10)));
+  async waitForResponseComplete(timeoutMs?: number): Promise<void> {
+    if (!this.turnCompletePromise) return;
 
     let timer: ReturnType<typeof setInterval> | undefined;
-    const timeout = new Promise<void>((_, reject) => {
-      timer = setInterval(() => {
-        // Don't timeout while waiting for user to approve/deny a request
-        if (this.pendingApprovals.size > 0) {
-          this.turnLastProgressAt = Date.now();
-          return;
-        }
+    const timeout = timeoutMs
+      ? new Promise<void>(() => {
+          const idleThreshold = Math.min(timeoutMs / 2, 120_000);
+          timer = setInterval(() => {
+            const now = Date.now();
+            const elapsed = now - this.turnStartedAt;
+            const idleMs = now - this.turnLastProgressAt;
 
-        const now = Date.now();
-        const lastProgressAt = this.turnLastProgressAt || this.turnStartedAt || now;
-        const idleMs = now - lastProgressAt;
-        if (idleMs < idleTimeoutMs) {
-          return;
-        }
+            // Hard timeout
+            if (elapsed > timeoutMs) {
+              clearInterval(timer);
+              this.resolveTurnComplete(
+                new Error(`Codex turn timed out after ${(elapsed / 1000).toFixed(0)}s`)
+              );
+              return;
+            }
 
-        const elapsedMs = this.turnStartedAt ? now - this.turnStartedAt : idleMs;
-        const lastProgressEvent = this.turnLastProgressEvent ?? 'none';
-        reject(
-          new Error(
-            `waitForResponseComplete idle timeout after ${idleTimeoutMs}ms ` +
-            `(idle=${idleMs}ms, elapsed=${elapsedMs}ms, ` +
-            `lastProgressEvent=${lastProgressEvent}, pendingApprovals=${this.pendingApprovals.size})`
-          )
-        );
-      }, checkIntervalMs);
-    });
+            // Idle timeout (no progress events for too long)
+            if (idleMs > idleThreshold) {
+              clearInterval(timer);
+              this.resolveTurnComplete(
+                new Error(`Codex turn idle for ${(idleMs / 1000).toFixed(0)}s (last event: ${this.turnLastProgressEvent})`)
+              );
+            }
+          }, 5_000);
+        })
+      : undefined;
 
     try {
-      await Promise.race([this.turnCompletePromise!, timeout]);
+      await Promise.race([this.turnCompletePromise!, timeout].filter(Boolean));
       if (this.turnCompletionError) {
         throw this.turnCompletionError;
       }
     } finally {
-      if (timer) {
-        clearInterval(timer);
-      }
+      if (timer) clearInterval(timer);
     }
   }
 
@@ -352,25 +335,29 @@ export class CodexAppServerBackend implements AgentBackend {
     await this.peer.close();
   }
 
-  // ─── Conversation Params ────────────────────────────────────
+  // ─── Thread Params ────────────────────────────────────────────
 
-  private buildConversationParams(): NewConversationParams {
-    const params: NewConversationParams = {
+  private buildThreadParams(): ThreadStartParams {
+    const params: ThreadStartParams = {
       cwd: this.options.cwd,
     };
 
-    if (this.options.model) params.model = this.options.model;
+    const { model: resolvedModel, isFast } = resolveModel(this.options.model);
+    if (resolvedModel) params.model = resolvedModel;
     if (this.options.approvalPolicy) params.approvalPolicy = this.options.approvalPolicy;
     if (this.options.sandbox) params.sandbox = this.options.sandbox;
     if (this.options.baseInstructions) params.baseInstructions = this.options.baseInstructions;
+
+    // Fast mode: use serviceTier directly
+    if (isFast) {
+      params.serviceTier = 'fast';
+    }
 
     // Build config overrides (MCP servers + reasoning effort)
     const config: Record<string, unknown> = {};
     if (this.options.mcpServers && Object.keys(this.options.mcpServers).length > 0) {
       config.mcp_servers = this.options.mcpServers;
     }
-    // Reasoning effort must be passed via config (model_reasoning_effort)
-    // because NewConversationParams doesn't have a dedicated field for it.
     if (this.options.reasoningEffort) {
       config.model_reasoning_effort = this.options.reasoningEffort;
     }
@@ -381,33 +368,36 @@ export class CodexAppServerBackend implements AgentBackend {
     return params;
   }
 
-  // ─── Message Sending ────────────────────────────────────────
+  // ─── Message Sending ──────────────────────────────────────────
 
   private async doSendMessage(prompt: string, options?: SendPromptOptions): Promise<void> {
-    if (!this.conversationId) return;
+    if (!this.threadId) return;
 
-    const items: InputItem[] = [];
+    const input: UserInput[] = [];
 
     // Add images if present
     if (options?.images?.length) {
       for (const img of options.images) {
-        items.push({
+        input.push({
           type: 'image',
-          data: { image_url: `data:${img.mimeType};base64,${img.data}` },
+          url: `data:${img.mimeType};base64,${img.data}`,
         });
       }
     }
 
     // Add text
-    items.push({
+    input.push({
       type: 'text',
-      data: { text: prompt, textElements: [] },
+      text: prompt,
     });
 
-    await this.peer.request<SendUserMessageResponse>(Methods.SEND_USER_MESSAGE, {
-      conversationId: this.conversationId,
-      items,
-    } satisfies SendUserMessageParams);
+    const result = await this.peer.request<TurnStartResponse>(Methods.TURN_START, {
+      threadId: this.threadId,
+      input,
+    } satisfies TurnStartParams);
+
+    // Track the current turn ID for interrupts
+    this.currentTurnId = result.turn.id;
   }
 
   private async flushFeedbackQueue(): Promise<void> {
@@ -423,30 +413,25 @@ export class CodexAppServerBackend implements AgentBackend {
     const now = Date.now();
     this.turnStartedAt = now;
     this.turnLastProgressAt = now;
-    this.turnLastProgressEvent = 'turn_start';
+    this.turnLastProgressEvent = Methods.NOTIFY_TURN_STARTED;
     this.turnCompletionError = null;
-    this.turnCompleteSettled = false;
     this.turnCompletePromise = new Promise<void>((resolve) => {
       this.turnCompleteResolve = resolve;
     });
   }
 
   private resolveTurnComplete(error?: Error): void {
-    if (!this.turnCompletePromise || this.turnCompleteSettled) {
-      return;
-    }
-    this.turnCompleteSettled = true;
+    if (!this.turnCompleteResolve) return;
     this.turnCompletionError = error ?? null;
-    this.turnCompleteResolve?.();
+    const resolve = this.turnCompleteResolve;
     this.turnCompleteResolve = null;
+    resolve();
   }
 
-  private markTurnProgress(eventType: string): void {
-    if (!this.turnCompletePromise || this.turnCompleteSettled) {
-      return;
-    }
+  private markTurnProgress(notificationMethod: string): void {
+    if (!this.turnCompleteResolve) return;
     this.turnLastProgressAt = Date.now();
-    this.turnLastProgressEvent = eventType;
+    this.turnLastProgressEvent = notificationMethod;
   }
 
   // ─── Emit ───────────────────────────────────────────────────
@@ -461,309 +446,337 @@ export class CodexAppServerBackend implements AgentBackend {
     }
   }
 
-  // ─── Notification Handler ───────────────────────────────────
+  // ─── Notification Handler (v2 — individual methods) ─────────
 
   private handleNotification(method: string, params: unknown): void {
-    // Codex events come as "codex/event" or "codex/event/<type>"
-    if (!method.startsWith(Methods.EVENT_PREFIX)) {
-      // sessionConfigured comes as a separate notification (camelCase)
-      if (method === 'sessionConfigured') {
-        this.handleSessionConfigured(params);
-      }
-      return;
+    if (TURN_PROGRESS_NOTIFICATIONS.has(method)) {
+      this.markTurnProgress(method);
     }
 
-    // Extract event msg from params
-    const eventParams = params as { msg?: RawCodexEvent } | null;
-    const msg = eventParams?.msg;
-    if (!msg) return;
+    const p = (params ?? {}) as Record<string, any>;
 
-    this.handleCodexEvent(msg);
-  }
-
-  private handleSessionConfigured(params: unknown): void {
-    const p = params as Record<string, unknown>;
-    const sessionId =
-      typeof p?.sessionId === 'string'
-        ? p.sessionId
-        : typeof p?.session_id === 'string'
-          ? p.session_id
-          : undefined;
-    const model = typeof p?.model === 'string' ? p.model : undefined;
-    const reasoningEffort =
-      typeof p?.reasoningEffort === 'string'
-        ? p.reasoningEffort
-        : typeof p?.reasoning_effort === 'string'
-          ? p.reasoning_effort
-          : undefined;
-
-    if (sessionId) {
-      this.sessionId = sessionId;
-    }
-    logger.debug(`[CodexBackend] Session configured: model=${model}, sessionId=${sessionId}`);
-    this.emit({
-      type: 'event',
-      name: 'session_configured',
-      payload: {
-        sessionId,
-        model,
-        ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
-      },
-    });
-  }
-
-  // ─── Event Mapping ──────────────────────────────────────────
-
-  private handleCodexEvent(raw: RawCodexEvent): void {
-    if (isTurnProgressEvent(raw.type)) {
-      this.markTurnProgress(raw.type);
-    }
-
-    // Cast to any-typed record for property access — the switch narrows logically
-    const event = raw as Record<string, any>;
-    switch (raw.type) {
-      // ── Model output ──
-      case 'agent_message_delta':
-      case 'agent_message_content_delta':
-        this.emit({ type: 'model-output', textDelta: event.delta });
+    switch (method) {
+      // ── Agent message streaming ──
+      case Methods.NOTIFY_AGENT_MESSAGE_DELTA:
+        this.emit({ type: 'model-output', textDelta: p.delta });
         break;
 
-      case 'agent_message':
-        this.emit({ type: 'model-output', fullText: event.message });
+      // ── Reasoning streaming ──
+      case Methods.NOTIFY_REASONING_DELTA:
+        this.emit({ type: 'event', name: 'reasoning_delta', payload: { delta: p.delta } });
         break;
 
-      // ── Reasoning ──
-      case 'agent_reasoning_delta':
-      case 'reasoning_content_delta':
-        this.emit({ type: 'event', name: 'reasoning_delta', payload: { delta: event.delta } });
+      case Methods.NOTIFY_REASONING_SUMMARY_DELTA:
+        this.emit({ type: 'event', name: 'reasoning_delta', payload: { delta: p.delta } });
         break;
 
-      case 'agent_reasoning':
-        this.emit({ type: 'event', name: 'reasoning', payload: { text: event.text } });
+      case Methods.NOTIFY_REASONING_SUMMARY_ADDED:
+        this.emit({ type: 'event', name: 'reasoning_section_break', payload: p });
         break;
 
-      case 'agent_reasoning_section_break':
-        this.emit({ type: 'event', name: 'reasoning_section_break', payload: event });
+      // ── Command output streaming ──
+      case Methods.NOTIFY_COMMAND_OUTPUT_DELTA:
+        this.emit({ type: 'terminal-output', data: p.delta });
         break;
 
-      // ── Command execution ──
-      case 'exec_command_begin':
-        this.emit({
-          type: 'tool-call',
-          toolName: 'CodexBash',
-          callId: event.call_id,
-          args: { command: event.command, cwd: event.cwd },
-        });
+      // ── File change diff streaming ──
+      case Methods.NOTIFY_FILE_CHANGE_DELTA:
+        // File diffs streamed as they're generated
         break;
 
-      case 'exec_command_end':
-        this.emit({
-          type: 'tool-result',
-          toolName: 'CodexBash',
-          callId: event.call_id,
-          result: {
-            stdout: event.stdout,
-            stderr: event.stderr,
-            exit_code: event.exit_code,
-            formatted_output: event.formatted_output,
-          },
-        });
+      // ── Item lifecycle ──
+      case Methods.NOTIFY_ITEM_STARTED:
+        this.handleItemStarted(p.item);
         break;
 
-      case 'exec_command_output_delta':
-        this.emit({
-          type: 'terminal-output',
-          data: Buffer.from(event.chunk).toString(),
-        });
+      case Methods.NOTIFY_ITEM_COMPLETED:
+        this.handleItemCompleted(p.item);
         break;
 
-      // ── Exec approval request (event form) ──
-      case 'exec_approval_request':
-        this.emit({
-          type: 'exec-approval-request',
-          call_id: event.call_id,
-          command: event.command,
-          cwd: event.cwd,
-          reason: event.reason,
-        });
-        break;
-
-      // ── Patch operations ──
-      case 'patch_apply_begin':
-        this.emit({
-          type: 'patch-apply-begin',
-          call_id: event.call_id,
-          auto_approved: event.auto_approved,
-          changes: event.changes,
-        });
-        break;
-
-      case 'patch_apply_end':
-        this.emit({
-          type: 'patch-apply-end',
-          call_id: event.call_id,
-          stdout: event.stdout,
-          stderr: event.stderr,
-          success: event.success,
-        });
-        break;
-
-      // ── Apply patch approval request (event form) ──
-      case 'apply_patch_approval_request':
-        this.emit({
-          type: 'permission-request',
-          id: event.call_id,
-          reason: event.reason ?? 'File edit approval requested',
-          payload: { type: 'patch', changes: event.changes },
-        });
-        break;
-
-      // ── MCP tool calls ──
-      case 'mcp_tool_call_begin':
-        this.emit({
-          type: 'tool-call',
-          toolName: `mcp:${event.invocation.server}:${event.invocation.tool}`,
-          callId: event.call_id,
-          args: (event.invocation.arguments ?? {}) as Record<string, unknown>,
-        });
-        break;
-
-      case 'mcp_tool_call_end':
-        this.emit({
-          type: 'tool-result',
-          toolName: `mcp:${event.invocation.server}:${event.invocation.tool}`,
-          callId: event.call_id,
-          result: event.result,
-        });
-        break;
-
-      // ── Web search ──
-      case 'web_search_begin':
-        this.emit({
-          type: 'tool-call',
-          toolName: 'web_search',
-          callId: event.call_id,
-          args: {},
-        });
-        break;
-
-      case 'web_search_end':
-        this.emit({
-          type: 'tool-result',
-          toolName: 'web_search',
-          callId: event.call_id,
-          result: { query: event.query, action: event.action },
-        });
-        break;
-
-      // ── Image viewing ──
-      case 'view_image_tool_call':
-        this.emit({
-          type: 'tool-call',
-          toolName: 'view_image',
-          callId: event.call_id,
-          args: { path: event.path },
-        });
-        break;
-
-      // ── Task lifecycle ──
-      case 'task_started':
+      // ── Turn lifecycle ──
+      case Methods.NOTIFY_TURN_STARTED:
         this.emit({ type: 'status', status: 'running' });
         break;
 
-      case 'task_complete':
-        this.emit({ type: 'status', status: 'idle' });
-        this.resolveTurnComplete();
-        break;
-
-      case 'turn_aborted':
-        this.emit({ type: 'status', status: 'idle', detail: 'aborted' });
-        this.resolveTurnComplete();
-        break;
-
-      // ── Token count ──
-      case 'token_count':
-        this.emit({
-          type: 'token-count',
-          ...(event.info ?? {}),
-          rate_limits: event.rate_limits,
-        });
+      case Methods.NOTIFY_TURN_COMPLETED:
+        this.handleTurnCompleted(p.turn);
         break;
 
       // ── Turn diff ──
-      case 'turn_diff':
-        this.emit({ type: 'event', name: 'turn_diff', payload: { unified_diff: event.unified_diff } });
+      case Methods.NOTIFY_TURN_DIFF:
+        this.emit({ type: 'event', name: 'turn_diff', payload: { unified_diff: p.diff } });
         break;
 
       // ── Plan updates ──
-      case 'plan_update':
-        this.emit({ type: 'event', name: 'plan_update', payload: { explanation: event.explanation, plan: event.plan } });
+      case Methods.NOTIFY_TURN_PLAN:
+        this.emit({ type: 'event', name: 'plan_update', payload: p });
         break;
 
-      // ── Context compacted ──
-      case 'context_compacted':
-        this.emit({ type: 'event', name: 'context_compacted', payload: event });
+      case Methods.NOTIFY_PLAN_DELTA:
+        // Plan deltas streamed — can be accumulated by the consumer
         break;
 
-      // ── Errors/warnings ──
-      // Codex may emit transient errors (e.g. "Reconnecting... 1/5") while recovering
-      // internally.  Don't terminate the turn — just surface the error to the UI and
-      // keep waiting for `task_complete`.  If Codex truly crashes the process will
-      // exit, which is handled separately by the process-exit path.
-      case 'stream_error':
-      case 'error': {
-        const errorDetail = typeof event.message === 'string' ? event.message : JSON.stringify(event.message);
-        const message = errorDetail && errorDetail !== 'undefined' ? errorDetail : 'Codex event error';
-        this.emit({ type: 'status', status: 'error', detail: message });
-        break;
-      }
-
-      case 'warning':
-        this.emit({ type: 'event', name: 'warning', payload: { message: event.message } });
+      // ── Thread lifecycle ──
+      case Methods.NOTIFY_THREAD_STARTED:
+        // Thread created — already handled in startSession
         break;
 
-      // ── Session configured (may also appear as event) ──
-      case 'session_configured':
-        this.handleSessionConfigured(event);
+      case Methods.NOTIFY_THREAD_STATUS_CHANGED:
+        // Thread status update (idle, active, etc.)
         break;
 
-      case 'background_event':
-        this.emit({ type: 'event', name: 'background', payload: { message: event.message } });
-        break;
-
-      case 'shutdown_complete':
+      case Methods.NOTIFY_THREAD_CLOSED:
         this.emit({ type: 'status', status: 'stopped' });
         this.resolveTurnComplete();
         break;
 
-      // ── MCP startup progress ──
-      case 'mcp_startup_update':
-        this.emit({ type: 'event', name: 'mcp_startup', payload: { server: event.server, status: event.status } });
+      // ── Token usage ──
+      case Methods.NOTIFY_THREAD_TOKEN_USAGE:
+        this.handleTokenUsage(p.tokenUsage);
         break;
 
-      case 'mcp_startup_complete':
-        this.emit({ type: 'event', name: 'mcp_startup_complete', payload: { ready: event.ready, failed: event.failed, cancelled: event.cancelled } });
+      // ── Errors ──
+      case Methods.NOTIFY_ERROR:
+        this.handleErrorNotification(p);
         break;
 
-      // ── Informational events (no action needed) ──
-      case 'skills_update_available':
-      case 'item_started':
-      case 'item_completed':
-      case 'user_message':
-        // Silently ignore — these are informational
+      // ── MCP progress ──
+      case Methods.NOTIFY_MCP_PROGRESS:
+        // MCP tool call progress — informational
+        break;
+
+      // ── Deprecation & config warnings ──
+      case Methods.NOTIFY_DEPRECATION:
+      case Methods.NOTIFY_CONFIG_WARNING:
+        logger.debug(`[CodexBackend] ${method}: ${JSON.stringify(p)}`);
         break;
 
       default:
-        // Unknown events logged at debug level
-        logger.debug(`[CodexBackend] Unhandled event: ${event.type}`);
+        logger.debug(`[CodexBackend] Unhandled notification: ${method}`);
         break;
     }
+  }
+
+  private handleSessionConfigured(params: {
+    sessionId: string;
+    model?: string | null;
+    reasoningEffort?: string | null;
+  }): void {
+    this.sessionId = params.sessionId;
+    logger.debug(`[CodexBackend] Session configured: model=${params.model}, sessionId=${params.sessionId}`);
+    this.emit({
+      type: 'event',
+      name: 'session_configured',
+      payload: {
+        sessionId: params.sessionId,
+        model: params.model ?? undefined,
+        ...(params.reasoningEffort ? { reasoningEffort: params.reasoningEffort } : {}),
+      },
+    });
+  }
+
+  // ─── Item Event Mapping ──────────────────────────────────────
+
+  private handleItemStarted(item: Record<string, any> | undefined): void {
+    if (!item) return;
+
+    switch (item.type) {
+      case 'commandExecution':
+        this.emit({
+          type: 'tool-call',
+          toolName: 'CodexBash',
+          callId: item.id,
+          args: { command: item.command, cwd: item.cwd },
+        });
+        break;
+
+      case 'fileChange':
+        this.emit({
+          type: 'patch-apply-begin',
+          call_id: item.id,
+          auto_approved: item.status !== 'declined',
+          changes: item.changes,
+        });
+        break;
+
+      case 'mcpToolCall':
+        this.emit({
+          type: 'tool-call',
+          toolName: `mcp:${item.server}:${item.tool}`,
+          callId: item.id,
+          args: (item.arguments ?? {}) as Record<string, unknown>,
+        });
+        break;
+
+      case 'webSearch':
+        this.emit({
+          type: 'tool-call',
+          toolName: 'web_search',
+          callId: item.id,
+          args: { query: item.query },
+        });
+        break;
+
+      case 'imageView':
+        this.emit({
+          type: 'tool-call',
+          toolName: 'view_image',
+          callId: item.id,
+          args: { path: item.path },
+        });
+        break;
+
+      case 'agentMessage':
+      case 'reasoning':
+      case 'plan':
+      case 'userMessage':
+      case 'imageGeneration':
+      case 'contextCompaction':
+        // These items are handled via delta notifications or turn/completed
+        break;
+
+      default:
+        logger.debug(`[CodexBackend] Unhandled item/started type: ${item.type}`);
+        break;
+    }
+  }
+
+  private handleItemCompleted(item: Record<string, any> | undefined): void {
+    if (!item) return;
+
+    switch (item.type) {
+      case 'commandExecution':
+        this.emit({
+          type: 'tool-result',
+          toolName: 'CodexBash',
+          callId: item.id,
+          result: {
+            stdout: item.aggregatedOutput ?? '',
+            stderr: '',
+            exit_code: item.exitCode ?? 0,
+            formatted_output: item.aggregatedOutput,
+          },
+        });
+        break;
+
+      case 'fileChange':
+        this.emit({
+          type: 'patch-apply-end',
+          call_id: item.id,
+          stdout: '',
+          stderr: '',
+          success: item.status === 'completed',
+        });
+        break;
+
+      case 'mcpToolCall':
+        this.emit({
+          type: 'tool-result',
+          toolName: `mcp:${item.server}:${item.tool}`,
+          callId: item.id,
+          result: item.result,
+        });
+        break;
+
+      case 'webSearch':
+        this.emit({
+          type: 'tool-result',
+          toolName: 'web_search',
+          callId: item.id,
+          result: { query: item.query, action: item.action },
+        });
+        break;
+
+      case 'agentMessage':
+        // Full message text available in item.text
+        this.emit({ type: 'model-output', fullText: item.text });
+        break;
+
+      case 'reasoning':
+        // Full reasoning available in item.content
+        if (Array.isArray(item.content) && item.content.length > 0) {
+          this.emit({ type: 'event', name: 'reasoning', payload: { text: item.content.join('') } });
+        }
+        break;
+
+      case 'contextCompaction':
+        this.emit({ type: 'event', name: 'context_compacted', payload: item });
+        break;
+
+      case 'plan':
+      case 'userMessage':
+      case 'imageView':
+      case 'imageGeneration':
+        // Informational
+        break;
+
+      default:
+        logger.debug(`[CodexBackend] Unhandled item/completed type: ${item.type}`);
+        break;
+    }
+  }
+
+  private handleTurnCompleted(turn: Record<string, any> | undefined): void {
+    if (!turn) {
+      this.emit({ type: 'status', status: 'idle' });
+      this.resolveTurnComplete();
+      return;
+    }
+
+    const status = turn.status as string;
+
+    if (status === 'failed' && turn.error) {
+      const errorMsg = turn.error.message ?? 'Turn failed';
+      this.emit({ type: 'status', status: 'error', detail: errorMsg });
+      this.resolveTurnComplete(new Error(errorMsg));
+      return;
+    }
+
+    if (status === 'interrupted') {
+      this.emit({ type: 'status', status: 'idle', detail: 'aborted' });
+    } else {
+      this.emit({ type: 'status', status: 'idle' });
+    }
+
+    this.resolveTurnComplete();
+  }
+
+  private handleTokenUsage(tokenUsage: ThreadTokenUsage | undefined): void {
+    if (!tokenUsage) return;
+
+    this.emit({
+      type: 'token-count',
+      total_token_usage: {
+        input_tokens: tokenUsage.total.inputTokens,
+        cached_input_tokens: tokenUsage.total.cachedInputTokens,
+        output_tokens: tokenUsage.total.outputTokens,
+        reasoning_output_tokens: tokenUsage.total.reasoningOutputTokens,
+        total_tokens: tokenUsage.total.totalTokens,
+      },
+      last_token_usage: {
+        input_tokens: tokenUsage.last.inputTokens,
+        cached_input_tokens: tokenUsage.last.cachedInputTokens,
+        output_tokens: tokenUsage.last.outputTokens,
+        reasoning_output_tokens: tokenUsage.last.reasoningOutputTokens,
+        total_tokens: tokenUsage.last.totalTokens,
+      },
+      model_context_window: tokenUsage.modelContextWindow,
+    });
+  }
+
+  private handleErrorNotification(params: Record<string, any>): void {
+    const error = params.error;
+    const errorDetail = typeof error?.message === 'string' ? error.message : JSON.stringify(error);
+    const message = errorDetail && errorDetail !== 'undefined' ? errorDetail : 'Codex error';
+    // Surface error to UI; don't resolve turn — let turn/completed handle lifecycle
+    this.emit({ type: 'status', status: 'error', detail: message });
   }
 
   // ─── Server Request Handler (Approvals) ─────────────────────
 
   private handleServerRequest(method: string, params: unknown, id: number | string): void {
     switch (method) {
+      // Legacy approval requests (deprecated but may still be sent)
       case Methods.APPLY_PATCH_APPROVAL:
         this.handlePatchApproval(params as ApplyPatchApprovalParams, id);
         break;
@@ -772,13 +785,34 @@ export class CodexAppServerBackend implements AgentBackend {
         this.handleExecApproval(params as ExecCommandApprovalParams, id);
         break;
 
+      // New v2 approval requests
+      case Methods.COMMAND_EXECUTION_APPROVAL:
+        this.handleCommandExecutionApproval(params as CommandExecutionApprovalParams, id);
+        break;
+
+      case Methods.FILE_CHANGE_APPROVAL:
+        this.handleFileChangeApproval(params as FileChangeApprovalParams, id);
+        break;
+
+      // MCP elicitation — decline by default (no UI for this yet)
+      case Methods.MCP_ELICITATION:
+        this.peer.respond(id, { action: 'decline' });
+        break;
+
+      // Dynamic tool calls — not supported, respond with error
+      case Methods.TOOL_CALL:
+        this.peer.respond(id, { success: false, contentItems: [] });
+        break;
+
       default:
-        // Unknown server requests - respond with null to unblock
-        logger.debug(`[CodexBackend] Unknown server request: ${method}`);
+        // Respond with null to unblock unknown server requests
+        logger.debug(`[CodexBackend] Unhandled server request: ${method}`);
         this.peer.respond(id, null);
         break;
     }
   }
+
+  // ─── Legacy Approval Handlers ─────────────────────────────────
 
   private handlePatchApproval(params: ApplyPatchApprovalParams, jsonRpcId: number | string): void {
     const rawParams = params as unknown as ApprovalParams;
@@ -806,7 +840,7 @@ export class CodexAppServerBackend implements AgentBackend {
           // If still pending (not already responded via respondToPermission)
           if (this.pendingApprovals.has(callId)) {
             this.pendingApprovals.delete(callId);
-            const decision = this.mapDecision(result.decision);
+            const decision = this.mapLegacyDecision(result.decision);
             this.peer.respond(jsonRpcId, { decision });
 
             // Queue feedback for denied/abort with reason
@@ -853,7 +887,7 @@ export class CodexAppServerBackend implements AgentBackend {
         .then((result) => {
           if (this.pendingApprovals.has(callId)) {
             this.pendingApprovals.delete(callId);
-            const decision = this.mapDecision(result.decision);
+            const decision = this.mapLegacyDecision(result.decision);
             this.peer.respond(jsonRpcId, { decision });
 
             // Queue feedback for denied/abort with reason
@@ -873,7 +907,60 @@ export class CodexAppServerBackend implements AgentBackend {
     }
   }
 
-  private mapDecision(decision: string): ReviewDecision {
+  // ─── V2 Approval Handlers ──────────────────────────────────────
+
+  private handleCommandExecutionApproval(params: CommandExecutionApprovalParams, jsonRpcId: number | string): void {
+    this.dispatchV2Approval(params.itemId, jsonRpcId, 'CodexBash', {
+      command: params.command ? [params.command] : [],
+      cwd: params.cwd ?? '',
+      reason: params.reason,
+    }, params.reason);
+  }
+
+  private handleFileChangeApproval(params: FileChangeApprovalParams, jsonRpcId: number | string): void {
+    this.dispatchV2Approval(params.itemId, jsonRpcId, 'CodexPatch', {
+      reason: params.reason,
+      grantRoot: params.grantRoot,
+    }, params.reason);
+  }
+
+  private dispatchV2Approval(
+    callId: string,
+    jsonRpcId: number | string,
+    toolName: string,
+    args: Record<string, unknown>,
+    feedbackReason?: string | null,
+  ): void {
+    if (this.options.permissionHandler) {
+      this.pendingApprovals.set(callId, { jsonRpcId, callId });
+
+      this.options.permissionHandler
+        .handleToolCall(callId, toolName, args)
+        .then((result) => {
+          if (this.pendingApprovals.has(callId)) {
+            this.pendingApprovals.delete(callId);
+            const decision = this.mapV2Decision(result.decision);
+            this.peer.respond(jsonRpcId, { decision });
+
+            if ((decision === 'decline' || decision === 'cancel') && feedbackReason) {
+              this.feedbackQueue.push(feedbackReason);
+            }
+          }
+        })
+        .catch(() => {
+          if (this.pendingApprovals.has(callId)) {
+            this.pendingApprovals.delete(callId);
+            this.peer.respond(jsonRpcId, { decision: 'decline' as V2ApprovalDecision });
+          }
+        });
+    } else {
+      this.peer.respond(jsonRpcId, { decision: 'accept' as V2ApprovalDecision });
+    }
+  }
+
+  // ─── Decision Mapping ──────────────────────────────────────────
+
+  private mapLegacyDecision(decision: string): ReviewDecision {
     switch (decision) {
       case 'approved': return 'approved';
       case 'approved_for_session': return 'approved_for_session';
@@ -883,6 +970,23 @@ export class CodexAppServerBackend implements AgentBackend {
         return 'denied';
     }
   }
+
+  private mapV2Decision(decision: string): V2ApprovalDecision {
+    switch (decision) {
+      case 'approved':
+      case 'accept': return 'accept';
+      case 'approved_for_session':
+      case 'acceptForSession': return 'acceptForSession';
+      case 'abort':
+      case 'cancel': return 'cancel';
+      case 'denied':
+      case 'decline':
+      default:
+        return 'decline';
+    }
+  }
+
+  // ─── Approval Param Helpers (for legacy handlers) ──────────────
 
   private getApprovalCallId(params: ApprovalParams): string | null {
     if (typeof params.callId === 'string' && params.callId.length > 0) {
@@ -938,12 +1042,12 @@ export class CodexAppServerBackend implements AgentBackend {
 
   // ─── Public Accessors ───────────────────────────────────────
 
-  /** Get the current conversation/session ID */
+  /** Get the current thread ID (backward-compat: aliased as conversationId) */
   getConversationId(): string | null {
-    return this.conversationId;
+    return this.threadId;
   }
 
-  /** Get the Codex session ID (may differ from conversationId after session_configured) */
+  /** Get the Codex session ID (may differ from threadId after session_configured) */
   getSessionId(): string | null {
     return this.sessionId;
   }

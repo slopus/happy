@@ -840,6 +840,7 @@ export const ru: TranslationStructure = {
             title: 'МОДЕЛЬ',
             configureInCli: 'Настройте модели в настройках CLI',
             reasoningEffort: 'Reasoning Effort',
+            fastMode: 'Fast Mode',
         },
         codexPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',

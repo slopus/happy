@@ -18,7 +18,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export interface ItemProps {
     title: string;
-    subtitle?: string;
+    subtitle?: React.ReactNode;
     subtitleLines?: number; // set 0 or undefined for auto/multiline
     detail?: string;
     icon?: React.ReactNode;
@@ -164,8 +164,8 @@ export const Item = React.memo<ItemProps>((props) => {
             textToCopy = copy;
         } else {
             // If copy is true, try to figure out what to copy
-            // Priority: detail > subtitle > title
-            textToCopy = detail || subtitle || title;
+            // Priority: detail > subtitle (string only) > title
+            textToCopy = detail || (typeof subtitle === 'string' ? subtitle : undefined) || title;
         }
         
         try {

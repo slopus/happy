@@ -229,6 +229,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const permissionMode = session.permissionMode || 'default';
     // Get model mode from session object. "default" means use CLI/profile configured model.
     const modelMode = session.modelMode || 'default';
+    const fastMode = session.fastMode ?? false;
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
@@ -416,6 +417,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Function to update model mode
     const updateModelMode = React.useCallback((mode: string) => {
         storage.getState().updateSessionModelMode(sessionId, mode);
+    }, [sessionId]);
+
+    const updateFastMode = React.useCallback((enabled: boolean) => {
+        storage.getState().setSessionFastMode(sessionId, enabled);
     }, [sessionId]);
 
     // Handle opening the duplicate sheet - loads user messages from the session
@@ -740,6 +745,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onPermissionModeChange={updatePermissionMode}
             modelMode={modelMode as any}
             onModelModeChange={updateModelMode as any}
+            fastMode={fastMode}
+            onFastModeChange={updateFastMode}
             metadata={session.metadata}
             connectionStatus={inputConnectionStatus}
             onSend={async (textSnapshot) => {

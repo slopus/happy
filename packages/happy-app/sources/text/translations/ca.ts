@@ -829,6 +829,7 @@ export const ca: TranslationStructure = {
             title: 'MODEL',
             configureInCli: 'Configura els models a la configuració del CLI',
             reasoningEffort: 'Reasoning Effort',
+            fastMode: 'Fast Mode',
         },
         codexPermissionMode: {
             title: 'MODE DE PERMISOS CODEX',

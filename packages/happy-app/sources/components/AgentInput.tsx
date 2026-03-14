@@ -1,4 +1,4 @@
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable, Keyboard } from 'react-native';
 import { Image } from 'expo-image';
@@ -25,6 +25,7 @@ import { log } from '@/log';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile } from '@/sync/profileUtils';
 import { ImagePreview, LocalImage } from '@/components/ImagePreview';
+import { Switch } from '@/components/Switch';
 import { Modal } from '@/modal';
 import {
     buildCodexModelMode,
@@ -37,6 +38,7 @@ import {
     getMaxContextSize,
     MODEL_MODE_DEFAULT,
     parseCodexModelMode,
+    FAST_MODE_ICON_COLOR,
 } from '@/constants/modelCatalog';
 
 interface AgentInputProps {
@@ -86,6 +88,8 @@ interface AgentInputProps {
     onMachineClick?: () => void;
     currentPath?: string | null;
     onPathClick?: () => void;
+    fastMode?: boolean;
+    onFastModeChange?: (enabled: boolean) => void;
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
@@ -772,8 +776,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         const currentModelLabel = isCodex
                                             ? (codexFamilyOptions.find(o => o.value === codexSelection.family)?.shortLabel ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '')
                                             : modelOptions.find(o => o.value === selectedModelMode)?.shortLabel ?? '';
+                                        const currentModelSubtitle: React.ReactNode = props.fastMode
+                                            ? <>{currentModelLabel} <MaterialCommunityIcons name="lightning-bolt" size={10} color={FAST_MODE_ICON_COLOR} /></>
+                                            : currentModelLabel;
                                         const tabs = [
-                                            { key: 'model' as const, label: t('agentInput.model.title'), subtitle: currentModelLabel },
+                                            { key: 'model' as const, label: t('agentInput.model.title'), subtitle: currentModelSubtitle },
                                             { key: 'permission' as const, label: isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title'), subtitle: permissionLabel },
                                         ];
                                         return tabs.map((tab) => {
@@ -954,13 +961,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             })}
                                             {codexSelection.family !== 'default' && (
                                                 <>
-                                                    <View style={{
-                                                        height: 1,
-                                                        backgroundColor: theme.colors.divider,
-                                                        marginHorizontal: 16,
-                                                        marginTop: 4,
-                                                        marginBottom: 6,
-                                                    }} />
+                                                    <View style={[styles.overlayDivider, { marginTop: 4, marginBottom: 6 }]} />
                                                     <Text style={{
                                                         fontSize: 12,
                                                         fontWeight: '600',
@@ -1017,6 +1018,30 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                             </Pressable>
                                                         );
                                                     })}
+                                                    <View style={[styles.overlayDivider, { marginTop: 4, marginBottom: 6 }]} />
+                                                    <View style={{
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        paddingHorizontal: 16,
+                                                        paddingVertical: 8,
+                                                    }}>
+                                                        <Text style={{
+                                                            fontSize: 12,
+                                                            fontWeight: '600',
+                                                            color: theme.colors.textSecondary,
+                                                            ...Typography.default('semiBold')
+                                                        }}>
+                                                            {t('agentInput.model.fastMode')}
+                                                        </Text>
+                                                        <Switch
+                                                            value={!!props.fastMode}
+                                                            onValueChange={(value) => {
+                                                                hapticsLight();
+                                                                props.onFastModeChange?.(value);
+                                                            }}
+                                                        />
+                                                    </View>
                                                 </>
                                             )}
                                         </>
@@ -1218,6 +1243,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         {isCodex
                                             ? (codexFamilyOptions.find(o => o.value === codexSelection.family)?.shortLabel ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '')
                                             : (modelOptions.find(o => o.value === selectedModelMode)?.shortLabel ?? '')}
+                                        {props.fastMode && <>{' '}<MaterialCommunityIcons name="lightning-bolt" size={11} color={FAST_MODE_ICON_COLOR} /></>}
                                     </Text>
                                 </Pressable>
                             )}
