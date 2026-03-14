@@ -168,6 +168,7 @@ export interface PendingMessage {
     localId: string;
     content: unknown | null;
     previewText: string;
+    imageCount: number;
     sentBy: string | null;
     sentByName: string | null;
     trackCliDelivery: boolean;

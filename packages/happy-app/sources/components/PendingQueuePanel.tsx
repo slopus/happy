@@ -76,12 +76,22 @@ export const PendingQueuePanel: React.FC<PendingQueuePanelProps> = React.memo(({
                         return (
                             <View key={message.id} style={styles.itemRow}>
                                 <View style={styles.itemTextColumn}>
-                                    <Text
-                                        style={[styles.preview, message.pinnedAt !== null && styles.previewPinned]}
-                                        numberOfLines={2}
-                                    >
-                                        {truncatePendingPreview(getPendingPreviewText(message.previewText, t('pendingQueue.empty')))}
-                                    </Text>
+                                    <View style={styles.previewRow}>
+                                        {message.imageCount > 0 && (
+                                            <View style={styles.imageBadge}>
+                                                <Octicons name="image" size={13} color={theme.colors.textSecondary} />
+                                                {message.imageCount > 1 && (
+                                                    <Text style={styles.imageBadgeCount}>x{message.imageCount}</Text>
+                                                )}
+                                            </View>
+                                        )}
+                                        <Text
+                                            style={[styles.preview, message.pinnedAt !== null && styles.previewPinned, { flexShrink: 1 }]}
+                                            numberOfLines={2}
+                                        >
+                                            {truncatePendingPreview(getPendingPreviewText(message.previewText, t('pendingQueue.empty')))}
+                                        </Text>
+                                    </View>
                                 </View>
 
                                 {canManage && (
@@ -186,6 +196,21 @@ const styles = StyleSheet.create((theme) => ({
     itemTextColumn: {
         flexBasis: 0,
         flexGrow: 1,
+    },
+    previewRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    imageBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+    },
+    imageBadgeCount: {
+        color: theme.colors.textSecondary,
+        fontSize: 11,
+        fontWeight: '600',
     },
     preview: {
         color: theme.colors.text,

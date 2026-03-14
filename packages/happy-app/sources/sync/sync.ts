@@ -491,30 +491,30 @@ class Sync {
         return systemPrompt;
     }
 
-    private buildPendingPreviewText(rawContent: unknown): string {
+    private buildPendingPreview(rawContent: unknown): { previewText: string; imageCount: number } {
         const parsed = RawRecordSchema.safeParse(rawContent);
         if (!parsed.success) {
-            return '';
+            return { previewText: '', imageCount: 0 };
         }
 
         const raw = parsed.data;
         if (raw.role !== 'user') {
-            return '';
+            return { previewText: '', imageCount: 0 };
         }
 
         if (raw.meta?.displayText) {
-            return raw.meta.displayText;
+            return { previewText: raw.meta.displayText, imageCount: 0 };
         }
 
         if (raw.content.type === 'text') {
-            return raw.content.text;
+            return { previewText: raw.content.text, imageCount: 0 };
         }
 
         if (raw.content.type === 'mixed') {
-            return raw.content.text;
+            return { previewText: raw.content.text, imageCount: raw.content.images.length };
         }
 
-        return '';
+        return { previewText: '', imageCount: 0 };
     }
 
     private async decryptPendingMessage(sessionId: string, pending: ApiPendingMessage): Promise<PendingMessage | null> {
@@ -524,11 +524,13 @@ class Sync {
         }
 
         const content = await encryption.decryptRaw(pending.content.c);
+        const preview = this.buildPendingPreview(content);
         return {
             id: pending.id,
             localId: pending.localId,
             content,
-            previewText: this.buildPendingPreviewText(content),
+            previewText: preview.previewText,
+            imageCount: preview.imageCount,
             sentBy: pending.sentBy ?? null,
             sentByName: pending.sentByName ?? null,
             trackCliDelivery: pending.trackCliDelivery,

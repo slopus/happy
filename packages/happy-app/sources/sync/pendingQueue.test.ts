@@ -12,6 +12,7 @@ function pending(input: Partial<PendingMessage> & Pick<PendingMessage, 'id' | 'l
     localId: input.localId,
     content: input.content ?? null,
     previewText: input.previewText ?? input.localId,
+    imageCount: input.imageCount ?? 0,
     sentBy: input.sentBy ?? null,
     sentByName: input.sentByName ?? null,
     trackCliDelivery: input.trackCliDelivery ?? false,
