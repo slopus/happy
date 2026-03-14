@@ -1,8 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { PendingMessage } from '@/sync/storageTypes';
 import { t } from '@/text';
 import * as React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { layout } from './layout';
 import { getPendingPreviewText, truncatePendingPreview } from './pendingQueuePanelUtils';
 
 type PendingActionType = 'send-now' | 'pin' | 'delete';
@@ -43,66 +45,77 @@ export const PendingQueuePanel: React.FC<PendingQueuePanelProps> = React.memo(({
 
     return (
         <View style={styles.container}>
-            <View style={styles.headerRow}>
-                <Text style={styles.title}>{t('pendingQueue.title')}</Text>
-                <Text style={styles.count}>{messages.length}</Text>
-            </View>
+            <View style={styles.innerContainer}>
+                <View style={styles.headerRow}>
+                    <Text style={styles.title}>{t('pendingQueue.title')}</Text>
+                    <Text style={styles.count}>{messages.length}</Text>
+                </View>
 
-            <ScrollView
-                style={styles.list}
-                contentContainerStyle={styles.listContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator
-            >
-                {messages.map((message) => {
-                    const isAnyActionLoading = pendingAction?.pendingId === message.id;
+                <ScrollView
+                    style={styles.list}
+                    contentContainerStyle={styles.listContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator
+                >
+                    {messages.map((message) => {
+                        const isAnyActionLoading = pendingAction?.pendingId === message.id;
 
-                    return (
-                        <View key={message.id} style={styles.itemRow}>
-                            <View style={styles.itemTextColumn}>
-                                <Text style={styles.preview} numberOfLines={2}>
-                                    {truncatePendingPreview(getPendingPreviewText(message.previewText, t('pendingQueue.empty')))}
-                                </Text>
-                                {message.pinnedAt !== null && (
-                                    <Text style={styles.meta}>📌</Text>
+                        return (
+                            <View key={message.id} style={styles.itemRow}>
+                                <View style={styles.itemTextColumn}>
+                                    <Text
+                                        style={[styles.preview, message.pinnedAt !== null && styles.previewPinned]}
+                                        numberOfLines={2}
+                                    >
+                                        {truncatePendingPreview(getPendingPreviewText(message.previewText, t('pendingQueue.empty')))}
+                                    </Text>
+                                </View>
+
+                                {canManage && (
+                                    <View style={styles.actions}>
+                                        {isAnyActionLoading ? (
+                                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                        ) : (
+                                            <>
+                                                <Pressable
+                                                    style={styles.iconButton}
+                                                    onPress={() => void runAction(message.id, 'send-now', onSendNow)}
+                                                    accessibilityLabel={t('pendingQueue.sendNow')}
+                                                    hitSlop={8}
+                                                >
+                                                    <Ionicons name="paper-plane-outline" size={16} color={theme.colors.textLink} />
+                                                </Pressable>
+
+                                                <Pressable
+                                                    style={styles.iconButton}
+                                                    onPress={() => void runAction(message.id, 'pin', onPin)}
+                                                    accessibilityLabel={t('pendingQueue.pin')}
+                                                    hitSlop={8}
+                                                >
+                                                    <Ionicons
+                                                        name={message.pinnedAt !== null ? 'pin' : 'pin-outline'}
+                                                        size={16}
+                                                        color={message.pinnedAt !== null ? theme.colors.textLink : theme.colors.textSecondary}
+                                                    />
+                                                </Pressable>
+
+                                                <Pressable
+                                                    style={styles.iconButton}
+                                                    onPress={() => void runAction(message.id, 'delete', onDelete)}
+                                                    accessibilityLabel={t('pendingQueue.delete')}
+                                                    hitSlop={8}
+                                                >
+                                                    <Ionicons name="trash-outline" size={16} color={theme.colors.textDestructive} />
+                                                </Pressable>
+                                            </>
+                                        )}
+                                    </View>
                                 )}
                             </View>
-
-                            {canManage && (
-                                <View style={styles.actions}>
-                                    {isAnyActionLoading ? (
-                                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                                    ) : (
-                                        <>
-                                            <Pressable
-                                                style={styles.actionButton}
-                                                onPress={() => void runAction(message.id, 'send-now', onSendNow)}
-                                            >
-                                                <Text style={[styles.actionText, styles.sendNowText]}>{t('pendingQueue.sendNow')}</Text>
-                                            </Pressable>
-
-                                            <Pressable
-                                                style={[styles.actionButton, message.pinnedAt !== null && styles.actionButtonDisabled]}
-                                                onPress={() => void runAction(message.id, 'pin', onPin)}
-                                                disabled={message.pinnedAt !== null}
-                                            >
-                                                <Text style={[styles.actionText, styles.pinText, message.pinnedAt !== null && styles.actionTextDisabled]}>{t('pendingQueue.pin')}</Text>
-                                            </Pressable>
-
-                                            <Pressable
-                                                style={styles.actionButton}
-                                                onPress={() => void runAction(message.id, 'delete', onDelete)}
-                                            >
-                                                <Text style={[styles.actionText, styles.deleteText]}>{t('pendingQueue.delete')}</Text>
-                                            </Pressable>
-                                        </>
-                                    )}
-                                </View>
-                            )}
-                        </View>
-                    );
-                })}
-            </ScrollView>
+                        );
+                    })}
+                </ScrollView>
+            </View>
         </View>
     );
 });
@@ -115,6 +128,11 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         paddingTop: 8,
         paddingBottom: 8,
+        alignItems: 'center',
+    },
+    innerContainer: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
         gap: 8,
     },
     headerRow: {
@@ -152,44 +170,25 @@ const styles = StyleSheet.create((theme) => ({
     itemTextColumn: {
         flexBasis: 0,
         flexGrow: 1,
-        gap: 4,
     },
     preview: {
         color: theme.colors.text,
         fontSize: 13,
         lineHeight: 18,
     },
-    meta: {
-        color: theme.colors.textSecondary,
-        fontSize: 11,
-        fontWeight: '500',
+    previewPinned: {
+        fontWeight: '700',
     },
     actions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: 4,
+        marginLeft: 4,
     },
-    actionButton: {
-        paddingHorizontal: 4,
-        paddingVertical: 2,
-    },
-    actionButtonDisabled: {
-        opacity: 0.4,
-    },
-    actionText: {
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    actionTextDisabled: {
-        color: theme.colors.textSecondary,
-    },
-    sendNowText: {
-        color: theme.colors.textLink,
-    },
-    pinText: {
-        color: theme.colors.status.connecting,
-    },
-    deleteText: {
-        color: theme.colors.textDestructive,
+    iconButton: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 }));

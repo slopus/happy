@@ -640,12 +640,6 @@ class Sync {
         }
 
         try {
-            await sessionAbort(sessionId);
-        } catch {
-            // best effort: send-now should still proceed
-        }
-
-        try {
             const API_ENDPOINT = getServerUrl();
             const response = await fetch(
                 `${API_ENDPOINT}/v3/sessions/${sessionId}/pending-messages/${pendingId}/send-now`,
@@ -659,10 +653,24 @@ class Sync {
             );
 
             if (!response.ok) {
+                if (response.status === 404) {
+                    this.invalidatePendingMessagesSync(sessionId);
+                    try {
+                        await sessionAbort(sessionId);
+                    } catch {
+                        // best effort
+                    }
+                    return true;
+                }
                 return false;
             }
 
             storage.getState().removePendingMessage(sessionId, pendingId);
+            try {
+                await sessionAbort(sessionId);
+            } catch {
+                // best effort
+            }
             return true;
         } catch {
             return false;

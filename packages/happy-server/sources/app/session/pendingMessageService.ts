@@ -133,7 +133,7 @@ export async function pinPendingMessage(sessionId: string, pendingId: string): P
             id: pendingId,
         },
         data: {
-            pinnedAt: new Date(),
+            pinnedAt: message.pinnedAt ? null : new Date(),
         },
         select: pendingMessageSelect,
     });

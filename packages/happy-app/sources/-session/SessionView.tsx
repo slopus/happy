@@ -699,15 +699,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const canEdit = !session.accessLevel || session.accessLevel !== 'view';
 
     const handleSendNowPending = React.useCallback(async (pendingId: string) => {
-        const confirmed = await Modal.confirm(
-            t('pendingQueue.sendNow'),
-            t('pendingQueue.confirmSendNow'),
-            { confirmText: t('common.yes'), cancelText: t('common.cancel') }
-        );
-        if (!confirmed) {
-            return;
-        }
-
         const success = await sync.sendNowPendingMessage(sessionId, pendingId);
         if (!success) {
             Modal.alert(t('common.error'), t('status.operationFailed'));

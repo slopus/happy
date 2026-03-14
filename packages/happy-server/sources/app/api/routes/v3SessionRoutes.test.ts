@@ -1244,6 +1244,14 @@ describe("v3SessionRoutes", () => {
         expect(pinResponse.statusCode).toBe(200);
         expect(state.pendingMessages[0].pinnedAt).not.toBeNull();
 
+        const unpinResponse = await app.inject({
+            method: "POST",
+            url: `/v3/sessions/session-1/pending-messages/${pending.id}/pin`,
+            headers: { "x-user-id": "user-1" },
+        });
+        expect(unpinResponse.statusCode).toBe(200);
+        expect(state.pendingMessages[0].pinnedAt).toBeNull();
+
         const deleteResponse = await app.inject({
             method: "DELETE",
             url: `/v3/sessions/session-1/pending-messages/${pending.id}`,
