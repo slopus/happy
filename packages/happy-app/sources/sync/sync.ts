@@ -586,6 +586,10 @@ class Sync {
             );
 
             if (!response.ok) {
+                if (response.status === 404) {
+                    storage.getState().removePendingMessage(sessionId, pendingId);
+                    return true;
+                }
                 return false;
             }
 
@@ -624,6 +628,10 @@ class Sync {
             );
 
             if (!response.ok) {
+                if (response.status === 404) {
+                    storage.getState().removePendingMessage(sessionId, pendingId);
+                    return true;
+                }
                 return false;
             }
 
@@ -2570,6 +2578,7 @@ class Sync {
                 for (const item of sessionsData) {
                     if (typeof item !== 'string') {
                         this.messagesSync.get(item.id)?.invalidate();
+                        this.invalidatePendingMessagesSync(item.id);
                     }
                 }
             }

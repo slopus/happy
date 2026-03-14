@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Octicons } from '@expo/vector-icons';
 import type { PendingMessage } from '@/sync/storageTypes';
 import { t } from '@/text';
 import * as React from 'react';
@@ -20,6 +20,17 @@ type PendingQueuePanelProps = {
 export const PendingQueuePanel: React.FC<PendingQueuePanelProps> = React.memo(({ messages, canManage, onSendNow, onPin, onDelete }) => {
     const { theme } = useUnistyles();
     const [pendingAction, setPendingAction] = React.useState<{ pendingId: string; action: PendingActionType } | null>(null);
+    const scrollRef = React.useRef<ScrollView>(null);
+    const prevCountRef = React.useRef(messages.length);
+
+    React.useEffect(() => {
+        if (messages.length > prevCountRef.current) {
+            requestAnimationFrame(() => {
+                scrollRef.current?.scrollToEnd({ animated: true });
+            });
+        }
+        prevCountRef.current = messages.length;
+    }, [messages.length]);
 
     const runAction = React.useCallback(async (pendingId: string, action: PendingActionType, handler: (id: string) => Promise<void> | void) => {
         if (pendingAction !== null) {
@@ -52,13 +63,15 @@ export const PendingQueuePanel: React.FC<PendingQueuePanelProps> = React.memo(({
                 </View>
 
                 <ScrollView
+                    ref={scrollRef}
                     style={styles.list}
                     contentContainerStyle={styles.listContent}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator
                 >
                     {messages.map((message) => {
-                        const isAnyActionLoading = pendingAction?.pendingId === message.id;
+                        const loadingAction = pendingAction?.pendingId === message.id ? pendingAction.action : null;
+                        const isDisabled = pendingAction !== null;
 
                         return (
                             <View key={message.id} style={styles.itemRow}>
@@ -73,42 +86,45 @@ export const PendingQueuePanel: React.FC<PendingQueuePanelProps> = React.memo(({
 
                                 {canManage && (
                                     <View style={styles.actions}>
-                                        {isAnyActionLoading ? (
-                                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                                        ) : (
-                                            <>
-                                                <Pressable
-                                                    style={styles.iconButton}
-                                                    onPress={() => void runAction(message.id, 'send-now', onSendNow)}
-                                                    accessibilityLabel={t('pendingQueue.sendNow')}
-                                                    hitSlop={8}
-                                                >
-                                                    <Ionicons name="paper-plane-outline" size={16} color={theme.colors.textLink} />
-                                                </Pressable>
+                                        <Pressable
+                                            style={[styles.iconButton, isDisabled && styles.iconButtonDisabled]}
+                                            onPress={() => void runAction(message.id, 'send-now', onSendNow)}
+                                            accessibilityLabel={t('pendingQueue.sendNow')}
+                                            hitSlop={8}
+                                            disabled={isDisabled}
+                                        >
+                                            {loadingAction === 'send-now'
+                                                ? <ActivityIndicator size={14} color={theme.colors.textLink} />
+                                                : <Octicons name="paper-airplane" size={16} color={theme.colors.textLink} />}
+                                        </Pressable>
 
-                                                <Pressable
-                                                    style={styles.iconButton}
-                                                    onPress={() => void runAction(message.id, 'pin', onPin)}
-                                                    accessibilityLabel={t('pendingQueue.pin')}
-                                                    hitSlop={8}
-                                                >
-                                                    <Ionicons
-                                                        name={message.pinnedAt !== null ? 'pin' : 'pin-outline'}
-                                                        size={16}
-                                                        color={message.pinnedAt !== null ? theme.colors.textLink : theme.colors.textSecondary}
-                                                    />
-                                                </Pressable>
+                                        <Pressable
+                                            style={[styles.iconButton, isDisabled && styles.iconButtonDisabled]}
+                                            onPress={() => void runAction(message.id, 'pin', onPin)}
+                                            accessibilityLabel={t('pendingQueue.pin')}
+                                            hitSlop={8}
+                                            disabled={isDisabled}
+                                        >
+                                            {loadingAction === 'pin'
+                                                ? <ActivityIndicator size={14} color={theme.colors.textSecondary} />
+                                                : <Octicons
+                                                    name="move-to-top"
+                                                    size={16}
+                                                    color={message.pinnedAt !== null ? theme.colors.textLink : theme.colors.textSecondary}
+                                                />}
+                                        </Pressable>
 
-                                                <Pressable
-                                                    style={styles.iconButton}
-                                                    onPress={() => void runAction(message.id, 'delete', onDelete)}
-                                                    accessibilityLabel={t('pendingQueue.delete')}
-                                                    hitSlop={8}
-                                                >
-                                                    <Ionicons name="trash-outline" size={16} color={theme.colors.textDestructive} />
-                                                </Pressable>
-                                            </>
-                                        )}
+                                        <Pressable
+                                            style={[styles.iconButton, isDisabled && styles.iconButtonDisabled]}
+                                            onPress={() => void runAction(message.id, 'delete', onDelete)}
+                                            accessibilityLabel={t('pendingQueue.delete')}
+                                            hitSlop={8}
+                                            disabled={isDisabled}
+                                        >
+                                            {loadingAction === 'delete'
+                                                ? <ActivityIndicator size={14} color={theme.colors.textDestructive} />
+                                                : <Octicons name="trash" size={16} color={theme.colors.textDestructive} />}
+                                        </Pressable>
                                     </View>
                                 )}
                             </View>
@@ -158,7 +174,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     itemRow: {
         flexDirection: 'row',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'space-between',
         gap: 8,
         borderWidth: StyleSheet.hairlineWidth,
@@ -190,5 +206,8 @@ const styles = StyleSheet.create((theme) => ({
         height: 24,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    iconButtonDisabled: {
+        opacity: 0.4,
     },
 }));
