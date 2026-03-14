@@ -247,6 +247,17 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 13,
         ...Typography.default(),
     },
+    emptyContainer: {
+        alignItems: 'center',
+        paddingTop: 80,
+        paddingHorizontal: 48,
+    },
+    emptyText: {
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        ...Typography.default(),
+    },
 }));
 
 type SessionTab = 'active' | 'inactive' | 'shared' | 'sharedByMe';
@@ -432,7 +443,14 @@ export function SessionsList() {
         );
     }, [activeTab, theme, hasInactiveSessions, hasSharedSessions, hasSharedByMeSessions]);
 
-    // Footer removed - all sessions now shown inline
+    const EmptyComponent = React.useCallback(() => (
+        <View style={styles.emptyContainer}>
+            <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.textSecondary} style={{ marginBottom: 12, opacity: 0.5 }} />
+            <Text style={styles.emptyText}>
+                {t('components.emptySessions.noActiveSessions')}
+            </Text>
+        </View>
+    ), [theme]);
 
     return (
         <View style={styles.container}>
@@ -443,6 +461,7 @@ export function SessionsList() {
                     keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
+                    ListEmptyComponent={EmptyComponent}
                     removeClippedSubviews={true}
                     refreshControl={
                         <RefreshControl
