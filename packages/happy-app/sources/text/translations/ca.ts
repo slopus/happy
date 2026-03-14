@@ -421,8 +421,6 @@ export const ca: TranslationStructure = {
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
-        hideInactiveSessions: 'Amaga les sessions inactives',
-        hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
         enhancedSessionWizard: 'Assistent de sessió millorat',
         enhancedSessionWizardEnabled: 'Llançador de sessió amb perfil actiu',
         enhancedSessionWizardDisabled: 'Usant el llançador de sessió estàndard',
@@ -580,6 +578,10 @@ export const ca: TranslationStructure = {
     },
 
     session: {
+        tabs: {
+            active: 'Actives',
+            inactive: 'Inactives',
+        },
         inputPlaceholder: 'Escriu un missatge...',
         takePhoto: 'Fes una foto',
         chooseFromLibrary: 'Tria de la galeria',

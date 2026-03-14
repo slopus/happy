@@ -422,8 +422,7 @@ export const zhHant: TranslationStructure = {
         commandPaletteDisabled: '快速命令存取已停用',
         markdownCopyV2: 'Markdown 複製 v2',
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
-        hideInactiveSessions: '隱藏非活躍工作階段',
-        hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
+
         enhancedSessionWizard: '增強工作階段精靈',
         enhancedSessionWizardEnabled: '設定檔優先的工作階段啟動器已啟用',
         enhancedSessionWizardDisabled: '使用標準工作階段啟動器',
@@ -581,6 +580,10 @@ export const zhHant: TranslationStructure = {
     },
 
     session: {
+        tabs: {
+            active: '活躍',
+            inactive: '非活躍',
+        },
         inputPlaceholder: '輸入訊息...',
         takePhoto: '拍照',
         chooseFromLibrary: '從圖庫選擇',

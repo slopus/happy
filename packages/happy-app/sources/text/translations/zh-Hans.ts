@@ -423,8 +423,6 @@ export const zhHans: TranslationStructure = {
         commandPaletteDisabled: '快速命令访问已禁用',
         markdownCopyV2: 'Markdown 复制 v2',
         markdownCopyV2Subtitle: '长按打开复制模态框',
-        hideInactiveSessions: '隐藏非活跃会话',
-        hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
         enhancedSessionWizard: '增强会话向导',
         enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
         enhancedSessionWizardDisabled: '使用标准会话启动器',
@@ -582,6 +580,10 @@ export const zhHans: TranslationStructure = {
     },
 
     session: {
+        tabs: {
+            active: '活跃',
+            inactive: '非活跃',
+        },
         inputPlaceholder: '输入消息...',
         takePhoto: '拍照',
         chooseFromLibrary: '从相册选择',

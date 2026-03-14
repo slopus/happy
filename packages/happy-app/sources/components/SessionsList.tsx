@@ -11,7 +11,7 @@ import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSetting } from '@/sync/storage';
-import { useVisibleSessionListViewData, useSharedSessionListViewData, useSharedByMeSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useVisibleSessionListViewData, useInactiveSessionListViewData, useSharedSessionListViewData, useSharedByMeSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
@@ -249,15 +249,16 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-type SessionTab = 'all' | 'shared' | 'sharedByMe';
+type SessionTab = 'active' | 'inactive' | 'shared' | 'sharedByMe';
 
 export function SessionsList() {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     const data = useVisibleSessionListViewData();
+    const inactiveData = useInactiveSessionListViewData();
     const sharedData = useSharedSessionListViewData();
     const sharedByMeData = useSharedByMeSessionListViewData();
-    const [activeTab, setActiveTab] = React.useState<SessionTab>('all');
+    const [activeTab, setActiveTab] = React.useState<SessionTab>('active');
     const pathname = usePathname();
     const isTablet = useIsTablet();
     const navigateToSession = useNavigateToSession();
@@ -273,17 +274,20 @@ export function SessionsList() {
             setRefreshing(false);
         }
     }, []);
-    // Reset to 'all' tab if current tab's data becomes empty
+    // Reset to 'active' tab if current tab's data becomes empty
     React.useEffect(() => {
+        if (activeTab === 'inactive' && inactiveData && inactiveData.length === 0) {
+            setActiveTab('active');
+        }
         if (activeTab === 'shared' && sharedData && sharedData.length === 0) {
-            setActiveTab('all');
+            setActiveTab('active');
         }
         if (activeTab === 'sharedByMe' && sharedByMeData && sharedByMeData.length === 0) {
-            setActiveTab('all');
+            setActiveTab('active');
         }
-    }, [activeTab, sharedData, sharedByMeData]);
+    }, [activeTab, inactiveData, sharedData, sharedByMeData]);
 
-    const tabData = activeTab === 'shared' ? sharedData : activeTab === 'sharedByMe' ? sharedByMeData : data;
+    const tabData = activeTab === 'inactive' ? inactiveData : activeTab === 'shared' ? sharedData : activeTab === 'sharedByMe' ? sharedByMeData : data;
 
     const selectable = isTablet;
     const dataWithSelected = selectable ? React.useMemo(() => {
@@ -381,22 +385,25 @@ export function SessionsList() {
 
 
     const tabs: { key: SessionTab; label: string }[] = React.useMemo(() => [
-        { key: 'all', label: t('common.all') },
+        { key: 'active', label: t('session.tabs.active') },
+        { key: 'inactive', label: t('session.tabs.inactive') },
         { key: 'shared', label: t('session.sharing.sharedWithMeSessions') },
         { key: 'sharedByMe', label: t('session.sharing.sharedByMeSessions') },
     ], []);
 
+    const hasInactiveSessions = inactiveData && inactiveData.length > 0;
     const hasSharedSessions = sharedData && sharedData.length > 0;
     const hasSharedByMeSessions = sharedByMeData && sharedByMeData.length > 0;
 
     const HeaderComponent = React.useCallback(() => {
-        const showFilterRow = hasSharedSessions || hasSharedByMeSessions;
         const visibleTabs = tabs.filter(tab => {
-            if (tab.key === 'all') return true;
+            if (tab.key === 'active') return true;
+            if (tab.key === 'inactive') return hasInactiveSessions;
             if (tab.key === 'shared') return hasSharedSessions;
             if (tab.key === 'sharedByMe') return hasSharedByMeSessions;
             return true;
         });
+        const showFilterRow = visibleTabs.length > 1;
         return (
             <>
                 <UpdateBanner />
@@ -423,7 +430,7 @@ export function SessionsList() {
                 )}
             </>
         );
-    }, [activeTab, theme, hasSharedSessions, hasSharedByMeSessions]);
+    }, [activeTab, theme, hasInactiveSessions, hasSharedSessions, hasSharedByMeSessions]);
 
     // Footer removed - all sessions now shown inline
 

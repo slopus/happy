@@ -110,7 +110,7 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 compactSessionView: false,
                 showThinkingMessages: true,
-                hideInactiveSessions: false,
+
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
@@ -143,7 +143,7 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 compactSessionView: false,
                 showThinkingMessages: true,
-                hideInactiveSessions: false,
+
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
@@ -176,7 +176,7 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 compactSessionView: false,
                 showThinkingMessages: true,
-                hideInactiveSessions: false,
+
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
@@ -211,7 +211,7 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 compactSessionView: false,
                 showThinkingMessages: true,
-                hideInactiveSessions: false,
+
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
@@ -251,7 +251,7 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 compactSessionView: false,
                 showThinkingMessages: true,
-                hideInactiveSessions: false,
+
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
@@ -300,7 +300,7 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 compactSessionView: false,
                 showThinkingMessages: true,
-                hideInactiveSessions: false,
+
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
@@ -359,7 +359,7 @@ describe('settings', () => {
                 showFlavorIcons: false,
                 compactSessionView: false,
                 agentInputEnterToSend: true,
-                hideInactiveSessions: false,
+
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,

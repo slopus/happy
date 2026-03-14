@@ -437,8 +437,6 @@ export const en: TranslationStructure = {
         commandPaletteDisabled: 'Quick command access disabled',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Long press opens copy modal',
-        hideInactiveSessions: 'Hide inactive sessions',
-        hideInactiveSessionsSubtitle: 'Show only active chats in your list',
         enhancedSessionWizard: 'Enhanced Session Wizard',
         enhancedSessionWizardEnabled: 'Profile-first session launcher active',
         enhancedSessionWizardDisabled: 'Using standard session launcher',
@@ -597,6 +595,10 @@ export const en: TranslationStructure = {
     },
 
     session: {
+        tabs: {
+            active: 'Active',
+            inactive: 'Inactive',
+        },
         inputPlaceholder: 'Type a message ...',
         takePhoto: 'Take Photo',
         chooseFromLibrary: 'Choose from Library',

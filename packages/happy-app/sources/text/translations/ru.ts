@@ -385,8 +385,7 @@ export const ru: TranslationStructure = {
         commandPaletteDisabled: 'Быстрый доступ к командам отключён',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
-        hideInactiveSessions: 'Скрывать неактивные сессии',
-        hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
+
         enhancedSessionWizard: 'Улучшенный мастер сессий',
         enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
         enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
@@ -743,6 +742,10 @@ export const ru: TranslationStructure = {
     },
 
     session: {
+        tabs: {
+            active: 'Активные',
+            inactive: 'Неактивные',
+        },
         inputPlaceholder: 'Введите сообщение...',
         takePhoto: 'Сделать фото',
         chooseFromLibrary: 'Выбрать из галереи',

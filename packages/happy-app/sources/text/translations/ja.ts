@@ -453,8 +453,6 @@ export const ja: TranslationStructure = {
         commandPaletteDisabled: 'クイックコマンドアクセスは無効',
         markdownCopyV2: 'Markdownコピー v2',
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
-        hideInactiveSessions: '非アクティブセッションを非表示',
-        hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
         enhancedSessionWizard: '拡張セッションウィザード',
         enhancedSessionWizardEnabled: 'プロファイル優先セッションランチャーが有効',
         enhancedSessionWizardDisabled: '標準セッションランチャーを使用',
@@ -612,6 +610,10 @@ export const ja: TranslationStructure = {
     },
 
     session: {
+        tabs: {
+            active: 'アクティブ',
+            inactive: '非アクティブ',
+        },
         inputPlaceholder: 'メッセージを入力...',
         takePhoto: '写真を撮る',
         chooseFromLibrary: 'ライブラリから選択',

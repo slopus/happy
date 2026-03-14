@@ -432,8 +432,7 @@ export const pl: TranslationStructure = {
         commandPaletteDisabled: 'Szybki dostęp do poleceń wyłączony',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
-        hideInactiveSessions: 'Ukryj nieaktywne sesje',
-        hideInactiveSessionsSubtitle: 'Wyświetlaj tylko aktywne czaty na liście',
+
         enhancedSessionWizard: 'Ulepszony kreator sesji',
         enhancedSessionWizardEnabled: 'Aktywny launcher z profilem',
         enhancedSessionWizardDisabled: 'Używanie standardowego launchera sesji',
@@ -591,6 +590,10 @@ export const pl: TranslationStructure = {
     },
 
     session: {
+        tabs: {
+            active: 'Aktywne',
+            inactive: 'Nieaktywne',
+        },
         inputPlaceholder: 'Wpisz wiadomość...',
         takePhoto: 'Zrób zdjęcie',
         chooseFromLibrary: 'Wybierz z galerii',

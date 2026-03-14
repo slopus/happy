@@ -421,8 +421,6 @@ export const pt: TranslationStructure = {
         commandPaletteDisabled: 'Acesso rápido a comandos desativado',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pressione e segure para abrir modal de cópia',
-        hideInactiveSessions: 'Ocultar sessões inativas',
-        hideInactiveSessionsSubtitle: 'Mostre apenas os chats ativos na sua lista',
         enhancedSessionWizard: 'Assistente de sessão aprimorado',
         enhancedSessionWizardEnabled: 'Lançador de sessão com perfil ativo',
         enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
@@ -580,6 +578,10 @@ export const pt: TranslationStructure = {
     },
 
     session: {
+        tabs: {
+            active: 'Ativas',
+            inactive: 'Inativas',
+        },
         inputPlaceholder: 'Digite uma mensagem ...',
         takePhoto: 'Tirar foto',
         chooseFromLibrary: 'Escolher da galeria',
