@@ -192,7 +192,7 @@ export const zhHant: TranslationStructure = {
         developer: '開發者',
         developerTools: '開發者工具',
         about: '關於',
-        aboutFooter: 'Happy Next 是一個 Codex 和 Claude Code 行動用戶端。它採用端對端加密，您的帳戶僅儲存在本機裝置上。與 Anthropic 無關聯。',
+        aboutFooter: 'Happy Next 是一個 Claude Code、Codex 和 Gemini 行動用戶端。它採用端對端加密，您的帳戶僅儲存在本機裝置上。與 Anthropic 和 OpenAI 無關聯。',
         whatsNew: '更新日誌',
         whatsNewSubtitle: '查看最新更新和改進',
         reportIssue: '回報問題',
@@ -212,7 +212,7 @@ export const zhHant: TranslationStructure = {
         history: '歷史',
         sessionHistorySubtitle: '查看過去的 Happy 工作階段',
         claudeSessionsSubtitle: '瀏覽此裝置上的 Claude CLI 工作階段',
-        agentHistorySubtitle: '瀏覽 Claude、Gemini 和 Codex 的工作階段歷史',
+        agentHistorySubtitle: '瀏覽 Claude、Codex 和 Gemini 的工作階段歷史',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,
@@ -1210,7 +1210,7 @@ export const zhHant: TranslationStructure = {
 
     welcome: {
         // Main welcome screen for unauthenticated users
-        title: 'Codex 和 Claude Code 行動用戶端',
+        title: 'Claude Code、Codex 和 Gemini 行動用戶端',
         subtitle: '端對端加密，您的帳戶僅儲存在您的裝置上。',
         createAccount: '建立帳戶',
         linkOrRestoreAccount: '連結或恢復帳戶',
