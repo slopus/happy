@@ -231,6 +231,146 @@ describe('CodexAppServerBackend notification handling', () => {
   });
 });
 
+describe('CodexAppServerBackend v2 item normalization', () => {
+  it('normalizes fileChange v2 array changes to v1 map format', () => {
+    const backend = createBackend();
+    const messages: any[] = [];
+    backend.onMessage((msg) => messages.push(msg));
+    const anyBackend = backend as any;
+
+    anyBackend.handleNotification(Methods.NOTIFY_ITEM_STARTED, {
+      threadId: 't1', turnId: 'turn-1',
+      item: {
+        id: 'fc-1', type: 'fileChange', status: 'inProgress',
+        changes: [
+          { path: 'src/foo.ts', kind: { type: 'update' }, diff: '--- a\n+++ b' },
+          { path: 'src/bar.ts', kind: { type: 'add' }, diff: '+new file' },
+          { path: 'src/old.ts', kind: { type: 'delete' }, diff: '-removed' },
+        ],
+      },
+    });
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('patch-apply-begin');
+    expect(messages[0].changes).toEqual({
+      'src/foo.ts': { modify: true },
+      'src/bar.ts': { add: true },
+      'src/old.ts': { delete: true },
+    });
+  });
+
+  it('passes through v1 map-style changes unchanged', () => {
+    const backend = createBackend();
+    const messages: any[] = [];
+    backend.onMessage((msg) => messages.push(msg));
+    const anyBackend = backend as any;
+
+    const v1Changes = { 'src/file.ts': { modify: { old_content: 'a', new_content: 'b' } } };
+    anyBackend.handleNotification(Methods.NOTIFY_ITEM_STARTED, {
+      threadId: 't1', turnId: 'turn-1',
+      item: { id: 'fc-2', type: 'fileChange', status: 'inProgress', changes: v1Changes },
+    });
+
+    expect(messages[0].changes).toEqual(v1Changes);
+  });
+
+  it('forwards query for webSearch when available at STARTED', () => {
+    const backend = createBackend();
+    const messages: any[] = [];
+    backend.onMessage((msg) => messages.push(msg));
+    const anyBackend = backend as any;
+
+    anyBackend.handleNotification(Methods.NOTIFY_ITEM_STARTED, {
+      threadId: 't1', turnId: 'turn-1',
+      item: { id: 'ws-1', type: 'webSearch', query: 'react hooks' },
+    });
+
+    expect(messages[0]).toMatchObject({
+      type: 'tool-call',
+      toolName: 'web_search',
+      args: { query: 'react hooks' },
+    });
+  });
+
+  it('sends empty args for webSearch when query is empty', () => {
+    const backend = createBackend();
+    const messages: any[] = [];
+    backend.onMessage((msg) => messages.push(msg));
+    const anyBackend = backend as any;
+
+    anyBackend.handleNotification(Methods.NOTIFY_ITEM_STARTED, {
+      threadId: 't1', turnId: 'turn-1',
+      item: { id: 'ws-2', type: 'webSearch', query: '' },
+    });
+
+    expect(messages[0].args).toEqual({});
+  });
+
+  it('forwards commandActions as parsed_cmd for commandExecution', () => {
+    const backend = createBackend();
+    const messages: any[] = [];
+    backend.onMessage((msg) => messages.push(msg));
+    const anyBackend = backend as any;
+
+    const actions = [{ type: 'read', command: 'cat src/foo.ts', path: 'src/foo.ts', name: 'src/foo.ts' }];
+    anyBackend.handleNotification(Methods.NOTIFY_ITEM_STARTED, {
+      threadId: 't1', turnId: 'turn-1',
+      item: { id: 'cmd-2', type: 'commandExecution', command: 'cat src/foo.ts', cwd: '/app', commandActions: actions, status: 'inProgress' },
+    });
+
+    expect(messages[0].args.parsed_cmd).toEqual(actions);
+  });
+
+  it('surfaces error message for failed mcpToolCall on COMPLETED', () => {
+    const backend = createBackend();
+    const messages: any[] = [];
+    backend.onMessage((msg) => messages.push(msg));
+    const anyBackend = backend as any;
+
+    anyBackend.handleNotification(Methods.NOTIFY_ITEM_COMPLETED, {
+      threadId: 't1', turnId: 'turn-1',
+      item: {
+        id: 'mcp-1', type: 'mcpToolCall', server: 'linear', tool: 'create_issue',
+        arguments: { title: 'test' }, status: 'failed',
+        result: null,
+        error: { message: 'Connection refused' },
+      },
+    });
+
+    expect(messages[0]).toMatchObject({
+      type: 'tool-result',
+      toolName: 'mcp:linear:create_issue',
+      callId: 'mcp-1',
+      result: { error: 'Connection refused' },
+    });
+  });
+
+  it('passes through result for successful mcpToolCall on COMPLETED', () => {
+    const backend = createBackend();
+    const messages: any[] = [];
+    backend.onMessage((msg) => messages.push(msg));
+    const anyBackend = backend as any;
+
+    const mcpResult = { content: [{ type: 'text', text: 'done' }] };
+    anyBackend.handleNotification(Methods.NOTIFY_ITEM_COMPLETED, {
+      threadId: 't1', turnId: 'turn-1',
+      item: {
+        id: 'mcp-2', type: 'mcpToolCall', server: 'linear', tool: 'list_issues',
+        arguments: {}, status: 'completed',
+        result: mcpResult,
+        error: null,
+      },
+    });
+
+    expect(messages[0]).toMatchObject({
+      type: 'tool-result',
+      toolName: 'mcp:linear:list_issues',
+      callId: 'mcp-2',
+      result: mcpResult,
+    });
+  });
+});
+
 describe('CodexAppServerBackend approval request parsing', () => {
   it('accepts snake_case call_id for exec approval requests', async () => {
     const permissionHandler = {

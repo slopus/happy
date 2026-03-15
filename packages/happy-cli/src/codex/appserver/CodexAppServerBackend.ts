@@ -586,7 +586,14 @@ export class CodexAppServerBackend implements AgentBackend {
           type: 'tool-call',
           toolName: 'CodexBash',
           callId: item.id,
-          args: { command: item.command, cwd: item.cwd },
+          args: {
+            command: item.command,
+            cwd: item.cwd,
+            // Forward commandActions as parsed_cmd for app display (read file detection)
+            ...(Array.isArray(item.commandActions) && item.commandActions.length > 0
+              ? { parsed_cmd: item.commandActions }
+              : {}),
+          },
         });
         break;
 
@@ -595,7 +602,7 @@ export class CodexAppServerBackend implements AgentBackend {
           type: 'patch-apply-begin',
           call_id: item.id,
           auto_approved: item.status !== 'declined',
-          changes: item.changes,
+          changes: this.normalizeFileChanges(item.changes),
         });
         break;
 
@@ -613,7 +620,7 @@ export class CodexAppServerBackend implements AgentBackend {
           type: 'tool-call',
           toolName: 'web_search',
           callId: item.id,
-          args: {},
+          args: item.query ? { query: item.query } : {},
         });
         break;
 
@@ -674,7 +681,9 @@ export class CodexAppServerBackend implements AgentBackend {
           type: 'tool-result',
           toolName: `mcp:${item.server}:${item.tool}`,
           callId: item.id,
-          result: item.result,
+          result: item.status === 'failed'
+            ? { error: item.error?.message ?? 'MCP tool call failed' }
+            : item.result,
         });
         break;
 
@@ -1038,6 +1047,34 @@ export class CodexAppServerBackend implements AgentBackend {
       return params.cwd;
     }
     return '';
+  }
+
+  // ─── Data Normalization ─────────────────────────────────────
+
+  /**
+   * Normalize v2 FileUpdateChange[] to v1 map format { [filePath]: { add?, modify?, delete? } }.
+   *
+   * v2 protocol: changes is an array of { path, kind: { type: "add"|"update"|"delete" }, diff }
+   * v1/app format: changes is { [filePath]: { add?: obj, modify?: obj, delete?: obj } }
+   */
+  private normalizeFileChanges(changes: unknown): Record<string, Record<string, unknown>> {
+    if (!changes || !Array.isArray(changes)) {
+      return (changes ?? {}) as Record<string, Record<string, unknown>>;
+    }
+
+    const result: Record<string, Record<string, unknown>> = {};
+    for (const entry of changes) {
+      const c = entry as Record<string, any>;
+      const filePath = typeof c.path === 'string' ? c.path : `unknown_${Object.keys(result).length}`;
+      const kindType = typeof c.kind?.type === 'string' ? c.kind.type : 'update';
+
+      const ops: Record<string, unknown> = {};
+      if (kindType === 'add') ops.add = true;
+      else if (kindType === 'delete') ops.delete = true;
+      else ops.modify = true;
+      result[filePath] = ops;
+    }
+    return result;
   }
 
   // ─── Public Accessors ───────────────────────────────────────
