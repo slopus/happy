@@ -10,7 +10,7 @@ import type { Credentials } from './credentials';
 import { authLogin, authLogout, authStatus } from './auth';
 import { listSessions, listActiveSessions, createSession, getSessionMessages, listMachines } from './api';
 import type { DecryptedMachine, DecryptedSession } from './api';
-import { spawnSessionOnMachine, type SupportedAgent } from './machineRpc';
+import { resumeSessionOnMachine, spawnSessionOnMachine, type SupportedAgent } from './machineRpc';
 import { SessionClient } from './session';
 import { formatMachineTable, formatSessionTable, formatSessionStatus, formatMessageHistory, formatJson } from './output';
 
@@ -83,6 +83,33 @@ function resolveRemotePath(rawPath: string | undefined, machine: DecryptedMachin
         return join(normalizedHome, path.slice(2)).replaceAll('/', separator);
     }
     return path;
+}
+
+function resolveSessionMachineId(session: DecryptedSession): string {
+    const metadata = (session.metadata ?? {}) as { machineId?: unknown };
+    if (typeof metadata.machineId !== 'string' || metadata.machineId.trim().length === 0) {
+        throw new Error(`Session ${session.id} is missing machine metadata and cannot be resumed.`);
+    }
+    return metadata.machineId;
+}
+
+function ensureMachineCanResume(machine: DecryptedMachine): void {
+    const metadata = (machine.metadata ?? {}) as {
+        resumeSupport?: {
+            rpcAvailable?: unknown;
+            happyAgentAuthenticated?: unknown;
+        };
+    };
+
+    if (metadata.resumeSupport?.rpcAvailable === true) {
+        return;
+    }
+
+    if (metadata.resumeSupport?.happyAgentAuthenticated === false) {
+        throw new Error('Resume is unavailable on this machine. Run `happy-agent auth login` in that machine environment first.');
+    }
+
+    throw new Error('Resume RPC is unavailable on this machine right now.');
 }
 
 // --- CLI ---
@@ -263,6 +290,51 @@ program
                 break;
             case 'requestToApproveDirectoryCreation':
                 throw new Error(`The directory '${result.directory}' does not exist. Re-run with --create-dir to allow creating it.`);
+            case 'error':
+                throw new Error(result.errorMessage);
+        }
+    });
+
+program
+    .command('resume')
+    .description('Resume a session on its original machine')
+    .argument('<session-id>', 'Session ID or prefix')
+    .option('--json', 'Output as JSON')
+    .action(async (sessionId: string, opts: { json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+        const session = await resolveSession(config, creds, sessionId);
+        const machineId = resolveSessionMachineId(session);
+        const machine = await resolveMachine(config, creds, machineId);
+        ensureMachineCanResume(machine);
+
+        const result = await resumeSessionOnMachine(config, machine, creds.token, session.id);
+        const payload = {
+            sourceSessionId: session.id,
+            machineId: machine.id,
+            ...result,
+        };
+
+        if (opts.json) {
+            console.log(formatJson(payload));
+            if (result.type !== 'success') {
+                process.exitCode = 1;
+            }
+            return;
+        }
+
+        switch (result.type) {
+            case 'success':
+                console.log([
+                    '## Session Resumed',
+                    '',
+                    `- Machine ID: \`${machine.id}\``,
+                    `- Source Session ID: \`${session.id}\``,
+                    `- Resumed Session ID: \`${result.sessionId}\``,
+                ].join('\n'));
+                break;
+            case 'requestToApproveDirectoryCreation':
+                throw new Error(`Resume unexpectedly requested directory creation for '${result.directory}'. Resume should reuse the saved path.`);
             case 'error':
                 throw new Error(result.errorMessage);
         }

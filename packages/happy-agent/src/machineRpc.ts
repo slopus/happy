@@ -134,3 +134,73 @@ export async function spawnSessionOnMachine(
         socket.close();
     }
 }
+
+export async function resumeSessionOnMachine(
+    config: Config,
+    machine: DecryptedMachine,
+    token: string,
+    sessionId: string,
+): Promise<SpawnMachineSessionResult> {
+    const socket = io(config.serverUrl, {
+        auth: {
+            token,
+        },
+        path: '/v1/updates',
+        transports: ['websocket'],
+        autoConnect: false,
+        reconnection: false,
+    });
+
+    socket.connect();
+
+    try {
+        await waitForConnect(socket);
+
+        const params = encodeBase64(
+            encrypt(machine.encryption.key, machine.encryption.variant, {
+                sessionId,
+            }),
+        );
+
+        const response = await socket.timeout(30_000).emitWithAck('rpc-call', {
+            method: `${machine.id}:resume-happy-session`,
+            params,
+        }) as RpcAck;
+
+        if (!response.ok) {
+            throw new Error(normalizeRpcError(response.error, machine.id));
+        }
+        if (!response.result) {
+            throw new Error('RPC call returned no result');
+        }
+
+        const decrypted = decrypt(
+            machine.encryption.key,
+            machine.encryption.variant,
+            decodeBase64(response.result),
+        );
+
+        if (decrypted == null || typeof decrypted !== 'object' || Array.isArray(decrypted)) {
+            throw new Error('RPC call returned invalid data');
+        }
+
+        if ('error' in decrypted && typeof decrypted.error === 'string') {
+            throw new Error(String(decrypted.error));
+        }
+
+        if (
+            !('type' in decrypted)
+            || (
+                decrypted.type !== 'success'
+                && decrypted.type !== 'requestToApproveDirectoryCreation'
+                && decrypted.type !== 'error'
+            )
+        ) {
+            throw new Error('RPC call returned unexpected data');
+        }
+
+        return decrypted as SpawnMachineSessionResult;
+    } finally {
+        socket.close();
+    }
+}

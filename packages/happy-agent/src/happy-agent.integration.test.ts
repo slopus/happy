@@ -170,6 +170,20 @@ async function waitForHistoryMessage(sessionId: string, expectedText: string, en
     }, 20_000, `message "${expectedText}" in session ${sessionId} history`);
 }
 
+async function waitForSessionStatus<T>(
+    sessionId: string,
+    env: NodeJS.ProcessEnv,
+    predicate: (status: T) => boolean,
+    label: string,
+): Promise<T> {
+    let lastStatus: T | null = null;
+    await waitFor(async () => {
+        lastStatus = parseJson<T>(runAgentCli(['status', sessionId, '--json'], env));
+        return predicate(lastStatus);
+    }, 20_000, label);
+    return lastStatus as T;
+}
+
 async function waitForFile(path: string): Promise<void> {
     await waitFor(async () => existsSync(path), 60_000, `file ${path}`);
 }
@@ -337,8 +351,7 @@ describe('happy-agent integration', { timeout: 180_000 }, () => {
 
         integrationEnvDir = join(environmentsDir, integrationEnvName);
         integrationConfig = readEnvironmentConfig(integrationEnvName);
-        agentHomeDir = join(integrationEnvDir, 'agent', 'home');
-        mkdirSync(agentHomeDir, { recursive: true });
+        agentHomeDir = join(integrationEnvDir, 'cli', 'home');
 
         const testProject = createGitProject(integrationEnvDir);
         testProjectDir = testProject.projectDir;
@@ -417,13 +430,34 @@ describe('happy-agent integration', { timeout: 180_000 }, () => {
         const machines = JSON.parse(runAgentCli(['machines', '--json'], agentEnv)) as Array<{
             id: string;
             active: boolean;
-            metadata?: { homeDir?: string };
+            metadata?: {
+                homeDir?: string;
+                resumeSupport?: {
+                    rpcAvailable?: boolean;
+                    happyAgentAuthenticated?: boolean;
+                };
+            };
         }>;
         expect(machines.length).toBeGreaterThan(0);
 
         const machine = machines.find(item => item.active) ?? machines[0];
         expect(machine.id).toBeTruthy();
         activeMachineId = machine.id;
+
+        await waitFor(async () => {
+            const refreshedMachines = JSON.parse(runAgentCli(['machines', '--json'], agentEnv)) as Array<{
+                id: string;
+                metadata?: {
+                    resumeSupport?: {
+                        rpcAvailable?: boolean;
+                        happyAgentAuthenticated?: boolean;
+                    };
+                };
+            }>;
+            const refreshedMachine = refreshedMachines.find(item => item.id === machine.id);
+            return refreshedMachine?.metadata?.resumeSupport?.rpcAvailable === true
+                && refreshedMachine.metadata.resumeSupport.happyAgentAuthenticated === true;
+        }, 20_000, `machine ${machine.id} to advertise resume RPC support`);
 
         const spawnResult = JSON.parse(
             runAgentCli([
@@ -571,6 +605,99 @@ describe('happy-agent integration', { timeout: 180_000 }, () => {
         });
 
         await waitForHistoryMessage(sessionId, prompt, agentEnv);
+    });
+
+    it('resumes an existing Codex session through the same daemon RPC used by the app', async () => {
+        if (!activeMachineId || !integrationConfig || !agentHomeDir || !testProjectDir) {
+            throw new Error('Integration environment not initialized');
+        }
+
+        const agentEnv = agentEnvVars(integrationConfig.serverPort, agentHomeDir);
+        const prompt = 'Reply with exactly: codex resume ready';
+        const spawnResult = parseJson<{
+            type: 'success' | 'requestToApproveDirectoryCreation' | 'error';
+            sessionId?: string;
+            machineId?: string;
+            directory?: string;
+            agent?: string | null;
+        }>(
+            runAgentCli([
+                'spawn',
+                '--machine',
+                activeMachineId,
+                '--path',
+                testProjectDir,
+                '--agent',
+                'codex',
+                '--json',
+            ], agentEnv),
+        );
+
+        expect(spawnResult.type).toBe('success');
+        expect(spawnResult.directory).toBe(testProjectDir);
+        expect(spawnResult.agent).toBe('codex');
+
+        const sourceSessionId = spawnResult.sessionId!;
+        spawnedSessionIds.add(sourceSessionId);
+        await waitForSessionInList(sourceSessionId, agentEnv);
+
+        const sendResult = parseJson<{ sessionId: string; message: string; sent: boolean; permissionMode: string | null }>(
+            runAgentCli(['send', sourceSessionId, prompt, '--wait', '--json'], agentEnv),
+        );
+        expect(sendResult).toEqual({
+            sessionId: sourceSessionId,
+            message: prompt,
+            sent: true,
+            permissionMode: null,
+        });
+        await waitForHistoryMessage(sourceSessionId, prompt, agentEnv);
+
+        const sourceStatus = await waitForSessionStatus<{
+            id: string;
+            metadata?: { path?: string; flavor?: string; claudeSessionId?: string; codexThreadId?: string };
+        }>(
+            sourceSessionId,
+            agentEnv,
+            (status) => Boolean(status.metadata?.codexThreadId),
+            `session ${sourceSessionId} to expose a resumable backend identifier`,
+        );
+
+        expect(sourceStatus.id).toBe(sourceSessionId);
+        expect(sourceStatus.metadata?.path).toBe(testProjectDir);
+        expect(sourceStatus.metadata?.flavor).toBe('codex');
+
+        const resumeResult = parseJson<{
+            type: 'success' | 'requestToApproveDirectoryCreation' | 'error';
+            sessionId?: string;
+            sourceSessionId?: string;
+            machineId?: string;
+        }>(
+            runAgentCli(['resume', sourceSessionId, '--json'], agentEnv),
+        );
+
+        expect(resumeResult.type).toBe('success');
+        expect(resumeResult.sourceSessionId).toBe(sourceSessionId);
+        expect(resumeResult.machineId).toBe(activeMachineId);
+        expect(resumeResult.sessionId).toBeTruthy();
+        expect(resumeResult.sessionId).not.toBe(sourceSessionId);
+
+        const resumedSessionId = resumeResult.sessionId!;
+        spawnedSessionIds.add(resumedSessionId);
+        await waitForSessionInList(resumedSessionId, agentEnv);
+
+        const resumedStatus = await waitForSessionStatus<{
+            id: string;
+            metadata?: { path?: string; flavor?: string };
+        }>(
+            resumedSessionId,
+            agentEnv,
+            (status) => status.metadata?.path === testProjectDir,
+            `resumed session ${resumedSessionId} to report the original path`,
+        );
+
+        expect(resumedStatus.id).toBe(resumedSessionId);
+        expect(resumedStatus.metadata?.path).toBe(testProjectDir);
+        expect(resumedStatus.metadata?.flavor).toBe(sourceStatus.metadata?.flavor);
     });
 
     it('spawns Codex, applies yolo permissions via message metadata, and creates a file in the test project', async () => {

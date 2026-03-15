@@ -44,6 +44,7 @@ describe('happy-agent CLI', () => {
         expect(stdout).toContain('list');
         expect(stdout).toContain('status');
         expect(stdout).toContain('spawn');
+        expect(stdout).toContain('resume');
         expect(stdout).toContain('create');
         expect(stdout).toContain('send');
         expect(stdout).toContain('history');
@@ -129,6 +130,21 @@ describe('happy-agent CLI', () => {
 
         it('should fail with auth error when not authenticated', () => {
             const { stderr, exitCode } = runCli('spawn', '--machine', 'fake-machine');
+            expect(exitCode).not.toBe(0);
+            expect(stderr).toContain('happy-agent auth login');
+        });
+    });
+
+    describe('resume command', () => {
+        it('should show resume help with session-id argument and --json option', () => {
+            const { stdout } = runCli('resume', '--help');
+            expect(stdout).toContain('Resume a session on its original machine');
+            expect(stdout).toContain('session-id');
+            expect(stdout).toContain('--json');
+        });
+
+        it('should fail with auth error when not authenticated', () => {
+            const { stderr, exitCode } = runCli('resume', 'fake-id');
             expect(exitCode).not.toBe(0);
             expect(stderr).toContain('happy-agent auth login');
         });
