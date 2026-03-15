@@ -74,8 +74,11 @@ export async function runCodex(opts: {
         execSync('codex --version', { encoding: 'utf8', stdio: 'pipe' });
     } catch {
         console.error('\n\x1b[1m\x1b[33mCodex CLI is not installed\x1b[0m\n');
-        console.error('Please install Codex CLI:\n');
+        console.error('Please install Codex CLI using one of these methods:\n');
+        console.error('\x1b[1mOption 1 - npm (recommended):\x1b[0m');
         console.error('  \x1b[36mnpm install -g @openai/codex\x1b[0m\n');
+        console.error('\x1b[1mOption 2 - Homebrew (macOS):\x1b[0m');
+        console.error('  \x1b[36mbrew install --cask codex\x1b[0m\n');
         console.error('Alternatively, use Claude Code:');
         console.error('  \x1b[36mhappy claude\x1b[0m\n');
         process.exit(1);
