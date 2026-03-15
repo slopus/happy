@@ -2,6 +2,15 @@
 
 This file is the cross-product execution plan for the current Happy push.
 
+# Key Milestones
+
+- wrap up current improvements NO NEW SCOPE - focus on stabilizing features, not new features
+- release beta / test on main
+- start charging for voice - find the branch somewhere / figure out how to test this exactly on prod build?
+  - How to configure 
+- ship new app build
+- share talk to 
+
 ## Working rules
 
 - Agent workflow is defined in `.agents/agents/manager.md` and
@@ -94,6 +103,8 @@ Goal: remove the broken session-control paths that currently make remote agent m
     - worktree: `~/projects/happy/happy/.dev/worktree/wise-river`
     - Happy session id: `cmmbujpkq03iey7lcxyd9fqaw`
 - Fix Codex sandbox behavior where work is still blocked in non-`yolo` modes when it should be allowed by the selected permission mode.
+- Fix Codex session stopping — currently unreliable / painful.
+- Fix Codex sessions appearing stuck in "thinking" indefinitely with no updates — may be a frontend rendering issue where updates aren't being pushed to the session view.
 - Fix task rendering for tool calls like:
   - `TaskOutput`
   - `TaskStop`
@@ -110,6 +121,12 @@ Goal: remove the broken session-control paths that currently make remote agent m
   - provider session/thread id when available
   - flavor / agent type
   - machine / path / worktree context
+
+### Session protocol: message consumption visibility
+
+- For all agents (not just Codex): no way to know if a message was actually consumed by the agent
+- Need read receipts / consumption acknowledgment at the protocol level
+- Secondary: per-agent integration quirks are a separate swimlane (#agent-integrations)
 
 ### Validation requirements
 
@@ -158,6 +175,58 @@ Goal: make new-session composition feel like the regular chat composer instead o
 - Validate end-to-end on web.
 - Confirm the spawn path still works with real server + CLI integration, not just local component state.
 - If drag-and-drop behavior is added later in this area, capture a web video of the interaction.
+
+## P2.5. PI-style agent controls, fork, and resume
+
+Goal: make active-session agent controls feel first-class instead of scattered across info screens and one-off flows. The control surface should feel closer to a PI-style agent UI while still preserving Happy's regular chat input shape.
+
+### Required outcomes
+
+- An active chat should expose the primary agent controls in a way that is fast to scan and fast to use.
+- Forking and resuming should feel like normal agent controls, not buried recovery flows.
+- The user should always be able to tell what agent/session they are controlling:
+  - flavor / agent type
+  - permission mode
+  - model / effort or thinking level when relevant
+  - machine / project path / worktree
+  - provider thread or resume context when available
+- The design should borrow from PI-style control surfaces where useful, but should still fit Happy's chat-first product shape.
+
+### Concrete requirements
+
+- Build on the existing active-chat composer direction rather than inventing a separate detached control panel.
+- For an active chat, keep the regular chat input shape and surface the relevant agent controls there or immediately adjacent to it.
+- Support quick access to:
+  - model
+  - permissions
+  - effort / thinking level where supported
+  - stop / archive / resume
+  - fork session
+  - machine / path / worktree context
+- Treat fork/resume as a first-class product flow:
+  - right-click or quick action to fork an existing session
+  - show a clear `<resuming session>` or equivalent context pill
+  - allow choosing a different worktree
+  - allow choosing a different agent where supported
+  - use the resume session API on the machine to fork the underlying conversation
+- Reuse the current session metadata and quick-action work rather than creating a second disconnected control path.
+- Where PI-style controls imply protocol or lifecycle expectations, align with the protocol research already captured for ACP / Pi RPC rather than inventing another opaque control model.
+- For UI design exploration, provide five competing implementation options. Keep switching between lightweight variants easy; if a variant is structurally different, split it into a sibling worktree track.
+
+### Validation requirements
+
+- Validate on web with real long-running sessions, not a tiny toy transcript.
+- Exercise realistic behavior:
+  - change controls during an active chat
+  - fork a real session
+  - resume or branch it into another worktree
+  - confirm the new branch/session remains clearly attributable
+- Record a web video of the full flow.
+- Capture screenshots at key checkpoints:
+  - before control change
+  - after control change
+  - fork/resume composer state
+  - resulting branched session state
 
 ## P3. Session list, tool UI, and worktree-level ordering
 
@@ -219,6 +288,97 @@ Goal: make file references in chat actually useful and make file review/attachme
 
 - Validate on web against a real remote session.
 - Verify both initial resolution and refetch-on-open behavior.
+
+## User Research
+
+Goal: talk to users regularly to understand why they use Happy, what their day-to-day problems are, and what to build next.
+
+### Outreach
+
+- In-app PostHog survey offering your phone number / way to reach you directly
+- Make it personal — "text me, I want to hear how it's going"
+
+### Interview process
+
+- When we actually talk, collect consent to record/transcribe
+- Take structured notes during each conversation
+- Store notes somewhere accessible (TBD — `/research` dir, Notion, or markdown)
+
+### What to learn
+
+- Why they started using Happy
+- What their day-to-day workflow looks like
+- What's painful or missing
+
+## Growth & Promotion Pipeline
+
+Goal: simple pipeline to promote Happy Coder and maintain the public repo presence.
+
+### Promotion
+
+- Regular posts / content about Happy Coder — what it does, how it works, real usage examples
+- Figure out channels (Twitter/X, Reddit, HN, Discord, etc.)
+- Collect and share user stories from the research interviews (with consent)
+
+### Repo maintenance
+
+- Keep GitHub issues triaged and organized
+- Respond to community issues and PRs
+- Use issues as a lightweight public roadmap signal
+
+## Happy Evolve (self-modifying UI)
+
+Goal: make it possible to customize any part of the Happy interface from within Happy itself. The app modifies its own frontend live.
+
+### Approach
+
+- Use Metro hot reloading to apply changes in real time
+- Focus on making the frontend fully changeable for now
+- No sync needed initially — local-only modifications
+- Inspiration: pi.exe agent style self-modification, but more ambitious
+
+### For later
+
+- Pull in sync engine idea from Kirill's Happy fork where the sync engine is factored out
+
+## Dynamic Session Icons
+
+Goal: the brutalist icons are a big part of what makes Happy feel good to use — lean into that.
+
+- Generate custom brutalist-style vector icons per session based on the topic
+- Keep the same aesthetic — bold, minimal, appealing
+- Potential paid feature
+- TBD: generation approach (local model, API, precomputed set, etc.)
+
+## Session Forking
+
+Goal: right-click a session to fork it — clone the session in Happy + use the resume session API to fork the conversation on the machine. Lets you explicitly parallelize and control both branches.
+
+### Flow
+
+- Right-click session → "Fork"
+- Opens a fork composer (like the regular composer) with:
+  - a `<resuming session>` pill showing what you're forking from
+  - ability to pick a different worktree
+  - ability to pick a different agent
+  - all the usual composer controls (model, permissions, path, etc.)
+- On submit: clones the session in Happy, calls resume session API on the machine to fork the underlying conversation
+
+## Session Protocol (UNDER REVIEW — FROZEN)
+
+The session protocol (`role: 'session'` envelopes in `happy-wire/src/sessionProtocol.ts`) is **not used in production** and should not be used in dev environments either until we revisit the design. The legacy protocol (`role: 'user'` / `role: 'agent'`) is the active code path everywhere.
+
+### Status
+
+- Types are frozen in `happy-wire` — no new consumers
+- Dev env was using it but should stop
+- Production has never shipped it
+
+### Before resuming
+
+- Look at how pi.dev standardizes their agent protocol — we may want to align with or build on that instead of rolling our own envelope format
+- Consider whether `happy-wire` should even own this, or if protocol definition belongs closer to the CLI / agent layer
+- The current design may be over-engineered for what we actually need
 
 ## Deferred / later
 
