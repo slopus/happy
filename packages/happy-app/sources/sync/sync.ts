@@ -433,6 +433,7 @@ class Sync {
         // websocket message batch) to avoid flooding the shell with git commands.
         if (userInitiated) {
             gitStatusSync.invalidate(sessionId);
+            this.sessionModeConfigSync.invalidate();
         }
 
         // Track which session user is viewing
