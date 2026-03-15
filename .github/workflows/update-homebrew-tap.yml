@@ -91,8 +91,10 @@ jobs:
           echo "Updated formula:"
           grep -E '^  (url|sha256) "' "${FORMULA_FILE}"
 
-      - name: Commit and push formula update
+      - name: Open or update tap pull request
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           cd tap
@@ -103,6 +105,29 @@ jobs:
 
           git config user.name "happy-bot"
           git config user.email "actions@users.noreply.github.com"
+          VERSION="${{ steps.meta.outputs.version }}"
+          BRANCH="chore/happy-homebrew-${VERSION}"
+          TITLE="chore(homebrew): bump happy to ${VERSION}"
+          printf -v BODY "Automated formula bump for happy-coder %s.\n\n- updates npm tarball URL\n- updates SHA256 checksum\n- ready for bottle publish via \`pr-pull\` label" "${VERSION}"
+
+          git checkout -B "${BRANCH}"
           git add "${FORMULA_PATH}"
-          git commit -m "chore(homebrew): bump happy to ${{ steps.meta.outputs.version }}"
-          git push origin HEAD:main
+          git commit -m "${TITLE}"
+          git push --force-with-lease origin "${BRANCH}"
+
+          if ! gh label list --repo "${{ steps.meta.outputs.tap_repo }}" | grep -q '^pr-pull[[:space:]]'; then
+            gh label create pr-pull --repo "${{ steps.meta.outputs.tap_repo }}" --color "5319e7" --description "Trigger brew pr-pull bottle publish workflow"
+          fi
+
+          PR_NUMBER="$(gh pr list --repo "${{ steps.meta.outputs.tap_repo }}" --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          if [[ -z "${PR_NUMBER}" ]]; then
+            gh pr create \
+              --repo "${{ steps.meta.outputs.tap_repo }}" \
+              --base main \
+              --head "${BRANCH}" \
+              --title "${TITLE}" \
+              --body "${BODY}"
+            PR_NUMBER="$(gh pr list --repo "${{ steps.meta.outputs.tap_repo }}" --head "${BRANCH}" --state open --json number --jq '.[0].number')"
+          fi
+
+          gh pr edit "${PR_NUMBER}" --repo "${{ steps.meta.outputs.tap_repo }}" --add-label pr-pull
