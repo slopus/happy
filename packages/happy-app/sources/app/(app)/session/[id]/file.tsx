@@ -24,6 +24,13 @@ import { showCopiedToast } from '@/components/Toast';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { shellEscape } from '@/utils/shellEscape';
 import { getWorkspaceRepos } from '@/utils/workspaceRepos';
+import { getExtensionFromMimeType, getImageMimeType, isPreviewableImage } from '@/utils/fileViewer';
+import { Image } from 'expo-image';
+import { selectFileViewerSharePayload } from '@/utils/fileViewerShare';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { ImageViewer } from '@/components/ImageViewer';
+import type { ImageViewerImage } from '@/components/ImageViewer';
 
 function getRepoRelativePath(filePath: string, repoPath: string): string {
     if (repoPath && filePath.startsWith(`${repoPath}/`)) {
@@ -106,7 +113,7 @@ export default function FileScreen() {
     const requestedLine = parsePositiveInt(searchParams.line);
     const requestedColumn = parsePositiveInt(searchParams.column);
     let filePath = '';
-    
+
     // Decode base64 path with error handling (UTF-8 safe)
     try {
         if (encodedPath) {
@@ -121,7 +128,7 @@ export default function FileScreen() {
         console.error('Failed to decode file path:', error);
         filePath = encodedPath || ''; // Fallback to original path if decoding fails
     }
-    
+
     const session = getSession(sessionId!);
     const displayPath = formatPathRelativeToHome(filePath, session?.metadata?.homeDir);
 
@@ -135,12 +142,18 @@ export default function FileScreen() {
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
     const [diffContent, setDiffContent] = React.useState<string | null>(null);
     const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
+    const [imageBase64, setImageBase64] = React.useState<string | null>(null);
+    const [imageMimeType, setImageMimeType] = React.useState('image/png');
+    const [imageViewerVisible, setImageViewerVisible] = React.useState(false);
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [menuVisible, setMenuVisible] = React.useState(false);
     const wordWrap = useSetting('wrapLinesInDiffs');
 
     const fileName = filePath.split('/').pop() || filePath;
+    const isPreviewImageFile = isPreviewableImage(filePath);
+    const imagePreviewUri = imageBase64 ? `data:${imageMimeType};base64,${imageBase64}` : null;
+    const imageViewerItems: ImageViewerImage[] = imagePreviewUri ? [{ uri: imagePreviewUri }] : [];
 
     // Relative path for display/copy (relative to repo, not workspace root)
     const relativePath = React.useMemo(() => {
@@ -152,6 +165,56 @@ export default function FileScreen() {
         }
         return filePath;
     }, [filePath, gitCwd, sessionPath]);
+
+    const shareImage = React.useCallback(async (base64: string, mimeType: string) => {
+        const ext = getExtensionFromMimeType(mimeType);
+        const outputFileName = fileName.includes('.') ? fileName : `${fileName}.${ext}`;
+        const tempFile = new File(Paths.cache, `shared-${Date.now()}-${outputFileName}`);
+        tempFile.create({ overwrite: true, intermediates: true });
+        tempFile.write(base64, { encoding: 'base64' });
+
+        try {
+            if (await Sharing.isAvailableAsync()) {
+                await Sharing.shareAsync(tempFile.uri, {
+                    mimeType,
+                    dialogTitle: fileName,
+                });
+                return;
+            }
+            await Share.share({ title: fileName, message: fileName });
+        } finally {
+            try {
+                tempFile.delete();
+            } catch {
+                // ignore cleanup errors
+            }
+        }
+    }, [fileName]);
+
+    const handleShare = React.useCallback(async () => {
+        const payload = selectFileViewerSharePayload({
+            platform: Platform.OS,
+            imageBase64,
+            imageMimeType,
+            fileContent,
+            diffContent,
+        });
+
+        if (payload.kind === 'none') {
+            return;
+        }
+
+        try {
+            if (payload.kind === 'image') {
+                await shareImage(payload.base64, payload.mimeType);
+                return;
+            }
+            await Share.share({ title: fileName, message: payload.text });
+        } catch (shareError) {
+            console.error('Failed to share content:', shareError);
+            Modal.alert(t('common.error'), 'Failed to share file');
+        }
+    }, [imageBase64, imageMimeType, fileContent, diffContent, fileName, shareImage]);
 
     // Menu items
     const menuItems: ActionMenuItem[] = React.useMemo(() => {
@@ -172,12 +235,7 @@ export default function FileScreen() {
             },
             {
                 label: t('files.share'),
-                onPress: async () => {
-                    const content = fileContent?.content || diffContent || '';
-                    if (content) {
-                        await Share.share({ title: fileName, message: content });
-                    }
-                },
+                onPress: handleShare,
             },
         ];
 
@@ -192,7 +250,7 @@ export default function FileScreen() {
         }
 
         // Edit: only for non-ref, non-binary files
-        if (!ref && fileContent && !fileContent.isBinary) {
+        if (!ref && fileContent && !fileContent.isBinary && !isPreviewImageFile) {
             items.push({
                 label: t('files.editFile'),
                 onPress: () => {
@@ -233,7 +291,7 @@ export default function FileScreen() {
         }
 
         return items;
-    }, [relativePath, fileName, fileContent, diffContent, ref, sessionPath, gitCwd, sessionId, filePath, router]);
+    }, [relativePath, fileName, fileContent, diffContent, ref, sessionPath, gitCwd, sessionId, filePath, router, isPreviewImageFile, handleShare]);
 
     // Determine file language from extension
     const getFileLanguage = React.useCallback((path: string): string | null => {
@@ -311,16 +369,37 @@ export default function FileScreen() {
     // Load file content
     React.useEffect(() => {
         let isCancelled = false;
-        
+
         const loadFile = async () => {
             try {
                 setIsLoading(true);
                 setError(null);
-                
+                setImageBase64(null);
+                setImageViewerVisible(false);
+
                 // Get session metadata for git commands
                 const session = getSession(sessionId!);
                 const sessionPath = session?.metadata?.path;
-                
+
+                if (isPreviewImageFile && !ref) {
+                    const response = await sessionReadFile(sessionId!, filePath);
+                    if (!isCancelled) {
+                        if (response && response.success && response.content) {
+                            const mimeType = getImageMimeType(filePath) || 'image/png';
+                            setFileContent({
+                                content: '',
+                                encoding: 'base64',
+                                isBinary: false,
+                            });
+                            setImageBase64(response.content);
+                            setImageMimeType(mimeType);
+                        } else {
+                            setError(response?.error || 'Failed to read file');
+                        }
+                    }
+                    return;
+                }
+
                 // Check if file is likely binary before trying to read
                 if (isBinaryFile(filePath)) {
                     if (!isCancelled) {
@@ -333,7 +412,7 @@ export default function FileScreen() {
                     }
                     return;
                 }
-                
+
                 // Fetch git diff for the file
                 // Use repo-specific cwd for multi-repo workspaces
                 const effectiveCwd = gitCwd || sessionPath;
@@ -437,7 +516,7 @@ export default function FileScreen() {
         };
 
         loadFile();
-        
+
         return () => {
             isCancelled = true;
         };
@@ -507,18 +586,18 @@ export default function FileScreen() {
 
     if (isLoading) {
         return (
-            <View style={{ 
-                flex: 1, 
+            <View style={{
+                flex: 1,
                 backgroundColor: theme.colors.surface,
-                justifyContent: 'center', 
-                alignItems: 'center' 
+                justifyContent: 'center',
+                alignItems: 'center'
             }}>
                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                <Text style={{ 
-                    marginTop: 16, 
-                    fontSize: 16, 
+                <Text style={{
+                    marginTop: 16,
+                    fontSize: 16,
                     color: theme.colors.textSecondary,
-                    ...Typography.default() 
+                    ...Typography.default()
                 }}>
                     {t('files.loadingFile', { fileName })}
                 </Text>
@@ -528,15 +607,15 @@ export default function FileScreen() {
 
     if (error) {
         return (
-            <View style={{ 
-                flex: 1, 
+            <View style={{
+                flex: 1,
                 backgroundColor: theme.colors.surface,
-                justifyContent: 'center', 
+                justifyContent: 'center',
                 alignItems: 'center',
                 padding: 20
             }}>
-                <Text style={{ 
-                    fontSize: 18, 
+                <Text style={{
+                    fontSize: 18,
                     fontWeight: 'bold',
                     color: theme.colors.textDestructive,
                     marginBottom: 8,
@@ -544,11 +623,11 @@ export default function FileScreen() {
                 }}>
                     {t('common.error')}
                 </Text>
-                <Text style={{ 
-                    fontSize: 16, 
+                <Text style={{
+                    fontSize: 16,
                     color: theme.colors.textSecondary,
                     textAlign: 'center',
-                    ...Typography.default() 
+                    ...Typography.default()
                 }}>
                     {error}
                 </Text>
@@ -558,15 +637,15 @@ export default function FileScreen() {
 
     if (fileContent?.isBinary) {
         return (
-            <View style={{ 
-                flex: 1, 
+            <View style={{
+                flex: 1,
                 backgroundColor: theme.colors.surface,
-                justifyContent: 'center', 
+                justifyContent: 'center',
                 alignItems: 'center',
                 padding: 20
             }}>
-                <Text style={{ 
-                    fontSize: 18, 
+                <Text style={{
+                    fontSize: 18,
                     fontWeight: 'bold',
                     color: theme.colors.textSecondary,
                     marginBottom: 8,
@@ -574,20 +653,20 @@ export default function FileScreen() {
                 }}>
                     {t('files.binaryFile')}
                 </Text>
-                <Text style={{ 
-                    fontSize: 16, 
+                <Text style={{
+                    fontSize: 16,
                     color: theme.colors.textSecondary,
                     textAlign: 'center',
-                    ...Typography.default() 
+                    ...Typography.default()
                 }}>
                     {t('files.cannotDisplayBinary')}
                 </Text>
-                <Text style={{ 
-                    fontSize: 14, 
+                <Text style={{
+                    fontSize: 14,
                     color: '#999',
                     textAlign: 'center',
                     marginTop: 8,
-                    ...Typography.default() 
+                    ...Typography.default()
                 }}>
                     {fileName}
                 </Text>
@@ -652,138 +731,160 @@ export default function FileScreen() {
                 </ScrollView>
             </View>
 
-            {/* Toggle buttons for File/Diff view */}
-            {diffContent && (
-                <View style={{
-                    flexDirection: 'row',
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                    borderBottomColor: theme.colors.divider,
-                    backgroundColor: theme.colors.surface
-                }}>
-                    <Pressable
-                        onPress={() => setDisplayMode('diff')}
-                        style={{
-                            paddingHorizontal: 16,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                            backgroundColor: displayMode === 'diff' ? theme.colors.textLink : theme.colors.input.background,
-                            marginRight: 8
-                        }}
-                    >
-                        <Text style={{
-                            fontSize: 14,
-                            fontWeight: '600',
-                            color: displayMode === 'diff' ? 'white' : theme.colors.textSecondary,
-                            ...Typography.default()
-                        }}>
-                            {t('files.diff')}
-                        </Text>
-                    </Pressable>
-
-                    <Pressable
-                        onPress={() => setDisplayMode('file')}
-                        style={{
-                            paddingHorizontal: 16,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                            backgroundColor: displayMode === 'file' ? theme.colors.textLink : theme.colors.input.background
-                        }}
-                    >
-                        <Text style={{
-                            fontSize: 14,
-                            fontWeight: '600',
-                            color: displayMode === 'file' ? 'white' : theme.colors.textSecondary,
-                            ...Typography.default()
-                        }}>
-                            {t('files.file')}
-                        </Text>
-                    </Pressable>
-                </View>
-            )}
-            
-            {/* Content display */}
-            {useReadOnlyCodeEditor ? (
-                <View style={{ flex: 1 }}>
-                    <CodeEditor
-                        value={fileContent?.content || ''}
-                        onChangeText={handleReadOnlyEditorChange}
-                        language={editorLanguage}
-                        bottomPadding={12}
-                        readOnly
-                        revealLine={requestedLine}
-                        revealColumn={requestedColumn}
+            {imagePreviewUri ? (
+                <>
+                    <View style={{ flex: 1, padding: 16 }}>
+                        <Pressable onPress={() => setImageViewerVisible(true)} style={{ flex: 1 }}>
+                            <Image
+                                source={{ uri: imagePreviewUri }}
+                                style={{ width: '100%', height: '100%', borderRadius: 10 }}
+                                contentFit="contain"
+                            />
+                        </Pressable>
+                    </View>
+                    <ImageViewer
+                        images={imageViewerItems}
+                        initialIndex={0}
+                        visible={imageViewerVisible}
+                        onClose={() => setImageViewerVisible(false)}
                     />
-                </View>
+                </>
             ) : (
-                <ScrollView
-                    style={{ flex: 1 }}
-                    contentContainerStyle={wordWrap ? { padding: 16 } : { paddingVertical: 16 }}
-                    showsVerticalScrollIndicator={true}
-                >
-                    <ScrollView
-                        horizontal={!wordWrap}
-                        scrollEnabled={!wordWrap}
-                        showsHorizontalScrollIndicator={!wordWrap}
-                        contentContainerStyle={wordWrap ? undefined : { paddingHorizontal: 16 }}
-                    >
-                        {Platform.OS !== 'web' && currentContent ? (
-                            <GestureDetector gesture={longPressGesture}>
-                                <View>
-                                    {displayMode === 'diff' && diffContent ? (
-                                        <DiffDisplay diffContent={diffContent} />
-                                    ) : displayMode === 'file' && fileContent?.content ? (
-                                        <SimpleSyntaxHighlighter
-                                            code={fileContent.content}
-                                            language={language}
-                                            selectable={false}
-                                        />
-                                    ) : displayMode === 'file' && fileContent && !fileContent.content ? (
-                                        <Text style={{
-                                            fontSize: 16,
-                                            color: theme.colors.textSecondary,
-                                            fontStyle: 'italic',
-                                            ...Typography.default()
-                                        }}>
-                                            {t('files.fileEmpty')}
-                                        </Text>
-                                    ) : null}
-                                </View>
-                            </GestureDetector>
-                        ) : (
-                            <>
-                                {displayMode === 'diff' && diffContent ? (
-                                    <DiffDisplay diffContent={diffContent} />
-                                ) : displayMode === 'file' && fileContent?.content ? (
-                                    <SimpleSyntaxHighlighter
-                                        code={fileContent.content}
-                                        language={language}
-                                        selectable={true}
-                                    />
-                                ) : displayMode === 'file' && fileContent && !fileContent.content ? (
-                                    <Text style={{
-                                        fontSize: 16,
-                                        color: theme.colors.textSecondary,
-                                        fontStyle: 'italic',
-                                        ...Typography.default()
-                                    }}>
-                                        {t('files.fileEmpty')}
-                                    </Text>
-                                ) : !diffContent && !fileContent?.content ? (
-                                    <Text style={{
-                                        fontSize: 16,
-                                        color: theme.colors.textSecondary,
-                                        fontStyle: 'italic',
-                                        ...Typography.default()
-                                    }}>
-                                        {t('files.noChanges')}
-                                    </Text>
-                                ) : null}
-                            </>
-                        )}
-                    </ScrollView>
-                </ScrollView>
+                <>
+                    {/* Toggle buttons for File/Diff view */}
+                    {diffContent && (
+                        <View style={{
+                            flexDirection: 'row',
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                            borderBottomColor: theme.colors.divider,
+                            backgroundColor: theme.colors.surface
+                        }}>
+                            <Pressable
+                                onPress={() => setDisplayMode('diff')}
+                                style={{
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 8,
+                                    borderRadius: 8,
+                                    backgroundColor: displayMode === 'diff' ? theme.colors.textLink : theme.colors.input.background,
+                                    marginRight: 8
+                                }}
+                            >
+                                <Text style={{
+                                    fontSize: 14,
+                                    fontWeight: '600',
+                                    color: displayMode === 'diff' ? 'white' : theme.colors.textSecondary,
+                                    ...Typography.default()
+                                }}>
+                                    {t('files.diff')}
+                                </Text>
+                            </Pressable>
+
+                            <Pressable
+                                onPress={() => setDisplayMode('file')}
+                                style={{
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 8,
+                                    borderRadius: 8,
+                                    backgroundColor: displayMode === 'file' ? theme.colors.textLink : theme.colors.input.background
+                                }}
+                            >
+                                <Text style={{
+                                    fontSize: 14,
+                                    fontWeight: '600',
+                                    color: displayMode === 'file' ? 'white' : theme.colors.textSecondary,
+                                    ...Typography.default()
+                                }}>
+                                    {t('files.file')}
+                                </Text>
+                            </Pressable>
+                        </View>
+                    )}
+
+                    {/* Content display */}
+                    {useReadOnlyCodeEditor ? (
+                        <View style={{ flex: 1 }}>
+                            <CodeEditor
+                                value={fileContent?.content || ''}
+                                onChangeText={handleReadOnlyEditorChange}
+                                language={editorLanguage}
+                                bottomPadding={12}
+                                readOnly
+                                revealLine={requestedLine}
+                                revealColumn={requestedColumn}
+                            />
+                        </View>
+                    ) : (
+                        <ScrollView
+                            style={{ flex: 1 }}
+                            contentContainerStyle={wordWrap ? { padding: 16 } : { paddingVertical: 16 }}
+                            showsVerticalScrollIndicator={true}
+                        >
+                            <ScrollView
+                                horizontal={!wordWrap}
+                                scrollEnabled={!wordWrap}
+                                showsHorizontalScrollIndicator={!wordWrap}
+                                contentContainerStyle={wordWrap ? undefined : { paddingHorizontal: 16 }}
+                            >
+                                {Platform.OS !== 'web' && currentContent ? (
+                                    <GestureDetector gesture={longPressGesture}>
+                                        <View>
+                                            {displayMode === 'diff' && diffContent ? (
+                                                <DiffDisplay diffContent={diffContent} />
+                                            ) : displayMode === 'file' && fileContent?.content ? (
+                                                <SimpleSyntaxHighlighter
+                                                    code={fileContent.content}
+                                                    language={language}
+                                                    selectable={false}
+                                                />
+                                            ) : displayMode === 'file' && fileContent && !fileContent.content ? (
+                                                <Text style={{
+                                                    fontSize: 16,
+                                                    color: theme.colors.textSecondary,
+                                                    fontStyle: 'italic',
+                                                    ...Typography.default()
+                                                }}>
+                                                    {t('files.fileEmpty')}
+                                                </Text>
+                                            ) : null}
+                                        </View>
+                                    </GestureDetector>
+                                ) : (
+                                    <>
+                                        {displayMode === 'diff' && diffContent ? (
+                                            <DiffDisplay diffContent={diffContent} />
+                                        ) : displayMode === 'file' && fileContent?.content ? (
+                                            <SimpleSyntaxHighlighter
+                                                code={fileContent.content}
+                                                language={language}
+                                                selectable={true}
+                                            />
+                                        ) : displayMode === 'file' && fileContent && !fileContent.content ? (
+                                            <Text style={{
+                                                fontSize: 16,
+                                                color: theme.colors.textSecondary,
+                                                fontStyle: 'italic',
+                                                ...Typography.default()
+                                            }}>
+                                                {t('files.fileEmpty')}
+                                            </Text>
+                                        ) : !diffContent && !fileContent?.content ? (
+                                            <Text style={{
+                                                fontSize: 16,
+                                                color: theme.colors.textSecondary,
+                                                fontStyle: 'italic',
+                                                ...Typography.default()
+                                            }}>
+                                                {t('files.noChanges')}
+                                            </Text>
+                                        ) : null}
+                                    </>
+                                )}
+                            </ScrollView>
+                        </ScrollView>
+                    )}
+                </>
             )}
         </View>
     );
