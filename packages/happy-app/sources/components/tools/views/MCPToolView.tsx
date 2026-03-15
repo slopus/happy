@@ -1,3 +1,5 @@
+import { ToolCall } from '@/sync/typesMessage';
+
 /**
  * Converts snake_case string to PascalCase with spaces
  * Example: "create_issue" -> "Create Issue"
@@ -13,9 +15,18 @@ function snakeToPascalWithSpaces(str: string): string {
  * Formats MCP tool name to display title
  * Example: "mcp__linear__create_issue" -> "MCP: Linear Create Issue"
  */
-export function formatMCPTitle(toolName: string): string {
+export function formatMCPTitle(tool: ToolCall): string {
     // Remove "mcp__" prefix
-    const withoutPrefix = toolName.replace(/^mcp__/, '');
+    const withoutPrefix = tool.name.replace(/^mcp__/, '');
+
+    // If tool has input title, use it directly
+    if (tool.input?.title) {
+        if (withoutPrefix === "happy__preview_html") {
+            return `${tool.input.title}`;
+        } else {
+            return `MCP: ${tool.input.title}`;
+        }
+    }
     
     // Split into parts by "__"
     const parts = withoutPrefix.split('__');
