@@ -98,12 +98,17 @@ export class CodexMcpClient {
 
         if (mcpCommand === null) {
             throw new Error(
-                'Codex CLI not found or not executable.\n' +
+                'Codex CLI is not installed\n' +
                 '\n' +
-                'To install codex:\n' +
+                'Please install Codex CLI using one of these methods:\n' +
+                '\n' +
+                'Option 1 - npm (recommended):\n' +
                 '  npm install -g @openai/codex\n' +
                 '\n' +
-                'Alternatively, use Claude:\n' +
+                'Option 2 - Homebrew (macOS):\n' +
+                '  brew install --cask codex\n' +
+                '\n' +
+                'Alternatively, use Claude Code:\n' +
                 '  happy claude'
             );
         }
