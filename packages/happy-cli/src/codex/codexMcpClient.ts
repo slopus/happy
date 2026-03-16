@@ -7,13 +7,31 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { logger } from '@/ui/logger';
 import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { z } from 'zod';
-import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { execSync } from 'child_process';
 import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
+
+type CodexApprovalDecision = 'approved' | 'abort';
+
+type CodexElicitationParams = {
+    message?: string;
+    codex_elicitation?: string;
+    codex_mcp_tool_call_id?: string;
+    codex_event_id?: string;
+    codex_call_id?: string;
+    codex_command?: string[] | string;
+    codex_cwd?: string;
+};
+
+type CodexRawRequestClient = {
+    _requestHandlers?: Map<
+        string,
+        (request: { params: CodexElicitationParams }) => Promise<{ decision: CodexApprovalDecision }>
+    >;
+};
 
 /**
  * Get the correct MCP subcommand based on installed codex version
@@ -186,56 +204,53 @@ export class CodexMcpClient {
     }
 
     private registerPermissionHandlers(): void {
-        // Register handler for exec command approval requests
-        this.client.setRequestHandler(
-            ElicitRequestSchema,
-            async (request) => {
-                console.log('[CodexMCP] Received elicitation request:', request.params);
+        const rawClient = this.client as unknown as CodexRawRequestClient;
+        const requestHandlers = rawClient._requestHandlers;
 
-                // Load params
-                const params = request.params as unknown as {
-                    message: string,
-                    codex_elicitation: string,
-                    codex_mcp_tool_call_id: string,
-                    codex_event_id: string,
-                    codex_call_id: string,
-                    codex_command: string[],
-                    codex_cwd: string
-                }
-                const toolName = 'CodexBash';
+        if (!(requestHandlers instanceof Map)) {
+            throw new Error('Codex MCP client does not expose raw request handlers');
+        }
 
-                // If no permission handler set, deny by default
-                if (!this.permissionHandler) {
-                    logger.debug('[CodexMCP] No permission handler set, denying by default');
-                    return {
-                        decision: 'denied' as const,
-                    };
-                }
+        // Codex expects a non-standard top-level `{ decision }` approval payload.
+        requestHandlers.set('elicitation/create', async (request: { params: CodexElicitationParams }) => {
+            logger.debug('[CodexMCP] Received elicitation request:', request.params);
 
-                try {
-                    // Request permission through the handler
-                    const result = await this.permissionHandler.handleToolCall(
-                        params.codex_call_id,
-                        toolName,
-                        {
-                            command: params.codex_command,
-                            cwd: params.codex_cwd
-                        }
-                    );
+            const params = request.params ?? {};
+            const toolName = 'CodexBash';
+            const toolCallId = params.codex_call_id;
 
-                    logger.debug('[CodexMCP] Permission result:', result);
-                    return {
-                        decision: result.decision
-                    }
-                } catch (error) {
-                    logger.debug('[CodexMCP] Error handling permission request:', error);
-                    return {
-                        decision: 'denied' as const,
-                        reason: error instanceof Error ? error.message : 'Permission request failed'
-                    };
-                }
+            if (!toolCallId) {
+                logger.debug('[CodexMCP] Missing codex_call_id, aborting request');
+                return { decision: 'abort' };
             }
-        );
+
+            if (!this.permissionHandler) {
+                logger.debug('[CodexMCP] No permission handler set, aborting by default');
+                return { decision: 'abort' };
+            }
+
+            try {
+                const result = await this.permissionHandler.handleToolCall(
+                    toolCallId,
+                    toolName,
+                    {
+                        command: params.codex_command,
+                        cwd: params.codex_cwd,
+                    },
+                );
+
+                const decision: CodexApprovalDecision =
+                    result.decision === 'approved' || result.decision === 'approved_for_session'
+                        ? 'approved'
+                        : 'abort';
+
+                logger.debug('[CodexMCP] Elicitation response:', { decision });
+                return { decision };
+            } catch (error) {
+                logger.debug('[CodexMCP] Error handling permission request:', error);
+                return { decision: 'abort' };
+            }
+        });
 
         logger.debug('[CodexMCP] Permission handlers registered');
     }
