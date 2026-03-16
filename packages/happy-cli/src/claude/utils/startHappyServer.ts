@@ -15,6 +15,7 @@ import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
+import { isOrchestratorWorkerSession } from '@/orchestrator/prompt';
 
 const ORCHESTRATOR_RUN_TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 
@@ -330,7 +331,7 @@ export async function startHappyServer(client: ApiSessionClient) {
     // This is needed when switching between local and remote modes, as each mode
     // spawns a new Claude Code process that needs its own MCP session
     const transports: Map<string, StreamableHTTPServerTransport> = new Map();
-    const isWorkerSession = process.env.HAPPY_ORCH_ONESHOT === '1' || !!process.env.HAPPY_ORCH_EXECUTION_ID;
+    const isWorkerSession = isOrchestratorWorkerSession();
     const enableOrchestratorTools = !isWorkerSession;
     const toolNames = enableOrchestratorTools
         ? ['change_title', 'preview_html', 'orchestrator_get_context', 'orchestrator_submit', 'orchestrator_pend', 'orchestrator_list', 'orchestrator_cancel']

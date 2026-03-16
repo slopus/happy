@@ -6,6 +6,7 @@
  */
 
 import { trimIdent } from '@/utils/trimIdent';
+import { buildFirstTurnToolingInstruction } from '@/orchestrator/prompt';
 
 /** Environment variable name for Gemini API key */
 export const GEMINI_API_KEY_ENV = 'GEMINI_API_KEY';
@@ -27,4 +28,11 @@ export const CHANGE_TITLE_INSTRUCTION = trimIdent(
   `On your first response, call "functions.happy__change_title" to set a descriptive title based on the user's message. Update the title whenever the conversation's main focus shifts to a different topic or task.`
 );
 
+/**
+ * First-turn tool guidance shared by Codex + Gemini.
+ * Includes chat title instruction and orchestrator delegation guidance for controller sessions.
+ */
+export function getFirstTurnInstruction(env: NodeJS.ProcessEnv = process.env): string {
+  return buildFirstTurnToolingInstruction(CHANGE_TITLE_INSTRUCTION, env);
+}
 
