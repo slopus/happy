@@ -12,7 +12,6 @@ type SpawnPlan = {
   command: string;
   args: string[];
   env?: NodeJS.ProcessEnv;
-  stdinText?: string;
 };
 
 function parseProvider(providerArg: string | undefined): OrchestratorProvider {
@@ -44,14 +43,20 @@ function buildSpawnPlan(provider: OrchestratorProvider, prompt: string): SpawnPl
     case 'codex':
       return {
         command: 'bash',
-        args: ['-lc', 'npx -y @openai/codex@0.114.0 exec "$(cat)"'],
-        stdinText: prompt,
+        args: ['-lc', 'npx -y @openai/codex@0.114.0 exec "$ORCH_PROMPT"'],
+        env: {
+          ...process.env,
+          ORCH_PROMPT: prompt,
+        },
       };
     case 'gemini':
       return {
         command: 'bash',
-        args: ['-lc', 'gemini -p "$(cat)"'],
-        stdinText: prompt,
+        args: ['-lc', 'gemini -p "$ORCH_PROMPT"'],
+        env: {
+          ...process.env,
+          ORCH_PROMPT: prompt,
+        },
       };
     default:
       throw new Error(`Unsupported provider: ${provider}`);
@@ -63,15 +68,8 @@ async function spawnAndWait(plan: SpawnPlan): Promise<number> {
     const child = spawn(plan.command, plan.args, {
       cwd: process.cwd(),
       env: plan.env ?? process.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-
-    if (plan.stdinText !== undefined) {
-      child.stdin?.write(plan.stdinText);
-      child.stdin?.end();
-    } else {
-      child.stdin?.end();
-    }
 
     child.stdout?.on('data', (chunk) => {
       process.stdout.write(chunk);
