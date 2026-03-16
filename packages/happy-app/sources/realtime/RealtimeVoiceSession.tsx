@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import {
     RTCPeerConnection,
-    mediaDevices,
+    mediaDevices as rnMediaDevices,
 } from '@livekit/react-native-webrtc';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
@@ -105,7 +105,7 @@ export const RealtimeVoiceSession: React.FC = () => {
                     storage.getState().setRealtimeMode('idle', true);
                 },
             },
-            { RTCPeerConnection }
+            { RTCPeerConnection, mediaDevices: rnMediaDevices }
         );
 
         if (!hasRegistered.current) {

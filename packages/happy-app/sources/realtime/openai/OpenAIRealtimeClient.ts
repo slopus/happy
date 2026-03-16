@@ -46,7 +46,7 @@ interface PendingEvent {
 
 const OPENAI_REALTIME_URL = 'https://api.openai.com/v1/realtime';
 const OPENAI_SESSIONS_URL = 'https://api.openai.com/v1/realtime/sessions';
-const DEFAULT_MODEL = 'gpt-4o-realtime-preview-2024-12-17';
+const DEFAULT_MODEL = 'gpt-realtime-1.5';
 const DEFAULT_VOICE = 'alloy';
 const SESSION_MAX_MS = 29 * 60 * 1000; // warn at 29 min (max is 30)
 
@@ -66,15 +66,17 @@ export class OpenAIRealtimeClient {
     private isSpeaking = false;
     private speakingTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    // Caller can override the RTCPeerConnection constructor (for RN vs browser)
-    private RTCPeerConnectionCtor: typeof RTCPeerConnection;
+    // Caller can override WebRTC constructors (for RN vs browser)
+    private RTCPeerConnectionCtor: any;
+    private mediaDevicesImpl: any;
 
     constructor(
         callbacks: OpenAIRealtimeCallbacks,
-        options?: { RTCPeerConnection?: any }
+        options?: { RTCPeerConnection?: any; mediaDevices?: any }
     ) {
         this.callbacks = callbacks;
         this.RTCPeerConnectionCtor = options?.RTCPeerConnection ?? globalThis.RTCPeerConnection;
+        this.mediaDevicesImpl = options?.mediaDevices ?? navigator?.mediaDevices;
     }
 
     // ────────────────────────────────────────────────────────────
@@ -125,10 +127,15 @@ export class OpenAIRealtimeClient {
 
             // 4. Get mic audio
             try {
-                this.localStream = await (navigator?.mediaDevices?.getUserMedia?.({ audio: true }) as any);
-                if (this.localStream) {
-                    const track = this.localStream.getTracks()[0];
-                    if (track) (this.pc as any).addTrack(track, this.localStream);
+                if (this.mediaDevicesImpl?.getUserMedia) {
+                    this.localStream = await this.mediaDevicesImpl.getUserMedia({ audio: true });
+                    if (this.localStream) {
+                        const track = this.localStream.getTracks()[0];
+                        if (track) (this.pc as any).addTrack(track, this.localStream);
+                        console.log('[OpenAIRealtime] Mic track added');
+                    }
+                } else {
+                    console.warn('[OpenAIRealtime] No mediaDevices available');
                 }
             } catch (micErr) {
                 console.warn('[OpenAIRealtime] Mic not available:', micErr);
