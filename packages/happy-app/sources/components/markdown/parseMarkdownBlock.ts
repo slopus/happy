@@ -79,6 +79,18 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     return { table, nextIndex: index };
 }
 
+function shouldOpenAnonymousNestedFence(lines: string[], fenceIndex: number): boolean {
+    for (let i = fenceIndex + 1; i < lines.length - 1; i++) {
+        if (lines[i].trim().startsWith('```')) {
+            if (i === fenceIndex + 1) {
+                return false;
+            }
+            return lines[i].trim() === '```' && lines[i + 1].trim() === '```';
+        }
+    }
+    return false;
+}
+
 export function parseMarkdownBlock(markdown: string) {
     const blocks: MarkdownBlock[] = [];
     const lines = markdown.split('\n');
@@ -101,7 +113,7 @@ export function parseMarkdownBlock(markdown: string) {
         // Code block
         if (trimmed.startsWith('```')) {
             const language = trimmed.slice(3).trim() || null;
-            const supportsNestedFences = language === 'md' || language === 'markdown';
+            const supportsNestedFences = language === null || language === 'md' || language === 'markdown';
             let nestedFenceDepth = 0;
             let content = [];
             while (index < lines.length) {
@@ -117,6 +129,12 @@ export function parseMarkdownBlock(markdown: string) {
                     if (supportsNestedFences) {
                         if (nextTrimmed === '```') {
                             if (nestedFenceDepth === 0) {
+                                if (shouldOpenAnonymousNestedFence(lines, index)) {
+                                    nestedFenceDepth++;
+                                    content.push(nextLine);
+                                    index++;
+                                    continue;
+                                }
                                 index++;
                                 break;
                             }
