@@ -286,6 +286,70 @@ export class ApiClient {
   }
 
   /**
+   * Report orchestrator execution start (daemon -> server)
+   */
+  async reportOrchestratorExecutionStart(opts: {
+    executionId: string;
+    dispatchToken: string;
+    startedAt: string;
+    pid?: number;
+  }): Promise<void> {
+    await axios.post(
+      `${configuration.serverUrl}/v1/orchestrator/executions/${opts.executionId}/start`,
+      {
+        dispatchToken: opts.dispatchToken,
+        startedAt: opts.startedAt,
+        ...(typeof opts.pid === 'number' ? { pid: opts.pid } : {}),
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.credential.token}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000,
+      }
+    );
+  }
+
+  /**
+   * Report orchestrator execution finish (daemon -> server)
+   */
+  async reportOrchestratorExecutionFinish(opts: {
+    executionId: string;
+    dispatchToken: string;
+    status: 'completed' | 'failed' | 'cancelled' | 'timeout';
+    finishedAt: string;
+    exitCode?: number | null;
+    signal?: string | null;
+    outputSummary?: string | null;
+    outputText?: string | null;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+  }): Promise<void> {
+    await axios.post(
+      `${configuration.serverUrl}/v1/orchestrator/executions/${opts.executionId}/finish`,
+      {
+        dispatchToken: opts.dispatchToken,
+        status: opts.status,
+        finishedAt: opts.finishedAt,
+        ...(opts.exitCode !== undefined ? { exitCode: opts.exitCode } : {}),
+        ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+        ...(opts.outputSummary !== undefined ? { outputSummary: opts.outputSummary } : {}),
+        ...(opts.outputText !== undefined ? { outputText: opts.outputText } : {}),
+        ...(opts.errorCode !== undefined ? { errorCode: opts.errorCode } : {}),
+        ...(opts.errorMessage !== undefined ? { errorMessage: opts.errorMessage } : {}),
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.credential.token}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000,
+      }
+    );
+  }
+
+  /**
    * Register a vendor API token with the server
    * The token is sent as a JSON string - server handles encryption
    */

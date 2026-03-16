@@ -1,7 +1,8 @@
 /**
  * Happy MCP STDIO Bridge
  *
- * Minimal STDIO MCP server exposing Happy tools (`change_title`, `preview_html`).
+ * Minimal STDIO MCP server exposing Happy tools
+ * (`change_title`, `preview_html`, `orchestrator_*`).
  * On invocation it forwards tool calls to an existing Happy HTTP MCP server
  * using the StreamableHTTPClientTransport.
  *
@@ -62,6 +63,7 @@ async function main() {
     name: 'Happy MCP Bridge',
     version: '1.0.0',
   });
+  const enableOrchestratorTools = process.env.HAPPY_ORCH_ONESHOT !== '1' && !process.env.HAPPY_ORCH_EXECUTION_ID;
 
   // Helper to register a tool that forwards calls to the HTTP MCP server
   function registerForwardedTool(
@@ -101,6 +103,72 @@ async function main() {
     },
   });
 
+  if (enableOrchestratorTools) {
+    registerForwardedTool('orchestrator_get_context', {
+      description: 'Get orchestrator defaults and controller session context for this current MCP session.',
+      title: 'Orchestrator Get Context',
+      inputSchema: {},
+    });
+
+    registerForwardedTool('orchestrator_submit', {
+      description: 'Submit an orchestrator run. In blocking mode this tool loops orchestrator_pend until terminal or timeout.',
+      title: 'Orchestrator Submit',
+      inputSchema: {
+        title: z.string().min(1).max(256),
+        tasks: z.array(z.object({
+          taskKey: z.string().min(1).max(128).optional(),
+          title: z.string().min(1).max(256).optional(),
+          provider: z.enum(['claude', 'codex', 'gemini']),
+          prompt: z.string().min(1).max(65536),
+          timeoutMs: z.number().int().min(1000).max(24 * 60 * 60 * 1000).optional(),
+          target: z.object({
+            type: z.enum(['current_machine', 'machine_id']),
+            machineId: z.string().optional(),
+          }).optional(),
+          metadata: z.record(z.string(), z.string()).optional(),
+        })).min(1).max(32),
+        mode: z.enum(['async', 'blocking']).optional(),
+        maxConcurrency: z.number().int().min(1).max(8).optional(),
+        waitTimeoutMs: z.number().int().min(1000).max(60 * 60 * 1000).optional(),
+        pollIntervalMs: z.number().int().min(200).max(60_000).optional(),
+        idempotencyKey: z.string().min(1).max(128).optional(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
+        controllerSessionId: z.string().optional(),
+      },
+    });
+
+    registerForwardedTool('orchestrator_pend', {
+      description: 'Wait for orchestrator run changes or terminal status.',
+      title: 'Orchestrator Pend',
+      inputSchema: {
+        runId: z.string(),
+        cursor: z.string().optional(),
+        waitFor: z.enum(['change', 'terminal']).optional(),
+        timeoutMs: z.number().int().min(0).max(120_000).optional(),
+        include: z.enum(['summary', 'all_tasks']).optional(),
+      },
+    });
+
+    registerForwardedTool('orchestrator_list', {
+      description: 'List orchestrator runs for current account.',
+      title: 'Orchestrator List',
+      inputSchema: {
+        status: z.enum(['active', 'terminal', 'queued', 'running', 'canceling', 'completed', 'failed', 'cancelled']).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+        cursor: z.string().optional(),
+      },
+    });
+
+    registerForwardedTool('orchestrator_cancel', {
+      description: 'Request cancellation for an orchestrator run.',
+      title: 'Orchestrator Cancel',
+      inputSchema: {
+        runId: z.string(),
+        reason: z.string().max(512).optional(),
+      },
+    });
+  }
+
   // Start STDIO transport
   const stdio = new StdioServerTransport();
   await server.connect(stdio);
@@ -114,4 +182,3 @@ main().catch((err) => {
     process.exit(1);
   }
 });
-

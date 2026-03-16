@@ -62,7 +62,20 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
   if (!args.includes('--version')) {
   }
 
-  if (subcommand === 'doctor') {
+  if (subcommand === 'orchestrator-oneshot') {
+    try {
+      const { runOrchestratorOneShot } = await import('@/orchestrator/runOneShot');
+      const exitCode = await runOrchestratorOneShot(args.slice(1));
+      process.exit(exitCode);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
+      if (process.env.DEBUG) {
+        console.error(error);
+      }
+      process.exit(1);
+    }
+    return;
+  } else if (subcommand === 'doctor') {
     // Check for clean subcommand
     if (args[1] === 'clean') {
       const result = await killRunawayHappyProcesses()

@@ -44,6 +44,7 @@ model Account {
   badgeCount Int @default(0)
 
   Session             Session[]
+  OrchestratorRun     OrchestratorRun[]
   AccountPushToken    AccountPushToken[]
   TerminalAuthRequest TerminalAuthRequest[]
   AccountAuthRequest  AccountAuthRequest[]
@@ -101,29 +102,117 @@ model AccountPushToken {
 //
 
 model Session {
-  id                String              @id @default(cuid())
+  id                String                  @id @default(cuid())
   tag               String
   accountId         String
-  account           Account             @relation(fields: [accountId], references: [id])
+  account           Account                 @relation(fields: [accountId], references: [id])
   metadata          String
-  metadataVersion   Int                 @default(0)
+  metadataVersion   Int                     @default(0)
   agentState        String?
-  agentStateVersion Int                 @default(0)
+  agentStateVersion Int                     @default(0)
   dataEncryptionKey Bytes?
-  seq               Int                 @default(0)
-  active            Boolean             @default(true)
-  lastActiveAt      DateTime            @default(now())
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  seq               Int                     @default(0)
+  active            Boolean                 @default(true)
+  lastActiveAt      DateTime                @default(now())
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
   messages          SessionMessage[]
   pendingMessages   SessionPendingMessage[]
   usageReports      UsageReport[]
   accessKeys        AccessKey[]
   shares            SessionShare[]
   publicShare       PublicSessionShare?
+  controllerRuns    OrchestratorRun[]       @relation("ControllerRuns")
+  workerExecutions  OrchestratorExecution[] @relation("WorkerExecutions")
 
   @@unique([accountId, tag])
   @@index([accountId, updatedAt(sort: Desc)])
+}
+
+//
+// Orchestrator
+//
+
+model OrchestratorRun {
+  id                  String                  @id @default(cuid())
+  accountId           String
+  account             Account                 @relation(fields: [accountId], references: [id])
+  controllerSessionId String?
+  controllerSession   Session?                @relation("ControllerRuns", fields: [controllerSessionId], references: [id], onDelete: SetNull)
+  title               String
+  status              String
+  maxConcurrency      Int                     @default(2)
+  idempotencyKey      String?
+  metadata            Json?
+  cancelRequestedAt   DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  tasks               OrchestratorTask[]
+  executions          OrchestratorExecution[]
+
+  @@unique([accountId, idempotencyKey])
+  @@index([accountId, createdAt(sort: Desc)])
+  @@index([accountId, status, updatedAt(sort: Desc)])
+  @@index([controllerSessionId])
+}
+
+model OrchestratorTask {
+  id              String                  @id @default(cuid())
+  runId           String
+  run             OrchestratorRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  seq             Int
+  taskKey         String?
+  title           String?
+  provider        String
+  prompt          String
+  timeoutMs       Int?
+  targetMachineId String?
+  status          String
+  outputSummary   String?
+  outputText      String?
+  errorCode       String?
+  errorMessage    String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  executions      OrchestratorExecution[]
+
+  @@unique([runId, seq])
+  @@unique([runId, taskKey])
+  @@index([runId, status, seq])
+  @@index([targetMachineId])
+}
+
+model OrchestratorExecution {
+  id              String           @id @default(cuid())
+  runId           String
+  run             OrchestratorRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  taskId          String
+  task            OrchestratorTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  workerSessionId String?
+  workerSession   Session?         @relation("WorkerExecutions", fields: [workerSessionId], references: [id], onDelete: SetNull)
+  machineId       String
+  provider        String
+  status          String
+  attempt         Int              @default(1)
+  dispatchToken   String           @unique
+  timeoutMs       Int?
+  pid             Int?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  exitCode        Int?
+  signal          String?
+  outputSummary   String?
+  outputText      String?
+  errorCode       String?
+  errorMessage    String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([runId, status, createdAt])
+  @@index([taskId, status, createdAt])
+  @@index([machineId, status, createdAt])
+  @@index([workerSessionId])
 }
 
 model SessionMessage {
@@ -145,18 +234,18 @@ model SessionMessage {
 }
 
 model SessionPendingMessage {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   sessionId        String
-  session          Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session          Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   localId          String
   /// [SessionMessageContent]
   content          Json
   sentBy           String?
   sentByName       String?
-  trackCliDelivery Boolean  @default(false)
+  trackCliDelivery Boolean   @default(false)
   pinnedAt         DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@unique([sessionId, localId])
   @@index([sessionId, pinnedAt, createdAt])

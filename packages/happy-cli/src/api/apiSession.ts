@@ -46,6 +46,46 @@ export type ACPMessageData =
 
 export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
 
+type OrchestratorProvider = 'claude' | 'codex' | 'gemini';
+
+type OrchestratorSubmitTask = {
+    taskKey?: string;
+    title?: string;
+    provider: OrchestratorProvider;
+    prompt: string;
+    timeoutMs?: number;
+    target?: {
+        type: 'current_machine' | 'machine_id';
+        machineId?: string;
+    };
+    metadata?: Record<string, string>;
+};
+
+type OrchestratorSubmitBody = {
+    title: string;
+    controllerSessionId?: string;
+    tasks: OrchestratorSubmitTask[];
+    maxConcurrency?: number;
+    mode?: 'blocking' | 'async';
+    waitTimeoutMs?: number;
+    pollIntervalMs?: number;
+    idempotencyKey?: string;
+    metadata?: Record<string, unknown>;
+};
+
+type OrchestratorPendQuery = {
+    cursor?: string;
+    waitFor?: 'change' | 'terminal';
+    timeoutMs?: number;
+    include?: 'summary' | 'all_tasks';
+};
+
+type OrchestratorListQuery = {
+    status?: 'active' | 'terminal' | 'queued' | 'running' | 'canceling' | 'completed' | 'failed' | 'cancelled';
+    limit?: number;
+    cursor?: string;
+};
+
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     readonly sessionId: string;
@@ -239,6 +279,77 @@ export class ApiSessionClient extends EventEmitter {
         //
 
         this.socket.connect();
+    }
+
+    private orchestratorHeaders() {
+        return {
+            'Authorization': `Bearer ${this.token}`,
+            'Content-Type': 'application/json'
+        } as const;
+    }
+
+    getMetadataSnapshot(): Metadata | null {
+        return this.metadata ? JSON.parse(JSON.stringify(this.metadata)) : null;
+    }
+
+    async orchestratorSubmit(body: OrchestratorSubmitBody): Promise<any> {
+        const response = await axios.post(
+            `${configuration.serverUrl}/v1/orchestrator/submit`,
+            body,
+            {
+                headers: this.orchestratorHeaders(),
+                timeout: 60_000,
+            }
+        );
+        return response.data;
+    }
+
+    async orchestratorGetRun(runId: string, includeTasks: boolean = true): Promise<any> {
+        const response = await axios.get(
+            `${configuration.serverUrl}/v1/orchestrator/runs/${encodeURIComponent(runId)}`,
+            {
+                headers: this.orchestratorHeaders(),
+                params: { includeTasks },
+                timeout: 30_000,
+            }
+        );
+        return response.data;
+    }
+
+    async orchestratorListRuns(query: OrchestratorListQuery = {}): Promise<any> {
+        const response = await axios.get(
+            `${configuration.serverUrl}/v1/orchestrator/runs`,
+            {
+                headers: this.orchestratorHeaders(),
+                params: query,
+                timeout: 30_000,
+            }
+        );
+        return response.data;
+    }
+
+    async orchestratorPend(runId: string, query: OrchestratorPendQuery = {}): Promise<any> {
+        const response = await axios.get(
+            `${configuration.serverUrl}/v1/orchestrator/runs/${encodeURIComponent(runId)}/pend`,
+            {
+                headers: this.orchestratorHeaders(),
+                params: query,
+                timeout: Math.min(Math.max((query.timeoutMs ?? 30_000) + 10_000, 15_000), 130_000),
+            }
+        );
+        return response.data;
+    }
+
+    async orchestratorCancel(runId: string, body?: { reason?: string }): Promise<any> {
+        const response = await axios.post(
+            `${configuration.serverUrl}/v1/orchestrator/runs/${encodeURIComponent(runId)}/cancel`,
+            body ?? {},
+            {
+                headers: this.orchestratorHeaders(),
+                timeout: 30_000,
+            }
+        );
+        return response.data;
     }
 
     onUserMessage(callback: (data: UserMessage) => void) {
