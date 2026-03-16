@@ -8,6 +8,9 @@ export interface AppConfig {
     revenueCatStripeKey?: string;
     elevenLabsAgentIdDev?: string;
     elevenLabsAgentIdProd?: string;
+    openAiApiKey?: string;
+    openAiRealtimeModel?: string;
+    openAiRealtimeVoice?: string;
     serverUrl?: string;
 }
 
@@ -95,6 +98,18 @@ export function loadAppConfig(): AppConfig {
     if (process.env.EXPO_PUBLIC_SERVER_URL && config.serverUrl !== process.env.EXPO_PUBLIC_SERVER_URL) {
         console.log('[loadAppConfig] Override serverUrl from EXPO_PUBLIC_SERVER_URL');
         config.serverUrl = process.env.EXPO_PUBLIC_SERVER_URL;
+    }
+    if (process.env.EXPO_PUBLIC_OPENAI_API_KEY && config.openAiApiKey !== process.env.EXPO_PUBLIC_OPENAI_API_KEY) {
+        console.log('[loadAppConfig] Override openAiApiKey from EXPO_PUBLIC_OPENAI_API_KEY');
+        config.openAiApiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    }
+    if (process.env.EXPO_PUBLIC_OPENAI_REALTIME_MODEL && config.openAiRealtimeModel !== process.env.EXPO_PUBLIC_OPENAI_REALTIME_MODEL) {
+        console.log('[loadAppConfig] Override openAiRealtimeModel from EXPO_PUBLIC_OPENAI_REALTIME_MODEL');
+        config.openAiRealtimeModel = process.env.EXPO_PUBLIC_OPENAI_REALTIME_MODEL;
+    }
+    if (process.env.EXPO_PUBLIC_OPENAI_REALTIME_VOICE && config.openAiRealtimeVoice !== process.env.EXPO_PUBLIC_OPENAI_REALTIME_VOICE) {
+        console.log('[loadAppConfig] Override openAiRealtimeVoice from EXPO_PUBLIC_OPENAI_REALTIME_VOICE');
+        config.openAiRealtimeVoice = process.env.EXPO_PUBLIC_OPENAI_REALTIME_VOICE;
     }
 
     return config as AppConfig;
