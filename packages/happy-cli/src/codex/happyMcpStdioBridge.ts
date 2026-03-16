@@ -17,6 +17,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
+import { shouldEnableOrchestratorTools } from '@/orchestrator/prompt';
 
 function parseArgs(argv: string[]): { url: string | null } {
   let url: string | null = null;
@@ -63,7 +64,7 @@ async function main() {
     name: 'Happy MCP Bridge',
     version: '1.0.0',
   });
-  const enableOrchestratorTools = process.env.HAPPY_ORCH_ONESHOT !== '1' && !process.env.HAPPY_ORCH_EXECUTION_ID;
+  const enableOrchestratorTools = shouldEnableOrchestratorTools();
 
   // Helper to register a tool that forwards calls to the HTTP MCP server
   function registerForwardedTool(

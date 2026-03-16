@@ -27,6 +27,7 @@ import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { shareRoutes } from "./routes/shareRoutes";
 import { publicShareRoutes } from "./routes/publicShareRoutes";
 import { orchestratorRoutes } from "./routes/orchestratorRoutes";
+import { isOrchestratorV1Enabled } from "@/app/orchestrator/featureFlag";
 
 export async function startApi() {
 
@@ -82,7 +83,9 @@ export async function startApi() {
     v3SessionRoutes(typed);
     shareRoutes(typed);
     publicShareRoutes(typed);
-    orchestratorRoutes(typed);
+    if (isOrchestratorV1Enabled()) {
+        orchestratorRoutes(typed);
+    }
 
     // Start HTTP
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;

@@ -13,6 +13,7 @@ import { initGithub } from "./modules/github";
 import { loadFiles } from "./storage/files";
 import { startMessageDeliveryTimeoutWorker } from "./app/messageDelivery/timeout";
 import { startOrchestratorScheduler } from "./app/orchestrator/scheduler";
+import { isOrchestratorV1Enabled } from "./app/orchestrator/featureFlag";
 
 async function main() {
 
@@ -41,7 +42,9 @@ async function main() {
     startDatabaseMetricsUpdater();
     startTimeout();
     startMessageDeliveryTimeoutWorker();
-    startOrchestratorScheduler();
+    if (isOrchestratorV1Enabled()) {
+        startOrchestratorScheduler();
+    }
 
     //
     // Ready

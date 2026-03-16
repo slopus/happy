@@ -22,6 +22,7 @@ import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { execSync, execFileSync } from 'node:child_process';
 import { readdirSync, rmdirSync } from 'node:fs';
+import { isOrchestratorV1Enabled } from '@/orchestrator/prompt';
 
 function createSessionCacheStatsReporter(
     saveStats: (stats: SessionCacheRuntimeStats) => Promise<void>,
@@ -234,6 +235,8 @@ export class ApiMachineClient {
         orchestratorDispatch,
         orchestratorCancel
     }: MachineRpcHandlers) {
+        const orchestratorEnabled = isOrchestratorV1Enabled();
+
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
             const { directory, sessionId, resumeSessionId, sessionTitle, skipForkSession, machineId, approvedNewDirectoryCreation, agent, token, environmentVariables, worktreeBasePath, worktreeBranchName, workspaceRepos, workspacePath, repoScripts, mcpServers } = params || {};
@@ -356,70 +359,72 @@ export class ApiMachineClient {
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
         });
 
-        // Register orchestrator dispatch handler
-        this.rpcHandlerManager.registerHandler('orchestrator-dispatch', async (params: any) => {
-            const { executionId, runId, taskId, dispatchToken, provider, prompt, timeoutMs } = params || {};
+        if (orchestratorEnabled) {
+            // Register orchestrator dispatch handler
+            this.rpcHandlerManager.registerHandler('orchestrator-dispatch', async (params: any) => {
+                const { executionId, runId, taskId, dispatchToken, provider, prompt, timeoutMs } = params || {};
 
-            if (!executionId || typeof executionId !== 'string') {
-                throw new Error('executionId is required');
-            }
-            if (!runId || typeof runId !== 'string') {
-                throw new Error('runId is required');
-            }
-            if (!taskId || typeof taskId !== 'string') {
-                throw new Error('taskId is required');
-            }
-            if (!dispatchToken || typeof dispatchToken !== 'string') {
-                throw new Error('dispatchToken is required');
-            }
-            if (!provider || typeof provider !== 'string') {
-                throw new Error('provider is required');
-            }
-            if (provider !== 'claude' && provider !== 'codex' && provider !== 'gemini') {
-                throw new Error(`Unsupported provider: ${provider}`);
-            }
-            if (typeof prompt !== 'string' || prompt.trim().length === 0) {
-                throw new Error('prompt is required');
-            }
-            if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-                throw new Error('timeoutMs must be a positive number');
-            }
+                if (!executionId || typeof executionId !== 'string') {
+                    throw new Error('executionId is required');
+                }
+                if (!runId || typeof runId !== 'string') {
+                    throw new Error('runId is required');
+                }
+                if (!taskId || typeof taskId !== 'string') {
+                    throw new Error('taskId is required');
+                }
+                if (!dispatchToken || typeof dispatchToken !== 'string') {
+                    throw new Error('dispatchToken is required');
+                }
+                if (!provider || typeof provider !== 'string') {
+                    throw new Error('provider is required');
+                }
+                if (provider !== 'claude' && provider !== 'codex' && provider !== 'gemini') {
+                    throw new Error(`Unsupported provider: ${provider}`);
+                }
+                if (typeof prompt !== 'string' || prompt.trim().length === 0) {
+                    throw new Error('prompt is required');
+                }
+                if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+                    throw new Error('timeoutMs must be a positive number');
+                }
 
-            return orchestratorDispatch({
-                executionId,
-                runId,
-                taskId,
-                dispatchToken,
-                provider,
-                prompt,
-                timeoutMs: Math.floor(timeoutMs),
+                return orchestratorDispatch({
+                    executionId,
+                    runId,
+                    taskId,
+                    dispatchToken,
+                    provider,
+                    prompt,
+                    timeoutMs: Math.floor(timeoutMs),
+                });
             });
-        });
 
-        // Register orchestrator cancel handler
-        this.rpcHandlerManager.registerHandler('orchestrator-cancel', async (params: any) => {
-            const { executionId, runId, taskId, dispatchToken } = params || {};
+            // Register orchestrator cancel handler
+            this.rpcHandlerManager.registerHandler('orchestrator-cancel', async (params: any) => {
+                const { executionId, runId, taskId, dispatchToken } = params || {};
 
-            if (!executionId || typeof executionId !== 'string') {
-                throw new Error('executionId is required');
-            }
-            if (!runId || typeof runId !== 'string') {
-                throw new Error('runId is required');
-            }
-            if (!taskId || typeof taskId !== 'string') {
-                throw new Error('taskId is required');
-            }
-            if (!dispatchToken || typeof dispatchToken !== 'string') {
-                throw new Error('dispatchToken is required');
-            }
+                if (!executionId || typeof executionId !== 'string') {
+                    throw new Error('executionId is required');
+                }
+                if (!runId || typeof runId !== 'string') {
+                    throw new Error('runId is required');
+                }
+                if (!taskId || typeof taskId !== 'string') {
+                    throw new Error('taskId is required');
+                }
+                if (!dispatchToken || typeof dispatchToken !== 'string') {
+                    throw new Error('dispatchToken is required');
+                }
 
-            return orchestratorCancel({
-                executionId,
-                runId,
-                taskId,
-                dispatchToken,
+                return orchestratorCancel({
+                    executionId,
+                    runId,
+                    taskId,
+                    dispatchToken,
+                });
             });
-        });
+        }
 
         // List Claude sessions from local index
         this.rpcHandlerManager.registerHandler('claude-list-sessions', async (params: any) => {
