@@ -65,13 +65,23 @@ export class RpcHandlerManager {
                 return encryptedError;
             }
 
-            // Decrypt the incoming params
-            const decryptedParams = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(request.params));
+            // Server-originated RPC calls (e.g. orchestrator dispatch/cancel) send params
+            // as plain objects. Client-originated calls (e.g. spawn-session from mobile app)
+            // send params as base64-encrypted strings. Detect and handle both.
+            const isPlaintext = typeof request.params !== 'string';
+            const decryptedParams = isPlaintext
+                ? request.params
+                : decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(request.params));
 
             // Call the handler
             this.logger('[RPC] Calling handler', { method: request.method });
             const result = await handler(decryptedParams);
             this.logger('[RPC] Handler returned', { method: request.method, hasResult: result !== undefined });
+
+            // Plaintext requests get plaintext responses
+            if (isPlaintext) {
+                return result;
+            }
 
             // Check if handler returned a pre-encrypted response (used for OpenClaw chat.history)
             if (result && typeof result === 'object' && '__preEncrypted' in result && result.__preEncrypted === true) {
@@ -88,6 +98,10 @@ export class RpcHandlerManager {
             const errorResponse = {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
+            // For plaintext requests, return plain error; for encrypted, return encrypted error
+            if (typeof request.params !== 'string') {
+                return errorResponse;
+            }
             return encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, errorResponse));
         }
     }
