@@ -138,7 +138,15 @@ export async function executeSchedulerActions(actions: SchedulerAction[]): Promi
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 warn({ module: 'orchestrator-scheduler', runId: action.runId, executionId: action.executionId }, `Dispatch RPC failed: ${message}`);
-                await markDispatchFailed(action, message);
+                try {
+                    await markDispatchFailed(action, message);
+                } catch (markError) {
+                    const markMessage = markError instanceof Error ? markError.message : String(markError);
+                    warn(
+                        { module: 'orchestrator-scheduler', runId: action.runId, executionId: action.executionId },
+                        `markDispatchFailed failed: ${markMessage}`,
+                    );
+                }
             }
             continue;
         }

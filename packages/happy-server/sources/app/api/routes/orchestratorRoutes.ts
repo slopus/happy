@@ -19,6 +19,8 @@ const PROVIDERS = ['claude', 'codex', 'gemini'] as const;
 const RUN_STATUSES = ['queued', 'running', 'canceling', 'completed', 'failed', 'cancelled'] as const;
 const EXECUTION_FINAL_STATUSES = ['completed', 'failed', 'cancelled', 'timeout'] as const;
 const LIST_RUN_STATUS_FILTERS = ['active', 'terminal', ...RUN_STATUSES] as const;
+const IDEMPOTENCY_RETRY_TIMES = 2;
+const IDEMPOTENCY_RETRY_DELAY_MS = 10;
 
 const submitTaskSchema = z.object({
     taskKey: z.string().min(1).max(128).optional(),
@@ -287,6 +289,18 @@ export function orchestratorRoutes(app: Fastify) {
             }
             return loadRunForUser(userId, existing.id, true);
         };
+        const loadExistingByIdempotencyWithRetry = async (): Promise<{ run: RunWithTasks; summary: RunSummary } | null> => {
+            for (let attempt = 0; attempt <= IDEMPOTENCY_RETRY_TIMES; attempt++) {
+                const existing = await loadExistingByIdempotency();
+                if (existing) {
+                    return existing;
+                }
+                if (attempt < IDEMPOTENCY_RETRY_TIMES) {
+                    await delay(IDEMPOTENCY_RETRY_DELAY_MS);
+                }
+            }
+            return null;
+        };
 
         const existing = await loadExistingByIdempotency();
         if (existing) {
@@ -392,7 +406,7 @@ export function orchestratorRoutes(app: Fastify) {
             });
         } catch (error) {
             if (body.idempotencyKey && isUniqueConstraintError(error)) {
-                const duplicate = await loadExistingByIdempotency();
+                const duplicate = await loadExistingByIdempotencyWithRetry();
                 if (duplicate) {
                     return reply.send({
                         ok: true,
@@ -815,10 +829,10 @@ export function orchestratorRoutes(app: Fastify) {
                 finishedAt: z.string().datetime().optional(),
                 exitCode: z.number().int().nullable().optional(),
                 signal: z.string().nullable().optional(),
-                outputSummary: z.string().nullable().optional(),
-                outputText: z.string().nullable().optional(),
+                outputSummary: z.string().max(4096).nullable().optional(),
+                outputText: z.string().max(1_000_000).nullable().optional(),
                 errorCode: z.string().nullable().optional(),
-                errorMessage: z.string().nullable().optional(),
+                errorMessage: z.string().max(10_000).nullable().optional(),
             }),
         },
     }, async (request, reply) => {

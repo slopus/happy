@@ -94,6 +94,8 @@ export function deriveRunStatus(currentStatus: string, summary: RunSummaryIntern
         return 'cancelled';
     }
 
+    // v1 semantics: partial success (completed + cancelled without failed) is treated as completed.
+    // Cancellation here means user stopped remaining tasks; successfully finished tasks still make the run successful.
     return 'completed';
 }
 

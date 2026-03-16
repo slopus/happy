@@ -39,6 +39,13 @@ describe('orchestrator state helpers', () => {
         expect(deriveRunStatus('canceling', terminalSummary)).toBe('cancelled');
     });
 
+    it('treats completed + cancelled as completed when there are no failures', () => {
+        const summary = createEmptySummaryInternal();
+        addTaskCount(summary, 'completed', 2);
+        addTaskCount(summary, 'cancelled', 1);
+        expect(deriveRunStatus('running', summary)).toBe('completed');
+    });
+
     it('encodes and decodes list cursor', () => {
         const createdAt = new Date('2026-03-16T01:02:03.000Z');
         const encoded = encodeListCursor(createdAt, 'run_123');

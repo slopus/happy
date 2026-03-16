@@ -194,7 +194,8 @@ export async function startDaemon(): Promise<void> {
       startedAtIso: string;
       cancelRequested: boolean;
       watchdogTriggered: boolean;
-      finishReported: boolean;
+      startReportPromise: Promise<void>;
+      finishReportPromise: Promise<void> | null;
       stdout: string;
       stderr: string;
       watchdogTimer: NodeJS.Timeout | null;
@@ -248,33 +249,35 @@ export async function startDaemon(): Promise<void> {
       errorCode?: string | null;
       errorMessage?: string | null;
     }) => {
-      if (execution.finishReported) {
+      if (execution.finishReportPromise) {
+        await execution.finishReportPromise;
         return;
       }
-      execution.finishReported = true;
+      execution.finishReportPromise = (async () => {
+        const outputText = [execution.stdout.trim(), execution.stderr.trim()].filter(Boolean).join('\n');
+        const outputSummary = buildOutputSummary(execution.stdout, execution.stderr);
 
-      const outputText = [execution.stdout.trim(), execution.stderr.trim()].filter(Boolean).join('\n');
-      const outputSummary = buildOutputSummary(execution.stdout, execution.stderr);
-
-      try {
-        await api.reportOrchestratorExecutionFinish({
-          executionId: execution.payload.executionId,
-          dispatchToken: execution.payload.dispatchToken,
-          status: opts.status,
-          finishedAt: new Date().toISOString(),
-          exitCode: opts.exitCode,
-          signal: opts.signal,
-          outputSummary: outputSummary ?? undefined,
-          outputText: outputText || undefined,
-          errorCode: opts.errorCode,
-          errorMessage: opts.errorMessage,
-        });
-      } catch (error) {
-        logger.debug(`[ORCHESTRATOR] Failed to report finish for execution ${execution.payload.executionId}`, error);
-      } finally {
-        clearExecutionTimers(execution);
-        executionIdToManagedExecution.delete(execution.payload.executionId);
-      }
+        try {
+          await api.reportOrchestratorExecutionFinish({
+            executionId: execution.payload.executionId,
+            dispatchToken: execution.payload.dispatchToken,
+            status: opts.status,
+            finishedAt: new Date().toISOString(),
+            exitCode: opts.exitCode,
+            signal: opts.signal,
+            outputSummary: outputSummary ?? undefined,
+            outputText: outputText || undefined,
+            errorCode: opts.errorCode,
+            errorMessage: opts.errorMessage,
+          });
+        } catch (error) {
+          logger.debug(`[ORCHESTRATOR] Failed to report finish for execution ${execution.payload.executionId}`, error);
+        } finally {
+          clearExecutionTimers(execution);
+          executionIdToManagedExecution.delete(execution.payload.executionId);
+        }
+      })();
+      await execution.finishReportPromise;
     };
 
     const finalizeExecution = async (executionId: string, exitCode: number | null, signal: string | null) => {
@@ -289,6 +292,7 @@ export async function startDaemon(): Promise<void> {
         exitCode,
       });
 
+      await execution.startReportPromise;
       await reportExecutionFinish(execution, {
         status,
         exitCode,
@@ -332,12 +336,21 @@ export async function startDaemon(): Promise<void> {
         startedAtIso: new Date().toISOString(),
         cancelRequested: false,
         watchdogTriggered: false,
-        finishReported: false,
+        startReportPromise: Promise.resolve(),
+        finishReportPromise: null,
         stdout: '',
         stderr: '',
         watchdogTimer: null,
         killTimer: null,
       };
+      execution.startReportPromise = api.reportOrchestratorExecutionStart({
+        executionId: payload.executionId,
+        dispatchToken: payload.dispatchToken,
+        startedAt: execution.startedAtIso,
+        pid: child.pid,
+      }).catch((error) => {
+        logger.debug(`[ORCHESTRATOR] Failed to report start for execution ${payload.executionId}`, error);
+      });
       executionIdToManagedExecution.set(payload.executionId, execution);
 
       child.stdout?.on('data', (chunk: Buffer | string) => {
@@ -349,6 +362,7 @@ export async function startDaemon(): Promise<void> {
 
       child.once('error', async (error) => {
         execution.stderr = appendOutputChunk(execution.stderr, `\n${error.message}\n`, ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);
+        await execution.startReportPromise;
         await reportExecutionFinish(execution, {
           status: execution.watchdogTriggered ? 'timeout' : (execution.cancelRequested ? 'cancelled' : 'failed'),
           exitCode: execution.child.exitCode,
@@ -367,19 +381,6 @@ export async function startDaemon(): Promise<void> {
         execution.watchdogTriggered = true;
         requestExecutionTermination(execution);
       }, payload.timeoutMs);
-
-      if (!execution.finishReported) {
-        try {
-          await api.reportOrchestratorExecutionStart({
-            executionId: payload.executionId,
-            dispatchToken: payload.dispatchToken,
-            startedAt: execution.startedAtIso,
-            pid: child.pid,
-          });
-        } catch (error) {
-          logger.debug(`[ORCHESTRATOR] Failed to report start for execution ${payload.executionId}`, error);
-        }
-      }
 
       return { accepted: true };
     };
@@ -1057,7 +1058,10 @@ export async function startDaemon(): Promise<void> {
     // 2. Check if daemon needs update
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
-    const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
+    const heartbeatIntervalMsRaw = Number(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL);
+    const heartbeatIntervalMs = Number.isFinite(heartbeatIntervalMsRaw) && heartbeatIntervalMsRaw > 0
+      ? heartbeatIntervalMsRaw
+      : 60_000;
     let heartbeatRunning = false
     const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
       if (heartbeatRunning) {
