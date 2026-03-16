@@ -4,6 +4,7 @@ import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
+import { getSessionLabel } from './hooks/contextFormatters';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
 // Static reference to the conversation hook instance
@@ -96,6 +97,25 @@ export const RealtimeVoiceSession: React.FC = () => {
             console.log('Realtime session connected:', data);
             storage.getState().setRealtimeStatus('connected');
             storage.getState().setRealtimeMode('idle');
+
+            // Send session roster to the agent right after connect
+            // so it knows which sessions exist from the start
+            try {
+                const active = storage.getState().getActiveSessions();
+                if (active.length > 0 && conversationInstance) {
+                    const roster = active.map(s => {
+                        const label = getSessionLabel(s);
+                        const summary = s.metadata?.summary?.text || 'no summary yet';
+                        const status = s.active ? 'online' : 'offline';
+                        return `- "${label}" (${status}): ${summary}`;
+                    }).join('\n');
+                    conversationInstance.sendContextualUpdate(
+                        `ACTIVE SESSIONS:\n${roster}\n\nUse these session names when calling tools.`
+                    );
+                }
+            } catch (error) {
+                console.warn('Failed to send session roster:', error);
+            }
         },
         onDisconnect: () => {
             console.log('Realtime session disconnected');

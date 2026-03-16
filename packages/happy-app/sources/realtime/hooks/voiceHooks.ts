@@ -121,7 +121,9 @@ export const voiceHooks = {
     },
 
     /**
-     * Called when voice session starts
+     * Called when voice session starts.
+     * Builds initial context covering ALL active sessions so the voice agent
+     * can act as an aggregating project manager across sessions.
      */
     onVoiceStarted(sessionId: string): string {
         if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
@@ -129,13 +131,26 @@ export const voiceHooks = {
         }
         shownSessions.clear();
         let prompt = '';
-        prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
-        shownSessions.add(sessionId);
-        // prompt += 'Another active sessions: \n\n';
-        // for (let s of storage.getState().getActiveSessions()) {
-        //     if (s.id === sessionId) continue;
-        //     prompt += formatSessionFull(s, storage.getState().sessionMessages[s.id]?.messages ?? []);
-        // }
+
+        // Primary session the user launched voice from
+        const primarySession = storage.getState().sessions[sessionId];
+        if (primarySession) {
+            prompt += 'PRIMARY SESSION (user is currently viewing this one):\n\n';
+            prompt += formatSessionFull(primarySession, storage.getState().sessionMessages[sessionId]?.messages ?? []);
+            shownSessions.add(sessionId);
+        }
+
+        // All other active sessions
+        const otherActive = storage.getState().getActiveSessions().filter(s => s.id !== sessionId);
+        if (otherActive.length > 0) {
+            prompt += '\n\nOTHER ACTIVE SESSIONS:\n\n';
+            for (const s of otherActive) {
+                prompt += formatSessionFull(s, storage.getState().sessionMessages[s.id]?.messages ?? []);
+                prompt += '\n\n---\n\n';
+                shownSessions.add(s.id);
+            }
+        }
+
         return prompt;
     },
 
