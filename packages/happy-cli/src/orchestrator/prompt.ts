@@ -1,9 +1,6 @@
 import { trimIdent } from '@/utils/trimIdent';
 import { ORCHESTRATOR_ENV_KEYS } from './common';
 
-export const ORCHESTRATOR_V1_ENV_KEY = 'HAPPY_ORCHESTRATOR_V1';
-const ENABLED_VALUES = new Set(['1', 'true', 'yes', 'on']);
-
 export const ORCHESTRATOR_TOOLS_INSTRUCTION = trimIdent(`
   If a user request is large or benefits from parallel execution / cross-model delegation, use orchestrator_* tools.
 
@@ -20,16 +17,8 @@ export function isOrchestratorWorkerSession(env: NodeJS.ProcessEnv = process.env
   return env[ORCHESTRATOR_ENV_KEYS.oneshot] === '1' || !!env[ORCHESTRATOR_ENV_KEYS.executionId];
 }
 
-export function isOrchestratorV1Enabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = env[ORCHESTRATOR_V1_ENV_KEY];
-  if (!raw) {
-    return false;
-  }
-  return ENABLED_VALUES.has(raw.trim().toLowerCase());
-}
-
 export function shouldEnableOrchestratorTools(env: NodeJS.ProcessEnv = process.env): boolean {
-  return isOrchestratorV1Enabled(env) && !isOrchestratorWorkerSession(env);
+  return !isOrchestratorWorkerSession(env);
 }
 
 export function getOrchestratorToolsInstruction(env: NodeJS.ProcessEnv = process.env): string | null {
