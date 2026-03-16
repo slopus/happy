@@ -470,15 +470,14 @@ export const knownTools = {
     },
     'CodexBash': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Check if this is a single read command
-            if (opts.tool.input?.parsed_cmd && 
-                Array.isArray(opts.tool.input.parsed_cmd) && 
-                opts.tool.input.parsed_cmd.length === 1 && 
+            // Check if this is a single read command — show "Read File" as title,
+            // the file path goes into the subtitle via extractSubtitle
+            if (opts.tool.input?.parsed_cmd &&
+                Array.isArray(opts.tool.input.parsed_cmd) &&
+                opts.tool.input.parsed_cmd.length === 1 &&
                 opts.tool.input.parsed_cmd[0].type === 'read' &&
                 opts.tool.input.parsed_cmd[0].name) {
-                // Display the file name being read
-                const path = resolvePath(opts.tool.input.parsed_cmd[0].name, opts.metadata);
-                return path;
+                return t('tools.names.readFile');
             }
             // command may be an array of strings or a single string
             if (opts.tool.input?.command) {
