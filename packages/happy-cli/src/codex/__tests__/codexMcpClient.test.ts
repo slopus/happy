@@ -9,7 +9,9 @@ const {
     mockSandboxCleanup,
     mockClientConnect,
     mockClientClose,
+    mockClientSetRequestHandler,
     mockStdioCtor,
+    mockClients,
 } = vi.hoisted(() => ({
     mockExecSync: vi.fn(),
     mockInitializeSandbox: vi.fn(),
@@ -17,7 +19,9 @@ const {
     mockSandboxCleanup: vi.fn(),
     mockClientConnect: vi.fn(),
     mockClientClose: vi.fn(),
+    mockClientSetRequestHandler: vi.fn(),
     mockStdioCtor: vi.fn(),
+    mockClients: [] as any[],
 }));
 
 vi.mock('child_process', () => ({
@@ -40,11 +44,14 @@ vi.mock('@/ui/logger', () => ({
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
     Client: class MockClient {
         setNotificationHandler = vi.fn();
-        setRequestHandler = vi.fn();
+        setRequestHandler = mockClientSetRequestHandler;
         connect = mockClientConnect;
         close = mockClientClose;
         callTool = vi.fn();
-        constructor() {}
+        _requestHandlers = new Map();
+        constructor() {
+            mockClients.push(this);
+        }
     },
 }));
 
@@ -77,6 +84,7 @@ describe('CodexMcpClient sandbox integration', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockClients.length = 0;
         process.env.RUST_LOG = originalRustLog;
         mockExecSync.mockReturnValue('codex-cli 0.43.0');
         mockClientConnect.mockResolvedValue(undefined);
@@ -151,5 +159,54 @@ describe('CodexMcpClient sandbox integration', () => {
                 }),
             }),
         );
+    });
+
+    it('registers a raw elicitation handler for Codex approvals', async () => {
+        const client = new CodexMcpClient(sandboxConfig);
+
+        await client.connect();
+
+        const rawHandler = mockClients[0]?._requestHandlers.get('elicitation/create');
+        expect(typeof rawHandler).toBe('function');
+        expect(mockClientSetRequestHandler).not.toHaveBeenCalled();
+    });
+
+    it('normalizes approved_for_session to approved for Codex approvals', async () => {
+        const client = new CodexMcpClient(sandboxConfig);
+        client.setPermissionHandler({
+            handleToolCall: vi.fn().mockResolvedValue({ decision: 'approved_for_session' }),
+        } as any);
+
+        await client.connect();
+
+        const rawHandler = mockClients[0]?._requestHandlers.get('elicitation/create');
+        const response = await rawHandler({
+            params: {
+                codex_call_id: 'call_123',
+                codex_command: ['mkdir', '-p', '../test'],
+                codex_cwd: '/tmp/project',
+            },
+        });
+
+        expect(response).toEqual({ decision: 'approved' });
+    });
+
+    it('aborts approvals when Codex call id is missing', async () => {
+        const client = new CodexMcpClient(sandboxConfig);
+        client.setPermissionHandler({
+            handleToolCall: vi.fn(),
+        } as any);
+
+        await client.connect();
+
+        const rawHandler = mockClients[0]?._requestHandlers.get('elicitation/create');
+        const response = await rawHandler({
+            params: {
+                codex_command: ['pwd'],
+                codex_cwd: '/tmp/project',
+            },
+        });
+
+        expect(response).toEqual({ decision: 'abort' });
     });
 });
