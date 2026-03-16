@@ -54,8 +54,7 @@ export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Edit: EditViewFull,
     MultiEdit: MultiEditViewFull,
     'mcp__happy__preview_html': PreviewHtmlViewFull,
-    'preview_html': PreviewHtmlViewFull,
-    'happy__preview_html': PreviewHtmlViewFull,
+    'mcp:happy:preview_html': PreviewHtmlViewFull,
 };
 
 // Helper function to get the appropriate view component for a tool

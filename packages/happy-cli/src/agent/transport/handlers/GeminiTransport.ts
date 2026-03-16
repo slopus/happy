@@ -58,13 +58,13 @@ interface ExtendedToolPattern extends ToolPattern {
 const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
   {
     name: 'change_title',
-    patterns: ['change_title', 'change-title', 'happy__change_title', 'mcp__happy__change_title'],
+    patterns: ['mcp__happy__change_title', 'mcp:happy:change_title'],
     inputFields: ['title'],
     emptyInputDefault: true, // change_title often has empty input (title extracted from context)
   },
   {
     name: 'preview_html',
-    patterns: ['preview_html', 'preview-html', 'happy__preview_html', 'mcp__happy__preview_html'],
+    patterns: ['mcp__happy__preview_html', 'mcp:happy:preview_html'],
     inputFields: ['html'],
   },
   {

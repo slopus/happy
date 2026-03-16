@@ -16,8 +16,11 @@ function snakeToPascalWithSpaces(str: string): string {
  * Example: "mcp__linear__create_issue" -> "MCP: Linear Create Issue"
  */
 export function formatMCPTitle(tool: ToolCall): string {
-    // Remove "mcp__" prefix
-    const withoutPrefix = `${tool.name}`.replace(/^mcp__/, '').replace(/^happy__/, '');
+    // Start with the raw tool name and replace colons with double underscores for consistent splitting
+    let title = `${tool.name}`.replace(/:/g, '__');
+
+    // Remove "mcp__" or "happy__" prefix if present for cleaner display
+    const withoutPrefix = `${title}`.replace(/^mcp__/, '').replace(/^happy__/, '');
 
     // Determine prefix based on tool name
     let prefix = "MCP";

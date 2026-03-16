@@ -60,9 +60,9 @@ export function getToolName(toolName: string): string {
         return STANDARD_TOOLS[toolName];
     }
     
-    // Check if it's an MCP tool (format: mcp__server__action)
-    if (toolName.startsWith('mcp__')) {
-        const parts = toolName.split('__');
+    // Check if it's an MCP tool (format: mcp__server__action or mcp:server:action)
+    if (toolName.startsWith('mcp__') || toolName.startsWith('mcp:')) {
+        const parts = toolName.replace(/:/g, '__').split('__');
         if (parts.length >= 3) {
             const server = toTitleCase(parts[1]);
             const action = toTitleCase(parts.slice(2).join('_'));

@@ -1,6 +1,7 @@
 import { Metadata } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
+import { formatMCPTitle } from './views/MCPToolView';
 import * as z from 'zod';
 import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
@@ -1044,35 +1045,27 @@ export const knownTools = {
         minimal: true
     },
     'mcp__happy__preview_html': {
-        title: 'Happy Preview Html',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            let title = formatMCPTitle(opts.tool);
+            if (title) {
+                return title;
+            }
+            return 'Preview Html';
+        },
         icon: ICON_WEB,
-        noStatus: true,
-        input: z.object({
-            html: z.string().optional().describe('HTML content'),
-            title: z.string().optional().describe('Preview title')
-        }).partial().passthrough(),
-        result: z.object({}).partial().passthrough()
+        minimal: true
     },
-    'preview_html': {
-        title: 'Happy Preview Html',
+    'mcp:happy:preview_html': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            let title = formatMCPTitle(opts.tool);
+            if (title) {
+                return title;
+            }
+            return 'Preview Html';
+        },
         icon: ICON_WEB,
-        noStatus: true,
-        input: z.object({
-            html: z.string().optional().describe('HTML content'),
-            title: z.string().optional().describe('Preview title')
-        }).partial().passthrough(),
-        result: z.object({}).partial().passthrough()
+        minimal: true
     },
-    'happy__preview_html': {
-        title: 'Happy Preview Html',
-        icon: ICON_WEB,
-        noStatus: true,
-        input: z.object({
-            html: z.string().optional().describe('HTML content'),
-            title: z.string().optional().describe('Preview title')
-        }).partial().passthrough(),
-        result: z.object({}).partial().passthrough()
-    }
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
     icon: (size: number, color: string) => React.ReactNode;
