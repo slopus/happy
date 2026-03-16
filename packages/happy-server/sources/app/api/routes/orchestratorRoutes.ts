@@ -512,15 +512,17 @@ export function orchestratorRoutes(app: Fastify) {
 
         const hasNext = runs.length > limit;
         const page = hasNext ? runs.slice(0, limit) : runs;
-        const runIds = page.map((run: any) => run.id);
+        const runIds = page.map((run) => run.id);
 
-        const summaryMap = runIds.length === 0
-            ? new Map<string, RunSummary>()
-            : summaryMapFromGrouped(await db.orchestratorTask.groupBy({
+        let summaryMap = new Map<string, RunSummary>();
+        if (runIds.length > 0) {
+            const grouped = await db.orchestratorTask.groupBy({
                 by: ['runId', 'status'],
                 where: { runId: { in: runIds } },
                 _count: { _all: true },
-            }));
+            });
+            summaryMap = summaryMapFromGrouped(grouped);
+        }
 
         const items = page.map((run: any) => ({
             runId: run.id,
