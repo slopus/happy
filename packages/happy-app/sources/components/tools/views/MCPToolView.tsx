@@ -17,14 +17,20 @@ function snakeToPascalWithSpaces(str: string): string {
  */
 export function formatMCPTitle(tool: ToolCall): string {
     // Remove "mcp__" prefix
-    const withoutPrefix = tool.name.replace(/^mcp__/, '');
+    const withoutPrefix = `${tool.name}`.replace(/^mcp__/, '').replace(/^happy__/, '');
+
+    // Determine prefix based on tool name
+    let prefix = "MCP";
+    if (/^orchestrator_/.test(withoutPrefix)) {
+        prefix = "Orchestrator";
+    }
 
     // If tool has input title, use it directly
     if (tool.input?.title) {
-        if (withoutPrefix === "happy__preview_html") {
+        if (withoutPrefix === "preview_html") {
             return `${tool.input.title}`;
         } else {
-            return `MCP: ${tool.input.title}`;
+            return `${prefix}: ${tool.input.title}`;
         }
     }
     
@@ -34,9 +40,9 @@ export function formatMCPTitle(tool: ToolCall): string {
     if (parts.length >= 2) {
         const serverName = snakeToPascalWithSpaces(parts[0]);
         const toolNamePart = snakeToPascalWithSpaces(parts.slice(1).join('_'));
-        return `MCP: ${serverName} ${toolNamePart}`;
+        return `${prefix}: ${serverName} ${toolNamePart}`;
     }
     
     // Fallback if format doesn't match expected pattern
-    return `MCP: ${snakeToPascalWithSpaces(withoutPrefix)}`;
+    return `${prefix}: ${snakeToPascalWithSpaces(withoutPrefix)}`;
 }
