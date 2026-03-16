@@ -2,6 +2,8 @@ import { Session } from "@/sync/storageTypes";
 import { Message } from "@/sync/typesMessage";
 import { trimIdent } from "@/utils/trimIdent";
 import { VOICE_CONFIG } from "../voiceConfig";
+import { getSessionName } from "@/utils/sessionUtils";
+import { storage } from "@/sync/storage";
 
 interface SessionMetadata {
     summary?: { text?: string };
@@ -9,6 +11,18 @@ interface SessionMetadata {
     machineId?: string;
     homeDir?: string;
     [key: string]: any;
+}
+
+/**
+ * Get a short, voice-friendly label for a session.
+ * Prefers the folder name (short, stable) over the summary (long, changes).
+ */
+export function getSessionLabel(session: Session): string {
+    if (session.metadata?.path) {
+        const segments = session.metadata.path.split('/').filter(Boolean);
+        return segments.pop() || session.id.slice(0, 8);
+    }
+    return getSessionName(session);
 }
 
 
@@ -21,9 +35,12 @@ export function formatPermissionRequest(
     toolName: string,
     toolArgs: any
 ): string {
+    const session = storage.getState().sessions[sessionId];
+    const label = session ? getSessionLabel(session) : sessionId.slice(0, 8);
     return trimIdent(`
-        Claude Code is requesting permission to use ${toolName} (session ${sessionId}):
+        Claude Code in "${label}" is requesting permission to use ${toolName}:
         <request_id>${requestId}</request_id>
+        <session_name>${label}</session_name>
         <tool_name>${toolName}</tool_name>
         <tool_args>${JSON.stringify(toolArgs)}</tool_args>
     `);
@@ -62,7 +79,9 @@ export function formatNewSingleMessage(sessionId: string, message: Message): str
     if (!formatted) {
         return null;
     }
-    return 'New message in session: ' + sessionId + '\n\n' + formatted;
+    const session = storage.getState().sessions[sessionId];
+    const label = session ? getSessionLabel(session) : sessionId.slice(0, 8);
+    return `New message in "${label}":\n\n` + formatted;
 }
 
 export function formatNewMessages(sessionId: string, messages: Message[]): string | null {
@@ -70,7 +89,9 @@ export function formatNewMessages(sessionId: string, messages: Message[]): strin
     if (formatted.length === 0) {
         return null;
     }
-    return 'New messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
+    const session = storage.getState().sessions[sessionId];
+    const label = session ? getSessionLabel(session) : sessionId.slice(0, 8);
+    return `New messages in "${label}":\n\n` + formatted.join('\n\n');
 }
 
 export function formatHistory(sessionId: string, messages: Message[]): string {
@@ -86,42 +107,51 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
 //
 
 export function formatSessionFull(session: Session, messages: Message[]): string {
+    const label = getSessionLabel(session);
     const sessionName = session.metadata?.summary?.text;
     const sessionPath = session.metadata?.path;
     const lines: string[] = [];
 
-    // Add session context
-    lines.push(`# Session ID: ${session.id}`);
+    // Add session context with voice-friendly label
+    lines.push(`# Session "${label}" (ID: ${session.id})`);
     lines.push(`# Project path: ${sessionPath}`);
-    lines.push(`# Session summary:\n${sessionName}`);
-
-    // Add session metadata if available
-    if (session.metadata?.summary?.text) {
-        lines.push('## Session Summary');
-        lines.push(session.metadata.summary.text);
-        lines.push('');
+    if (sessionName) {
+        lines.push(`# Summary: ${sessionName}`);
     }
 
     // Add history
-    lines.push('## Our interaction history so far');
+    lines.push('## Interaction history');
     lines.push('');
     lines.push(formatHistory(session.id, messages));
 
     return lines.join('\n\n');
 }
 
+function labelFromMetadata(sessionId: string, metadata?: SessionMetadata): string {
+    if (metadata?.path) {
+        const segments = metadata.path.split('/').filter(Boolean);
+        return segments.pop() || sessionId.slice(0, 8);
+    }
+    if (metadata?.summary?.text) {
+        return metadata.summary.text.slice(0, 40);
+    }
+    return sessionId.slice(0, 8);
+}
+
 export function formatSessionOffline(sessionId: string, metadata?: SessionMetadata): string {
-    return `Session went offline: ${sessionId}`;
+    return `Session "${labelFromMetadata(sessionId, metadata)}" went offline.`;
 }
 
 export function formatSessionOnline(sessionId: string, metadata?: SessionMetadata): string {
-    return `Session came online: ${sessionId}`;
+    return `Session "${labelFromMetadata(sessionId, metadata)}" came online.`;
 }
 
 export function formatSessionFocus(sessionId: string, metadata?: SessionMetadata): string {
-    return `Session became focused: ${sessionId}`;
+    return `User is now looking at session "${labelFromMetadata(sessionId, metadata)}".`;
 }
 
 export function formatReadyEvent(sessionId: string): string {
-    return `Claude Code done working in session: ${sessionId}. The previous message(s) are the summary of the work done. Report this to the human immediately.`;
+    const session = storage.getState().sessions[sessionId];
+    const label = session ? getSessionLabel(session) : sessionId.slice(0, 8);
+    return `Claude Code finished working in "${label}". The previous message(s) are the summary of the work done. Report this to the human immediately.`;
 }
