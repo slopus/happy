@@ -498,6 +498,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             return true;
         }
 
+        // Cmd+Enter or Ctrl+Enter sends on all platforms (external keyboard support)
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            if (props.value.trim()) {
+                props.onSend();
+                return true;
+            }
+        }
+
         // Original key handling
         if (Platform.OS === 'web') {
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
