@@ -1,6 +1,16 @@
 import type { MarkdownBlock } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
 
+const EMPTY_TABLE_CELL_PLACEHOLDER = '\u200B';
+
+function parseTableCell(cell: string) {
+    const spans = parseMarkdownSpans(cell, false);
+    if (spans.length > 0) {
+        return spans;
+    }
+    return [{ styles: [], text: EMPTY_TABLE_CELL_PLACEHOLDER, url: null }];
+}
+
 // Split a table row by '|', stripping leading/trailing pipes but preserving empty cells in between
 function splitTableRow(line: string): string[] {
     // Remove leading/trailing pipe and whitespace
@@ -43,7 +53,7 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     }
 
     // Parse inline markdown for headers
-    const headers = headerStrings.map(h => parseMarkdownSpans(h, false));
+    const headers = headerStrings.map(parseTableCell);
 
     // Extract data rows from remaining lines (skipping the separator line), preserving valid cell content
     const rows: ReturnType<typeof parseMarkdownSpans>[][] = [];
@@ -55,7 +65,7 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
             // Include rows that contain at least one cell
             if (rowCells.length > 0) {
                 // Parse inline markdown for each cell
-                rows.push(rowCells.map(cell => parseMarkdownSpans(cell, false)));
+                rows.push(rowCells.map(parseTableCell));
             }
         }
     }
