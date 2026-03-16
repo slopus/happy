@@ -174,7 +174,7 @@ export class CodexAppServerBackend implements AgentBackend {
         name: 'happy-codex-backend',
         version: '0.14.0',
       },
-      capabilities: null,
+      capabilities: { experimentalApi: true },
     } satisfies InitializeParams);
 
     this.peer.notify(Methods.INITIALIZED);
@@ -182,13 +182,15 @@ export class CodexAppServerBackend implements AgentBackend {
     // 4. Create or resume thread
     let threadId: string;
 
-    if (this.options.resumeThreadId) {
+    if (this.options.resumeThreadId || this.options.resumeFile) {
+      const resumeParams: ThreadResumeParams = {
+        threadId: this.options.resumeThreadId ?? 'resume-via-path',
+        ...this.buildThreadParams(),
+        ...(this.options.resumeFile ? { path: this.options.resumeFile } : {}),
+      };
       const resumeResult = await this.peer.request<ThreadResumeResponse>(
         Methods.THREAD_RESUME,
-        {
-          threadId: this.options.resumeThreadId,
-          ...this.buildThreadParams(),
-        } satisfies ThreadResumeParams
+        resumeParams
       );
       threadId = resumeResult.thread.id;
       this.handleSessionConfigured({

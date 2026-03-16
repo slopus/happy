@@ -10,6 +10,96 @@ function createBackend(): CodexAppServerBackend {
   });
 }
 
+describe('CodexAppServerBackend.startSession resume routing', () => {
+  beforeEach(() => {
+    vi.spyOn(logger, 'info').mockImplementation(() => {
+      // no-op in tests
+    });
+    vi.spyOn(logger, 'debug').mockImplementation(() => {
+      // no-op in tests
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('uses thread/resume with path when resumeFile is provided', async () => {
+    const backend = new CodexAppServerBackend({
+      cwd: process.cwd(),
+      command: 'codex',
+      resumeFile: '/tmp/rollout-duplicate.jsonl',
+    });
+    const anyBackend = backend as any;
+
+    const request = vi.fn(async (method: string) => {
+      if (method === Methods.INITIALIZE) {
+        return { userAgent: 'codex-test' };
+      }
+      if (method === Methods.THREAD_RESUME) {
+        return {
+          thread: { id: 'thread-resumed' },
+          model: 'codex-mini',
+          reasoningEffort: null,
+        };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    });
+
+    anyBackend.peer = {
+      spawn: vi.fn(async () => undefined),
+      onNotification: vi.fn(),
+      onServerRequest: vi.fn(),
+      onClose: vi.fn(),
+      request,
+      notify: vi.fn(),
+    };
+
+    await backend.startSession();
+
+    expect(request).toHaveBeenCalledWith(
+      Methods.THREAD_RESUME,
+      expect.objectContaining({
+        path: '/tmp/rollout-duplicate.jsonl',
+      })
+    );
+    expect(request).not.toHaveBeenCalledWith(Methods.THREAD_START, expect.anything());
+  });
+
+  it('uses thread/start when neither resumeThreadId nor resumeFile is provided', async () => {
+    const backend = createBackend();
+    const anyBackend = backend as any;
+
+    const request = vi.fn(async (method: string) => {
+      if (method === Methods.INITIALIZE) {
+        return { userAgent: 'codex-test' };
+      }
+      if (method === Methods.THREAD_START) {
+        return {
+          thread: { id: 'thread-new' },
+          model: 'codex-mini',
+          reasoningEffort: null,
+        };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    });
+
+    anyBackend.peer = {
+      spawn: vi.fn(async () => undefined),
+      onNotification: vi.fn(),
+      onServerRequest: vi.fn(),
+      onClose: vi.fn(),
+      request,
+      notify: vi.fn(),
+    };
+
+    await backend.startSession();
+
+    expect(request).toHaveBeenCalledWith(Methods.THREAD_START, expect.anything());
+    expect(request).not.toHaveBeenCalledWith(Methods.THREAD_RESUME, expect.anything());
+  });
+});
+
 describe('CodexAppServerBackend.waitForResponseComplete', () => {
   beforeEach(() => {
     vi.useFakeTimers();
