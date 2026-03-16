@@ -40,7 +40,7 @@ import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
 import type { GeminiMode, CodexMessagePayload } from '@/gemini/types';
 import type { ImageContent, PermissionMode } from '@/api/types';
 import { formatMessageForGemini } from '@/utils/formatImageMessage';
-import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
+import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, getFirstTurnInstruction } from '@/gemini/constants';
 import {
   readGeminiLocalConfig,
   saveGeminiModelToConfig,
@@ -254,6 +254,10 @@ export async function runGemini(opts: {
     });
   };
 
+  // Track if this is the first message to include system-level guidance once.
+  let isFirstMessage = true;
+  const firstTurnInstruction = getFirstTurnInstruction();
+
   session.onUserMessage((message) => {
     // Resolve permission mode (validate) - same as Codex
     let messagePermissionMode = currentPermissionMode;
@@ -316,13 +320,13 @@ export async function runGemini(opts: {
         logger.debug(`[Gemini] Received mixed message with ${images.length} image(s)`);
     }
 
-    // Build the full prompt: prepend system prompt and change_title on first message only
+    // Build the full prompt: prepend system-level guidance on first message only
     let fullPrompt = originalUserMessage;
     if (isFirstMessage) {
       if (message.meta?.appendSystemPrompt) {
         fullPrompt = message.meta.appendSystemPrompt + '\n\n' + fullPrompt;
       }
-      fullPrompt = fullPrompt + '\n\n' + CHANGE_TITLE_INSTRUCTION;
+      fullPrompt = fullPrompt + '\n\n' + firstTurnInstruction;
       isFirstMessage = false;
     }
 
@@ -344,9 +348,6 @@ export async function runGemini(opts: {
   const keepAliveInterval = setInterval(() => {
     session.keepAlive(thinking, 'remote');
   }, 2000);
-
-  // Track if this is the first message to include system prompt only once
-  let isFirstMessage = true;
 
   const sendReady = () => {
     session.sendSessionEvent({ type: 'ready' });

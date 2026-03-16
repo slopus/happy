@@ -15,9 +15,48 @@ import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
+import { shouldEnableOrchestratorTools } from '@/orchestrator/prompt';
+import {
+    ORCHESTRATOR_CANCEL_TOOL_SCHEMA,
+    ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA,
+    ORCHESTRATOR_LIST_TOOL_SCHEMA,
+    ORCHESTRATOR_PEND_TOOL_SCHEMA,
+    ORCHESTRATOR_SUBMIT_TOOL_SCHEMA,
+} from '@/orchestrator/mcpToolSchemas';
+
+const ORCHESTRATOR_RUN_TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+const DEFAULT_BLOCKING_WAIT_TIMEOUT_MS = 120_000;
+
+function toToolSuccess(data: unknown) {
+    return {
+        content: [
+            {
+                type: 'text' as const,
+                text: JSON.stringify(data, null, 2),
+            },
+        ],
+        isError: false,
+    };
+}
+
+function toToolError(message: string, details?: unknown) {
+    return {
+        content: [
+            {
+                type: 'text' as const,
+                text: JSON.stringify({
+                    ok: false,
+                    error: message,
+                    ...(details !== undefined ? { details } : {}),
+                }, null, 2),
+            },
+        ],
+        isError: true,
+    };
+}
 
 // Factory function to create MCP server with tools
-function createMcpServer(client: ApiSessionClient): McpServer {
+function createMcpServer(client: ApiSessionClient, options: { enableOrchestratorTools: boolean }): McpServer {
     const mcp = new McpServer({
         name: "Happy MCP",
         version: "1.0.0",
@@ -92,6 +131,152 @@ function createMcpServer(client: ApiSessionClient): McpServer {
         };
     });
 
+    if (options.enableOrchestratorTools) {
+        const awaitRunTerminal = async (runId: string, waitTimeoutMs: number, pendTimeoutMs: number) => {
+            const startedAt = Date.now();
+            const deadline = startedAt + waitTimeoutMs;
+            let cursor: string | undefined;
+            let lastPend: any = null;
+
+            while (Date.now() < deadline) {
+                const remaining = deadline - Date.now();
+                const timeoutMs = Math.max(0, Math.min(remaining, pendTimeoutMs));
+                if (timeoutMs <= 0) {
+                    break;
+                }
+
+                const pend = await client.orchestratorPend(runId, {
+                    cursor,
+                    waitFor: 'terminal',
+                    timeoutMs,
+                    include: 'summary',
+                });
+                lastPend = pend?.data ?? null;
+                cursor = lastPend?.cursor;
+
+                if (lastPend?.terminal) {
+                    const finalRun = await client.orchestratorGetRun(runId, true);
+                    return {
+                        terminal: true,
+                        timedOut: false,
+                        waitedMs: Date.now() - startedAt,
+                        lastPend,
+                        run: finalRun?.data ?? null,
+                    };
+                }
+            }
+
+            const snapshot = await client.orchestratorGetRun(runId, true);
+            const terminal = ORCHESTRATOR_RUN_TERMINAL.has(snapshot?.data?.status);
+            return {
+                terminal,
+                timedOut: !terminal,
+                waitedMs: Date.now() - startedAt,
+                lastPend,
+                run: snapshot?.data ?? null,
+            };
+        };
+
+        mcp.registerTool('orchestrator_get_context', ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA, async () => {
+            try {
+                const metadata = client.getMetadataSnapshot();
+                return toToolSuccess({
+                    ok: true,
+                    data: {
+                        controllerSessionId: client.sessionId,
+                        machineId: metadata?.machineId ?? null,
+                        workingDirectory: metadata?.path ?? null,
+                        defaults: {
+                            mode: 'async',
+                            maxConcurrency: 2,
+                            waitTimeoutMs: DEFAULT_BLOCKING_WAIT_TIMEOUT_MS,
+                            pollIntervalMs: 30_000,
+                        },
+                        providers: ['claude', 'codex', 'gemini'],
+                    },
+                });
+            } catch (error) {
+                return toToolError('Failed to load orchestrator context', error instanceof Error ? error.message : String(error));
+            }
+        });
+
+        mcp.registerTool('orchestrator_submit', ORCHESTRATOR_SUBMIT_TOOL_SCHEMA, async (args) => {
+            try {
+                const mode = args.mode ?? 'async';
+                const submitBody = {
+                    title: args.title,
+                    controllerSessionId: args.controllerSessionId ?? client.sessionId,
+                    tasks: args.tasks,
+                    maxConcurrency: args.maxConcurrency,
+                    idempotencyKey: args.idempotencyKey,
+                    metadata: args.metadata,
+                    mode: 'async' as const,
+                    waitTimeoutMs: args.waitTimeoutMs,
+                    pollIntervalMs: args.pollIntervalMs,
+                };
+
+                const submit = await client.orchestratorSubmit(submitBody);
+                const submitData = submit?.data ?? null;
+                if (mode !== 'blocking' || !submitData?.runId) {
+                    return toToolSuccess({
+                        ok: true,
+                        mode,
+                        data: submitData,
+                    });
+                }
+
+                const waitTimeoutMs = args.waitTimeoutMs ?? DEFAULT_BLOCKING_WAIT_TIMEOUT_MS;
+                const pendTimeoutMs = Math.max(200, Math.min(args.pollIntervalMs ?? 30_000, 60_000));
+                const blocking = await awaitRunTerminal(submitData.runId, waitTimeoutMs, pendTimeoutMs);
+
+                return toToolSuccess({
+                    ok: true,
+                    mode: 'blocking',
+                    submit: submitData,
+                    blocking,
+                });
+            } catch (error) {
+                return toToolError('Failed to submit orchestrator run', error instanceof Error ? error.message : String(error));
+            }
+        });
+
+        mcp.registerTool('orchestrator_pend', ORCHESTRATOR_PEND_TOOL_SCHEMA, async (args) => {
+            try {
+                const response = await client.orchestratorPend(args.runId, {
+                    cursor: args.cursor,
+                    waitFor: args.waitFor,
+                    timeoutMs: args.timeoutMs,
+                    include: args.include,
+                });
+                return toToolSuccess(response);
+            } catch (error) {
+                return toToolError('Failed to pend orchestrator run', error instanceof Error ? error.message : String(error));
+            }
+        });
+
+        mcp.registerTool('orchestrator_list', ORCHESTRATOR_LIST_TOOL_SCHEMA, async (args) => {
+            try {
+                const response = await client.orchestratorListRuns({
+                    status: args.status,
+                    limit: args.limit,
+                    cursor: args.cursor,
+                });
+                return toToolSuccess(response);
+            } catch (error) {
+                return toToolError('Failed to list orchestrator runs', error instanceof Error ? error.message : String(error));
+            }
+        });
+
+        mcp.registerTool('orchestrator_cancel', ORCHESTRATOR_CANCEL_TOOL_SCHEMA, async (args) => {
+            try {
+                const response = await client.orchestratorCancel(args.runId, { reason: args.reason });
+                return toToolSuccess(response);
+            } catch (error) {
+                return toToolError('Failed to cancel orchestrator run', error instanceof Error ? error.message : String(error));
+            }
+        });
+    }
+
     return mcp;
 }
 
@@ -100,6 +285,10 @@ export async function startHappyServer(client: ApiSessionClient) {
     // This is needed when switching between local and remote modes, as each mode
     // spawns a new Claude Code process that needs its own MCP session
     const transports: Map<string, StreamableHTTPServerTransport> = new Map();
+    const enableOrchestratorTools = shouldEnableOrchestratorTools();
+    const toolNames = enableOrchestratorTools
+        ? ['change_title', 'preview_html', 'orchestrator_get_context', 'orchestrator_submit', 'orchestrator_pend', 'orchestrator_list', 'orchestrator_cancel']
+        : ['change_title', 'preview_html'];
 
     // Capture console.error from Hono to our logger
     const originalConsoleError = console.error;
@@ -153,7 +342,7 @@ export async function startHappyServer(client: ApiSessionClient) {
                     };
 
                     // Create and connect MCP server to this transport
-                    const mcp = createMcpServer(client);
+                    const mcp = createMcpServer(client, { enableOrchestratorTools });
                     await mcp.connect(transport);
 
                     // Handle the request with the parsed body
@@ -213,7 +402,7 @@ export async function startHappyServer(client: ApiSessionClient) {
 
     return {
         url: baseUrl.toString(),
-        toolNames: ['change_title', 'preview_html'],
+        toolNames,
         stop: async () => {
             logger.debug('[happyMCP] Stopping server');
             // Close all active transports

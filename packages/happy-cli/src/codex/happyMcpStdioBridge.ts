@@ -1,7 +1,8 @@
 /**
  * Happy MCP STDIO Bridge
  *
- * Minimal STDIO MCP server exposing Happy tools (`change_title`, `preview_html`).
+ * Minimal STDIO MCP server exposing Happy tools
+ * (`change_title`, `preview_html`, `orchestrator_*`).
  * On invocation it forwards tool calls to an existing Happy HTTP MCP server
  * using the StreamableHTTPClientTransport.
  *
@@ -16,6 +17,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
+import { shouldEnableOrchestratorTools } from '@/orchestrator/prompt';
+import {
+  ORCHESTRATOR_CANCEL_TOOL_SCHEMA,
+  ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA,
+  ORCHESTRATOR_LIST_TOOL_SCHEMA,
+  ORCHESTRATOR_PEND_TOOL_SCHEMA,
+  ORCHESTRATOR_SUBMIT_TOOL_SCHEMA,
+} from '@/orchestrator/mcpToolSchemas';
 
 function parseArgs(argv: string[]): { url: string | null } {
   let url: string | null = null;
@@ -62,6 +71,7 @@ async function main() {
     name: 'Happy MCP Bridge',
     version: '1.0.0',
   });
+  const enableOrchestratorTools = shouldEnableOrchestratorTools();
 
   // Helper to register a tool that forwards calls to the HTTP MCP server
   function registerForwardedTool(
@@ -101,6 +111,14 @@ async function main() {
     },
   });
 
+  if (enableOrchestratorTools) {
+    registerForwardedTool('orchestrator_get_context', ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA);
+    registerForwardedTool('orchestrator_submit', ORCHESTRATOR_SUBMIT_TOOL_SCHEMA);
+    registerForwardedTool('orchestrator_pend', ORCHESTRATOR_PEND_TOOL_SCHEMA);
+    registerForwardedTool('orchestrator_list', ORCHESTRATOR_LIST_TOOL_SCHEMA);
+    registerForwardedTool('orchestrator_cancel', ORCHESTRATOR_CANCEL_TOOL_SCHEMA);
+  }
+
   // Start STDIO transport
   const stdio = new StdioServerTransport();
   await server.connect(stdio);
@@ -114,4 +132,3 @@ main().catch((err) => {
     process.exit(1);
   }
 });
-

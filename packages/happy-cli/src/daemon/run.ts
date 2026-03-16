@@ -18,11 +18,24 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { readFileSync } from 'fs';
-import { execSync, exec } from 'child_process';
+import { execSync, exec, type ChildProcess } from 'child_process';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import {
+  appendOutputChunk,
+  buildOrchestratorEnv,
+  buildOutputSummary,
+  mapFinishStatus,
+  type OrchestratorCancelPayload,
+  type OrchestratorDispatchPayload,
+  type OrchestratorFinishStatus,
+} from '@/orchestrator/common';
+
+const ORCHESTRATOR_WATCHDOG_GRACE_MS = 5_000;
+const ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT = 64_000;
+const ORCHESTRATOR_SHUTDOWN_WAIT_MS = 8_000;
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -164,6 +177,7 @@ export async function startDaemon(): Promise<void> {
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId } = await authAndSetupMachineIfNeeded();
     logger.debug('[DAEMON RUN] Auth and machine setup complete');
+    let api!: ApiClient;
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
@@ -173,6 +187,235 @@ export async function startDaemon(): Promise<void> {
 
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
+
+    type ManagedOrchestratorExecution = {
+      payload: OrchestratorDispatchPayload;
+      child: ChildProcess;
+      startedAtIso: string;
+      cancelRequested: boolean;
+      watchdogTriggered: boolean;
+      startReportPromise: Promise<void>;
+      finishReportPromise: Promise<void> | null;
+      stdout: string;
+      stderr: string;
+      watchdogTimer: NodeJS.Timeout | null;
+      killTimer: NodeJS.Timeout | null;
+    };
+
+    const executionIdToManagedExecution = new Map<string, ManagedOrchestratorExecution>();
+
+    const clearExecutionTimers = (execution: ManagedOrchestratorExecution) => {
+      if (execution.watchdogTimer) {
+        clearTimeout(execution.watchdogTimer);
+        execution.watchdogTimer = null;
+      }
+      if (execution.killTimer) {
+        clearTimeout(execution.killTimer);
+        execution.killTimer = null;
+      }
+    };
+
+    const requestExecutionTermination = (execution: ManagedOrchestratorExecution) => {
+      if (execution.child.killed) {
+        return;
+      }
+
+      try {
+        execution.child.kill('SIGTERM');
+      } catch (error) {
+        logger.debug(`[ORCHESTRATOR] Failed to send SIGTERM for execution ${execution.payload.executionId}`, error);
+      }
+
+      if (execution.killTimer) {
+        return;
+      }
+      execution.killTimer = setTimeout(() => {
+        execution.killTimer = null;
+        if (execution.child.exitCode !== null || execution.child.signalCode !== null) {
+          return;
+        }
+        try {
+          execution.child.kill('SIGKILL');
+        } catch (error) {
+          logger.debug(`[ORCHESTRATOR] Failed to send SIGKILL for execution ${execution.payload.executionId}`, error);
+        }
+      }, ORCHESTRATOR_WATCHDOG_GRACE_MS);
+    };
+
+    const reportExecutionFinish = async (execution: ManagedOrchestratorExecution, opts: {
+      status: OrchestratorFinishStatus;
+      exitCode: number | null;
+      signal: string | null;
+      errorCode?: string | null;
+      errorMessage?: string | null;
+    }) => {
+      if (execution.finishReportPromise) {
+        await execution.finishReportPromise;
+        return;
+      }
+      execution.finishReportPromise = (async () => {
+        const outputText = [execution.stdout.trim(), execution.stderr.trim()].filter(Boolean).join('\n');
+        const outputSummary = buildOutputSummary(execution.stdout, execution.stderr);
+
+        try {
+          await api.reportOrchestratorExecutionFinish({
+            executionId: execution.payload.executionId,
+            dispatchToken: execution.payload.dispatchToken,
+            status: opts.status,
+            finishedAt: new Date().toISOString(),
+            exitCode: opts.exitCode,
+            signal: opts.signal,
+            outputSummary: outputSummary ?? undefined,
+            outputText: outputText || undefined,
+            errorCode: opts.errorCode,
+            errorMessage: opts.errorMessage,
+          });
+        } catch (error) {
+          logger.debug(`[ORCHESTRATOR] Failed to report finish for execution ${execution.payload.executionId}`, error);
+        } finally {
+          clearExecutionTimers(execution);
+          executionIdToManagedExecution.delete(execution.payload.executionId);
+        }
+      })();
+      await execution.finishReportPromise;
+    };
+
+    const finalizeExecution = async (executionId: string, exitCode: number | null, signal: string | null) => {
+      const execution = executionIdToManagedExecution.get(executionId);
+      if (!execution) {
+        return;
+      }
+
+      const status = mapFinishStatus({
+        watchdogTriggered: execution.watchdogTriggered,
+        cancelRequested: execution.cancelRequested,
+        exitCode,
+      });
+
+      await execution.startReportPromise;
+      await reportExecutionFinish(execution, {
+        status,
+        exitCode,
+        signal,
+        errorCode: status === 'timeout'
+          ? 'WATCHDOG_TIMEOUT'
+          : status === 'failed'
+            ? 'PROCESS_EXIT_NON_ZERO'
+            : undefined,
+        errorMessage: status === 'timeout'
+          ? `Execution exceeded timeout (${execution.payload.timeoutMs}ms)`
+          : status === 'failed'
+            ? `Process exited with code ${exitCode ?? 'unknown'}${signal ? ` (signal ${signal})` : ''}`
+            : undefined,
+      });
+    };
+
+    const handleOrchestratorDispatch = async (payload: OrchestratorDispatchPayload): Promise<{ accepted: boolean; duplicate?: boolean }> => {
+      const existing = executionIdToManagedExecution.get(payload.executionId);
+      if (existing) {
+        if (existing.payload.dispatchToken !== payload.dispatchToken) {
+          throw new Error(`Execution ${payload.executionId} already running with different dispatchToken`);
+        }
+        return { accepted: true, duplicate: true };
+      }
+
+      const oneshotEnv = buildOrchestratorEnv(payload);
+      const child = spawnHappyCLI(['orchestrator-oneshot', '--provider', payload.provider], {
+        cwd: os.homedir(),
+        detached: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          ...oneshotEnv,
+        },
+      });
+
+      const execution: ManagedOrchestratorExecution = {
+        payload,
+        child,
+        startedAtIso: new Date().toISOString(),
+        cancelRequested: false,
+        watchdogTriggered: false,
+        startReportPromise: Promise.resolve(),
+        finishReportPromise: null,
+        stdout: '',
+        stderr: '',
+        watchdogTimer: null,
+        killTimer: null,
+      };
+      execution.startReportPromise = api.reportOrchestratorExecutionStart({
+        executionId: payload.executionId,
+        dispatchToken: payload.dispatchToken,
+        startedAt: execution.startedAtIso,
+        pid: child.pid,
+      }).catch((error) => {
+        logger.debug(`[ORCHESTRATOR] Failed to report start for execution ${payload.executionId}`, error);
+      });
+      executionIdToManagedExecution.set(payload.executionId, execution);
+
+      child.stdout?.on('data', (chunk: Buffer | string) => {
+        execution.stdout = appendOutputChunk(execution.stdout, chunk.toString(), ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);
+      });
+      child.stderr?.on('data', (chunk: Buffer | string) => {
+        execution.stderr = appendOutputChunk(execution.stderr, chunk.toString(), ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);
+      });
+
+      child.once('error', async (error) => {
+        execution.stderr = appendOutputChunk(execution.stderr, `\n${error.message}\n`, ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);
+        await execution.startReportPromise;
+        await reportExecutionFinish(execution, {
+          status: execution.watchdogTriggered ? 'timeout' : (execution.cancelRequested ? 'cancelled' : 'failed'),
+          exitCode: execution.child.exitCode,
+          signal: execution.child.signalCode,
+          errorCode: 'SPAWN_ERROR',
+          errorMessage: error.message,
+        });
+      });
+
+      child.once('exit', async (code, signal) => {
+        await finalizeExecution(payload.executionId, code, signal);
+      });
+
+      execution.watchdogTimer = setTimeout(() => {
+        execution.watchdogTimer = null;
+        execution.watchdogTriggered = true;
+        requestExecutionTermination(execution);
+      }, payload.timeoutMs);
+
+      return { accepted: true };
+    };
+
+    const handleOrchestratorCancel = async (payload: OrchestratorCancelPayload): Promise<{ accepted: boolean; notFound?: boolean }> => {
+      const execution = executionIdToManagedExecution.get(payload.executionId);
+      if (!execution) {
+        return { accepted: true, notFound: true };
+      }
+      if (execution.payload.dispatchToken !== payload.dispatchToken) {
+        throw new Error(`dispatchToken mismatch for execution ${payload.executionId}`);
+      }
+
+      execution.cancelRequested = true;
+      requestExecutionTermination(execution);
+      return { accepted: true };
+    };
+
+    const stopAllOrchestratorExecutions = async (): Promise<void> => {
+      const executions = Array.from(executionIdToManagedExecution.values());
+      if (executions.length === 0) {
+        return;
+      }
+
+      logger.debug(`[ORCHESTRATOR] Stopping ${executions.length} running orchestrator execution(s)`);
+      for (const execution of executions) {
+        execution.cancelRequested = true;
+        requestExecutionTermination(execution);
+      }
+
+      const deadline = Date.now() + ORCHESTRATOR_SHUTDOWN_WAIT_MS;
+      while (executionIdToManagedExecution.size > 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    };
 
     // Handle webhook from happy session reporting itself
     const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
@@ -779,7 +1022,7 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Create API client
-    const api = await ApiClient.create(credentials);
+    api = await ApiClient.create(credentials);
 
     // Get or create machine
     const machine = await api.getOrCreateMachine({
@@ -796,7 +1039,9 @@ export async function startDaemon(): Promise<void> {
     apiMachine.setRPCHandlers({
       spawnSession,
       stopSession,
-      requestShutdown: () => requestShutdown('happy-app')
+      requestShutdown: () => requestShutdown('happy-app'),
+      orchestratorDispatch: handleOrchestratorDispatch,
+      orchestratorCancel: handleOrchestratorCancel,
     });
 
     // Connect to server
@@ -813,7 +1058,10 @@ export async function startDaemon(): Promise<void> {
     // 2. Check if daemon needs update
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
-    const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
+    const heartbeatIntervalMsRaw = Number(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL);
+    const heartbeatIntervalMs = Number.isFinite(heartbeatIntervalMsRaw) && heartbeatIntervalMsRaw > 0
+      ? heartbeatIntervalMsRaw
+      : 60_000;
     let heartbeatRunning = false
     const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
       if (heartbeatRunning) {
@@ -925,6 +1173,8 @@ export async function startDaemon(): Promise<void> {
 
       // Give time for metadata update to send
       await new Promise(resolve => setTimeout(resolve, 100));
+
+      await stopAllOrchestratorExecutions();
 
       apiMachine.shutdown();
       await stopControlServer();

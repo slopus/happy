@@ -20,7 +20,7 @@ import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 // trimIdent not currently used
-import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
+import { getFirstTurnInstruction } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { inspect } from 'node:util';
@@ -234,6 +234,7 @@ export async function runCodex(opts: {
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
     let sessionSystemPrompt: string | undefined = undefined;
+    const firstTurnInstruction = getFirstTurnInstruction();
     let currentSessionModel: string | undefined = undefined;
     let currentSessionReasoningEffort: string | undefined = undefined;
 
@@ -316,13 +317,14 @@ export async function runCodex(opts: {
         }
         syncSessionModelInfo({ model: messageModel, reasoningEffort: messageReasoningEffort });
 
-        // Capture session-level system prompt from first message
-        // Combines appendSystemPrompt (Options, DooTask) with change_title instruction
-        // Both are passed as baseInstructions to Codex (true system prompt)
+        // Capture session-level system prompt from first message.
+        // Combines appendSystemPrompt (Options, DooTask) with first-turn tooling instructions
+        // (change_title + orchestrator guidance for controller sessions).
+        // Both are passed as baseInstructions to Codex (true system prompt).
         if (sessionSystemPrompt === undefined) {
             const parts: string[] = [];
             if (message.meta?.appendSystemPrompt) parts.push(message.meta.appendSystemPrompt);
-            parts.push(CHANGE_TITLE_INSTRUCTION);
+            parts.push(firstTurnInstruction);
             sessionSystemPrompt = parts.join('\n\n');
         }
 

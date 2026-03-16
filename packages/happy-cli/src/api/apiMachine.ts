@@ -128,6 +128,27 @@ type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
+    orchestratorDispatch: (params: {
+        executionId: string;
+        runId: string;
+        taskId: string;
+        dispatchToken: string;
+        provider: 'claude' | 'codex' | 'gemini';
+        prompt: string;
+        timeoutMs: number;
+    }) => Promise<{
+        accepted: boolean;
+        duplicate?: boolean;
+    }>;
+    orchestratorCancel: (params: {
+        executionId: string;
+        runId: string;
+        taskId: string;
+        dispatchToken: string;
+    }) => Promise<{
+        accepted: boolean;
+        notFound?: boolean;
+    }>;
 }
 
 export class ApiMachineClient {
@@ -209,7 +230,9 @@ export class ApiMachineClient {
     setRPCHandlers({
         spawnSession,
         stopSession,
-        requestShutdown
+        requestShutdown,
+        orchestratorDispatch,
+        orchestratorCancel
     }: MachineRpcHandlers) {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
@@ -331,6 +354,71 @@ export class ApiMachineClient {
             }, 100);
 
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
+        });
+
+        // Register orchestrator dispatch handler
+        this.rpcHandlerManager.registerHandler('orchestrator-dispatch', async (params: any) => {
+            const { executionId, runId, taskId, dispatchToken, provider, prompt, timeoutMs } = params || {};
+
+            if (!executionId || typeof executionId !== 'string') {
+                throw new Error('executionId is required');
+            }
+            if (!runId || typeof runId !== 'string') {
+                throw new Error('runId is required');
+            }
+            if (!taskId || typeof taskId !== 'string') {
+                throw new Error('taskId is required');
+            }
+            if (!dispatchToken || typeof dispatchToken !== 'string') {
+                throw new Error('dispatchToken is required');
+            }
+            if (!provider || typeof provider !== 'string') {
+                throw new Error('provider is required');
+            }
+            if (provider !== 'claude' && provider !== 'codex' && provider !== 'gemini') {
+                throw new Error(`Unsupported provider: ${provider}`);
+            }
+            if (typeof prompt !== 'string' || prompt.trim().length === 0) {
+                throw new Error('prompt is required');
+            }
+            if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+                throw new Error('timeoutMs must be a positive number');
+            }
+
+            return orchestratorDispatch({
+                executionId,
+                runId,
+                taskId,
+                dispatchToken,
+                provider,
+                prompt,
+                timeoutMs: Math.floor(timeoutMs),
+            });
+        });
+
+        // Register orchestrator cancel handler
+        this.rpcHandlerManager.registerHandler('orchestrator-cancel', async (params: any) => {
+            const { executionId, runId, taskId, dispatchToken } = params || {};
+
+            if (!executionId || typeof executionId !== 'string') {
+                throw new Error('executionId is required');
+            }
+            if (!runId || typeof runId !== 'string') {
+                throw new Error('runId is required');
+            }
+            if (!taskId || typeof taskId !== 'string') {
+                throw new Error('taskId is required');
+            }
+            if (!dispatchToken || typeof dispatchToken !== 'string') {
+                throw new Error('dispatchToken is required');
+            }
+
+            return orchestratorCancel({
+                executionId,
+                runId,
+                taskId,
+                dispatchToken,
+            });
         });
 
         // List Claude sessions from local index
