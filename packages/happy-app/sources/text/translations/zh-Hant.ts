@@ -213,6 +213,10 @@ export const zhHant: TranslationStructure = {
         sessionHistorySubtitle: '查看過去的 Happy 工作階段',
         claudeSessionsSubtitle: '瀏覽此裝置上的 Claude CLI 工作階段',
         agentHistorySubtitle: '瀏覽 Claude、Codex 和 Gemini 的工作階段歷史',
+        orchestratorRuns: '編排任務',
+        orchestratorRunsSubtitle: '查看多工作階段編排進度和結果',
+        orchestratorRunDetails: '執行詳情',
+        orchestratorTaskDetails: '任務詳情',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,

@@ -10,6 +10,7 @@ This folder documents how Happy Next works internally, with a focus on protocol,
 - [deployment.md](deployment.md): How to deploy the backend and required infrastructure.
 - [self-host.md](self-host.md): Self-hosting with the root docker-compose stack.
 - [cli-architecture.md](cli-architecture.md): CLI and daemon architecture and how they interact with the server.
+- [orchestrator.md](orchestrator.md): Multi-task orchestration — usage scenarios, MCP tools, DAG dependencies, retry, and multi-machine dispatch.
 - [changes-from-happy.md](changes-from-happy.md): What changed in Happy Next vs the original Happy (`main` branch).
 
 ## Conventions

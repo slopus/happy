@@ -1,6 +1,7 @@
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { delay } from "@/utils/delay";
 import { eventRouter } from "@/app/events/eventRouter";
 import { listConnectedUserRpcMethods } from "@/app/api/socket/rpcRegistry";
@@ -28,6 +29,7 @@ const DEFAULT_CONTEXT_WAIT_TIMEOUT_MS = 120_000;
 const DEFAULT_CONTEXT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_CONTEXT_RETRY_MAX_ATTEMPTS = 1;
 const DEFAULT_CONTEXT_RETRY_BACKOFF_MS = 0;
+const PEND_POLL_INTERVAL_MS = 3000;
 
 const submitTaskSchema = z.object({
     taskKey: z.string().min(1).max(128).optional(),
@@ -95,7 +97,31 @@ type RunWithTasks = {
         errorMessage: string | null;
         createdAt: Date;
         updatedAt: Date;
+        executions?: Array<{
+            id: string;
+            attempt: number;
+            status: string;
+            machineId: string;
+            startedAt: Date | null;
+            finishedAt: Date | null;
+            exitCode: number | null;
+            signal: string | null;
+            errorCode: string | null;
+            errorMessage: string | null;
+            outputSummary: string | null;
+            createdAt: Date;
+            updatedAt: Date;
+        }>;
     }>;
+};
+
+type TaskWithRun = RunWithTasks['tasks'][number] & {
+    run: {
+        id: string;
+        title: string;
+        status: string;
+        updatedAt: Date;
+    };
 };
 
 function sendError(reply: any, statusCode: number, code: string, message: string, details?: Record<string, unknown>) {
@@ -139,6 +165,23 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
         errorMessage: task.errorMessage,
         createdAt: task.createdAt.toISOString(),
         updatedAt: task.updatedAt.toISOString(),
+        ...(Array.isArray(task.executions) ? {
+            executions: task.executions.map((execution) => ({
+                executionId: execution.id,
+                attempt: execution.attempt,
+                status: execution.status,
+                machineId: execution.machineId,
+                startedAt: execution.startedAt?.toISOString() ?? null,
+                finishedAt: execution.finishedAt?.toISOString() ?? null,
+                exitCode: execution.exitCode,
+                signal: execution.signal,
+                errorCode: execution.errorCode,
+                errorMessage: execution.errorMessage,
+                outputSummary: execution.outputSummary,
+                createdAt: execution.createdAt.toISOString(),
+                updatedAt: execution.updatedAt.toISOString(),
+            })),
+        } : {}),
     };
 }
 
@@ -192,7 +235,7 @@ function summaryMapFromGrouped(grouped: Array<{ runId: string; status: string; _
     return out;
 }
 
-async function loadRunForUser(userId: string, runId: string, includeTasks: boolean): Promise<{ run: RunWithTasks; summary: RunSummary } | null> {
+async function loadRunForUser(userId: string, runId: string, includeTasks: boolean, includeExecutions: boolean = false): Promise<{ run: RunWithTasks; summary: RunSummary } | null> {
     const run = await db.orchestratorRun.findFirst({
         where: { id: runId, accountId: userId },
         select: {
@@ -224,6 +267,24 @@ async function loadRunForUser(userId: string, runId: string, includeTasks: boole
                     errorMessage: true,
                     createdAt: true,
                     updatedAt: true,
+                    executions: includeExecutions ? {
+                        orderBy: { attempt: 'asc' },
+                        select: {
+                            id: true,
+                            attempt: true,
+                            status: true,
+                            machineId: true,
+                            startedAt: true,
+                            finishedAt: true,
+                            exitCode: true,
+                            signal: true,
+                            errorCode: true,
+                            errorMessage: true,
+                            outputSummary: true,
+                            createdAt: true,
+                            updatedAt: true,
+                        },
+                    } : false,
                 },
             } : false,
         },
@@ -246,6 +307,69 @@ async function loadRunForUser(userId: string, runId: string, includeTasks: boole
         run: { ...run, tasks: [] } as RunWithTasks,
         summary: summaryFromGrouped(grouped),
     };
+}
+
+async function loadTaskForUser(
+    userId: string,
+    runId: string,
+    taskId: string,
+    includeExecutions: boolean = false,
+): Promise<TaskWithRun | null> {
+    const task = await db.orchestratorTask.findFirst({
+        where: {
+            id: taskId,
+            runId,
+            run: {
+                accountId: userId,
+            },
+        },
+        select: {
+            id: true,
+            seq: true,
+            taskKey: true,
+            title: true,
+            provider: true,
+            workingDirectory: true,
+            dependsOnTaskKeys: true,
+            retryMaxAttempts: true,
+            retryBackoffMs: true,
+            nextAttemptAt: true,
+            status: true,
+            outputSummary: true,
+            errorCode: true,
+            errorMessage: true,
+            createdAt: true,
+            updatedAt: true,
+            run: {
+                select: {
+                    id: true,
+                    title: true,
+                    status: true,
+                    updatedAt: true,
+                },
+            },
+            executions: includeExecutions ? {
+                orderBy: { attempt: 'asc' },
+                select: {
+                    id: true,
+                    attempt: true,
+                    status: true,
+                    machineId: true,
+                    startedAt: true,
+                    finishedAt: true,
+                    exitCode: true,
+                    signal: true,
+                    errorCode: true,
+                    errorMessage: true,
+                    outputSummary: true,
+                    createdAt: true,
+                    updatedAt: true,
+                },
+            } : false,
+        },
+    });
+
+    return (task as TaskWithRun | null) ?? null;
 }
 
 function resolveRunStatusFilter(status?: string): string[] | undefined {
@@ -375,7 +499,7 @@ function validateTaskDependencies(tasks: z.infer<typeof submitTaskSchema>[]): Ta
     return null;
 }
 
-async function markDependencyFailedTasksInCancelTx(tx: any, runId: string): Promise<void> {
+async function markDependencyFailedTasksInCancelTx(tx: Prisma.TransactionClient, runId: string): Promise<void> {
     const keyedTasks = await tx.orchestratorTask.findMany({
         where: {
             runId,
@@ -603,7 +727,7 @@ export function orchestratorRoutes(app: Fastify) {
         }
 
         try {
-            const created = await db.$transaction(async (tx: any) => {
+            const created = await db.$transaction(async (tx: Prisma.TransactionClient) => {
                 const run = await tx.orchestratorRun.create({
                     data: {
                         accountId: userId,
@@ -612,7 +736,7 @@ export function orchestratorRoutes(app: Fastify) {
                         status: 'queued',
                         maxConcurrency: body.maxConcurrency ?? 2,
                         idempotencyKey: body.idempotencyKey,
-                        metadata: body.metadata ?? undefined,
+                        metadata: body.metadata as Prisma.InputJsonValue | undefined,
                     },
                     select: {
                         id: true,
@@ -728,14 +852,16 @@ export function orchestratorRoutes(app: Fastify) {
             }),
             querystring: z.object({
                 includeTasks: z.coerce.boolean().default(true),
+                includeExecutions: z.coerce.boolean().default(false),
             }).optional(),
         },
     }, async (request, reply) => {
         const userId = request.userId;
         const { runId } = request.params;
         const includeTasks = request.query?.includeTasks ?? true;
+        const includeExecutions = includeTasks && (request.query?.includeExecutions ?? false);
 
-        const loaded = await loadRunForUser(userId, runId, includeTasks);
+        const loaded = await loadRunForUser(userId, runId, includeTasks, includeExecutions);
         if (!loaded) {
             return sendError(reply, 404, 'NOT_FOUND', 'Run not found');
         }
@@ -743,6 +869,41 @@ export function orchestratorRoutes(app: Fastify) {
         return reply.send({
             ok: true,
             data: mapRunResponse(loaded.run, loaded.summary, includeTasks),
+        });
+    });
+
+    app.get('/v1/orchestrator/runs/:runId/tasks/:taskId', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                runId: z.string(),
+                taskId: z.string(),
+            }),
+            querystring: z.object({
+                includeExecutions: z.coerce.boolean().default(false),
+            }).optional(),
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { runId, taskId } = request.params;
+        const includeExecutions = request.query?.includeExecutions ?? false;
+
+        const loadedTask = await loadTaskForUser(userId, runId, taskId, includeExecutions);
+        if (!loadedTask) {
+            return sendError(reply, 404, 'NOT_FOUND', 'Task not found');
+        }
+
+        return reply.send({
+            ok: true,
+            data: {
+                run: {
+                    runId: loadedTask.run.id,
+                    title: loadedTask.run.title,
+                    status: loadedTask.run.status,
+                    updatedAt: loadedTask.run.updatedAt.toISOString(),
+                },
+                task: mapTask(loadedTask),
+            },
         });
     });
 
@@ -868,9 +1029,11 @@ export function orchestratorRoutes(app: Fastify) {
         const includeTasks = include !== 'summary';
 
         const startedAtMs = Date.now();
-        const pollIntervalMs = 1000;
+        // v2.1 fallback: keep pend polling bounded and sparse to reduce DB pressure under concurrent long polls.
+        // A future iteration should switch to event-driven wakeups.
+        const maxPolls = Math.max(1, Math.ceil(timeoutMs / PEND_POLL_INTERVAL_MS) + 1);
 
-        while (true) {
+        for (let pollIndex = 0; pollIndex < maxPolls; pollIndex += 1) {
             const loaded = await loadRunForUser(userId, runId, includeTasks);
             if (!loaded) {
                 return sendError(reply, 404, 'NOT_FOUND', 'Run not found');
@@ -885,8 +1048,10 @@ export function orchestratorRoutes(app: Fastify) {
             });
             const changed = !previousCursor || previousCursor !== cursor;
             const waitSatisfied = waitFor === 'terminal' ? terminal : changed;
+            const timeoutReached = Date.now() - startedAtMs >= timeoutMs;
+            const isLastPoll = pollIndex >= maxPolls - 1;
 
-            if (waitSatisfied || Date.now() - startedAtMs >= timeoutMs) {
+            if (waitSatisfied || timeoutReached || isLastPoll) {
                 return reply.send({
                     ok: true,
                     data: {
@@ -904,8 +1069,12 @@ export function orchestratorRoutes(app: Fastify) {
                 });
             }
 
-            await delay(pollIntervalMs);
+            const elapsedMs = Date.now() - startedAtMs;
+            const remainingMs = timeoutMs - elapsedMs;
+            await delay(Math.min(PEND_POLL_INTERVAL_MS, Math.max(0, remainingMs)));
         }
+
+        return sendError(reply, 500, 'INTERNAL', 'Pend polling exhausted unexpectedly');
     });
 
     app.post('/v1/orchestrator/runs/:runId/cancel', {
@@ -922,7 +1091,7 @@ export function orchestratorRoutes(app: Fastify) {
         const userId = request.userId;
         const { runId } = request.params;
 
-        const result = await db.$transaction(async (tx: any) => {
+        const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
             const run = await tx.orchestratorRun.findFirst({
                 where: { id: runId, accountId: userId },
                 select: { id: true, status: true },
@@ -1014,7 +1183,7 @@ export function orchestratorRoutes(app: Fastify) {
         const { id } = request.params;
         const { dispatchToken, startedAt, pid } = request.body;
 
-        const result = await db.$transaction(async (tx: any) => {
+        const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
             const execution = await tx.orchestratorExecution.findFirst({
                 where: {
                     id,
@@ -1134,7 +1303,7 @@ export function orchestratorRoutes(app: Fastify) {
         const { id } = request.params;
         const body = request.body;
 
-        const result = await db.$transaction(async (tx: any) => {
+        const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
             const execution = await tx.orchestratorExecution.findFirst({
                 where: {
                     id,

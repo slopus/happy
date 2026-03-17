@@ -288,6 +288,30 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="orchestrator/index"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('settings.orchestratorRuns'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="orchestrator/[runId]"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('settings.orchestratorRunDetails'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="orchestrator/[runId]/task/[taskId]"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('settings.orchestratorTaskDetails'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="text-selection"
                 options={{
                     headerShown: true,

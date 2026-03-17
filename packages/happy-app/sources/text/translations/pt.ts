@@ -212,6 +212,10 @@ export const pt: TranslationStructure = {
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
         agentHistorySubtitle: 'Browse Claude, Codex, and Gemini session history',
+        orchestratorRuns: 'Orquestrador',
+        orchestratorRunsSubtitle: 'Ver o progresso e os resultados da orquestração multissessão',
+        orchestratorRunDetails: 'Detalhes da execução',
+        orchestratorTaskDetails: 'Detalhes da tarefa',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Conta ${service} conectada`,

@@ -176,6 +176,10 @@ export const ru: TranslationStructure = {
         sessionHistorySubtitle: 'View past Happy sessions',
         claudeSessionsSubtitle: 'Browse Claude CLI sessions on this device',
         agentHistorySubtitle: 'Browse Claude, Codex, and Gemini session history',
+        orchestratorRuns: 'Оркестратор',
+        orchestratorRunsSubtitle: 'Просмотр прогресса и результатов многосессионной оркестрации',
+        orchestratorRunDetails: 'Детали запуска',
+        orchestratorTaskDetails: 'Детали задачи',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
