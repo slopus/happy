@@ -33,11 +33,18 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         marginBottom: 8,
     },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        marginBottom: 6,
+    },
     title: {
+        flex: 1,
         fontSize: 20,
         fontWeight: '700',
         color: theme.colors.text,
-        marginBottom: 6,
     },
     row: {
         marginTop: 6,
@@ -192,8 +199,10 @@ export default function OrchestratorTaskDetailScreen() {
                 ]}
             >
                 <View style={styles.card}>
-                    <Text style={styles.title}>{buildTaskTitle(task)}</Text>
-                    <OrchestratorStatusBadge status={task.status} />
+                    <View style={styles.header}>
+                        <Text style={styles.title} numberOfLines={1}>{buildTaskTitle(task)}</Text>
+                        <OrchestratorStatusBadge status={task.status} />
+                    </View>
                     <Text style={styles.row}>Run: {run?.title || run?.runId || runId}</Text>
                     <Text style={styles.row}>Provider: {task.provider}</Text>
                     <Text style={styles.row}>Task Key: {task.taskKey || '-'}</Text>

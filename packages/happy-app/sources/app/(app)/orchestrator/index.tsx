@@ -8,6 +8,7 @@ import { layout } from '@/components/layout';
 import { useAuth } from '@/auth/AuthContext';
 import { listOrchestratorRuns, type ListOrchestratorRunsQuery, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
+import { OrchestratorProgressBar } from '@/components/orchestrator/OrchestratorProgressBar';
 import { formatDate } from '@/utils/formatDate';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -96,17 +97,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     progressRow: {
         marginTop: 10,
-    },
-    progressTrack: {
-        height: 8,
-        borderRadius: 999,
-        backgroundColor: theme.colors.surfaceHighest,
-        overflow: 'hidden',
-    },
-    progressFill: {
-        height: 8,
-        borderRadius: 999,
-        backgroundColor: theme.colors.button.primary.background,
     },
     summary: {
         marginTop: 8,
@@ -256,9 +246,6 @@ export default function OrchestratorRunsScreen() {
     }, [fetchRuns]));
 
     const renderRunItem = React.useCallback(({ item }: { item: RunListItem; }) => {
-        const done = item.summary.completed + item.summary.failed + item.summary.cancelled;
-        const progress = item.summary.total > 0 ? Math.max(0, Math.min(1, done / item.summary.total)) : 0;
-
         return (
             <Pressable
                 style={styles.card}
@@ -272,9 +259,7 @@ export default function OrchestratorRunsScreen() {
                     Updated {formatDate(item.updatedAt)}
                 </Text>
                 <View style={styles.progressRow}>
-                    <View style={styles.progressTrack}>
-                        <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
-                    </View>
+                    <OrchestratorProgressBar summary={item.summary} />
                     <Text style={styles.summary}>
                         Total {item.summary.total} · Running {item.summary.running} · Completed {item.summary.completed} · Failed {item.summary.failed} · Cancelled {item.summary.cancelled}
                     </Text>

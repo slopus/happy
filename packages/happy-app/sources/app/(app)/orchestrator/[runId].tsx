@@ -8,6 +8,7 @@ import { layout } from '@/components/layout';
 import { useAuth } from '@/auth/AuthContext';
 import { cancelOrchestratorRun, getOrchestratorRun, pendOrchestratorRun, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
+import { OrchestratorProgressBar } from '@/components/orchestrator/OrchestratorProgressBar';
 import { isRunActive } from '@/components/orchestrator/status';
 import { Modal } from '@/modal';
 import { delay } from '@/utils/time';
@@ -50,17 +51,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 13,
         color: theme.colors.textSecondary,
     },
-    progressTrack: {
+    progressBar: {
         marginTop: 10,
-        height: 8,
-        borderRadius: 999,
-        backgroundColor: theme.colors.surfaceHighest,
-        overflow: 'hidden',
-    },
-    progressFill: {
-        height: 8,
-        borderRadius: 999,
-        backgroundColor: theme.colors.button.primary.background,
     },
     taskRow: {
         borderWidth: 1,
@@ -282,9 +274,6 @@ export default function OrchestratorRunDetailScreen() {
         );
     }
 
-    const doneCount = run.summary.completed + run.summary.failed + run.summary.cancelled;
-    const progress = run.summary.total > 0 ? Math.max(0, Math.min(1, doneCount / run.summary.total)) : 0;
-
     return (
         <View style={styles.container}>
             <Stack.Screen
@@ -318,8 +307,8 @@ export default function OrchestratorRunDetailScreen() {
                     <Text style={styles.summaryLine}>Run ID: {run.runId}</Text>
                     <Text style={styles.summaryLine}>Created: {formatDate(run.createdAt)}</Text>
                     <Text style={styles.summaryLine}>Updated: {formatDate(run.updatedAt)}</Text>
-                    <View style={styles.progressTrack}>
-                        <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+                    <View style={styles.progressBar}>
+                        <OrchestratorProgressBar summary={run.summary} />
                     </View>
                     <Text style={styles.summaryLine}>
                         Total {run.summary.total} · Running {run.summary.running} · Completed {run.summary.completed} · Failed {run.summary.failed} · Cancelled {run.summary.cancelled}
