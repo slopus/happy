@@ -201,6 +201,9 @@ model OrchestratorExecution {
   machineId       String
   provider        String
   model           String?
+  childSessionId  String?
+  executionType   String           @default("initial")
+  resumeMessage   String?
   status          String
   attempt         Int              @default(1)
   dispatchToken   String           @unique

@@ -6,7 +6,7 @@ import { CLAUDE_MODEL_MODES, CODEX_MODEL_MODES, GEMINI_MODEL_MODES } from 'happy
 
 type RunStatus = 'queued' | 'running' | 'canceling' | 'completed' | 'failed' | 'cancelled';
 type TaskStatus = 'queued' | 'dispatching' | 'running' | 'completed' | 'failed' | 'cancelled' | 'dependency_failed';
-type ExecutionStatus = 'dispatching' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout';
+type ExecutionStatus = 'queued' | 'dispatching' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout';
 
 type RunRecord = {
     id: string;
@@ -55,6 +55,9 @@ type ExecutionRecord = {
     machineId: string;
     provider: 'claude' | 'codex' | 'gemini';
     model: string | null;
+    childSessionId: string | null;
+    executionType: 'initial' | 'resume';
+    resumeMessage: string | null;
     status: ExecutionStatus;
     attempt: number;
     dispatchToken: string;
@@ -236,6 +239,9 @@ const {
             return false;
         }
         if (where.taskId && execution.taskId !== where.taskId) {
+            return false;
+        }
+        if (where.childSessionId?.not === null && execution.childSessionId === null) {
             return false;
         }
         if (where.status && !matchesStatus(execution.status, where.status)) {
@@ -505,6 +511,9 @@ const {
                 machineId: args.data.machineId,
                 provider: args.data.provider,
                 model: args.data.model ?? null,
+                childSessionId: args.data.childSessionId ?? null,
+                executionType: args.data.executionType ?? 'initial',
+                resumeMessage: args.data.resumeMessage ?? null,
                 status: args.data.status,
                 attempt: args.data.attempt ?? 1,
                 dispatchToken: args.data.dispatchToken,
@@ -559,7 +568,15 @@ const {
             return { ...execution };
         }),
         findMany: vi.fn(async (args: any) => {
-            return state.executions.filter((item) => matchesExecution(item, args?.where)).map((item) => ({ ...item }));
+            let rows = state.executions.filter((item) => matchesExecution(item, args?.where));
+            if (args?.orderBy?.attempt) {
+                rows = rows.sort((a, b) => (
+                    args.orderBy.attempt === 'asc'
+                        ? a.attempt - b.attempt
+                        : b.attempt - a.attempt
+                ));
+            }
+            return rows.map((item) => ({ ...item }));
         }),
         update: vi.fn(async (args: any) => {
             const execution = state.executions.find((item) => item.id === args?.where?.id);
@@ -1093,6 +1110,156 @@ describe('orchestrator integration paths', () => {
         const responseTasks = getRun.json().data.tasks;
         expect(responseTasks[0].model).toBe('gpt-5.3-codex-high');
         expect(responseTasks[1].model).toBeNull();
+        await app.close();
+    });
+
+    it('captures childSessionId on finish and supports resume send-message for terminal task', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'resume-task-message',
+                tasks: [
+                    {
+                        provider: 'codex',
+                        prompt: 'initial prompt',
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:00.000Z'));
+        expect(state.executions).toHaveLength(1);
+        const initialExecution = state.executions[0];
+        expect(initialExecution.executionType).toBe('initial');
+        expect(initialExecution.childSessionId).toBeNull();
+
+        const finish = await app.inject({
+            method: 'POST',
+            url: `/v1/orchestrator/executions/${initialExecution.id}/finish`,
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                dispatchToken: initialExecution.dispatchToken,
+                status: 'completed',
+                childSessionId: '11111111-2222-4333-8444-555555555555',
+                finishedAt: '2026-03-16T00:00:01.000Z',
+            },
+        });
+        expect(finish.statusCode).toBe(200);
+        expect(state.executions[0].childSessionId).toBe('11111111-2222-4333-8444-555555555555');
+
+        const taskId = state.tasks[0].id;
+        const sendMessage = await app.inject({
+            method: 'POST',
+            url: `/v1/orchestrator/tasks/${taskId}/send-message`,
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                message: 'follow up question',
+            },
+        });
+        expect(sendMessage.statusCode).toBe(200);
+        expect(state.tasks[0].status).toBe('queued');
+        expect(state.executions).toHaveLength(2);
+        expect(state.executions[1]).toEqual(expect.objectContaining({
+            executionType: 'resume',
+            childSessionId: '11111111-2222-4333-8444-555555555555',
+            resumeMessage: 'follow up question',
+            status: 'queued',
+        }));
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:02.000Z'));
+        expect(invokeUserRpcMock).toHaveBeenLastCalledWith(
+            'user-1',
+            'machine-1:orchestrator-dispatch',
+            expect.objectContaining({
+                executionType: 'resume',
+                childSessionId: '11111111-2222-4333-8444-555555555555',
+                prompt: 'follow up question',
+            }),
+            expect.any(Number),
+        );
+        await app.close();
+    });
+
+    it('rejects send-message when task has no captured childSessionId', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'resume-task-missing-child-session',
+                tasks: [
+                    {
+                        provider: 'codex',
+                        prompt: 'initial prompt',
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:00.000Z'));
+        const initialExecution = state.executions[0];
+        const finish = await app.inject({
+            method: 'POST',
+            url: `/v1/orchestrator/executions/${initialExecution.id}/finish`,
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                dispatchToken: initialExecution.dispatchToken,
+                status: 'failed',
+                finishedAt: '2026-03-16T00:00:01.000Z',
+            },
+        });
+        expect(finish.statusCode).toBe(200);
+        expect(state.executions[0].childSessionId).toBeNull();
+
+        const taskId = state.tasks[0].id;
+        const sendMessage = await app.inject({
+            method: 'POST',
+            url: `/v1/orchestrator/tasks/${taskId}/send-message`,
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                message: 'follow up question',
+            },
+        });
+        expect(sendMessage.statusCode).toBe(409);
+        expect(sendMessage.json().error.code).toBe('CONFLICT');
+        await app.close();
+    });
+
+    it('rejects send-message when task is not in completed/failed terminal state', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'resume-task-invalid-state',
+                tasks: [
+                    {
+                        provider: 'claude',
+                        prompt: 'initial prompt',
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+
+        const taskId = state.tasks[0].id;
+        const sendMessage = await app.inject({
+            method: 'POST',
+            url: `/v1/orchestrator/tasks/${taskId}/send-message`,
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                message: 'follow up question',
+            },
+        });
+        expect(sendMessage.statusCode).toBe(409);
+        expect(sendMessage.json().error.code).toBe('CONFLICT');
         await app.close();
     });
 

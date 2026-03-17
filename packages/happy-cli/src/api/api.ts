@@ -319,6 +319,7 @@ export class ApiClient {
     dispatchToken: string;
     status: 'completed' | 'failed' | 'cancelled' | 'timeout';
     finishedAt: string;
+    childSessionId?: string | null;
     exitCode?: number | null;
     signal?: string | null;
     outputSummary?: string | null;
@@ -332,6 +333,7 @@ export class ApiClient {
         dispatchToken: opts.dispatchToken,
         status: opts.status,
         finishedAt: opts.finishedAt,
+        ...(opts.childSessionId !== undefined ? { childSessionId: opts.childSessionId } : {}),
         ...(opts.exitCode !== undefined ? { exitCode: opts.exitCode } : {}),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
         ...(opts.outputSummary !== undefined ? { outputSummary: opts.outputSummary } : {}),

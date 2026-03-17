@@ -73,3 +73,12 @@ export const ORCHESTRATOR_CANCEL_TOOL_SCHEMA = {
     reason: z.string().max(512).optional(),
   },
 } as const;
+
+export const ORCHESTRATOR_SEND_MESSAGE_TOOL_SCHEMA = {
+  description: 'Send an additional message to a completed/failed orchestrator task and resume its child session.',
+  title: 'Orchestrator Send Message',
+  inputSchema: {
+    taskId: z.string().describe('Task ID to resume'),
+    message: z.string().min(1).max(65_536).describe('Message to send to the existing child session'),
+  },
+} as const;

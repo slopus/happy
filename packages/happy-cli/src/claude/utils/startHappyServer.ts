@@ -21,6 +21,7 @@ import {
     ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA,
     ORCHESTRATOR_LIST_TOOL_SCHEMA,
     ORCHESTRATOR_PEND_TOOL_SCHEMA,
+    ORCHESTRATOR_SEND_MESSAGE_TOOL_SCHEMA,
     ORCHESTRATOR_SUBMIT_TOOL_SCHEMA,
 } from '@/orchestrator/mcpToolSchemas';
 import { CLAUDE_MODEL_MODES, CODEX_MODEL_MODES, GEMINI_MODEL_MODES } from 'happy-wire';
@@ -303,6 +304,18 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                 return toToolError('Failed to cancel orchestrator run', error instanceof Error ? error.message : String(error));
             }
         });
+
+        mcp.registerTool('orchestrator_send_message', ORCHESTRATOR_SEND_MESSAGE_TOOL_SCHEMA, async (args) => {
+            try {
+                const response = await client.orchestratorSendMessage({
+                    taskId: args.taskId,
+                    message: args.message,
+                });
+                return toToolSuccess(response);
+            } catch (error) {
+                return toToolError('Failed to send message to orchestrator task', error instanceof Error ? error.message : String(error));
+            }
+        });
     }
 
     return mcp;
@@ -315,7 +328,7 @@ export async function startHappyServer(client: ApiSessionClient) {
     const transports: Map<string, StreamableHTTPServerTransport> = new Map();
     const enableOrchestratorTools = shouldEnableOrchestratorTools();
     const toolNames = enableOrchestratorTools
-        ? ['change_title', 'preview_html', 'orchestrator_get_context', 'orchestrator_submit', 'orchestrator_pend', 'orchestrator_list', 'orchestrator_cancel']
+        ? ['change_title', 'preview_html', 'orchestrator_get_context', 'orchestrator_submit', 'orchestrator_pend', 'orchestrator_list', 'orchestrator_cancel', 'orchestrator_send_message']
         : ['change_title', 'preview_html'];
 
     // Capture console.error from Hono to our logger

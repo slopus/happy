@@ -35,6 +35,8 @@ export type SchedulerAction =
             taskId: string;
             dispatchToken: string;
             provider: string;
+            executionType: 'initial' | 'resume';
+            childSessionId?: string;
             model?: string;
             prompt: string;
             timeoutMs: number;
@@ -403,6 +405,36 @@ async function buildRunActions(run: {
                         nextAttemptAt: true,
                     },
                 });
+                const queuedExecutions = await tx.orchestratorExecution.findMany({
+                    where: {
+                        runId: currentRun.id,
+                        status: 'queued',
+                    },
+                    orderBy: {
+                        attempt: 'desc',
+                    },
+                    select: {
+                        id: true,
+                        runId: true,
+                        taskId: true,
+                        machineId: true,
+                        provider: true,
+                        model: true,
+                        status: true,
+                        attempt: true,
+                        dispatchToken: true,
+                        timeoutMs: true,
+                        executionType: true,
+                        childSessionId: true,
+                        resumeMessage: true,
+                    },
+                });
+                const queuedExecutionByTaskId = new Map<string, typeof queuedExecutions[number]>();
+                for (const execution of queuedExecutions) {
+                    if (!queuedExecutionByTaskId.has(execution.taskId)) {
+                        queuedExecutionByTaskId.set(execution.taskId, execution);
+                    }
+                }
                 const keyedTasks = await tx.orchestratorTask.findMany({
                     where: {
                         runId: currentRun.id,
@@ -465,6 +497,12 @@ async function buildRunActions(run: {
                 const targetMachineIds = [...new Set(readyTasks
                     .map((task: any) => task.targetMachineId)
                     .filter((machineId: string | null) => !!machineId))];
+                for (const task of readyTasks) {
+                    const queuedExecution = queuedExecutionByTaskId.get(task.id);
+                    if (queuedExecution?.machineId) {
+                        targetMachineIds.push(queuedExecution.machineId);
+                    }
+                }
                 const targetMachines = targetMachineIds.length > 0
                     ? await tx.machine.findMany({
                         where: {
@@ -486,19 +524,33 @@ async function buildRunActions(run: {
                 });
 
                 for (const task of readyTasks.slice(0, slots)) {
-                    if (task.targetMachineId && !allowedTargetMachineIds.has(task.targetMachineId)) {
+                    const queuedExecution = queuedExecutionByTaskId.get(task.id);
+                    const plannedMachineId = queuedExecution?.machineId ?? task.targetMachineId ?? null;
+
+                    if (plannedMachineId && !allowedTargetMachineIds.has(plannedMachineId)) {
                         await tx.orchestratorTask.updateMany({
                             where: { id: task.id, status: 'queued' },
                             data: {
                                 status: 'failed',
                                 errorCode: 'MACHINE_UNAVAILABLE',
-                                errorMessage: `Target machine not found: ${task.targetMachineId}`,
+                                errorMessage: `Target machine not found: ${plannedMachineId}`,
                             },
                         });
+                        if (queuedExecution) {
+                            await tx.orchestratorExecution.updateMany({
+                                where: { id: queuedExecution.id, status: 'queued' },
+                                data: {
+                                    status: 'failed',
+                                    finishedAt: now,
+                                    errorCode: 'MACHINE_UNAVAILABLE',
+                                    errorMessage: `Target machine not found: ${plannedMachineId}`,
+                                },
+                            });
+                        }
                         continue;
                     }
 
-                    const machineId = task.targetMachineId ?? defaultMachine?.id ?? null;
+                    const machineId = plannedMachineId ?? defaultMachine?.id ?? null;
                     if (!machineId) {
                         await tx.orchestratorTask.updateMany({
                             where: { id: task.id, status: 'queued' },
@@ -508,6 +560,17 @@ async function buildRunActions(run: {
                                 errorMessage: 'No available machine to run task',
                             },
                         });
+                        if (queuedExecution) {
+                            await tx.orchestratorExecution.updateMany({
+                                where: { id: queuedExecution.id, status: 'queued' },
+                                data: {
+                                    status: 'failed',
+                                    finishedAt: now,
+                                    errorCode: 'MACHINE_UNAVAILABLE',
+                                    errorMessage: 'No available machine to run task',
+                                },
+                            });
+                        }
                         continue;
                     }
 
@@ -525,40 +588,67 @@ async function buildRunActions(run: {
                         continue;
                     }
 
-                    const timeoutMs = task.timeoutMs ?? ORCHESTRATOR_DEFAULT_TASK_TIMEOUT_MS;
-                    const dispatchToken = randomUUID();
-                    const latestExecution = await tx.orchestratorExecution.findFirst({
-                        where: {
-                            taskId: task.id,
-                        },
-                        orderBy: {
-                            attempt: 'desc',
-                        },
-                        select: {
-                            attempt: true,
-                        },
-                    });
-                    const attempt = (latestExecution?.attempt ?? 0) + 1;
-                    const execution = await tx.orchestratorExecution.create({
-                        data: {
-                            runId: task.runId,
-                            taskId: task.id,
-                            machineId,
-                            provider: task.provider,
-                            model: task.model ?? null,
-                            status: 'dispatching',
-                            attempt,
-                            dispatchToken,
-                            timeoutMs,
-                        },
-                        select: {
-                            id: true,
-                            runId: true,
-                            taskId: true,
-                            machineId: true,
-                            dispatchToken: true,
-                        },
-                    });
+                    const timeoutMs = queuedExecution?.timeoutMs ?? task.timeoutMs ?? ORCHESTRATOR_DEFAULT_TASK_TIMEOUT_MS;
+                    const execution = queuedExecution
+                        ? await tx.orchestratorExecution.update({
+                            where: { id: queuedExecution.id },
+                            data: {
+                                status: 'dispatching',
+                                timeoutMs,
+                            },
+                            select: {
+                                id: true,
+                                runId: true,
+                                taskId: true,
+                                machineId: true,
+                                dispatchToken: true,
+                                executionType: true,
+                                childSessionId: true,
+                                resumeMessage: true,
+                            },
+                        })
+                        : await (async () => {
+                            const dispatchToken = randomUUID();
+                            const latestExecution = await tx.orchestratorExecution.findFirst({
+                                where: {
+                                    taskId: task.id,
+                                },
+                                orderBy: {
+                                    attempt: 'desc',
+                                },
+                                select: {
+                                    attempt: true,
+                                },
+                            });
+                            const attempt = (latestExecution?.attempt ?? 0) + 1;
+                            const initialChildSessionId = task.provider === 'claude' ? randomUUID() : null;
+                            return tx.orchestratorExecution.create({
+                                data: {
+                                    runId: task.runId,
+                                    taskId: task.id,
+                                    machineId,
+                                    provider: task.provider,
+                                    model: task.model ?? null,
+                                    childSessionId: initialChildSessionId,
+                                    executionType: 'initial',
+                                    resumeMessage: null,
+                                    status: 'dispatching',
+                                    attempt,
+                                    dispatchToken,
+                                    timeoutMs,
+                                },
+                                select: {
+                                    id: true,
+                                    runId: true,
+                                    taskId: true,
+                                    machineId: true,
+                                    dispatchToken: true,
+                                    executionType: true,
+                                    childSessionId: true,
+                                    resumeMessage: true,
+                                },
+                            });
+                        })();
 
                     actions.push({
                         type: 'dispatch',
@@ -574,8 +664,10 @@ async function buildRunActions(run: {
                             taskId: execution.taskId,
                             dispatchToken: execution.dispatchToken,
                             provider: task.provider,
+                            executionType: execution.executionType as 'initial' | 'resume',
+                            childSessionId: execution.childSessionId ?? undefined,
                             model: task.model ?? undefined,
-                            prompt: task.prompt,
+                            prompt: execution.resumeMessage ?? task.prompt,
                             timeoutMs,
                             workingDirectory: task.workingDirectory ?? undefined,
                         },

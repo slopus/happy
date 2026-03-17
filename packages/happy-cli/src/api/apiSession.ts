@@ -93,6 +93,11 @@ type OrchestratorListQuery = {
     cursor?: string;
 };
 
+type OrchestratorSendMessageBody = {
+    taskId: string;
+    message: string;
+};
+
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     readonly sessionId: string;
@@ -353,6 +358,20 @@ export class ApiSessionClient extends EventEmitter {
                 headers: this.orchestratorHeaders(),
                 params: query,
                 timeout: Math.min(Math.max((query.timeoutMs ?? 30_000) + 10_000, 15_000), 130_000),
+            }
+        );
+        return response.data;
+    }
+
+    async orchestratorSendMessage(body: OrchestratorSendMessageBody): Promise<any> {
+        const response = await axios.post(
+            `${configuration.serverUrl}/v1/orchestrator/tasks/${encodeURIComponent(body.taskId)}/send-message`,
+            {
+                message: body.message,
+            },
+            {
+                headers: this.orchestratorHeaders(),
+                timeout: 60_000,
             }
         );
         return response.data;

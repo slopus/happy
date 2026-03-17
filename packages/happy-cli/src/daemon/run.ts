@@ -32,6 +32,7 @@ import {
   type OrchestratorDispatchPayload,
   type OrchestratorFinishStatus,
 } from '@/orchestrator/common';
+import { normalizeGeminiOutputText } from './orchestratorOutput';
 
 const ORCHESTRATOR_WATCHDOG_GRACE_MS = 5_000;
 const ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT = 64_000;
@@ -194,12 +195,35 @@ export async function startDaemon(): Promise<void> {
       startedAtIso: string;
       cancelRequested: boolean;
       watchdogTriggered: boolean;
+      detectedChildSessionId: string | null;
       startReportPromise: Promise<void>;
       finishReportPromise: Promise<void> | null;
       stdout: string;
       stderr: string;
+      stdoutLineBuffer: string;
       watchdogTimer: NodeJS.Timeout | null;
       killTimer: NodeJS.Timeout | null;
+    };
+
+    const parseCodexSessionId = (value: string): string | null => {
+      const match = value.match(/session id:\s*([0-9a-fA-F-]{36})/i);
+      return match?.[1] ?? null;
+    };
+
+    const parseGeminiSessionIdFromLine = (line: string): string | null => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return null;
+      }
+      try {
+        const parsed = JSON.parse(trimmed) as { session_id?: unknown };
+        if (typeof parsed.session_id === 'string' && parsed.session_id.trim().length > 0) {
+          return parsed.session_id.trim();
+        }
+      } catch (_error) {
+        return null;
+      }
+      return null;
     };
 
     const executionIdToManagedExecution = new Map<string, ManagedOrchestratorExecution>();
@@ -254,8 +278,11 @@ export async function startDaemon(): Promise<void> {
         return;
       }
       execution.finishReportPromise = (async () => {
-        const outputText = [execution.stdout.trim(), execution.stderr.trim()].filter(Boolean).join('\n');
-        const outputSummary = buildOutputSummary(execution.stdout, execution.stderr);
+        const normalizedStdout = execution.payload.provider === 'gemini'
+          ? normalizeGeminiOutputText(execution.stdout)
+          : execution.stdout.trim();
+        const outputText = [normalizedStdout, execution.stderr.trim()].filter(Boolean).join('\n');
+        const outputSummary = buildOutputSummary(normalizedStdout, execution.stderr);
 
         try {
           await api.reportOrchestratorExecutionFinish({
@@ -267,6 +294,7 @@ export async function startDaemon(): Promise<void> {
             signal: opts.signal,
             outputSummary: outputSummary ?? undefined,
             outputText: outputText || undefined,
+            childSessionId: execution.detectedChildSessionId ?? undefined,
             errorCode: opts.errorCode,
             errorMessage: opts.errorMessage,
           });
@@ -284,6 +312,13 @@ export async function startDaemon(): Promise<void> {
       const execution = executionIdToManagedExecution.get(executionId);
       if (!execution) {
         return;
+      }
+
+      if (!execution.detectedChildSessionId && execution.payload.provider === 'gemini' && execution.payload.executionType === 'initial') {
+        const parsed = parseGeminiSessionIdFromLine(execution.stdoutLineBuffer);
+        if (parsed) {
+          execution.detectedChildSessionId = parsed;
+        }
       }
 
       const status = mapFinishStatus({
@@ -336,10 +371,12 @@ export async function startDaemon(): Promise<void> {
         startedAtIso: new Date().toISOString(),
         cancelRequested: false,
         watchdogTriggered: false,
+        detectedChildSessionId: payload.childSessionId ?? null,
         startReportPromise: Promise.resolve(),
         finishReportPromise: null,
         stdout: '',
         stderr: '',
+        stdoutLineBuffer: '',
         watchdogTimer: null,
         killTimer: null,
       };
@@ -354,7 +391,30 @@ export async function startDaemon(): Promise<void> {
       executionIdToManagedExecution.set(payload.executionId, execution);
 
       child.stdout?.on('data', (chunk: Buffer | string) => {
-        execution.stdout = appendOutputChunk(execution.stdout, chunk.toString(), ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);
+        const text = chunk.toString();
+        execution.stdout = appendOutputChunk(execution.stdout, text, ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);
+
+        if (!execution.detectedChildSessionId) {
+          if (payload.provider === 'codex' && payload.executionType === 'initial') {
+            const probe = `${execution.stdoutLineBuffer}${text}`;
+            const parsed = parseCodexSessionId(probe);
+            if (parsed) {
+              execution.detectedChildSessionId = parsed;
+            }
+            execution.stdoutLineBuffer = probe.slice(-256);
+          } else if (payload.provider === 'gemini' && payload.executionType === 'initial') {
+            execution.stdoutLineBuffer += text;
+            const lines = execution.stdoutLineBuffer.split(/\r?\n/);
+            execution.stdoutLineBuffer = lines.pop() ?? '';
+            for (const line of lines) {
+              const parsed = parseGeminiSessionIdFromLine(line);
+              if (parsed) {
+                execution.detectedChildSessionId = parsed;
+                break;
+              }
+            }
+          }
+        }
       });
       child.stderr?.on('data', (chunk: Buffer | string) => {
         execution.stderr = appendOutputChunk(execution.stderr, chunk.toString(), ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);

@@ -6,6 +6,7 @@ import { delay } from "@/utils/delay";
 import { warn } from "@/utils/log";
 import { eventRouter, buildOrchestratorActivityEphemeral } from "@/app/events/eventRouter";
 import { listConnectedUserRpcMethods } from "@/app/api/socket/rpcRegistry";
+import { randomUUID } from "node:crypto";
 import {
     CLAUDE_MODEL_MODES,
     CODEX_MODEL_MODES,
@@ -131,6 +132,11 @@ type RunWithTasks = {
             attempt: number;
             status: string;
             machineId: string;
+            provider: string;
+            model: string | null;
+            childSessionId: string | null;
+            executionType: string;
+            resumeMessage: string | null;
             startedAt: Date | null;
             finishedAt: Date | null;
             exitCode: number | null;
@@ -201,6 +207,11 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
                 attempt: execution.attempt,
                 status: execution.status,
                 machineId: execution.machineId,
+                provider: execution.provider,
+                model: execution.model,
+                childSessionId: execution.childSessionId,
+                executionType: execution.executionType,
+                resumeMessage: execution.resumeMessage,
                 startedAt: execution.startedAt?.toISOString() ?? null,
                 finishedAt: execution.finishedAt?.toISOString() ?? null,
                 exitCode: execution.exitCode,
@@ -305,6 +316,11 @@ async function loadRunForUser(userId: string, runId: string, includeTasks: boole
                             attempt: true,
                             status: true,
                             machineId: true,
+                            provider: true,
+                            model: true,
+                            childSessionId: true,
+                            executionType: true,
+                            resumeMessage: true,
                             startedAt: true,
                             finishedAt: true,
                             exitCode: true,
@@ -387,6 +403,11 @@ async function loadTaskForUser(
                     attempt: true,
                     status: true,
                     machineId: true,
+                    provider: true,
+                    model: true,
+                    childSessionId: true,
+                    executionType: true,
+                    resumeMessage: true,
                     startedAt: true,
                     finishedAt: true,
                     exitCode: true,
@@ -959,6 +980,163 @@ export function orchestratorRoutes(app: Fastify) {
         });
     });
 
+    app.post('/v1/orchestrator/tasks/:taskId/send-message', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                taskId: z.string(),
+            }),
+            body: z.object({
+                message: z.string().min(1).max(65_536),
+            }),
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { taskId } = request.params;
+        const { message } = request.body;
+
+        const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+            const task = await tx.orchestratorTask.findFirst({
+                where: {
+                    id: taskId,
+                    run: {
+                        accountId: userId,
+                    },
+                },
+                select: {
+                    id: true,
+                    runId: true,
+                    provider: true,
+                    model: true,
+                    timeoutMs: true,
+                    status: true,
+                    run: {
+                        select: {
+                            id: true,
+                            controllerSessionId: true,
+                        },
+                    },
+                },
+            });
+
+            if (!task) {
+                return { kind: 'not_found' as const };
+            }
+
+            if (task.status !== 'completed' && task.status !== 'failed') {
+                return { kind: 'invalid_state' as const, status: task.status };
+            }
+
+            const sourceExecution = await tx.orchestratorExecution.findFirst({
+                where: {
+                    taskId: task.id,
+                    childSessionId: { not: null },
+                },
+                orderBy: {
+                    attempt: 'desc',
+                },
+                select: {
+                    childSessionId: true,
+                    machineId: true,
+                },
+            });
+            if (!sourceExecution?.childSessionId) {
+                return { kind: 'missing_child_session' as const };
+            }
+
+            const latestExecution = await tx.orchestratorExecution.findFirst({
+                where: {
+                    taskId: task.id,
+                },
+                orderBy: {
+                    attempt: 'desc',
+                },
+                select: {
+                    attempt: true,
+                },
+            });
+            const attempt = (latestExecution?.attempt ?? 0) + 1;
+
+            const movedTask = await tx.orchestratorTask.updateMany({
+                where: {
+                    id: task.id,
+                    status: { in: ['completed', 'failed'] },
+                },
+                data: {
+                    status: 'queued',
+                    nextAttemptAt: null,
+                    errorCode: null,
+                    errorMessage: null,
+                },
+            });
+            if (movedTask.count === 0) {
+                return { kind: 'conflict' as const };
+            }
+
+            const execution = await tx.orchestratorExecution.create({
+                data: {
+                    runId: task.runId,
+                    taskId: task.id,
+                    machineId: sourceExecution.machineId,
+                    provider: task.provider,
+                    model: task.model ?? null,
+                    childSessionId: sourceExecution.childSessionId,
+                    executionType: 'resume',
+                    resumeMessage: message,
+                    status: 'queued',
+                    attempt,
+                    dispatchToken: randomUUID(),
+                    timeoutMs: task.timeoutMs,
+                },
+                select: {
+                    id: true,
+                },
+            });
+
+            await tx.orchestratorRun.updateMany({
+                where: { id: task.runId },
+                data: {
+                    status: 'running',
+                    completedAt: null,
+                },
+            });
+
+            return {
+                kind: 'ok' as const,
+                runId: task.runId,
+                taskId: task.id,
+                executionId: execution.id,
+                controllerSessionId: task.run.controllerSessionId,
+            };
+        });
+
+        if (result.kind === 'not_found') {
+            return sendError(reply, 404, 'NOT_FOUND', 'Task not found');
+        }
+        if (result.kind === 'invalid_state') {
+            return sendError(reply, 409, 'CONFLICT', `Task ${taskId} must be in completed/failed state to accept messages`);
+        }
+        if (result.kind === 'missing_child_session') {
+            return sendError(reply, 409, 'CONFLICT', `Task ${taskId} has no child session id and cannot be resumed`);
+        }
+        if (result.kind === 'conflict') {
+            return sendError(reply, 409, 'CONFLICT', `Task ${taskId} is no longer resumable`);
+        }
+
+        void emitOrchestratorActivity(userId, result.controllerSessionId ?? null).catch(warn);
+
+        return reply.send({
+            ok: true,
+            data: {
+                accepted: true,
+                runId: result.runId,
+                taskId: result.taskId,
+                executionId: result.executionId,
+                next: { tool: 'orchestrator_pend', runId: result.runId },
+            },
+        });
+    });
+
     app.get('/v1/orchestrator/runs', {
         preHandler: app.authenticate,
         schema: {
@@ -1381,6 +1559,7 @@ export function orchestratorRoutes(app: Fastify) {
                 finishedAt: z.string().datetime().optional(),
                 exitCode: z.number().int().nullable().optional(),
                 signal: z.string().nullable().optional(),
+                childSessionId: z.string().min(1).max(256).nullable().optional(),
                 outputSummary: z.string().max(4096).nullable().optional(),
                 outputText: z.string().max(1_000_000).nullable().optional(),
                 errorCode: z.string().nullable().optional(),
@@ -1407,6 +1586,7 @@ export function orchestratorRoutes(app: Fastify) {
                     runId: true,
                     taskId: true,
                     attempt: true,
+                    childSessionId: true,
                     run: {
                         select: {
                             status: true,
@@ -1461,6 +1641,9 @@ export function orchestratorRoutes(app: Fastify) {
                     finishedAt,
                     exitCode: body.exitCode ?? null,
                     signal: body.signal ?? null,
+                    ...(body.childSessionId
+                        ? { childSessionId: body.childSessionId }
+                        : {}),
                     outputSummary: body.outputSummary ?? null,
                     outputText: body.outputText ?? null,
                     errorCode: body.errorCode ?? null,

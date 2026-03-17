@@ -9,6 +9,7 @@ export const ORCHESTRATOR_TOOLS_INSTRUCTION = trimIdent(`
   2) Call orchestrator_submit with mode="blocking" when you must wait for delegated results before continuing.
   3) Call orchestrator_submit with mode="async" when you can continue work immediately, then use orchestrator_pend / orchestrator_list to track progress.
   4) Use orchestrator_cancel to stop a run when requested.
+  5) Use orchestrator_send_message with taskId + message to continue a completed/failed delegated task in the same child session.
 
   After delegated runs complete, synthesize the outputs and continue the main task.
 `);

@@ -23,6 +23,7 @@ import {
   ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA,
   ORCHESTRATOR_LIST_TOOL_SCHEMA,
   ORCHESTRATOR_PEND_TOOL_SCHEMA,
+  ORCHESTRATOR_SEND_MESSAGE_TOOL_SCHEMA,
   ORCHESTRATOR_SUBMIT_TOOL_SCHEMA,
 } from '@/orchestrator/mcpToolSchemas';
 
@@ -117,6 +118,7 @@ async function main() {
     registerForwardedTool('orchestrator_pend', ORCHESTRATOR_PEND_TOOL_SCHEMA);
     registerForwardedTool('orchestrator_list', ORCHESTRATOR_LIST_TOOL_SCHEMA);
     registerForwardedTool('orchestrator_cancel', ORCHESTRATOR_CANCEL_TOOL_SCHEMA);
+    registerForwardedTool('orchestrator_send_message', ORCHESTRATOR_SEND_MESSAGE_TOOL_SCHEMA);
   }
 
   // Start STDIO transport

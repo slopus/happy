@@ -134,6 +134,8 @@ type MachineRpcHandlers = {
         taskId: string;
         dispatchToken: string;
         provider: 'claude' | 'codex' | 'gemini';
+        executionType: 'initial' | 'resume';
+        childSessionId?: string;
         model?: string;
         prompt: string;
         timeoutMs: number;
@@ -360,7 +362,7 @@ export class ApiMachineClient {
 
         // Register orchestrator dispatch handler
         this.rpcHandlerManager.registerHandler('orchestrator-dispatch', async (params: any) => {
-            const { executionId, runId, taskId, dispatchToken, provider, model, prompt, timeoutMs, workingDirectory } = params || {};
+            const { executionId, runId, taskId, dispatchToken, provider, executionType, childSessionId, model, prompt, timeoutMs, workingDirectory } = params || {};
 
             if (!executionId || typeof executionId !== 'string') {
                 throw new Error('executionId is required');
@@ -379,6 +381,15 @@ export class ApiMachineClient {
             }
             if (provider !== 'claude' && provider !== 'codex' && provider !== 'gemini') {
                 throw new Error(`Unsupported provider: ${provider}`);
+            }
+            if (executionType !== 'initial' && executionType !== 'resume') {
+                throw new Error('executionType must be "initial" or "resume"');
+            }
+            if (childSessionId !== undefined && (typeof childSessionId !== 'string' || childSessionId.length === 0 || childSessionId.length > 256)) {
+                throw new Error('childSessionId must be a non-empty string with max length 256');
+            }
+            if (executionType === 'resume' && (!childSessionId || typeof childSessionId !== 'string')) {
+                throw new Error('childSessionId is required for resume execution');
             }
             if (typeof prompt !== 'string' || prompt.trim().length === 0) {
                 throw new Error('prompt is required');
@@ -399,6 +410,8 @@ export class ApiMachineClient {
                 taskId,
                 dispatchToken,
                 provider,
+                executionType,
+                childSessionId,
                 model,
                 prompt,
                 timeoutMs: Math.floor(timeoutMs),

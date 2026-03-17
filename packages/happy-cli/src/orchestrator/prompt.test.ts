@@ -23,6 +23,7 @@ describe('orchestrator prompt helpers', () => {
   it('only returns orchestrator instructions for controller sessions', () => {
     const controller = getOrchestratorToolsInstruction({} as NodeJS.ProcessEnv);
     expect(controller).toContain('orchestrator_submit');
+    expect(controller).toContain('orchestrator_send_message');
 
     const worker = getOrchestratorToolsInstruction({ HAPPY_ORCH_ONESHOT: '1' } as NodeJS.ProcessEnv);
     expect(worker).toBeNull();

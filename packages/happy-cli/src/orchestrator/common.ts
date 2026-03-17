@@ -10,6 +10,8 @@ export type OrchestratorDispatchPayload = {
   taskId: string;
   dispatchToken: string;
   provider: OrchestratorProvider;
+  executionType: 'initial' | 'resume';
+  childSessionId?: string;
   model?: string;
   prompt: string;
   timeoutMs: number;
@@ -34,6 +36,8 @@ export const ORCHESTRATOR_ENV_KEYS = {
   executionId: 'HAPPY_ORCH_EXECUTION_ID',
   runId: 'HAPPY_ORCH_RUN_ID',
   taskId: 'HAPPY_ORCH_TASK_ID',
+  executionType: 'HAPPY_ORCH_EXECUTION_TYPE',
+  childSessionId: 'HAPPY_ORCH_CHILD_SESSION_ID',
   modelMode: 'HAPPY_ORCH_MODEL_MODE',
   promptB64: 'HAPPY_ORCH_PROMPT_B64',
   timeoutMs: 'HAPPY_ORCH_TIMEOUT_MS',
@@ -71,9 +75,13 @@ export function buildOrchestratorEnv(payload: OrchestratorDispatchPayload): Reco
     [ORCHESTRATOR_ENV_KEYS.executionId]: payload.executionId,
     [ORCHESTRATOR_ENV_KEYS.runId]: payload.runId,
     [ORCHESTRATOR_ENV_KEYS.taskId]: payload.taskId,
+    [ORCHESTRATOR_ENV_KEYS.executionType]: payload.executionType,
     [ORCHESTRATOR_ENV_KEYS.promptB64]: encodePromptToBase64(payload.prompt),
     [ORCHESTRATOR_ENV_KEYS.timeoutMs]: String(payload.timeoutMs),
   };
+  if (payload.childSessionId) {
+    env[ORCHESTRATOR_ENV_KEYS.childSessionId] = payload.childSessionId;
+  }
   if (payload.workingDirectory) {
     env[ORCHESTRATOR_ENV_KEYS.workingDirectory] = payload.workingDirectory;
   }
