@@ -259,12 +259,46 @@ const {
         return execution;
     };
 
+    const selectTask = (task: TaskRecord, select: any) => {
+        const includeRun = !!select?.run;
+        const includeExecutions = !!select?.executions;
+        return {
+            ...task,
+            ...(includeRun
+                ? {
+                    run: (() => {
+                        const run = state.runs.find((item) => item.id === task.runId);
+                        if (!run) {
+                            return null;
+                        }
+                        return {
+                            id: run.id,
+                            title: run.title,
+                            status: run.status,
+                            updatedAt: run.updatedAt,
+                            accountId: run.accountId,
+                        };
+                    })(),
+                }
+                : {}),
+            ...(includeExecutions
+                ? {
+                    executions: state.executions
+                        .filter((item) => item.taskId === task.id)
+                        .sort((a, b) => a.attempt - b.attempt)
+                        .map((item) => ({ ...item })),
+                }
+                : {}),
+        };
+    };
+
     const selectRun = (run: RunRecord, select: any) => {
         const includeTasks = !!select?.tasks;
         const tasks = includeTasks
             ? state.tasks
                 .filter((task) => task.runId === run.id)
                 .sort((a, b) => a.seq - b.seq)
+                .map((task) => selectTask(task, select.tasks?.select))
             : undefined;
         return {
             ...run,
@@ -395,7 +429,21 @@ const {
             if (!task) {
                 return null;
             }
-            return { ...task };
+            return selectTask(task, args?.select);
+        }),
+        findFirst: vi.fn(async (args: any) => {
+            let rows = state.tasks.filter((item) => matchesTask(item, args?.where));
+            if (args?.where?.run?.accountId) {
+                rows = rows.filter((task) => {
+                    const run = state.runs.find((item) => item.id === task.runId);
+                    return run?.accountId === args.where.run.accountId;
+                });
+            }
+            const task = rows[0];
+            if (!task) {
+                return null;
+            }
+            return selectTask(task, args?.select);
         }),
         findMany: vi.fn(async (args: any) => {
             let rows = state.tasks.filter((item) => matchesTask(item, args?.where));
@@ -405,7 +453,7 @@ const {
             if (typeof args?.take === 'number') {
                 rows = rows.slice(0, args.take);
             }
-            return rows.map((item) => ({ ...item }));
+            return rows.map((item) => selectTask(item, args?.select));
         }),
         updateMany: vi.fn(async (args: any) => {
             const rows = state.tasks.filter((item) => matchesTask(item, args?.where));
@@ -1073,6 +1121,54 @@ describe('orchestrator integration paths', () => {
         expect(listRuns.json().data.items[0]).toEqual(expect.objectContaining({
             runId,
             summary: expect.any(Object),
+        }));
+        await app.close();
+    });
+
+    it('returns single-task detail with optional execution history', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'single-task-detail',
+                tasks: [
+                    {
+                        taskKey: 'task-a',
+                        provider: 'claude',
+                        prompt: 'step a',
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+        const runId = submit.json().data.runId as string;
+        const taskId = state.tasks.find((task) => task.runId === runId)!.id;
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:00.000Z'));
+
+        const response = await app.inject({
+            method: 'GET',
+            url: `/v1/orchestrator/runs/${runId}/tasks/${taskId}?includeExecutions=true`,
+            headers: { 'x-user-id': 'user-1' },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().data).toEqual(expect.objectContaining({
+            run: expect.objectContaining({
+                runId,
+                title: 'single-task-detail',
+            }),
+            task: expect.objectContaining({
+                taskId,
+                executions: [
+                    expect.objectContaining({
+                        attempt: 1,
+                        status: 'dispatching',
+                    }),
+                ],
+            }),
         }));
         await app.close();
     });

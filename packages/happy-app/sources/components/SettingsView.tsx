@@ -301,6 +301,12 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="albums-outline" size={29} color="#007AFF" />}
                     onPress={() => router.push('/session/history')}
                 />
+                <Item
+                    title={t('settings.orchestratorRuns')}
+                    subtitle={t('settings.orchestratorRunsSubtitle')}
+                    icon={<Ionicons name="git-network-outline" size={29} color="#007AFF" />}
+                    onPress={() => router.push('/orchestrator')}
+                />
             </ItemGroup>
 
             {/* Features */}
