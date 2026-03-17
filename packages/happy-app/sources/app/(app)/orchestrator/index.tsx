@@ -47,8 +47,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
     },
     filterChip: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
         borderRadius: 999,
         borderWidth: 1,
         borderColor: theme.colors.divider,
