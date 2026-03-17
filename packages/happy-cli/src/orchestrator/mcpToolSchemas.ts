@@ -5,6 +5,7 @@ const orchestratorTaskSchema = z.object({
   title: z.string().min(1).max(256).optional(),
   provider: z.enum(['claude', 'codex', 'gemini']),
   prompt: z.string().min(1).max(65536),
+  workingDirectory: z.string().max(512).optional(),
   timeoutMs: z.number().int().min(1000).max(24 * 60 * 60 * 1000).optional(),
   dependsOn: z.array(z.string().min(1).max(128)).max(31).optional(),
   retry: z.object({

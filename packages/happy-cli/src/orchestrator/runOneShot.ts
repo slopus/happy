@@ -12,6 +12,7 @@ type SpawnPlan = {
   command: string;
   args: string[];
   env?: NodeJS.ProcessEnv;
+  cwd?: string;
 };
 
 function parseProvider(providerArg: string | undefined): OrchestratorProvider {
@@ -29,12 +30,21 @@ function readPromptFromEnv(): string {
   return decodePromptFromBase64(promptB64);
 }
 
-function buildSpawnPlan(provider: OrchestratorProvider, prompt: string): SpawnPlan {
+function readWorkingDirectoryFromEnv(): string | undefined {
+  const value = process.env[ORCHESTRATOR_ENV_KEYS.workingDirectory];
+  if (typeof value !== 'string' || value.length === 0) {
+    return undefined;
+  }
+  return value;
+}
+
+function buildSpawnPlan(provider: OrchestratorProvider, prompt: string, workingDirectory?: string): SpawnPlan {
   switch (provider) {
     case 'claude':
       return {
         command: 'node',
         args: [claudeCliPath, '-p', prompt],
+        cwd: workingDirectory,
         env: {
           ...process.env,
           DISABLE_AUTOUPDATER: '1',
@@ -44,6 +54,7 @@ function buildSpawnPlan(provider: OrchestratorProvider, prompt: string): SpawnPl
       return {
         command: 'bash',
         args: ['-lc', 'npx -y @openai/codex@0.114.0 exec "$ORCH_PROMPT"'],
+        cwd: workingDirectory,
         env: {
           ...process.env,
           ORCH_PROMPT: prompt,
@@ -53,6 +64,7 @@ function buildSpawnPlan(provider: OrchestratorProvider, prompt: string): SpawnPl
       return {
         command: 'bash',
         args: ['-lc', 'gemini -p "$ORCH_PROMPT"'],
+        cwd: workingDirectory,
         env: {
           ...process.env,
           ORCH_PROMPT: prompt,
@@ -66,7 +78,7 @@ function buildSpawnPlan(provider: OrchestratorProvider, prompt: string): SpawnPl
 async function spawnAndWait(plan: SpawnPlan): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     const child = spawn(plan.command, plan.args, {
-      cwd: process.cwd(),
+      cwd: plan.cwd,
       env: plan.env ?? process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -100,8 +112,9 @@ function readProviderFromArgs(args: string[]): string | undefined {
 export async function runOrchestratorOneShot(args: string[]): Promise<number> {
   const provider = parseProvider(readProviderFromArgs(args));
   const prompt = readPromptFromEnv();
+  const workingDirectory = readWorkingDirectoryFromEnv();
   logger.debug(`[ORCHESTRATOR ONESHOT] Starting ${provider} one-shot`);
 
-  const plan = buildSpawnPlan(provider, prompt);
+  const plan = buildSpawnPlan(provider, prompt, workingDirectory);
   return spawnAndWait(plan);
 }

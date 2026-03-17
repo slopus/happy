@@ -166,6 +166,7 @@ model OrchestratorTask {
   title             String?
   provider          String
   prompt            String
+  workingDirectory  String?
   timeoutMs         Int?
   targetMachineId   String?
   dependsOnTaskKeys String[]                @default([])

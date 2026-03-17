@@ -37,6 +37,7 @@ export type SchedulerAction =
             provider: string;
             prompt: string;
             timeoutMs: number;
+            workingDirectory?: string;
         };
     }
     | {
@@ -394,6 +395,7 @@ async function buildRunActions(run: {
                         dependsOnTaskKeys: true,
                         provider: true,
                         prompt: true,
+                        workingDirectory: true,
                         timeoutMs: true,
                         targetMachineId: true,
                         nextAttemptAt: true,
@@ -571,6 +573,7 @@ async function buildRunActions(run: {
                             provider: task.provider,
                             prompt: task.prompt,
                             timeoutMs,
+                            workingDirectory: task.workingDirectory ?? undefined,
                         },
                     });
                 }
