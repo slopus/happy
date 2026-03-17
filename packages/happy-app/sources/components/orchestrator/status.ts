@@ -1,28 +1,29 @@
 import type { OrchestratorExecutionStatus, OrchestratorRunStatus, OrchestratorTaskStatus } from '@/sync/apiOrchestrator';
 import type { UnistylesThemes } from 'react-native-unistyles';
+import { t } from '@/text';
 
 type AnyStatus = OrchestratorRunStatus | OrchestratorTaskStatus | OrchestratorExecutionStatus;
 
 export function getStatusLabel(status: AnyStatus): string {
     switch (status) {
         case 'queued':
-            return 'Queued';
+            return t('settings.orchestratorStatusQueued');
         case 'dispatching':
-            return 'Dispatching';
+            return t('settings.orchestratorStatusDispatching');
         case 'running':
-            return 'Running';
+            return t('settings.orchestratorStatusRunning');
         case 'canceling':
-            return 'Canceling';
+            return t('settings.orchestratorStatusCanceling');
         case 'completed':
-            return 'Completed';
+            return t('settings.orchestratorStatusCompleted');
         case 'failed':
-            return 'Failed';
+            return t('settings.orchestratorStatusFailed');
         case 'cancelled':
-            return 'Cancelled';
+            return t('settings.orchestratorStatusCancelled');
         case 'timeout':
-            return 'Timeout';
+            return t('settings.orchestratorStatusTimeout');
         case 'dependency_failed':
-            return 'Dependency Failed';
+            return t('settings.orchestratorStatusDependencyFailed');
         default:
             return status;
     }

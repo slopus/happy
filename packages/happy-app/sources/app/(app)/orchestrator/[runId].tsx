@@ -13,6 +13,7 @@ import { isRunActive } from '@/components/orchestrator/status';
 import { Modal } from '@/modal';
 import { delay } from '@/utils/time';
 import { formatDate } from '@/utils/formatDate';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -153,7 +154,7 @@ export default function OrchestratorRunDetailScreen() {
             });
             setRun(data);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load run');
+            setError(err instanceof Error ? err.message : t('settings.orchestratorRunLoadError'));
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -174,10 +175,10 @@ export default function OrchestratorRunDetailScreen() {
         }
 
         const confirmed = await Modal.confirm(
-            'Cancel run?',
-            'Queued tasks will stop immediately, and running tasks will be terminated.',
+            t('settings.orchestratorCancelTitle'),
+            t('settings.orchestratorCancelMessage'),
             {
-                confirmText: 'Cancel Run',
+                confirmText: t('settings.orchestratorCancelConfirm'),
                 destructive: true,
             },
         );
@@ -190,7 +191,7 @@ export default function OrchestratorRunDetailScreen() {
             await cancelOrchestratorRun(credentials, runId, 'Cancelled from app');
             await loadRun({ silent: true });
         } catch (err) {
-            Modal.alert('Cancel failed', err instanceof Error ? err.message : 'Failed to cancel run');
+            Modal.alert(t('settings.orchestratorCancelFailedTitle'), err instanceof Error ? err.message : t('settings.orchestratorCancelFailedMessage'));
         } finally {
             setCanceling(false);
         }
@@ -257,9 +258,9 @@ export default function OrchestratorRunDetailScreen() {
     if (loading && !run) {
         return (
             <View style={styles.center}>
-                <Stack.Screen options={{ headerTitle: 'Orchestrator Run' }} />
+                <Stack.Screen options={{ headerTitle: t('settings.orchestratorRunDetails') }} />
                 <ActivityIndicator size="large" />
-                <Text style={styles.metaText}>Loading run...</Text>
+                <Text style={styles.metaText}>{t('settings.orchestratorLoadingRun')}</Text>
             </View>
         );
     }
@@ -267,8 +268,8 @@ export default function OrchestratorRunDetailScreen() {
     if (!run) {
         return (
             <View style={styles.center}>
-                <Stack.Screen options={{ headerTitle: 'Orchestrator Run' }} />
-                <Text style={styles.sectionTitle}>Run not found</Text>
+                <Stack.Screen options={{ headerTitle: t('settings.orchestratorRunDetails') }} />
+                <Text style={styles.sectionTitle}>{t('settings.orchestratorRunNotFound')}</Text>
                 {!!error && <Text style={styles.error}>{error}</Text>}
             </View>
         );
@@ -278,7 +279,7 @@ export default function OrchestratorRunDetailScreen() {
         <View style={styles.container}>
             <Stack.Screen
                 options={{
-                    headerTitle: run.title || 'Orchestrator Run',
+                    headerTitle: run.title || t('settings.orchestratorRunDetails'),
                     headerRight: canCancel ? () => (
                         <Pressable
                             style={styles.cancelButton}
@@ -286,7 +287,7 @@ export default function OrchestratorRunDetailScreen() {
                             disabled={canceling || run.status === 'canceling'}
                         >
                             <Text style={styles.cancelButtonText}>
-                                {run.status === 'canceling' || canceling ? 'Canceling...' : 'Cancel'}
+                                {run.status === 'canceling' || canceling ? t('settings.orchestratorCanceling') : t('settings.orchestratorCancel')}
                             </Text>
                         </Pressable>
                     ) : undefined,
@@ -304,19 +305,19 @@ export default function OrchestratorRunDetailScreen() {
                         <Text style={styles.title}>{run.title}</Text>
                         <OrchestratorStatusBadge status={run.status} />
                     </View>
-                    <Text style={styles.summaryLine}>Run ID: {run.runId}</Text>
-                    <Text style={styles.summaryLine}>Created: {formatDate(run.createdAt)}</Text>
-                    <Text style={styles.summaryLine}>Updated: {formatDate(run.updatedAt)}</Text>
+                    <Text style={styles.summaryLine}>{t('settings.orchestratorLabelRunId')}: {run.runId}</Text>
+                    <Text style={styles.summaryLine}>{t('settings.orchestratorLabelCreated')}: {formatDate(run.createdAt)}</Text>
+                    <Text style={styles.summaryLine}>{t('settings.orchestratorLabelUpdated')}: {formatDate(run.updatedAt)}</Text>
                     <View style={styles.progressBar}>
                         <OrchestratorProgressBar summary={run.summary} />
                     </View>
                     <Text style={styles.summaryLine}>
-                        Total {run.summary.total} · Running {run.summary.running} · Completed {run.summary.completed} · Failed {run.summary.failed} · Cancelled {run.summary.cancelled}
+                        {t('settings.orchestratorSummaryLine', { total: run.summary.total, running: run.summary.running, completed: run.summary.completed, failed: run.summary.failed, cancelled: run.summary.cancelled })}
                     </Text>
                 </View>
 
                 <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>Tasks</Text>
+                    <Text style={styles.sectionTitle}>{t('settings.orchestratorTasksTitle')}</Text>
                     {(run.tasks ?? []).map((task) => (
                         <Pressable
                             key={task.taskId}
@@ -325,21 +326,21 @@ export default function OrchestratorRunDetailScreen() {
                         >
                             <View style={styles.taskHeader}>
                                 <Text style={styles.taskTitle} numberOfLines={1}>
-                                    #{task.seq} {task.title || task.taskKey || `${task.provider} task`}
+                                    #{task.seq} {task.title || task.taskKey || t('settings.orchestratorProviderTask', { provider: task.provider })}
                                 </Text>
                                 <OrchestratorStatusBadge status={task.status} />
                             </View>
                             <Text style={styles.taskMeta}>
-                                Provider: {task.provider} · Attempts: {(task.executions?.length ?? 0)}/{task.retry.maxAttempts}
+                                {t('settings.orchestratorTaskMeta', { provider: task.provider, current: task.executions?.length ?? 0, max: task.retry.maxAttempts })}
                             </Text>
                             {task.taskKey ? (
-                                <Text style={styles.taskMeta}>Task Key: {task.taskKey}</Text>
+                                <Text style={styles.taskMeta}>{t('settings.orchestratorLabelTaskKey')}: {task.taskKey}</Text>
                             ) : null}
                             {task.dependsOn.length > 0 ? (
                                 <View style={styles.depWrap}>
                                     {task.dependsOn.map((dependencyKey) => (
                                         <View key={`${task.taskId}-${dependencyKey}`} style={styles.depPill}>
-                                            <Text style={styles.depText}>depends on {dependencyKey}</Text>
+                                            <Text style={styles.depText}>{t('settings.orchestratorDependsOnKey', { key: dependencyKey })}</Text>
                                         </View>
                                     ))}
                                 </View>

@@ -231,6 +231,74 @@ export const en = {
         orchestratorFilterCancelled: 'Cancelled',
         orchestratorOpenRuns: 'Open orchestrator runs',
 
+        // Orchestrator status labels
+        orchestratorStatusQueued: 'Queued',
+        orchestratorStatusDispatching: 'Dispatching',
+        orchestratorStatusRunning: 'Running',
+        orchestratorStatusCanceling: 'Canceling',
+        orchestratorStatusCompleted: 'Completed',
+        orchestratorStatusFailed: 'Failed',
+        orchestratorStatusCancelled: 'Cancelled',
+        orchestratorStatusTimeout: 'Timeout',
+        orchestratorStatusDependencyFailed: 'Dependency Failed',
+
+        // Orchestrator run detail
+        orchestratorLoadError: 'Failed to load orchestrator runs',
+        orchestratorRunLoadError: 'Failed to load run',
+        orchestratorLoadingRun: 'Loading run...',
+        orchestratorRunNotFound: 'Run not found',
+        orchestratorCancel: 'Cancel',
+        orchestratorCanceling: 'Canceling...',
+        orchestratorCancelTitle: 'Cancel run?',
+        orchestratorCancelMessage: 'Queued tasks will stop immediately, and running tasks will be terminated.',
+        orchestratorCancelConfirm: 'Cancel Run',
+        orchestratorCancelFailedTitle: 'Cancel failed',
+        orchestratorCancelFailedMessage: 'Failed to cancel run',
+        orchestratorTasksTitle: 'Tasks',
+
+        // Orchestrator task detail
+        orchestratorTaskLoadError: 'Failed to load task',
+        orchestratorLoadingTask: 'Loading task details...',
+        orchestratorTaskNotFound: 'Task not found',
+        orchestratorResultTitle: 'Result',
+        orchestratorExecutionHistoryTitle: 'Retry / Execution History',
+        orchestratorNoExecutions: 'No execution records yet.',
+
+        // Orchestrator detail labels
+        orchestratorLabelRunId: 'Run ID',
+        orchestratorLabelCreated: 'Created',
+        orchestratorLabelUpdated: 'Updated',
+        orchestratorLabelProvider: 'Provider',
+        orchestratorLabelAttempts: 'Attempts',
+        orchestratorLabelTaskKey: 'Task Key',
+        orchestratorLabelRun: 'Run',
+        orchestratorLabelWorkingDir: 'Working Directory',
+        orchestratorLabelDependsOn: 'Depends On',
+        orchestratorLabelRetryPolicy: 'Retry Policy',
+        orchestratorLabelNextAttempt: 'Next Attempt At',
+        orchestratorLabelOutputSummary: 'Output Summary',
+        orchestratorLabelErrorCode: 'Error Code',
+        orchestratorLabelErrorMessage: 'Error Message',
+        orchestratorLabelStarted: 'Started',
+        orchestratorLabelFinished: 'Finished',
+        orchestratorLabelExitCode: 'Exit Code',
+        orchestratorLabelSignal: 'Signal',
+        orchestratorLabelError: 'Error',
+
+        // Orchestrator dynamic strings
+        orchestratorUpdatedTime: ({ time }: { time: string }) => `Updated ${time}`,
+        orchestratorSummaryLine: ({ total, running, completed, failed, cancelled }: { total: number; running: number; completed: number; failed: number; cancelled: number }) =>
+            `Total ${total} · Running ${running} · Completed ${completed} · Failed ${failed} · Cancelled ${cancelled}`,
+        orchestratorProviderTask: ({ provider }: { provider: string }) => `${provider} task`,
+        orchestratorTaskSeq: ({ seq }: { seq: number }) => `Task #${seq}`,
+        orchestratorTaskMeta: ({ provider, current, max }: { provider: string; current: number; max: number }) =>
+            `Provider: ${provider} · Attempts: ${current}/${max}`,
+        orchestratorDependsOnKey: ({ key }: { key: string }) => `depends on ${key}`,
+        orchestratorRetryPolicyValue: ({ maxAttempts, backoffMs }: { maxAttempts: number; backoffMs: number }) =>
+            `${maxAttempts} attempt(s), backoff ${backoffMs}ms`,
+        orchestratorAttemptTitle: ({ attempt, machineId }: { attempt: number; machineId: string }) =>
+            `Attempt #${attempt} · ${machineId}`,
+
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>

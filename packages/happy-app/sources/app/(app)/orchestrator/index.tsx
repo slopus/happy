@@ -233,7 +233,7 @@ export default function OrchestratorRunsScreen() {
             setRuns((previous) => append ? [...previous, ...result.items] : result.items);
             setNextCursor(result.nextCursor);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load orchestrator runs');
+            setError(err instanceof Error ? err.message : t('settings.orchestratorLoadError'));
         } finally {
             if (append) {
                 setLoadingMore(false);
@@ -284,12 +284,12 @@ export default function OrchestratorRunsScreen() {
                     <OrchestratorStatusBadge status={item.status} />
                 </View>
                 <Text style={styles.meta}>
-                    Updated {formatDate(item.updatedAt)}
+                    {t('settings.orchestratorUpdatedTime', { time: formatDate(item.updatedAt) })}
                 </Text>
                 <View style={styles.progressRow}>
                     <OrchestratorProgressBar summary={item.summary} />
                     <Text style={styles.summary}>
-                        Total {item.summary.total} · Running {item.summary.running} · Completed {item.summary.completed} · Failed {item.summary.failed} · Cancelled {item.summary.cancelled}
+                        {t('settings.orchestratorSummaryLine', { total: item.summary.total, running: item.summary.running, completed: item.summary.completed, failed: item.summary.failed, cancelled: item.summary.cancelled })}
                     </Text>
                 </View>
             </Pressable>
