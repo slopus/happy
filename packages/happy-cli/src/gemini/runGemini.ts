@@ -558,7 +558,7 @@ export async function runGemini(opts: {
   const mcpServers = mcp.configForHttp();
 
   // Create permission handler for tool approval (variable declared earlier for onSessionSwap)
-  permissionHandler = new GeminiPermissionHandler(session);
+  permissionHandler = new GeminiPermissionHandler(session, api.push());
   
   // Create reasoning processor for handling thinking/reasoning chunks
   const reasoningProcessor = new GeminiReasoningProcessor((message) => {

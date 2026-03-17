@@ -10,6 +10,7 @@
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { AgentState } from "@/api/types";
+import { PushNotificationClient } from "@/api/pushNotifications";
 
 /**
  * Permission response from the mobile app.
@@ -46,6 +47,7 @@ export interface PermissionResult {
 export abstract class BasePermissionHandler {
     protected pendingRequests = new Map<string, PendingRequest>();
     protected session: ApiSessionClient;
+    protected pushClient: PushNotificationClient;
     private isResetting = false;
 
     /**
@@ -53,8 +55,14 @@ export abstract class BasePermissionHandler {
      */
     protected abstract getLogPrefix(): string;
 
-    constructor(session: ApiSessionClient) {
+    /**
+     * Returns the agent name used in push notification text (e.g. "Codex", "Gemini").
+     */
+    protected abstract getAgentName(): string;
+
+    constructor(session: ApiSessionClient, pushClient: PushNotificationClient) {
         this.session = session;
+        this.pushClient = pushClient;
         this.setupRpcHandler();
     }
 
@@ -121,9 +129,21 @@ export abstract class BasePermissionHandler {
     }
 
     /**
-     * Add a pending request to the agent state.
+     * Add a pending request to the agent state and send a push notification.
      */
     protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
+        // Send push notification to mobile app
+        this.pushClient.sendToAllDevices(
+            'Permission Request',
+            `${this.getAgentName()} wants to ${toolName}`,
+            {
+                sessionId: this.session.sessionId,
+                requestId: toolCallId,
+                tool: toolName,
+                type: 'permission_request'
+            }
+        );
+
         this.session.updateAgentState((currentState) => ({
             ...currentState,
             requests: {

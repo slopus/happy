@@ -520,7 +520,7 @@ export async function runCodex(opts: {
     // Set up processors and permission handler
     //
 
-    permissionHandler = new CodexPermissionHandler(session);
+    permissionHandler = new CodexPermissionHandler(session, api.push());
     let messageSentThisTurn = false;
 
     const reasoningProcessor = new ReasoningProcessor((message) => {

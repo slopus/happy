@@ -7,6 +7,7 @@
 
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
+import { PushNotificationClient } from "@/api/pushNotifications";
 import {
     BasePermissionHandler,
     PermissionResult,
@@ -20,12 +21,16 @@ export type { PermissionResult, PendingRequest };
  * Codex-specific permission handler.
  */
 export class CodexPermissionHandler extends BasePermissionHandler {
-    constructor(session: ApiSessionClient) {
-        super(session);
+    constructor(session: ApiSessionClient, pushClient: PushNotificationClient) {
+        super(session, pushClient);
     }
 
     protected getLogPrefix(): string {
         return '[Codex]';
+    }
+
+    protected getAgentName(): string {
+        return 'Codex';
     }
 
     /**
