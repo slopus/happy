@@ -55,7 +55,7 @@ import {
     processNewOpenClawMachineEvent,
     processUpdateOpenClawMachineEvent,
 } from '../openclaw/storage';
-import { resolveModelSelectionForFlavor } from '@/constants/modelCatalog';
+import { resolveModelSelectionForFlavor } from 'happy-wire';
 import { getOrchestratorActivity } from './apiOrchestrator';
 import { sessionAbort, sessionUpdateMetadataFields } from './ops';
 import { shouldInvalidateGitStatusOnActivityTransition } from './gitStatusRefreshPolicy';

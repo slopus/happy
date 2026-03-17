@@ -29,6 +29,7 @@ type TaskRecord = {
     taskKey: string | null;
     title: string | null;
     provider: 'claude' | 'codex' | 'gemini';
+    model: string | null;
     prompt: string;
     workingDirectory: string | null;
     timeoutMs: number | null;
@@ -52,6 +53,7 @@ type ExecutionRecord = {
     taskId: string;
     machineId: string;
     provider: 'claude' | 'codex' | 'gemini';
+    model: string | null;
     status: ExecutionStatus;
     attempt: number;
     dispatchToken: string;
@@ -411,6 +413,7 @@ const {
                     taskKey: data.taskKey ?? null,
                     title: data.title ?? null,
                     provider: data.provider,
+                    model: data.model ?? null,
                     prompt: data.prompt,
                     workingDirectory: data.workingDirectory ?? null,
                     timeoutMs: data.timeoutMs ?? null,
@@ -500,6 +503,7 @@ const {
                 taskId: args.data.taskId,
                 machineId: args.data.machineId,
                 provider: args.data.provider,
+                model: args.data.model ?? null,
                 status: args.data.status,
                 attempt: args.data.attempt ?? 1,
                 dispatchToken: args.data.dispatchToken,
@@ -970,6 +974,124 @@ describe('orchestrator integration paths', () => {
 
         expect(submit.statusCode).toBe(400);
         expect(submit.json().error.code).toBe('INVALID_DAG_CYCLE');
+        await app.close();
+    });
+
+    it('rejects submit when task model does not match provider', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'invalid-task-model',
+                tasks: [
+                    {
+                        provider: 'claude',
+                        model: 'gpt-5.3-codex-high',
+                        prompt: 'work',
+                    },
+                ],
+            },
+        });
+
+        expect(submit.statusCode).toBe(400);
+        expect(submit.json().error.code).toBe('INVALID_ARGUMENT');
+        await app.close();
+    });
+
+    it('allows unknown model strings outside catalog and forwards as-is', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'unknown-task-model-forward',
+                tasks: [
+                    {
+                        provider: 'claude',
+                        model: 'claude-sonnet-4-6-20260315',
+                        prompt: 'work',
+                    },
+                ],
+            },
+        });
+
+        expect(submit.statusCode).toBe(200);
+        const runId = submit.json().data.runId as string;
+        const createdTask = state.tasks.find((task) => task.runId === runId);
+        expect(createdTask?.model).toBe('claude-sonnet-4-6-20260315');
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:00.000Z'));
+        expect(invokeUserRpcMock).toHaveBeenCalledWith(
+            'user-1',
+            'machine-1:orchestrator-dispatch',
+            expect.objectContaining({
+                provider: 'claude',
+                model: 'claude-sonnet-4-6-20260315',
+            }),
+            expect.any(Number),
+        );
+        await app.close();
+    });
+
+    it('normalizes default model and persists model in dispatch/execution/task responses', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'task-model-passthrough',
+                tasks: [
+                    {
+                        provider: 'codex',
+                        model: 'gpt-5.3-codex-high',
+                        prompt: 'work-a',
+                    },
+                    {
+                        provider: 'claude',
+                        model: 'default',
+                        prompt: 'work-b',
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+        const runId = submit.json().data.runId as string;
+
+        const createdTasks = state.tasks.filter((task) => task.runId === runId).sort((a, b) => a.seq - b.seq);
+        expect(createdTasks[0].model).toBe('gpt-5.3-codex-high');
+        expect(createdTasks[1].model).toBeNull();
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:00.000Z'));
+
+        expect(invokeUserRpcMock).toHaveBeenCalledWith(
+            'user-1',
+            'machine-1:orchestrator-dispatch',
+            expect.objectContaining({
+                provider: 'codex',
+                model: 'gpt-5.3-codex-high',
+            }),
+            expect.any(Number),
+        );
+        expect(state.executions).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                provider: 'codex',
+                model: 'gpt-5.3-codex-high',
+            }),
+        ]));
+
+        const getRun = await app.inject({
+            method: 'GET',
+            url: `/v1/orchestrator/runs/${runId}`,
+            headers: { 'x-user-id': 'user-1' },
+        });
+        expect(getRun.statusCode).toBe(200);
+        const responseTasks = getRun.json().data.tasks;
+        expect(responseTasks[0].model).toBe('gpt-5.3-codex-high');
+        expect(responseTasks[1].model).toBeNull();
         await app.close();
     });
 

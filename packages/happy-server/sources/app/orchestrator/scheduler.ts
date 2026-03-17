@@ -35,6 +35,7 @@ export type SchedulerAction =
             taskId: string;
             dispatchToken: string;
             provider: string;
+            model?: string;
             prompt: string;
             timeoutMs: number;
             workingDirectory?: string;
@@ -394,6 +395,7 @@ async function buildRunActions(run: {
                         taskKey: true,
                         dependsOnTaskKeys: true,
                         provider: true,
+                        model: true,
                         prompt: true,
                         workingDirectory: true,
                         timeoutMs: true,
@@ -543,6 +545,7 @@ async function buildRunActions(run: {
                             taskId: task.id,
                             machineId,
                             provider: task.provider,
+                            model: task.model ?? null,
                             status: 'dispatching',
                             attempt,
                             dispatchToken,
@@ -571,6 +574,7 @@ async function buildRunActions(run: {
                             taskId: execution.taskId,
                             dispatchToken: execution.dispatchToken,
                             provider: task.provider,
+                            model: task.model ?? undefined,
                             prompt: task.prompt,
                             timeoutMs,
                             workingDirectory: task.workingDirectory ?? undefined,

@@ -17,7 +17,7 @@ import {
 } from './voiceToolContracts';
 import { getSendConfirmation, getVoiceProvider } from '@/sync/voiceConfig';
 import { showSendConfirmation } from './SendConfirmationModal';
-import { MODEL_MODES } from '@/constants/modelCatalog';
+import { MODEL_MODES } from 'happy-wire';
 
 function getLatestAssistantReplyFromCurrentSession(maxChars: number): string | null {
     const sessionId = getCurrentRealtimeSessionId();

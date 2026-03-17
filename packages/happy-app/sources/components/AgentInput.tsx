@@ -39,7 +39,7 @@ import {
     MODEL_MODE_DEFAULT,
     parseCodexModelMode,
     FAST_MODE_ICON_COLOR,
-} from '@/constants/modelCatalog';
+} from 'happy-wire';
 
 interface AgentInputProps {
     value: string;

@@ -3,7 +3,7 @@ import { Text, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { hapticsLight } from './haptics';
-import type { ModelMode as CatalogModelMode } from '@/constants/modelCatalog';
+import type { ModelMode as CatalogModelMode } from 'happy-wire';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo';
 

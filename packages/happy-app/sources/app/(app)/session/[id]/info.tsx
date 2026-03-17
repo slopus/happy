@@ -30,7 +30,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { formatModelDisplay, resolveLocalModelDisplay, isModelFast, FAST_MODE_ICON_COLOR } from '@/constants/modelCatalog';
+import { formatModelDisplay, resolveLocalModelDisplay, isModelFast, FAST_MODE_ICON_COLOR } from 'happy-wire';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {

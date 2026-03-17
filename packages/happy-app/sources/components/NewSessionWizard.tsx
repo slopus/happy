@@ -14,7 +14,7 @@ import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariabl
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { profileSyncService } from '@/sync/profileSync';
-import { CLAUDE_MODEL_OPTIONS, GEMINI_MODEL_OPTIONS, CODEX_MODEL_OPTIONS, MODEL_MODE_DEFAULT, isModelModeForAgent } from '@/constants/modelCatalog';
+import { CLAUDE_MODEL_OPTIONS, GEMINI_MODEL_OPTIONS, CODEX_MODEL_OPTIONS, MODEL_MODE_DEFAULT, isModelModeForAgent } from 'happy-wire';
 
 /**
  * @deprecated Legacy wizard implementation.

@@ -134,6 +134,7 @@ type MachineRpcHandlers = {
         taskId: string;
         dispatchToken: string;
         provider: 'claude' | 'codex' | 'gemini';
+        model?: string;
         prompt: string;
         timeoutMs: number;
         workingDirectory?: string;
@@ -359,7 +360,7 @@ export class ApiMachineClient {
 
         // Register orchestrator dispatch handler
         this.rpcHandlerManager.registerHandler('orchestrator-dispatch', async (params: any) => {
-            const { executionId, runId, taskId, dispatchToken, provider, prompt, timeoutMs, workingDirectory } = params || {};
+            const { executionId, runId, taskId, dispatchToken, provider, model, prompt, timeoutMs, workingDirectory } = params || {};
 
             if (!executionId || typeof executionId !== 'string') {
                 throw new Error('executionId is required');
@@ -388,6 +389,9 @@ export class ApiMachineClient {
             if (workingDirectory !== undefined && (typeof workingDirectory !== 'string' || workingDirectory.length > 512)) {
                 throw new Error('workingDirectory must be a string with max length 512');
             }
+            if (model !== undefined && (typeof model !== 'string' || model.length === 0 || model.length > 128)) {
+                throw new Error('model must be a non-empty string with max length 128');
+            }
 
             return orchestratorDispatch({
                 executionId,
@@ -395,6 +399,7 @@ export class ApiMachineClient {
                 taskId,
                 dispatchToken,
                 provider,
+                model,
                 prompt,
                 timeoutMs: Math.floor(timeoutMs),
                 workingDirectory,

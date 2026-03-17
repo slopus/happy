@@ -10,6 +10,7 @@ export type OrchestratorDispatchPayload = {
   taskId: string;
   dispatchToken: string;
   provider: OrchestratorProvider;
+  model?: string;
   prompt: string;
   timeoutMs: number;
   workingDirectory?: string;
@@ -33,6 +34,7 @@ export const ORCHESTRATOR_ENV_KEYS = {
   executionId: 'HAPPY_ORCH_EXECUTION_ID',
   runId: 'HAPPY_ORCH_RUN_ID',
   taskId: 'HAPPY_ORCH_TASK_ID',
+  modelMode: 'HAPPY_ORCH_MODEL_MODE',
   promptB64: 'HAPPY_ORCH_PROMPT_B64',
   timeoutMs: 'HAPPY_ORCH_TIMEOUT_MS',
   workingDirectory: 'HAPPY_ORCH_WORKING_DIRECTORY',
@@ -74,6 +76,9 @@ export function buildOrchestratorEnv(payload: OrchestratorDispatchPayload): Reco
   };
   if (payload.workingDirectory) {
     env[ORCHESTRATOR_ENV_KEYS.workingDirectory] = payload.workingDirectory;
+  }
+  if (payload.model) {
+    env[ORCHESTRATOR_ENV_KEYS.modelMode] = payload.model;
   }
   return env;
 }

@@ -48,6 +48,7 @@
     "elevenlabs": "^1.54.0",
     "fastify": "^5.2.0",
     "fastify-type-provider-zod": "^4.0.2",
+    "happy-wire": "*",
     "ioredis": "^5.6.1",
     "jsonwebtoken": "^9.0.2",
     "minio": "^8.0.5",

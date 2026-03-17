@@ -38,6 +38,7 @@ export type OrchestratorTaskRecord = {
     title: string | null;
     status: OrchestratorTaskStatus;
     provider: 'claude' | 'codex' | 'gemini';
+    model: string | null;
     workingDirectory: string | null;
     dependsOn: string[];
     retry: {

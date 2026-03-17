@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { claudeCliPath } from '@/claude/claudeLocal';
 import { logger } from '@/ui/logger';
+import { MODEL_MODE_DEFAULT, isModelModeForAgent, parseCodexModelMode } from 'happy-wire';
 import {
   ORCHESTRATOR_ENV_KEYS,
   type OrchestratorProvider,
@@ -38,36 +39,59 @@ function readWorkingDirectoryFromEnv(): string | undefined {
   return value;
 }
 
-function buildSpawnPlan(provider: OrchestratorProvider, prompt: string, workingDirectory?: string): SpawnPlan {
+function readModelModeFromEnv(): string | undefined {
+  const value = process.env[ORCHESTRATOR_ENV_KEYS.modelMode];
+  if (typeof value !== 'string' || value.length === 0) {
+    return undefined;
+  }
+  return value;
+}
+
+export function buildSpawnPlan(provider: OrchestratorProvider, prompt: string, workingDirectory?: string, modelMode?: string): SpawnPlan {
+  const normalizedModelMode = modelMode === MODEL_MODE_DEFAULT ? undefined : modelMode;
   switch (provider) {
     case 'claude':
       return {
         command: 'node',
-        args: [claudeCliPath, '-p', prompt],
+        args: [claudeCliPath, ...(normalizedModelMode ? ['--model', normalizedModelMode] : []), '-p', prompt],
         cwd: workingDirectory,
         env: {
           ...process.env,
           DISABLE_AUTOUPDATER: '1',
         },
       };
-    case 'codex':
+    case 'codex': {
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        ORCH_PROMPT: prompt,
+      };
+      if (normalizedModelMode) {
+        if (isModelModeForAgent('codex', normalizedModelMode)) {
+          const parsed = parseCodexModelMode(normalizedModelMode);
+          if (parsed.family !== MODEL_MODE_DEFAULT) {
+            env.ORCH_MODEL = parsed.family;
+            env.ORCH_REASONING_EFFORT = parsed.effort;
+          }
+        } else {
+          env.ORCH_MODEL = normalizedModelMode;
+        }
+      }
       return {
         command: 'bash',
-        args: ['-lc', 'npx -y @openai/codex@0.114.0 exec "$ORCH_PROMPT"'],
+        args: ['-lc', 'cmd=(npx -y @openai/codex@0.114.0 exec "$ORCH_PROMPT"); if [ -n "$ORCH_MODEL" ]; then cmd+=(--model "$ORCH_MODEL"); fi; if [ -n "$ORCH_REASONING_EFFORT" ]; then cmd+=(--reasoning-effort "$ORCH_REASONING_EFFORT"); fi; "${cmd[@]}"'],
         cwd: workingDirectory,
-        env: {
-          ...process.env,
-          ORCH_PROMPT: prompt,
-        },
+        env,
       };
+    }
     case 'gemini':
       return {
         command: 'bash',
-        args: ['-lc', 'gemini -p "$ORCH_PROMPT"'],
+        args: ['-lc', 'cmd=(gemini -p "$ORCH_PROMPT"); if [ -n "$ORCH_MODEL" ]; then cmd+=(--model "$ORCH_MODEL"); fi; "${cmd[@]}"'],
         cwd: workingDirectory,
         env: {
           ...process.env,
           ORCH_PROMPT: prompt,
+          ...(normalizedModelMode ? { ORCH_MODEL: normalizedModelMode } : {}),
         },
       };
     default:
@@ -113,8 +137,9 @@ export async function runOrchestratorOneShot(args: string[]): Promise<number> {
   const provider = parseProvider(readProviderFromArgs(args));
   const prompt = readPromptFromEnv();
   const workingDirectory = readWorkingDirectoryFromEnv();
+  const modelMode = readModelModeFromEnv();
   logger.debug(`[ORCHESTRATOR ONESHOT] Starting ${provider} one-shot`);
 
-  const plan = buildSpawnPlan(provider, prompt, workingDirectory);
+  const plan = buildSpawnPlan(provider, prompt, workingDirectory, modelMode);
   return spawnAndWait(plan);
 }

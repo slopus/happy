@@ -165,6 +165,7 @@ model OrchestratorTask {
   taskKey           String?
   title             String?
   provider          String
+  model             String?
   prompt            String
   workingDirectory  String?
   timeoutMs         Int?
@@ -199,6 +200,7 @@ model OrchestratorExecution {
   workerSession   Session?         @relation("WorkerExecutions", fields: [workerSessionId], references: [id], onDelete: SetNull)
   machineId       String
   provider        String
+  model           String?
   status          String
   attempt         Int              @default(1)
   dispatchToken   String           @unique

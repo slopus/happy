@@ -52,6 +52,7 @@ type OrchestratorSubmitTask = {
     taskKey?: string;
     title?: string;
     provider: OrchestratorProvider;
+    model?: string;
     prompt: string;
     workingDirectory?: string;
     timeoutMs?: number;

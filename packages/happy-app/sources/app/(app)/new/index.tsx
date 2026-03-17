@@ -44,7 +44,7 @@ import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import type { ActionMenuItem } from '@/components/ActionMenu';
-import { MODEL_MODE_DEFAULT, isModelModeForAgent } from '@/constants/modelCatalog';
+import { MODEL_MODE_DEFAULT, isModelModeForAgent } from 'happy-wire';
 import { FolderPickerSheet } from '@/components/FolderPickerSheet';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 

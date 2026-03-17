@@ -6,6 +6,7 @@ import { delay } from "@/utils/delay";
 import { warn } from "@/utils/log";
 import { eventRouter, buildOrchestratorActivityEphemeral } from "@/app/events/eventRouter";
 import { listConnectedUserRpcMethods } from "@/app/api/socket/rpcRegistry";
+import { MODEL_MODE_DEFAULT, isModelMode, isModelModeForAgent } from "happy-wire";
 import {
     addTaskCount,
     buildPendCursor,
@@ -54,6 +55,7 @@ const submitTaskSchema = z.object({
     taskKey: z.string().min(1).max(128).optional(),
     title: z.string().min(1).max(256).optional(),
     provider: z.enum(PROVIDERS),
+    model: z.string().min(1).max(128).optional(),
     prompt: z.string().min(1).max(65536),
     workingDirectory: z.string().max(512).optional(),
     timeoutMs: z.coerce.number().int().min(1000).max(24 * 60 * 60 * 1000).optional(),
@@ -105,6 +107,7 @@ type RunWithTasks = {
         taskKey: string | null;
         title: string | null;
         provider: string;
+        model: string | null;
         workingDirectory: string | null;
         dependsOnTaskKeys: string[];
         retryMaxAttempts: number;
@@ -172,6 +175,7 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
         title: task.title,
         status: task.status,
         provider: task.provider,
+        model: task.model,
         workingDirectory: task.workingDirectory,
         dependsOn: task.dependsOnTaskKeys,
         retry: {
@@ -275,6 +279,7 @@ async function loadRunForUser(userId: string, runId: string, includeTasks: boole
                     taskKey: true,
                     title: true,
                     provider: true,
+                    model: true,
                     workingDirectory: true,
                     dependsOnTaskKeys: true,
                     retryMaxAttempts: true,
@@ -348,6 +353,7 @@ async function loadTaskForUser(
             taskKey: true,
             title: true,
             provider: true,
+            model: true,
             workingDirectory: true,
             dependsOnTaskKeys: true,
             retryMaxAttempts: true,
@@ -682,6 +688,19 @@ export function orchestratorRoutes(app: Fastify) {
         if (dependencyIssue) {
             return sendError(reply, 400, dependencyIssue.code, dependencyIssue.message);
         }
+        const normalizedTaskModels: Array<string | undefined> = [];
+        for (let index = 0; index < body.tasks.length; index++) {
+            const task = body.tasks[index];
+            const model = task.model;
+            if (!model || model === MODEL_MODE_DEFAULT) {
+                normalizedTaskModels.push(undefined);
+                continue;
+            }
+            if (isModelMode(model) && !isModelModeForAgent(task.provider, model)) {
+                return sendError(reply, 400, 'INVALID_ARGUMENT', `Task seq ${index + 1} has invalid model "${model}" for provider "${task.provider}"`);
+            }
+            normalizedTaskModels.push(model);
+        }
 
         if (body.controllerSessionId) {
             const controllerSession = await db.session.findFirst({
@@ -776,6 +795,7 @@ export function orchestratorRoutes(app: Fastify) {
                     taskKey: task.taskKey,
                     title: task.title,
                     provider: task.provider,
+                    model: normalizedTaskModels[index] ?? null,
                     prompt: task.prompt,
                     workingDirectory: task.workingDirectory,
                     timeoutMs: task.timeoutMs,
@@ -798,6 +818,7 @@ export function orchestratorRoutes(app: Fastify) {
                         taskKey: true,
                         title: true,
                         provider: true,
+                        model: true,
                         workingDirectory: true,
                         dependsOnTaskKeys: true,
                         retryMaxAttempts: true,
