@@ -4,6 +4,7 @@ import { ApiClient } from '@/api/api';
 import { createCodexBackend } from '@/agent/factories/codex';
 import type { CodexAppServerBackend } from './appserver/CodexAppServerBackend';
 import type { ApprovalPolicy, SandboxMode } from './appserver/types';
+import type { PermissionMode } from '@/api/types';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
@@ -130,7 +131,6 @@ export async function runCodex(opts: {
     startedBy?: 'daemon' | 'terminal';
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
-    type PermissionMode = import('@/api/types').PermissionMode;
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
@@ -231,7 +231,7 @@ export async function runCodex(opts: {
     }));
 
     // Track current overrides to apply per message
-    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
+    let currentPermissionMode: PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
     let sessionSystemPrompt: string | undefined = undefined;
     const firstTurnInstruction = getFirstTurnInstruction();
@@ -290,7 +290,7 @@ export async function runCodex(opts: {
         // Resolve permission mode
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
+            messagePermissionMode = message.meta.permissionMode as PermissionMode;
             currentPermissionMode = messagePermissionMode;
             logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
         } else {
@@ -521,6 +521,23 @@ export async function runCodex(opts: {
     //
 
     permissionHandler = new CodexPermissionHandler(session, api.push());
+
+    const validPermissionModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+    session.rpcHandlerManager.registerHandler<{ mode?: PermissionMode }, boolean>(
+        'permission-mode-changed',
+        async (payload) => {
+            const mode = payload?.mode;
+            if (!mode || !validPermissionModes.includes(mode)) {
+                logger.debug('[Codex] Invalid permission mode via rpc', { mode });
+                return false;
+            }
+            currentPermissionMode = mode;
+            permissionHandler.setPermissionMode(mode);
+            logger.debug(`[Codex] Permission mode updated via rpc to ${mode}`);
+            return true;
+        }
+    );
+
     let messageSentThisTurn = false;
 
     const reasoningProcessor = new ReasoningProcessor((message) => {
