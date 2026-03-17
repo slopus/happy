@@ -760,6 +760,66 @@ describe('orchestrator integration paths', () => {
         await app.close();
     });
 
+    it('cancel with DAG marks downstream task as dependency_failed before response returns', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'cancel-dag-run',
+                tasks: [
+                    {
+                        taskKey: 'task-a',
+                        provider: 'claude',
+                        prompt: 'task a',
+                    },
+                    {
+                        taskKey: 'task-b',
+                        provider: 'codex',
+                        prompt: 'task b',
+                        dependsOn: ['task-a'],
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+        const runId = submit.json().data.runId as string;
+
+        const cancel = await app.inject({
+            method: 'POST',
+            url: `/v1/orchestrator/runs/${runId}/cancel`,
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                reason: 'stop',
+            },
+        });
+        expect(cancel.statusCode).toBe(200);
+        expect(cancel.json().data.status).toBe('cancelled');
+
+        const runGet = await app.inject({
+            method: 'GET',
+            url: `/v1/orchestrator/runs/${runId}`,
+            headers: { 'x-user-id': 'user-1' },
+        });
+        expect(runGet.statusCode).toBe(200);
+        expect(runGet.json().data.status).toBe('cancelled');
+        const tasks = runGet.json().data.tasks as Array<{ taskKey: string | null; status: string }>;
+        const taskA = tasks.find((task) => task.taskKey === 'task-a');
+        const taskB = tasks.find((task) => task.taskKey === 'task-b');
+        expect(taskA?.status).toBe('cancelled');
+        expect(taskB?.status).toBe('dependency_failed');
+        expect(runGet.json().data.summary).toEqual(
+            expect.objectContaining({
+                total: 2,
+                failed: 1,
+                cancelled: 1,
+            }),
+        );
+
+        await app.close();
+    });
+
     it('submit -> dispatch rpc failure -> execution failed -> run failed', async () => {
         invokeUserRpcMock.mockRejectedValueOnce(new Error('machine offline'));
 

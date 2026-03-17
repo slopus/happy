@@ -371,6 +371,86 @@ function validateTaskDependencies(tasks: z.infer<typeof submitTaskSchema>[]): Ta
     return null;
 }
 
+async function markDependencyFailedTasksInCancelTx(tx: any, runId: string): Promise<void> {
+    const keyedTasks = await tx.orchestratorTask.findMany({
+        where: {
+            runId,
+            taskKey: { not: null },
+        },
+        select: {
+            taskKey: true,
+            status: true,
+        },
+    });
+    const taskKeyToStatus = new Map<string, string>();
+    for (const task of keyedTasks) {
+        if (task.taskKey) {
+            taskKeyToStatus.set(task.taskKey, task.status);
+        }
+    }
+
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const candidateTasks = await tx.orchestratorTask.findMany({
+            where: {
+                runId,
+                status: { in: ['queued', 'cancelled'] },
+            },
+            orderBy: { seq: 'asc' },
+            select: {
+                id: true,
+                taskKey: true,
+                status: true,
+                dependsOnTaskKeys: true,
+            },
+        });
+
+        for (const task of candidateTasks) {
+            const dependencies = task.dependsOnTaskKeys ?? [];
+            if (dependencies.length === 0) {
+                continue;
+            }
+
+            let dependencyFailedKey: string | null = null;
+            for (const dependencyKey of dependencies) {
+                const dependencyStatus = taskKeyToStatus.get(dependencyKey);
+                if (
+                    dependencyStatus === 'failed'
+                    || dependencyStatus === 'cancelled'
+                    || dependencyStatus === 'dependency_failed'
+                ) {
+                    dependencyFailedKey = dependencyKey;
+                    break;
+                }
+            }
+
+            if (!dependencyFailedKey) {
+                continue;
+            }
+
+            const updated = await tx.orchestratorTask.updateMany({
+                where: {
+                    id: task.id,
+                    status: { in: ['queued', 'cancelled'] },
+                },
+                data: {
+                    status: 'dependency_failed',
+                    errorCode: 'DEPENDENCY_FAILED',
+                    errorMessage: `Dependency failed: ${dependencyFailedKey}`,
+                    nextAttemptAt: null,
+                },
+            });
+            if (updated.count > 0) {
+                changed = true;
+                if (task.taskKey) {
+                    taskKeyToStatus.set(task.taskKey, 'dependency_failed');
+                }
+            }
+        }
+    }
+}
+
 export function orchestratorRoutes(app: Fastify) {
     app.get('/v1/orchestrator/context', {
         preHandler: app.authenticate,
@@ -394,6 +474,7 @@ export function orchestratorRoutes(app: Fastify) {
         const machines = await db.machine.findMany({
             where: { accountId: userId },
             orderBy: { lastActiveAt: 'desc' },
+            take: 50,
             select: {
                 id: true,
                 active: true,
@@ -870,6 +951,7 @@ export function orchestratorRoutes(app: Fastify) {
                     nextAttemptAt: null,
                 },
             });
+            await markDependencyFailedTasksInCancelTx(tx, runId);
 
             const grouped = await tx.orchestratorTask.groupBy({
                 by: ['status'],

@@ -593,6 +593,8 @@ async function buildRunActions(run: {
 }
 
 export async function orchestratorSchedulerTick(now: Date = new Date()): Promise<void> {
+    // v2.1: each tick processes at most 50 active runs.
+    // Additional active runs are handled by subsequent ticks.
     const runs = await db.orchestratorRun.findMany({
         where: {
             status: { in: ACTIVE_RUN_STATUSES },
