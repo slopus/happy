@@ -6,7 +6,7 @@ import { Text } from '@/components/StyledText';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { useAuth } from '@/auth/AuthContext';
-import { listOrchestratorRuns, type ListOrchestratorRunsQuery, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
+import { getOrchestratorRunCounts, listOrchestratorRuns, type ListOrchestratorRunsQuery, type OrchestratorRunCounts, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
 import { OrchestratorProgressBar } from '@/components/orchestrator/OrchestratorProgressBar';
 import { formatDate } from '@/utils/formatDate';
@@ -132,6 +132,19 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
+function computeFilterCount(counts: OrchestratorRunCounts, filter: StatusFilter): number {
+    if (filter === 'all') {
+        return Object.values(counts).reduce((sum, n) => sum + n, 0);
+    }
+    if (filter === 'active') {
+        return (counts['queued'] ?? 0) + (counts['running'] ?? 0) + (counts['canceling'] ?? 0);
+    }
+    if (filter === 'terminal') {
+        return (counts['completed'] ?? 0) + (counts['failed'] ?? 0) + (counts['cancelled'] ?? 0);
+    }
+    return counts[filter] ?? 0;
+}
+
 function getFilterStatus(statusFilter: StatusFilter): ListOrchestratorRunsQuery['status'] | undefined {
     if (statusFilter === 'all') {
         return undefined;
@@ -182,6 +195,17 @@ export default function OrchestratorRunsScreen() {
     const [refreshing, setRefreshing] = React.useState(false);
     const [loadingMore, setLoadingMore] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+    const [counts, setCounts] = React.useState<OrchestratorRunCounts>({});
+
+    const fetchCounts = React.useCallback(async () => {
+        if (!credentials) return;
+        try {
+            const result = await getOrchestratorRunCounts(credentials, controllerSessionId);
+            setCounts(result);
+        } catch {
+            // non-critical — counts are cosmetic
+        }
+    }, [credentials, controllerSessionId]);
 
     const fetchRuns = React.useCallback(async (opts?: { cursor?: string; append?: boolean; silent?: boolean; }) => {
         if (!credentials) {
@@ -196,12 +220,16 @@ export default function OrchestratorRunsScreen() {
 
         try {
             setError(null);
-            const result = await listOrchestratorRuns(credentials, {
-                status: getFilterStatus(statusFilter),
-                limit: 50,
-                cursor: opts?.cursor,
-                controllerSessionId,
-            });
+            const [result] = await Promise.all([
+                listOrchestratorRuns(credentials, {
+                    status: getFilterStatus(statusFilter),
+                    limit: 50,
+                    cursor: opts?.cursor,
+                    controllerSessionId,
+                }),
+                // Refresh counts alongside the first page fetch (not for load-more)
+                ...(!append ? [fetchCounts()] : []),
+            ]);
             setRuns((previous) => append ? [...previous, ...result.items] : result.items);
             setNextCursor(result.nextCursor);
         } catch (err) {
@@ -214,7 +242,7 @@ export default function OrchestratorRunsScreen() {
             }
             setRefreshing(false);
         }
-    }, [credentials, controllerSessionId, statusFilter]);
+    }, [credentials, controllerSessionId, statusFilter, fetchCounts]);
 
     const handleRefresh = React.useCallback(() => {
         setRefreshing(true);
@@ -298,17 +326,20 @@ export default function OrchestratorRunsScreen() {
                 style={styles.filterBar}
                 contentContainerStyle={styles.filterInner}
             >
-                {FILTERS.map((filter) => (
-                    <Pressable
-                        key={filter.key}
-                        style={[styles.filterChip, statusFilter === filter.key && styles.filterChipActive]}
-                        onPress={() => setStatusFilter(filter.key)}
-                    >
-                        <Text style={[styles.filterChipText, statusFilter === filter.key && styles.filterChipTextActive]}>
-                            {filter.label}
-                        </Text>
-                    </Pressable>
-                ))}
+                {FILTERS.map((filter) => {
+                    const count = computeFilterCount(counts, filter.key);
+                    return (
+                        <Pressable
+                            key={filter.key}
+                            style={[styles.filterChip, statusFilter === filter.key && styles.filterChipActive]}
+                            onPress={() => setStatusFilter(filter.key)}
+                        >
+                            <Text style={[styles.filterChipText, statusFilter === filter.key && styles.filterChipTextActive]}>
+                                {filter.label} ({count})
+                            </Text>
+                        </Pressable>
+                    );
+                })}
             </ScrollView>
 
             <FlatList

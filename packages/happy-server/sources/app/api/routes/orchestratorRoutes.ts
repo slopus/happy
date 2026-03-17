@@ -1028,6 +1028,35 @@ export function orchestratorRoutes(app: Fastify) {
         });
     });
 
+    // ── Run status counts ──────────────────────────────────────────────
+    app.get('/v1/orchestrator/runs/counts', {
+        preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                controllerSessionId: z.string().min(1).max(128).optional(),
+            }).optional(),
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const controllerSessionId = request.query?.controllerSessionId;
+
+        const grouped = await db.orchestratorRun.groupBy({
+            by: ['status'],
+            where: {
+                accountId: userId,
+                ...(controllerSessionId ? { controllerSessionId } : {}),
+            },
+            _count: { _all: true },
+        });
+
+        const counts: Record<string, number> = {};
+        for (const row of grouped) {
+            counts[row.status] = row._count._all;
+        }
+
+        return reply.send({ ok: true, data: counts });
+    });
+
     app.get('/v1/orchestrator/runs/:runId/pend', {
         preHandler: app.authenticate,
         schema: {

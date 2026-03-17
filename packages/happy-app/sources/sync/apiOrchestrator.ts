@@ -137,6 +137,29 @@ export async function listOrchestratorRuns(
     });
 }
 
+export type OrchestratorRunCounts = Record<string, number>;
+
+export async function getOrchestratorRunCounts(
+    credentials: AuthCredentials,
+    controllerSessionId?: string,
+): Promise<OrchestratorRunCounts> {
+    const API_ENDPOINT = getServerUrl();
+    const params = new URLSearchParams();
+    if (controllerSessionId) params.set('controllerSessionId', controllerSessionId);
+    const queryString = params.toString();
+
+    return backoff(async () => {
+        const response = await fetch(`${API_ENDPOINT}/v1/orchestrator/runs/counts${queryString ? `?${queryString}` : ''}`, {
+            headers: buildAuthHeaders(credentials),
+        });
+        if (!response.ok) {
+            throw new Error(await readErrorMessage(response));
+        }
+        const body = await response.json() as { ok: true; data: OrchestratorRunCounts };
+        return body.data;
+    });
+}
+
 export type GetOrchestratorRunQuery = {
     includeTasks?: boolean;
     includeExecutions?: boolean;
