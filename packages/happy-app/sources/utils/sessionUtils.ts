@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { Session } from '@/sync/storageTypes';
+import { Session, Machine } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { getMachineDisplayName as getMachineDisplayNamePure } from '@/utils/machineDisplay';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -104,17 +105,28 @@ export function getSessionAvatarId(session: Session): string {
 }
 
 /**
+ * Gets the display name for a machine/host.
+ * Wrapper around pure utility function in machineDisplay.ts
+ * @param session - The session containing metadata
+ * @param machine - Optional machine object (from useMachine hook)
+ * @returns Display name for the machine, or undefined if not available
+ */
+export function getMachineDisplayName(session: Session, machine?: Machine | null): string | undefined {
+    return getMachineDisplayNamePure(session, machine);
+}
+
+/**
  * Formats a path relative to home directory if possible.
  * If the path starts with the home directory, replaces it with ~
  * Otherwise returns the full path.
  */
 export function formatPathRelativeToHome(path: string, homeDir?: string): string {
     if (!homeDir) return path;
-    
+
     // Normalize paths to handle trailing slashes
     const normalizedHome = homeDir.endsWith('/') ? homeDir.slice(0, -1) : homeDir;
     const normalizedPath = path;
-    
+
     // Check if path starts with home directory
     if (normalizedPath.startsWith(normalizedHome)) {
         // Replace home directory with ~
@@ -128,7 +140,7 @@ export function formatPathRelativeToHome(path: string, homeDir?: string): string
             return '~/' + relativePath;
         }
     }
-    
+
     return path;
 }
 

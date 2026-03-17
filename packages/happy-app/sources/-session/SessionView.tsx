@@ -19,7 +19,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useMachine, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -27,7 +27,7 @@ import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, getMachineDisplayName, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -50,6 +50,10 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+
+    // Get machine for display name
+    const machineId = session?.metadata?.machineId;
+    const machine = useMachine(machineId || '');
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -79,16 +83,20 @@ export const SessionView = React.memo((props: { id: string }) => {
 
         // Normal state - show session info
         const isConnected = session.presence === 'online';
+        const formattedPath = session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined;
+        const machineDisplayName = getMachineDisplayName(session, machine);
+        const subtitle = formattedPath && machineDisplayName ? `${machineDisplayName}:${formattedPath}` : formattedPath;
+
         return {
             title: getSessionName(session),
-            subtitle: session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined,
+            subtitle,
             avatarId: getSessionAvatarId(session),
             onAvatarPress: () => router.push(`/session/${sessionId}/info`),
             isConnected: isConnected,
             flavor: session.metadata?.flavor || null,
             tintColor: isConnected ? '#000' : '#8E8E93'
         };
-    }, [session, isDataReady, sessionId, router]);
+    }, [session, isDataReady, sessionId, router, machine]);
 
     return (
         <>
