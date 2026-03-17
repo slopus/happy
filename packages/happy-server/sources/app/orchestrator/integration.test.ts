@@ -30,6 +30,7 @@ type TaskRecord = {
     title: string | null;
     provider: 'claude' | 'codex' | 'gemini';
     prompt: string;
+    workingDirectory: string | null;
     timeoutMs: number | null;
     targetMachineId: string | null;
     dependsOnTaskKeys: string[];
@@ -371,6 +372,7 @@ const {
                     title: data.title ?? null,
                     provider: data.provider,
                     prompt: data.prompt,
+                    workingDirectory: data.workingDirectory ?? null,
                     timeoutMs: data.timeoutMs ?? null,
                     targetMachineId: data.targetMachineId ?? null,
                     dependsOnTaskKeys: data.dependsOnTaskKeys ?? [],
@@ -1318,6 +1320,7 @@ describe('orchestrator integration paths', () => {
                     {
                         provider: 'gemini',
                         prompt: 'run on machine 2',
+                        workingDirectory: '/workspace/repo-a',
                         target: {
                             type: 'machine_id',
                             machineId: 'machine-2',
@@ -1334,6 +1337,7 @@ describe('orchestrator integration paths', () => {
             'machine-2:orchestrator-dispatch',
             expect.objectContaining({
                 provider: 'gemini',
+                workingDirectory: '/workspace/repo-a',
             }),
             expect.any(Number),
         );

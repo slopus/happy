@@ -12,6 +12,7 @@ export type OrchestratorDispatchPayload = {
   provider: OrchestratorProvider;
   prompt: string;
   timeoutMs: number;
+  workingDirectory?: string;
 };
 
 export type OrchestratorCancelPayload = {
@@ -34,6 +35,7 @@ export const ORCHESTRATOR_ENV_KEYS = {
   taskId: 'HAPPY_ORCH_TASK_ID',
   promptB64: 'HAPPY_ORCH_PROMPT_B64',
   timeoutMs: 'HAPPY_ORCH_TIMEOUT_MS',
+  workingDirectory: 'HAPPY_ORCH_WORKING_DIRECTORY',
 } as const;
 
 export function isOrchestratorProvider(value: unknown): value is OrchestratorProvider {
@@ -62,7 +64,7 @@ export function decodePromptFromBase64(promptB64: string): string {
 }
 
 export function buildOrchestratorEnv(payload: OrchestratorDispatchPayload): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     [ORCHESTRATOR_ENV_KEYS.oneshot]: '1',
     [ORCHESTRATOR_ENV_KEYS.executionId]: payload.executionId,
     [ORCHESTRATOR_ENV_KEYS.runId]: payload.runId,
@@ -70,6 +72,10 @@ export function buildOrchestratorEnv(payload: OrchestratorDispatchPayload): Reco
     [ORCHESTRATOR_ENV_KEYS.promptB64]: encodePromptToBase64(payload.prompt),
     [ORCHESTRATOR_ENV_KEYS.timeoutMs]: String(payload.timeoutMs),
   };
+  if (payload.workingDirectory) {
+    env[ORCHESTRATOR_ENV_KEYS.workingDirectory] = payload.workingDirectory;
+  }
+  return env;
 }
 
 export function appendOutputChunk(current: string, chunk: string, maxChars: number): string {

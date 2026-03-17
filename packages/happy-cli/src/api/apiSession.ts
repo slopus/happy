@@ -53,6 +53,7 @@ type OrchestratorSubmitTask = {
     title?: string;
     provider: OrchestratorProvider;
     prompt: string;
+    workingDirectory?: string;
     timeoutMs?: number;
     dependsOn?: string[];
     retry?: {

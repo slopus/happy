@@ -25,12 +25,14 @@ describe('orchestrator common helpers', () => {
       provider: 'codex',
       prompt: '请总结这个目录',
       timeoutMs: 60_000,
+      workingDirectory: '/tmp/project',
     };
 
     const env = buildOrchestratorEnv(payload);
     expect(env.HAPPY_ORCH_ONESHOT).toBe('1');
     expect(env.HAPPY_ORCH_EXECUTION_ID).toBe('exec_1');
     expect(env.HAPPY_ORCH_TIMEOUT_MS).toBe('60000');
+    expect(env.HAPPY_ORCH_WORKING_DIRECTORY).toBe('/tmp/project');
     expect(decodePromptFromBase64(env.HAPPY_ORCH_PROMPT_B64)).toBe(payload.prompt);
   });
 

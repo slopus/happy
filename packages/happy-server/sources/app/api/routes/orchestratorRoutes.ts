@@ -34,6 +34,7 @@ const submitTaskSchema = z.object({
     title: z.string().min(1).max(256).optional(),
     provider: z.enum(PROVIDERS),
     prompt: z.string().min(1).max(65536),
+    workingDirectory: z.string().max(512).optional(),
     timeoutMs: z.coerce.number().int().min(1000).max(24 * 60 * 60 * 1000).optional(),
     dependsOn: z.array(z.string().min(1).max(128)).max(31).optional(),
     retry: z.object({
@@ -83,6 +84,7 @@ type RunWithTasks = {
         taskKey: string | null;
         title: string | null;
         provider: string;
+        workingDirectory: string | null;
         dependsOnTaskKeys: string[];
         retryMaxAttempts: number;
         retryBackoffMs: number;
@@ -125,6 +127,7 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
         title: task.title,
         status: task.status,
         provider: task.provider,
+        workingDirectory: task.workingDirectory,
         dependsOn: task.dependsOnTaskKeys,
         retry: {
             maxAttempts: task.retryMaxAttempts,
@@ -210,6 +213,7 @@ async function loadRunForUser(userId: string, runId: string, includeTasks: boole
                     taskKey: true,
                     title: true,
                     provider: true,
+                    workingDirectory: true,
                     dependsOnTaskKeys: true,
                     retryMaxAttempts: true,
                     retryBackoffMs: true,
@@ -630,6 +634,7 @@ export function orchestratorRoutes(app: Fastify) {
                     title: task.title,
                     provider: task.provider,
                     prompt: task.prompt,
+                    workingDirectory: task.workingDirectory,
                     timeoutMs: task.timeoutMs,
                     targetMachineId: task.target?.type === 'machine_id' ? task.target.machineId : null,
                     dependsOnTaskKeys: task.dependsOn ?? [],
@@ -650,6 +655,7 @@ export function orchestratorRoutes(app: Fastify) {
                         taskKey: true,
                         title: true,
                         provider: true,
+                        workingDirectory: true,
                         dependsOnTaskKeys: true,
                         retryMaxAttempts: true,
                         retryBackoffMs: true,
