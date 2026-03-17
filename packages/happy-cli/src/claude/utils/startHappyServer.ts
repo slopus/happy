@@ -23,6 +23,7 @@ import {
     ORCHESTRATOR_PEND_TOOL_SCHEMA,
     ORCHESTRATOR_SUBMIT_TOOL_SCHEMA,
 } from '@/orchestrator/mcpToolSchemas';
+import { CLAUDE_MODEL_MODES, CODEX_MODEL_MODES, GEMINI_MODEL_MODES } from 'happy-wire';
 
 const ORCHESTRATOR_RUN_TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 const DEFAULT_BLOCKING_WAIT_TIMEOUT_MS = 120_000;
@@ -193,6 +194,11 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                         retryBackoffMs: 0,
                     },
                     providers: ['claude', 'codex', 'gemini'],
+                    modelModes: {
+                        claude: CLAUDE_MODEL_MODES,
+                        codex: CODEX_MODEL_MODES,
+                        gemini: GEMINI_MODEL_MODES,
+                    },
                     machines: [],
                 };
                 try {
@@ -205,6 +211,7 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                                 ...fallback,
                                 defaults: data.defaults ?? fallback.defaults,
                                 providers: data.providers ?? fallback.providers,
+                                modelModes: data.modelModes ?? fallback.modelModes,
                                 machines: data.machines ?? [],
                             },
                         });

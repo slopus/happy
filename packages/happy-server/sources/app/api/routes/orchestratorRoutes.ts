@@ -6,7 +6,14 @@ import { delay } from "@/utils/delay";
 import { warn } from "@/utils/log";
 import { eventRouter, buildOrchestratorActivityEphemeral } from "@/app/events/eventRouter";
 import { listConnectedUserRpcMethods } from "@/app/api/socket/rpcRegistry";
-import { MODEL_MODE_DEFAULT, isModelMode, isModelModeForAgent } from "happy-wire";
+import {
+    CLAUDE_MODEL_MODES,
+    CODEX_MODEL_MODES,
+    GEMINI_MODEL_MODES,
+    MODEL_MODE_DEFAULT,
+    isModelMode,
+    isModelModeForAgent,
+} from "happy-wire";
 import {
     addTaskCount,
     buildPendCursor,
@@ -658,6 +665,11 @@ export function orchestratorRoutes(app: Fastify) {
             ok: true,
             data: {
                 providers: PROVIDERS,
+                modelModes: {
+                    claude: CLAUDE_MODEL_MODES,
+                    codex: CODEX_MODEL_MODES,
+                    gemini: GEMINI_MODEL_MODES,
+                },
                 defaults: {
                     mode: 'async',
                     maxConcurrency: DEFAULT_CONTEXT_MAX_CONCURRENCY,

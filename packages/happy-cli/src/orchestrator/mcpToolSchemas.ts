@@ -4,7 +4,8 @@ const orchestratorTaskSchema = z.object({
   taskKey: z.string().min(1).max(128).optional(),
   title: z.string().min(1).max(256).optional(),
   provider: z.enum(['claude', 'codex', 'gemini']),
-  model: z.string().min(1).max(128).optional(),
+  model: z.string().min(1).max(128).optional()
+    .describe('Optional. Call orchestrator_get_context first and choose from data.modelModes[provider]. Use "default" to follow CLI defaults.'),
   prompt: z.string().min(1).max(65536),
   workingDirectory: z.string().max(512).optional(),
   timeoutMs: z.number().int().min(1000).max(24 * 60 * 60 * 1000).optional(),
