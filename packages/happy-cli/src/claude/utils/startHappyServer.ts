@@ -75,9 +75,7 @@ export async function startHappyServer(client: ApiSessionClient) {
     });
 
     const transport = new StreamableHTTPServerTransport({
-        // NOTE: Returning session id here will result in claude
-        // sdk spawn to fail with `Invalid Request: Server already initialized`
-        sessionIdGenerator: undefined
+        sessionIdGenerator: () => randomUUID()
     });
     await mcp.connect(transport);
 
