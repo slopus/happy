@@ -412,6 +412,12 @@ export const ApiEphemeralMachineActivityUpdateSchema = z.object({
     activeAt: z.number(),
 });
 
+export const ApiEphemeralOrchestratorActivitySchema = z.object({
+    type: z.literal('orchestrator-activity'),
+    controllerSessionId: z.string(),
+    running: z.number(),
+});
+
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
@@ -423,6 +429,7 @@ export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralPendingMessageUpsertSchema,
     ApiEphemeralPendingMessageDeleteSchema,
     ApiEphemeralMachineActivityUpdateSchema,
+    ApiEphemeralOrchestratorActivitySchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;

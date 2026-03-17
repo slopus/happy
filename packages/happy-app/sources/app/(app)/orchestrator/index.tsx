@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, FlatList, Pressable, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Text } from '@/components/StyledText';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -9,18 +9,20 @@ import { useAuth } from '@/auth/AuthContext';
 import { listOrchestratorRuns, type ListOrchestratorRunsQuery, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
 import { formatDate } from '@/utils/formatDate';
+import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 
 type RunListItem = Pick<OrchestratorRunDetail, 'runId' | 'title' | 'status' | 'createdAt' | 'updatedAt' | 'summary'>;
 type StatusFilter = 'all' | 'active' | 'terminal' | 'queued' | 'running' | 'canceling' | 'completed' | 'failed' | 'cancelled';
 
 const FILTERS: Array<{ key: StatusFilter; label: string; }> = [
-    { key: 'all', label: 'All' },
-    { key: 'active', label: 'Active' },
-    { key: 'terminal', label: 'Terminal' },
-    { key: 'running', label: 'Running' },
-    { key: 'failed', label: 'Failed' },
-    { key: 'completed', label: 'Completed' },
-    { key: 'cancelled', label: 'Cancelled' },
+    { key: 'all', label: t('settings.orchestratorFilterAll') },
+    { key: 'active', label: t('settings.orchestratorFilterActive') },
+    { key: 'terminal', label: t('settings.orchestratorFilterTerminal') },
+    { key: 'running', label: t('settings.orchestratorFilterRunning') },
+    { key: 'failed', label: t('settings.orchestratorFilterFailed') },
+    { key: 'completed', label: t('settings.orchestratorFilterCompleted') },
+    { key: 'cancelled', label: t('settings.orchestratorFilterCancelled') },
 ];
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -29,11 +31,17 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.groupped.background,
     },
     filterBar: {
+        flexGrow: 0,
+        flexShrink: 0,
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        width: '100%',
         paddingTop: 12,
         paddingBottom: 8,
     },
     filterInner: {
         flexDirection: 'row',
+        alignItems: 'center',
         gap: 8,
         paddingHorizontal: 16,
     },
@@ -145,8 +153,37 @@ export default function OrchestratorRunsScreen() {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
+    const searchParams = useLocalSearchParams<{ controllerSessionId?: string | string[]; }>();
     const auth = useAuth();
     const credentials = auth.credentials;
+    const controllerSessionId = React.useMemo(() => (
+        Array.isArray(searchParams.controllerSessionId)
+            ? searchParams.controllerSessionId[0]
+            : searchParams.controllerSessionId
+    ), [searchParams.controllerSessionId]);
+    const isConversationScoped = !!controllerSessionId;
+    const navigation = useNavigation();
+
+    React.useEffect(() => {
+        if (isConversationScoped) {
+            navigation.setOptions({
+                headerTitle: () => (
+                    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={[Typography.default('semiBold'), { fontSize: 17, lineHeight: 24, color: theme.colors.header.tint }]}>
+                            {t('settings.orchestratorRuns')}
+                        </Text>
+                        <Text style={[Typography.default(), { fontSize: 12, color: theme.colors.header.tint, opacity: 0.7, marginTop: -2 }]}>
+                            {t('settings.orchestratorSessionRuns')}
+                        </Text>
+                    </View>
+                ),
+            });
+        } else {
+            navigation.setOptions({
+                headerTitle: t('settings.orchestratorRuns'),
+            });
+        }
+    }, [isConversationScoped, navigation, theme]);
 
     const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('active');
     const [runs, setRuns] = React.useState<RunListItem[]>([]);
@@ -173,6 +210,7 @@ export default function OrchestratorRunsScreen() {
                 status: getFilterStatus(statusFilter),
                 limit: 50,
                 cursor: opts?.cursor,
+                controllerSessionId,
             });
             setRuns((previous) => append ? [...previous, ...result.items] : result.items);
             setNextCursor(result.nextCursor);
@@ -186,7 +224,7 @@ export default function OrchestratorRunsScreen() {
             }
             setRefreshing(false);
         }
-    }, [credentials, statusFilter]);
+    }, [credentials, controllerSessionId, statusFilter]);
 
     const handleRefresh = React.useCallback(() => {
         setRefreshing(true);
@@ -250,20 +288,22 @@ export default function OrchestratorRunsScreen() {
             return (
                 <View style={styles.emptyContainer}>
                     <ActivityIndicator size="large" />
-                    <Text style={styles.emptySubtitle}>Loading orchestrator runs...</Text>
+                    <Text style={styles.emptySubtitle}>{t('settings.orchestratorLoading')}</Text>
                 </View>
             );
         }
         return (
             <View style={styles.emptyContainer}>
-                <Text style={styles.emptyTitle}>No runs</Text>
+                <Text style={styles.emptyTitle}>{t('settings.orchestratorNoRuns')}</Text>
                 <Text style={styles.emptySubtitle}>
-                    No orchestrator runs matched the selected filter.
+                    {isConversationScoped
+                        ? t('settings.orchestratorSessionRunsEmpty')
+                        : t('settings.orchestratorNoRunsMatch')}
                 </Text>
                 {!!error && <Text style={styles.errorText}>{error}</Text>}
             </View>
         );
-    }, [loading, styles, error]);
+    }, [loading, styles, error, isConversationScoped]);
 
     return (
         <View style={styles.container}>

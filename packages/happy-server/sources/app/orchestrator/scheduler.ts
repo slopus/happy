@@ -609,12 +609,28 @@ export async function orchestratorSchedulerTick(now: Date = new Date()): Promise
             accountId: true,
             status: true,
             maxConcurrency: true,
+            controllerSessionId: true,
         },
     });
 
     for (const run of runs) {
         const actions = await buildRunActions(run, now);
-        await executeSchedulerActions(actions);
+        if (actions.length > 0) {
+            await executeSchedulerActions(actions);
+            if (run.controllerSessionId) {
+                const running = await db.orchestratorTask.count({
+                    where: {
+                        run: { accountId: run.accountId, controllerSessionId: run.controllerSessionId, status: { in: ACTIVE_RUN_STATUSES } },
+                        status: { in: ACTIVE_EXECUTION_STATUSES },
+                    },
+                });
+                const { eventRouter, buildOrchestratorActivityEphemeral } = await import("@/app/events/eventRouter");
+                eventRouter.emitEphemeral({
+                    userId: run.accountId,
+                    payload: buildOrchestratorActivityEphemeral(run.controllerSessionId, running),
+                });
+            }
+        }
     }
 }
 

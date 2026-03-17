@@ -3,7 +3,8 @@ import { db } from "@/storage/db";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { delay } from "@/utils/delay";
-import { eventRouter } from "@/app/events/eventRouter";
+import { warn } from "@/utils/log";
+import { eventRouter, buildOrchestratorActivityEphemeral } from "@/app/events/eventRouter";
 import { listConnectedUserRpcMethods } from "@/app/api/socket/rpcRegistry";
 import {
     addTaskCount,
@@ -30,6 +31,24 @@ const DEFAULT_CONTEXT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_CONTEXT_RETRY_MAX_ATTEMPTS = 1;
 const DEFAULT_CONTEXT_RETRY_BACKOFF_MS = 0;
 const PEND_POLL_INTERVAL_MS = 3000;
+
+/**
+ * Emit an ephemeral orchestrator-activity event with the current running task count
+ * for the given controllerSessionId. Called after status-changing transactions commit.
+ */
+async function emitOrchestratorActivity(userId: string, controllerSessionId: string | null) {
+    if (!controllerSessionId) return;
+    const running = await db.orchestratorTask.count({
+        where: {
+            run: { accountId: userId, controllerSessionId, status: { in: ['queued', 'running', 'canceling'] } },
+            status: { in: ['dispatching', 'running'] },
+        },
+    });
+    eventRouter.emitEphemeral({
+        userId,
+        payload: buildOrchestratorActivityEphemeral(controllerSessionId, running),
+    });
+}
 
 const submitTaskSchema = z.object({
     taskKey: z.string().min(1).max(128).optional(),
@@ -912,6 +931,7 @@ export function orchestratorRoutes(app: Fastify) {
         schema: {
             querystring: z.object({
                 status: z.enum(LIST_RUN_STATUS_FILTERS).optional(),
+                controllerSessionId: z.string().min(1).max(128).optional(),
                 limit: z.coerce.number().int().min(1).max(50).default(20),
                 cursor: z.string().optional(),
             }).optional(),
@@ -920,6 +940,7 @@ export function orchestratorRoutes(app: Fastify) {
         const userId = request.userId;
         const limit = request.query?.limit ?? 20;
         const statusFilter = request.query?.status;
+        const controllerSessionId = request.query?.controllerSessionId;
         const cursor = request.query?.cursor;
 
         let cursorParts: { createdAt: Date; id: string } | null = null;
@@ -934,6 +955,7 @@ export function orchestratorRoutes(app: Fastify) {
         const where: any = {
             accountId: userId,
             ...(resolvedStatuses ? { status: { in: resolvedStatuses } } : {}),
+            ...(controllerSessionId ? { controllerSessionId } : {}),
         };
 
         if (cursorParts) {
@@ -1094,14 +1116,14 @@ export function orchestratorRoutes(app: Fastify) {
         const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
             const run = await tx.orchestratorRun.findFirst({
                 where: { id: runId, accountId: userId },
-                select: { id: true, status: true },
+                select: { id: true, status: true, controllerSessionId: true },
             });
             if (!run) {
                 return { kind: 'not_found' as const };
             }
 
             if (isRunTerminal(run.status)) {
-                return { kind: 'ok' as const, status: run.status };
+                return { kind: 'ok' as const, status: run.status, controllerSessionId: run.controllerSessionId };
             }
 
             if (run.status !== 'canceling') {
@@ -1149,12 +1171,14 @@ export function orchestratorRoutes(app: Fastify) {
                 });
             }
 
-            return { kind: 'ok' as const, status: nextStatus };
+            return { kind: 'ok' as const, status: nextStatus, controllerSessionId: run.controllerSessionId };
         });
 
         if (result.kind === 'not_found') {
             return sendError(reply, 404, 'NOT_FOUND', 'Run not found');
         }
+
+        void emitOrchestratorActivity(userId, result.controllerSessionId ?? null).catch(warn);
 
         return reply.send({
             ok: true,
@@ -1200,6 +1224,7 @@ export function orchestratorRoutes(app: Fastify) {
                     run: {
                         select: {
                             status: true,
+                            controllerSessionId: true,
                         },
                     },
                 },
@@ -1258,7 +1283,7 @@ export function orchestratorRoutes(app: Fastify) {
                 },
             });
 
-            return { kind: 'ok' as const };
+            return { kind: 'ok' as const, controllerSessionId: execution.run.controllerSessionId };
         });
 
         if (result.kind === 'not_found') {
@@ -1273,6 +1298,8 @@ export function orchestratorRoutes(app: Fastify) {
         if (result.kind === 'ignored') {
             return reply.send({ ok: true, data: { ignored: true } });
         }
+
+        void emitOrchestratorActivity(userId, result.controllerSessionId ?? null).catch(warn);
 
         return reply.send({
             ok: true,
@@ -1321,6 +1348,7 @@ export function orchestratorRoutes(app: Fastify) {
                     run: {
                         select: {
                             status: true,
+                            controllerSessionId: true,
                         },
                     },
                     task: {
@@ -1418,6 +1446,7 @@ export function orchestratorRoutes(app: Fastify) {
             return {
                 kind: 'ok' as const,
                 runStatus: nextRunStatus,
+                controllerSessionId: execution.run.controllerSessionId,
             };
         });
 
@@ -1431,6 +1460,8 @@ export function orchestratorRoutes(app: Fastify) {
             return reply.send({ ok: true, data: { duplicate: true } });
         }
 
+        void emitOrchestratorActivity(userId, result.controllerSessionId ?? null).catch(warn);
+
         return reply.send({
             ok: true,
             data: {
@@ -1438,5 +1469,26 @@ export function orchestratorRoutes(app: Fastify) {
                 runStatus: result.runStatus,
             },
         });
+    });
+
+    app.get('/v1/orchestrator/activity', {
+        preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                controllerSessionId: z.string().min(1),
+            }),
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { controllerSessionId } = request.query;
+
+        const running = await db.orchestratorTask.count({
+            where: {
+                run: { accountId: userId, controllerSessionId, status: { in: ['queued', 'running', 'canceling'] } },
+                status: { in: ['dispatching', 'running'] },
+            },
+        });
+
+        return reply.send({ ok: true, data: { running } });
     });
 }

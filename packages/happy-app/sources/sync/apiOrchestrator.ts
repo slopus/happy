@@ -104,6 +104,7 @@ export type ListOrchestratorRunsQuery = {
     status?: 'active' | 'terminal' | OrchestratorRunStatus;
     limit?: number;
     cursor?: string;
+    controllerSessionId?: string;
 };
 
 export async function listOrchestratorRuns(
@@ -115,6 +116,7 @@ export async function listOrchestratorRuns(
     if (query.status) params.set('status', query.status);
     if (query.limit) params.set('limit', String(query.limit));
     if (query.cursor) params.set('cursor', query.cursor);
+    if (query.controllerSessionId) params.set('controllerSessionId', query.controllerSessionId);
     const queryString = params.toString();
 
     return backoff(async () => {
@@ -277,4 +279,21 @@ export async function cancelOrchestratorRun(
         };
         return body.data;
     });
+}
+
+export async function getOrchestratorActivity(
+    credentials: AuthCredentials,
+    controllerSessionId: string,
+): Promise<{ running: number }> {
+    const API_ENDPOINT = getServerUrl();
+    const params = new URLSearchParams({ controllerSessionId });
+
+    const response = await fetch(`${API_ENDPOINT}/v1/orchestrator/activity?${params.toString()}`, {
+        headers: buildAuthHeaders(credentials),
+    });
+    if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+    }
+    const body = await response.json() as { ok: true; data: { running: number } };
+    return body.data;
 }

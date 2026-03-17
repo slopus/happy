@@ -304,7 +304,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 <Item
                     title={t('settings.orchestratorRuns')}
                     subtitle={t('settings.orchestratorRunsSubtitle')}
-                    icon={<Ionicons name="git-network-outline" size={29} color="#007AFF" />}
+                    icon={<Ionicons name="layers-outline" size={29} color="#007AFF" />}
                     onPress={() => router.push('/orchestrator')}
                 />
             </ItemGroup>

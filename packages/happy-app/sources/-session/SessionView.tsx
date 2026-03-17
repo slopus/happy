@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import { Avatar } from '@/components/Avatar';
 import { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
@@ -17,7 +18,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { sessionAbort, machineGetClaudeSessionUserMessages, machineDuplicateClaudeSession, machineSpawnNewSession, machineGetGeminiSessionUserMessages, machineDuplicateGeminiSession, machineGetCodexSessionUserMessages, machineDuplicateCodexSession, type UserMessageWithUuid } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useOrchestratorRunningTaskCount, useRealtimeStatus, useSessionMessages, useSessionPendingMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -52,6 +53,10 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+    const runningTaskCount = useOrchestratorRunningTaskCount(sessionId);
+    const handleOpenSessionRuns = React.useCallback(() => {
+        router.push(`/orchestrator?controllerSessionId=${encodeURIComponent(sessionId)}`);
+    }, [router, sessionId]);
 
     // Track if we've confirmed the session doesn't exist after data loads
     const [sessionNotFound, setSessionNotFound] = React.useState(false);
@@ -168,6 +173,72 @@ export const SessionView = React.memo((props: { id: string }) => {
                     <ChatHeaderView
                         {...headerProps}
                         onBackPress={() => router.back()}
+                        headerRight={session ? () => (
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Pressable
+                                    onPress={handleOpenSessionRuns}
+                                    hitSlop={15}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t('settings.orchestratorOpenRuns')}
+                                    style={{
+                                        width: 38,
+                                        height: 38,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginRight: 2,
+                                    }}
+                                >
+                                    <Ionicons
+                                        name="layers-outline"
+                                        size={22}
+                                        color={theme.colors.header.tint}
+                                    />
+                                    {runningTaskCount > 0 && (
+                                        <View style={{
+                                            position: 'absolute',
+                                            top: 2,
+                                            right: 0,
+                                            backgroundColor: theme.colors.button.primary.background,
+                                            borderRadius: 8,
+                                            minWidth: 16,
+                                            height: 16,
+                                            paddingHorizontal: 3,
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                        }}>
+                                            <Text style={{
+                                                color: theme.colors.button.primary.tint,
+                                                fontSize: 10,
+                                                fontWeight: '600',
+                                            }}>
+                                                {runningTaskCount > 99 ? '99+' : runningTaskCount}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </Pressable>
+                                {headerProps.avatarId && headerProps.onAvatarPress && (
+                                    <Pressable
+                                        onPress={headerProps.onAvatarPress}
+                                        hitSlop={15}
+                                        style={{
+                                            width: 44,
+                                            height: 44,
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            marginRight: Platform.select({ web: -8, default: -4 }),
+                                        }}
+                                    >
+                                        <Avatar
+                                            id={headerProps.avatarId}
+                                            size={32}
+                                            monochrome={!headerProps.isConnected}
+                                            flavor={headerProps.flavor}
+                                            sessionIcon={headerProps.sessionIcon}
+                                        />
+                                    </Pressable>
+                                )}
+                            </View>
+                        ) : undefined}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (

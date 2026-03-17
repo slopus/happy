@@ -292,6 +292,10 @@ export type EphemeralEvent = {
     machineId: string;
     online: boolean;
     timestamp: number;
+} | {
+    type: 'orchestrator-activity';
+    controllerSessionId: string;
+    running: number;
 };
 
 // === EVENT PAYLOAD TYPES ===
@@ -793,6 +797,14 @@ export function buildMachineStatusEphemeral(machineId: string, online: boolean):
         machineId,
         online,
         timestamp: Date.now()
+    };
+}
+
+export function buildOrchestratorActivityEphemeral(controllerSessionId: string, running: number): EphemeralPayload {
+    return {
+        type: 'orchestrator-activity',
+        controllerSessionId,
+        running,
     };
 }
 

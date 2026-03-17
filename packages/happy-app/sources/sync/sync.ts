@@ -56,6 +56,7 @@ import {
     processUpdateOpenClawMachineEvent,
 } from '../openclaw/storage';
 import { resolveModelSelectionForFlavor } from '@/constants/modelCatalog';
+import { getOrchestratorActivity } from './apiOrchestrator';
 import { sessionAbort, sessionUpdateMetadataFields } from './ops';
 import { shouldInvalidateGitStatusOnActivityTransition } from './gitStatusRefreshPolicy';
 import { kvGet, kvMutate } from './apiKv';
@@ -243,6 +244,9 @@ class Sync {
                 this.feedSync.invalidate();
                 this.sharedSessionsSync.invalidate();
                 gitStatusSync.invalidateForSessions([...Object.keys(storage.getState().sessions), ...Object.keys(storage.getState().sharedSessions)]);
+                if (this.viewingSessionId) {
+                    this.fetchOrchestratorActivity(this.viewingSessionId);
+                }
 
                 // DooTask token refresh (throttled to 1h)
                 const dootaskProfile = storage.getState().dootaskProfile;
@@ -434,6 +438,7 @@ class Sync {
         if (userInitiated) {
             gitStatusSync.invalidate(sessionId);
             this.sessionModeConfigSync.invalidate();
+            this.fetchOrchestratorActivity(sessionId);
         }
 
         // Track which session user is viewing
@@ -463,6 +468,15 @@ class Sync {
     onSessionHidden = () => {
         this.viewingSessionId = null;
         voiceHooks.onSessionBlur();
+    }
+
+    private fetchOrchestratorActivity = (sessionId: string) => {
+        if (!this.credentials) return;
+        getOrchestratorActivity(this.credentials, sessionId)
+            .then((data) => {
+                storage.getState().setOrchestratorActivity(sessionId, data.running);
+            })
+            .catch(() => { /* ignore — badge is best-effort */ });
     }
 
     private invalidateMessagesSync = (sessionId: string) => {
@@ -2581,6 +2595,9 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
+            if (this.viewingSessionId) {
+                this.fetchOrchestratorActivity(this.viewingSessionId);
+            }
             const sessionsData = storage.getState().sessionsData;
             if (sessionsData) {
                 for (const item of sessionsData) {
@@ -3648,6 +3665,10 @@ class Sync {
                 // Machine not in store yet (e.g. just registered) — re-fetch all machines
                 this.machinesSync.invalidate();
             }
+        }
+
+        if (updateData.type === 'orchestrator-activity') {
+            storage.getState().setOrchestratorActivity(updateData.controllerSessionId, updateData.running);
         }
 
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity

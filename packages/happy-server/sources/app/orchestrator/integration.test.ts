@@ -150,6 +150,12 @@ const {
         if (where.accountId && run.accountId !== where.accountId) {
             return false;
         }
+        if (typeof where.controllerSessionId === 'string' && run.controllerSessionId !== where.controllerSessionId) {
+            return false;
+        }
+        if (where.controllerSessionId === null && run.controllerSessionId !== null) {
+            return false;
+        }
         if (where.idempotencyKey && run.idempotencyKey !== where.idempotencyKey) {
             return false;
         }
@@ -1170,6 +1176,75 @@ describe('orchestrator integration paths', () => {
                 ],
             }),
         }));
+        await app.close();
+    });
+
+    it('filters run list by controllerSessionId', async () => {
+        const app = await createApp();
+        state.sessions.push({ id: 'controller-session-2', accountId: 'user-1' });
+
+        const firstSubmit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'run-from-session-1',
+                controllerSessionId: 'controller-session-1',
+                tasks: [
+                    {
+                        provider: 'claude',
+                        prompt: 'step a',
+                    },
+                ],
+            },
+        });
+        expect(firstSubmit.statusCode).toBe(200);
+
+        const secondSubmit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'run-from-session-2',
+                controllerSessionId: 'controller-session-2',
+                tasks: [
+                    {
+                        provider: 'codex',
+                        prompt: 'step b',
+                    },
+                ],
+            },
+        });
+        expect(secondSubmit.statusCode).toBe(200);
+
+        const thirdSubmit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'run-without-session',
+                tasks: [
+                    {
+                        provider: 'gemini',
+                        prompt: 'step c',
+                    },
+                ],
+            },
+        });
+        expect(thirdSubmit.statusCode).toBe(200);
+
+        const response = await app.inject({
+            method: 'GET',
+            url: '/v1/orchestrator/runs?controllerSessionId=controller-session-1',
+            headers: { 'x-user-id': 'user-1' },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().data.items).toEqual([
+            expect.objectContaining({
+                title: 'run-from-session-1',
+            }),
+        ]);
         await app.close();
     });
 

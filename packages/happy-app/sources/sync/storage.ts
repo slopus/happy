@@ -127,6 +127,7 @@ interface StorageState {
     realtimeMode: 'idle' | 'speaking' | 'thinking';
     microphoneMuted: boolean;
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+    orchestratorActivity: Record<string, number>;
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
     isDataReady: boolean;
@@ -181,6 +182,7 @@ interface StorageState {
     clearRealtimeModeDebounce: () => void;
     setMicrophoneMuted: (muted: boolean) => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+    setOrchestratorActivity: (controllerSessionId: string, running: number) => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => void;
     updateSessionActivity: (sessionId: string, active: boolean) => void;
@@ -429,6 +431,7 @@ export const storage = create<StorageState>()((set, get) => {
         realtimeMode: 'idle',
         microphoneMuted: false,
         socketStatus: 'disconnected',
+        orchestratorActivity: {},
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
         isDataReady: false,
@@ -1226,6 +1229,10 @@ export const storage = create<StorageState>()((set, get) => {
                 ...updates
             };
         }),
+        setOrchestratorActivity: (controllerSessionId: string, running: number) => set((state) => ({
+            ...state,
+            orchestratorActivity: { ...state.orchestratorActivity, [controllerSessionId]: running },
+        })),
         updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => set((state) => {
             const isShared = sessionId in state.sharedSessions;
             const session = state.sessions[sessionId] ?? state.sharedSessions[sessionId];
@@ -2336,6 +2343,10 @@ export function useSocketStatus() {
         lastConnectedAt: state.socketLastConnectedAt,
         lastDisconnectedAt: state.socketLastDisconnectedAt
     })));
+}
+
+export function useOrchestratorRunningTaskCount(sessionId: string): number {
+    return storage((state) => state.orchestratorActivity[sessionId] ?? 0);
 }
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {
