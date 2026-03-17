@@ -54,6 +54,11 @@ type OrchestratorSubmitTask = {
     provider: OrchestratorProvider;
     prompt: string;
     timeoutMs?: number;
+    dependsOn?: string[];
+    retry?: {
+        maxAttempts?: number;
+        backoffMs?: number;
+    };
     target?: {
         type: 'current_machine' | 'machine_id';
         machineId?: string;
@@ -299,6 +304,17 @@ export class ApiSessionClient extends EventEmitter {
             {
                 headers: this.orchestratorHeaders(),
                 timeout: 60_000,
+            }
+        );
+        return response.data;
+    }
+
+    async orchestratorGetContext(): Promise<any> {
+        const response = await axios.get(
+            `${configuration.serverUrl}/v1/orchestrator/context`,
+            {
+                headers: this.orchestratorHeaders(),
+                timeout: 30_000,
             }
         );
         return response.data;

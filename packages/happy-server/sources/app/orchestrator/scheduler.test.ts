@@ -32,6 +32,7 @@ const {
                         status: state.executionStatus,
                         runId: 'run_1',
                         taskId: 'task_1',
+                        attempt: 1,
                     })),
                     update: vi.fn(async (args: any) => {
                         state.executionStatus = args.data.status;
@@ -39,6 +40,10 @@ const {
                     }),
                 },
                 orchestratorTask: {
+                    findUnique: vi.fn(async () => ({
+                        retryMaxAttempts: 1,
+                        retryBackoffMs: 0,
+                    })),
                     updateMany: vi.fn(async (args: any) => {
                         if (state.taskStatus !== args.where.status) {
                             return { count: 0 };

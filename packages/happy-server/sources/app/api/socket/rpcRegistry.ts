@@ -50,3 +50,27 @@ export async function invokeUserRpc(
     });
     return response;
 }
+
+export function hasUserRpcMethod(userId: string, method: string): boolean {
+    const listeners = rpcListenersByUser.get(userId);
+    if (!listeners) {
+        return false;
+    }
+    const targetSocket = listeners.get(method);
+    return !!targetSocket?.connected;
+}
+
+export function listConnectedUserRpcMethods(userId: string): string[] {
+    const listeners = rpcListenersByUser.get(userId);
+    if (!listeners) {
+        return [];
+    }
+
+    const methods: string[] = [];
+    for (const [method, socket] of listeners.entries()) {
+        if (socket.connected) {
+            methods.push(method);
+        }
+    }
+    return methods;
+}

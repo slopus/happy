@@ -8,6 +8,7 @@ import {
     encodeListCursor,
     isExecutionTerminal,
     isRunTerminal,
+    isTaskTerminal,
     toPublicSummary,
 } from './state';
 
@@ -17,13 +18,14 @@ describe('orchestrator state helpers', () => {
         addTaskCount(summary, 'queued', 1);
         addTaskCount(summary, 'dispatching', 2);
         addTaskCount(summary, 'running', 3);
+        addTaskCount(summary, 'dependency_failed', 1);
 
         expect(toPublicSummary(summary)).toEqual({
-            total: 6,
+            total: 7,
             queued: 1,
             running: 5,
             completed: 0,
-            failed: 0,
+            failed: 1,
             cancelled: 0,
         });
     });
@@ -62,6 +64,8 @@ describe('orchestrator state helpers', () => {
     it('detects terminal statuses and creates pend cursor', () => {
         expect(isRunTerminal('completed')).toBe(true);
         expect(isRunTerminal('running')).toBe(false);
+        expect(isTaskTerminal('dependency_failed')).toBe(true);
+        expect(isTaskTerminal('running')).toBe(false);
         expect(isExecutionTerminal('timeout')).toBe(true);
         expect(isExecutionTerminal('dispatching')).toBe(false);
 
