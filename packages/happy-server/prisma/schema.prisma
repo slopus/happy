@@ -158,28 +158,33 @@ model OrchestratorRun {
 }
 
 model OrchestratorTask {
-  id              String                  @id @default(cuid())
-  runId           String
-  run             OrchestratorRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
-  seq             Int
-  taskKey         String?
-  title           String?
-  provider        String
-  prompt          String
-  timeoutMs       Int?
-  targetMachineId String?
-  status          String
-  outputSummary   String?
-  outputText      String?
-  errorCode       String?
-  errorMessage    String?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  executions      OrchestratorExecution[]
+  id                String                  @id @default(cuid())
+  runId             String
+  run               OrchestratorRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  seq               Int
+  taskKey           String?
+  title             String?
+  provider          String
+  prompt            String
+  timeoutMs         Int?
+  targetMachineId   String?
+  dependsOnTaskKeys String[]                @default([])
+  retryMaxAttempts  Int                     @default(1)
+  retryBackoffMs    Int                     @default(0)
+  nextAttemptAt     DateTime?
+  status            String
+  outputSummary     String?
+  outputText        String?
+  errorCode         String?
+  errorMessage      String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  executions        OrchestratorExecution[]
 
   @@unique([runId, seq])
   @@unique([runId, taskKey])
   @@index([runId, status, seq])
+  @@index([runId, status, nextAttemptAt, seq])
   @@index([targetMachineId])
 }
 

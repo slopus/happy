@@ -11,6 +11,13 @@ export const EXECUTION_TERMINAL_STATUSES = new Set([
     'timeout',
 ]);
 
+export const TASK_TERMINAL_STATUSES = new Set([
+    'completed',
+    'failed',
+    'cancelled',
+    'dependency_failed',
+]);
+
 export type RunSummary = {
     total: number;
     queued: number;
@@ -30,6 +37,10 @@ export function isRunTerminal(status: string): boolean {
 
 export function isExecutionTerminal(status: string): boolean {
     return EXECUTION_TERMINAL_STATUSES.has(status);
+}
+
+export function isTaskTerminal(status: string): boolean {
+    return TASK_TERMINAL_STATUSES.has(status);
 }
 
 export function createEmptySummaryInternal(): RunSummaryInternal {
@@ -54,7 +65,7 @@ export function addTaskCount(summary: RunSummaryInternal, status: string, count:
         summary.running += count;
     } else if (status === 'completed') {
         summary.completed += count;
-    } else if (status === 'failed') {
+    } else if (status === 'failed' || status === 'dependency_failed') {
         summary.failed += count;
     } else if (status === 'cancelled') {
         summary.cancelled += count;

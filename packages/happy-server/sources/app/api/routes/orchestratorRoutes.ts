@@ -2,6 +2,8 @@ import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
 import { delay } from "@/utils/delay";
+import { eventRouter } from "@/app/events/eventRouter";
+import { listConnectedUserRpcMethods } from "@/app/api/socket/rpcRegistry";
 import {
     addTaskCount,
     buildPendCursor,
@@ -21,6 +23,11 @@ const EXECUTION_FINAL_STATUSES = ['completed', 'failed', 'cancelled', 'timeout']
 const LIST_RUN_STATUS_FILTERS = ['active', 'terminal', ...RUN_STATUSES] as const;
 const IDEMPOTENCY_RETRY_TIMES = 2;
 const IDEMPOTENCY_RETRY_DELAY_MS = 10;
+const DEFAULT_CONTEXT_MAX_CONCURRENCY = 2;
+const DEFAULT_CONTEXT_WAIT_TIMEOUT_MS = 120_000;
+const DEFAULT_CONTEXT_POLL_INTERVAL_MS = 30_000;
+const DEFAULT_CONTEXT_RETRY_MAX_ATTEMPTS = 1;
+const DEFAULT_CONTEXT_RETRY_BACKOFF_MS = 0;
 
 const submitTaskSchema = z.object({
     taskKey: z.string().min(1).max(128).optional(),
@@ -28,6 +35,11 @@ const submitTaskSchema = z.object({
     provider: z.enum(PROVIDERS),
     prompt: z.string().min(1).max(65536),
     timeoutMs: z.coerce.number().int().min(1000).max(24 * 60 * 60 * 1000).optional(),
+    dependsOn: z.array(z.string().min(1).max(128)).max(31).optional(),
+    retry: z.object({
+        maxAttempts: z.coerce.number().int().min(1).max(10).optional(),
+        backoffMs: z.coerce.number().int().min(0).max(24 * 60 * 60 * 1000).optional(),
+    }).optional(),
     target: z.object({
         type: z.enum(['current_machine', 'machine_id']),
         machineId: z.string().optional(),
@@ -71,6 +83,10 @@ type RunWithTasks = {
         taskKey: string | null;
         title: string | null;
         provider: string;
+        dependsOnTaskKeys: string[];
+        retryMaxAttempts: number;
+        retryBackoffMs: number;
+        nextAttemptAt: Date | null;
         status: string;
         outputSummary: string | null;
         errorCode: string | null;
@@ -109,6 +125,12 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
         title: task.title,
         status: task.status,
         provider: task.provider,
+        dependsOn: task.dependsOnTaskKeys,
+        retry: {
+            maxAttempts: task.retryMaxAttempts,
+            backoffMs: task.retryBackoffMs,
+        },
+        nextAttemptAt: task.nextAttemptAt?.toISOString() ?? null,
         outputSummary: task.outputSummary,
         errorCode: task.errorCode,
         errorMessage: task.errorMessage,
@@ -188,6 +210,10 @@ async function loadRunForUser(userId: string, runId: string, includeTasks: boole
                     taskKey: true,
                     title: true,
                     provider: true,
+                    dependsOnTaskKeys: true,
+                    retryMaxAttempts: true,
+                    retryBackoffMs: true,
+                    nextAttemptAt: true,
                     status: true,
                     outputSummary: true,
                     errorCode: true,
@@ -245,7 +271,253 @@ function validateTaskKeyUniqueness(tasks: z.infer<typeof submitTaskSchema>[]): s
     return null;
 }
 
+type TaskDependencyValidationIssue = {
+    code: 'INVALID_DEPENDENCY' | 'INVALID_DAG_CYCLE';
+    message: string;
+};
+
+function validateTaskDependencies(tasks: z.infer<typeof submitTaskSchema>[]): TaskDependencyValidationIssue | null {
+    const keyToTaskIndex = new Map<string, number>();
+    for (let index = 0; index < tasks.length; index++) {
+        const taskKey = tasks[index].taskKey;
+        if (!taskKey) {
+            continue;
+        }
+        keyToTaskIndex.set(taskKey, index + 1);
+    }
+
+    for (let index = 0; index < tasks.length; index++) {
+        const task = tasks[index];
+        const seq = index + 1;
+        const dependsOn = task.dependsOn ?? [];
+        const localSeen = new Set<string>();
+
+        for (const dep of dependsOn) {
+            if (localSeen.has(dep)) {
+                return {
+                    code: 'INVALID_DEPENDENCY',
+                    message: `Task seq ${seq} has duplicate dependency: ${dep}`,
+                };
+            }
+            localSeen.add(dep);
+
+            if (task.taskKey && dep === task.taskKey) {
+                return {
+                    code: 'INVALID_DEPENDENCY',
+                    message: `Task seq ${seq} depends on itself: ${dep}`,
+                };
+            }
+
+            if (!keyToTaskIndex.has(dep)) {
+                return {
+                    code: 'INVALID_DEPENDENCY',
+                    message: `Task seq ${seq} depends on unknown taskKey: ${dep}`,
+                };
+            }
+        }
+    }
+
+    const keyedTasks = tasks
+        .map((task, index) => ({ task, seq: index + 1 }))
+        .filter((entry) => !!entry.task.taskKey);
+    if (keyedTasks.length === 0) {
+        return null;
+    }
+
+    const inDegree = new Map<string, number>();
+    const outgoing = new Map<string, string[]>();
+    for (const entry of keyedTasks) {
+        const key = entry.task.taskKey!;
+        inDegree.set(key, 0);
+        outgoing.set(key, []);
+    }
+
+    for (const entry of keyedTasks) {
+        const key = entry.task.taskKey!;
+        for (const dep of entry.task.dependsOn ?? []) {
+            outgoing.get(dep)!.push(key);
+            inDegree.set(key, (inDegree.get(key) ?? 0) + 1);
+        }
+    }
+
+    const queue = Array.from(inDegree.entries())
+        .filter(([, degree]) => degree === 0)
+        .map(([key]) => key);
+    let processed = 0;
+
+    while (queue.length > 0) {
+        const current = queue.shift()!;
+        processed += 1;
+        for (const next of outgoing.get(current) ?? []) {
+            const nextDegree = (inDegree.get(next) ?? 0) - 1;
+            inDegree.set(next, nextDegree);
+            if (nextDegree === 0) {
+                queue.push(next);
+            }
+        }
+    }
+
+    if (processed !== keyedTasks.length) {
+        const cyclicTaskKeys = Array.from(inDegree.entries())
+            .filter(([, degree]) => degree > 0)
+            .map(([key]) => key)
+            .slice(0, 5);
+        return {
+            code: 'INVALID_DAG_CYCLE',
+            message: `Task dependency cycle detected${cyclicTaskKeys.length > 0 ? `: ${cyclicTaskKeys.join(', ')}` : ''}`,
+        };
+    }
+
+    return null;
+}
+
+async function markDependencyFailedTasksInCancelTx(tx: any, runId: string): Promise<void> {
+    const keyedTasks = await tx.orchestratorTask.findMany({
+        where: {
+            runId,
+            taskKey: { not: null },
+        },
+        select: {
+            taskKey: true,
+            status: true,
+        },
+    });
+    const taskKeyToStatus = new Map<string, string>();
+    for (const task of keyedTasks) {
+        if (task.taskKey) {
+            taskKeyToStatus.set(task.taskKey, task.status);
+        }
+    }
+
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const candidateTasks = await tx.orchestratorTask.findMany({
+            where: {
+                runId,
+                status: { in: ['queued', 'cancelled'] },
+            },
+            orderBy: { seq: 'asc' },
+            select: {
+                id: true,
+                taskKey: true,
+                status: true,
+                dependsOnTaskKeys: true,
+            },
+        });
+
+        for (const task of candidateTasks) {
+            const dependencies = task.dependsOnTaskKeys ?? [];
+            if (dependencies.length === 0) {
+                continue;
+            }
+
+            let dependencyFailedKey: string | null = null;
+            for (const dependencyKey of dependencies) {
+                const dependencyStatus = taskKeyToStatus.get(dependencyKey);
+                if (
+                    dependencyStatus === 'failed'
+                    || dependencyStatus === 'cancelled'
+                    || dependencyStatus === 'dependency_failed'
+                ) {
+                    dependencyFailedKey = dependencyKey;
+                    break;
+                }
+            }
+
+            if (!dependencyFailedKey) {
+                continue;
+            }
+
+            const updated = await tx.orchestratorTask.updateMany({
+                where: {
+                    id: task.id,
+                    status: { in: ['queued', 'cancelled'] },
+                },
+                data: {
+                    status: 'dependency_failed',
+                    errorCode: 'DEPENDENCY_FAILED',
+                    errorMessage: `Dependency failed: ${dependencyFailedKey}`,
+                    nextAttemptAt: null,
+                },
+            });
+            if (updated.count > 0) {
+                changed = true;
+                if (task.taskKey) {
+                    taskKeyToStatus.set(task.taskKey, 'dependency_failed');
+                }
+            }
+        }
+    }
+}
+
 export function orchestratorRoutes(app: Fastify) {
+    app.get('/v1/orchestrator/context', {
+        preHandler: app.authenticate,
+    }, async (request, reply) => {
+        const userId = request.userId;
+
+        const machineConnections = eventRouter.getConnections(userId);
+        const onlineMachineIds = new Set<string>();
+        for (const connection of machineConnections ?? []) {
+            if (connection.connectionType === 'machine-scoped' && connection.socket.connected) {
+                onlineMachineIds.add(connection.machineId);
+            }
+        }
+        const dispatchReadyMachineIds = new Set<string>();
+        for (const method of listConnectedUserRpcMethods(userId)) {
+            if (method.endsWith(':orchestrator-dispatch')) {
+                dispatchReadyMachineIds.add(method.slice(0, -':orchestrator-dispatch'.length));
+            }
+        }
+
+        const machines = await db.machine.findMany({
+            where: { accountId: userId },
+            orderBy: { lastActiveAt: 'desc' },
+            take: 50,
+            select: {
+                id: true,
+                active: true,
+                lastActiveAt: true,
+            },
+        });
+        const machineList = machines.map((machine) => {
+            const online = onlineMachineIds.has(machine.id);
+            const dispatchReady = dispatchReadyMachineIds.has(machine.id);
+            return {
+                machineId: machine.id,
+                active: machine.active,
+                online,
+                dispatchReady,
+                lastActiveAt: machine.lastActiveAt.toISOString(),
+            };
+        }).sort((a, b) => {
+            if (a.dispatchReady !== b.dispatchReady) {
+                return a.dispatchReady ? -1 : 1;
+            }
+            if (a.online !== b.online) {
+                return a.online ? -1 : 1;
+            }
+            return b.lastActiveAt.localeCompare(a.lastActiveAt);
+        });
+
+        return reply.send({
+            ok: true,
+            data: {
+                providers: PROVIDERS,
+                defaults: {
+                    mode: 'async',
+                    maxConcurrency: DEFAULT_CONTEXT_MAX_CONCURRENCY,
+                    waitTimeoutMs: DEFAULT_CONTEXT_WAIT_TIMEOUT_MS,
+                    pollIntervalMs: DEFAULT_CONTEXT_POLL_INTERVAL_MS,
+                    retryMaxAttempts: DEFAULT_CONTEXT_RETRY_MAX_ATTEMPTS,
+                    retryBackoffMs: DEFAULT_CONTEXT_RETRY_BACKOFF_MS,
+                },
+                machines: machineList,
+            },
+        });
+    });
+
     app.post('/v1/orchestrator/submit', {
         preHandler: app.authenticate,
         schema: {
@@ -258,6 +530,10 @@ export function orchestratorRoutes(app: Fastify) {
         const duplicatedTaskKey = validateTaskKeyUniqueness(body.tasks);
         if (duplicatedTaskKey) {
             return sendError(reply, 400, 'INVALID_ARGUMENT', `Duplicate taskKey in request: ${duplicatedTaskKey}`);
+        }
+        const dependencyIssue = validateTaskDependencies(body.tasks);
+        if (dependencyIssue) {
+            return sendError(reply, 400, dependencyIssue.code, dependencyIssue.message);
         }
 
         if (body.controllerSessionId) {
@@ -356,6 +632,10 @@ export function orchestratorRoutes(app: Fastify) {
                     prompt: task.prompt,
                     timeoutMs: task.timeoutMs,
                     targetMachineId: task.target?.type === 'machine_id' ? task.target.machineId : null,
+                    dependsOnTaskKeys: task.dependsOn ?? [],
+                    retryMaxAttempts: task.retry?.maxAttempts ?? DEFAULT_CONTEXT_RETRY_MAX_ATTEMPTS,
+                    retryBackoffMs: task.retry?.backoffMs ?? DEFAULT_CONTEXT_RETRY_BACKOFF_MS,
+                    nextAttemptAt: null,
                     status: 'queued',
                 }));
 
@@ -370,6 +650,10 @@ export function orchestratorRoutes(app: Fastify) {
                         taskKey: true,
                         title: true,
                         provider: true,
+                        dependsOnTaskKeys: true,
+                        retryMaxAttempts: true,
+                        retryBackoffMs: true,
+                        nextAttemptAt: true,
                         status: true,
                         outputSummary: true,
                         errorCode: true,
@@ -664,8 +948,10 @@ export function orchestratorRoutes(app: Fastify) {
                     status: 'cancelled',
                     errorCode: 'RUN_CANCELLED',
                     errorMessage: 'Cancelled before dispatch',
+                    nextAttemptAt: null,
                 },
             });
+            await markDependencyFailedTasksInCancelTx(tx, runId);
 
             const grouped = await tx.orchestratorTask.groupBy({
                 by: ['status'],
@@ -856,9 +1142,16 @@ export function orchestratorRoutes(app: Fastify) {
                     dispatchToken: true,
                     runId: true,
                     taskId: true,
+                    attempt: true,
                     run: {
                         select: {
                             status: true,
+                        },
+                    },
+                    task: {
+                        select: {
+                            retryMaxAttempts: true,
+                            retryBackoffMs: true,
                         },
                     },
                 },
@@ -878,11 +1171,20 @@ export function orchestratorRoutes(app: Fastify) {
 
             const finishedAt = body.finishedAt ? new Date(body.finishedAt) : new Date();
             const executionStatus = body.status;
-            const taskStatus = executionStatus === 'completed'
+            const shouldRetry = (executionStatus === 'failed' || executionStatus === 'timeout')
+                && execution.run.status !== 'canceling'
+                && execution.run.status !== 'cancelled'
+                && execution.attempt < execution.task.retryMaxAttempts;
+            const taskStatus = shouldRetry
+                ? 'queued'
+                : executionStatus === 'completed'
                 ? 'completed'
                 : executionStatus === 'cancelled'
                     ? 'cancelled'
                     : 'failed';
+            const nextAttemptAt = shouldRetry
+                ? new Date(finishedAt.getTime() + execution.task.retryBackoffMs)
+                : null;
 
             const updated = await tx.orchestratorExecution.updateMany({
                 where: {
@@ -915,6 +1217,7 @@ export function orchestratorRoutes(app: Fastify) {
                     outputText: body.outputText ?? null,
                     errorCode: body.errorCode ?? null,
                     errorMessage: body.errorMessage ?? null,
+                    nextAttemptAt,
                 },
             });
 

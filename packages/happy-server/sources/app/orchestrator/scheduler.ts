@@ -90,11 +90,34 @@ async function markDispatchFailed(action: Extract<SchedulerAction, { type: 'disp
                 status: true,
                 runId: true,
                 taskId: true,
+                attempt: true,
             },
         });
         if (!execution || execution.status !== 'dispatching') {
             return;
         }
+
+        const run = await tx.orchestratorRun.findUnique({
+            where: { id: action.runId },
+            select: { status: true, completedAt: true },
+        });
+        if (!run) {
+            return;
+        }
+        const task = await tx.orchestratorTask.findUnique({
+            where: { id: action.taskId },
+            select: {
+                retryMaxAttempts: true,
+                retryBackoffMs: true,
+            },
+        });
+        const shouldRetry = !!task
+            && run.status !== 'canceling'
+            && run.status !== 'cancelled'
+            && execution.attempt < task.retryMaxAttempts;
+        const nextAttemptAt = shouldRetry
+            ? new Date(now.getTime() + task.retryBackoffMs)
+            : null;
 
         await tx.orchestratorExecution.update({
             where: { id: action.executionId },
@@ -108,19 +131,12 @@ async function markDispatchFailed(action: Extract<SchedulerAction, { type: 'disp
         await tx.orchestratorTask.updateMany({
             where: { id: action.taskId, status: 'dispatching' },
             data: {
-                status: 'failed',
+                status: shouldRetry ? 'queued' : 'failed',
                 errorCode: 'RPC_DISPATCH_FAILED',
                 errorMessage: reason,
+                nextAttemptAt,
             },
         });
-
-        const run = await tx.orchestratorRun.findUnique({
-            where: { id: action.runId },
-            select: { status: true, completedAt: true },
-        });
-        if (!run) {
-            return;
-        }
         await recomputeRunStatusTx(tx, action.runId, run.status, run.completedAt, now);
     });
 }
@@ -165,7 +181,7 @@ export async function executeSchedulerActions(actions: SchedulerAction[]): Promi
     }
 }
 
-async function failStaleDispatchingExecutionsTx(tx: any, runId: string, now: Date): Promise<void> {
+async function failStaleDispatchingExecutionsTx(tx: any, runId: string, runStatus: string, now: Date): Promise<void> {
     const staleBefore = new Date(now.getTime() - ORCHESTRATOR_DISPATCH_STALE_MS);
     const staleExecutions = await tx.orchestratorExecution.findMany({
         where: {
@@ -176,10 +192,23 @@ async function failStaleDispatchingExecutionsTx(tx: any, runId: string, now: Dat
         select: {
             id: true,
             taskId: true,
+            attempt: true,
+            task: {
+                select: {
+                    retryMaxAttempts: true,
+                    retryBackoffMs: true,
+                },
+            },
         },
     });
 
     for (const execution of staleExecutions) {
+        const shouldRetry = runStatus !== 'canceling'
+            && runStatus !== 'cancelled'
+            && execution.attempt < execution.task.retryMaxAttempts;
+        const nextAttemptAt = shouldRetry
+            ? new Date(now.getTime() + execution.task.retryBackoffMs)
+            : null;
         const updated = await tx.orchestratorExecution.updateMany({
             where: {
                 id: execution.id,
@@ -198,15 +227,16 @@ async function failStaleDispatchingExecutionsTx(tx: any, runId: string, now: Dat
         await tx.orchestratorTask.updateMany({
             where: { id: execution.taskId, status: 'dispatching' },
             data: {
-                status: 'failed',
+                status: shouldRetry ? 'queued' : 'failed',
                 errorCode: 'DISPATCH_TIMEOUT',
                 errorMessage: 'Dispatch did not start in time',
+                nextAttemptAt,
             },
         });
     }
 }
 
-async function failTimedOutRunningExecutionsTx(tx: any, runId: string, now: Date): Promise<void> {
+async function failTimedOutRunningExecutionsTx(tx: any, runId: string, runStatus: string, now: Date): Promise<void> {
     const runningExecutions = await tx.orchestratorExecution.findMany({
         where: {
             runId,
@@ -215,9 +245,16 @@ async function failTimedOutRunningExecutionsTx(tx: any, runId: string, now: Date
         select: {
             id: true,
             taskId: true,
+            attempt: true,
             startedAt: true,
             createdAt: true,
             timeoutMs: true,
+            task: {
+                select: {
+                    retryMaxAttempts: true,
+                    retryBackoffMs: true,
+                },
+            },
         },
     });
 
@@ -244,12 +281,19 @@ async function failTimedOutRunningExecutionsTx(tx: any, runId: string, now: Date
             continue;
         }
 
+        const shouldRetry = runStatus !== 'canceling'
+            && runStatus !== 'cancelled'
+            && execution.attempt < execution.task.retryMaxAttempts;
+        const nextAttemptAt = shouldRetry
+            ? new Date(now.getTime() + execution.task.retryBackoffMs)
+            : null;
         await tx.orchestratorTask.updateMany({
             where: { id: execution.taskId, status: 'running' },
             data: {
-                status: 'failed',
+                status: shouldRetry ? 'queued' : 'failed',
                 errorCode: 'TASK_TIMEOUT',
                 errorMessage: `Task exceeded timeout (${timeoutMs}ms)`,
+                nextAttemptAt,
             },
         });
     }
@@ -277,8 +321,8 @@ async function buildRunActions(run: {
             return;
         }
 
-        await failStaleDispatchingExecutionsTx(tx, currentRun.id, now);
-        await failTimedOutRunningExecutionsTx(tx, currentRun.id, now);
+        await failStaleDispatchingExecutionsTx(tx, currentRun.id, currentRun.status, now);
+        await failTimedOutRunningExecutionsTx(tx, currentRun.id, currentRun.status, now);
 
         if (currentRun.status === 'canceling') {
             await tx.orchestratorTask.updateMany({
@@ -290,6 +334,7 @@ async function buildRunActions(run: {
                     status: 'cancelled',
                     errorCode: 'RUN_CANCELLED',
                     errorMessage: 'Cancelled before dispatch',
+                    nextAttemptAt: null,
                 },
             });
 
@@ -336,20 +381,84 @@ async function buildRunActions(run: {
                     where: {
                         runId: currentRun.id,
                         status: 'queued',
+                        OR: [
+                            { nextAttemptAt: null },
+                            { nextAttemptAt: { lte: now } },
+                        ],
                     },
                     orderBy: { seq: 'asc' },
-                    take: slots,
                     select: {
                         id: true,
                         runId: true,
+                        taskKey: true,
+                        dependsOnTaskKeys: true,
                         provider: true,
                         prompt: true,
                         timeoutMs: true,
                         targetMachineId: true,
+                        nextAttemptAt: true,
                     },
                 });
+                const keyedTasks = await tx.orchestratorTask.findMany({
+                    where: {
+                        runId: currentRun.id,
+                        taskKey: { not: null },
+                    },
+                    select: {
+                        taskKey: true,
+                        status: true,
+                    },
+                });
+                const taskKeyToStatus = new Map<string, string>();
+                for (const keyedTask of keyedTasks) {
+                    if (keyedTask.taskKey) {
+                        taskKeyToStatus.set(keyedTask.taskKey, keyedTask.status);
+                    }
+                }
+                const readyTasks: typeof queuedTasks = [];
+                for (const task of queuedTasks) {
+                    const dependencies = task.dependsOnTaskKeys ?? [];
+                    if (dependencies.length === 0) {
+                        readyTasks.push(task);
+                        continue;
+                    }
 
-                const targetMachineIds = [...new Set(queuedTasks
+                    let dependencyFailedMessage: string | null = null;
+                    let blocked = false;
+                    for (const dependencyKey of dependencies) {
+                        const dependencyStatus = taskKeyToStatus.get(dependencyKey);
+                        if (!dependencyStatus) {
+                            dependencyFailedMessage = `Dependency not found: ${dependencyKey}`;
+                            break;
+                        }
+                        if (dependencyStatus === 'failed' || dependencyStatus === 'cancelled' || dependencyStatus === 'dependency_failed') {
+                            dependencyFailedMessage = `Dependency failed: ${dependencyKey}`;
+                            break;
+                        }
+                        if (dependencyStatus !== 'completed') {
+                            blocked = true;
+                        }
+                    }
+
+                    if (dependencyFailedMessage) {
+                        await tx.orchestratorTask.updateMany({
+                            where: { id: task.id, status: 'queued' },
+                            data: {
+                                status: 'dependency_failed',
+                                errorCode: 'DEPENDENCY_FAILED',
+                                errorMessage: dependencyFailedMessage,
+                                nextAttemptAt: null,
+                            },
+                        });
+                        continue;
+                    }
+
+                    if (!blocked) {
+                        readyTasks.push(task);
+                    }
+                }
+
+                const targetMachineIds = [...new Set(readyTasks
                     .map((task: any) => task.targetMachineId)
                     .filter((machineId: string | null) => !!machineId))];
                 const targetMachines = targetMachineIds.length > 0
@@ -372,7 +481,7 @@ async function buildRunActions(run: {
                     select: { id: true },
                 });
 
-                for (const task of queuedTasks) {
+                for (const task of readyTasks.slice(0, slots)) {
                     if (task.targetMachineId && !allowedTargetMachineIds.has(task.targetMachineId)) {
                         await tx.orchestratorTask.updateMany({
                             where: { id: task.id, status: 'queued' },
@@ -405,6 +514,7 @@ async function buildRunActions(run: {
                         },
                         data: {
                             status: 'dispatching',
+                            nextAttemptAt: null,
                         },
                     });
                     if (moved.count === 0) {
@@ -413,6 +523,18 @@ async function buildRunActions(run: {
 
                     const timeoutMs = task.timeoutMs ?? ORCHESTRATOR_DEFAULT_TASK_TIMEOUT_MS;
                     const dispatchToken = randomUUID();
+                    const latestExecution = await tx.orchestratorExecution.findFirst({
+                        where: {
+                            taskId: task.id,
+                        },
+                        orderBy: {
+                            attempt: 'desc',
+                        },
+                        select: {
+                            attempt: true,
+                        },
+                    });
+                    const attempt = (latestExecution?.attempt ?? 0) + 1;
                     const execution = await tx.orchestratorExecution.create({
                         data: {
                             runId: task.runId,
@@ -420,7 +542,7 @@ async function buildRunActions(run: {
                             machineId,
                             provider: task.provider,
                             status: 'dispatching',
-                            attempt: 1,
+                            attempt,
                             dispatchToken,
                             timeoutMs,
                         },
@@ -471,6 +593,8 @@ async function buildRunActions(run: {
 }
 
 export async function orchestratorSchedulerTick(now: Date = new Date()): Promise<void> {
+    // v2.1: each tick processes at most 50 active runs.
+    // Additional active runs are handled by subsequent ticks.
     const runs = await db.orchestratorRun.findMany({
         where: {
             status: { in: ACTIVE_RUN_STATUSES },

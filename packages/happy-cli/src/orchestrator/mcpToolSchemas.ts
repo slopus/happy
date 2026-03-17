@@ -6,6 +6,11 @@ const orchestratorTaskSchema = z.object({
   provider: z.enum(['claude', 'codex', 'gemini']),
   prompt: z.string().min(1).max(65536),
   timeoutMs: z.number().int().min(1000).max(24 * 60 * 60 * 1000).optional(),
+  dependsOn: z.array(z.string().min(1).max(128)).max(31).optional(),
+  retry: z.object({
+    maxAttempts: z.number().int().min(1).max(10).optional(),
+    backoffMs: z.number().int().min(0).max(24 * 60 * 60 * 1000).optional(),
+  }).optional(),
   target: z.object({
     type: z.enum(['current_machine', 'machine_id']),
     machineId: z.string().optional(),

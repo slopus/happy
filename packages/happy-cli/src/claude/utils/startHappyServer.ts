@@ -180,20 +180,41 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
         mcp.registerTool('orchestrator_get_context', ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA, async () => {
             try {
                 const metadata = client.getMetadataSnapshot();
+                const fallback = {
+                    controllerSessionId: client.sessionId,
+                    machineId: metadata?.machineId ?? null,
+                    workingDirectory: metadata?.path ?? null,
+                    defaults: {
+                        mode: 'async',
+                        maxConcurrency: 2,
+                        waitTimeoutMs: DEFAULT_BLOCKING_WAIT_TIMEOUT_MS,
+                        pollIntervalMs: 30_000,
+                        retryMaxAttempts: 1,
+                        retryBackoffMs: 0,
+                    },
+                    providers: ['claude', 'codex', 'gemini'],
+                    machines: [],
+                };
+                try {
+                    const response = await client.orchestratorGetContext();
+                    const data = response?.data ?? null;
+                    if (data) {
+                        return toToolSuccess({
+                            ok: true,
+                            data: {
+                                ...fallback,
+                                defaults: data.defaults ?? fallback.defaults,
+                                providers: data.providers ?? fallback.providers,
+                                machines: data.machines ?? [],
+                            },
+                        });
+                    }
+                } catch (_error) {
+                    // fallback to local-only context for backward compatibility
+                }
                 return toToolSuccess({
                     ok: true,
-                    data: {
-                        controllerSessionId: client.sessionId,
-                        machineId: metadata?.machineId ?? null,
-                        workingDirectory: metadata?.path ?? null,
-                        defaults: {
-                            mode: 'async',
-                            maxConcurrency: 2,
-                            waitTimeoutMs: DEFAULT_BLOCKING_WAIT_TIMEOUT_MS,
-                            pollIntervalMs: 30_000,
-                        },
-                        providers: ['claude', 'codex', 'gemini'],
-                    },
+                    data: fallback,
                 });
             } catch (error) {
                 return toToolError('Failed to load orchestrator context', error instanceof Error ? error.message : String(error));
