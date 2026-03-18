@@ -409,7 +409,7 @@ export const darkTheme = {
         },
 
         // Message View colors
-        userMessageBackground: '#2C2C2E',
+        userMessageBackground: '#2B3A4C',
         userMessageText: '#FFFFFF',
         agentMessageText: '#FFFFFF',
         agentEventText: '#8E8E93',
