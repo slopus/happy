@@ -12,6 +12,10 @@ import { logger } from '@/ui/logger';
 
 export interface ClaudeSettings {
   includeCoAuthoredBy?: boolean;
+  permissions?: {
+    defaultMode?: string;
+    [key: string]: any;
+  };
   [key: string]: any;
 }
 
@@ -48,6 +52,53 @@ export function readClaudeSettings(): ClaudeSettings | null {
     logger.debug(`[ClaudeSettings] Error reading Claude settings: ${error}`);
     return null;
   }
+}
+
+/**
+ * Read a Claude settings file from a specific path.
+ */
+function readSettingsFile(path: string): ClaudeSettings | null {
+  try {
+    if (!existsSync(path)) return null;
+    return JSON.parse(readFileSync(path, 'utf-8')) as ClaudeSettings;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the default permission mode from Claude's settings files.
+ * Checks with precedence: project local > project > user (matching Claude Code's scope system).
+ *
+ * @param projectDir - The project working directory (for project-level settings)
+ * @returns The defaultMode value if set, or undefined
+ */
+export function getClaudeDefaultPermissionMode(projectDir?: string): string | undefined {
+  const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+
+  // Read settings in precedence order (lowest to highest)
+  const layers: ClaudeSettings[] = [];
+  const userSettings = readSettingsFile(join(claudeConfigDir, 'settings.json'));
+  if (userSettings) layers.push(userSettings);
+  if (projectDir) {
+    const projectSettings = readSettingsFile(join(projectDir, '.claude', 'settings.json'));
+    if (projectSettings) layers.push(projectSettings);
+    const localSettings = readSettingsFile(join(projectDir, '.claude', 'settings.local.json'));
+    if (localSettings) layers.push(localSettings);
+  }
+
+  // Last layer wins (highest precedence)
+  let mode: string | undefined;
+  for (const layer of layers) {
+    if (layer.permissions?.defaultMode) {
+      mode = layer.permissions.defaultMode;
+    }
+  }
+
+  if (mode) {
+    logger.debug(`[ClaudeSettings] Resolved defaultMode: ${mode}`);
+  }
+  return mode;
 }
 
 /**

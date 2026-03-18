@@ -28,6 +28,7 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { getClaudeDefaultPermissionMode } from './utils/claudeSettings';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -79,10 +80,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         resolveInitialClaudePermissionMode(options.permissionMode, options.claudeArgs),
         sandboxEnabled,
     );
+    const settingsDefaultMode = getClaudeDefaultPermissionMode(workingDirectory);
     const dangerouslySkipPermissions =
         initialPermissionMode === 'bypassPermissions' ||
         initialPermissionMode === 'yolo' ||
         sandboxEnabled ||
+        settingsDefaultMode === 'bypassPermissions' ||
         Boolean(options.claudeArgs?.includes('--dangerously-skip-permissions'));
     if (!machineId) {
         console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);

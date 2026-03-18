@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readClaudeSettings, shouldIncludeCoAuthoredBy } from './claudeSettings';
+import { readClaudeSettings, shouldIncludeCoAuthoredBy, getClaudeDefaultPermissionMode } from './claudeSettings';
 
 describe('Claude Settings', () => {
   let testClaudeDir: string;
@@ -90,6 +90,58 @@ describe('Claude Settings', () => {
 
       const result = shouldIncludeCoAuthoredBy();
       expect(result).toBe(true);
+    });
+  });
+
+  describe('getClaudeDefaultPermissionMode', () => {
+    it('returns undefined when no settings files exist', () => {
+      expect(getClaudeDefaultPermissionMode()).toBeUndefined();
+    });
+
+    it('reads defaultMode from user settings', () => {
+      writeFileSync(
+        join(testClaudeDir, 'settings.json'),
+        JSON.stringify({ permissions: { defaultMode: 'bypassPermissions' } }),
+      );
+      expect(getClaudeDefaultPermissionMode()).toBe('bypassPermissions');
+    });
+
+    it('returns undefined when permissions has no defaultMode', () => {
+      writeFileSync(
+        join(testClaudeDir, 'settings.json'),
+        JSON.stringify({ permissions: { allow: [] } }),
+      );
+      expect(getClaudeDefaultPermissionMode()).toBeUndefined();
+    });
+
+    it('project settings override user settings', () => {
+      writeFileSync(
+        join(testClaudeDir, 'settings.json'),
+        JSON.stringify({ permissions: { defaultMode: 'default' } }),
+      );
+      const projectDir = join(tmpdir(), `test-project-${Date.now()}`);
+      mkdirSync(join(projectDir, '.claude'), { recursive: true });
+      writeFileSync(
+        join(projectDir, '.claude', 'settings.json'),
+        JSON.stringify({ permissions: { defaultMode: 'bypassPermissions' } }),
+      );
+      expect(getClaudeDefaultPermissionMode(projectDir)).toBe('bypassPermissions');
+      rmSync(projectDir, { recursive: true, force: true });
+    });
+
+    it('local settings override project settings', () => {
+      const projectDir = join(tmpdir(), `test-project-${Date.now()}`);
+      mkdirSync(join(projectDir, '.claude'), { recursive: true });
+      writeFileSync(
+        join(projectDir, '.claude', 'settings.json'),
+        JSON.stringify({ permissions: { defaultMode: 'default' } }),
+      );
+      writeFileSync(
+        join(projectDir, '.claude', 'settings.local.json'),
+        JSON.stringify({ permissions: { defaultMode: 'acceptEdits' } }),
+      );
+      expect(getClaudeDefaultPermissionMode(projectDir)).toBe('acceptEdits');
+      rmSync(projectDir, { recursive: true, force: true });
     });
   });
 });
