@@ -21,6 +21,7 @@ import type {
 } from '../TransportHandler';
 import type { AgentMessage } from '../../core';
 import { logger } from '@/ui/logger';
+import { GEMINI_MODEL_MODES } from 'happy-wire';
 
 /**
  * Gemini-specific timeout values (in milliseconds)
@@ -55,37 +56,72 @@ interface ExtendedToolPattern extends ToolPattern {
   emptyInputDefault?: boolean;
 }
 
+function createTool(config: {
+  name: string;
+  patterns?: string[];
+  inputFields?: string[];
+  emptyInputDefault?: boolean;
+}): ExtendedToolPattern {
+  return {
+    name: config.name,
+    patterns: config.patterns ?? [config.name],
+    ...(config.inputFields && { inputFields: config.inputFields }),
+    ...(config.emptyInputDefault && { emptyInputDefault: true }),
+  };
+}
+
+const ORCHESTRATOR_TOOLS = [
+  'orchestrator_get_context',
+  'orchestrator_submit',
+  'orchestrator_pend',
+  'orchestrator_list',
+  'orchestrator_cancel',
+  'orchestrator_send_message',
+];
+
 const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
-  {
+  // Happy MCP
+  createTool({
     name: 'change_title',
-    patterns: ['change_title', 'mcp__happy__change_title', 'mcp:happy:change_title'],
     inputFields: ['title'],
-    emptyInputDefault: true, // change_title often has empty input (title extracted from context)
-  },
-  {
+    emptyInputDefault: true,
+  }),
+  createTool({
     name: 'preview_html',
-    patterns: ['preview_html', 'mcp__happy__preview_html', 'mcp:happy:preview_html'],
     inputFields: ['html'],
-  },
-  {
+  }),
+
+  // Happy Orchestrator MCP
+  ...ORCHESTRATOR_TOOLS.map(name => createTool({ name })),
+
+  // Covered with parameters (only override necessary fields)
+  createTool({
+    name: 'orchestrator_submit',
+    inputFields: ['result'],
+  }),
+  createTool({
+    name: 'orchestrator_pend',
+    inputFields: ['reason'],
+  }),
+  createTool({
+    name: 'orchestrator_cancel',
+    inputFields: ['taskId'],
+  }),
+  createTool({
+    name: 'orchestrator_send_message',
+    inputFields: ['message'],
+  }),
+
+  // Gemini built-in
+  createTool({
     name: 'save_memory',
     patterns: ['save_memory', 'save-memory'],
     inputFields: ['memory', 'content'],
-  },
-  {
+  }),
+  createTool({
     name: 'think',
-    patterns: ['think'],
     inputFields: ['thought', 'thinking'],
-  },
-];
-
-/**
- * Available Gemini models for error messages
- */
-const AVAILABLE_MODELS = [
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
+  }),
 ];
 
 /**
@@ -171,7 +207,7 @@ export class GeminiTransport implements TransportHandler {
       const errorMessage: AgentMessage = {
         type: 'status',
         status: 'error',
-        detail: `Model not found. Available models: ${AVAILABLE_MODELS.join(', ')}`,
+        detail: `Model not found. Available models: ${GEMINI_MODEL_MODES.join(', ')}`,
       };
       return { message: errorMessage };
     }

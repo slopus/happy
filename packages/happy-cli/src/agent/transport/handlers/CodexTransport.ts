@@ -51,25 +51,32 @@ export class CodexTransport implements TransportHandler {
     return { message: null };
   }
 
+  createTool(name: string, patterns?: string[]): ToolPattern {
+    return {
+      name,
+      patterns: patterns ?? [name],
+    };
+  }
+
   getToolPatterns(): ToolPattern[] {
-    return [
-      {
-        name: 'change_title',
-        patterns: ['mcp__happy__change_title', 'mcp:happy:change_title'],
-      },
-      {
-        name: 'preview_html',
-        patterns: ['mcp__happy__preview_html', 'mcp:happy:preview_html'],
-      },
-      {
-        name: 'bash',
-        patterns: ['bash', 'shell', 'terminal', 'exec'],
-      },
-      {
-        name: 'edit',
-        patterns: ['edit', 'write', 'patch', 'apply_patch'],
-      },
-    ];
+    const orchestratorTools = [
+    'orchestrator_get_context',
+    'orchestrator_submit',
+    'orchestrator_pend',
+    'orchestrator_list',
+    'orchestrator_cancel',
+    'orchestrator_send_message',
+  ];
+
+  return [
+    this.createTool('change_title'),
+    this.createTool('preview_html'),
+
+    ...orchestratorTools.map(name => this.createTool(name)),
+
+    this.createTool('bash', ['bash', 'shell', 'terminal', 'exec']),
+    this.createTool('edit', ['edit', 'write', 'patch', 'apply_patch']),
+  ];
   }
 
   getIdleTimeout(): number {
