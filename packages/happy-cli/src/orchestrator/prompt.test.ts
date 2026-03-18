@@ -22,8 +22,8 @@ describe('orchestrator prompt helpers', () => {
 
   it('only returns orchestrator instructions for controller sessions', () => {
     const controller = getOrchestratorToolsInstruction({} as NodeJS.ProcessEnv);
-    expect(controller).toContain('orchestrator_submit');
-    expect(controller).toContain('orchestrator_send_message');
+    expect(controller).toContain('orchestrator_');
+    expect(controller).toContain('get_context');
 
     const worker = getOrchestratorToolsInstruction({ HAPPY_ORCH_ONESHOT: '1' } as NodeJS.ProcessEnv);
     expect(worker).toBeNull();
@@ -32,7 +32,7 @@ describe('orchestrator prompt helpers', () => {
   it('appends orchestrator instructions onto first-turn base instruction', () => {
     const combined = buildFirstTurnToolingInstruction('change_title', {} as NodeJS.ProcessEnv);
     expect(combined).toContain('change_title');
-    expect(combined).toContain('orchestrator_submit');
+    expect(combined).toContain('orchestrator_');
 
     const workerCombined = buildFirstTurnToolingInstruction('change_title', { HAPPY_ORCH_ONESHOT: '1' } as NodeJS.ProcessEnv);
     expect(workerCombined).toBe('change_title');

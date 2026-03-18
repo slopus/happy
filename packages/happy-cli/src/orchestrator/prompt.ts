@@ -2,16 +2,9 @@ import { trimIdent } from '@/utils/trimIdent';
 import { ORCHESTRATOR_ENV_KEYS } from './common';
 
 export const ORCHESTRATOR_TOOLS_INSTRUCTION = trimIdent(`
-  If a user request is large or benefits from parallel execution / cross-model delegation, use orchestrator_* tools.
-
-  Preferred flow:
-  1) Call orchestrator_get_context when you need defaults or controller context.
-  2) Call orchestrator_submit with mode="blocking" when you must wait for delegated results before continuing.
-  3) Call orchestrator_submit with mode="async" when you can continue work immediately, then use orchestrator_pend / orchestrator_list to track progress.
-  4) Use orchestrator_cancel to stop a run when requested.
-  5) Use orchestrator_send_message with taskId + message to continue a completed/failed delegated task in the same child session.
-
-  After delegated runs complete, synthesize the outputs and continue the main task.
+  Use orchestrator_* tools to delegate work to other AI agents (claude/codex/gemini) on this or other machines.
+  Call orchestrator_get_context first to discover available providers, models, and machines.
+  Prefer mode="blocking" when you need the result before continuing; use mode="async" + orchestrator_pend for fire-and-forget.
 `);
 
 export function isOrchestratorWorkerSession(env: NodeJS.ProcessEnv = process.env): boolean {

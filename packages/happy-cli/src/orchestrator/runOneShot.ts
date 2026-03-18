@@ -80,8 +80,8 @@ export function buildSpawnPlan(
       return {
         command: 'node',
         args: executionType === 'resume'
-          ? [claudeCliPath, '--resume', childSessionId!, '-p', prompt]
-          : [claudeCliPath, ...(normalizedModelMode ? ['--model', normalizedModelMode] : []), ...(childSessionId ? ['--session-id', childSessionId] : []), '-p', prompt],
+          ? [claudeCliPath, '--dangerously-skip-permissions', '--resume', childSessionId!, '-p', prompt]
+          : [claudeCliPath, '--dangerously-skip-permissions', ...(normalizedModelMode ? ['--model', normalizedModelMode] : []), ...(childSessionId ? ['--session-id', childSessionId] : []), '-p', prompt],
         cwd: workingDirectory,
         env: {
           ...process.env,
@@ -97,7 +97,7 @@ export function buildSpawnPlan(
       if (executionType === 'resume') {
         return {
           command: 'bash',
-          args: ['-lc', 'npx -y @openai/codex@0.114.0 exec resume "$ORCH_CHILD_SESSION_ID" "$ORCH_PROMPT"'],
+          args: ['-lc', 'npx -y @openai/codex@0.114.0 exec --dangerously-bypass-approvals-and-sandbox resume "$ORCH_CHILD_SESSION_ID" "$ORCH_PROMPT"'],
           cwd: workingDirectory,
           env,
         };
@@ -115,7 +115,7 @@ export function buildSpawnPlan(
       }
       return {
         command: 'bash',
-        args: ['-lc', 'cmd=(npx -y @openai/codex@0.114.0 exec "$ORCH_PROMPT"); if [ -n "$ORCH_MODEL" ]; then cmd+=(--model "$ORCH_MODEL"); fi; if [ -n "$ORCH_REASONING_EFFORT" ]; then cmd+=(--reasoning-effort "$ORCH_REASONING_EFFORT"); fi; "${cmd[@]}"'],
+        args: ['-lc', 'cmd=(npx -y @openai/codex@0.114.0 exec --dangerously-bypass-approvals-and-sandbox "$ORCH_PROMPT"); if [ -n "$ORCH_MODEL" ]; then cmd+=(--model "$ORCH_MODEL"); fi; if [ -n "$ORCH_REASONING_EFFORT" ]; then cmd+=(-c "model_reasoning_effort=$ORCH_REASONING_EFFORT"); fi; "${cmd[@]}"'],
         cwd: workingDirectory,
         env,
       };
@@ -124,8 +124,8 @@ export function buildSpawnPlan(
       return {
         command: 'bash',
         args: executionType === 'resume'
-          ? ['-lc', 'gemini --resume "$ORCH_CHILD_SESSION_ID" -p "$ORCH_PROMPT"']
-          : ['-lc', 'cmd=(gemini -p "$ORCH_PROMPT" --output-format json); if [ -n "$ORCH_MODEL" ]; then cmd+=(--model "$ORCH_MODEL"); fi; "${cmd[@]}"'],
+          ? ['-lc', 'gemini --yolo --resume "$ORCH_CHILD_SESSION_ID" -p "$ORCH_PROMPT"']
+          : ['-lc', 'cmd=(gemini --yolo -p "$ORCH_PROMPT" --output-format json); if [ -n "$ORCH_MODEL" ]; then cmd+=(--model "$ORCH_MODEL"); fi; "${cmd[@]}"'],
         cwd: workingDirectory,
         env: {
           ...process.env,

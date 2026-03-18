@@ -105,7 +105,6 @@
     "expo-server-sdk": "^3.15.0",
     "fastify": "^5.6.2",
     "fastify-type-provider-zod": "4.0.2",
-    "happy-wire": "*",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.5.1",
@@ -133,7 +132,8 @@
     "ts-node": "^10",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "happy-wire": "*"
   },
   "resolutions": {
     "whatwg-url": "14.2.0",

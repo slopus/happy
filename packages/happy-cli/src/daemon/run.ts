@@ -32,7 +32,7 @@ import {
   type OrchestratorDispatchPayload,
   type OrchestratorFinishStatus,
 } from '@/orchestrator/common';
-import { normalizeGeminiOutputText } from './orchestratorOutput';
+import { extractCodexSessionId, extractGeminiSessionId, extractGeminiSessionIdFromJsonLine, normalizeGeminiOutputText } from './orchestratorOutput';
 
 const ORCHESTRATOR_WATCHDOG_GRACE_MS = 5_000;
 const ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT = 64_000;
@@ -205,27 +205,6 @@ export async function startDaemon(): Promise<void> {
       killTimer: NodeJS.Timeout | null;
     };
 
-    const parseCodexSessionId = (value: string): string | null => {
-      const match = value.match(/session id:\s*([0-9a-fA-F-]{36})/i);
-      return match?.[1] ?? null;
-    };
-
-    const parseGeminiSessionIdFromLine = (line: string): string | null => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        return null;
-      }
-      try {
-        const parsed = JSON.parse(trimmed) as { session_id?: unknown };
-        if (typeof parsed.session_id === 'string' && parsed.session_id.trim().length > 0) {
-          return parsed.session_id.trim();
-        }
-      } catch (_error) {
-        return null;
-      }
-      return null;
-    };
-
     const executionIdToManagedExecution = new Map<string, ManagedOrchestratorExecution>();
 
     const clearExecutionTimers = (execution: ManagedOrchestratorExecution) => {
@@ -283,6 +262,7 @@ export async function startDaemon(): Promise<void> {
           : execution.stdout.trim();
         const outputText = [normalizedStdout, execution.stderr.trim()].filter(Boolean).join('\n');
         const outputSummary = buildOutputSummary(normalizedStdout, execution.stderr);
+        const normalizedChildSessionId = execution.detectedChildSessionId?.trim();
 
         try {
           await api.reportOrchestratorExecutionFinish({
@@ -294,7 +274,7 @@ export async function startDaemon(): Promise<void> {
             signal: opts.signal,
             outputSummary: outputSummary ?? undefined,
             outputText: outputText || undefined,
-            childSessionId: execution.detectedChildSessionId ?? undefined,
+            childSessionId: normalizedChildSessionId ? normalizedChildSessionId : undefined,
             errorCode: opts.errorCode,
             errorMessage: opts.errorMessage,
           });
@@ -315,7 +295,7 @@ export async function startDaemon(): Promise<void> {
       }
 
       if (!execution.detectedChildSessionId && execution.payload.provider === 'gemini' && execution.payload.executionType === 'initial') {
-        const parsed = parseGeminiSessionIdFromLine(execution.stdoutLineBuffer);
+        const parsed = extractGeminiSessionId(execution.stdout);
         if (parsed) {
           execution.detectedChildSessionId = parsed;
         }
@@ -397,7 +377,7 @@ export async function startDaemon(): Promise<void> {
         if (!execution.detectedChildSessionId) {
           if (payload.provider === 'codex' && payload.executionType === 'initial') {
             const probe = `${execution.stdoutLineBuffer}${text}`;
-            const parsed = parseCodexSessionId(probe);
+            const parsed = extractCodexSessionId(probe);
             if (parsed) {
               execution.detectedChildSessionId = parsed;
             }
@@ -407,7 +387,7 @@ export async function startDaemon(): Promise<void> {
             const lines = execution.stdoutLineBuffer.split(/\r?\n/);
             execution.stdoutLineBuffer = lines.pop() ?? '';
             for (const line of lines) {
-              const parsed = parseGeminiSessionIdFromLine(line);
+              const parsed = extractGeminiSessionIdFromJsonLine(line);
               if (parsed) {
                 execution.detectedChildSessionId = parsed;
                 break;
@@ -417,7 +397,16 @@ export async function startDaemon(): Promise<void> {
         }
       });
       child.stderr?.on('data', (chunk: Buffer | string) => {
-        execution.stderr = appendOutputChunk(execution.stderr, chunk.toString(), ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);
+        const text = chunk.toString();
+        execution.stderr = appendOutputChunk(execution.stderr, text, ORCHESTRATOR_OUTPUT_CAPTURE_LIMIT);
+        if (!execution.detectedChildSessionId && payload.provider === 'codex' && payload.executionType === 'initial') {
+          const probe = `${execution.stdoutLineBuffer}${text}`;
+          const parsed = extractCodexSessionId(probe);
+          if (parsed) {
+            execution.detectedChildSessionId = parsed;
+          }
+          execution.stdoutLineBuffer = probe.slice(-256);
+        }
       });
 
       child.once('error', async (error) => {
