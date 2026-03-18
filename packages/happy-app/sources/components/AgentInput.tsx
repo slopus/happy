@@ -1687,7 +1687,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 color={theme.colors.button.primary.tint}
                                                 style={[
                                                     styles.sendButtonIcon,
-                                                    { marginTop: Platform.OS === 'web' ? 2 : 0 }
+                                                    { marginTop: Platform.OS === 'web' ? 2 : 0 },
+                                                    theme.dark && { opacity: 0.5 },
                                                 ]}
                                             />
                                         )}
