@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyDefaultWorkingDirectory,
   appendOutputChunk,
   buildOrchestratorEnv,
   buildOutputSummary,
@@ -50,5 +51,26 @@ describe('orchestrator common helpers', () => {
     expect(buildOutputSummary('line1\nline2\n', '')).toBe('line2');
     expect(buildOutputSummary('', ' err line \n')).toBe('err line');
     expect(buildOutputSummary('   ', '   ')).toBeNull();
+  });
+
+  it('applies default workingDirectory to tasks that do not provide one', () => {
+    const tasks = [
+      { prompt: 'task-a' },
+      { prompt: 'task-b', workingDirectory: '/tmp/custom' },
+      { prompt: 'task-c', workingDirectory: '   ' },
+    ];
+
+    const result = applyDefaultWorkingDirectory(tasks, '/tmp/default-project');
+
+    expect(result).toEqual([
+      { prompt: 'task-a', workingDirectory: '/tmp/default-project' },
+      { prompt: 'task-b', workingDirectory: '/tmp/custom' },
+      { prompt: 'task-c', workingDirectory: '/tmp/default-project' },
+    ]);
+    expect(tasks).toEqual([
+      { prompt: 'task-a' },
+      { prompt: 'task-b', workingDirectory: '/tmp/custom' },
+      { prompt: 'task-c', workingDirectory: '   ' },
+    ]);
   });
 });

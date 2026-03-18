@@ -34,13 +34,13 @@ const orchestratorTaskSchema = z.object({
 });
 
 export const ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA = {
-  description: 'Get orchestrator defaults and controller session context for this current MCP session.',
+  description: 'Get available AI providers, models, and session context before creating a dispatch.',
   title: 'Orchestrator Get Context',
   inputSchema: {},
 } as const;
 
 export const ORCHESTRATOR_SUBMIT_TOOL_SCHEMA = {
-  description: 'Submit an orchestrator run. In blocking mode this tool loops orchestrator_pend until terminal or timeout.',
+  description: 'Delegate to AI agents — dispatch one or more prompts across providers (claude/codex/gemini) to run in parallel or with dependency chains. Use this to assign, hand off, distribute, or orchestrate work across AI providers. Each submission creates a "dispatch" that can be tracked, cancelled, or resumed. Supports blocking (wait for completion) and async modes.',
   title: 'Orchestrator Submit',
   inputSchema: {
     title: z.string().min(1).max(256).describe('Run title'),
@@ -56,7 +56,7 @@ export const ORCHESTRATOR_SUBMIT_TOOL_SCHEMA = {
 } as const;
 
 export const ORCHESTRATOR_PEND_TOOL_SCHEMA = {
-  description: 'Wait for orchestrator run changes or terminal status.',
+  description: 'Wait for a dispatch to finish — poll for progress or block until completion.',
   title: 'Orchestrator Pend',
   inputSchema: {
     runId: z.string().describe('Run ID'),
@@ -70,7 +70,7 @@ export const ORCHESTRATOR_PEND_TOOL_SCHEMA = {
 } as const;
 
 export const ORCHESTRATOR_LIST_TOOL_SCHEMA = {
-  description: 'List orchestrator runs for current account.',
+  description: 'List all dispatches and their current status (active, completed, failed).',
   title: 'Orchestrator List',
   inputSchema: {
     status: z.enum(['active', 'terminal', 'queued', 'running', 'canceling', 'completed', 'failed', 'cancelled']).optional()
@@ -81,7 +81,7 @@ export const ORCHESTRATOR_LIST_TOOL_SCHEMA = {
 } as const;
 
 export const ORCHESTRATOR_CANCEL_TOOL_SCHEMA = {
-  description: 'Request cancellation for an orchestrator run.',
+  description: 'Cancel a dispatch that is queued or in progress.',
   title: 'Orchestrator Cancel',
   inputSchema: {
     runId: z.string().describe('Run ID'),
@@ -90,7 +90,7 @@ export const ORCHESTRATOR_CANCEL_TOOL_SCHEMA = {
 } as const;
 
 export const ORCHESTRATOR_SEND_MESSAGE_TOOL_SCHEMA = {
-  description: 'Resume a completed or failed task by sending a follow-up message to its child session. The task re-enters running state.',
+  description: 'Resume a completed or failed dispatch by sending a follow-up message to its session.',
   title: 'Orchestrator Send Message',
   inputSchema: {
     taskId: z.string().describe('Task ID to resume'),

@@ -303,7 +303,7 @@ function OrchestratorContextCard({ context }: { context: ParsedOrchestratorConte
                 <Text style={styles.orchestratorTaskMeta}>machineId: {context.machineId}</Text>
             ) : null}
             {context.workingDirectory ? (
-                <Text style={styles.orchestratorTaskMeta}>{t('settings.orchestratorLabelWorkingDir')}: {context.workingDirectory}</Text>
+                <Text style={styles.orchestratorTaskMeta}>workingDirectory: {context.workingDirectory}</Text>
             ) : null}
             <Text style={styles.orchestratorTaskMeta}>providers: {providers}</Text>
             {defaultsLine ? (

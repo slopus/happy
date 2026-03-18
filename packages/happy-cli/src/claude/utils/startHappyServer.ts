@@ -16,6 +16,7 @@ import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
 import { shouldEnableOrchestratorTools } from '@/orchestrator/prompt';
+import { applyDefaultWorkingDirectory } from '@/orchestrator/common';
 import {
     ORCHESTRATOR_CANCEL_TOOL_SCHEMA,
     ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA,
@@ -232,10 +233,11 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
         mcp.registerTool('orchestrator_submit', ORCHESTRATOR_SUBMIT_TOOL_SCHEMA, async (args) => {
             try {
                 const mode = args.mode ?? 'async';
+                const metadata = client.getMetadataSnapshot();
                 const submitBody = {
                     title: args.title,
                     controllerSessionId: args.controllerSessionId ?? client.sessionId,
-                    tasks: args.tasks,
+                    tasks: applyDefaultWorkingDirectory(args.tasks, metadata?.path),
                     maxConcurrency: args.maxConcurrency,
                     idempotencyKey: args.idempotencyKey,
                     metadata: args.metadata,

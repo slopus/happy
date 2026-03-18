@@ -91,6 +91,28 @@ export function buildOrchestratorEnv(payload: OrchestratorDispatchPayload): Reco
   return env;
 }
 
+export function applyDefaultWorkingDirectory<T extends { workingDirectory?: string }>(
+  tasks: T[],
+  defaultWorkingDirectory?: string | null,
+): T[] {
+  const fallback = typeof defaultWorkingDirectory === 'string' ? defaultWorkingDirectory.trim() : '';
+  if (!fallback) {
+    return tasks;
+  }
+  return tasks.map((task) => {
+    const taskWorkingDirectory = typeof task.workingDirectory === 'string'
+      ? task.workingDirectory.trim()
+      : '';
+    if (taskWorkingDirectory) {
+      return task;
+    }
+    return {
+      ...task,
+      workingDirectory: fallback,
+    };
+  });
+}
+
 export function appendOutputChunk(current: string, chunk: string, maxChars: number): string {
   if (maxChars <= 0) {
     return '';
