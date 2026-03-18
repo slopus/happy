@@ -48,6 +48,12 @@ export interface GeminiBackendOptions extends AgentFactoryOptions {
   
   /** Optional permission handler for tool approval */
   permissionHandler?: AcpPermissionHandler;
+
+  /**
+   * Optional function to normalize raw MCP tool names to a prefixed format.
+   * E.g., maps "change_title" → "mcp:happy:change_title" to align with Codex convention.
+   */
+  normalizeToolName?: (rawName: string) => string;
 }
 
 /**
@@ -144,6 +150,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
     mcpServers: options.mcpServers,
     permissionHandler: options.permissionHandler,
     transportHandler: geminiTransport,
+    normalizeToolName: options.normalizeToolName,
     // Check if prompt instructs the agent to change title (for auto-approval of change_title tool)
     hasChangeTitleInstruction: (prompt: string) => {
       const lower = prompt.toLowerCase();

@@ -170,6 +170,13 @@ export interface AcpBackendOptions {
 
   /** Optional callback to check if prompt has change_title instruction */
   hasChangeTitleInstruction?: (prompt: string) => boolean;
+
+  /**
+   * Optional function to normalize raw tool names to a prefixed format.
+   * Used by agents (like Gemini) that don't prefix MCP tool names with server info.
+   * E.g., maps "change_title" → "mcp:happy:change_title"
+   */
+  normalizeToolName?: (rawName: string) => string;
 }
 
 /**
@@ -553,9 +560,19 @@ export class AcpBackend implements AgentBackend {
             toolCallCountSincePrompt: this.toolCallCountSincePrompt,
           };
           toolName = this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
-          
+
           if (toolName !== (toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool')) {
             logger.debug(`[AcpBackend] Detected tool name: ${toolName} from toolCallId: ${toolCallId}`);
+          }
+
+          // Normalize raw tool names to prefixed format (e.g., "change_title" → "mcp:happy:change_title")
+          // This aligns Gemini's unprefixed MCP tool names with Claude/Codex conventions
+          if (this.options.normalizeToolName) {
+            const normalized = this.options.normalizeToolName(toolName);
+            if (normalized !== toolName) {
+              logger.debug(`[AcpBackend] Normalized tool name: ${toolName} → ${normalized}`);
+              toolName = normalized;
+            }
           }
           
           // Increment tool call counter for context tracking

@@ -45,6 +45,13 @@ export interface McpContext {
     configForHttp(): Record<string, McpServerHttpConfig>;
     /** Get all allowed tool names prefixed as mcp__<server>__<tool> */
     allowedToolNames(): string[];
+    /**
+     * Normalize a raw tool name to mcp:server:tool format (Codex-style).
+     * Returns the prefixed name if the raw name matches a known MCP tool,
+     * or the original name if no match is found.
+     * Useful for agents (like Gemini) that don't prefix tool names.
+     */
+    normalizeToolName(rawName: string): string;
     /** Stop all MCP servers and release resources */
     stop(): void;
 }
@@ -151,6 +158,16 @@ export async function createMcpContext(session: ApiSessionClient): Promise<McpCo
             return Object.entries(servers).flatMap(([name, def]) =>
                 def.toolNames.map(tool => `mcp__${name}__${tool}`)
             );
+        },
+
+        normalizeToolName(rawName: string): string {
+            // Build reverse lookup: raw tool name → mcp:server:tool
+            for (const [name, def] of Object.entries(servers)) {
+                if (def.toolNames.includes(rawName)) {
+                    return `mcp:${name}:${rawName}`;
+                }
+            }
+            return rawName;
         },
 
         stop() {

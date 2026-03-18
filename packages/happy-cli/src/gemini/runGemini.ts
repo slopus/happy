@@ -1115,6 +1115,7 @@ export async function runGemini(opts: {
           permissionHandler,
           cloudToken,
           currentUserEmail,
+          normalizeToolName: mcp.normalizeToolName.bind(mcp),
           // Pass model from message - if undefined, will use local config/env/default
           // If explicitly null, will skip local config and use env/default
           model: modelToUse,
@@ -1168,6 +1169,7 @@ export async function runGemini(opts: {
               permissionHandler,
               cloudToken,
               currentUserEmail,
+              normalizeToolName: mcp.normalizeToolName.bind(mcp),
               // Pass model from message - if undefined, will use local config/env/default
               // If explicitly null, will skip local config and use env/default
               model: modelToUse,
