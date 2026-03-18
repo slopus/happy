@@ -15,6 +15,7 @@ import { AgentInputAutocomplete } from './AgentInputAutocomplete';
 import { FloatingOverlay } from './FloatingOverlay';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
+import { shouldSendOnEnter } from './agentInputKeyboard';
 import { GitStatusBadge, useHasLoadedGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
@@ -679,9 +680,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (Platform.OS === 'web') {
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
                 const textSnapshot = resolveSendSnapshot();
-                if (textSnapshot.trim()) {
+                if (shouldSendOnEnter({
+                    key: event.key,
+                    shiftKey: event.shiftKey,
+                    enterToSendEnabled: agentInputEnterToSend,
+                    textSnapshot,
+                    isSending: props.isSending,
+                    isSendDisabled: props.isSendDisabled,
+                })) {
                     props.onSend(textSnapshot);
                     return true; // Key was handled
+                }
+                if (textSnapshot.trim() && (props.isSending || props.isSendDisabled)) {
+                    return true;
                 }
             }
             // Handle Shift+Tab for permission mode switching
@@ -698,7 +709,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, resolveSendSnapshot, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, resolveSendSnapshot, props.onSend, props.permissionMode, props.onPermissionModeChange, props.isSending, props.isSendDisabled]);
 
     const connectionStatusIndicator = props.connectionStatus ? (
         <>
