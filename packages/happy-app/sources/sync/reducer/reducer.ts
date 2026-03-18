@@ -817,6 +817,27 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 if (c.type === 'tool-result') {
                     // Find the message containing this tool
                     let messageId = state.toolIdToMessageId.get(c.tool_use_id);
+
+                    // Fallback: match by ID prefix for Gemini where permission ID and MCP callId differ
+                    // Permission creates tool with ID "mcp_happy_foo-TS1", MCP result has "mcp_happy_foo-TS2"
+                    // Extract prefix before the last "-" (timestamp) and match
+                    if (!messageId && c.tool_use_id) {
+                        const dashIdx = c.tool_use_id.lastIndexOf('-');
+                        if (dashIdx > 0) {
+                            const prefix = c.tool_use_id.substring(0, dashIdx);
+                            for (const [toolId, mid] of state.toolIdToMessageId) {
+                                if (toolId.startsWith(prefix + '-') && toolId !== c.tool_use_id) {
+                                    const msg = state.messages.get(mid);
+                                    if (msg?.tool?.state === 'running') {
+                                        messageId = mid;
+                                        state.toolIdToMessageId.set(c.tool_use_id, mid);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (!messageId) {
                         continue;
                     }
