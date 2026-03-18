@@ -54,13 +54,22 @@ export const KeyValueView = React.memo<KeyValueViewProps>(({ data }) => {
  * Falls back to CodeView with raw JSON if the input is not a plain object.
  */
 export function ToolInputView({ input }: { input: unknown }) {
+    if (input == null) {
+        return <CodeView code="null" />;
+    }
+
     if (input && typeof input === 'object' && !Array.isArray(input)) {
-        return <KeyValueView data={input as Record<string, unknown>} />;
+        const objectInput = input as Record<string, unknown>;
+        if (Object.keys(objectInput).length === 0) {
+            return <CodeView code="{}" />;
+        }
+        return <KeyValueView data={objectInput} />;
     }
 
     // Fallback: raw JSON
     try {
-        return <CodeView code={JSON.stringify(input, null, 2)} />;
+        const serialized = JSON.stringify(input, null, 2);
+        return <CodeView code={serialized ?? String(input)} />;
     } catch {
         return <CodeView code={String(input)} />;
     }
