@@ -671,6 +671,9 @@ export const knownTools = {
     },
     'edit': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            return t('tools.names.editFile');
+        },
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Gemini sends data in nested structure, try multiple locations
             let filePath: string | undefined;
             
@@ -683,10 +686,14 @@ export const knownTools = {
                 return opts.tool.input.toolCall.title;
             }
             // 3. Check input[0].path (array format)
+            else if (Array.isArray(opts.tool.input) && opts.tool.input[0]?.path) {
+                filePath = opts.tool.input[0].path;
+            }
+            // 4. Check input[0].path (array format)
             else if (Array.isArray(opts.tool.input?.input) && opts.tool.input.input[0]?.path) {
                 filePath = opts.tool.input.input[0].path;
             }
-            // 4. Check direct path field
+            // 5. Check direct path field
             else if (typeof opts.tool.input?.path === 'string') {
                 filePath = opts.tool.input.path;
             }
@@ -694,7 +701,8 @@ export const knownTools = {
             if (filePath) {
                 return resolvePath(filePath, opts.metadata);
             }
-            return t('tools.names.editFile');
+
+            return null;
         },
         icon: ICON_EDIT,
         isMutable: true,
