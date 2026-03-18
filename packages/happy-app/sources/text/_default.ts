@@ -64,8 +64,6 @@ export const en = {
         sessionTypeDirectDescription: 'One-on-one conversation with AI',
         sessionTypeGlobal: 'Global Session',
         sessionTypeGlobalDescription: 'Persistent session that remembers context across conversations',
-        initialMessage: 'Initial Message',
-        initialMessagePlaceholder: 'Start with a message...',
         createSession: 'Create Session',
         // Machine management
         editMachine: 'Edit Machine',
@@ -669,6 +667,7 @@ export const en = {
             inactive: 'Inactive',
         },
         inputPlaceholder: 'Type a message ...',
+        initialMessage: 'What would you like to work on?',
         takePhoto: 'Take Photo',
         chooseFromLibrary: 'Choose from Library',
         pasteFromClipboard: 'Paste from Clipboard',

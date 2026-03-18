@@ -65,8 +65,6 @@ export const zhHans: TranslationStructure = {
         sessionTypeDirectDescription: '在此机器上与 AI 的私人对话',
         sessionTypeGlobal: '全局会话',
         sessionTypeGlobalDescription: '可从任何设备访问的共享会话',
-        initialMessage: '初始消息',
-        initialMessagePlaceholder: '您想要处理什么？',
         createSession: '创建会话',
         // Machine management
         editMachine: '编辑机器',
@@ -661,6 +659,7 @@ export const zhHans: TranslationStructure = {
             inactive: '非活跃',
         },
         inputPlaceholder: '输入消息...',
+        initialMessage: '想做点什么？',
         takePhoto: '拍照',
         chooseFromLibrary: '从相册选择',
         pasteFromClipboard: '从剪贴板粘贴',

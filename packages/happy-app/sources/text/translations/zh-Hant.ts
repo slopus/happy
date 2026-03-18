@@ -65,8 +65,6 @@ export const zhHant: TranslationStructure = {
         sessionTypeDirectDescription: '與 AI 一對一對話',
         sessionTypeGlobal: '全域工作階段',
         sessionTypeGlobalDescription: '持久工作階段，跨對話記住上下文',
-        initialMessage: '初始訊息',
-        initialMessagePlaceholder: '從一條訊息開始...',
         createSession: '建立工作階段',
         // Machine management
         editMachine: '編輯機器',
@@ -661,6 +659,7 @@ export const zhHant: TranslationStructure = {
             inactive: '非活躍',
         },
         inputPlaceholder: '輸入訊息...',
+        initialMessage: '想做些什麼？',
         takePhoto: '拍照',
         chooseFromLibrary: '從圖庫選擇',
         pasteFromClipboard: '從剪貼簿貼上',

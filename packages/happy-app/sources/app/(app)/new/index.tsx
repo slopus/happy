@@ -1564,7 +1564,7 @@ function NewSessionWizard() {
                                 onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
                                 isSending={isCreating}
-                                placeholder="What would you like to work on?"
+                                placeholder={t('session.initialMessage')}
                                 autocompletePrefixes={[]}
                                 autocompleteSuggestions={async () => []}
                                 agentType={agentType}
@@ -2332,7 +2332,7 @@ function NewSessionWizard() {
                             onSend={handleCreateSession}
                             isSendDisabled={!canCreate}
                             isSending={isCreating}
-                            placeholder="What would you like to work on?"
+                            placeholder={t('session.initialMessage')}
                             autocompletePrefixes={[]}
                             autocompleteSuggestions={async () => []}
                             agentType={agentType}

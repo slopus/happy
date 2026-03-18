@@ -63,8 +63,6 @@ export const es: TranslationStructure = {
         sessionTypeDirectDescription: 'Conversación privada con AI en esta máquina',
         sessionTypeGlobal: 'Sesión global',
         sessionTypeGlobalDescription: 'Sesión compartida accesible desde cualquier dispositivo',
-        initialMessage: 'Mensaje inicial',
-        initialMessagePlaceholder: '¿En qué te gustaría trabajar?',
         createSession: 'Crear sesión',
         // Machine management
         editMachine: 'Editar máquina',
@@ -659,6 +657,7 @@ export const es: TranslationStructure = {
             inactive: 'Inactivas',
         },
         inputPlaceholder: 'Escriba un mensaje ...',
+        initialMessage: '¿En qué te gustaría trabajar?',
         takePhoto: 'Tomar foto',
         chooseFromLibrary: 'Elegir de la galería',
         pasteFromClipboard: 'Pegar desde el portapapeles',

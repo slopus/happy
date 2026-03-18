@@ -79,8 +79,6 @@ export const en: TranslationStructure = {
         sessionTypeDirectDescription: 'Private conversation with Claude on this machine',
         sessionTypeGlobal: 'Global Session',
         sessionTypeGlobalDescription: 'Shared session accessible from any device',
-        initialMessage: 'Initial Message',
-        initialMessagePlaceholder: 'What would you like to work on?',
         createSession: 'Create Session',
         // Machine management
         editMachine: 'Edit Machine',
@@ -676,6 +674,7 @@ export const en: TranslationStructure = {
             inactive: 'Inactive',
         },
         inputPlaceholder: 'Type a message ...',
+        initialMessage: 'What would you like to work on?',
         takePhoto: 'Take Photo',
         chooseFromLibrary: 'Choose from Library',
         pasteFromClipboard: 'Paste from Clipboard',

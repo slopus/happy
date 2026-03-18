@@ -66,8 +66,6 @@ export const ja: TranslationStructure = {
         sessionTypeDirectDescription: 'AI との1対1の会話',
         sessionTypeGlobal: 'グローバルセッション',
         sessionTypeGlobalDescription: '会話間でコンテキストを記憶する永続セッション',
-        initialMessage: '初期メッセージ',
-        initialMessagePlaceholder: 'メッセージから始める...',
         createSession: 'セッションを作成',
         // Machine management
         editMachine: 'マシンを編集',
@@ -691,6 +689,7 @@ export const ja: TranslationStructure = {
             inactive: '非アクティブ',
         },
         inputPlaceholder: 'メッセージを入力...',
+        initialMessage: '何をしましょう？',
         takePhoto: '写真を撮る',
         chooseFromLibrary: 'ライブラリから選択',
         pasteFromClipboard: 'クリップボードから貼り付け',

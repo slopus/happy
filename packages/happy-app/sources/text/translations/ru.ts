@@ -74,8 +74,6 @@ export const ru: TranslationStructure = {
         sessionTypeDirectDescription: 'Приватный разговор с AI на этой машине',
         sessionTypeGlobal: 'Глобальная сессия',
         sessionTypeGlobalDescription: 'Общая сессия, доступная с любого устройства',
-        initialMessage: 'Начальное сообщение',
-        initialMessagePlaceholder: 'Над чем вы хотите поработать?',
         createSession: 'Создать сессию',
         // Machine management
         editMachine: 'Редактировать машину',
@@ -823,6 +821,7 @@ export const ru: TranslationStructure = {
             inactive: 'Неактивные',
         },
         inputPlaceholder: 'Введите сообщение...',
+        initialMessage: 'Над чем вы хотите поработать?',
         takePhoto: 'Сделать фото',
         chooseFromLibrary: 'Выбрать из галереи',
         pasteFromClipboard: 'Вставить из буфера обмена',
