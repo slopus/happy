@@ -41,7 +41,7 @@ Happy Next is an open-source mobile app that lets developers control AI coding a
 
 - Clearly say "Happy Next" in the video or caption
 - Mention it's free and open source
-- Include link to github.com/hitosea/happy
+- Include link to github.com/hitosea/happy-next
 - Show actual usage (QR code connection, mobile control, push notifications)
 - Emphasize running on YOUR hardware, not cloud servers
 - Compare to paid alternatives ($50/month or $600/year competitors)
@@ -66,4 +66,4 @@ Happy Next is an open-source mobile app that lets developers control AI coding a
 
 ## Resources
 
-- GitHub: https://github.com/hitosea/happy
+- GitHub: https://github.com/hitosea/happy-next

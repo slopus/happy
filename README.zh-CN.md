@@ -10,7 +10,7 @@
 
 <div align="center">
 
-[🌐 **GitHub**](https://github.com/hitosea/happy) • [🖥️ **Web 应用**](https://happy.hitosea.com/) • [📚 **文档**](docs/README.md) • [🇬🇧 **English**](README.md)
+[🌐 **GitHub**](https://github.com/hitosea/happy-next) • [🖥️ **Web 应用**](https://happy.hitosea.com/) • [📚 **文档**](docs/README.md) • [🇬🇧 **English**](README.md)
 
 </div>
 

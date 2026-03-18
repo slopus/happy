@@ -10,7 +10,7 @@
 ## Getting Started
 
 ```bash
-git clone https://github.com/hitosea/happy.git
+git clone https://github.com/hitosea/happy-next.git
 cd happy/packages/happy-cli
 yarn install
 yarn build

@@ -261,8 +261,8 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
 
         // Support and bug reports
         console.log(chalk.bold('\n🐛 Support & Bug Reports'));
-        console.log(`Report issues: ${chalk.blue('https://github.com/hitosea/happy/issues')}`);
-        console.log(`Documentation: ${chalk.blue('https://github.com/hitosea/happy')}`);
+        console.log(`Report issues: ${chalk.blue('https://github.com/hitosea/happy-next/issues')}`);
+        console.log(`Documentation: ${chalk.blue('https://github.com/hitosea/happy-next')}`);
     }
 
     console.log(chalk.green('\n✅ Doctor diagnosis complete!\n'));

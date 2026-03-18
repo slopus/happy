@@ -183,7 +183,7 @@ This controls:
 
 Only **production** variant has deep linking configured:
 
-- **Production**: `https://github.com/hitosea/happy/*`
+- **Production**: `https://github.com/hitosea/happy-next/*`
 - **Development**: No deep linking
 - **Preview**: No deep linking
 

@@ -57,7 +57,7 @@ export default function QRTest() {
 
     const testData = [
         { label: 'Simple Text', data: 'Hello QR Code!' },
-        { label: 'URL', data: 'https://github.com/hitosea/happy' },
+        { label: 'URL', data: 'https://github.com/hitosea/happy-next' },
         { label: 'Email', data: 'mailto:test@example.com' },
         { label: 'Phone', data: 'tel:+1234567890' },
         { label: 'WiFi', data: 'WIFI:T:WPA;S:MyNetwork;P:password123;H:false;;' },

@@ -10,7 +10,7 @@ Use Claude Code, Codex, or Gemini from anywhere with end-to-end encryption.
 
 <div align="center">
   
-[🌐 **GitHub**](https://github.com/hitosea/happy) • [🖥️ **Web App**](https://happy.hitosea.com/) • [📚 **Documentation**](docs/README.md) • [🇨🇳 **中文**](README.zh-CN.md)
+[🌐 **GitHub**](https://github.com/hitosea/happy-next) • [🖥️ **Web App**](https://happy.hitosea.com/) • [📚 **Documentation**](docs/README.md) • [🇨🇳 **中文**](README.zh-CN.md)
 
 </div>
 

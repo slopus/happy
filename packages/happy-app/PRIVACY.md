@@ -89,7 +89,7 @@ We will notify users of any material changes to this privacy policy through the 
 ## Contact
 
 For privacy concerns or questions:
-- GitHub Issues: https://github.com/hitosea/happy/issues
+- GitHub Issues: https://github.com/hitosea/happy-next/issues
 
 ## Compliance
 

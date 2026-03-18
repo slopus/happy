@@ -62,13 +62,13 @@ Your code. Your privacy. Your Claude Code companion.
 ## URLs
 
 ### Privacy Policy
-https://github.com/hitosea/happy/blob/next/packages/happy-app/PRIVACY.md
+https://github.com/hitosea/happy-next/blob/next/packages/happy-app/PRIVACY.md
 
 ### Support / Contact
-https://github.com/hitosea/happy/issues
+https://github.com/hitosea/happy-next/issues
 
 ### Website / Marketing
-https://github.com/hitosea/happy
+https://github.com/hitosea/happy-next
 
 ## Additional Google Play Requirements
 

@@ -5,9 +5,9 @@
   "author": "Hitosea",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/hitosea/happy",
-  "bugs": "https://github.com/hitosea/happy/issues",
-  "repository": "hitosea/happy",
+  "homepage": "https://github.com/hitosea/happy-next",
+  "bugs": "https://github.com/hitosea/happy-next/issues",
+  "repository": "hitosea/happy-next",
   "bin": {
     "happy": "./bin/happy.mjs",
     "happy-mcp": "./bin/happy-mcp.mjs"
