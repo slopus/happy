@@ -7,6 +7,7 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -47,6 +48,7 @@ import type { ActionMenuItem } from '@/components/ActionMenu';
 import { MODEL_MODE_DEFAULT, isModelModeForAgent } from 'happy-wire';
 import { FolderPickerSheet } from '@/components/FolderPickerSheet';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
+import { handleImagePasteEvent } from '@/utils/imagePaste';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -487,6 +489,7 @@ function NewSessionWizard() {
     const [imagePickerSheetVisible, setImagePickerSheetVisible] = React.useState(false);
 
     const supportsImages = agentType === 'claude' || agentType === 'gemini' || agentType === 'codex';
+    const isFocused = useIsFocused();
 
     const handleImageButtonPress = React.useCallback(() => {
         if (Platform.OS === 'web') {
@@ -514,23 +517,16 @@ function NewSessionWizard() {
     }, [addImageFromUri]);
 
     const handlePaste = React.useCallback(async (event: ClipboardEvent) => {
-        if (!canAddMore || !supportsImages) return;
-
-        const items = event.clipboardData?.items;
-        if (!items) return;
-
-        for (const item of Array.from(items)) {
-            if (item.type.startsWith('image/')) {
-                event.preventDefault();
-                const file = item.getAsFile();
-                if (file) {
-                    const url = URL.createObjectURL(file);
-                    await addImageFromUri(url, file.type);
-                }
-                break;
-            }
-        }
-    }, [canAddMore, supportsImages, addImageFromUri]);
+        await handleImagePasteEvent(event, {
+            isScreenFocused: isFocused,
+            canAddMore,
+            supportsImages,
+            onImageFile: async (file, mimeType) => {
+                const url = URL.createObjectURL(file);
+                await addImageFromUri(url, mimeType);
+            },
+        });
+    }, [isFocused, canAddMore, supportsImages, addImageFromUri]);
 
     // Add paste event listener for images (web only)
     React.useEffect(() => {

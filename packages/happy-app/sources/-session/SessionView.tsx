@@ -24,13 +24,14 @@ import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
+import { handleImagePasteEvent } from '@/utils/imagePaste';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, generateCopyTitle, getSessionAvatarId, getSessionName, useSessionStatus, copySessionMetadata } from '@/utils/sessionUtils';
 import { isVersionSupported, useLatestCliVersion } from '@/utils/versionUtils';
 import { log } from '@/log';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
@@ -280,6 +281,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
+    const isFocused = useIsFocused();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
@@ -693,23 +695,16 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Handle paste event for images (both web and native through input)
     const handlePaste = React.useCallback(async (event: ClipboardEvent) => {
-        if (!canAddMore || !supportsImages) return;
-
-        const items = event.clipboardData?.items;
-        if (!items) return;
-
-        for (const item of Array.from(items)) {
-            if (item.type.startsWith('image/')) {
-                event.preventDefault();
-                const file = item.getAsFile();
-                if (file) {
-                    const url = URL.createObjectURL(file);
-                    await addImageFromUri(url, file.type);
-                }
-                break;
-            }
-        }
-    }, [canAddMore, supportsImages, addImageFromUri]);
+        await handleImagePasteEvent(event, {
+            isScreenFocused: isFocused,
+            canAddMore,
+            supportsImages,
+            onImageFile: async (file, mimeType) => {
+                const url = URL.createObjectURL(file);
+                await addImageFromUri(url, mimeType);
+            },
+        });
+    }, [isFocused, canAddMore, supportsImages, addImageFromUri]);
 
     // Handle image drop (web only) - passed to AgentInput
     const handleImageDrop = React.useCallback(async (files: File[]) => {
