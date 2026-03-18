@@ -1812,6 +1812,37 @@ describe('orchestrator integration paths', () => {
         await app.close();
     });
 
+    it('keeps core API strict and rejects target type "machine" alias', async () => {
+        state.machines.push({
+            id: 'machine-2',
+            accountId: 'user-1',
+            active: true,
+            lastActiveAt: new Date('2026-03-16T00:00:02.000Z'),
+        });
+
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'target-machine-alias',
+                tasks: [
+                    {
+                        provider: 'codex',
+                        prompt: 'run on machine 2 by alias',
+                        target: {
+                            type: 'machine',
+                            machineId: 'machine-2',
+                        },
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(400);
+        await app.close();
+    });
+
     it('dispatches dependent task only after upstream dependency completed', async () => {
         const app = await createApp();
         const submit = await app.inject({

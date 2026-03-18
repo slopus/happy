@@ -892,6 +892,7 @@ export function orchestratorRoutes(app: Fastify) {
                 },
             });
         } catch (error) {
+            request.log.error({ err: error }, 'orchestrator submit failed');
             if (body.idempotencyKey && isUniqueConstraintError(error)) {
                 const duplicate = await loadExistingByIdempotencyWithRetry();
                 if (duplicate) {
