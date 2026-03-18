@@ -25,7 +25,7 @@ export const OrchestratorProgressBar = React.memo(({ summary }: { summary: Orche
     const segments: Array<{ fraction: number; color: string }> = [
         { fraction: summary.completed / total, color: theme.colors.status.connected },
         { fraction: summary.failed / total, color: theme.colors.status.error },
-        { fraction: summary.running / total, color: theme.colors.status.connecting },
+        { fraction: (summary.running + summary.queued) / total, color: theme.colors.status.connecting },
         { fraction: summary.cancelled / total, color: theme.colors.textSecondary },
     ];
 

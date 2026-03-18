@@ -9,6 +9,12 @@ import { useAuth } from '@/auth/AuthContext';
 import { cancelOrchestratorRun, getOrchestratorRun, pendOrchestratorRun, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
 import { OrchestratorProgressBar } from '@/components/orchestrator/OrchestratorProgressBar';
+import {
+    formatOrchestratorProviderLabel,
+    resolveOrchestratorAttemptDisplay,
+    resolveOrchestratorSummaryLineDataFromTasks,
+    sanitizeOrchestratorOutputSummary,
+} from '@/components/orchestrator/display';
 import { isRunActive } from '@/components/orchestrator/status';
 import { Modal } from '@/modal';
 import { delay } from '@/utils/time';
@@ -254,6 +260,7 @@ export default function OrchestratorRunDetailScreen() {
     }, [credentials, runId, loadRun]));
 
     const canCancel = !!run && isRunActive(run.status) && run.status !== 'canceling';
+    const runSummaryLine = run ? resolveOrchestratorSummaryLineDataFromTasks(run.summary, run.tasks) : null;
 
     if (loading && !run) {
         return (
@@ -312,42 +319,53 @@ export default function OrchestratorRunDetailScreen() {
                         <OrchestratorProgressBar summary={run.summary} />
                     </View>
                     <Text style={styles.summaryLine}>
-                        {t('settings.orchestratorSummaryLine', { total: run.summary.total, running: run.summary.running, completed: run.summary.completed, failed: run.summary.failed, cancelled: run.summary.cancelled })}
+                        {t('settings.orchestratorSummaryLine', {
+                            total: runSummaryLine?.total ?? run.summary.total,
+                            running: runSummaryLine?.running ?? run.summary.running,
+                            completed: runSummaryLine?.completed ?? run.summary.completed,
+                            failed: runSummaryLine?.failed ?? run.summary.failed,
+                            cancelled: runSummaryLine?.cancelled ?? run.summary.cancelled,
+                        })}
                     </Text>
                 </View>
 
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>{t('settings.orchestratorTasksTitle')}</Text>
-                    {(run.tasks ?? []).map((task) => (
-                        <Pressable
-                            key={task.taskId}
-                            style={styles.taskRow}
-                            onPress={() => router.push(`/orchestrator/${run.runId}/task/${task.taskId}`)}
-                        >
-                            <View style={styles.taskHeader}>
-                                <Text style={styles.taskTitle} numberOfLines={1}>
-                                    #{task.seq} {task.title || task.taskKey || t('settings.orchestratorProviderTask', { provider: task.provider })}
-                                </Text>
-                                <OrchestratorStatusBadge status={task.status} />
-                            </View>
-                            <Text style={styles.taskMeta}>
-                                {t('settings.orchestratorTaskMeta', { provider: task.provider, current: task.executions?.length ?? 0, max: task.retry.maxAttempts })}
-                            </Text>
-                            {task.taskKey ? (
-                                <Text style={styles.taskMeta}>{t('settings.orchestratorLabelTaskKey')}: {task.taskKey}</Text>
-                            ) : null}
-                            {task.dependsOn.length > 0 ? (
-                                <View style={styles.depWrap}>
-                                    {task.dependsOn.map((dependencyKey) => (
-                                        <View key={`${task.taskId}-${dependencyKey}`} style={styles.depPill}>
-                                            <Text style={styles.depText}>{t('settings.orchestratorDependsOnKey', { key: dependencyKey })}</Text>
-                                        </View>
-                                    ))}
+                    {(run.tasks ?? []).map((task) => {
+                        const attempt = resolveOrchestratorAttemptDisplay(task);
+                        const providerLabel = formatOrchestratorProviderLabel(task);
+                        const outputSummary = sanitizeOrchestratorOutputSummary(task.outputSummary);
+                        return (
+                            <Pressable
+                                key={task.taskId}
+                                style={styles.taskRow}
+                                onPress={() => router.push(`/orchestrator/${run.runId}/task/${task.taskId}`)}
+                            >
+                                <View style={styles.taskHeader}>
+                                    <Text style={styles.taskTitle} numberOfLines={1}>
+                                        #{task.seq} {task.title || task.taskKey || t('settings.orchestratorProviderTask', { provider: task.provider })}
+                                    </Text>
+                                    <OrchestratorStatusBadge status={task.status} />
                                 </View>
-                            ) : null}
-                            {task.outputSummary ? <Text style={styles.outputSummary}>{task.outputSummary}</Text> : null}
-                        </Pressable>
-                    ))}
+                                <Text style={styles.taskMeta}>
+                                    {t('settings.orchestratorTaskMeta', { provider: providerLabel, current: attempt.current, max: attempt.max })}
+                                </Text>
+                                {task.taskKey ? (
+                                    <Text style={styles.taskMeta}>{t('settings.orchestratorLabelTaskKey')}: {task.taskKey}</Text>
+                                ) : null}
+                                {task.dependsOn.length > 0 ? (
+                                    <View style={styles.depWrap}>
+                                        {task.dependsOn.map((dependencyKey) => (
+                                            <View key={`${task.taskId}-${dependencyKey}`} style={styles.depPill}>
+                                                <Text style={styles.depText}>{t('settings.orchestratorDependsOnKey', { key: dependencyKey })}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                ) : null}
+                                {outputSummary ? <Text style={styles.outputSummary}>{outputSummary}</Text> : null}
+                            </Pressable>
+                        );
+                    })}
                 </View>
 
                 {!!error && <Text style={styles.error}>{error}</Text>}

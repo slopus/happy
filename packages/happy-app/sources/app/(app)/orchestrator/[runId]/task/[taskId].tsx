@@ -6,8 +6,13 @@ import { Text } from '@/components/StyledText';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { useAuth } from '@/auth/AuthContext';
-import { getOrchestratorTask, type OrchestratorExecutionRecord, type OrchestratorTaskDetail, type OrchestratorTaskRecord } from '@/sync/apiOrchestrator';
+import { getOrchestratorTask, type OrchestratorTaskDetail, type OrchestratorTaskRecord } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
+import {
+    formatOrchestratorProviderLabel,
+    sanitizeOrchestratorOutputSummary,
+    sortOrchestratorExecutionsByAttemptDesc,
+} from '@/components/orchestrator/display';
 import { formatDate } from '@/utils/formatDate';
 import { t } from '@/text';
 
@@ -106,10 +111,6 @@ function buildTaskTitle(task: OrchestratorTaskRecord): string {
     return task.title || task.taskKey || t('settings.orchestratorProviderTask', { provider: task.provider });
 }
 
-function sortExecutions(executions: OrchestratorExecutionRecord[]): OrchestratorExecutionRecord[] {
-    return [...executions].sort((a, b) => b.attempt - a.attempt);
-}
-
 export default function OrchestratorTaskDetailScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
@@ -184,7 +185,9 @@ export default function OrchestratorTaskDetailScreen() {
         );
     }
 
-    const sortedExecutions = sortExecutions(task.executions ?? []);
+    const sortedExecutions = sortOrchestratorExecutionsByAttemptDesc(task.executions ?? []);
+    const providerLabel = formatOrchestratorProviderLabel(task);
+    const taskOutputSummary = sanitizeOrchestratorOutputSummary(task.outputSummary);
 
     return (
         <View style={styles.container}>
@@ -205,7 +208,7 @@ export default function OrchestratorTaskDetailScreen() {
                         <OrchestratorStatusBadge status={task.status} />
                     </View>
                     <Text style={styles.row}>{t('settings.orchestratorLabelRun')}: {run?.title || run?.runId || runId}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelProvider')}: {task.provider}</Text>
+                    <Text style={styles.row}>{t('settings.orchestratorLabelProvider')}: {providerLabel}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelTaskKey')}: {task.taskKey || '-'}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelWorkingDir')}: {task.workingDirectory || '-'}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelDependsOn')}: {task.dependsOn.length > 0 ? task.dependsOn.join(', ') : '-'}</Text>
@@ -215,7 +218,7 @@ export default function OrchestratorTaskDetailScreen() {
 
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>{t('settings.orchestratorResultTitle')}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelOutputSummary')}: {task.outputSummary || '-'}</Text>
+                    <Text style={styles.row}>{t('settings.orchestratorLabelOutputSummary')}: {taskOutputSummary || '-'}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelErrorCode')}: {task.errorCode || '-'}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelErrorMessage')}: {task.errorMessage || '-'}</Text>
                 </View>
@@ -224,22 +227,25 @@ export default function OrchestratorTaskDetailScreen() {
                     <Text style={styles.sectionTitle}>{t('settings.orchestratorExecutionHistoryTitle')}</Text>
                     {sortedExecutions.length === 0 ? (
                         <Text style={styles.hint}>{t('settings.orchestratorNoExecutions')}</Text>
-                    ) : sortedExecutions.map((execution) => (
-                        <View key={execution.executionId} style={styles.executionRow}>
-                            <View style={styles.executionHeader}>
-                                <Text style={styles.executionTitle}>
-                                    {t('settings.orchestratorAttemptTitle', { attempt: execution.attempt, machineId: execution.machineId })}
-                                </Text>
-                                <OrchestratorStatusBadge status={execution.status} />
+                    ) : sortedExecutions.map((execution) => {
+                        const executionOutputSummary = sanitizeOrchestratorOutputSummary(execution.outputSummary);
+                        return (
+                            <View key={execution.executionId} style={styles.executionRow}>
+                                <View style={styles.executionHeader}>
+                                    <Text style={styles.executionTitle}>
+                                        {t('settings.orchestratorAttemptTitle', { attempt: execution.attempt, machineId: execution.machineId })}
+                                    </Text>
+                                    <OrchestratorStatusBadge status={execution.status} />
+                                </View>
+                                <Text style={styles.row}>{t('settings.orchestratorLabelStarted')}: {formatDate(execution.startedAt)}</Text>
+                                <Text style={styles.row}>{t('settings.orchestratorLabelFinished')}: {formatDate(execution.finishedAt)}</Text>
+                                <Text style={styles.row}>{t('settings.orchestratorLabelExitCode')}: {execution.exitCode ?? '-'}</Text>
+                                <Text style={styles.row}>{t('settings.orchestratorLabelSignal')}: {execution.signal || '-'}</Text>
+                                <Text style={styles.row}>{t('settings.orchestratorLabelError')}: {execution.errorCode || '-'} {execution.errorMessage ? `· ${execution.errorMessage}` : ''}</Text>
+                                {executionOutputSummary ? <Text style={styles.bodyText}>{executionOutputSummary}</Text> : null}
                             </View>
-                            <Text style={styles.row}>{t('settings.orchestratorLabelStarted')}: {formatDate(execution.startedAt)}</Text>
-                            <Text style={styles.row}>{t('settings.orchestratorLabelFinished')}: {formatDate(execution.finishedAt)}</Text>
-                            <Text style={styles.row}>{t('settings.orchestratorLabelExitCode')}: {execution.exitCode ?? '-'}</Text>
-                            <Text style={styles.row}>{t('settings.orchestratorLabelSignal')}: {execution.signal || '-'}</Text>
-                            <Text style={styles.row}>{t('settings.orchestratorLabelError')}: {execution.errorCode || '-'} {execution.errorMessage ? `· ${execution.errorMessage}` : ''}</Text>
-                            {execution.outputSummary ? <Text style={styles.bodyText}>{execution.outputSummary}</Text> : null}
-                        </View>
-                    ))}
+                        );
+                    })}
                 </View>
 
                 {!!error && <Text style={styles.errorText}>{error}</Text>}

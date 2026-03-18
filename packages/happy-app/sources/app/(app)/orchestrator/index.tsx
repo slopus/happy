@@ -9,6 +9,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { getOrchestratorRunCounts, listOrchestratorRuns, type ListOrchestratorRunsQuery, type OrchestratorRunCounts, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
 import { OrchestratorProgressBar } from '@/components/orchestrator/OrchestratorProgressBar';
+import { resolveOrchestratorSummaryLineData } from '@/components/orchestrator/display';
 import { formatDate } from '@/utils/formatDate';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -274,6 +275,7 @@ export default function OrchestratorRunsScreen() {
     }, [fetchRuns]));
 
     const renderRunItem = React.useCallback(({ item }: { item: RunListItem; }) => {
+        const summaryLine = resolveOrchestratorSummaryLineData(item.summary);
         return (
             <Pressable
                 style={styles.card}
@@ -289,7 +291,13 @@ export default function OrchestratorRunsScreen() {
                 <View style={styles.progressRow}>
                     <OrchestratorProgressBar summary={item.summary} />
                     <Text style={styles.summary}>
-                        {t('settings.orchestratorSummaryLine', { total: item.summary.total, running: item.summary.running, completed: item.summary.completed, failed: item.summary.failed, cancelled: item.summary.cancelled })}
+                        {t('settings.orchestratorSummaryLine', {
+                            total: summaryLine.total,
+                            running: summaryLine.running,
+                            completed: summaryLine.completed,
+                            failed: summaryLine.failed,
+                            cancelled: summaryLine.cancelled,
+                        })}
                     </Text>
                 </View>
             </Pressable>
