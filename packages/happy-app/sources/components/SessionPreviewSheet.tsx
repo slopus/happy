@@ -6,7 +6,7 @@
  * Supports drag-to-resize functionality.
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
     View,
     Modal,
@@ -28,6 +28,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from './StyledText';
 import { layout } from './layout';
 import { t } from '@/text';
+import * as Clipboard from 'expo-clipboard';
+import { hapticsLight } from './haptics';
 import type { ClaudeSessionPreviewMessage, ClaudeSessionIndexEntry, AgentSessionIndexEntry } from '@/sync/ops';
 
 // On web, stop events from propagating to expo-router's modal overlay
@@ -75,7 +77,16 @@ export function SessionPreviewSheet({
     const slideAnim = useRef(new Animated.Value(300)).current;
     const dragStartY = useRef(0);
     const dragStartHeight = useRef(0);
-    const lastLongPressAtRef = useRef(0);
+    const pressInAtRef = useRef(0);
+    const touchStartYRef = useRef(0);
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [copyMenu, setCopyMenu] = useState<{ x: number; y: number; content: string } | null>(null);
+    const copyMenuRef = useRef<{ x: number; y: number; content: string } | null>(null);
+    const copyMenuAnim = useRef(new Animated.Value(0)).current;
+    const [copyMenuWidth, setCopyMenuWidth] = useState(0);
+    const [localToastVisible, setLocalToastVisible] = useState(false);
+    const localToastAnim = useRef(new Animated.Value(0)).current;
     // Cache entry for display during close animation
     const cachedEntryRef = useRef<ClaudeSessionIndexEntry | AgentSessionIndexEntry | null>(null);
     if (entry) {
@@ -154,7 +165,55 @@ export function SessionPreviewSheet({
 
     useEffect(() => {
         setExpandedMessageKeys(new Set());
+        setCopyMenu(null);
     }, [entry?.sessionId, visible]);
+
+    useEffect(() => {
+        return () => {
+            if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+            if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        };
+    }, []);
+
+    const cancelLongPress = useCallback(() => {
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+    }, []);
+
+    const showCopyMenu = useCallback((menu: { x: number; y: number; content: string }) => {
+        copyMenuRef.current = menu;
+        copyMenuAnim.setValue(0);
+        setCopyMenu(menu);
+        Animated.spring(copyMenuAnim, {
+            toValue: 1,
+            damping: 15,
+            stiffness: 300,
+            useNativeDriver: true,
+        }).start();
+    }, [copyMenuAnim]);
+
+    const hideCopyMenu = useCallback(() => {
+        copyMenuRef.current = null;
+        Animated.timing(copyMenuAnim, {
+            toValue: 0,
+            duration: 120,
+            useNativeDriver: true,
+        }).start(() => setCopyMenu(null));
+    }, [copyMenuAnim]);
+
+    const showLocalToast = useCallback(() => {
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        setLocalToastVisible(true);
+        localToastAnim.setValue(1);
+        toastTimerRef.current = setTimeout(() => {
+            toastTimerRef.current = null;
+            Animated.timing(localToastAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
+                setLocalToastVisible(false);
+            });
+        }, 1200);
+    }, [localToastAnim]);
 
     const handleClose = () => {
         onClose();
@@ -176,7 +235,7 @@ export function SessionPreviewSheet({
         });
     }, []);
 
-    const previewMessages = messages ? [...messages].reverse() : [];
+    const previewMessages = useMemo(() => messages ? [...messages].reverse() : [], [messages]);
 
     if (!modalVisible) {
         return null;
@@ -260,6 +319,9 @@ export function SessionPreviewSheet({
                             inverted={true}
                             style={styles.content as ViewStyle}
                             contentContainerStyle={styles.contentContainer as ViewStyle}
+                            onScroll={cancelLongPress}
+                            scrollEventThrottle={16}
+                            onScrollBeginDrag={hideCopyMenu}
                             showsVerticalScrollIndicator={false}
                             keyExtractor={getPreviewMessageKey}
                             renderItem={({ item: msg, index }: ListRenderItemInfo<ClaudeSessionPreviewMessage>) => {
@@ -278,24 +340,35 @@ export function SessionPreviewSheet({
                                                 styles.messageBubble as ViewStyle,
                                                 msg.role === 'user' ? styles.userBubble as ViewStyle : styles.assistantBubble as ViewStyle,
                                             ]}
+                                            onTouchStart={(e) => {
+                                                pressInAtRef.current = Date.now();
+                                                touchStartYRef.current = e.nativeEvent.pageY;
+                                                const { pageX, pageY } = e.nativeEvent;
+                                                cancelLongPress();
+                                                longPressTimerRef.current = setTimeout(() => {
+                                                    longPressTimerRef.current = null;
+                                                    hapticsLight();
+                                                    showCopyMenu({ x: pageX, y: pageY, content: msg.content });
+                                                }, 500);
+                                            }}
+                                            onTouchMove={cancelLongPress}
+                                            onTouchEnd={(e) => {
+                                                cancelLongPress();
+                                                const elapsed = Date.now() - pressInAtRef.current;
+                                                if (elapsed > 400) return;
+                                                if (Math.abs(e.nativeEvent.pageY - touchStartYRef.current) > 8) return;
+                                                if (copyMenuRef.current !== null) {
+                                                    hideCopyMenu();
+                                                    return;
+                                                }
+                                                handleToggleMessageExpanded(messageKey);
+                                            }}
                                         >
                                             <Text
                                                 style={[
                                                     styles.messageText as TextStyle,
                                                     msg.role === 'user' ? styles.userText as TextStyle : styles.assistantText as TextStyle,
                                                 ]}
-                                                selectable={true}
-                                                suppressHighlighting={true}
-                                                onLongPress={() => {
-                                                    lastLongPressAtRef.current = Date.now();
-                                                }}
-                                                onPress={() => {
-                                                    // Ignore the press that may be fired after long press.
-                                                    if (Date.now() - lastLongPressAtRef.current < 800) {
-                                                        return;
-                                                    }
-                                                    handleToggleMessageExpanded(messageKey);
-                                                }}
                                                 numberOfLines={isExpanded ? undefined : PREVIEW_COLLAPSED_LINES}
                                             >
                                                 {msg.content}
@@ -331,6 +404,49 @@ export function SessionPreviewSheet({
                         </Pressable>
                     </View>
                 </Animated.View>
+
+                {/* Copy menu overlay — rendered at modal level to avoid clipping */}
+                {copyMenu && (
+                    <>
+                        <TouchableWithoutFeedback onPress={hideCopyMenu}>
+                            <View style={styles.copyMenuBackdrop as ViewStyle} />
+                        </TouchableWithoutFeedback>
+                        <Animated.View
+                            style={[
+                                styles.copyMenuContainer as ViewStyle,
+                                { left: copyMenu.x - copyMenuWidth / 2, top: copyMenu.y - 48 },
+                                {
+                                    opacity: copyMenuAnim,
+                                    transform: [
+                                        { scale: copyMenuAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) },
+                                    ],
+                                },
+                            ]}
+                            pointerEvents="box-none"
+                            onLayout={(e) => setCopyMenuWidth(e.nativeEvent.layout.width)}
+                        >
+                            <Pressable
+                                style={styles.copyMenuButton as ViewStyle}
+                                onPress={() => {
+                                    Clipboard.setStringAsync(copyMenu.content);
+                                    hapticsLight(); showLocalToast();
+                                    hideCopyMenu();
+                                }}
+                            >
+                                <Text style={styles.copyMenuText as TextStyle}>{t('common.copy')}</Text>
+                            </Pressable>
+                            <View style={styles.copyMenuArrow as ViewStyle} />
+                        </Animated.View>
+                    </>
+                )}
+
+                {/* Local toast inside Modal to avoid being covered */}
+                {localToastVisible && (
+                    <Animated.View pointerEvents="none" style={[styles.localToast as ViewStyle, { opacity: localToastAnim }]}>
+                        <Ionicons name="checkmark-circle" size={16} color="#fff" style={{ marginRight: 6 }} />
+                        <Text style={styles.localToastText as TextStyle}>{t('common.copied')}</Text>
+                    </Animated.View>
+                )}
             </View>
         </Modal>
     );
@@ -494,5 +610,50 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 17,
         fontWeight: '500',
         color: '#fff',
+    },
+    copyMenuBackdrop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    copyMenuContainer: {
+        position: 'absolute',
+        alignItems: 'center',
+    },
+    copyMenuButton: {
+        backgroundColor: '#232325',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+    },
+    copyMenuText: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '500',
+    },
+    copyMenuArrow: {
+        width: 8,
+        height: 8,
+        backgroundColor: '#232325',
+        transform: [{ rotate: '45deg' }],
+        marginTop: -4,
+    },
+    localToast: {
+        position: 'absolute',
+        bottom: Platform.OS === 'ios' ? 100 : 80,
+        alignSelf: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 20,
+    },
+    localToastText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '500',
     },
 }));
