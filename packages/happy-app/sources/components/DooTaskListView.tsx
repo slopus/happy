@@ -585,7 +585,7 @@ export const DooTaskListView = React.memo(() => {
                     style={[styles.retryButton, { backgroundColor: theme.colors.button.primary.background }]}
                     onPress={() => router.push('/settings/connect/dootask')}
                 >
-                    <Text style={styles.retryText}>{t('dootask.reconnect')}</Text>
+                    <Text style={[styles.retryText, { color: theme.colors.button.primary.tint }]}>{t('dootask.reconnect')}</Text>
                 </Pressable>
             </View>
         );
@@ -696,7 +696,7 @@ const styles = StyleSheet.create((_theme) => ({
     emptyTitle: { ...Typography.default('semiBold'), fontSize: 16 },
     emptyText: { ...Typography.default(), fontSize: 14, textAlign: 'center', marginTop: 4 },
     retryButton: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-    retryText: { color: '#fff', ...Typography.default('semiBold'), fontSize: 14 },
+    retryText: { ...Typography.default('semiBold'), fontSize: 14 },
     errorBanner: {
         flexDirection: 'row',
         alignItems: 'center',
