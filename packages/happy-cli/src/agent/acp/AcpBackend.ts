@@ -85,6 +85,7 @@ type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
     kind?: string;
     toolName?: string;
     title?: string; // Gemini ACP: JSON-stringified tool input
+    rawInput?: unknown; // ACP standard: raw input parameters sent to the tool
     input?: Record<string, unknown>;
     arguments?: Record<string, unknown>;
     content?: Record<string, unknown>;
@@ -115,6 +116,8 @@ type ExtendedSessionNotification = SessionNotification & {
       [key: string]: unknown;
     } | string | unknown;
     locations?: unknown[];
+    rawInput?: unknown;
+    title?: string;
     messageChunk?: {
       textDelta?: string;
     };
@@ -552,13 +555,27 @@ export class AcpBackend implements AgentBackend {
           const permissionId = toolCallId;
           
           // Extract input/arguments from various possible locations FIRST (before checking toolName)
+          // ACP SDK uses rawInput for tool input parameters
           let input: Record<string, unknown> = {};
           if (toolCall) {
-            // Gemini ACP puts JSON-stringified input in toolCall.title
-            if (!toolCall.input && !toolCall.arguments && typeof toolCall.title === 'string' && toolCall.title.startsWith('{')) {
-              try { input = JSON.parse(toolCall.title); } catch { input = {}; }
-            } else {
+            // 1. Prefer rawInput (ACP standard field for tool input)
+            const { rawInput } = toolCall;
+            if (rawInput != null && typeof rawInput === 'object' && !Array.isArray(rawInput)) {
+              input = rawInput as Record<string, unknown>;
+            } else if (rawInput != null && Array.isArray(rawInput)) {
+              input = { items: rawInput };
+            }
+            // 2. Fall back to input/arguments (non-standard but some agents use it)
+            else if (toolCall.input || toolCall.arguments) {
               input = toolCall.input || toolCall.arguments || {};
+            }
+            // 3. Fall back to JSON-parsed title (Gemini legacy: JSON-stringified input in title)
+            else if (typeof toolCall.title === 'string' && toolCall.title.startsWith('{')) {
+              try { input = JSON.parse(toolCall.title); } catch { input = {}; }
+            }
+            // 4. Include title as description if no description already present
+            if (!input.description && typeof toolCall.title === 'string' && toolCall.title) {
+              input = { ...input, description: toolCall.title };
             }
           } else {
             input = extendedParams.input || extendedParams.arguments || extendedParams.content || {};
@@ -958,6 +975,8 @@ export class AcpBackend implements AgentBackend {
         status: update.status,
         kind: update.kind,
         hasContent: !!update.content,
+        hasRawInput: !!update.rawInput,
+        title: update.title,
         hasLocations: !!update.locations,
       }, null, 2));
     }

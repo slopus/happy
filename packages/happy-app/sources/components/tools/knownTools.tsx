@@ -662,6 +662,13 @@ export const knownTools = {
     },
     'search': {
         title: t('tools.names.search'),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (opts.tool.input?.description && typeof opts.tool.input.description === 'string') {
+                return opts.tool.input.description;
+            }
+
+            return null;
+        },
         icon: ICON_SEARCH,
         minimal: true,
         input: z.object({
@@ -761,6 +768,10 @@ export const knownTools = {
                 if (parenMatch) {
                     return parenMatch[1];
                 }
+            }
+            // For Gemini, the description may also be in toolCall.content[0].description
+            if (opts.tool.input?.description && typeof opts.tool.input.description === 'string') {
+                return opts.tool.input.description;
             }
             return null;
         }

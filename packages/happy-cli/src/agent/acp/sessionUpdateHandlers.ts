@@ -44,6 +44,8 @@ export interface SessionUpdate {
     [key: string]: unknown;
   } | string | unknown;
   locations?: unknown[];
+  rawInput?: unknown;
+  title?: string;
   messageChunk?: {
     textDelta?: string;
   };
@@ -300,8 +302,18 @@ export function startToolCall(
   // Emit running status
   ctx.emit({ type: 'status', status: 'running' });
 
-  // Parse args and emit tool-call event
-  const args = parseArgsFromContent(update.content);
+  // Parse args: prefer rawInput (ACP: "Raw input parameters sent to the tool")
+  // over content (which is output produced by the tool, not input)
+  // Spread to avoid mutating the original update object
+  const baseArgs = update.rawInput != null
+    ? parseArgsFromContent(update.rawInput)
+    : parseArgsFromContent(update.content);
+  const args: Record<string, unknown> = { ...baseArgs };
+
+  // Include title as description for display (ACP: "Human-readable title")
+  if (typeof update.title === 'string' && update.title && !args.description) {
+    args.description = update.title;
+  }
 
   // Extract locations if present
   if (update.locations && Array.isArray(update.locations)) {
