@@ -4,6 +4,8 @@ import { Socket } from "socket.io";
 import { checkSessionAccess } from "@/app/share/accessControl";
 import { getOrCreateUserRpcListeners } from "./rpcRegistry";
 import { db } from "@/storage/db";
+import { updateThinkingState } from "@/app/presence/sessionTurnRuntime";
+import { dispatchNextPendingIfPossible } from "@/app/session/pendingMessageAutoDispatch";
 
 export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
     
@@ -141,6 +143,17 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
                 const duration = Date.now() - startTime;
                 // log({ module: 'websocket-rpc' }, `RPC call succeeded: ${method} (${duration}ms)`);
+
+                // Eagerly clear thinking state on abort completion.
+                // The CLI sends session-alive { thinking: false } via volatile emit,
+                // but that may arrive after this ack or be dropped entirely.
+                if (method.endsWith(':abort')) {
+                    const sessionId = method.substring(0, method.length - ':abort'.length);
+                    const { turnEnded } = updateThinkingState(sessionId, false, Date.now());
+                    if (turnEnded) {
+                        dispatchNextPendingIfPossible({ ownerId: userId, sessionId });
+                    }
+                }
 
                 // Forward the response back to the caller via callback
                 if (callback) {
