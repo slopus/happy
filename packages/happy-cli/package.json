@@ -88,12 +88,12 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.1",
+    "@paralleldrive/cuid2": "^2.2.2",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",
     "@types/http-proxy": "^1.17.17",
-    "@types/ps-list": "^6.2.1",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.2.7",
     "@types/tmp": "^0.2.6",
