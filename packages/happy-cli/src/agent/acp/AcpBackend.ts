@@ -81,8 +81,10 @@ import {
 type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
   toolCall?: {
     id?: string;
+    toolCallId?: string; // Gemini ACP uses toolCallId (not id)
     kind?: string;
     toolName?: string;
+    title?: string; // Gemini ACP: JSON-stringified tool input
     input?: Record<string, unknown>;
     arguments?: Record<string, unknown>;
     content?: Record<string, unknown>;
@@ -539,18 +541,26 @@ export class AcpBackend implements AgentBackend {
           
           const extendedParams = params as ExtendedRequestPermissionRequest;
           const toolCall = extendedParams.toolCall;
-          let toolName = toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
+          const rawKind = toolCall?.kind;
+          let toolName = toolCall?.toolName
+            || (rawKind && rawKind !== 'other' ? rawKind : null)
+            || extendedParams.kind
+            || 'Unknown tool';
           // Use toolCallId as the single source of truth for permission ID
-          // This ensures mobile app sends back the same ID that we use to store pending requests
-          const toolCallId = toolCall?.id || randomUUID();
-          const permissionId = toolCallId; // Use same ID for consistency!
+          // Gemini ACP uses toolCallId (e.g. "mcp_happy_change_title-xxx"), Claude uses id
+          const toolCallId = toolCall?.toolCallId || toolCall?.id || randomUUID();
+          const permissionId = toolCallId;
           
           // Extract input/arguments from various possible locations FIRST (before checking toolName)
           let input: Record<string, unknown> = {};
           if (toolCall) {
-            input = toolCall.input || toolCall.arguments || toolCall.content || {};
+            // Gemini ACP puts JSON-stringified input in toolCall.title
+            if (!toolCall.input && !toolCall.arguments && typeof toolCall.title === 'string' && toolCall.title.startsWith('{')) {
+              try { input = JSON.parse(toolCall.title); } catch { input = {}; }
+            } else {
+              input = toolCall.input || toolCall.arguments || {};
+            }
           } else {
-            // If no toolCall, try to extract from params directly
             input = extendedParams.input || extendedParams.arguments || extendedParams.content || {};
           }
           
@@ -561,7 +571,8 @@ export class AcpBackend implements AgentBackend {
           };
           toolName = this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
 
-          if (toolName !== (toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool')) {
+          const originalToolName = toolCall?.toolName || rawKind || extendedParams.kind || 'Unknown tool';
+          if (toolName !== originalToolName) {
             logger.debug(`[AcpBackend] Detected tool name: ${toolName} from toolCallId: ${toolCallId}`);
           }
 
@@ -585,7 +596,7 @@ export class AcpBackend implements AgentBackend {
           logger.debug(`[AcpBackend] Permission request params structure:`, JSON.stringify({
             hasToolCall: !!toolCall,
             toolCallKind: toolCall?.kind,
-            toolCallId: toolCall?.id,
+            toolCallId: toolCall?.toolCallId || toolCall?.id,
             paramsKind: extendedParams.kind,
             paramsKeys: Object.keys(params),
           }, null, 2));

@@ -1301,6 +1301,9 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             }
             if (raw.content.data.type === 'permission-request') {
                 // Map permission-request to tool-call for UI to show permission dialog
+                // Extract actual tool input from payload.input (not the full payload)
+                const permPayload = raw.content.data.options ?? {};
+                const toolInput = permPayload.input ?? permPayload;
                 return {
                     id,
                     localId,
@@ -1311,7 +1314,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         type: 'tool-call',
                         id: raw.content.data.permissionId,
                         name: raw.content.data.toolName,
-                        input: raw.content.data.options ?? {},
+                        input: toolInput,
                         description: raw.content.data.description,
                         uuid: id,
                         parentUUID: null

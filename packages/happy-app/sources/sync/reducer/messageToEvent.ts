@@ -10,6 +10,15 @@ import { NormalizedMessage } from "../typesRaw";
 import { AgentEvent } from "../typesRaw";
 
 /**
+ * Tool names that should be converted to events instead of showing as permission dialogs.
+ * Used by Phase 0 (AgentState permissions) to skip creating tool messages for these tools.
+ */
+const EVENT_TOOL_NAMES = new Set([
+    'mcp:happy:change_title',
+    'mcp__happy__change_title',
+]);
+
+/**
  * Parses a normalized message to determine if it should be converted to an event.
  * 
  * @param msg - The normalized message to parse
@@ -45,7 +54,7 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
             }
             
             // Check for mcp__happy__change_title tool calls
-            if (content.type === 'tool-call' && ["mcp:happy:change_title", "mcp__happy__change_title"].includes(content.name)) {
+            if (content.type === 'tool-call' && EVENT_TOOL_NAMES.has(content.name)) {
                 const title = content.input?.title;
                 if (typeof title === 'string') {
                     return {
@@ -84,4 +93,15 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
 export function shouldSkipNormalProcessing(msg: NormalizedMessage): boolean {
     // If a message converts to an event, it should skip normal processing
     return parseMessageAsEvent(msg) !== null;
+}
+
+/**
+ * Checks if a permission request for a given tool should be suppressed
+ * because parseMessageAsEvent will convert it to an event instead.
+ */
+export function shouldSuppressPermission(toolName: string, args: any): boolean {
+    if (!EVENT_TOOL_NAMES.has(toolName)) return false;
+    // change_title needs a title to be converted to event
+    if (typeof args?.title === 'string') return true;
+    return false;
 }

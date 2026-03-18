@@ -115,7 +115,7 @@ import { AgentEvent, ImageContent, NormalizedMessage, UsageData } from "../types
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
-import { parseMessageAsEvent } from "./messageToEvent";
+import { parseMessageAsEvent, shouldSuppressPermission } from "./messageToEvent";
 
 type ReducerMessage = {
     id: string;
@@ -361,6 +361,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     continue;
                 }
 
+                // Skip if this tool will be converted to an event by Phase 0.5
+                if (shouldSuppressPermission(request.tool, request.arguments)) {
+                    continue;
+                }
+
                 // Check if we already have a message for this permission ID
                 const existingMessageId = state.toolIdToMessageId.get(permId);
                 if (existingMessageId) {
@@ -546,6 +551,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                     // Skip if already processed as pending
                     if (agentState.requests && agentState.requests[permId]) {
+                        continue;
+                    }
+
+                    // Skip if this tool will be converted to an event by Phase 0.5
+                    if (shouldSuppressPermission(completed.tool, completed.arguments)) {
                         continue;
                     }
 

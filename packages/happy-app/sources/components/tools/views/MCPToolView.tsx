@@ -28,13 +28,9 @@ export function formatMCPTitle(tool: ToolCall): string {
         prefix = "Orchestrator";
     }
 
-    // If tool has input title, use it directly
-    if (tool.input?.title) {
-        if (withoutPrefix === "preview_html") {
-            return `${tool.input.title}`;
-        } else {
-            return `${prefix}: ${tool.input.title}`;
-        }
+    // Special case for preview_html to use the title from input if available
+    if (tool.input?.title && withoutPrefix === "preview_html") {
+        return `${tool.input.title}`;
     }
     
     // Split into parts by "__"
