@@ -785,15 +785,23 @@ export async function runGemini(opts: {
           messageBuffer.addMessage(`Result: ${truncatedResult}`, 'result');
         }
         
-        // Trim large payloads for GeminiBash — app only needs exit_code
-        let trimmedResult = msg.result;
-        if (msg.toolName === 'GeminiBash' && typeof msg.result === 'object' && msg.result !== null) {
+        // Normalize Gemini ACP result format to match Codex format
+        // Gemini: [{ content: { text, type }, type: "content" }]
+        // Codex:  { content: [{ type, text }] }
+        let trimmedResult: unknown = msg.result;
+        if (Array.isArray(trimmedResult) && trimmedResult.length > 0
+            && trimmedResult.every((item: any) => item?.type === 'content' && item?.content)) {
+          trimmedResult = {
+            content: trimmedResult.map((item: any) => item.content),
+          };
+        }
+        if (msg.toolName === 'GeminiBash' && typeof trimmedResult === 'object' && trimmedResult !== null) {
           trimmedResult = summarizeBashToolOutput({
             sessionId: session.sessionId,
             callId: msg.callId,
             toolName: 'GeminiBash',
             agent: 'gemini',
-            result: msg.result,
+            result: trimmedResult,
           });
         }
 
