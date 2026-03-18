@@ -168,6 +168,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
         }
     });
+
+    const receiveMessageLock = new AsyncLock();
+
     socket.on('session-alive', async (data: {
         sid: string;
         time: number;
@@ -204,9 +207,15 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
             const thinkingState = updateThinkingState(sid, !!thinking, t);
             if (thinkingState.turnEnded) {
-                await dispatchNextPendingIfPossible({
-                    ownerId: userId,
-                    sessionId: sid,
+                // Acquire receiveMessageLock to ensure any in-flight 'message' event
+                // (e.g. the AI's final response) finishes before we dispatch the next
+                // pending message, preventing the queued message from arriving before
+                // the AI's last reply on the client side.
+                await receiveMessageLock.inLock(async () => {
+                    await dispatchNextPendingIfPossible({
+                        ownerId: userId,
+                        sessionId: sid,
+                    });
                 });
             }
 
@@ -307,7 +316,6 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         }
     });
 
-    const receiveMessageLock = new AsyncLock();
     socket.on('message-batch', async (data: any, callback?: (response: any) => void) => {
         await receiveMessageLock.inLock(async () => {
             let batchSessionId: string | null = null;
