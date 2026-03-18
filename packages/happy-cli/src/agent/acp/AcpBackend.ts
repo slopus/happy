@@ -619,7 +619,7 @@ export class AcpBackend implements AgentBackend {
               })),
             },
           });
-          
+
           // Use permission handler if provided, otherwise auto-approve
           if (this.options.permissionHandler) {
             try {
@@ -652,29 +652,31 @@ export class AcpBackend implements AgentBackend {
                   optionId = options[0].optionId || 'proceed_once';
                 }
                 
-                // Emit tool-result with permissionId so UI can close the timer
-                // This is needed because tool_call_update comes with a different ID
+                // Emit permission-response so UI can update permission status
+                // This is NOT the actual tool result - that arrives later via tool-result event
                 this.emit({
-                  type: 'tool-result',
+                  type: 'permission-response',
+                  id: permissionId,
+                  approved: true,
+                  decision: result.decision,
                   toolName,
-                  result: { status: 'approved', decision: result.decision },
-                  callId: permissionId,
                 });
               } else {
                 // Denied or aborted - find cancel option
-                const cancelOption = options.find((opt: any) => 
+                const cancelOption = options.find((opt: any) =>
                   opt.optionId === 'cancel' || opt.name?.toLowerCase().includes('cancel')
                 );
                 if (cancelOption) {
                   optionId = cancelOption.optionId || 'cancel';
                 }
-                
-                // Emit tool-result for denied/aborted
+
+                // Emit permission-response for denied/aborted
                 this.emit({
-                  type: 'tool-result',
+                  type: 'permission-response',
+                  id: permissionId,
+                  approved: false,
+                  decision: result.decision,
                   toolName,
-                  result: { status: 'denied', decision: result.decision },
-                  callId: permissionId,
                 });
               }
               

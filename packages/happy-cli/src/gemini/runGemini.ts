@@ -844,7 +844,7 @@ export async function runGemini(opts: {
 
       case 'permission-request':
         // Forward permission request to mobile app
-        // Note: toolName is in msg.payload.toolName (from AcpBackend), 
+        // Note: toolName is in msg.payload.toolName (from AcpBackend),
         // msg.reason also contains the tool name
         const payload = (msg as any).payload || {};
         session.sendAgentMessage('gemini', {
@@ -854,6 +854,12 @@ export async function runGemini(opts: {
           description: (msg as any).reason || payload.toolName || '',
           options: payload,
         });
+        break;
+
+      case 'permission-response':
+        // Permission was approved/denied - update UI permission status
+        // This is NOT the actual tool result, just the permission decision
+        logger.debug(`[gemini] Permission ${(msg as any).approved ? 'approved' : 'denied'} for ${(msg as any).toolName} (${msg.id})`);
         break;
 
       case 'exec-approval-request':

@@ -46,7 +46,7 @@ export type AgentMessage =
   | { type: 'tool-call'; toolName: string; args: Record<string, unknown>; callId: ToolCallId }
   | { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId }
   | { type: 'permission-request'; id: string; reason: string; payload: unknown }
-  | { type: 'permission-response'; id: string; approved: boolean }
+  | { type: 'permission-response'; id: string; approved: boolean; decision?: string; toolName?: string }
   | { type: 'fs-edit'; description: string; diff?: string; path?: string }
   | { type: 'terminal-output'; data: string }
   | { type: 'event'; name: string; payload: unknown }
