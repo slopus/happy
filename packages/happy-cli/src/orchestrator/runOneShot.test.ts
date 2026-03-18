@@ -31,7 +31,7 @@ describe('runOneShot spawn plan', () => {
     const plan = buildSpawnPlan('codex', 'hello', '/tmp/workdir', 'gpt-5.3-codex-high', 'initial');
     expect(plan.command).toBe('bash');
     expect(plan.args[0]).toBe('-lc');
-    expect(plan.args[1]).toContain('@openai/codex@0.114.0');
+    expect(plan.args[1]).toContain('@openai/codex@0.115.0');
     expect(plan.args[1]).toContain('--dangerously-bypass-approvals-and-sandbox');
     expect(plan.args[1]).toContain('model_reasoning_effort=$ORCH_REASONING_EFFORT');
     expect(plan.args[1]).not.toContain('--reasoning-effort');
