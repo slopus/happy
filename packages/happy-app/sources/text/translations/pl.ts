@@ -632,6 +632,7 @@ export const pl: TranslationStructure = {
         noResults: 'Brak pasujących sesji',
         allDevices: 'Wszystkie urządzenia',
         allAgents: 'Wszyscy agenci',
+        active: 'Aktywne',
     },
 
     claudeHistory: {

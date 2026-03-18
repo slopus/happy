@@ -636,6 +636,7 @@ export const en: TranslationStructure = {
         noResults: 'No matching sessions',
         allDevices: 'All Devices',
         allAgents: 'All Agents',
+        active: 'Active',
     },
 
     claudeHistory: {

@@ -585,6 +585,7 @@ export const ru: TranslationStructure = {
         noResults: 'Совпадений не найдено',
         allDevices: 'Все устройства',
         allAgents: 'Все агенты',
+        active: 'Активные',
     },
 
     claudeHistory: {

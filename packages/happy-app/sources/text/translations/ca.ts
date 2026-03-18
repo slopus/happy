@@ -620,6 +620,7 @@ export const ca: TranslationStructure = {
         noResults: 'Cap sessió coincident',
         allDevices: 'Tots els dispositius',
         allAgents: 'Tots els agents',
+        active: 'Actives',
     },
 
     claudeHistory: {

@@ -650,6 +650,7 @@ export const it: TranslationStructure = {
         noResults: 'Nessuna sessione corrispondente',
         allDevices: 'Tutti i dispositivi',
         allAgents: 'Tutti gli agenti',
+        active: 'Attive',
     },
 
     claudeHistory: {

@@ -620,6 +620,7 @@ export const es: TranslationStructure = {
         noResults: 'No se encontraron sesiones coincidentes',
         allDevices: 'Todos los dispositivos',
         allAgents: 'Todos los agentes',
+        active: 'Activas',
     },
 
     claudeHistory: {

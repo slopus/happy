@@ -225,20 +225,32 @@ function formatDateHeader(date: Date): string {
 }
 
 function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
-    const sortedSessions = sessions
-        .slice()
-        .sort((a, b) => b.createdAt - a.createdAt);
-    
+    const activeSessions = sessions.filter(s => s.active);
+    const inactiveSessions = sessions.filter(s => !s.active);
+
     const items: SessionHistoryItem[] = [];
-    let currentDateGroup: Session[] = [];
+
+    // Active sessions pinned at top, sorted by createdAt desc
+    if (activeSessions.length > 0) {
+        const sorted = activeSessions.slice().sort((a, b) => b.createdAt - a.createdAt);
+        items.push({ type: 'date-header', date: t('sessionHistory.active') });
+        sorted.forEach(sess => {
+            items.push({ type: 'session', session: sess });
+        });
+    }
+
+    // Inactive sessions sorted and grouped by updatedAt desc
+    const sortedInactive = inactiveSessions
+        .slice()
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+
     let currentDateString: string | null = null;
-    
-    for (const session of sortedSessions) {
-        const sessionDate = new Date(session.createdAt);
-        const dateString = sessionDate.toDateString();
-        
+    let currentDateGroup: Session[] = [];
+
+    for (const session of sortedInactive) {
+        const dateString = new Date(session.updatedAt).toDateString();
+
         if (currentDateString !== dateString) {
-            // Process previous group
             if (currentDateGroup.length > 0) {
                 items.push({
                     type: 'date-header',
@@ -248,16 +260,13 @@ function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
                     items.push({ type: 'session', session: sess });
                 });
             }
-            
-            // Start new group
             currentDateString = dateString;
             currentDateGroup = [session];
         } else {
             currentDateGroup.push(session);
         }
     }
-    
-    // Process final group
+
     if (currentDateGroup.length > 0) {
         items.push({
             type: 'date-header',
@@ -267,7 +276,7 @@ function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
             items.push({ type: 'session', session: sess });
         });
     }
-    
+
     return items;
 }
 

@@ -622,6 +622,7 @@ export const zhHans: TranslationStructure = {
         noResults: '没有匹配的会话',
         allDevices: '全部设备',
         allAgents: '全部智能体',
+        active: '进行中',
     },
 
     claudeHistory: {

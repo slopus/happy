@@ -622,6 +622,7 @@ export const zhHant: TranslationStructure = {
         noResults: '沒有匹配的工作階段',
         allDevices: '所有裝置',
         allAgents: '所有代理',
+        active: '進行中',
     },
 
     claudeHistory: {

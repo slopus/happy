@@ -652,6 +652,7 @@ export const ja: TranslationStructure = {
         noResults: '一致するセッションがありません',
         allDevices: 'すべてのデバイス',
         allAgents: 'すべてのエージェント',
+        active: 'アクティブ',
     },
 
     claudeHistory: {
