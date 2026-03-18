@@ -94,11 +94,23 @@ Happy Next intentionally changed client KDF labels as part of the rebrand. Treat
 
 Happy Next is a major evolution of the original Happy. Here are the highlights:
 
+### Orchestrator
+- Define task dependency graphs (DAGs) with per-task model and working directory
+- Auto-schedule execution across Claude, Codex, and Gemini agents
+- Real-time status badges, activity count, and status-colored progress bars
+- Follow up on completed tasks via session resume
+- MCP tool integration with auto-filled working directory
+
+### Pending Message Queue
+- Messages sent while the CLI is busy are queued server-side and auto-dispatched
+- Queue panel UI with image count badges and send-now option
+- Reconnect sync and concurrent dispatch safety
+
 ### Multi-Agent (Claude Code + Codex + Gemini)
 - All three agents are first-class citizens with session resume, duplicate/fork, and history
-- Multi-agent history page with per-provider tabs
+- Multi-agent history page with per-provider tabs, device and agent filter dropdowns
 - Per-agent model selection, cost tracking, and context window display
-- ACP and App-Server (JSON-RPC) backends for Codex
+- ACP and App-Server (JSON-RPC) backends for Codex, Codex v0.115.0 with fast mode
 - AI backend profiles with presets for DeepSeek, Z.AI, OpenAI, Azure, and Google AI
 
 ### Voice Assistant (Happy Voice)
@@ -120,13 +132,14 @@ Happy Next is a major evolution of the original Happy. Here are the highlights:
 - Commit history with branch selector (local + remote)
 - Git changes page: stage, unstage, commit, discard
 - Per-file diff stats (+N/-N) for Claude, Codex, and Gemini
+- Image preview with sharing support
 
 ### Session Sharing
 - Share sessions with friends via direct invite or public link
 - End-to-end encrypted: NaCl Box (direct) and token-derived keys (public links)
 - Real-time sync of messages, git status, and voice chat across shared users
 - Access control with view, edit, and admin permission levels
-- "All / Shared with me" filter tabs and share indicator in session list
+- "All / Shared with me / Shared by me" filter tabs and share indicator in session list
 - Public share web viewer for link-based access
 
 ### OpenClaw Gateway
@@ -140,6 +153,7 @@ Happy Next is a major evolution of the original Happy. Here are the highlights:
 - Real-time WebSocket chat (Slack-style layout, emoji reactions, voice playback, images/video)
 - One-click AI session launch from any task (MCP server passthrough)
 - Create tasks and projects directly from the app with cross-platform date picker
+- Globalized WebSocket connection with real-time task updates and persistent server-side connection
 
 ### Self-Hosting
 - One-command `docker-compose up` (Web + API + Voice + Postgres + Redis + MinIO)
@@ -150,22 +164,29 @@ Happy Next is a major evolution of the original Happy. Here are the highlights:
 ### Sync & Reliability
 - v3 messages API with seq-based sync, batch writes, and cursor pagination
 - HTTP outbox for reliable delivery when WebSocket is unavailable
-- Server-confirmed message sending with retry
+- Server-confirmed message sending with retry and message receipt tracking
 - Fixes for cursor skip, outbox race, message duplication/loss
 
 ### Chat & Session UX
-- Image attachment and clipboard paste (web)
+- Image attachment and clipboard paste (web), image support in drafts
 - `/duplicate` command to fork a session from any message
 - Message pagination, unread blue dot indicator, compact list view
+- Active/Inactive tab filter, session preview expand/collapse, metadata caching
 - Session rename with lock (prevent AI auto-update), search in history
 - Options click-to-send / long-press-to-fill, scroll-to-bottom button
 - Pull-to-refresh, inset dividers, Agent tool display with robot icon
 - Tool input/output formatted as key-value pairs instead of raw JSON
-- In-memory SWR cache and search for agent session history
-- CLI: `happy update` self-upgrade, `happy --version` with all agent versions
+- `preview_html` tool for full-page HTML preview, colon-separated MCP tool naming
+- CLI hot-upgrade support mid-session
+
+### CLI
+- `happy update` self-upgrade, `happy --version` with all agent versions
+- Daemon auto-start on boot (`happy daemon enable/disable`), restart command
+- Unified system prompt injection for Codex and Gemini
+- Message receipt tracking with legacy compatibility
 
 ### Bug Fixes & Stability
-- 200+ bug fixes: message sending reliability, session lifecycle, Markdown rendering, navigation, voice, DooTask, sharing
+- 250+ bug fixes: message sending reliability, session lifecycle, Markdown rendering, navigation, voice, DooTask, sharing
 - Security: shell command injection fix, plan mode permission handling
 - Performance: payload trimming for mobile, lazy-load diffs, rendering optimization
 
@@ -173,7 +194,7 @@ Happy Next is a major evolution of the original Happy. Here are the highlights:
 - Dark mode fixes throughout the app
 - i18n improvements (Chinese Simplified/Traditional, CJK input handling)
 - Markdown rendering: tables, inline code, nested fences, clickable file paths
-- Keyboard handling, loading states, navigation stability
+- Keyboard handling, loading states, navigation stability, icon font preloading
 
 Full changelog: [docs/changes-from-happy.md](docs/changes-from-happy.md)
 
@@ -184,6 +205,7 @@ On your computer, run `happy` instead of `claude`, `happy codex` instead of `cod
 ## 🔥 Why Happy Next?
 
 - 🎛️ **Remote control for Claude, Codex & Gemini** - All three agents as first-class citizens
+- 🤖 **Orchestrator** - Define multi-agent task DAGs and auto-schedule execution
 - ⚡ **Instant device handoff** - Take back control with a single keypress
 - 🔔 **Push notifications** - Know when your agent needs attention
 - 🔐 **E2EE + self-host option** - Encrypted by default, one-command Docker deployment
@@ -191,6 +213,7 @@ On your computer, run `happy` instead of `claude`, `happy codex` instead of `cod
 - 🧰 **Multi-repo workspaces** - Worktree-based multi-repo flows with branch selection and PR creation
 - 📁 **Code browser & git management** - Browse files, view diffs, stage/commit/discard from your phone
 - 📋 **DooTask integration** - Task management with real-time chat and one-click AI sessions
+- 📨 **Pending message queue** - Messages queued and auto-dispatched when CLI is ready
 
 ## 📦 Project Components
 

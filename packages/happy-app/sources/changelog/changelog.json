@@ -1,6 +1,23 @@
 {
   "entries": [
     {
+      "version": 7,
+      "date": "2026-03-18",
+      "summary": "Orchestrator arrives — define multi-agent task DAGs and let Happy schedule, execute, and monitor them automatically, plus offline message queuing, session management upgrades, and dozens of reliability fixes.",
+      "changes": [
+        "Orchestrator: define task dependency graphs (DAGs) with per-task model and working directory, auto-schedule execution across Claude, Codex, and Gemini, monitor progress with real-time status badges, and follow up on completed tasks via session resume.",
+        "Pending message queue: messages sent while the CLI is busy are queued server-side and auto-dispatched when ready, with a queue panel UI, image count badges, and send-now option.",
+        "Session management: Active/Inactive tab filter replaces the old toggle, device and agent filter dropdowns in history, session preview expand/collapse, metadata caching for faster listing, and CLI hot-upgrade support.",
+        "File viewer: image preview with sharing support directly from the code browser.",
+        "CLI: daemon auto-start on boot (`happy daemon enable`), restart command, Codex v0.115.0 with fast mode, message receipt tracking, and attribution setting (default off).",
+        "DooTask: globalized WebSocket connection with real-time task updates, related task entry in session info, and persistent server-side connection.",
+        "MCP tools: `preview_html` for full-page HTML preview, dual-mode long-press copy in tool details, and colon-separated tool naming support.",
+        "Gemini and Codex compatibility: ACP result format normalization, tool ID prefix fallback matching, Codex v2 protocol fixes, and dynamic permission mode changes.",
+        "50+ bug fixes across session sharing, feed lifecycle, toast positioning, icon font preloading, markdown rendering, and git status reliability."
+      ],
+      "rawMarkdown": "## Version 7 - 2026-03-18\n\n\nOrchestrator arrives — define multi-agent task DAGs and let Happy schedule, execute, and monitor them automatically, plus offline message queuing, session management upgrades, and dozens of reliability fixes.\n\n- Orchestrator: define task dependency graphs (DAGs) with per-task model and working directory, auto-schedule execution across Claude, Codex, and Gemini, monitor progress with real-time status badges, and follow up on completed tasks via session resume.\n- Pending message queue: messages sent while the CLI is busy are queued server-side and auto-dispatched when ready, with a queue panel UI, image count badges, and send-now option.\n- Session management: Active/Inactive tab filter replaces the old toggle, device and agent filter dropdowns in history, session preview expand/collapse, metadata caching for faster listing, and CLI hot-upgrade support.\n- File viewer: image preview with sharing support directly from the code browser.\n- CLI: daemon auto-start on boot (`happy daemon enable`), restart command, Codex v0.115.0 with fast mode, message receipt tracking, and attribution setting (default off).\n- DooTask: globalized WebSocket connection with real-time task updates, related task entry in session info, and persistent server-side connection.\n- MCP tools: `preview_html` for full-page HTML preview, dual-mode long-press copy in tool details, and colon-separated tool naming support.\n- Gemini and Codex compatibility: ACP result format normalization, tool ID prefix fallback matching, Codex v2 protocol fixes, and dynamic permission mode changes.\n- 50+ bug fixes across session sharing, feed lifecycle, toast positioning, icon font preloading, markdown rendering, and git status reliability."
+    },
+    {
       "version": 6,
       "date": "2026-03-04",
       "summary": "The biggest Happy update ever — multi-agent, voice, workspaces, code browser, DooTask, session sharing, and self-hosting all land in one release, plus 200+ bug fixes across the board.",
@@ -85,5 +102,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 6
+  "latestVersion": 7
 }

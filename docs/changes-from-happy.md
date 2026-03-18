@@ -8,23 +8,55 @@ This document summarizes what changed in the `next` branch compared to the origi
 
 | Area | What changed |
 |---|---|
+| Orchestrator | Multi-agent DAG task scheduling with per-task model, working directory, and real-time monitoring |
+| Pending queue | Server-side message queue with auto-dispatch, queue panel UI, and send-now option |
 | Multi-agent | Claude Code, Codex, and Gemini are all first-class agents |
 | Voice | LiveKit-based voice gateway with pluggable STT/LLM/TTS providers |
 | Workspaces | Multi-repo worktree creation, switching, archiving, and PR flows |
-| Code browser | File browser, Monaco editor, commit history, git stage/commit/discard |
+| Code browser | File browser, Monaco editor, commit history, git stage/commit/discard, image preview |
 | Session sharing | Direct invite and public link sharing with E2E encryption and access control |
-| DooTask | Task list, detail, real-time chat, one-click AI session launch, in-app task/project creation |
+| DooTask | Task list, detail, real-time chat, one-click AI session launch, globalized WebSocket |
 | Self-hosting | One-command `docker-compose` stack with separate origins |
 | Sync | v3 messages API, HTTP outbox, server-confirmed sends, race condition fixes |
 | Chat UX | Image attachment, pagination, blue dot, compact view, session search, pull-to-refresh |
-| Bug fixes | 200+ fixes across message sending, sessions, rendering, navigation, security |
+| Session mgmt | Active/Inactive tabs, device and agent filters, hot-upgrade, metadata caching |
+| Bug fixes | 250+ fixes across message sending, sessions, rendering, navigation, security |
 | Performance | Payload trimming, lazy-load diffs, rendering optimization |
-| CLI | `happy-next-cli` with multi-agent support, worktree RPC, diff processing, self-upgrade |
+| CLI | Daemon auto-start, Codex fast mode, receipt tracking, self-upgrade |
+| MCP tools | `preview_html`, colon-separated tool naming, dual-mode long-press copy |
 | OpenClaw | External AI machine gateway with tunnel/direct connections and chat UI |
 | Profiles | AI backend profiles with presets for DeepSeek, Z.AI, OpenAI, Azure, Google AI |
 | Rebrand | CLI published as `happy-next-cli`, binary remains `happy` |
 
 ---
+
+## Orchestrator
+
+A multi-agent orchestration system that lets you define task dependency graphs and execute them automatically.
+
+- **DAG-based task scheduling**: define tasks with dependencies, Happy resolves execution order and schedules them across agents
+- **Per-task model and working directory**: each task can target a specific model and directory
+- **Auto-approve flags**: configure automatic approval for orchestrated tasks
+- **Session resume for follow-up**: send follow-up messages to completed tasks via session resume
+- **Available models API**: `get_context` exposes available models per provider
+- **Real-time monitoring**: activity badge with running task count, status-colored progress bars
+- **Full app UI**: run list with filter tabs and run counts, run detail page, task detail page
+- **Cancel with cascade**: cancelling a run cascades `dependency_failed` to dependent tasks
+- **MCP tool integration**: orchestrator tools registered as MCP tools with auto-filled working directory
+- **Tool description rewriting**: orchestrator rewrites tool descriptions for better agent comprehension
+- **Complete i18n**: all orchestrator UI fully internationalized
+
+## Pending Message Queue
+
+Messages sent while the CLI is busy are now queued and delivered automatically.
+
+- **Server-side pending queue**: messages are queued per-session on the server
+- **Auto-dispatch**: queued messages are dispatched to the CLI when it becomes ready
+- **Queue panel UI**: view and manage pending messages from the app
+- **Image count badge**: pending message preview shows image attachment count
+- **Send-now option**: bypass queue and send immediately
+- **Reconnect sync**: queue state syncs on WebSocket reconnection
+- **Concurrent safety**: hardened dispatch concurrency and cleanup semantics
 
 ## Multi-Agent Support
 
@@ -43,6 +75,12 @@ The original Happy only supported Claude Code. Happy Next treats Claude Code, Co
 - **Model/mode switching** per session with live metadata sync
 - **Codex/Gemini diff processing**: per-file +N/-N statistics displayed in app
 - **Message backfill** for Codex and Gemini when resuming/duplicating sessions
+- **ACP result format normalization**: Gemini ACP results normalized to match Codex structure
+- **Tool ID prefix fallback**: fallback matching for tool IDs with different prefixes
+- **Codex v2 protocol fixes**: field-level incompatibilities resolved for v2 protocol
+- **Dynamic permission mode**: permission mode changes via RPC during active sessions
+- **Codex context restore**: `/duplicate` restores context using `thread/resume` with path
+- **Tool name normalization**: `normalizeToolName` aligns MCP tool names with Codex convention
 
 ## Voice Assistant (Happy Voice)
 
@@ -87,6 +125,7 @@ The app now includes a full code browsing and git management experience.
 - **Clickable file path links** in markdown with editor reveal position
 - **Staged file diff display** with accurate line count
 - **Base64 decoding** fixed for UTF-8 (CJK characters)
+- **Image preview** with sharing support in the file viewer
 
 ## Session Sharing
 
@@ -96,7 +135,7 @@ Share AI coding sessions with others through direct invites or public links, wit
 - **Public link sharing** with token-derived key encryption
 - **Access levels**: view-only, edit, and admin permissions with server-side enforcement
 - **Real-time sync**: messages, git status, and voice chat broadcast to all shared users via socket events
-- **"All / Shared with me" filter tabs** in session list
+- **"All / Shared with me / Shared by me" filter tabs** in session list
 - **Share indicator** on sessions shared with others
 - **Sharer avatar** and **sender name** display in shared sessions
 - **Public share web viewer** for link-based access without the app
@@ -144,6 +183,10 @@ Deep integration with DooTask project management, from browsing tasks to launchi
 - **Create tasks and projects** directly from the app with dedicated form pages
 - **Cross-platform date picker** (`react-native-ui-datepicker`) with bottom sheet confirm
 - **Form caching** for task/project creation across navigation
+- **Globalized WebSocket connection**: single persistent connection with real-time task updates
+- **Related task in session info**: session info page shows the linked DooTask task
+- **Persistent connection**: DooTask connection saved to server via UserKVStore
+- **Simple status badge**: tasks without workflow show a simple status badge
 
 ## Self-Hosting
 
@@ -166,6 +209,7 @@ Major reliability improvements to the real-time sync layer.
 - **Server-confirmed message sending** with retry on failure
 - **Fixes**: cursor skip on first push, outbox concurrent flush race, message duplication, seq gap message loss, syncing cursor reset, outbox drain on close
 - **Message loss prevention** when CLI is offline
+- **Message receipt tracking**: CLI confirms message receipt with legacy compatibility
 - **happy-wire** shared protocol types package to deduplicate schemas across CLI/app/server
 
 ## Chat & Session UX
@@ -197,6 +241,18 @@ Extensive improvements to the chat and session management experience.
 - **Real-time friend request updates** via socket events
 - **Swipe-to-delete** for feed notifications
 - **Friend search** with flat layout, GitHub connect prompt for users without username
+- **Active/Inactive tab filter**: replaces the old hide-inactive toggle with clear tab navigation
+- **Device and agent filter dropdowns**: filter session history by machine and agent type
+- **Session preview expand/collapse**: expand messages inline with increased preview limit
+- **Metadata caching**: session listing performance improved via metadata cache
+- **CLI hot-upgrade**: upgrade the CLI version mid-session without restart
+- **Per-agent permission mode**: permission mode stored and restored per agent type
+- **Shared-by-me filter**: filter sessions that you shared with others
+- **Image support in drafts**: attach images to message drafts
+- **`preview_html` tool**: full-page HTML preview tool for rendering HTML content
+- **Dual-mode long-press copy**: long-press to copy in tool detail views (text or JSON)
+- **Colon-separated tool naming**: support MCP tool names with colons (`server:tool`)
+- **Tool input as display name**: use tool input title for MCP tool display name
 
 ## CLI Improvements
 
@@ -218,6 +274,12 @@ The CLI (`happy-next-cli`) received substantial upgrades.
 - **`happy --version`** displays Claude, Codex, and Gemini CLI versions
 - **Worktree subdirectory detection** in workspace root
 - **Latest CLI version** fetched from npm instead of hardcoded minimum
+- **Daemon auto-start on boot**: `happy daemon enable` / `happy daemon disable`
+- **Daemon restart command**: restart the daemon without manual kill
+- **Codex v0.115.0 with fast mode**: upgraded Codex with fast mode support
+- **Attribution setting**: new setting to control commit attribution, default off
+- **Unified system prompt injection**: shared prompt injection for Codex and Gemini
+- **Orchestrator guidance**: first-turn prompts include orchestrator usage guidance
 
 ## Server
 
@@ -229,6 +291,8 @@ The CLI (`happy-next-cli`) received substantial upgrades.
 - **Session sharing API**: direct sharing routes, public share routes, content key upload, access control
 - **Socket events** for session sharing (real-time broadcast to shared users)
 - **Public share access logging**
+- **Session pending queue API**: server-side message queue with auto-dispatch
+- **Session spawning endpoint**: HTTP endpoint for external session creation
 
 ## UI & Polish
 
@@ -242,7 +306,7 @@ The CLI (`happy-next-cli`) received substantial upgrades.
 
 ## Bug Fixes & Stability
 
-Over 200 bug fixes landed on `next`. The following are grouped by area.
+Over 250 bug fixes landed on `next`. The following are grouped by area.
 
 ### Message Sending
 - Fix stale text state causing double-tap send and ghost resend (use ref-based text snapshot)
