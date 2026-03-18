@@ -1564,6 +1564,8 @@ export const it: TranslationStructure = {
         noMessages: 'Nessun messaggio da duplicare',
         confirm: 'Duplica',
         duplicating: 'Duplicazione...',
+        expandText: 'Altro',
+        collapseText: 'Meno',
         commandDescription: 'Duplica la conversazione da un punto specifico',
     },
 

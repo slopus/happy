@@ -1557,6 +1557,8 @@ export const ru: TranslationStructure = {
         noMessages: 'Нет сообщений для дублирования',
         confirm: 'Дублировать',
         duplicating: 'Дублирование...',
+        expandText: 'Ещё',
+        collapseText: 'Скрыть',
         commandDescription: 'Дублировать разговор с определённой точки',
     },
 

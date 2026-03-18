@@ -1566,6 +1566,8 @@ export const ja: TranslationStructure = {
         noMessages: '複製するメッセージがありません',
         confirm: '複製',
         duplicating: '複製中...',
+        expandText: '展開',
+        collapseText: '収む',
         commandDescription: '特定の地点から会話を複製',
     },
 

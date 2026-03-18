@@ -1527,6 +1527,8 @@ export const zhHans: TranslationStructure = {
         noMessages: '没有可复制的消息',
         confirm: '复制',
         duplicating: '复制中...',
+        expandText: '展开',
+        collapseText: '收起',
         commandDescription: '从特定位置复制对话',
     },
 

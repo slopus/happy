@@ -1535,6 +1535,8 @@ export const zhHant: TranslationStructure = {
         noMessages: '沒有可複製的訊息',
         confirm: '複製',
         duplicating: '複製中...',
+        expandText: '展開',
+        collapseText: '收起',
         commandDescription: '從特定位置複製對話',
     },
 

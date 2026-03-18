@@ -1558,6 +1558,8 @@ export const pl: TranslationStructure = {
         noMessages: 'Brak wiadomości do zduplikowania',
         confirm: 'Duplikuj',
         duplicating: 'Duplikowanie...',
+        expandText: 'Więcej',
+        collapseText: 'Mniej',
         commandDescription: 'Duplikuj rozmowę od określonego punktu',
     },
 

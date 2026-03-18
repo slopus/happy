@@ -1525,6 +1525,8 @@ export const ca: TranslationStructure = {
         noMessages: 'No hi ha missatges per duplicar',
         confirm: 'Duplicar',
         duplicating: 'Duplicant...',
+        expandText: 'Més',
+        collapseText: 'Menys',
         commandDescription: 'Duplicar conversa des d\'un punt específic',
     },
 
