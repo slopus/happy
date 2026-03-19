@@ -145,11 +145,16 @@ export function formatPathRelativeToHome(path: string, homeDir?: string): string
 }
 
 /**
- * Returns the session path for the subtitle.
+ * Returns the session subtitle: "hostname:~/path" if hostname is available, else just "~/path".
  */
-export function getSessionSubtitle(session: Session): string {
+export function getSessionSubtitle(session: Session, machine?: Machine | null): string {
     if (session.metadata) {
-        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+        const path = formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+        const hostname = getMachineDisplayName(session, machine);
+        if (hostname) {
+            return `${hostname}:${path}`;
+        }
+        return path;
     }
     return t('status.unknown');
 }

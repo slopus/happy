@@ -5,7 +5,7 @@ import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome, getMachineDisplayName } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -94,7 +94,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sessionTitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginBottom: 2,
+    },
+    sessionSubtitle: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
         marginBottom: 4,
+        ...Typography.default(),
     },
     sessionTitle: {
         fontSize: 15,
@@ -339,6 +345,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
+    const hostname = getMachineDisplayName(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -405,6 +412,13 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         {sessionName}
                     </Text>
                 </View>
+
+                {/* Hostname subtitle */}
+                {hostname && (
+                    <Text style={styles.sessionSubtitle} numberOfLines={1}>
+                        {hostname}
+                    </Text>
+                )}
 
                 {/* Status line with dot */}
                 <View style={styles.statusRow}>
