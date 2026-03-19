@@ -73,4 +73,24 @@ describe('orchestrator common helpers', () => {
       { prompt: 'task-c', workingDirectory: '   ' },
     ]);
   });
+
+  it('skips default workingDirectory for tasks targeting a different machine', () => {
+    const tasks = [
+      { prompt: 'local-task' },
+      { prompt: 'local-explicit', target: { type: 'current_machine' } },
+      { prompt: 'same-machine', target: { type: 'machine_id', machineId: 'machine-A' } },
+      { prompt: 'remote-task', target: { type: 'machine_id', machineId: 'machine-B' } },
+      { prompt: 'remote-with-dir', target: { type: 'machine_id', machineId: 'machine-B' }, workingDirectory: '/remote/path' },
+    ];
+
+    const result = applyDefaultWorkingDirectory(tasks, '/tmp/default-project', 'machine-A');
+
+    expect(result).toEqual([
+      { prompt: 'local-task', workingDirectory: '/tmp/default-project' },
+      { prompt: 'local-explicit', target: { type: 'current_machine' }, workingDirectory: '/tmp/default-project' },
+      { prompt: 'same-machine', target: { type: 'machine_id', machineId: 'machine-A' }, workingDirectory: '/tmp/default-project' },
+      { prompt: 'remote-task', target: { type: 'machine_id', machineId: 'machine-B' } },
+      { prompt: 'remote-with-dir', target: { type: 'machine_id', machineId: 'machine-B' }, workingDirectory: '/remote/path' },
+    ]);
+  });
 });

@@ -91,9 +91,10 @@ export function buildOrchestratorEnv(payload: OrchestratorDispatchPayload): Reco
   return env;
 }
 
-export function applyDefaultWorkingDirectory<T extends { workingDirectory?: string }>(
+export function applyDefaultWorkingDirectory<T extends { workingDirectory?: string; target?: { type: string; machineId?: string } }>(
   tasks: T[],
   defaultWorkingDirectory?: string | null,
+  currentMachineId?: string | null,
 ): T[] {
   const fallback = typeof defaultWorkingDirectory === 'string' ? defaultWorkingDirectory.trim() : '';
   if (!fallback) {
@@ -104,6 +105,9 @@ export function applyDefaultWorkingDirectory<T extends { workingDirectory?: stri
       ? task.workingDirectory.trim()
       : '';
     if (taskWorkingDirectory) {
+      return task;
+    }
+    if (task.target?.type === 'machine_id' && task.target.machineId !== currentMachineId) {
       return task;
     }
     return {

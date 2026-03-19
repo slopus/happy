@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { claudeCliPath } from '@/claude/claudeLocal';
 import { logger } from '@/ui/logger';
 import { MODEL_MODE_DEFAULT, isModelModeForAgent, parseCodexModelMode } from 'happy-wire';
@@ -138,6 +139,9 @@ export function buildSpawnPlan(
 }
 
 async function spawnAndWait(plan: SpawnPlan): Promise<number> {
+  if (plan.cwd && !existsSync(plan.cwd)) {
+    throw new Error(`Working directory does not exist: ${plan.cwd}`);
+  }
   return new Promise<number>((resolve, reject) => {
     const child = spawn(plan.command, plan.args, {
       cwd: plan.cwd,
