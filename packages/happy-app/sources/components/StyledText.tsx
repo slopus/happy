@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text as RNText, TextProps as RNTextProps, StyleProp, TextStyle } from 'react-native';
+import { Text as RNText, TextProps as RNTextProps } from 'react-native';
 import { Typography } from '@/constants/Typography';
 
 interface StyledTextProps extends RNTextProps {
@@ -14,22 +14,25 @@ interface StyledTextProps extends RNTextProps {
   selectable?: boolean;
 }
 
-export const Text: React.FC<StyledTextProps> = ({ 
-  style, 
+export const Text = React.forwardRef<any, StyledTextProps>(({
+  style,
   useDefaultTypography = true,
   selectable = false,
-  ...props 
-}) => {
+  ...props
+}, ref) => {
   const defaultStyle = useDefaultTypography ? Typography.default() : {};
-  
+
   return (
-    <RNText 
+    <RNText
+      ref={ref}
       style={[defaultStyle, style]}
       selectable={selectable}
-      {...props} 
+      {...props}
     />
   );
-};
+});
+
+Text.displayName = 'Text';
 
 // Export the original RNText as well, in case it's needed
 export { Text as RNText } from 'react-native'; 

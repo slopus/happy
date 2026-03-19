@@ -27,8 +27,13 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Text } from './StyledText';
+import { handleCopyMenuContextMenu } from './copyMenuContextMenu';
+import { getCopyMenuExpansionState } from './copyMenuExpansion';
 import { layout } from './layout';
 import { hapticsLight } from './haptics';
+import { resolveCopyMenuPosition } from './copyMenuPosition';
+import { createSheetMessageInteractionManager } from './sheetMessageInteraction';
+import { isWebTextTruncated } from './webTextTruncation';
 import { t } from '@/text';
 import { Modal as ModalManager } from '@/modal';
 import type { ClaudeUserMessageWithUuid } from '@/sync/ops';
@@ -54,7 +59,6 @@ interface CopyMenuState {
     y: number;
     content: string;
     index: number;
-    isLong: boolean;
 }
 
 const ANIMATION_DURATION = 250;
@@ -91,18 +95,20 @@ export function DuplicateSheet({
     onClosed,
 }: DuplicateSheetProps) {
     const insets = useSafeAreaInsets();
-    const { height: windowHeight } = useWindowDimensions();
+    const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const { theme } = useUnistyles();
     const [modalVisible, setModalVisible] = useState(false);
     const [sheetHeight, setSheetHeight] = useState(windowHeight * DEFAULT_HEIGHT_RATIO);
     const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
     const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set());
     const [truncatedIndices, setTruncatedIndices] = useState<Set<number>>(new Set());
+    const webCollapsedTextRefs = useRef(new Map<number, HTMLElement>());
     const [copyMenu, setCopyMenu] = useState<CopyMenuState | null>(null);
     const copyMenuRef = useRef<CopyMenuState | null>(null);
     const copyMenuAnim = useRef(new Animated.Value(0)).current;
     const menuAnimStartedRef = useRef(false);
     const [copyMenuWidth, setCopyMenuWidth] = useState(0);
+    const [copyMenuHeight, setCopyMenuHeight] = useState(0);
     const [localToastVisible, setLocalToastVisible] = useState(false);
     const localToastAnim = useRef(new Animated.Value(0)).current;
     const currentHeightRef = useRef(windowHeight * DEFAULT_HEIGHT_RATIO);
@@ -111,9 +117,7 @@ export function DuplicateSheet({
     const dragStartY = useRef(0);
     const dragStartHeight = useRef(0);
     const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pressInAtRef = useRef(0);
-    const touchStartYRef = useRef(0);
-    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const messageInteractionManager = useRef(createSheetMessageInteractionManager()).current;
 
     const minHeight = windowHeight * MIN_HEIGHT_RATIO;
     const maxHeight = windowHeight * MAX_HEIGHT_RATIO;
@@ -151,6 +155,7 @@ export function DuplicateSheet({
             setSelectedUuid(null);
             setExpandedIndices(new Set());
             setTruncatedIndices(new Set());
+            webCollapsedTextRefs.current.clear();
             setCopyMenu(null);
             copyMenuRef.current = null;
             updateSheetHeight(windowHeight * DEFAULT_HEIGHT_RATIO);
@@ -191,21 +196,16 @@ export function DuplicateSheet({
     useEffect(() => {
         return () => {
             if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-            if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+            messageInteractionManager.dispose();
         };
-    }, []);
-
-    const cancelLongPress = useCallback(() => {
-        if (longPressTimerRef.current) {
-            clearTimeout(longPressTimerRef.current);
-            longPressTimerRef.current = null;
-        }
-    }, []);
+    }, [messageInteractionManager]);
 
     const showCopyMenu = useCallback((menu: CopyMenuState) => {
         copyMenuRef.current = menu;
         copyMenuAnim.setValue(0);
         menuAnimStartedRef.current = false;
+        setCopyMenuWidth(0);
+        setCopyMenuHeight(0);
         setCopyMenu(menu);
         // Animation starts in onLayout after width is measured to avoid jitter
     }, [copyMenuAnim]);
@@ -251,6 +251,64 @@ export function DuplicateSheet({
         });
     }, []);
 
+    const setIndexTruncated = useCallback((index: number, isTruncated: boolean) => {
+        setTruncatedIndices((prev) => {
+            const hasIndex = prev.has(index);
+
+            if (hasIndex === isTruncated) {
+                return prev;
+            }
+
+            const next = new Set(prev);
+            if (isTruncated) {
+                next.add(index);
+            } else {
+                next.delete(index);
+            }
+            return next;
+        });
+    }, []);
+
+    const measureWebMessageTruncation = useCallback((index: number) => {
+        if (Platform.OS !== 'web') {
+            return;
+        }
+
+        const node = webCollapsedTextRefs.current.get(index);
+        if (!node) {
+            return;
+        }
+
+        setIndexTruncated(index, isWebTextTruncated({
+            clientHeight: node.clientHeight,
+            scrollHeight: node.scrollHeight,
+            clientWidth: node.clientWidth,
+            scrollWidth: node.scrollWidth,
+        }));
+    }, [setIndexTruncated]);
+
+    const setWebCollapsedTextRef = useCallback((index: number) => (node: unknown) => {
+        if (Platform.OS !== 'web') {
+            return;
+        }
+
+        if (!node) {
+            webCollapsedTextRefs.current.delete(index);
+            return;
+        }
+
+        webCollapsedTextRefs.current.set(index, node as HTMLElement);
+        requestAnimationFrame(() => measureWebMessageTruncation(index));
+    }, [measureWebMessageTruncation]);
+
+    const handleMessageInteractionMove = useCallback(() => {
+        messageInteractionManager.move();
+    }, [messageInteractionManager]);
+
+    const handleMessageInteractionCancel = useCallback(() => {
+        messageInteractionManager.cancel();
+    }, [messageInteractionManager]);
+
     const handleConfirm = () => {
         if (selectedUuid) {
             ModalManager.alert(
@@ -270,6 +328,23 @@ export function DuplicateSheet({
         () => ({ truncatedIndices, expandedIndices, selectedUuid }),
         [truncatedIndices, expandedIndices, selectedUuid],
     );
+    const copyMenuPosition = copyMenu
+        ? resolveCopyMenuPosition({
+            triggerX: copyMenu.x,
+            triggerY: copyMenu.y,
+            menuWidth: copyMenuWidth,
+            menuHeight: copyMenuHeight,
+            viewportWidth: windowWidth,
+            viewportHeight: windowHeight,
+        })
+        : null;
+    const copyMenuExpansion = copyMenu
+        ? getCopyMenuExpansionState({
+            target: copyMenu.index,
+            truncatedTargets: truncatedIndices,
+            expandedTargets: expandedIndices,
+        })
+        : null;
 
     if (!modalVisible) {
         return null;
@@ -343,7 +418,7 @@ export function DuplicateSheet({
                             extraData={flatListExtraData}
                             style={styles.content as ViewStyle}
                             contentContainerStyle={styles.contentContainer as ViewStyle}
-                            onScroll={cancelLongPress}
+                            onScroll={handleMessageInteractionMove}
                             scrollEventThrottle={16}
                             onScrollBeginDrag={hideCopyMenu}
                             showsVerticalScrollIndicator={false}
@@ -351,54 +426,65 @@ export function DuplicateSheet({
                             renderItem={({ item: msg, index }: ListRenderItemInfo<ClaudeUserMessageWithUuid>) => {
                                 const isExpanded = expandedIndices.has(index);
                                 const isLong = truncatedIndices.has(index);
+                                const openCopyMenu = ({ pageX, pageY }: { pageX: number; pageY: number }) => {
+                                    showCopyMenu({ x: pageX, y: pageY, content: msg.content, index });
+                                };
+                                const interactionCallbacks = {
+                                    onTap: () => {
+                                        if (copyMenuRef.current !== null) {
+                                            hideCopyMenu();
+                                            return;
+                                        }
+
+                                        handleMessageSelect(msg.uuid);
+                                    },
+                                    onLongPress: ({ pageX, pageY }: { pageX: number; pageY: number }) => {
+                                        hapticsLight();
+                                        openCopyMenu({ pageX, pageY });
+                                    },
+                                };
+                                const webMouseHandlers = Platform.OS === 'web'
+                                    ? {
+                                        onMouseDown: (e: { nativeEvent: { pageX: number; pageY: number } }) => {
+                                            messageInteractionManager.start(e, interactionCallbacks);
+                                        },
+                                        onMouseMove: handleMessageInteractionMove,
+                                        onMouseUp: messageInteractionManager.end,
+                                        onMouseLeave: handleMessageInteractionCancel,
+                                        onContextMenu: (e: { preventDefault: () => void; nativeEvent: { pageX: number; pageY: number } }) => {
+                                            handleCopyMenuContextMenu(e, openCopyMenu);
+                                        },
+                                    }
+                                    : {};
 
                                 return (
                                     <View
                                         style={styles.messageItem as ViewStyle}
                                         onTouchStart={(e) => {
-                                            pressInAtRef.current = Date.now();
-                                            touchStartYRef.current = e.nativeEvent.pageY;
-                                            const { pageX, pageY } = e.nativeEvent;
-                                            cancelLongPress();
-                                            longPressTimerRef.current = setTimeout(() => {
-                                                longPressTimerRef.current = null;
-                                                hapticsLight();
-                                                showCopyMenu({ x: pageX, y: pageY, content: msg.content, index, isLong });
-                                            }, 500);
+                                            messageInteractionManager.start(e, interactionCallbacks);
                                         }}
-                                        onTouchMove={cancelLongPress}
-                                        onTouchEnd={(e) => {
-                                            cancelLongPress();
-                                            const elapsed = Date.now() - pressInAtRef.current;
-                                            if (elapsed > 400) return;
-                                            if (Math.abs(e.nativeEvent.pageY - touchStartYRef.current) > 8) return;
-                                            if (copyMenuRef.current !== null) {
-                                                hideCopyMenu();
-                                                return;
-                                            }
-                                            handleMessageSelect(msg.uuid);
-                                        }}
+                                        onTouchMove={handleMessageInteractionMove}
+                                        onTouchEnd={messageInteractionManager.end}
+                                        onTouchCancel={handleMessageInteractionCancel}
+                                        {...webMouseHandlers}
                                     >
                                         <View style={styles.messageContent as ViewStyle}>
                                             <Text
+                                                ref={Platform.OS === 'web' && !isExpanded ? setWebCollapsedTextRef(index) : undefined}
                                                 style={styles.messageText as TextStyle}
                                                 numberOfLines={isExpanded ? undefined : 1}
+                                                onLayout={Platform.OS === 'web' && !isExpanded ? () => measureWebMessageTruncation(index) : undefined}
                                             >
                                                 {msg.content}
                                             </Text>
                                             {/* Hidden text without numberOfLines for accurate line measurement */}
-                                            {!isExpanded && !isLong && (
+                                            {Platform.OS !== 'web' && !isExpanded && !isLong && (
                                                 <Text
                                                     style={styles.measureText as TextStyle}
                                                     pointerEvents="none"
                                                     onTextLayout={(e) => {
                                                         if (e.nativeEvent.lines.length > 1) {
-                                                            setTruncatedIndices(prev => {
-                                                                if (prev.has(index)) return prev;
-                                                                const next = new Set(prev);
-                                                                next.add(index);
-                                                                return next;
-                                                            });
+                                                            setIndexTruncated(index, true);
                                                         }
                                                     }}
                                                 >
@@ -459,7 +545,7 @@ export function DuplicateSheet({
                         <Animated.View
                             style={[
                                 styles.copyMenuContainer as ViewStyle,
-                                { left: copyMenu.x - copyMenuWidth / 2, top: copyMenu.y - 48 },
+                                { left: copyMenuPosition?.left ?? 0, top: copyMenuPosition?.top ?? 0 },
                                 {
                                     opacity: copyMenuAnim,
                                     transform: [
@@ -470,6 +556,7 @@ export function DuplicateSheet({
                             pointerEvents="box-none"
                             onLayout={(e) => {
                                 setCopyMenuWidth(e.nativeEvent.layout.width);
+                                setCopyMenuHeight(e.nativeEvent.layout.height);
                                 if (!menuAnimStartedRef.current) {
                                     menuAnimStartedRef.current = true;
                                     Animated.spring(copyMenuAnim, {
@@ -493,7 +580,7 @@ export function DuplicateSheet({
                                 >
                                     <Text style={styles.copyMenuText as TextStyle}>{t('common.copy')}</Text>
                                 </Pressable>
-                                {copyMenu.isLong && (
+                                {copyMenuExpansion?.toggleAction && (
                                     <>
                                         <View style={styles.copyMenuDivider as ViewStyle} />
                                         <Pressable
@@ -504,13 +591,20 @@ export function DuplicateSheet({
                                             }}
                                         >
                                             <Text style={styles.copyMenuText as TextStyle}>
-                                                {expandedIndices.has(copyMenu.index) ? t('duplicate.collapseText') : t('duplicate.expandText')}
+                                                {copyMenuExpansion.toggleAction === 'collapse'
+                                                    ? t('duplicate.collapseText')
+                                                    : t('duplicate.expandText')}
                                             </Text>
                                         </Pressable>
                                     </>
                                 )}
                             </View>
-                            <View style={styles.copyMenuArrow as ViewStyle} />
+                            <View
+                                style={[
+                                    styles.copyMenuArrow as ViewStyle,
+                                    { marginLeft: copyMenuPosition?.arrowLeft ?? 0 },
+                                ]}
+                            />
                         </Animated.View>
                     </>
                 )}
@@ -696,7 +790,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     copyMenuContainer: {
         position: 'absolute',
-        alignItems: 'center',
+        alignItems: 'flex-start',
     },
     copyMenuRow: {
         flexDirection: 'row',
