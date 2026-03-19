@@ -13,7 +13,8 @@
         "releaseNotes": "node .release-it.notes.js ${version}"
     },
     "npm": {
-        "publish": true
+        "publish": true,
+        "tag": "beta"
     },
     "hooks": {}
 }
