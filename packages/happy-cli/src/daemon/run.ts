@@ -482,18 +482,9 @@ export async function startDaemon(): Promise<void> {
       const happyProcess = spawnHappyCLI(args, {
         cwd,
         detached: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: 'ignore',
         env,
       });
-
-      if (process.env.DEBUG) {
-        happyProcess.stdout?.on('data', (data) => {
-          logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
-        });
-        happyProcess.stderr?.on('data', (data) => {
-          logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
-        });
-      }
 
       if (!happyProcess.pid) {
         logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
