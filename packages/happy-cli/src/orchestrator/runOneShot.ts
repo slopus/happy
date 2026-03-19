@@ -78,7 +78,7 @@ export function buildSpawnPlan(
   switch (provider) {
     case 'claude':
       return {
-        command: 'node',
+        command: process.execPath,
         args: executionType === 'resume'
           ? [claudeCliPath, '--dangerously-skip-permissions', '--resume', childSessionId!, '-p', prompt]
           : [claudeCliPath, '--dangerously-skip-permissions', ...(normalizedModelMode ? ['--model', normalizedModelMode] : []), ...(childSessionId ? ['--session-id', childSessionId] : []), '-p', prompt],
@@ -89,51 +89,49 @@ export function buildSpawnPlan(
         },
       };
     case 'codex': {
-      const env: NodeJS.ProcessEnv = {
-        ...process.env,
-        ORCH_PROMPT: prompt,
-        ...(childSessionId ? { ORCH_CHILD_SESSION_ID: childSessionId } : {}),
-      };
+      const codexArgs = ['-y', '@openai/codex@0.115.0', 'exec', '--dangerously-bypass-approvals-and-sandbox'];
       if (executionType === 'resume') {
-        return {
-          command: 'bash',
-          args: ['-lc', 'npx -y @openai/codex@0.115.0 exec --dangerously-bypass-approvals-and-sandbox resume "$ORCH_CHILD_SESSION_ID" "$ORCH_PROMPT"'],
-          cwd: workingDirectory,
-          env,
-        };
-      }
-      if (normalizedModelMode) {
-        if (isModelModeForAgent('codex', normalizedModelMode)) {
-          const parsed = parseCodexModelMode(normalizedModelMode);
-          if (parsed.family !== MODEL_MODE_DEFAULT) {
-            env.ORCH_MODEL = parsed.family;
-            env.ORCH_REASONING_EFFORT = parsed.effort;
+        codexArgs.push('resume', childSessionId!, prompt);
+      } else {
+        codexArgs.push(prompt);
+        if (normalizedModelMode) {
+          if (isModelModeForAgent('codex', normalizedModelMode)) {
+            const parsed = parseCodexModelMode(normalizedModelMode);
+            if (parsed.family !== MODEL_MODE_DEFAULT) {
+              codexArgs.push('--model', parsed.family);
+              if (parsed.effort) {
+                codexArgs.push('-c', `model_reasoning_effort=${parsed.effort}`);
+              }
+            }
+          } else {
+            codexArgs.push('--model', normalizedModelMode);
           }
-        } else {
-          env.ORCH_MODEL = normalizedModelMode;
         }
       }
       return {
-        command: 'bash',
-        args: ['-lc', 'cmd=(npx -y @openai/codex@0.115.0 exec --dangerously-bypass-approvals-and-sandbox "$ORCH_PROMPT"); if [ -n "$ORCH_MODEL" ]; then cmd+=(--model "$ORCH_MODEL"); fi; if [ -n "$ORCH_REASONING_EFFORT" ]; then cmd+=(-c "model_reasoning_effort=$ORCH_REASONING_EFFORT"); fi; "${cmd[@]}"'],
+        command: 'npx',
+        args: codexArgs,
         cwd: workingDirectory,
-        env,
+        env: { ...process.env },
       };
     }
-    case 'gemini':
+    case 'gemini': {
+      const geminiArgs = ['--yolo'];
+      if (executionType === 'resume') {
+        geminiArgs.push('--resume', childSessionId!, '-p', prompt);
+      } else {
+        geminiArgs.push('-p', prompt, '--output-format', 'json');
+        if (normalizedModelMode) {
+          geminiArgs.push('--model', normalizedModelMode);
+        }
+      }
       return {
-        command: 'bash',
-        args: executionType === 'resume'
-          ? ['-lc', 'gemini --yolo --resume "$ORCH_CHILD_SESSION_ID" -p "$ORCH_PROMPT"']
-          : ['-lc', 'cmd=(gemini --yolo -p "$ORCH_PROMPT" --output-format json); if [ -n "$ORCH_MODEL" ]; then cmd+=(--model "$ORCH_MODEL"); fi; "${cmd[@]}"'],
+        command: 'gemini',
+        args: geminiArgs,
         cwd: workingDirectory,
-        env: {
-          ...process.env,
-          ORCH_PROMPT: prompt,
-          ...(childSessionId ? { ORCH_CHILD_SESSION_ID: childSessionId } : {}),
-          ...(normalizedModelMode ? { ORCH_MODEL: normalizedModelMode } : {}),
-        },
+        env: { ...process.env },
       };
+    }
     default:
       throw new Error(`Unsupported provider: ${provider}`);
   }
