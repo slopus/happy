@@ -77,6 +77,7 @@ export type SendUserTurnParams = {
 
 export type InterruptConversationParams = {
     threadId: ThreadId;
+    turnId: string;
 };
 
 export type InterruptConversationResponse = {

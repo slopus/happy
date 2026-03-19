@@ -98,15 +98,14 @@ class CodexDriver {
     }
 
     /**
-     * Interrupt the active turn — mirrors the production handleAbort() flow:
-     * 1. Resolve pending approvals as 'abort' (like permissionHandler.abortAll())
-     * 2. Request turn interruption
-     * 3. Force-restart app-server if interrupt does not settle in time
+     * Interrupt the active turn. Unblock held approvals and send
+     * turn/interrupt concurrently — codex may be blocked on the approval
+     * callback and unable to process the interrupt until we respond.
      */
     async interrupt(): Promise<void> {
         this.resolveHeldApprovals("abort");
         await this.client.abortTurnWithFallback({
-            gracePeriodMs: 3_000,
+            gracePeriodMs: 5_000,
             forceRestartOnTimeout: true,
         });
     }
@@ -215,7 +214,7 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             if (driver) await driver.close();
         });
 
-        it("should complete turn after permission cancel via turn_aborted", async () => {
+        it("should complete turn gracefully after permission cancel", async () => {
             driver = new CodexDriver();
             await driver.connect();
 
@@ -225,11 +224,12 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
                 { approvalPolicy: "on-request", sandbox: "read-only" }
             );
 
-            // With app-server, turn_aborted resolves cleanly — no hung callTool.
+            // Codex v2 (0.115+): approval cancel declines the action, model
+            // handles it gracefully and completes the turn (not aborted).
             expect(result.elapsed_ms).toBeLessThan(30_000);
             expect(driver.permissionCount).toBeGreaterThan(0);
-            expect(driver.hasEvent("turn_aborted")).toBe(true);
-            expect(result.aborted).toBe(true);
+            expect(driver.hasEvent("task_complete")).toBe(true);
+            expect(result.aborted).toBe(false);
         });
 
         it("should preserve context when continuing after cancel", async () => {
@@ -244,17 +244,16 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             );
             expect(driver.getMessages().join(" ").toLowerCase()).toContain("blue-falcon-42");
 
-            // Turn 2: permission cancel → turn_aborted
-            // Must pass approvalPolicy per-turn to force approval on this turn.
-            // Use a file-write command that definitely triggers approval.
+            // Turn 2: permission cancel — model handles rejection gracefully,
+            // turn completes normally (v2 cancel ≠ abort).
             driver.clearEvents();
             driver.permissionPolicy = "cancel";
             const r2 = await driver.continue(
                 'Create a file called /tmp/codex-test-context.txt with the text "test". Use a shell command.',
                 { approvalPolicy: "on-request", sandbox: "read-only" }
             );
-            expect(driver.hasEvent("turn_aborted")).toBe(true);
-            expect(r2.aborted).toBe(true);
+            expect(driver.hasEvent("task_complete")).toBe(true);
+            expect(r2.aborted).toBe(false);
 
             // Turn 3: Codex must remember the project name from turn 1
             driver.clearEvents();
@@ -286,11 +285,12 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             }
             expect(driver.permissionCount).toBeGreaterThan(0);
 
-            // Simulate the web app abort button: abort held approvals + interrupt turn
+            // Simulate the web app abort button: abort held approvals + interrupt turn.
+            // Codex v2: approval cancel = decline, model may finish before interrupt
+            // lands. The key invariant: the turn must NOT hang.
             await driver.interrupt();
 
             const result = await turnPromise;
-            expect(result.aborted).toBe(true);
             expect(result.elapsed_ms).toBeLessThan(30_000);
         });
 
@@ -344,9 +344,11 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             }
             expect(driver.permissionCount).toBeGreaterThan(0);
 
+            // Codex v2: cancel = decline, model may finish normally before
+            // interrupt lands. The important thing is it doesn't hang.
             await driver.interrupt();
             const r2 = await abortedTurn;
-            expect(r2.aborted).toBe(true);
+            expect(r2.elapsed_ms).toBeLessThan(30_000);
 
             // Turn 3: context must be preserved — Codex should remember the project name
             driver.clearEvents();

@@ -162,7 +162,7 @@ export class CodexAppServerClient {
         error: unknown,
         source: string,
     ): void {
-        const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted';
+        const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted';
 
         this.tryResolvePendingTurn(aborted, turnId, source);
         this._turnId = null;
@@ -798,8 +798,13 @@ export class CodexAppServerClient {
 
     async interruptTurn(): Promise<void> {
         if (!this._threadId) return;
+        if (!this._turnId) {
+            logger.debug('[CodexAppServer] interruptTurn: no active turnId, skipping');
+            return;
+        }
         const params: InterruptConversationParams = {
             threadId: this._threadId,
+            turnId: this._turnId,
         };
         const doInterrupt = async () => {
             try {
@@ -922,8 +927,18 @@ export class CodexAppServerClient {
      * Server uses: accept, acceptForSession, decline, cancel
      * Our handler uses: approved, approved_for_session, denied, abort
      */
-    private mapDecisionToWire(decision: ReviewDecision): string | Record<string, unknown> {
+    /**
+     * Map our internal ReviewDecision to the wire format codex expects.
+     * v2 methods (item/*) use: accept/acceptForSession/decline/cancel
+     * Legacy methods (execCommandApproval/applyPatchApproval) use: approved/approved_for_session/denied/abort
+     */
+    private mapDecisionToWire(decision: ReviewDecision, legacy: boolean): string | Record<string, unknown> {
         if (typeof decision === 'string') {
+            if (legacy) {
+                // Legacy wire format — pass through as-is (approved/denied/abort)
+                return decision;
+            }
+            // v2 wire format
             switch (decision) {
                 case 'approved': return 'accept';
                 case 'approved_for_session': return 'acceptForSession';
@@ -936,12 +951,13 @@ export class CodexAppServerClient {
         if ('approved_execpolicy_amendment' in decision) {
             return decision;
         }
-        return 'decline';
+        return legacy ? 'denied' : 'decline';
     }
 
     private async handleServerRequest(id: number, method: string, params: any): Promise<void> {
         // Command execution approval
         if (method === 'item/commandExecution/requestApproval' || method === 'execCommandApproval') {
+            const legacy = method === 'execCommandApproval';
             const decision = await this.handleApproval({
                 type: 'exec',
                 callId: params.itemId ?? String(id),
@@ -949,19 +965,20 @@ export class CodexAppServerClient {
                 cwd: params.cwd,
                 reason: params.reason,
             });
-            this.respond(id, { decision: this.mapDecisionToWire(decision) });
+            this.respond(id, { decision: this.mapDecisionToWire(decision, legacy) });
             return;
         }
 
         // File change / patch approval
         if (method === 'item/fileChange/requestApproval' || method === 'applyPatchApproval') {
+            const legacy = method === 'applyPatchApproval';
             const decision = await this.handleApproval({
                 type: 'patch',
                 callId: params.itemId ?? String(id),
                 fileChanges: params.fileChanges,
                 reason: params.reason,
             });
-            this.respond(id, { decision: this.mapDecisionToWire(decision) });
+            this.respond(id, { decision: this.mapDecisionToWire(decision, legacy) });
             return;
         }
 
@@ -999,9 +1016,14 @@ export class CodexAppServerClient {
                 this.eventHandler?.(msg);
                 // Then resolve turn completion promise
                 if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
+                    const turnId = msg.turn_id ?? msg.turnId ?? null;
+                    // Mark as completed so v2 turn/completed doesn't duplicate
+                    if (turnId) {
+                        this.completedTurnIds.add(turnId);
+                    }
                     this.tryResolvePendingTurn(
                         msg.type === 'turn_aborted',
-                        msg.turn_id ?? msg.turnId ?? null,
+                        turnId,
                         `codex/event/${msg.type}`,
                     );
                     this._turnId = null;
@@ -1029,15 +1051,14 @@ export class CodexAppServerClient {
             }
             // turn/completed is a fallback signal — for mid-inference interrupts,
             // Codex may only signal completion here (not via codex/event turn_aborted).
+            // emitRawTurnCompletion deduplicates via completedTurnIds if legacy already handled it.
             if (method === 'turn/completed') {
-                const status = this.extractTurnStatus(params);
-                const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted';
-                this.tryResolvePendingTurn(
-                    aborted,
+                this.emitRawTurnCompletion(
                     this.extractTurnId(params),
+                    this.extractTurnStatus(params),
+                    params?.turn?.error ?? params?.error,
                     method,
                 );
-                this._turnId = null;
             }
             return;
         }
