@@ -348,7 +348,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
     // available in PATH. Full native integration is planned; for now
     // this bootstraps auth + session tracking through Happy.
     try {
-      const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
+      const { runAcp } = await import('@/agent/acp');
 
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       const kimiArgs: string[] = [];
@@ -363,6 +363,18 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
+
+      // Try to fetch Moonshot API key from Happy cloud (via 'happy connect kimi')
+      try {
+        const api = await ApiClient.create(credentials);
+        const vendorToken = await api.getVendorToken('moonshot');
+        if (vendorToken?.oauth?.access_token && !process.env.MOONSHOT_API_KEY) {
+          process.env.MOONSHOT_API_KEY = vendorToken.oauth.access_token;
+          logger.debug('[Kimi] Using API key from Happy cloud');
+        }
+      } catch (error) {
+        logger.debug('[Kimi] Failed to fetch cloud token:', error);
+      }
 
       logger.debug('Ensuring Happy background service is running & matches our version...');
       if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
