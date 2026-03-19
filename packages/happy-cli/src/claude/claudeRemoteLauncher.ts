@@ -426,11 +426,17 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 `Claude is waiting for your command`,
                                 { sessionId: session.client.sessionId }
                             );
-                            // Mark task as completed in agent state for unread indicator
-                            session.client.updateAgentState((state) => ({
-                                ...state,
-                                taskCompleted: Date.now()
-                            }));
+                            // Flush outbox before setting taskCompleted so tool_result
+                            // messages arrive at the app before the agentState update.
+                            // Without this, taskCompleted (sent via Socket.IO) can race
+                            // ahead of tool_result (sent via HTTP outbox), causing the
+                            // app's recovery logic to show a false "ended without result".
+                            session.client.flush().finally(() => {
+                                session.client.updateAgentState((state) => ({
+                                    ...state,
+                                    taskCompleted: Date.now()
+                                }));
+                            });
                         }
                     },
                     signal: abortController.signal,

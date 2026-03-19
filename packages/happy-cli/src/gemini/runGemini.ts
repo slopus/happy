@@ -362,11 +362,14 @@ export async function runGemini(opts: {
     } catch (pushError) {
       logger.debug('[Gemini] Failed to send ready push', pushError);
     }
-    // Mark task as completed in agent state for unread indicator
-    session.updateAgentState((state) => ({
-      ...state,
-      taskCompleted: Date.now()
-    }));
+    // Flush outbox before setting taskCompleted so tool_result
+    // messages arrive at the app before the agentState update.
+    session.flush().finally(() => {
+      session.updateAgentState((state) => ({
+        ...state,
+        taskCompleted: Date.now()
+      }));
+    });
   };
 
   /**
