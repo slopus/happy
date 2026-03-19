@@ -23,6 +23,11 @@ export interface PKCECodes {
     challenge: string;
 }
 
+export interface KimiAuthTokens {
+    access_token: string;
+    token_type: string;
+}
+
 export interface ClaudeAuthTokens {
     raw: any;
     token: string;

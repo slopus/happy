@@ -7,6 +7,7 @@ import { ApiClient } from '@/api/api';
 import { authenticateCodex } from './connect/authenticateCodex';
 import { authenticateClaude } from './connect/authenticateClaude';
 import { authenticateGemini } from './connect/authenticateGemini';
+import { authenticateKimi } from './connect/authenticateKimi';
 import { decodeJwtPayload } from './connect/utils';
 
 /**
@@ -36,6 +37,9 @@ export async function handleConnectCommand(args: string[]): Promise<void> {
         case 'gemini':
             await handleConnectVendor('gemini', 'Gemini');
             break;
+        case 'kimi':
+            await handleConnectVendor('kimi', 'Kimi');
+            break;
         case 'status':
             await handleConnectStatus();
             break;
@@ -54,6 +58,7 @@ ${chalk.bold('Usage:')}
   happy connect codex        Store your Codex API key in Happy cloud
   happy connect claude       Store your Anthropic API key in Happy cloud
   happy connect gemini       Store your Gemini API key in Happy cloud
+  happy connect kimi         Store your Moonshot API key in Happy cloud
   happy connect status       Show connection status for all vendors
   happy connect help         Show this help message
 
@@ -66,6 +71,7 @@ ${chalk.bold('Examples:')}
   happy connect codex
   happy connect claude
   happy connect gemini
+  happy connect kimi
   happy connect status
 
 ${chalk.bold('Notes:')} 
@@ -75,7 +81,7 @@ ${chalk.bold('Notes:')}
 `);
 }
 
-async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displayName: string): Promise<void> {
+async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini' | 'kimi', displayName: string): Promise<void> {
     console.log(chalk.bold(`\n🔌 Connecting ${displayName} to Happy cloud\n`));
 
     // Check if authenticated
@@ -107,10 +113,20 @@ async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displa
         const geminiAuthTokens = await authenticateGemini();
         await api.registerVendorToken('gemini', { oauth: geminiAuthTokens });
         console.log('✅ Gemini token registered with server');
-        
+
         // Also update local Gemini config to keep tokens in sync
         updateLocalGeminiCredentials(geminiAuthTokens);
-        
+
+        process.exit(0);
+    } else if (vendor === 'kimi') {
+        console.log('🚀 Registering Kimi/Moonshot token with server');
+        const kimiAuthTokens = await authenticateKimi();
+        await api.registerVendorToken('moonshot', { oauth: kimiAuthTokens });
+        console.log('✅ Kimi token registered with server');
+
+        // Also save API key locally so kimi CLI can pick it up
+        updateLocalKimiCredentials(kimiAuthTokens.access_token);
+
         process.exit(0);
     } else {
         throw new Error(`Unsupported vendor: ${vendor}`);
@@ -135,10 +151,11 @@ async function handleConnectStatus(): Promise<void> {
     const api = await ApiClient.create(credentials);
 
     // Check each vendor
-    const vendors: Array<{ key: 'openai' | 'anthropic' | 'gemini'; name: string; display: string }> = [
+    const vendors: Array<{ key: 'openai' | 'anthropic' | 'gemini' | 'moonshot'; name: string; display: string }> = [
         { key: 'gemini', name: 'Gemini', display: 'Google Gemini' },
         { key: 'openai', name: 'Codex', display: 'OpenAI Codex' },
         { key: 'anthropic', name: 'Claude', display: 'Anthropic Claude' },
+        { key: 'moonshot', name: 'Kimi', display: 'Moonshot Kimi' },
     ];
 
     for (const vendor of vendors) {
@@ -214,6 +231,38 @@ function updateLocalGeminiCredentials(tokens: {
         console.log(chalk.gray(`  Updated local credentials: ${credentialsPath}`));
     } catch (error) {
         // Non-critical error - server tokens will still work
+        console.log(chalk.yellow(`  ⚠️ Could not update local credentials: ${error}`));
+    }
+}
+
+/**
+ * Cache Moonshot API key locally so Happy can pass it to kimi-cli via
+ * MOONSHOT_API_KEY env var on next session start. This is Happy's own
+ * credential store — kimi-cli itself uses ~/.kimi/config.toml.
+ */
+function updateLocalKimiCredentials(apiKey: string): void {
+    try {
+        const kimiDir = join(homedir(), '.kimi');
+        const configPath = join(kimiDir, 'config.json');
+
+        if (!existsSync(kimiDir)) {
+            mkdirSync(kimiDir, { recursive: true });
+        }
+
+        // Read existing config or start fresh
+        let config: Record<string, unknown> = {};
+        if (existsSync(configPath)) {
+            try {
+                config = JSON.parse(require('fs').readFileSync(configPath, 'utf-8'));
+            } catch {
+                // corrupt file — overwrite
+            }
+        }
+
+        config.api_key = apiKey;
+        writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        console.log(chalk.gray(`  Updated local credentials: ${configPath}`));
+    } catch (error) {
         console.log(chalk.yellow(`  ⚠️ Could not update local credentials: ${error}`));
     }
 }

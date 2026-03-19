@@ -342,6 +342,67 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'kimi') {
+    // Handle kimi command — delegates to the generic ACP runner.
+    // Kimi CLI (github.com/MoonshotAI/kimi-cli) must be installed and
+    // available in PATH. Full native integration is planned; for now
+    // this bootstraps auth + session tracking through Happy.
+    try {
+      const { runAcp } = await import('@/agent/acp');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      const kimiArgs: string[] = [];
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+          continue;
+        }
+        kimiArgs.push(args[i]);
+      }
+
+      const {
+        credentials
+      } = await authAndSetupMachineIfNeeded();
+
+      // Try to fetch Moonshot API key from Happy cloud (via 'happy connect kimi')
+      try {
+        const api = await ApiClient.create(credentials);
+        const vendorToken = await api.getVendorToken('moonshot');
+        if (vendorToken?.oauth?.access_token && !process.env.MOONSHOT_API_KEY) {
+          process.env.MOONSHOT_API_KEY = vendorToken.oauth.access_token;
+          logger.debug('[Kimi] Using API key from Happy cloud');
+        }
+      } catch (error) {
+        logger.debug('[Kimi] Failed to fetch cloud token:', error);
+      }
+
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      await runAcp({
+        credentials,
+        startedBy,
+        agentName: 'kimi',
+        command: 'kimi',
+        args: ['acp', ...kimiArgs],
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'acp') {
     try {
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
@@ -634,6 +695,7 @@ ${chalk.bold('Usage:')}
   happy auth              Manage authentication
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
+  happy kimi              Start Kimi mode (ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
