@@ -390,7 +390,7 @@ function commandCurrent() {
     console.log(envShPath);
 }
 
-function commandRun(service: string) {
+function commandRun(service: string, serviceArgs: string[] = []) {
     const currentConfig = readCurrentConfig();
     if (!currentConfig?.current) {
         console.error("No current environment. Run `yarn env:new` first.");
@@ -473,7 +473,7 @@ function commandRun(service: string) {
             const cliBin = path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs");
             const result = spawnSync(
                 "node",
-                [cliBin],
+                [cliBin, ...serviceArgs],
                 {
                     env: mergedEnv,
                     stdio: "inherit",
@@ -963,7 +963,7 @@ switch (subcommand) {
             console.error("Usage: yarn env:server | yarn env:web | yarn env:cli");
             process.exit(1);
         }
-        commandRun(args[0]);
+        commandRun(args[0], args.slice(1));
         break;
     case "seed":
         commandSeed().catch(err => {
