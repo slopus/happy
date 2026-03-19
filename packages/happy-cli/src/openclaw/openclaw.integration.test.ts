@@ -398,7 +398,6 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
       return;
     }
 
-    // Spawn openclaw session via daemon HTTP API
     const state = await readDaemonState();
     const port = state!.httpPort;
     const spawnResponse = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
@@ -414,14 +413,11 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
       }),
     });
     const spawnResult = await spawnResponse.json() as { success: boolean; sessionId: string };
-    console.log(`[integ] Spawned session: ${JSON.stringify(spawnResult)}`);
     expect(spawnResult.success).toBe(true);
     expect(spawnResult.sessionId).toBeTruthy();
 
-    // Wait for session to register
     await new Promise((r) => setTimeout(r, 3000));
 
-    // Verify it's tracked by daemon
     const sessions = await listDaemonSessions();
     const openclawSession = sessions.find(
       (s: { happySessionId: string }) => s.happySessionId === spawnResult.sessionId,
@@ -429,40 +425,26 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
     expect(openclawSession).toBeDefined();
     expect(openclawSession.startedBy).toBe('daemon');
     const pid = openclawSession.pid;
-    console.log(`[integ] Session tracked: PID=${pid}, sessionId=${spawnResult.sessionId}`);
 
-    // Verify the process is alive
     try {
       process.kill(pid, 0);
-      console.log(`[integ] Process PID=${pid} is alive`);
     } catch {
       throw new Error(`Process PID=${pid} is NOT alive — session failed to start`);
     }
 
-    // Stop the session
     const stopped = await stopDaemonSession(spawnResult.sessionId);
     expect(stopped).toBe(true);
-    console.log(`[integ] Stopped session: ${spawnResult.sessionId}`);
 
-    // Wait and verify process died
     await new Promise((r) => setTimeout(r, 2000));
     let processAlive = false;
-    try {
-      process.kill(pid, 0);
-      processAlive = true;
-    } catch {
-      // expected — process should be dead
-    }
+    try { process.kill(pid, 0); processAlive = true; } catch {}
     expect(processAlive).toBe(false);
-    console.log(`[integ] Process PID=${pid} confirmed dead after stop`);
 
-    // Verify session removed from daemon tracking
     const sessionsAfter = await listDaemonSessions();
     const stillTracked = sessionsAfter.find(
       (s: { happySessionId: string }) => s.happySessionId === spawnResult.sessionId,
     );
     expect(stillTracked).toBeUndefined();
-    console.log(`[integ] Session removed from daemon tracking`);
   });
 
   it('should spawn a second session after first is killed', async () => {
@@ -481,7 +463,6 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
     const state = await readDaemonState();
     const port = state!.httpPort;
 
-    // First session
     const spawn1 = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -496,15 +477,11 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
     });
     const result1 = await spawn1.json() as { success: boolean; sessionId: string };
     expect(result1.success).toBe(true);
-    console.log(`[integ] Session 1: ${result1.sessionId}`);
-
     await new Promise((r) => setTimeout(r, 3000));
 
-    // Kill first session
     await stopDaemonSession(result1.sessionId);
     await new Promise((r) => setTimeout(r, 1000));
 
-    // Second session
     const spawn2 = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -519,20 +496,14 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
     });
     const result2 = await spawn2.json() as { success: boolean; sessionId: string };
     expect(result2.success).toBe(true);
-    console.log(`[integ] Session 2: ${result2.sessionId}`);
-
     await new Promise((r) => setTimeout(r, 3000));
 
-    // Verify second session is tracked
     const sessions = await listDaemonSessions();
     const session2 = sessions.find(
       (s: { happySessionId: string }) => s.happySessionId === result2.sessionId,
     );
     expect(session2).toBeDefined();
-    console.log(`[integ] Session 2 tracked: PID=${session2.pid}`);
 
-    // Clean up
     await stopDaemonSession(result2.sessionId);
-    console.log(`[integ] Cleaned up session 2`);
   });
 });

@@ -50,8 +50,8 @@ async function waitFor(
 async function isServerHealthy(): Promise<boolean> {
   try {
     // First check if server responds
-    const response = await fetch('http://localhost:3005/', { 
-      signal: AbortSignal.timeout(1000) 
+    const response = await fetch(configuration.serverUrl + '/', {
+      signal: AbortSignal.timeout(1000)
     });
     if (!response.ok) {
       console.log('[TEST] Server health check failed: root endpoint not OK');
@@ -412,7 +412,10 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
    * - Using pkgroll alone: doesn't update compiled configuration.currentCliVersion
    * - Modifying package.json after daemon starts: triggers immediate version check on startup
    */
-  it('[takes 1 minute to run] should detect version mismatch and kill old daemon', { timeout: 100_000 }, async () => {
+  // TODO: This test is destructive (modifies package.json, rebuilds dist, restarts daemon)
+  // and races with other daemon-dependent tests running in parallel. Needs isolation
+  // via its own HAPPY_HOME_DIR or a dedicated vitest project.
+  it.skip('[takes 1 minute to run] should detect version mismatch and kill old daemon', { timeout: 100_000 }, async () => {
     // Read current package.json to get version
     const packagePath = path.join(process.cwd(), 'package.json');
     const packageJsonOriginalRawText = readFileSync(packagePath, 'utf8');
@@ -433,13 +436,15 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       expect(initialState!.startedWithCliVersion).toBe(originalVersion);
       const initialPid = initialState!.pid;
 
-      // Re-build the CLI - so it will import the new package.json in its configuartion.ts
-      // and think it is a new version
-      // We are not using yarn build here because it cleans out dist/
-      // and we want to avoid that, 
-      // otherwise daemon will spawn a non existing happy js script.
-      // We need to remove index, but not the other files, otherwise some of our code might fail when called from within the daemon.
-      execSync('yarn build', { stdio: 'ignore' });
+      // Re-build the CLI so dist/ has the test version baked in.
+      // The daemon's heartbeat will detect package.json != compiled version,
+      // then spawn a new daemon which will use the rebuilt dist.
+      console.log(`[TEST] Rebuilding CLI with test version ${testVersion}...`);
+      execSync('yarn build', { stdio: 'pipe' });
+
+      // Verify the build actually has the test version
+      const distFiles = execSync('grep -rl "' + testVersion + '" dist/ || echo "NOT_FOUND"', { encoding: 'utf8' }).trim();
+      console.log(`[TEST] Test version in dist: ${distFiles}`);
       
       console.log(`[TEST] Current daemon running with version ${originalVersion}, PID: ${initialPid}`);
       

@@ -236,7 +236,7 @@ function spawnService(
 // Commands
 // ============================================================================
 
-async function commandNew() {
+async function commandNew(opts?: { noSwitch?: boolean }): Promise<string> {
     ensureEnvironmentsDir();
 
     // Generate a unique name
@@ -290,8 +290,10 @@ async function commandNew() {
         process.exit(1);
     }
 
-    // Update current.json
-    writeCurrentConfig(name);
+    // Update current.json (unless --no-switch)
+    if (!opts?.noSwitch) {
+        writeCurrentConfig(name);
+    }
 
     // Print output
     console.log("");
@@ -313,6 +315,8 @@ async function commandNew() {
     console.log(`  happy`);
     console.log("");
     console.log(`Full env.sh path: ${path.join(envDir, "env.sh")}`);
+
+    return name;
 }
 
 function commandList() {
@@ -616,14 +620,12 @@ function buildCliCommand(envDir: string): string {
 // Seed auth
 // ============================================================================
 
-async function commandSeed() {
-    const currentConfig = readCurrentConfig();
-    if (!currentConfig?.current) {
+async function commandSeed(targetName?: string) {
+    const envName = targetName ?? readCurrentConfig()?.current;
+    if (!envName) {
         console.error("No current environment. Run `yarn env:new` first.");
         process.exit(1);
     }
-
-    const envName = currentConfig.current;
     const envDir = path.join(ENVIRONMENTS_DIR, envName);
     const config = readEnvironmentConfig(envName);
     const serverUrl = `http://localhost:${config.serverPort}`;
@@ -744,12 +746,10 @@ async function commandSeed() {
 const VALID_TEMPLATES = ["authenticated-empty", "empty"] as const;
 type Template = (typeof VALID_TEMPLATES)[number];
 
-async function commandUp(template: Template) {
+async function commandUp(template: Template, opts?: { noSwitch?: boolean }) {
     // Always create a fresh environment
-    await commandNew();
+    const envName = await commandNew(opts);
 
-    const currentConfig = readCurrentConfig()!;
-    const envName = currentConfig.current;
     const envDir = path.join(ENVIRONMENTS_DIR, envName);
     const config = readEnvironmentConfig(envName);
     const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
@@ -812,7 +812,7 @@ async function commandUp(template: Template) {
         }
 
         console.log("Seeding auth + starting daemon...");
-        await commandSeed();
+        await commandSeed(envName);
     }
 
     // Print summary
@@ -835,14 +835,12 @@ async function commandUp(template: Template) {
     console.log("");
 }
 
-function commandDown() {
-    const currentConfig = readCurrentConfig();
-    if (!currentConfig?.current) {
+function commandDown(targetName?: string) {
+    const envName = targetName ?? readCurrentConfig()?.current;
+    if (!envName) {
         console.error("No current environment. Nothing to stop.");
         process.exit(1);
     }
-
-    const envName = currentConfig.current;
     const envDir = path.join(ENVIRONMENTS_DIR, envName);
     let killed = 0;
 
@@ -932,12 +930,14 @@ function commandTailscale() {
 const [subcommand, ...args] = process.argv.slice(2);
 
 switch (subcommand) {
-    case "new":
-        commandNew().catch(err => {
+    case "new": {
+        const noSwitch = args.includes("--no-switch");
+        commandNew({ noSwitch }).catch(err => {
             console.error(err);
             process.exit(1);
         });
         break;
+    }
     case "list":
         commandList();
         break;
@@ -978,14 +978,15 @@ switch (subcommand) {
             console.error(`Usage: yarn env:up --template <${VALID_TEMPLATES.join("|")}>`);
             process.exit(1);
         }
-        commandUp(template as Template).catch(err => {
+        const noSwitch = args.includes("--no-switch");
+        commandUp(template as Template, { noSwitch }).catch(err => {
             console.error(err);
             process.exit(1);
         });
         break;
     }
     case "down":
-        commandDown();
+        commandDown(args[0]);
         break;
     case "tailscale":
         commandTailscale();
