@@ -836,9 +836,7 @@ export function orchestratorRoutes(app: Fastify) {
                     timeoutMs: task.timeoutMs,
                     targetMachineId: task.target?.type === 'machine_id'
                         ? task.target.machineId
-                        : task.target?.type === 'current_machine'
-                            ? controllerMachineId
-                            : null,
+                        : controllerMachineId,
                     dependsOnTaskKeys: task.dependsOn ?? [],
                     retryMaxAttempts: task.retry?.maxAttempts ?? DEFAULT_CONTEXT_RETRY_MAX_ATTEMPTS,
                     retryBackoffMs: task.retry?.backoffMs ?? DEFAULT_CONTEXT_RETRY_BACKOFF_MS,
