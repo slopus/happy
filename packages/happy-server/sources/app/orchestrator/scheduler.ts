@@ -15,10 +15,14 @@ import {
 const ACTIVE_RUN_STATUSES = ['queued', 'running', 'canceling'];
 const ACTIVE_EXECUTION_STATUSES = ['dispatching', 'running'];
 
+// Main scheduler loop interval: scans active runs for dispatch and timeout every tick
 export const ORCHESTRATOR_SCHEDULER_INTERVAL_MS = 1_000;
+// RPC call timeout: max wait when sending dispatch/cancel commands to target machines
 export const ORCHESTRATOR_RPC_TIMEOUT_MS = 15_000;
+// Stale dispatch detection: executions stuck in 'dispatching' beyond this are marked failed
 export const ORCHESTRATOR_DISPATCH_STALE_MS = 60_000;
-export const ORCHESTRATOR_DEFAULT_TASK_TIMEOUT_MS = 15 * 60_000;
+// Default task timeout: fallback when user does not set timeoutMs (24 hours)
+export const ORCHESTRATOR_DEFAULT_TASK_TIMEOUT_MS = 24 * 60 * 60_000;
 
 export type SchedulerAction =
     | {
