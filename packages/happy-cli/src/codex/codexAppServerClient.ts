@@ -96,6 +96,8 @@ export class CodexAppServerClient {
     // Tracks in-flight interruptTurn() RPCs so sendTurnAndWait can wait for them
     // before starting a new turn (prevents stale turn/interrupt from aborting the next turn).
     private pendingInterrupt: Promise<void> | null = null;
+    private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
+    private completedTurnIds = new Set<string>();
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -119,6 +121,181 @@ export class CodexAppServerClient {
 
     setApprovalHandler(handler: ApprovalHandler): void {
         this.approvalHandler = handler;
+    }
+
+    private extractTurnId(params: any): string | null {
+        const turnId = params?.turn?.id ?? params?.turnId ?? params?.turn_id ?? null;
+        return typeof turnId === 'string' && turnId.length > 0 ? turnId : null;
+    }
+
+    private extractTurnStatus(params: any): string | null {
+        const status = params?.turn?.status ?? params?.status ?? null;
+        return typeof status === 'string' && status.length > 0 ? status : null;
+    }
+
+    private shouldHandleRawNotification(method: string): boolean {
+        const isRawNotification = method === 'thread/started'
+            || method === 'turn/started'
+            || method === 'turn/completed'
+            || method === 'thread/status/changed'
+            || method === 'thread/tokenUsage/updated'
+            || method.startsWith('item/');
+
+        if (!isRawNotification) {
+            return false;
+        }
+
+        if (this.notificationProtocol === 'legacy') {
+            return false;
+        }
+
+        if (this.notificationProtocol === 'unknown') {
+            this.notificationProtocol = 'raw';
+        }
+
+        return true;
+    }
+
+    private emitRawTurnCompletion(
+        turnId: string | null,
+        status: string | null,
+        error: unknown,
+        source: string,
+    ): void {
+        const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted';
+
+        this.tryResolvePendingTurn(aborted, turnId, source);
+        this._turnId = null;
+
+        if (turnId && this.completedTurnIds.has(turnId)) {
+            return;
+        }
+        if (turnId) {
+            this.completedTurnIds.add(turnId);
+        }
+
+        if (aborted) {
+            this.eventHandler?.({
+                type: 'turn_aborted',
+                ...(turnId ? { turn_id: turnId } : {}),
+                ...(status ? { status } : {}),
+                ...(error !== undefined && error !== null ? { error } : {}),
+            });
+            return;
+        }
+
+        this.eventHandler?.({
+            type: 'task_complete',
+            ...(turnId ? { turn_id: turnId } : {}),
+            ...(status ? { status } : {}),
+            ...(error !== undefined && error !== null ? { error } : {}),
+        });
+    }
+
+    private handleRawNotification(method: string, params: any): boolean {
+        if (!this.shouldHandleRawNotification(method)) {
+            return false;
+        }
+
+        if (method === 'turn/started') {
+            const turnId = this.extractTurnId(params);
+            if (turnId) {
+                this._turnId = turnId;
+            }
+            this.markPendingTurnStarted(turnId);
+            this.eventHandler?.({
+                type: 'task_started',
+                ...(turnId ? { turn_id: turnId } : {}),
+            });
+            return true;
+        }
+
+        if (method === 'turn/completed') {
+            this.emitRawTurnCompletion(
+                this.extractTurnId(params),
+                this.extractTurnStatus(params),
+                params?.turn?.error ?? params?.error,
+                method,
+            );
+            return true;
+        }
+
+        if (method === 'thread/status/changed') {
+            const statusType = params?.status?.type;
+            if (statusType === 'idle' && this.pendingTurnCompletion?.started) {
+                this.emitRawTurnCompletion(this._turnId, 'completed', null, method);
+            }
+            return true;
+        }
+
+        if (method === 'thread/tokenUsage/updated') {
+            const tokenUsage = params?.tokenUsage;
+            if (tokenUsage && typeof tokenUsage === 'object') {
+                this.eventHandler?.({
+                    type: 'token_count',
+                    ...tokenUsage,
+                });
+            }
+            return true;
+        }
+
+        const item = params?.item;
+        if (!item || typeof item !== 'object') {
+            return method.startsWith('item/');
+        }
+
+        if (method === 'item/started' && item.type === 'commandExecution') {
+            const callId = typeof item.id === 'string' ? item.id : '';
+            this.eventHandler?.({
+                type: 'exec_command_begin',
+                call_id: callId,
+                callId,
+                command: item.command,
+                cwd: item.cwd,
+                description: item.command,
+            });
+            return true;
+        }
+
+        if (method === 'item/completed' && item.type === 'commandExecution') {
+            const callId = typeof item.id === 'string' ? item.id : '';
+            this.eventHandler?.({
+                type: 'exec_command_end',
+                call_id: callId,
+                callId,
+                output: item.aggregatedOutput ?? '',
+                exit_code: item.exitCode ?? null,
+                duration_ms: item.durationMs ?? null,
+                status: item.status,
+                cwd: item.cwd,
+                command: item.command,
+            });
+            return true;
+        }
+
+        if (method === 'item/completed' && item.type === 'agentMessage') {
+            const text = typeof item.text === 'string' ? item.text : '';
+            if (text.length > 0) {
+                this.eventHandler?.({
+                    type: 'agent_message',
+                    message: text,
+                    item_id: item.id,
+                    phase: item.phase,
+                });
+            }
+
+            if (item.phase === 'final_answer' && this.pendingTurnCompletion?.started) {
+                this.emitRawTurnCompletion(
+                    this.extractTurnId(params),
+                    'completed',
+                    null,
+                    `${method}:final_answer`,
+                );
+            }
+            return true;
+        }
+
+        return method.startsWith('item/');
     }
 
     // ─── Lifecycle ──────────────────────────────────────────────
@@ -260,6 +437,8 @@ export class CodexAppServerClient {
         this.process = null;
         this.connected = false;
         this._turnId = null;
+        this.notificationProtocol = 'unknown';
+        this.completedTurnIds.clear();
         if (!opts?.preserveThreadState) {
             this._threadId = null;
             this.threadDefaults = null;
@@ -550,7 +729,14 @@ export class CodexAppServerClient {
         // turn/start returns immediately; turn completes via events.
         // We don't await completion here — the caller's event handler
         // tracks task_complete / turn_aborted.
-        await this.request('turn/start', params);
+        const result = await this.request('turn/start', params) as { turn?: { id?: string | null } };
+        const turnId = result?.turn?.id;
+        if (typeof turnId === 'string' && turnId.length > 0) {
+            this._turnId = turnId;
+            if (this.pendingTurnCompletion) {
+                this.pendingTurnCompletion.turnId = turnId;
+            }
+        }
     }
 
     /** Default timeout for waiting on turn completion (ms). 10 minutes. */
@@ -799,6 +985,7 @@ export class CodexAppServerClient {
     private handleNotification(method: string, params: any): void {
         // codex/event notifications: either `codex/event` or `codex/event/<type>`
         if (method === 'codex/event' || method.startsWith('codex/event/')) {
+            this.notificationProtocol = 'legacy';
             const msg = params?.msg;
             if (msg) {
                 // Extract turn_id from task_started events
@@ -823,6 +1010,11 @@ export class CodexAppServerClient {
             return;
         }
 
+        if (this.handleRawNotification(method, params)) {
+            logger.debug(`[CodexAppServer] Raw notification: ${method}`);
+            return;
+        }
+
         // v2 lifecycle notifications
         if (method === 'thread/started' || method === 'turn/started' ||
             method === 'turn/completed' || method === 'thread/status/changed') {
@@ -830,10 +1022,11 @@ export class CodexAppServerClient {
             // turn/completed is a fallback signal — for mid-inference interrupts,
             // Codex may only signal completion here (not via codex/event turn_aborted).
             if (method === 'turn/completed') {
-                const aborted = params?.status === 'cancelled' || params?.status === 'aborted';
+                const status = this.extractTurnStatus(params);
+                const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted';
                 this.tryResolvePendingTurn(
                     aborted,
-                    params?.turnId ?? params?.turn_id ?? null,
+                    this.extractTurnId(params),
                     method,
                 );
                 this._turnId = null;

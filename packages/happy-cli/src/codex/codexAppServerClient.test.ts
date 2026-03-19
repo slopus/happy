@@ -361,4 +361,218 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         await client.disconnect();
     });
+
+    it('maps raw item notifications into legacy events and deduplicates turn completion', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3001,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-1', path: '/tmp/thread-raw-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-raw-1', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'thread/status/changed',
+                            params: { threadId: 'thread-raw-1', status: { type: 'active', activeFlags: [] } },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turn: { id: 'turn-raw-1', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'commandExecution',
+                                    id: 'call-1',
+                                    command: '/bin/zsh -lc pwd',
+                                    cwd: '/tmp/project',
+                                    status: 'inProgress',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'commandExecution',
+                                    id: 'call-1',
+                                    command: '/bin/zsh -lc pwd',
+                                    cwd: '/tmp/project',
+                                    aggregatedOutput: '/tmp/project\n',
+                                    exitCode: 0,
+                                    durationMs: 1,
+                                    status: 'completed',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'agentMessage',
+                                    id: 'msg-1',
+                                    text: 'done',
+                                    phase: 'final_answer',
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'thread/status/changed',
+                            params: { threadId: 'thread-raw-1', status: { type: 'idle' } },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turn: { id: 'turn-raw-1', items: [], status: 'completed', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('run pwd')).resolves.toEqual({ aborted: false });
+
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-1' }),
+            expect.objectContaining({ type: 'exec_command_begin', callId: 'call-1' }),
+            expect.objectContaining({ type: 'exec_command_end', callId: 'call-1', output: '/tmp/project\n' }),
+            expect.objectContaining({ type: 'agent_message', message: 'done' }),
+        ]));
+        expect(events.filter((event) => event.type === 'task_complete')).toHaveLength(1);
+
+        await client.disconnect();
+    });
+
+    it('falls back to final answer completion when raw turn/completed is missing', async () => {
+        const proc = createMockProcess({
+            pid: 3002,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-2', path: '/tmp/thread-raw-2' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-raw-2', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-raw-2',
+                                turn: { id: 'turn-raw-2', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-2',
+                                turnId: 'turn-raw-2',
+                                item: {
+                                    type: 'agentMessage',
+                                    id: 'msg-2',
+                                    text: 'still works',
+                                    phase: 'final_answer',
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('say hi')).resolves.toEqual({ aborted: false });
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-2' }),
+            expect.objectContaining({ type: 'agent_message', message: 'still works' }),
+            expect.objectContaining({ type: 'task_complete', turn_id: 'turn-raw-2' }),
+        ]));
+
+        await client.disconnect();
+    });
 });
