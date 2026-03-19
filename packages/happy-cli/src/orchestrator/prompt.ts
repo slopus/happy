@@ -1,7 +1,15 @@
 import { trimIdent } from '@/utils/trimIdent';
 import { ORCHESTRATOR_ENV_KEYS } from './common';
 
+export const CHAT_TITLE_INSTRUCTION = trimIdent(`
+  # Chat title
+
+  On your first response, call "change_title" to set a descriptive title based on the user's message. Update the title whenever the conversation's main focus shifts to a different topic or task.
+`);
+
 export const ORCHESTRATOR_TOOLS_INSTRUCTION = trimIdent(`
+  # Orchestrator
+
   Use orchestrator_* tools to delegate work to other AI agents (claude/codex/gemini) on this or other machines.
   Call orchestrator_get_context first to discover available providers, models, and machines.
   Prefer mode="blocking" when you need the result before continuing; use mode="async" + orchestrator_pend for fire-and-forget.
@@ -31,4 +39,11 @@ export function buildFirstTurnToolingInstruction(
     return baseInstruction;
   }
   return `${baseInstruction}\n\n${orchestratorInstruction}`;
+}
+
+export function getBaseSystemPrompt(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (!shouldEnableOrchestratorTools(env)) {
+    return null;
+  }
+  return buildFirstTurnToolingInstruction(CHAT_TITLE_INSTRUCTION, env);
 }

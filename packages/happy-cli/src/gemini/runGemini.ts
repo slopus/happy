@@ -326,7 +326,9 @@ export async function runGemini(opts: {
       if (message.meta?.appendSystemPrompt) {
         fullPrompt = message.meta.appendSystemPrompt + '\n\n' + fullPrompt;
       }
-      fullPrompt = fullPrompt + '\n\n' + firstTurnInstruction;
+      if (firstTurnInstruction) {
+        fullPrompt = fullPrompt + '\n\n' + firstTurnInstruction;
+      }
       isFirstMessage = false;
     }
 

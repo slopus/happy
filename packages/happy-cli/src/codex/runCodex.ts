@@ -324,7 +324,7 @@ export async function runCodex(opts: {
         if (sessionSystemPrompt === undefined) {
             const parts: string[] = [];
             if (message.meta?.appendSystemPrompt) parts.push(message.meta.appendSystemPrompt);
-            parts.push(firstTurnInstruction);
+            if (firstTurnInstruction) parts.push(firstTurnInstruction);
             sessionSystemPrompt = parts.join('\n\n');
         }
 
