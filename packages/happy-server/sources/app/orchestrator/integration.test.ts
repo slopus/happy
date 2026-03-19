@@ -100,6 +100,7 @@ const {
         executions: [] as ExecutionRecord[],
         machines: [] as MachineRecord[],
         sessions: [] as Array<{ id: string; accountId: string }>,
+        accessKeys: [] as Array<{ accountId: string; machineId: string; sessionId: string; updatedAt: Date }>,
         onlineMachineIds: new Set<string>(),
         dispatchReadyMachineIds: new Set<string>(),
     };
@@ -128,6 +129,9 @@ const {
         ];
         state.sessions = [
             { id: 'controller-session-1', accountId: 'user-1' },
+        ];
+        state.accessKeys = [
+            { accountId: 'user-1', machineId: 'machine-1', sessionId: 'controller-session-1', updatedAt: new Date('2026-03-16T00:00:00.000Z') },
         ];
         state.onlineMachineIds = new Set(['machine-1']);
         state.dispatchReadyMachineIds = new Set(['machine-1']);
@@ -499,6 +503,16 @@ const {
                 _count: { _all: item.count },
             }));
         }),
+        count: vi.fn(async (args: any) => {
+            let rows = state.tasks;
+            if (args?.where?.status) {
+                rows = rows.filter((item) => matchesStatus(item.status, args.where.status));
+            }
+            if (args?.where?.runId) {
+                rows = rows.filter((item) => item.runId === args.where.runId);
+            }
+            return rows.length;
+        }),
     };
 
     const executionApi = {
@@ -630,12 +644,26 @@ const {
         }),
     };
 
+    const accessKeyApi = {
+        findFirst: vi.fn(async (args: any) => {
+            let rows = state.accessKeys.filter((item) =>
+                item.sessionId === args?.where?.sessionId &&
+                item.accountId === args?.where?.accountId,
+            );
+            if (args?.orderBy?.updatedAt === 'desc') {
+                rows = rows.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+            }
+            return rows[0] ? { machineId: rows[0].machineId } : null;
+        }),
+    };
+
     const tx = {
         orchestratorRun: runApi,
         orchestratorTask: taskApi,
         orchestratorExecution: executionApi,
         machine: machineApi,
         session: sessionApi,
+        accessKey: accessKeyApi,
     };
 
     const dbMock = {
@@ -644,6 +672,7 @@ const {
         orchestratorExecution: executionApi,
         machine: machineApi,
         session: sessionApi,
+        accessKey: accessKeyApi,
         $transaction: vi.fn(async (fn: any) => fn(tx)),
     };
 
@@ -652,6 +681,7 @@ const {
         return Array.from(state.dispatchReadyMachineIds).map((machineId) => `${machineId}:orchestrator-dispatch`);
     });
     const eventRouterMock = {
+        emitEphemeral: vi.fn(),
         getConnections: vi.fn((_userId: string) => {
             const connections = new Set<any>();
             for (const machineId of state.onlineMachineIds) {
@@ -688,6 +718,7 @@ vi.mock('@/app/api/socket/rpcRegistry', () => ({
 
 vi.mock('@/app/events/eventRouter', () => ({
     eventRouter: eventRouterMock,
+    buildOrchestratorActivityEphemeral: vi.fn((_sessionId: string, _running: number) => ({ type: 'orchestrator-activity' })),
 }));
 
 import { orchestratorRoutes } from '@/app/api/routes/orchestratorRoutes';
@@ -1809,6 +1840,60 @@ describe('orchestrator integration paths', () => {
         );
         expect(state.executions).toHaveLength(1);
         expect(state.executions[0].machineId).toBe('machine-2');
+        await app.close();
+    });
+
+    it('resolves current_machine target to controller session machine via AccessKey', async () => {
+        state.machines.push({
+            id: 'machine-2',
+            accountId: 'user-1',
+            active: true,
+            lastActiveAt: new Date('2026-03-16T00:00:02.000Z'),
+        });
+        state.onlineMachineIds.add('machine-2');
+        state.dispatchReadyMachineIds.add('machine-2');
+        state.sessions.push({ id: 'session-on-m2', accountId: 'user-1' });
+        state.accessKeys.push({
+            accountId: 'user-1',
+            machineId: 'machine-2',
+            sessionId: 'session-on-m2',
+            updatedAt: new Date('2026-03-16T00:00:02.000Z'),
+        });
+
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'current-machine-resolve',
+                controllerSessionId: 'session-on-m2',
+                tasks: [
+                    {
+                        provider: 'codex',
+                        prompt: 'run on current machine',
+                        workingDirectory: '/workspace/repo-b',
+                        target: { type: 'current_machine' },
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:03.000Z'));
+        expect(invokeUserRpcMock).toHaveBeenCalledWith(
+            'user-1',
+            'machine-2:orchestrator-dispatch',
+            expect.objectContaining({
+                provider: 'codex',
+                workingDirectory: '/workspace/repo-b',
+            }),
+            expect.any(Number),
+        );
+        expect(state.executions).toHaveLength(1);
+        expect(state.executions[0].machineId).toBe('machine-2');
+        const task = state.tasks.find((t) => t.prompt === 'run on current machine');
+        expect(task?.targetMachineId).toBe('machine-2');
         await app.close();
     });
 

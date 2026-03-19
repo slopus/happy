@@ -735,6 +735,7 @@ export function orchestratorRoutes(app: Fastify) {
             normalizedTaskModels.push(model);
         }
 
+        let controllerMachineId: string | null = null;
         if (body.controllerSessionId) {
             const controllerSession = await db.session.findFirst({
                 where: {
@@ -746,6 +747,12 @@ export function orchestratorRoutes(app: Fastify) {
             if (!controllerSession) {
                 return sendError(reply, 400, 'INVALID_ARGUMENT', 'controllerSessionId does not belong to current account');
             }
+            const accessKey = await db.accessKey.findFirst({
+                where: { sessionId: body.controllerSessionId, accountId: userId },
+                select: { machineId: true },
+                orderBy: { updatedAt: 'desc' },
+            });
+            controllerMachineId = accessKey?.machineId ?? null;
         }
 
         const loadExistingByIdempotency = async (): Promise<{ run: RunWithTasks; summary: RunSummary } | null> => {
@@ -832,7 +839,11 @@ export function orchestratorRoutes(app: Fastify) {
                     prompt: task.prompt,
                     workingDirectory: task.workingDirectory,
                     timeoutMs: task.timeoutMs,
-                    targetMachineId: task.target?.type === 'machine_id' ? task.target.machineId : null,
+                    targetMachineId: task.target?.type === 'machine_id'
+                        ? task.target.machineId
+                        : task.target?.type === 'current_machine'
+                            ? controllerMachineId
+                            : null,
                     dependsOnTaskKeys: task.dependsOn ?? [],
                     retryMaxAttempts: task.retry?.maxAttempts ?? DEFAULT_CONTEXT_RETRY_MAX_ATTEMPTS,
                     retryBackoffMs: task.retry?.backoffMs ?? DEFAULT_CONTEXT_RETRY_BACKOFF_MS,
