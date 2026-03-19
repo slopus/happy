@@ -264,6 +264,8 @@ export function DuplicateSheet({
         }
     };
 
+    const reversedMessages = useMemo(() => messages ? [...messages].reverse() : [], [messages]);
+
     const flatListExtraData = useMemo(
         () => ({ truncatedIndices, expandedIndices, selectedUuid }),
         [truncatedIndices, expandedIndices, selectedUuid],
@@ -336,7 +338,7 @@ export function DuplicateSheet({
                         </View>
                     ) : messages && messages.length > 0 ? (
                         <FlatList
-                            data={messages}
+                            data={reversedMessages}
                             inverted={true}
                             extraData={flatListExtraData}
                             style={styles.content as ViewStyle}
