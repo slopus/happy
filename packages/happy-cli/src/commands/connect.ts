@@ -123,6 +123,10 @@ async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini' | 'kimi
         const kimiAuthTokens = await authenticateKimi();
         await api.registerVendorToken('moonshot', { oauth: kimiAuthTokens });
         console.log('✅ Kimi token registered with server');
+
+        // Also save API key locally so kimi CLI can pick it up
+        updateLocalKimiCredentials(kimiAuthTokens.access_token);
+
         process.exit(0);
     } else {
         throw new Error(`Unsupported vendor: ${vendor}`);
@@ -227,6 +231,38 @@ function updateLocalGeminiCredentials(tokens: {
         console.log(chalk.gray(`  Updated local credentials: ${credentialsPath}`));
     } catch (error) {
         // Non-critical error - server tokens will still work
+        console.log(chalk.yellow(`  ⚠️ Could not update local credentials: ${error}`));
+    }
+}
+
+/**
+ * Save Moonshot API key locally so `kimi` CLI can find it via MOONSHOT_API_KEY.
+ * We write a small config file to ~/.kimi/config.json — Kimi CLI checks this
+ * path as one of its credential sources.
+ */
+function updateLocalKimiCredentials(apiKey: string): void {
+    try {
+        const kimiDir = join(homedir(), '.kimi');
+        const configPath = join(kimiDir, 'config.json');
+
+        if (!existsSync(kimiDir)) {
+            mkdirSync(kimiDir, { recursive: true });
+        }
+
+        // Read existing config or start fresh
+        let config: Record<string, unknown> = {};
+        if (existsSync(configPath)) {
+            try {
+                config = JSON.parse(require('fs').readFileSync(configPath, 'utf-8'));
+            } catch {
+                // corrupt file — overwrite
+            }
+        }
+
+        config.api_key = apiKey;
+        writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        console.log(chalk.gray(`  Updated local credentials: ${configPath}`));
+    } catch (error) {
         console.log(chalk.yellow(`  ⚠️ Could not update local credentials: ${error}`));
     }
 }
