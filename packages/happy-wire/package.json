@@ -6,6 +6,7 @@
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
+  "react-native": "./src/index.ts",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
