@@ -11,20 +11,8 @@ export default defineConfig({
     test: {
         globals: false,
         environment: 'node',
-        include: ['src/**/*.test.ts'],
-        exclude: ['src/**/*.integration.test.ts'],
+        include: ['src/**/*.integration.test.ts'],
         globalSetup: ['./src/test-setup.ts'],
-        coverage: {
-            provider: 'v8',
-            reporter: ['text', 'json', 'html'],
-            exclude: [
-                'node_modules/**',
-                'dist/**',
-                '**/*.d.ts',
-                '**/*.config.*',
-                '**/mockData/**',
-            ],
-        },
         env: {
             ...process.env,
             ...testEnv,
