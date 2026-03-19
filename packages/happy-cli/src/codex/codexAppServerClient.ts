@@ -1019,6 +1019,14 @@ export class CodexAppServerClient {
         if (method === 'thread/started' || method === 'turn/started' ||
             method === 'turn/completed' || method === 'thread/status/changed') {
             logger.debug(`[CodexAppServer] Lifecycle notification: ${method}`);
+            // Mark the turn as started so the completion guard lets it through.
+            if (method === 'turn/started') {
+                const turnId = this.extractTurnId(params);
+                if (turnId) {
+                    this._turnId = turnId;
+                }
+                this.markPendingTurnStarted(turnId);
+            }
             // turn/completed is a fallback signal — for mid-inference interrupts,
             // Codex may only signal completion here (not via codex/event turn_aborted).
             if (method === 'turn/completed') {
