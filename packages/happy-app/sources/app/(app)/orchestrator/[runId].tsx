@@ -49,6 +49,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     title: {
+        flex: 1,
         fontSize: 20,
         fontWeight: '700',
         color: theme.colors.text,
