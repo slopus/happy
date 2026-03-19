@@ -236,9 +236,9 @@ function updateLocalGeminiCredentials(tokens: {
 }
 
 /**
- * Save Moonshot API key locally so `kimi` CLI can find it via MOONSHOT_API_KEY.
- * We write a small config file to ~/.kimi/config.json — Kimi CLI checks this
- * path as one of its credential sources.
+ * Cache Moonshot API key locally so Happy can pass it to kimi-cli via
+ * MOONSHOT_API_KEY env var on next session start. This is Happy's own
+ * credential store — kimi-cli itself uses ~/.kimi/config.toml.
  */
 function updateLocalKimiCredentials(apiKey: string): void {
     try {

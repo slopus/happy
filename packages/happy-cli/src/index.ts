@@ -393,7 +393,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
         startedBy,
         agentName: 'kimi',
         command: 'kimi',
-        args: ['--experimental-acp', ...kimiArgs],
+        args: ['acp', ...kimiArgs],
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
