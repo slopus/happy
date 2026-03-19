@@ -655,6 +655,16 @@ const {
             }
             return rows[0] ? { machineId: rows[0].machineId } : null;
         }),
+        findMany: vi.fn(async (args: any) => {
+            let rows = state.accessKeys.filter((item) =>
+                item.sessionId === args?.where?.sessionId &&
+                item.accountId === args?.where?.accountId,
+            );
+            if (args?.orderBy?.updatedAt === 'desc') {
+                rows = rows.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+            }
+            return rows.map((r) => ({ machineId: r.machineId }));
+        }),
     };
 
     const tx = {
@@ -1843,7 +1853,7 @@ describe('orchestrator integration paths', () => {
         await app.close();
     });
 
-    it('resolves current_machine target to controller session machine via AccessKey', async () => {
+    it('resolves current_machine target via controllerMachineId', async () => {
         state.machines.push({
             id: 'machine-2',
             accountId: 'user-1',
@@ -1853,12 +1863,6 @@ describe('orchestrator integration paths', () => {
         state.onlineMachineIds.add('machine-2');
         state.dispatchReadyMachineIds.add('machine-2');
         state.sessions.push({ id: 'session-on-m2', accountId: 'user-1' });
-        state.accessKeys.push({
-            accountId: 'user-1',
-            machineId: 'machine-2',
-            sessionId: 'session-on-m2',
-            updatedAt: new Date('2026-03-16T00:00:02.000Z'),
-        });
 
         const app = await createApp();
         const submit = await app.inject({
@@ -1868,6 +1872,7 @@ describe('orchestrator integration paths', () => {
             payload: {
                 title: 'current-machine-resolve',
                 controllerSessionId: 'session-on-m2',
+                controllerMachineId: 'machine-2',
                 tasks: [
                     {
                         provider: 'codex',

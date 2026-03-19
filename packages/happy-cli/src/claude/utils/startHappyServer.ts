@@ -237,6 +237,7 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                 const submitBody = {
                     title: args.title,
                     controllerSessionId: args.controllerSessionId ?? client.sessionId,
+                    controllerMachineId: metadata?.machineId ?? undefined,
                     tasks: applyDefaultWorkingDirectory(args.tasks, metadata?.path, metadata?.machineId),
                     maxConcurrency: args.maxConcurrency,
                     idempotencyKey: args.idempotencyKey,

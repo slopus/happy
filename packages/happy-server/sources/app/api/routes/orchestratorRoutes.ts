@@ -90,6 +90,7 @@ const submitTaskSchema = z.object({
 const submitBodySchema = z.object({
     title: z.string().min(1).max(256),
     controllerSessionId: z.string().optional(),
+    controllerMachineId: z.string().optional(),
     tasks: z.array(submitTaskSchema).min(1).max(32),
     maxConcurrency: z.coerce.number().int().min(1).max(8).optional(),
     mode: z.enum(['blocking', 'async']).optional(),
@@ -735,7 +736,7 @@ export function orchestratorRoutes(app: Fastify) {
             normalizedTaskModels.push(model);
         }
 
-        let controllerMachineId: string | null = null;
+        const controllerMachineId: string | null = body.controllerMachineId ?? null;
         if (body.controllerSessionId) {
             const controllerSession = await db.session.findFirst({
                 where: {
@@ -747,12 +748,6 @@ export function orchestratorRoutes(app: Fastify) {
             if (!controllerSession) {
                 return sendError(reply, 400, 'INVALID_ARGUMENT', 'controllerSessionId does not belong to current account');
             }
-            const accessKey = await db.accessKey.findFirst({
-                where: { sessionId: body.controllerSessionId, accountId: userId },
-                select: { machineId: true },
-                orderBy: { updatedAt: 'desc' },
-            });
-            controllerMachineId = accessKey?.machineId ?? null;
         }
 
         const loadExistingByIdempotency = async (): Promise<{ run: RunWithTasks; summary: RunSummary } | null> => {
