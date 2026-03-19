@@ -7,13 +7,14 @@ import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Modal } from '@/modal';
-import { useLocalSetting } from '@/sync/storage';
+import { storage, useLocalSetting, useSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
+import { parseSessionFileLink, SessionFileLink, splitSessionFileText } from '@/utils/sessionFileLinks';
 
 // Option type for callback
 export type Option = {
@@ -23,6 +24,7 @@ export type Option = {
 export const MarkdownView = React.memo((props: { 
     markdown: string;
     onOptionPress?: (option: Option) => void;
+    sessionId?: string;
 }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
     
@@ -32,8 +34,47 @@ export const MarkdownView = React.memo((props: {
     // will be handled by a wrapper Pressable. If we don't disable the selectable property, then you will see
     // the native copy modal come up at the same time as the long press handler is fired.
     const markdownCopyV2 = useLocalSetting('markdownCopyV2');
+    const experiments = useSetting('experiments');
     const selectable = Platform.OS === 'web' || !markdownCopyV2;
     const router = useRouter();
+    const sessionRoot = storage((state) => props.sessionId ? state.sessions[props.sessionId]?.metadata?.path ?? null : null);
+
+    const openSessionFileLink = React.useCallback((link: SessionFileLink) => {
+        if (!experiments || !props.sessionId) {
+            return false;
+        }
+
+        let route = `/session/${props.sessionId}/file?path=${btoa(link.absolutePath)}`;
+        if (link.line !== null) {
+            route += `&line=${link.line}`;
+        }
+        if (link.column !== null) {
+            route += `&column=${link.column}`;
+        }
+        router.push(route as any);
+        return true;
+    }, [experiments, props.sessionId, router]);
+
+    const handleLinkPress = React.useCallback((url: string, label?: string | null) => {
+        if (experiments) {
+            const fileLink = parseSessionFileLink(url, {
+                label,
+                sessionRoot,
+            });
+            if (fileLink && openSessionFileLink(fileLink)) {
+                return;
+            }
+        }
+
+        if (Platform.OS === 'web') {
+            if (typeof window !== 'undefined') {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            }
+            return;
+        }
+
+        void WebBrowser.openBrowserAsync(url);
+    }, [experiments, openSessionFileLink, sessionRoot]);
 
     const handleLongPress = React.useCallback(() => {
         try {
@@ -49,15 +90,15 @@ export const MarkdownView = React.memo((props: {
             <View style={{ width: '100%' }}>
                 {blocks.map((block, index) => {
                     if (block.type === 'text') {
-                        return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} experiments={experiments} sessionRoot={sessionRoot} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'header') {
-                        return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} experiments={experiments} sessionRoot={sessionRoot} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'horizontal-rule') {
                         return <View style={style.horizontalRule} key={index} />;
                     } else if (block.type === 'list') {
-                        return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} experiments={experiments} sessionRoot={sessionRoot} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'numbered-list') {
-                        return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} experiments={experiments} sessionRoot={sessionRoot} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'code-block') {
                         return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
                     } else if (block.type === 'mermaid') {
@@ -102,33 +143,42 @@ export const MarkdownView = React.memo((props: {
     );
 });
 
-function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
-    return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
+type RenderSpanProps = {
+    spans: MarkdownSpan[];
+    baseStyle?: any;
+    selectable: boolean;
+    experiments: boolean;
+    sessionRoot: string | null;
+    onLinkPress: (url: string, label?: string | null) => void;
+};
+
+function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean, experiments: boolean, sessionRoot: string | null, onLinkPress: (url: string, label?: string | null) => void }) {
+    return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} selectable={props.selectable} experiments={props.experiments} sessionRoot={props.sessionRoot} onLinkPress={props.onLinkPress} /></Text>;
 }
 
-function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
+function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean, experiments: boolean, sessionRoot: string | null, onLinkPress: (url: string, label?: string | null) => void }) {
     const s = (style as any)[`header${props.level}`];
     const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
-    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
+    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} selectable={props.selectable} experiments={props.experiments} sessionRoot={props.sessionRoot} onLinkPress={props.onLinkPress} /></Text>;
 }
 
-function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean }) {
+function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean, experiments: boolean, sessionRoot: string | null, onLinkPress: (url: string, label?: string | null) => void }) {
     const listStyle = [style.text, style.list];
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
+                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} selectable={props.selectable} experiments={props.experiments} sessionRoot={props.sessionRoot} onLinkPress={props.onLinkPress} /></Text>
             ))}
         </View>
     );
 }
 
-function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean }) {
+function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean, experiments: boolean, sessionRoot: string | null, onLinkPress: (url: string, label?: string | null) => void }) {
     const listStyle = [style.text, style.list];
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} /></Text>
+                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} experiments={props.experiments} sessionRoot={props.sessionRoot} onLinkPress={props.onLinkPress} /></Text>
             ))}
         </View>
     );
@@ -236,28 +286,47 @@ function RenderOptionsBlock(props: {
     );
 }
 
-function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
+function RenderSpans(props: RenderSpanProps) {
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
+                const fileLink = props.experiments ? parseSessionFileLink(span.url, {
+                    label: span.text,
+                    sessionRoot: props.sessionRoot,
+                }) : null;
                 return (
                     <Text
                         key={index}
-                        selectable
+                        selectable={props.selectable}
                         accessibilityRole="link"
                         style={[props.baseStyle, style.link, span.styles.map(s => style[s])]}
-                        {...(Platform.OS === 'web' ? ({ href: span.url, target: '_blank', rel: 'noopener noreferrer' } as any) : {})}
-                        onPress={() => {
-                            if (Platform.OS !== 'web') {
-                                void WebBrowser.openBrowserAsync(span.url!);
-                            }
-                        }}
+                        {...(!fileLink && Platform.OS === 'web' ? ({ href: span.url, target: '_blank', rel: 'noopener noreferrer' } as any) : {})}
+                        onPress={fileLink || Platform.OS !== 'web'
+                            ? () => props.onLinkPress(span.url!, span.text)
+                            : undefined}
                     >
                         {span.text}
                     </Text>
                 );
+            } else if (props.experiments && !span.styles.includes('code')) {
+                return splitSessionFileText(span.text, props.sessionRoot).map((segment, segmentIndex) => {
+                    if (!segment.link) {
+                        return <Text key={`${index}-${segmentIndex}`} selectable={props.selectable} style={[props.baseStyle, span.styles.map(s => style[s])]}>{segment.text}</Text>;
+                    }
+                    return (
+                        <Text
+                            key={`${index}-${segmentIndex}`}
+                            selectable={props.selectable}
+                            accessibilityRole="link"
+                            style={[props.baseStyle, style.link, span.styles.map(s => style[s])]}
+                            onPress={() => props.onLinkPress(segment.link!.absolutePath + (segment.link!.line !== null ? `:${segment.link!.line}${segment.link!.column !== null ? `:${segment.link!.column}` : ''}` : ''), segment.text)}
+                        >
+                            {segment.text}
+                        </Text>
+                    );
+                });
             } else {
-                return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
+                return <Text key={index} selectable={props.selectable} style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }
         })}
     </>)

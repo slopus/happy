@@ -76,7 +76,7 @@ function UserTextBlock(props: {
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
         {/* {__DEV__ && (
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
@@ -100,7 +100,7 @@ function AgentTextBlock(props: {
 
   return (
     <View style={styles.agentMessageContainer}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
     </View>
   );
 }
