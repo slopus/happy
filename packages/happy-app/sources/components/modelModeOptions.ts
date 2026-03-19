@@ -30,7 +30,9 @@ const GEMINI_MODEL_FALLBACKS: ModelMode[] = [
 ];
 
 const KIMI_MODEL_FALLBACKS: ModelMode[] = [
-    { key: 'kimi-latest', name: 'Kimi Latest', description: 'Most capable' },
+    { key: 'kimi-k2.5', name: 'Kimi K2.5', description: 'Most capable' },
+    { key: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', description: 'Deep reasoning' },
+    { key: 'kimi-k2-thinking-turbo', name: 'Kimi K2 Thinking Turbo', description: 'Fast reasoning' },
 ];
 
 export function mapMetadataOptions(options?: MetadataOption[] | null): ModeOption[] {
@@ -192,7 +194,7 @@ export function getDefaultModelKey(flavor: AgentFlavor): string {
         return 'gemini-2.5-pro';
     }
     if (flavor === 'kimi') {
-        return 'kimi-latest';
+        return 'kimi-k2.5';
     }
     return 'default';
 }

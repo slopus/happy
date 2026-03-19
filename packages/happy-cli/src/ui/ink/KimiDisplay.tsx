@@ -96,7 +96,7 @@ export const KimiDisplay: React.FC<KimiDisplayProps> = ({ messageBuffer, logPath
         }).join('\n')
     }
 
-    const modelLabel = currentModel || 'kimi-latest'
+    const modelLabel = currentModel || 'kimi-k2.5'
 
     return (
         <Box flexDirection="column" width={terminalWidth} height={terminalHeight}>

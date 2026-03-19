@@ -11,4 +11,4 @@ export const MOONSHOT_API_KEY_ENV = 'MOONSHOT_API_KEY';
 export const KIMI_MODEL_ENV = 'KIMI_MODEL';
 
 /** Default Kimi model */
-export const DEFAULT_KIMI_MODEL = 'kimi-latest';
+export const DEFAULT_KIMI_MODEL = 'kimi-k2.5';
