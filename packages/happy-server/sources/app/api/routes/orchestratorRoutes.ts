@@ -124,6 +124,7 @@ type RunWithTasks = {
         nextAttemptAt: Date | null;
         status: string;
         outputSummary: string | null;
+        outputText: string | null;
         errorCode: string | null;
         errorMessage: string | null;
         createdAt: Date;
@@ -145,6 +146,7 @@ type RunWithTasks = {
             errorCode: string | null;
             errorMessage: string | null;
             outputSummary: string | null;
+            outputText: string | null;
             createdAt: Date;
             updatedAt: Date;
         }>;
@@ -198,6 +200,7 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
         },
         nextAttemptAt: task.nextAttemptAt?.toISOString() ?? null,
         outputSummary: task.outputSummary,
+        outputText: task.outputText,
         errorCode: task.errorCode,
         errorMessage: task.errorMessage,
         createdAt: task.createdAt.toISOString(),
@@ -220,6 +223,7 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
                 errorCode: execution.errorCode,
                 errorMessage: execution.errorMessage,
                 outputSummary: execution.outputSummary,
+                outputText: execution.outputText,
                 createdAt: execution.createdAt.toISOString(),
                 updatedAt: execution.updatedAt.toISOString(),
             })),
@@ -306,6 +310,7 @@ async function loadRunForUser(userId: string, runId: string, includeTasks: boole
                     nextAttemptAt: true,
                     status: true,
                     outputSummary: true,
+                    outputText: true,
                     errorCode: true,
                     errorMessage: true,
                     createdAt: true,
@@ -329,6 +334,7 @@ async function loadRunForUser(userId: string, runId: string, includeTasks: boole
                             errorCode: true,
                             errorMessage: true,
                             outputSummary: true,
+                            outputText: true,
                             createdAt: true,
                             updatedAt: true,
                         },
@@ -385,6 +391,7 @@ async function loadTaskForUser(
             nextAttemptAt: true,
             status: true,
             outputSummary: true,
+            outputText: true,
             errorCode: true,
             errorMessage: true,
             createdAt: true,
@@ -416,6 +423,7 @@ async function loadTaskForUser(
                     errorCode: true,
                     errorMessage: true,
                     outputSummary: true,
+                    outputText: true,
                     createdAt: true,
                     updatedAt: true,
                 },
@@ -863,6 +871,7 @@ export function orchestratorRoutes(app: Fastify) {
                         nextAttemptAt: true,
                         status: true,
                         outputSummary: true,
+                        outputText: true,
                         errorCode: true,
                         errorMessage: true,
                         createdAt: true,
