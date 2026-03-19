@@ -15,8 +15,6 @@ const orchestratorTaskSchema = z.object({
   prompt: z.string().min(1).max(65536),
   workingDirectory: z.string().max(512).optional()
     .describe('Absolute path for task execution. Defaults to the controller session working directory from get_context.'),
-  timeoutMs: z.number().int().min(1000).max(24 * 60 * 60 * 1000).optional()
-    .describe('Task timeout in milliseconds (1000..86400000).'),
   dependsOn: z.array(z.string().min(1).max(128)).max(31).optional()
     .describe('Optional list of dependency taskKey values. Use taskKey names, not taskId.'),
   retry: z.object({
@@ -47,8 +45,8 @@ export const ORCHESTRATOR_SUBMIT_TOOL_SCHEMA = {
     tasks: z.array(orchestratorTaskSchema).min(1).max(32),
     mode: z.enum(['async', 'blocking']).optional().describe('Run mode. "blocking" waits for terminal state; "async" returns immediately.'),
     maxConcurrency: z.number().int().min(1).max(8).optional(),
-    waitTimeoutMs: z.number().int().min(1000).max(60 * 60 * 1000).optional().describe('Blocking-mode total wait timeout in ms (max 3600000). Only applies when mode="blocking".'),
-    pollIntervalMs: z.number().int().min(200).max(60_000).optional().describe('Blocking-mode pend poll interval in milliseconds.'),
+    waitTimeoutMs: z.number().int().max(60 * 60 * 1000).optional().describe('Blocking-mode total wait timeout in ms (max 3600000). Only applies when mode="blocking".'),
+    pollIntervalMs: z.number().int().max(60_000).optional().describe('Blocking-mode pend poll interval in milliseconds.'),
     idempotencyKey: z.string().min(1).max(128).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     controllerSessionId: z.string().optional().describe('Optional controller session ID. Defaults to current MCP session when omitted.'),
@@ -62,8 +60,8 @@ export const ORCHESTRATOR_PEND_TOOL_SCHEMA = {
     runId: z.string().describe('Run ID'),
     cursor: z.string().optional(),
     waitFor: z.enum(['change', 'terminal']).optional(),
-    timeoutMs: z.number().int().min(0).max(120_000).optional()
-      .describe('Server-side long-poll timeout in ms (max 120000). For longer waits, call pend repeatedly.'),
+    timeoutMs: z.number().int().min(0).max(3_600_000).optional()
+      .describe('Total wait timeout in ms. Defaults to 10 minutes when omitted.'),
     include: z.enum(['summary', 'all_tasks']).optional()
       .describe('"summary" returns run-level status only; "all_tasks" includes per-task details.'),
   },

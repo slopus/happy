@@ -28,7 +28,7 @@ import {
 import { CLAUDE_MODEL_MODES, CODEX_MODEL_MODES, GEMINI_MODEL_MODES } from 'happy-wire';
 
 const ORCHESTRATOR_RUN_TERMINAL = new Set(['completed', 'failed', 'cancelled']);
-const DEFAULT_BLOCKING_WAIT_TIMEOUT_MS = 120_000;
+const DEFAULT_BLOCKING_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 
 function toToolSuccess(data: unknown) {
     return {
@@ -148,12 +148,18 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                     break;
                 }
 
-                const pend = await client.orchestratorPend(runId, {
-                    cursor,
-                    waitFor: 'terminal',
-                    timeoutMs,
-                    include: 'summary',
-                });
+                let pend: any;
+                try {
+                    pend = await client.orchestratorPend(runId, {
+                        cursor,
+                        waitFor: 'terminal',
+                        timeoutMs,
+                        include: 'summary',
+                    });
+                } catch (error: any) {
+                    if (error?.response?.status === 504) continue; // Retry on gateway timeout
+                    throw error;
+                }
                 lastPend = pend?.data ?? null;
                 cursor = lastPend?.cursor;
 
@@ -257,8 +263,8 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                     });
                 }
 
-                const waitTimeoutMs = args.waitTimeoutMs ?? DEFAULT_BLOCKING_WAIT_TIMEOUT_MS;
-                const pendTimeoutMs = Math.max(200, Math.min(args.pollIntervalMs ?? 30_000, 60_000));
+                const waitTimeoutMs = Math.max(args.waitTimeoutMs ?? DEFAULT_BLOCKING_WAIT_TIMEOUT_MS, DEFAULT_BLOCKING_WAIT_TIMEOUT_MS);
+                const pendTimeoutMs = Math.max(10_000, Math.min(args.pollIntervalMs ?? 60_000, 60_000));
                 const blocking = await awaitRunTerminal(submitData.runId, waitTimeoutMs, pendTimeoutMs);
 
                 return toToolSuccess({
@@ -273,11 +279,39 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
         });
 
         mcp.registerTool('orchestrator_pend', ORCHESTRATOR_PEND_TOOL_SCHEMA, async (args) => {
+            const startedAt = Date.now();
+            const totalTimeoutMs = Math.max(args.timeoutMs ?? 10 * 60 * 1000, 10 * 60 * 1000);
+            let cursor = args.cursor;
+
+            while (true) {
+                const elapsed = Date.now() - startedAt;
+                const remaining = totalTimeoutMs - elapsed;
+                if (remaining <= 0) break;
+
+                try {
+                    const response = await client.orchestratorPend(args.runId, {
+                        cursor,
+                        waitFor: args.waitFor,
+                        timeoutMs: Math.min(remaining, 120_000),
+                        include: args.include,
+                    });
+                    return toToolSuccess(response);
+                } catch (error: any) {
+                    const status = error?.response?.status;
+                    if (status === 504 && remaining > 1000) {
+                        cursor = undefined; // Reset cursor on 504 and retry
+                        continue;
+                    }
+                    return toToolError('Failed to pend orchestrator run', error instanceof Error ? error.message : String(error));
+                }
+            }
+
+            // Timeout exhausted — do a final non-blocking fetch
             try {
                 const response = await client.orchestratorPend(args.runId, {
-                    cursor: args.cursor,
+                    cursor,
                     waitFor: args.waitFor,
-                    timeoutMs: args.timeoutMs,
+                    timeoutMs: 0,
                     include: args.include,
                 });
                 return toToolSuccess(response);
