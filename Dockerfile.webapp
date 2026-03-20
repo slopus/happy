@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # Stage 1: install dependencies with workspace context
 FROM node:20-alpine AS deps
 
@@ -5,21 +7,20 @@ WORKDIR /repo
 
 COPY package.json yarn.lock ./
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-voice packages/happy-wire
+# Keep dependency installation scoped to web-only workspaces to avoid
+# pulling the entire monorepo dependency graph.
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));if(typeof p.workspaces==='object'&&p.workspaces){p.workspaces={...p.workspaces,packages:['packages/happy-app','packages/happy-wire']};}fs.writeFileSync('package.json',JSON.stringify(p,null,2));"
+
+RUN mkdir -p packages/happy-app packages/happy-wire
 
 COPY packages/happy-app/package.json packages/happy-app/
-COPY packages/happy-server/package.json packages/happy-server/
-COPY packages/happy-cli/package.json packages/happy-cli/
-COPY packages/happy-voice/package.json packages/happy-voice/
 COPY packages/happy-wire/package.json packages/happy-wire/
 
 # Workspace postinstall requirements
 COPY packages/happy-app/patches packages/happy-app/patches
-COPY packages/happy-server/prisma packages/happy-server/prisma
-COPY packages/happy-cli/scripts packages/happy-cli/scripts
-COPY packages/happy-cli/tools packages/happy-cli/tools
 
-RUN yarn install --frozen-lockfile --ignore-engines
+RUN --mount=type=cache,id=happy-yarn-cache-webapp,target=/usr/local/share/.cache/yarn,sharing=locked \
+    yarn install --frozen-lockfile --ignore-engines
 
 # Stage 2: build the web app
 FROM deps AS builder
