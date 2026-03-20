@@ -1,9 +1,9 @@
-import * as React from 'react';
 import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { knownTools } from '@/components/tools/knownTools';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { formatMCPTitle, formatMCPIcon } from './views/MCPToolView';
 
 interface ToolHeaderProps {
     tool: ToolCall;
@@ -33,8 +33,14 @@ export function ToolHeader({ tool, maxWidth }: ToolHeaderProps) {
         }
     }
 
-    const icon = knownTool?.icon ? knownTool.icon(18, theme.colors.header.tint) : <Ionicons name="construct-outline" size={18} color={theme.colors.header.tint} />;
+    let icon = knownTool?.icon ? knownTool.icon(18, theme.colors.header.tint) : <Ionicons name="construct-outline" size={18} color={theme.colors.header.tint} />;
 
+    // Special handling for MCP tools
+    if (tool.name.startsWith('mcp__') || tool.name.startsWith('mcp:')) {
+        toolTitle = formatMCPTitle(tool);
+        icon = formatMCPIcon(tool, 18, theme.colors.header.tint);
+    }
+    
     // Extract subtitle using the same logic as ToolView
     let subtitle = null;
     if (knownTool && typeof knownTool.extractSubtitle === 'function') {

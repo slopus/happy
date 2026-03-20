@@ -1,7 +1,6 @@
 import { Metadata } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
-import { formatMCPTitle } from './views/MCPToolView';
 import * as z from 'zod';
 import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
@@ -1061,28 +1060,6 @@ export const knownTools = {
             return title;
         },
         icon: ICON_SKILL,
-        minimal: true
-    },
-    'mcp__happy__preview_html': {
-        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            let title = formatMCPTitle(opts.tool);
-            if (title) {
-                return title;
-            }
-            return 'Preview Html';
-        },
-        icon: ICON_WEB,
-        minimal: true
-    },
-    'mcp:happy:preview_html': {
-        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            let title = formatMCPTitle(opts.tool);
-            if (title) {
-                return title;
-            }
-            return 'Preview Html';
-        },
-        icon: ICON_WEB,
         minimal: true
     },
 } satisfies Record<string, {
