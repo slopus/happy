@@ -527,6 +527,7 @@ const style = StyleSheet.create((theme) => ({
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
         alignItems: 'flex-start',
+        minHeight: 40, // padding (8+8) + lineHeight (24) to prevent empty cell collapse
     },
     tableCellFirst: {
         borderTopWidth: 0,
