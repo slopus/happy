@@ -237,55 +237,57 @@ function renderOrchestratorStructuredOutput(tool: ToolCall, result: unknown, fal
 
 function OrchestratorStructuredOutput({ context, runs }: { context: ParsedOrchestratorContext | null; runs: ParsedOrchestratorRun[] }) {
     return (
-        <View style={styles.orchestratorContainer}>
-            {context ? <OrchestratorContextCard context={context} /> : null}
-            {runs.map((run, index) => {
-                const summaryLine = formatOrchestratorSummaryLine(run.summary);
-                return (
-                    <View key={run.runId ? `${run.runId}-${index}` : `run-${index}`} style={styles.orchestratorRunCard}>
-                        <View style={styles.orchestratorRunHeader}>
-                            <View style={styles.orchestratorRunMetaWrap}>
-                                <Text style={styles.orchestratorRunMetaLabel}>{t('settings.orchestratorLabelRunId')}</Text>
-                                <Text style={styles.orchestratorRunMetaValue}>{run.runId ?? '-'}</Text>
-                                {run.title ? <Text style={styles.orchestratorRunTitle}>{run.title}</Text> : null}
+        <LongPressCopy text={JSON.stringify({ context, runs }, null, 2)}>
+            <View style={styles.orchestratorContainer}>
+                {context ? <OrchestratorContextCard context={context} /> : null}
+                {runs.map((run, index) => {
+                    const summaryLine = formatOrchestratorSummaryLine(run.summary);
+                    return (
+                        <View key={run.runId ? `${run.runId}-${index}` : `run-${index}`} style={styles.orchestratorRunCard}>
+                            <View style={styles.orchestratorRunHeader}>
+                                <View style={styles.orchestratorRunMetaWrap}>
+                                    <Text style={styles.orchestratorRunMetaLabel}>{t('settings.orchestratorLabelRunId')}</Text>
+                                    <Text style={styles.orchestratorRunMetaValue}>{run.runId ?? '-'}</Text>
+                                    {run.title ? <Text style={styles.orchestratorRunTitle}>{run.title}</Text> : null}
+                                </View>
+                                {run.status ? <OrchestratorStatusBadge status={run.status as any} /> : null}
                             </View>
-                            {run.status ? <OrchestratorStatusBadge status={run.status as any} /> : null}
-                        </View>
-                        {summaryLine ? (
-                            <Text style={styles.orchestratorSummaryText}>{summaryLine}</Text>
-                        ) : null}
-                        {run.tasks.length > 0 ? (
-                            <View style={styles.orchestratorTasksWrap}>
-                                <Text style={styles.orchestratorTasksTitle}>{t('settings.orchestratorTasksTitle')}</Text>
-                                {run.tasks.map((task, taskIndex) => {
-                                    const outputSummary = sanitizeOrchestratorOutputSummary(task.outputSummary);
-                                    return (
-                                        <View key={task.taskId ?? `${task.seq ?? taskIndex}-${taskIndex}`} style={styles.orchestratorTaskRow}>
-                                            <View style={styles.orchestratorTaskHeader}>
-                                                <Text style={styles.orchestratorTaskTitle} numberOfLines={1}>
-                                                    {formatTaskTitle(task, taskIndex)}
-                                                </Text>
-                                                {task.status ? <OrchestratorStatusBadge status={task.status as any} /> : null}
+                            {summaryLine ? (
+                                <Text style={styles.orchestratorSummaryText}>{summaryLine}</Text>
+                            ) : null}
+                            {run.tasks.length > 0 ? (
+                                <View style={styles.orchestratorTasksWrap}>
+                                    <Text style={styles.orchestratorTasksTitle}>{t('settings.orchestratorTasksTitle')}</Text>
+                                    {run.tasks.map((task, taskIndex) => {
+                                        const outputSummary = sanitizeOrchestratorOutputSummary(task.outputSummary);
+                                        return (
+                                            <View key={task.taskId ?? `${task.seq ?? taskIndex}-${taskIndex}`} style={styles.orchestratorTaskRow}>
+                                                <View style={styles.orchestratorTaskHeader}>
+                                                    <Text style={styles.orchestratorTaskTitle} numberOfLines={1}>
+                                                        {formatTaskTitle(task, taskIndex)}
+                                                    </Text>
+                                                    {task.status ? <OrchestratorStatusBadge status={task.status as any} /> : null}
+                                                </View>
+                                                {task.provider ? (
+                                                    <Text style={styles.orchestratorTaskMeta}>
+                                                        {t('settings.orchestratorLabelProvider')}: {formatOrchestratorProviderLabel(task.provider, task.model)}
+                                                    </Text>
+                                                ) : null}
+                                                {outputSummary ? (
+                                                    <Text style={styles.orchestratorTaskMeta}>
+                                                        {t('settings.orchestratorLabelOutputSummary')}: {outputSummary}
+                                                    </Text>
+                                                ) : null}
                                             </View>
-                                            {task.provider ? (
-                                                <Text style={styles.orchestratorTaskMeta}>
-                                                    {t('settings.orchestratorLabelProvider')}: {formatOrchestratorProviderLabel(task.provider, task.model)}
-                                                </Text>
-                                            ) : null}
-                                            {outputSummary ? (
-                                                <Text style={styles.orchestratorTaskMeta}>
-                                                    {t('settings.orchestratorLabelOutputSummary')}: {outputSummary}
-                                                </Text>
-                                            ) : null}
-                                        </View>
-                                    );
-                                })}
-                            </View>
-                        ) : null}
-                    </View>
-                );
-            })}
-        </View>
+                                        );
+                                    })}
+                                </View>
+                            ) : null}
+                        </View>
+                    );
+                })}
+            </View>
+        </LongPressCopy>
     );
 }
 
