@@ -11,7 +11,7 @@
  * NOTE: Codex does NOT use standard JSON-RPC 2.0 (no "jsonrpc" field).
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import { logger } from '@/ui/logger';
 
@@ -40,6 +40,7 @@ export class CodexJsonRpcPeer {
   private serverRequestHandler: ServerRequestHandler | null = null;
   private closeHandler: (() => void) | null = null;
   private closed = false;
+  private exited = false;
   private exitPromise: Promise<number | null> | null = null;
 
   /**
@@ -66,10 +67,12 @@ export class CodexJsonRpcPeer {
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
       signal: opts.signal,
+      detached: true,  // Create new process group so we can kill all children
     });
 
     this.exitPromise = new Promise<number | null>((resolve) => {
-      this.process!.on('exit', (code) => {
+      this.process!.on('close', (code) => {
+        this.exited = true;
         logger.debug(`[CodexRPC] Process exited with code ${code}`);
         resolve(code);
       });
@@ -206,7 +209,7 @@ export class CodexJsonRpcPeer {
   }
 
   /**
-   * Close the peer and kill the child process.
+   * Close the peer and kill the child process group.
    */
   async close(): Promise<void> {
     if (this.closed) return;
@@ -217,22 +220,46 @@ export class CodexJsonRpcPeer {
     this.readline?.close();
     this.readline = null;
 
-    if (this.process && !this.process.killed) {
+    const child = this.process;
+    const pid = child?.pid;
+    if (pid && !this.exited) {
       // Close stdin first to signal the process
-      this.process.stdin?.end();
+      child!.stdin?.end();
 
-      // Give it a chance to exit gracefully
-      const exitOrTimeout = Promise.race([
-        this.exitPromise,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-      ]);
+      // SIGTERM the entire process group (kills Codex + any bash children).
+      const termResult = this.killProcessGroup(child!, pid, 'SIGTERM');
 
-      this.process.kill('SIGTERM');
+      // Skip wait only if process is confirmed dead; on failure, still wait
+      // (the signal may have partially worked, or process may exit on its own)
+      if (termResult !== 'dead') {
+        const didExit = await Promise.race([
+          this.exitPromise?.then(() => true),
+          new Promise<false>((resolve) => setTimeout(() => resolve(false), 3000)),
+        ]);
 
-      const code = await exitOrTimeout;
-      if (code === null && this.process && !this.process.killed) {
-        logger.debug('[CodexRPC] Process did not exit after SIGTERM, sending SIGKILL');
-        this.process.kill('SIGKILL');
+        // SIGKILL the process group if still alive
+        if (!didExit) {
+          logger.debug('[CodexRPC] Process group did not exit after SIGTERM, sending SIGKILL');
+          const killResult = this.killProcessGroup(child!, pid, 'SIGKILL');
+
+          if (killResult !== 'dead') {
+            await Promise.race([
+              this.exitPromise?.then(() => true),
+              new Promise<false>((resolve) => setTimeout(() => resolve(false), 2000)),
+            ]);
+          }
+        }
+      }
+
+      // Brief grace period for close event delivery before warning
+      if (!this.exited) {
+        await Promise.race([
+          this.exitPromise?.then(() => true),
+          new Promise<false>((resolve) => setTimeout(() => resolve(false), 200)),
+        ]);
+      }
+      if (!this.exited) {
+        logger.warn(`[CodexRPC] Process ${pid} did not confirm exit — may have leaked`);
       }
     }
 
@@ -243,7 +270,7 @@ export class CodexJsonRpcPeer {
    * Check if the peer is still alive.
    */
   get isAlive(): boolean {
-    return !this.closed && this.process !== null && !this.process.killed;
+    return !this.closed && this.process !== null && !this.exited;
   }
 
   /**
@@ -342,6 +369,61 @@ export class CodexJsonRpcPeer {
       this.notificationHandler(method, params);
     } else {
       logger.debug(`[CodexRPC] No handler for notification '${method}'`);
+    }
+  }
+
+  /**
+   * Kill the process group. Returns:
+   * - 'sent': signal was delivered successfully
+   * - 'dead': process is already dead (ESRCH / taskkill "not found")
+   * - 'failed': kill attempt failed (EPERM, etc.) — caller should still wait
+   */
+  private killProcessGroup(child: ChildProcess, pid: number, signal: NodeJS.Signals): 'sent' | 'dead' | 'failed' {
+    if (process.platform === 'win32') {
+      return this.killProcessGroupWindows(pid, signal);
+    }
+
+    try {
+      // Unix: kill the entire process group via negative PID
+      process.kill(-pid, signal);
+      return 'sent';
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ESRCH') {
+        return 'dead';
+      }
+      // Real failure (e.g. EPERM) — log and try direct kill as degraded fallback.
+      // Only kills the leader, not the full tree — treat as 'failed' so caller
+      // still waits and escalates, since child processes may survive.
+      logger.warn(`[CodexRPC] process.kill(-${pid}, ${signal}) failed: ${code}, falling back to direct kill`);
+      try {
+        child.kill(signal);
+      } catch { /* already dead */ }
+      return 'failed';
+    }
+  }
+
+  /**
+   * Windows process tree kill. Uses taskkill with two-phase approach:
+   * - SIGTERM phase: graceful shutdown without /F (allows cleanup)
+   * - SIGKILL phase: forced termination with /F /T (kills entire tree)
+   */
+  private killProcessGroupWindows(pid: number, signal: NodeJS.Signals): 'sent' | 'dead' | 'failed' {
+    const cmd = signal === 'SIGKILL'
+      ? `taskkill /PID ${pid} /T /F`
+      : `taskkill /PID ${pid} /T`;
+    try {
+      execSync(cmd, { stdio: 'ignore' });
+      return 'sent';
+    } catch (err) {
+      // taskkill exit code 128 = "not found" (process already dead).
+      // Use structured status field rather than error message text.
+      const status = (err as { status?: number }).status;
+      if (status === 128) {
+        return 'dead';
+      }
+      logger.warn(`[CodexRPC] taskkill failed for PID ${pid} (exit ${status}): ${err instanceof Error ? err.message : err}`);
+      return 'failed';
     }
   }
 
