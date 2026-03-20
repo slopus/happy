@@ -400,23 +400,35 @@ export async function runGemini(opts: {
 
   let abortController = new AbortController();
   let shouldExit = false;
+  let abortRequested = false;
+  let abortFeedbackSent = false;
   let geminiBackend: AgentBackend | null = null;
   let acpSessionId: string | null = null;
   let wasSessionCreated = false;
 
   async function handleAbort() {
     logger.debug('[Gemini] Abort requested - stopping current task');
-    
-    // Send turn_aborted event (like Codex) when abort is requested
-    session.sendAgentMessage('gemini', {
-      type: 'turn_aborted',
-      id: randomUUID(),
-    });
-    
+    abortRequested = true;
+
+    // Immediately stop "thinking" so keepAlive stops reporting in-progress
+    thinking = false;
+    session.keepAlive(thinking, 'remote');
+
+    // Send visible abort feedback (like Codex)
+    if (!abortFeedbackSent) {
+      abortFeedbackSent = true;
+      messageBuffer.addMessage('Aborted by user', 'status');
+      session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+      session.sendAgentMessage('gemini', {
+        type: 'turn_aborted',
+        id: randomUUID(),
+      });
+    }
+
     // Abort reasoning processor and reset diff processor
     reasoningProcessor.abort();
     diffProcessor.reset();
-    
+
     try {
       abortController.abort();
       messageQueue.reset();
@@ -646,12 +658,18 @@ export async function runGemini(opts: {
         // Log error status with details
         if (msg.status === 'error') {
           logger.debug(`[gemini] ⚠️ Error status received: ${statusDetail || 'Unknown error'}`);
-          
-          // Send turn_aborted event (like Codex) when error occurs
-          session.sendAgentMessage('gemini', {
-            type: 'turn_aborted',
-            id: randomUUID(),
-          });
+
+          // Only send turn_aborted for user-initiated aborts, not general errors.
+          // General errors are handled in the error branch below (line ~701) which
+          // sends error messages. Sending turn_aborted for non-abort errors would
+          // conflict with task_complete in the finally block.
+          if (abortRequested && !abortFeedbackSent) {
+            abortFeedbackSent = true;
+            session.sendAgentMessage('gemini', {
+              type: 'turn_aborted',
+              id: randomUUID(),
+            });
+          }
         }
         
         if (msg.status === 'running') {
@@ -1228,6 +1246,11 @@ export async function runGemini(opts: {
           throw new Error('ACP session not started');
         }
          
+        // Reset abort state at turn start — prevents idle-time aborts from
+        // leaking into the next turn
+        abortRequested = false;
+        abortFeedbackSent = false;
+
         // Reset accumulator when sending a new prompt (not when tool calls start)
         // Reset accumulated response for new prompt
         // This ensures a new assistant message will be created (not updating previous one)
@@ -1357,11 +1380,17 @@ export async function runGemini(opts: {
       } catch (error) {
         logger.debug('[gemini] Error in gemini session:', error);
         const isAbortError = error instanceof Error && error.name === 'AbortError';
+        const isUserAbort = isAbortError || abortRequested;
 
-        if (isAbortError) {
+        if (isUserAbort && !abortFeedbackSent) {
+          abortFeedbackSent = true;
           messageBuffer.addMessage('Aborted by user', 'status');
           session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
-        } else {
+          session.sendAgentMessage('gemini', {
+            type: 'turn_aborted',
+            id: randomUUID(),
+          });
+        } else if (!isUserAbort) {
           // Parse error message
           let errorMsg = 'Process error occurred';
           
@@ -1471,19 +1500,35 @@ export async function runGemini(opts: {
           isResponseInProgress = false;
         }
         
-        // Send task_complete ONCE at the end of turn (not on every idle)
-        // This signals to the UI that the agent has finished processing
-        session.sendAgentMessage('gemini', {
-          type: 'task_complete',
-          id: randomUUID(),
-        });
-        
+        // Send abort feedback as fallback if handleAbort() sent turn_aborted
+        // but dispose() resolved waitForResponseComplete() normally (no throw),
+        // so the catch block didn't run.
+        if (abortRequested && !abortFeedbackSent) {
+          abortFeedbackSent = true;
+          messageBuffer.addMessage('Aborted by user', 'status');
+          session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+          session.sendAgentMessage('gemini', {
+            type: 'turn_aborted',
+            id: randomUUID(),
+          });
+        }
+
+        // Send task_complete only for non-abort turns (abort sends turn_aborted instead)
+        if (!abortRequested) {
+          session.sendAgentMessage('gemini', {
+            type: 'task_complete',
+            id: randomUUID(),
+          });
+        }
+
         // Reset tracking flags
+        abortRequested = false;
+        abortFeedbackSent = false;
         hadToolCallInTurn = false;
         pendingChangeTitle = false;
         changeTitleCompleted = false;
         taskStartedSent = false;
-        
+
         thinking = false;
         session.keepAlive(thinking, 'remote');
         

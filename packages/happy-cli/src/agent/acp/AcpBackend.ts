@@ -1298,8 +1298,18 @@ export class AcpBackend implements AgentBackend {
       await this.connection.cancel({ sessionId: this.acpSessionId });
       this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
     } catch (error) {
-      // Log to file only, not console
+      // Cancel RPC failure typically means the connection/process is already
+      // dead, so no late updates will arrive. We still resolve the waiter below
+      // to unblock the main loop — leaving it stuck for 120s is worse.
       logger.debug('[AcpBackend] Error cancelling:', error);
+    }
+
+    // Resolve waitForResponseComplete() so the main loop can proceed to cleanup.
+    // cancel() emits 'stopped' (not 'idle'), which doesn't trigger idleResolver.
+    this.waitingForResponse = false;
+    if (this.idleResolver) {
+      logger.debug('[AcpBackend] Resolving idle waiter after cancel');
+      this.idleResolver();
     }
   }
 

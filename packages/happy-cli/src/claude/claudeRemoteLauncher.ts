@@ -183,15 +183,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         if (message.type === 'result') {
             const resultMsg = message as SDKResultMessage;
             if (resultMsg.subtype === 'error_during_execution') {
-                // Extract errors from the result message
                 const errors = (resultMsg as any).errors as string[] | undefined;
-                if (errors && errors.length > 0) {
-                    // Send each error as a session event message
+                if (abortController?.signal.aborted) {
+                    // Error caused by user-initiated abort — log only, don't show in UI
+                    logger.debug('[remote]: suppressing error_during_execution caused by user abort', { errors });
+                } else if (errors && errors.length > 0) {
                     const errorText = errors.join('\n');
                     session.client.sendSessionEvent({ type: 'message', message: `Error: ${errorText}` });
                     logger.debug('[remote]: sent error_during_execution as session event', { errorCount: errors.length });
                 } else {
-                    // No specific errors, send generic message
                     session.client.sendSessionEvent({ type: 'message', message: 'An error occurred during execution' });
                 }
             }

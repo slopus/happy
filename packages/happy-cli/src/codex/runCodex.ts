@@ -400,6 +400,8 @@ export async function runCodex(opts: {
     //
 
     let shouldExit = false;
+    let abortRequested = false;
+    let abortFeedbackSent = false;
     let storedSessionIdForResume: string | null = null;
 
     // Resume file from App-side resume/duplicate (passed via daemon env var)
@@ -410,14 +412,30 @@ export async function runCodex(opts: {
 
     async function handleAbort() {
         logger.debug('[Codex] Abort requested - stopping current task');
+        abortRequested = true;
         try {
-            if (backend?.isAlive && backend.getSessionId()) {
-                storedSessionIdForResume = backend.getSessionId();
+            // Capture local reference — the global `backend` may be replaced by the
+            // main loop while we await dispose(), so we must not blindly null it later.
+            const b = backend;
+            if (b?.isAlive) {
+                const sid = b.getSessionId();
+                if (sid) storedSessionIdForResume = sid;
                 logger.debug('[Codex] Stored session for resume:', storedSessionIdForResume);
-                await backend.cancel(backend.getConversationId()!);
+
+                // Fire-and-forget: polite turn/interrupt (don't await — may hang)
+                if (b.getConversationId()) {
+                    b.cancel(b.getConversationId()!).catch(() => {});
+                }
+
+                // Immediately dispose — resolves waitForResponseComplete() and
+                // kills the process group (SIGTERM → SIGKILL) so bash children die too
+                try { await b.dispose(); } catch {}
+
+                // Only null out if no new backend was created during dispose
+                if (backend === b) backend = null;
             }
             reasoningProcessor.abort();
-            logger.debug('[Codex] Abort completed - session remains active');
+            logger.debug('[Codex] Abort completed');
         } catch (error) {
             logger.debug('[Codex] Error during abort:', error);
         }
@@ -597,6 +615,7 @@ export async function runCodex(opts: {
                         });
                     }
 
+                    if (isAborted) abortFeedbackSent = true;
                     session.sendAgentMessage('codex', {
                         type: isAborted ? 'turn_aborted' : 'task_complete',
                         id: randomUUID(),
@@ -988,6 +1007,11 @@ export async function runCodex(opts: {
             messageBuffer.addMessage(message.message, 'user');
             currentModeHash = message.hash;
 
+            // Reset abort state at turn start — prevents idle-time aborts from
+            // leaking into the next turn (HIGH fix: sticky abortRequested flag)
+            abortRequested = false;
+            abortFeedbackSent = false;
+
             try {
                 const approvalPolicy = mapApprovalPolicy(message.mode.permissionMode);
                 const sandbox = mapSandbox(message.mode.permissionMode);
@@ -1009,7 +1033,9 @@ export async function runCodex(opts: {
                     logger.debug(`[Codex] Downloaded ${images.length} image(s)`);
                 }
 
-                if (!wasCreated) {
+                if (!wasCreated || !backend?.isAlive) {
+                    // Reset if backend was killed by abort
+                    wasCreated = false;
                     // System prompt (Options, DooTask, change_title) is passed via baseInstructions
                     const promptText = message.message;
 
@@ -1085,15 +1111,34 @@ export async function runCodex(opts: {
                     // Wait for this turn to complete
                     await backend!.waitForResponseComplete!();
                 }
+
+                // dispose() resolves waitForResponseComplete() normally (not throw),
+                // so the catch block won't run. Send abort feedback here as fallback,
+                // but only if the notification handler hasn't already sent it.
+                if (abortRequested && !abortFeedbackSent) {
+                    abortFeedbackSent = true;
+                    messageBuffer.addMessage('Aborted by user', 'status');
+                    session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+                    session.sendAgentMessage('codex', {
+                        type: 'turn_aborted',
+                        id: randomUUID(),
+                    });
+                }
             } catch (error) {
                 const errMsg = formatUnknownCodexError(error);
                 logger.warn('Error in codex session:', errMsg);
                 const isAbortError = error instanceof Error && error.name === 'AbortError';
+                const isUserAbort = isAbortError || abortRequested;
 
-                if (isAbortError) {
+                if (isUserAbort && !abortFeedbackSent) {
+                    abortFeedbackSent = true;
                     messageBuffer.addMessage('Aborted by user', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
-                } else {
+                    session.sendAgentMessage('codex', {
+                        type: 'turn_aborted',
+                        id: randomUUID(),
+                    });
+                } else if (!isUserAbort) {
                     messageBuffer.addMessage('Process exited unexpectedly', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     // Store session for potential recovery
@@ -1101,14 +1146,14 @@ export async function runCodex(opts: {
                         storedSessionIdForResume = backend.getSessionId();
                         logger.debug('[Codex] Stored session after unexpected error:', storedSessionIdForResume);
                     }
+                    session.sendAgentMessage('codex', {
+                        type: 'task_complete',
+                        id: randomUUID(),
+                    });
                 }
-
-                // Close the task lifecycle so the frontend doesn't stay stuck in "thinking"
-                session.sendAgentMessage('codex', {
-                    type: isAbortError ? 'turn_aborted' : 'task_complete',
-                    id: randomUUID(),
-                });
             } finally {
+                abortRequested = false;
+                abortFeedbackSent = false;
                 permissionHandler.reset();
                 reasoningProcessor.abort();
                 diffProcessor.reset();
