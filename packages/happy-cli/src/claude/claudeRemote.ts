@@ -1,5 +1,5 @@
 import { EnhancedMode } from "./loop";
-import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { Query, query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join, resolve } from 'node:path';
@@ -42,6 +42,8 @@ export async function claudeRemote(opts: {
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
+    /** Called when the SDK Query instance is created, allowing the caller to call interrupt() */
+    onQueryCreated?: (query: Query) => void,
 }) {
 
     // Check if session is valid
@@ -226,6 +228,9 @@ export async function claudeRemote(opts: {
         prompt: messages,
         options: sdkOptions,
     });
+
+    // Expose Query instance so the caller can call interrupt() for graceful abort
+    opts.onQueryCreated?.(response);
 
     updateThinking(true);
     try {

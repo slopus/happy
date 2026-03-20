@@ -6,7 +6,7 @@ import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
-import { SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKUserMessage } from "./sdk";
+import { Query, SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
@@ -72,12 +72,48 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let exitReason: 'switch' | 'exit' | null = null;
     let abortController: AbortController | null = null;
     let abortFuture: Future<void> | null = null;
+    let currentQuery: Query | null = null;
 
     async function abort() {
-        if (abortController && !abortController.signal.aborted) {
-            abortController.abort();
+        // Capture references locally so a new query round can't overwrite them
+        // while we're awaiting the interrupt timeout.
+        const query = currentQuery;
+        const controller = abortController;
+        const future = abortFuture;
+
+        // Idempotent: if a previous abort already fired, just wait for completion.
+        if (controller?.signal.aborted) {
+            await future?.promise;
+            return;
         }
-        await abortFuture?.promise;
+
+        // Step 1: Try graceful interrupt via SDK control request.
+        // This tells Claude Code to stop its current turn immediately.
+        if (query) {
+            try {
+                await Promise.race([
+                    query.interrupt(),
+                    new Promise<void>((_, reject) =>
+                        setTimeout(() => reject(new Error('interrupt timeout')), 3000)
+                    ),
+                ]);
+                logger.debug('[remote]: interrupt() succeeded');
+            } catch (e) {
+                logger.debug('[remote]: interrupt() failed or timed out, falling back to SIGTERM', e);
+            }
+        }
+
+        // Step 2: Signal abort — unblocks nextMessage() and streamToStdin(), then
+        // triggers SIGTERM (escalating to SIGKILL after 3s) via cleanup in query.ts.
+        // This MUST run even after a successful interrupt: interrupt stops the current
+        // turn, but the abort signal is still needed to unblock the message queue and
+        // end stdin so that claudeRemote() can return.
+        if (controller && !controller.signal.aborted) {
+            controller.abort();
+        }
+
+        // Step 3: Wait for claudeRemote() to finish (finally block resolves the future)
+        await future?.promise;
     }
 
     async function doAbort() {
@@ -418,6 +454,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
+                    onQueryCreated: (q) => {
+                        currentQuery = q;
+                    },
                     onReady: () => {
                         if (!pending && session.queue.size() === 0) {
                             session.client.sendSessionEvent({ type: 'ready' });
@@ -457,6 +496,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } finally {
 
                 logger.debug('[remote]: launch finally');
+                currentQuery = null;
 
                 // Terminate all ongoing tool calls
                 for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {

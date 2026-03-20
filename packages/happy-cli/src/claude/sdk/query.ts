@@ -93,8 +93,10 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
 
                         if (message.type === 'control_response') {
                             const controlResponse = message as SDKControlResponse
-                            const handler = this.pendingControlResponses.get(controlResponse.response.request_id)
+                            const requestId = controlResponse.response.request_id
+                            const handler = this.pendingControlResponses.get(requestId)
                             if (handler) {
+                                this.pendingControlResponses.delete(requestId)
                                 handler(controlResponse.response)
                             }
                             continue
@@ -348,7 +350,9 @@ export function query(config: {
     const child = spawn(spawnCommand, spawnArgs, {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
-        signal: config.options?.abort,
+        // Note: `signal` intentionally omitted – the abort signal is handled
+        // by the explicit listener below so that callers can send an SDK
+        // interrupt() control-request *before* the process is killed.
         env: spawnEnv,
         // Use shell on Windows for global binaries and command-only mode
         shell: !isJsFile && process.platform === 'win32'
@@ -370,14 +374,31 @@ export function query(config: {
         })
     }
 
-    // Setup cleanup
+    // Track whether the child process has actually exited (child.killed only
+    // indicates whether a kill signal was *sent*, not whether the process died).
+    let exited = false
+    child.on('close', () => { exited = true })
+
+    // Setup cleanup – SIGTERM first, escalate to SIGKILL after 3 seconds
     const cleanup = () => {
-        if (!child.killed) {
-            child.kill('SIGTERM')
-        }
+        if (exited) return
+        child.kill('SIGTERM')
+
+        const killTimer = setTimeout(() => {
+            if (!exited) {
+                logDebug('Process did not exit after SIGTERM, sending SIGKILL')
+                child.kill('SIGKILL')
+            }
+        }, 3000)
+        killTimer.unref()
     }
 
-    config.options?.abort?.addEventListener('abort', cleanup)
+    // If the abort signal already fired before we registered, clean up immediately.
+    if (config.options?.abort?.aborted) {
+        cleanup()
+    } else {
+        config.options?.abort?.addEventListener('abort', cleanup)
+    }
     process.on('exit', cleanup)
 
     // Handle process exit
