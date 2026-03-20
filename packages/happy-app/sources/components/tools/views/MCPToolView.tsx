@@ -59,8 +59,22 @@ export function formatMCPSubtitle(tool: ToolCall): string {
     }
 
     // Show orchestrator_* tool details in subtitle if available
-    if (withoutPrefix === "orchestrator_submit" && tool.input?.title) {
-        return `${tool.input.title}`;
+    if (withoutPrefix === "orchestrator_submit") {
+        let subtitle = tool.input?.title || '';
+        try {
+            const resultText = JSON.parse(tool.result?.text || tool.result?.[0]?.text || '{}');
+            if (resultText.ok === true && resultText.data?.runId) {
+                if (subtitle) {
+                    subtitle = `Run ID: ${resultText.data.runId} - ${subtitle}`;
+                }
+            }
+        } catch (e) {
+            // If parsing fails, just return the subtitle without run ID
+        }
+        if (subtitle) {
+            return subtitle;
+        }
+        return '';
     }
     if (withoutPrefix === "orchestrator_pend" && tool.input?.runId) {
         return `Run ID: ${tool.input.runId}`;
