@@ -217,18 +217,18 @@ export default function OrchestratorTaskDetailScreen() {
                         const machineId = resolveTaskMachineId(task);
                         return machineId ? resolveMachineName(machineId, machineNameMap) : '-';
                     })()}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelTaskKey')}: {task.taskKey || '-'}</Text>
+                    {!!task.taskKey && <Text style={styles.row}>{t('settings.orchestratorLabelTaskKey')}: {task.taskKey}</Text>}
                     <Text style={styles.row}>{t('settings.orchestratorLabelWorkingDir')}: {task.workingDirectory || '-'}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelDependsOn')}: {task.dependsOn.length > 0 ? task.dependsOn.join(', ') : '-'}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelRetryPolicy')}: {t('settings.orchestratorRetryPolicyValue', { maxAttempts: task.retry.maxAttempts, backoffMs: task.retry.backoffMs })}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelNextAttempt')}: {formatDate(task.nextAttemptAt)}</Text>
+                    {task.dependsOn.length > 0 && <Text style={styles.row}>{t('settings.orchestratorLabelDependsOn')}: {task.dependsOn.join(', ')}</Text>}
+                    {(task.retry.maxAttempts > 1 || task.retry.backoffMs > 0) && <Text style={styles.row}>{t('settings.orchestratorLabelRetryPolicy')}: {t('settings.orchestratorRetryPolicyValue', { maxAttempts: task.retry.maxAttempts, backoffMs: task.retry.backoffMs })}</Text>}
+                    {!!task.nextAttemptAt && <Text style={styles.row}>{t('settings.orchestratorLabelNextAttempt')}: {formatDate(task.nextAttemptAt)}</Text>}
                 </View>
 
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>{t('settings.orchestratorResultTitle')}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelOutputSummary')}: {taskOutputSummary || '-'}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelErrorCode')}: {task.errorCode || '-'}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelErrorMessage')}: {task.errorMessage || '-'}</Text>
+                    {!!task.errorCode && <Text style={styles.row}>{t('settings.orchestratorLabelErrorCode')}: {task.errorCode}</Text>}
+                    {!!task.errorMessage && <Text style={styles.row}>{t('settings.orchestratorLabelErrorMessage')}: {task.errorMessage}</Text>}
                 </View>
 
                 <View style={styles.card}>
@@ -248,8 +248,8 @@ export default function OrchestratorTaskDetailScreen() {
                                 <Text style={styles.row}>{t('settings.orchestratorLabelStarted')}: {formatDate(execution.startedAt)}</Text>
                                 <Text style={styles.row}>{t('settings.orchestratorLabelFinished')}: {formatDate(execution.finishedAt)}</Text>
                                 <Text style={styles.row}>{t('settings.orchestratorLabelExitCode')}: {execution.exitCode ?? '-'}</Text>
-                                <Text style={styles.row}>{t('settings.orchestratorLabelSignal')}: {execution.signal || '-'}</Text>
-                                <Text style={styles.row}>{t('settings.orchestratorLabelError')}: {execution.errorCode || '-'} {execution.errorMessage ? `· ${execution.errorMessage}` : ''}</Text>
+                                {!!execution.signal && <Text style={styles.row}>{t('settings.orchestratorLabelSignal')}: {execution.signal}</Text>}
+                                {(!!execution.errorCode || !!execution.errorMessage) && <Text style={styles.row}>{t('settings.orchestratorLabelError')}: {execution.errorCode || ''}{execution.errorMessage ? ` · ${execution.errorMessage}` : ''}</Text>}
                                 {executionOutputSummary ? <Text style={styles.bodyText}>{executionOutputSummary}</Text> : null}
                             </View>
                         );
