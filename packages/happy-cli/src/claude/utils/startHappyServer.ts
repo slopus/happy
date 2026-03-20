@@ -232,14 +232,16 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                     const response = await client.orchestratorGetContext();
                     const data = response?.data ?? null;
                     if (data) {
+                        const machines = data.machines ?? [];
+                        const currentMachine = machines.find((m: any) => m.machineId === metadata?.machineId);
                         return toToolSuccess({
                             ok: true,
                             data: {
                                 ...fallback,
                                 defaults: data.defaults ?? fallback.defaults,
-                                providers: data.providers ?? fallback.providers,
-                                modelModes: data.modelModes ?? fallback.modelModes,
-                                machines: data.machines ?? [],
+                                providers: currentMachine?.providers ?? data.providers ?? fallback.providers,
+                                modelModes: currentMachine?.modelModes ?? data.modelModes ?? fallback.modelModes,
+                                machines,
                             },
                         });
                     }

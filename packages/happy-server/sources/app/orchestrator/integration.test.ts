@@ -686,7 +686,17 @@ const {
         $transaction: vi.fn(async (fn: any) => fn(tx)),
     };
 
-    const invokeUserRpcMock = vi.fn(async () => ({}));
+    const invokeUserRpcMock = vi.fn(async (_userId: string, method: string) => {
+        if (method.endsWith(':bash')) {
+            return {
+                success: true,
+                stdout: 'claude:true\ncodex:true\ngemini:true\n',
+                stderr: '',
+                exitCode: 0,
+            };
+        }
+        return {};
+    });
     const listConnectedUserRpcMethodsMock = vi.fn((_userId: string) => {
         return Array.from(state.dispatchReadyMachineIds).map((machineId) => `${machineId}:orchestrator-dispatch`);
     });
@@ -724,6 +734,10 @@ vi.mock('@/storage/db', () => ({
 vi.mock('@/app/api/socket/rpcRegistry', () => ({
     invokeUserRpc: invokeUserRpcMock,
     listConnectedUserRpcMethods: listConnectedUserRpcMethodsMock,
+    hasUserRpcMethod: vi.fn((_userId: string, method: string) => {
+        const machineId = method.replace(/:bash$/, '');
+        return state.dispatchReadyMachineIds.has(machineId);
+    }),
 }));
 
 vi.mock('@/app/events/eventRouter', () => ({
@@ -757,6 +771,17 @@ describe('orchestrator integration paths', () => {
     beforeEach(() => {
         resetState();
         invokeUserRpcMock.mockReset();
+        invokeUserRpcMock.mockImplementation(async (_userId: string, method: string) => {
+            if (method.endsWith(':bash')) {
+                return {
+                    success: true,
+                    stdout: 'claude:true\ncodex:true\ngemini:true\n',
+                    stderr: '',
+                    exitCode: 0,
+                };
+            }
+            return {};
+        });
         listConnectedUserRpcMethodsMock.mockClear();
         eventRouterMock.getConnections.mockClear();
     });
@@ -1383,13 +1408,90 @@ describe('orchestrator integration paths', () => {
                 machineId: 'machine-1',
                 online: true,
                 dispatchReady: true,
+                providers: ['claude', 'codex', 'gemini'],
+                modelModes: {
+                    claude: CLAUDE_MODEL_MODES,
+                    codex: CODEX_MODEL_MODES,
+                    gemini: GEMINI_MODEL_MODES,
+                },
             }),
             expect.objectContaining({
                 machineId: 'machine-2',
                 online: false,
                 dispatchReady: false,
+                providers: [],
+                modelModes: {},
             }),
         ]);
+        await app.close();
+    });
+
+    it('returns per-machine detected providers from bash RPC', async () => {
+        state.machines.push({
+            id: 'machine-2',
+            accountId: 'user-1',
+            active: true,
+            lastActiveAt: new Date('2026-03-16T00:00:01.000Z'),
+        });
+        state.onlineMachineIds = new Set(['machine-1', 'machine-2']);
+        state.dispatchReadyMachineIds = new Set(['machine-1', 'machine-2']);
+
+        invokeUserRpcMock.mockImplementation(async (_userId: string, method: string) => {
+            if (method === 'machine-1:bash') {
+                return { success: true, stdout: 'claude:true\ncodex:true\ngemini:true\n', stderr: '', exitCode: 0 };
+            }
+            if (method === 'machine-2:bash') {
+                return { success: true, stdout: 'claude:true\ncodex:false\ngemini:false\n', stderr: '', exitCode: 0 };
+            }
+            return {};
+        });
+
+        const app = await createApp();
+        const response = await app.inject({
+            method: 'GET',
+            url: '/v1/orchestrator/context',
+            headers: { 'x-user-id': 'user-1' },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        const m1 = body.data.machines.find((m: any) => m.machineId === 'machine-1');
+        const m2 = body.data.machines.find((m: any) => m.machineId === 'machine-2');
+
+        expect(m1.providers).toEqual(['claude', 'codex', 'gemini']);
+        expect(m1.modelModes).toEqual({
+            claude: CLAUDE_MODEL_MODES,
+            codex: CODEX_MODEL_MODES,
+            gemini: GEMINI_MODEL_MODES,
+        });
+
+        expect(m2.providers).toEqual(['claude']);
+        expect(m2.modelModes).toEqual({
+            claude: CLAUDE_MODEL_MODES,
+        });
+        await app.close();
+    });
+
+    it('returns empty providers when bash RPC times out', async () => {
+        invokeUserRpcMock.mockImplementation(async (_userId: string, method: string) => {
+            if (method.endsWith(':bash')) {
+                throw new Error('timeout');
+            }
+            return {};
+        });
+
+        const app = await createApp();
+        const response = await app.inject({
+            method: 'GET',
+            url: '/v1/orchestrator/context',
+            headers: { 'x-user-id': 'user-1' },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        const m1 = body.data.machines.find((m: any) => m.machineId === 'machine-1');
+        expect(m1.providers).toEqual([]);
+        expect(m1.modelModes).toEqual({});
         await app.close();
     });
 

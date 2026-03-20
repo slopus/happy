@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { delay } from "@/utils/delay";
 import { warn } from "@/utils/log";
 import { eventRouter, buildOrchestratorActivityEphemeral } from "@/app/events/eventRouter";
-import { listConnectedUserRpcMethods } from "@/app/api/socket/rpcRegistry";
+import { listConnectedUserRpcMethods, invokeUserRpc, hasUserRpcMethod } from "@/app/api/socket/rpcRegistry";
 import { randomUUID } from "node:crypto";
 import {
     CLAUDE_MODEL_MODES,
@@ -33,6 +33,16 @@ const RUN_STATUSES = ['queued', 'running', 'canceling', 'completed', 'failed', '
 const EXECUTION_FINAL_STATUSES = ['completed', 'failed', 'cancelled', 'timeout'] as const;
 const LIST_RUN_STATUS_FILTERS = ['active', 'terminal', ...RUN_STATUSES] as const;
 const IDEMPOTENCY_RETRY_TIMES = 2;
+const CLI_DETECTION_COMMAND =
+    '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
+    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false") && ' +
+    '(command -v gemini >/dev/null 2>&1 && echo "gemini:true" || echo "gemini:false")';
+const CLI_DETECTION_TIMEOUT_MS = 20_000;
+const MODEL_MODES_BY_PROVIDER: Record<string, readonly string[]> = {
+    claude: CLAUDE_MODEL_MODES,
+    codex: CODEX_MODEL_MODES,
+    gemini: GEMINI_MODEL_MODES,
+};
 const IDEMPOTENCY_RETRY_DELAY_MS = 10;
 const DEFAULT_CONTEXT_MAX_CONCURRENCY = 2;
 const DEFAULT_CONTEXT_WAIT_TIMEOUT_MS = 120_000;
@@ -40,6 +50,79 @@ const DEFAULT_CONTEXT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_CONTEXT_RETRY_MAX_ATTEMPTS = 1;
 const DEFAULT_CONTEXT_RETRY_BACKOFF_MS = 0;
 const PEND_POLL_INTERVAL_MS = 3000;
+
+type ProviderName = typeof PROVIDERS[number];
+
+type BashRpcResponse = {
+    success: boolean;
+    stdout: string;
+    stderr: string;
+    exitCode?: number;
+};
+
+/**
+ * Detect which CLI providers are installed on the given machines via bash RPC.
+ * Runs detection commands in parallel with a timeout.
+ * Returns a Map of machineId -> detected provider names.
+ * On failure/timeout, returns empty array for that machine.
+ */
+async function detectMachineProviders(
+    userId: string,
+    machineIds: string[],
+): Promise<Map<string, ProviderName[]>> {
+    const result = new Map<string, ProviderName[]>();
+    if (machineIds.length === 0) {
+        return result;
+    }
+
+    const detectionPromises = machineIds.map(async (machineId): Promise<[string, ProviderName[]]> => {
+        if (!hasUserRpcMethod(userId, `${machineId}:bash`)) {
+            return [machineId, []];
+        }
+
+        try {
+            const response = await invokeUserRpc(
+                userId,
+                `${machineId}:bash`,
+                { command: CLI_DETECTION_COMMAND, cwd: '/' },
+                CLI_DETECTION_TIMEOUT_MS,
+            ) as BashRpcResponse;
+
+            if (!response || !response.success) {
+                return [machineId, []];
+            }
+
+            const statusByProvider = new Map<ProviderName, boolean>();
+            const lines = (response.stdout || '').trim().split('\n');
+            for (const line of lines) {
+                const [cliRaw, statusRaw] = line.split(':');
+                const cli = cliRaw?.trim();
+                const status = statusRaw?.trim();
+                if (!cli || !status) {
+                    continue;
+                }
+                if (!PROVIDERS.includes(cli as ProviderName)) {
+                    continue;
+                }
+                statusByProvider.set(cli as ProviderName, status === 'true');
+            }
+
+            const providers = PROVIDERS.filter((provider) => statusByProvider.get(provider) === true);
+            return [machineId, providers];
+        } catch {
+            return [machineId, []];
+        }
+    });
+
+    const settled = await Promise.allSettled(detectionPromises);
+    for (const entry of settled) {
+        if (entry.status === 'fulfilled') {
+            result.set(entry.value[0], entry.value[1]);
+        }
+    }
+
+    return result;
+}
 
 /**
  * Emit an ephemeral orchestrator-activity event with the current running task count
@@ -671,15 +754,25 @@ export function orchestratorRoutes(app: Fastify) {
                 lastActiveAt: true,
             },
         });
+        const dispatchReadyIds = [...dispatchReadyMachineIds];
+        const detectedProviders = await detectMachineProviders(userId, dispatchReadyIds);
+
         const machineList = machines.map((machine) => {
             const online = onlineMachineIds.has(machine.id);
             const dispatchReady = dispatchReadyMachineIds.has(machine.id);
+            const providers = detectedProviders.get(machine.id) ?? [];
+            const modelModes: Record<string, readonly string[]> = {};
+            for (const provider of providers) {
+                modelModes[provider] = MODEL_MODES_BY_PROVIDER[provider];
+            }
             return {
                 machineId: machine.id,
                 active: machine.active,
                 online,
                 dispatchReady,
                 lastActiveAt: machine.lastActiveAt.toISOString(),
+                providers,
+                modelModes,
             };
         }).sort((a, b) => {
             if (a.dispatchReady !== b.dispatchReady) {
