@@ -16,7 +16,7 @@ const orchestratorTaskSchema = z.object({
   workingDirectory: z.string().max(512).optional()
     .describe('Absolute path for task execution. Defaults to the controller session working directory from get_context.'),
   dependsOn: z.array(z.string().min(1).max(128)).max(31).optional()
-    .describe('Optional list of dependency taskKey values. Use taskKey names, not taskId.'),
+    .describe('Optional list of dependency taskKey values (use taskKey names, not taskId). Dependent tasks run only after all listed dependencies complete, but receive no output or context from them. To pass data between tasks, instruct the upstream task to write results to a file, and the downstream task to read it.'),
   retry: z.object({
     maxAttempts: z.number().int().min(1).max(10).optional()
       .describe('Maximum attempts for this task (including first run).'),
@@ -38,7 +38,7 @@ export const ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA = {
 } as const;
 
 export const ORCHESTRATOR_SUBMIT_TOOL_SCHEMA = {
-  description: 'Delegate to AI agents — dispatch one or more prompts across providers (claude/codex/gemini) to run in parallel or with dependency chains. Use this to assign, hand off, distribute, or orchestrate work across AI providers. Each submission creates a "dispatch" that can be tracked, cancelled, or resumed.',
+  description: 'Delegate to AI agents — dispatch one or more prompts across providers (claude/codex/gemini) to run in parallel or with dependency chains. Use this to assign, hand off, distribute, or orchestrate work across AI providers. Each submission creates a "dispatch" that can be tracked, cancelled, or resumed. Returns immediately. You will receive an <orchestrator-callback> when the run completes.',
   title: 'Orchestrator Submit',
   inputSchema: {
     title: z.string().min(1).max(256).describe('Run title'),

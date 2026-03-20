@@ -12,7 +12,11 @@ export const ORCHESTRATOR_TOOLS_INSTRUCTION = trimIdent(`
 
   Use orchestrator_* tools to delegate work to other AI agents (claude/codex/gemini) on this or other machines.
   Call orchestrator_get_context first to discover available providers, models, and machines.
-  orchestrator_submit always returns immediately with a runId. When the run completes, you will receive a callback message automatically. Use orchestrator_pend with include="all_tasks" to fetch detailed results after receiving the callback.
+  orchestrator_submit always returns immediately with a runId.
+  When the run completes, you will automatically receive an <orchestrator-callback> message with the run status.
+  Do NOT call orchestrator_pend right after submitting — wait for the callback first.
+  After receiving the callback, call orchestrator_pend with include="all_tasks" to fetch full results.
+  If no callback arrives within a reasonable time, you may call orchestrator_pend as a fallback to check status.
 `);
 
 export function isOrchestratorWorkerSession(env: NodeJS.ProcessEnv = process.env): boolean {
