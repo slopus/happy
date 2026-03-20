@@ -32,7 +32,6 @@ describe('orchestrator mcp tool schemas', () => {
     expect(taskSchema.shape.model.description).toContain('modelModes[provider]');
     expect(taskSchema.shape.model.description).toContain('"default"');
     expect(targetSchema.shape.type.description).toContain('Alias "machine" is accepted');
-    expect(submitSchema.mode.description).toContain('"blocking"');
     expect(submitSchema.controllerSessionId.description).toContain('Defaults to current MCP session');
   });
 });

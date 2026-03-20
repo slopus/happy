@@ -4,7 +4,11 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { delay } from "@/utils/delay";
 import { warn } from "@/utils/log";
-import { eventRouter, buildOrchestratorActivityEphemeral } from "@/app/events/eventRouter";
+import {
+    eventRouter,
+    buildOrchestratorActivityEphemeral,
+    buildOrchestratorRunTerminalEphemeral,
+} from "@/app/events/eventRouter";
 import { listConnectedUserRpcMethods, invokeUserRpc, hasUserRpcMethod } from "@/app/api/socket/rpcRegistry";
 import { randomUUID } from "node:crypto";
 import {
@@ -1736,6 +1740,7 @@ export function orchestratorRoutes(app: Fastify) {
                     run: {
                         select: {
                             status: true,
+                            title: true,
                             controllerSessionId: true,
                         },
                     },
@@ -1836,6 +1841,8 @@ export function orchestratorRoutes(app: Fastify) {
 
             return {
                 kind: 'ok' as const,
+                runId: execution.runId,
+                runTitle: execution.run.title ?? null,
                 runStatus: nextRunStatus,
                 controllerSessionId: execution.run.controllerSessionId,
             };
@@ -1852,6 +1859,20 @@ export function orchestratorRoutes(app: Fastify) {
         }
 
         void emitOrchestratorActivity(userId, result.controllerSessionId ?? null).catch(warn);
+        if (isRunTerminal(result.runStatus) && result.controllerSessionId) {
+            eventRouter.emitEphemeral({
+                userId,
+                payload: buildOrchestratorRunTerminalEphemeral(
+                    result.runId,
+                    result.runStatus,
+                    result.runTitle ?? 'Untitled run',
+                ),
+                recipientFilter: {
+                    type: 'all-interested-in-session',
+                    sessionId: result.controllerSessionId,
+                },
+            });
+        }
 
         return reply.send({
             ok: true,

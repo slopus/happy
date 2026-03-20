@@ -296,6 +296,11 @@ export type EphemeralEvent = {
     type: 'orchestrator-activity';
     controllerSessionId: string;
     running: number;
+} | {
+    type: 'orchestrator-run-terminal';
+    runId: string;
+    status: string;
+    title: string;
 };
 
 // === EVENT PAYLOAD TYPES ===
@@ -805,6 +810,17 @@ export function buildOrchestratorActivityEphemeral(controllerSessionId: string, 
         type: 'orchestrator-activity',
         controllerSessionId,
         running,
+    };
+}
+
+export function buildOrchestratorRunTerminalEphemeral(
+    runId: string, status: string, title: string
+): EphemeralPayload {
+    return {
+        type: 'orchestrator-run-terminal',
+        runId,
+        status,
+        title,
     };
 }
 

@@ -27,9 +27,6 @@ import {
 } from '@/orchestrator/mcpToolSchemas';
 import { CLAUDE_MODEL_MODES, CODEX_MODEL_MODES, GEMINI_MODEL_MODES } from 'happy-wire';
 
-const ORCHESTRATOR_RUN_TERMINAL = new Set(['completed', 'failed', 'cancelled']);
-const DEFAULT_BLOCKING_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
-
 function toToolSuccess(data: unknown) {
     return {
         content: [
@@ -135,76 +132,6 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
     });
 
     if (options.enableOrchestratorTools) {
-        const startHeartbeat = (extra: any, intervalMs = 30_000) => {
-            const progressToken = extra?._meta?.progressToken;
-            const sendNotification = extra?.sendNotification;
-            if (!sendNotification) return { stop() {} };
-
-            let tick = 0;
-            const timer = setInterval(() => {
-                tick++;
-                sendNotification({
-                    method: 'notifications/progress' as const,
-                    params: {
-                        progressToken: progressToken ?? 'blocking-heartbeat',
-                        progress: tick,
-                        total: 0,
-                    },
-                }).catch(() => {}); // Ignore send errors
-            }, intervalMs);
-
-            return { stop() { clearInterval(timer); } };
-        };
-
-        const awaitRunTerminal = async (runId: string, waitTimeoutMs: number, pendTimeoutMs: number) => {
-            const startedAt = Date.now();
-            const deadline = startedAt + waitTimeoutMs;
-            let cursor: string | undefined;
-            let lastPend: any = null;
-
-            while (Date.now() < deadline) {
-                const remaining = deadline - Date.now();
-                const timeoutMs = Math.max(0, Math.min(remaining, pendTimeoutMs));
-                if (timeoutMs <= 0) break;
-
-                let pend: any;
-                try {
-                    pend = await client.orchestratorPend(runId, {
-                        cursor,
-                        waitFor: 'terminal',
-                        timeoutMs,
-                        include: 'summary',
-                    });
-                } catch (error: any) {
-                    if (error?.response?.status === 504) continue;
-                    throw error;
-                }
-                lastPend = pend?.data ?? null;
-                cursor = lastPend?.cursor;
-
-                if (lastPend?.terminal) {
-                    const finalRun = await client.orchestratorGetRun(runId, true);
-                    return {
-                        terminal: true,
-                        timedOut: false,
-                        waitedMs: Date.now() - startedAt,
-                        lastPend,
-                        run: finalRun?.data ?? null,
-                    };
-                }
-            }
-
-            const snapshot = await client.orchestratorGetRun(runId, true);
-            const terminal = ORCHESTRATOR_RUN_TERMINAL.has(snapshot?.data?.status);
-            return {
-                terminal,
-                timedOut: !terminal,
-                waitedMs: Date.now() - startedAt,
-                lastPend,
-                run: snapshot?.data ?? null,
-            };
-        };
-
         mcp.registerTool('orchestrator_get_context', ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA, async () => {
             try {
                 const metadata = client.getMetadataSnapshot();
@@ -215,8 +142,6 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                     defaults: {
                         mode: 'async',
                         maxConcurrency: 2,
-                        waitTimeoutMs: DEFAULT_BLOCKING_WAIT_TIMEOUT_MS,
-                        pollIntervalMs: 30_000,
                         retryMaxAttempts: 1,
                         retryBackoffMs: 0,
                     },
@@ -257,9 +182,8 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
             }
         });
 
-        mcp.registerTool('orchestrator_submit', ORCHESTRATOR_SUBMIT_TOOL_SCHEMA, async (args, extra) => {
+        mcp.registerTool('orchestrator_submit', ORCHESTRATOR_SUBMIT_TOOL_SCHEMA, async (args) => {
             try {
-                const mode = args.mode ?? 'async';
                 const metadata = client.getMetadataSnapshot();
                 const submitBody = {
                     title: args.title,
@@ -270,48 +194,23 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                     idempotencyKey: args.idempotencyKey,
                     metadata: args.metadata,
                     mode: 'async' as const,
-                    waitTimeoutMs: args.waitTimeoutMs,
-                    pollIntervalMs: args.pollIntervalMs,
                 };
 
                 const submit = await client.orchestratorSubmit(submitBody);
-                const submitData = submit?.data ?? null;
-                if (mode !== 'blocking' || !submitData?.runId) {
-                    return toToolSuccess({
-                        ok: true,
-                        mode,
-                        data: submitData,
-                    });
-                }
-
-                const waitTimeoutMs = Math.max(args.waitTimeoutMs ?? DEFAULT_BLOCKING_WAIT_TIMEOUT_MS, DEFAULT_BLOCKING_WAIT_TIMEOUT_MS);
-                const pendTimeoutMs = Math.max(10_000, Math.min(args.pollIntervalMs ?? 60_000, 60_000));
-                const heartbeat = startHeartbeat(extra);
-                let blocking;
-                try {
-                    blocking = await awaitRunTerminal(submitData.runId, waitTimeoutMs, pendTimeoutMs);
-                } finally {
-                    heartbeat.stop();
-                }
-
                 return toToolSuccess({
                     ok: true,
-                    mode: 'blocking',
-                    submit: submitData,
-                    blocking,
+                    mode: 'async',
+                    data: submit?.data ?? null,
                 });
             } catch (error) {
                 return toToolError('Failed to submit orchestrator run', error instanceof Error ? error.message : String(error));
             }
         });
 
-        mcp.registerTool('orchestrator_pend', ORCHESTRATOR_PEND_TOOL_SCHEMA, async (args, extra) => {
+        mcp.registerTool('orchestrator_pend', ORCHESTRATOR_PEND_TOOL_SCHEMA, async (args) => {
             const startedAt = Date.now();
-            const totalTimeoutMs = Math.max(args.timeoutMs ?? 10 * 60 * 1000, 10 * 60 * 1000);
+            const totalTimeoutMs = args.timeoutMs ?? 10 * 60 * 1000;
             let cursor = args.cursor;
-            const heartbeat = startHeartbeat(extra);
-
-            try {
             while (true) {
                 const elapsed = Date.now() - startedAt;
                 const remaining = totalTimeoutMs - elapsed;
@@ -321,7 +220,7 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                     const response = await client.orchestratorPend(args.runId, {
                         cursor,
                         waitFor: args.waitFor,
-                        timeoutMs: Math.min(remaining, 120_000),
+                        timeoutMs: Math.min(remaining, 60_000),
                         include: args.include,
                     });
                     return toToolSuccess(response);
@@ -346,9 +245,6 @@ function createMcpServer(client: ApiSessionClient, options: { enableOrchestrator
                 return toToolSuccess(response);
             } catch (error) {
                 return toToolError('Failed to pend orchestrator run', error instanceof Error ? error.message : String(error));
-            }
-            } finally {
-                heartbeat.stop();
             }
         });
 

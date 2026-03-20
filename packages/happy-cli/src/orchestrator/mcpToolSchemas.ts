@@ -38,15 +38,12 @@ export const ORCHESTRATOR_GET_CONTEXT_TOOL_SCHEMA = {
 } as const;
 
 export const ORCHESTRATOR_SUBMIT_TOOL_SCHEMA = {
-  description: 'Delegate to AI agents — dispatch one or more prompts across providers (claude/codex/gemini) to run in parallel or with dependency chains. Use this to assign, hand off, distribute, or orchestrate work across AI providers. Each submission creates a "dispatch" that can be tracked, cancelled, or resumed. Supports blocking (wait for completion) and async modes.',
+  description: 'Delegate to AI agents — dispatch one or more prompts across providers (claude/codex/gemini) to run in parallel or with dependency chains. Use this to assign, hand off, distribute, or orchestrate work across AI providers. Each submission creates a "dispatch" that can be tracked, cancelled, or resumed.',
   title: 'Orchestrator Submit',
   inputSchema: {
     title: z.string().min(1).max(256).describe('Run title'),
     tasks: z.array(orchestratorTaskSchema).min(1).max(32),
-    mode: z.enum(['async', 'blocking']).optional().describe('Run mode. "blocking" waits for terminal state; "async" returns immediately.'),
     maxConcurrency: z.number().int().min(1).max(8).optional(),
-    waitTimeoutMs: z.number().int().max(60 * 60 * 1000).optional().describe('Blocking-mode total wait timeout in ms (max 3600000). Only applies when mode="blocking".'),
-    pollIntervalMs: z.number().int().max(60_000).optional().describe('Blocking-mode pend poll interval in milliseconds.'),
     idempotencyKey: z.string().min(1).max(128).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     controllerSessionId: z.string().optional().describe('Optional controller session ID. Defaults to current MCP session when omitted.'),

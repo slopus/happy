@@ -194,6 +194,26 @@ export class ApiSessionClient extends EventEmitter {
             this.rpcHandlerManager.onSocketDisconnect();
         })
 
+        this.socket.on('ephemeral', (payload: any) => {
+            if (payload?.type === 'orchestrator-run-terminal') {
+                const text = [
+                    '<orchestrator-callback>',
+                    `Run "${payload.title}" (${payload.runId}) reached terminal state: ${payload.status}.`,
+                    'Use orchestrator_pend or orchestrator_list to fetch full results.',
+                    '</orchestrator-callback>',
+                ].join('\n');
+                const syntheticMessage = {
+                    content: { type: 'text' as const, text },
+                    meta: {},
+                };
+                if (this.pendingMessageCallback) {
+                    this.pendingMessageCallback(syntheticMessage as any);
+                } else {
+                    this.pendingMessages.push(syntheticMessage as any);
+                }
+            }
+        });
+
         // Server events
         this.socket.on('update', (data: Update) => {
             const emitMessageReceipt = (params: { sid: string; messageId: string; localId: string | null; ok: boolean; error?: string }) => {
