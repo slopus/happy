@@ -16,7 +16,7 @@ const orchestratorTaskSchema = z.object({
   workingDirectory: z.string().max(512).optional()
     .describe('Absolute path for task execution. Defaults to the controller session working directory from get_context.'),
   dependsOn: z.array(z.string().min(1).max(128)).max(31).optional()
-    .describe('Optional list of dependency taskKey values (use taskKey names, not taskId). Dependent tasks run only after all listed dependencies complete, but receive no output or context from them. To pass data between tasks, instruct the upstream task to write results to a file, and the downstream task to read it.'),
+    .describe('Optional list of prerequisite taskKeys (use taskKey, not taskId). This controls execution order only: the task starts after all listed tasks complete, but receives NONE of their output or context.'),
   retry: z.object({
     maxAttempts: z.number().int().min(1).max(10).optional()
       .describe('Maximum attempts for this task (including first run).'),
