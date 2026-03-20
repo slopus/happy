@@ -238,6 +238,8 @@ export const ru: TranslationStructure = {
         orchestratorLabelExitCode: 'Код выхода',
         orchestratorLabelSignal: 'Сигнал',
         orchestratorLabelError: 'Ошибка',
+        orchestratorLabelMachine: 'Машина',
+        orchestratorRunMachines: 'Машины',
         orchestratorUpdatedTime: ({ time }: { time: string }) => `Обновлено ${time}`,
         orchestratorSummaryLine: ({ total, running, completed, failed, cancelled }: { total: number; running: number; completed: number; failed: number; cancelled: number }) =>
             `Всего ${total} · Выполняются ${running} · Завершено ${completed} · Неудачно ${failed} · Отменено ${cancelled}`,

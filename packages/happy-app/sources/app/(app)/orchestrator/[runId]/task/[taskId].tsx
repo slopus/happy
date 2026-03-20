@@ -10,9 +10,12 @@ import { getOrchestratorTask, type OrchestratorTaskDetail, type OrchestratorTask
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
 import {
     formatOrchestratorProviderLabel,
+    resolveTaskMachineId,
+    resolveMachineName,
     sanitizeOrchestratorOutputSummary,
     sortOrchestratorExecutionsByAttemptDesc,
 } from '@/components/orchestrator/display';
+import { useMachineNameMap } from '@/hooks/useMachineNameMap';
 import { formatDate } from '@/utils/formatDate';
 import { t } from '@/text';
 
@@ -117,6 +120,7 @@ export default function OrchestratorTaskDetailScreen() {
     const { runId, taskId } = useLocalSearchParams<{ runId: string; taskId: string; }>();
     const auth = useAuth();
     const credentials = auth.credentials;
+    const machineNameMap = useMachineNameMap();
 
     const [run, setRun] = React.useState<OrchestratorTaskDetail['run'] | null>(null);
     const [task, setTask] = React.useState<OrchestratorTaskRecord | null>(null);
@@ -209,6 +213,10 @@ export default function OrchestratorTaskDetailScreen() {
                     </View>
                     <Text style={styles.row}>{t('settings.orchestratorLabelRun')}: {run?.title || run?.runId || runId}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelProvider')}: {providerLabel}</Text>
+                    <Text style={styles.row}>{t('settings.orchestratorLabelMachine')}: {(() => {
+                        const machineId = resolveTaskMachineId(task);
+                        return machineId ? resolveMachineName(machineId, machineNameMap) : '-';
+                    })()}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelTaskKey')}: {task.taskKey || '-'}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelWorkingDir')}: {task.workingDirectory || '-'}</Text>
                     <Text style={styles.row}>{t('settings.orchestratorLabelDependsOn')}: {task.dependsOn.length > 0 ? task.dependsOn.join(', ') : '-'}</Text>
@@ -233,7 +241,7 @@ export default function OrchestratorTaskDetailScreen() {
                             <View key={execution.executionId} style={styles.executionRow}>
                                 <View style={styles.executionHeader}>
                                     <Text style={styles.executionTitle}>
-                                        {t('settings.orchestratorAttemptTitle', { attempt: execution.attempt, machineId: execution.machineId })}
+                                        {t('settings.orchestratorAttemptTitle', { attempt: execution.attempt, machineId: resolveMachineName(execution.machineId, machineNameMap) })}
                                     </Text>
                                     <OrchestratorStatusBadge status={execution.status} />
                                 </View>

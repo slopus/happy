@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
     formatOrchestratorProviderLabel,
+    resolveTaskMachineId,
+    resolveMachineName,
     resolveOrchestratorAttemptDisplay,
     resolveOrchestratorSummaryLineData,
     sanitizeOrchestratorOutputSummary,
+    shortenMachineId,
     sortOrchestratorExecutionsByAttemptDesc,
 } from './display';
 
@@ -63,5 +66,42 @@ describe('orchestrator display helpers', () => {
             failed: 0,
             cancelled: 0,
         });
+    });
+
+    it('returns latest active execution machine for running tasks', () => {
+        expect(resolveTaskMachineId({
+            status: 'running',
+            executions: [
+                { machineId: 'machine-a', status: 'completed' },
+                { machineId: 'machine-b', status: 'running' },
+            ],
+        } as any)).toBe('machine-b');
+    });
+
+    it('returns last execution machine for non-active tasks', () => {
+        expect(resolveTaskMachineId({
+            status: 'completed',
+            executions: [
+                { machineId: 'machine-a', status: 'running' },
+                { machineId: 'machine-b', status: 'completed' },
+            ],
+        } as any)).toBe('machine-b');
+    });
+
+    it('returns null when no execution exists', () => {
+        expect(resolveTaskMachineId({ status: 'queued', executions: undefined } as any)).toBeNull();
+        expect(resolveTaskMachineId({ status: 'queued', executions: [] } as any)).toBeNull();
+    });
+
+    it('shortens machine id to first 8 chars', () => {
+        expect(shortenMachineId('123456789abc')).toBe('12345678');
+        expect(shortenMachineId('12345678')).toBe('12345678');
+        expect(shortenMachineId('abcd')).toBe('abcd');
+    });
+
+    it('resolves machine name with shortened id for disambiguation', () => {
+        const nameMap = new Map([['id-aaa-bbb', 'My Mac']]);
+        expect(resolveMachineName('id-aaa-bbb', nameMap)).toBe('My Mac (id-aaa-b)');
+        expect(resolveMachineName('id-aaa-unknown', nameMap)).toBe('id-aaa-u');
     });
 });

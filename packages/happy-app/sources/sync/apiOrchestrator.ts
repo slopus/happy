@@ -65,6 +65,7 @@ export type OrchestratorRunDetail = {
     completedAt: string | null;
     cancelRequestedAt: string | null;
     summary: OrchestratorRunSummary;
+    machines?: string[];
     tasks?: OrchestratorTaskRecord[];
 };
 
@@ -111,7 +112,7 @@ export type ListOrchestratorRunsQuery = {
 export async function listOrchestratorRuns(
     credentials: AuthCredentials,
     query: ListOrchestratorRunsQuery = {},
-): Promise<{ items: Array<Pick<OrchestratorRunDetail, 'runId' | 'title' | 'status' | 'createdAt' | 'updatedAt' | 'summary'>>; nextCursor?: string; }> {
+): Promise<{ items: Array<Pick<OrchestratorRunDetail, 'runId' | 'title' | 'status' | 'createdAt' | 'updatedAt' | 'summary'> & { machines?: string[]; }>; nextCursor?: string; }> {
     const API_ENDPOINT = getServerUrl();
     const params = new URLSearchParams();
     if (query.status) params.set('status', query.status);
@@ -130,7 +131,7 @@ export async function listOrchestratorRuns(
         const body = await response.json() as {
             ok: true;
             data: {
-                items: Array<Pick<OrchestratorRunDetail, 'runId' | 'title' | 'status' | 'createdAt' | 'updatedAt' | 'summary'>>;
+                items: Array<Pick<OrchestratorRunDetail, 'runId' | 'title' | 'status' | 'createdAt' | 'updatedAt' | 'summary'> & { machines?: string[]; }>;
                 nextCursor?: string;
             };
         };

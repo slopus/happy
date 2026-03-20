@@ -306,6 +306,8 @@ export const ja: TranslationStructure = {
         orchestratorLabelExitCode: '終了コード',
         orchestratorLabelSignal: 'シグナル',
         orchestratorLabelError: 'エラー',
+        orchestratorLabelMachine: 'マシン',
+        orchestratorRunMachines: 'マシン',
         orchestratorUpdatedTime: ({ time }: { time: string }) => `${time}に更新`,
         orchestratorSummaryLine: ({ total, running, completed, failed, cancelled }: { total: number; running: number; completed: number; failed: number; cancelled: number }) =>
             `合計 ${total} · 実行中 ${running} · 完了 ${completed} · 失敗 ${failed} · キャンセル ${cancelled}`,

@@ -9,12 +9,13 @@ import { useAuth } from '@/auth/AuthContext';
 import { getOrchestratorRunCounts, listOrchestratorRuns, type ListOrchestratorRunsQuery, type OrchestratorRunCounts, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
 import { OrchestratorProgressBar } from '@/components/orchestrator/OrchestratorProgressBar';
-import { resolveOrchestratorSummaryLineData } from '@/components/orchestrator/display';
+import { resolveOrchestratorSummaryLineData, resolveMachineName } from '@/components/orchestrator/display';
+import { useMachineNameMap } from '@/hooks/useMachineNameMap';
 import { formatDate } from '@/utils/formatDate';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-type RunListItem = Pick<OrchestratorRunDetail, 'runId' | 'title' | 'status' | 'createdAt' | 'updatedAt' | 'summary'>;
+type RunListItem = Pick<OrchestratorRunDetail, 'runId' | 'title' | 'status' | 'createdAt' | 'updatedAt' | 'summary'> & { machines?: string[]; };
 type StatusFilter = 'all' | 'active' | 'terminal' | 'queued' | 'running' | 'canceling' | 'completed' | 'failed' | 'cancelled';
 
 const FILTERS: Array<{ key: StatusFilter; label: string; }> = [
@@ -157,6 +158,7 @@ export default function OrchestratorRunsScreen() {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
+    const machineNameMap = useMachineNameMap();
     const searchParams = useLocalSearchParams<{ controllerSessionId?: string | string[]; }>();
     const auth = useAuth();
     const credentials = auth.credentials;
@@ -300,6 +302,11 @@ export default function OrchestratorRunsScreen() {
                         })}
                     </Text>
                 </View>
+                {item.machines && item.machines.length > 0 ? (
+                    <Text style={styles.meta}>
+                        {t('settings.orchestratorRunMachines')}: {item.machines.map((id) => resolveMachineName(id, machineNameMap)).join(', ')}
+                    </Text>
+                ) : null}
             </Pressable>
         );
     }, [router, styles]);

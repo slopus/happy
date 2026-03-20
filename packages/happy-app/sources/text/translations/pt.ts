@@ -274,6 +274,8 @@ export const pt: TranslationStructure = {
         orchestratorLabelExitCode: 'Código de saída',
         orchestratorLabelSignal: 'Sinal',
         orchestratorLabelError: 'Erro',
+        orchestratorLabelMachine: 'Máquina',
+        orchestratorRunMachines: 'Máquinas',
         orchestratorUpdatedTime: ({ time }: { time: string }) => `Atualizado ${time}`,
         orchestratorSummaryLine: ({ total, running, completed, failed, cancelled }: { total: number; running: number; completed: number; failed: number; cancelled: number }) =>
             `Total ${total} · Em execução ${running} · Concluídas ${completed} · Falhadas ${failed} · Canceladas ${cancelled}`,

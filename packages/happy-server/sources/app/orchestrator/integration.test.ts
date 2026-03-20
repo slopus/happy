@@ -239,7 +239,10 @@ const {
         if (where.id && execution.id !== where.id) {
             return false;
         }
-        if (where.runId && execution.runId !== where.runId) {
+        if (typeof where.runId === 'string' && execution.runId !== where.runId) {
+            return false;
+        }
+        if (Array.isArray(where.runId?.in) && !where.runId.in.includes(execution.runId)) {
             return false;
         }
         if (where.taskId && execution.taskId !== where.taskId) {
@@ -606,6 +609,31 @@ const {
                 updateExecution(row, args?.data ?? {});
             }
             return { count: rows.length };
+        }),
+        groupBy: vi.fn(async (args: any) => {
+            const rows = state.executions.filter((item) => matchesExecution(item, args?.where));
+            const by: string[] = args?.by ?? [];
+            const grouped = new Map<string, { fields: Record<string, unknown>; count: number }>();
+
+            for (const row of rows) {
+                const key = by.map((field) => String((row as any)[field])).join('|');
+                const existing = grouped.get(key);
+                if (existing) {
+                    existing.count += 1;
+                    continue;
+                }
+
+                const fields: Record<string, unknown> = {};
+                for (const field of by) {
+                    fields[field] = (row as any)[field];
+                }
+                grouped.set(key, { fields, count: 1 });
+            }
+
+            return [...grouped.values()].map((item) => ({
+                ...item.fields,
+                ...(args?._count?._all ? { _count: { _all: item.count } } : {}),
+            }));
         }),
         count: vi.fn(async (args: any) => {
             return state.executions.filter((item) => matchesExecution(item, args?.where)).length;
@@ -1566,6 +1594,80 @@ describe('orchestrator integration paths', () => {
             runId,
             summary: expect.any(Object),
         }));
+        await app.close();
+    });
+
+    it('includes machines in run list response items', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'list-machines',
+                tasks: [
+                    {
+                        provider: 'claude',
+                        prompt: 'step a',
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+        const runId = submit.json().data.runId as string;
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:00.000Z'));
+        expect(state.executions).toHaveLength(1);
+        expect(state.executions[0].machineId).toBe('machine-1');
+
+        const listRuns = await app.inject({
+            method: 'GET',
+            url: '/v1/orchestrator/runs',
+            headers: { 'x-user-id': 'user-1' },
+        });
+        expect(listRuns.statusCode).toBe(200);
+
+        const item = listRuns.json().data.items.find((run: any) => run.runId === runId);
+        expect(item).toBeDefined();
+        expect(item.machines).toEqual(['machine-1']);
+
+        await app.close();
+    });
+
+    it('includes machines in run detail even when executions are not included', async () => {
+        const app = await createApp();
+        const submit = await app.inject({
+            method: 'POST',
+            url: '/v1/orchestrator/submit',
+            headers: { 'x-user-id': 'user-1' },
+            payload: {
+                title: 'detail-machines-fallback',
+                tasks: [
+                    {
+                        provider: 'codex',
+                        prompt: 'step a',
+                    },
+                ],
+            },
+        });
+        expect(submit.statusCode).toBe(200);
+        const runId = submit.json().data.runId as string;
+
+        await orchestratorSchedulerTick(new Date('2026-03-16T00:00:00.000Z'));
+        expect(state.executions).toHaveLength(1);
+        expect(state.executions[0].machineId).toBe('machine-1');
+
+        const getRun = await app.inject({
+            method: 'GET',
+            url: `/v1/orchestrator/runs/${runId}`,
+            headers: { 'x-user-id': 'user-1' },
+        });
+        expect(getRun.statusCode).toBe(200);
+
+        const body = getRun.json();
+        expect(body.data.machines).toEqual(['machine-1']);
+        expect(body.data.tasks[0].executions).toBeUndefined();
+
         await app.close();
     });
 

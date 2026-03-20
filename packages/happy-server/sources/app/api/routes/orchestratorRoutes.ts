@@ -314,7 +314,20 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
     };
 }
 
-function mapRunResponse(run: RunWithTasks, summary: RunSummary, includeTasks: boolean) {
+function mapRunMachinesFromTasks(run: RunWithTasks): string[] {
+    const machineSet = new Set<string>();
+    for (const task of run.tasks) {
+        if (!Array.isArray(task.executions)) {
+            continue;
+        }
+        for (const execution of task.executions) {
+            machineSet.add(execution.machineId);
+        }
+    }
+    return [...machineSet];
+}
+
+function mapRunResponse(run: RunWithTasks, summary: RunSummary, includeTasks: boolean, machines: string[] = []) {
     return {
         runId: run.id,
         title: run.title,
@@ -326,6 +339,7 @@ function mapRunResponse(run: RunWithTasks, summary: RunSummary, includeTasks: bo
         completedAt: run.completedAt?.toISOString() ?? null,
         cancelRequestedAt: run.cancelRequestedAt?.toISOString() ?? null,
         summary,
+        machines,
         ...(includeTasks ? { tasks: run.tasks.map(mapTask) } : {}),
     };
 }
@@ -1046,9 +1060,20 @@ export function orchestratorRoutes(app: Fastify) {
             return sendError(reply, 404, 'NOT_FOUND', 'Run not found');
         }
 
+        const machineSet = new Set<string>(includeExecutions ? mapRunMachinesFromTasks(loaded.run) : []);
+        if (machineSet.size === 0) {
+            const groupedMachines = await db.orchestratorExecution.groupBy({
+                by: ['machineId'],
+                where: { runId: loaded.run.id },
+            });
+            for (const row of groupedMachines) {
+                machineSet.add(row.machineId);
+            }
+        }
+
         return reply.send({
             ok: true,
-            data: mapRunResponse(loaded.run, loaded.summary, includeTasks),
+            data: mapRunResponse(loaded.run, loaded.summary, includeTasks, [...machineSet]),
         });
     });
 
@@ -1315,6 +1340,19 @@ export function orchestratorRoutes(app: Fastify) {
             summaryMap = summaryMapFromGrouped(grouped);
         }
 
+        const machinesByRun = new Map<string, string[]>();
+        if (runIds.length > 0) {
+            const machineGroups = await db.orchestratorExecution.groupBy({
+                by: ['runId', 'machineId'],
+                where: { runId: { in: runIds } },
+            });
+            for (const row of machineGroups) {
+                const existing = machinesByRun.get(row.runId) ?? [];
+                existing.push(row.machineId);
+                machinesByRun.set(row.runId, existing);
+            }
+        }
+
         const items = page.map((run: any) => ({
             runId: run.id,
             title: run.title,
@@ -1329,6 +1367,7 @@ export function orchestratorRoutes(app: Fastify) {
                 failed: 0,
                 cancelled: 0,
             },
+            machines: machinesByRun.get(run.id) ?? [],
         }));
 
         let nextCursor: string | undefined;

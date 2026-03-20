@@ -275,6 +275,8 @@ export const zhHant: TranslationStructure = {
         orchestratorLabelExitCode: '退出代碼',
         orchestratorLabelSignal: '訊號',
         orchestratorLabelError: '錯誤',
+        orchestratorLabelMachine: '機器',
+        orchestratorRunMachines: '執行機器',
         orchestratorUpdatedTime: ({ time }: { time: string }) => `更新於 ${time}`,
         orchestratorSummaryLine: ({ total, running, completed, failed, cancelled }: { total: number; running: number; completed: number; failed: number; cancelled: number }) =>
             `共 ${total} · 執行中 ${running} · 已完成 ${completed} · 失敗 ${failed} · 已取消 ${cancelled}`,

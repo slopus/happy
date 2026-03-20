@@ -18,6 +18,32 @@ export function resolveOrchestratorAttemptDisplay(task: Pick<OrchestratorTaskRec
     return { current, max };
 }
 
+export function resolveTaskMachineId(task: Pick<OrchestratorTaskRecord, 'executions' | 'status'>): string | null {
+    const executions = task.executions ?? [];
+    if (executions.length === 0) {
+        return null;
+    }
+    if (task.status === 'running' || task.status === 'dispatching') {
+        const active = executions.filter((execution) => execution.status === 'running' || execution.status === 'dispatching');
+        if (active.length > 0) {
+            return active[active.length - 1].machineId;
+        }
+    }
+    return executions[executions.length - 1].machineId;
+}
+
+export function shortenMachineId(machineId: string): string {
+    return machineId.length > 8 ? machineId.substring(0, 8) : machineId;
+}
+
+export function resolveMachineName(machineId: string, nameMap: ReadonlyMap<string, string>): string {
+    const name = nameMap.get(machineId);
+    if (name) {
+        return `${name} (${shortenMachineId(machineId)})`;
+    }
+    return shortenMachineId(machineId);
+}
+
 export function sanitizeOrchestratorOutputSummary(summary: string | null | undefined): string | null {
     if (!summary) {
         return null;

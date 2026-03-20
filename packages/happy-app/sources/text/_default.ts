@@ -282,6 +282,8 @@ export const en = {
         orchestratorLabelExitCode: 'Exit Code',
         orchestratorLabelSignal: 'Signal',
         orchestratorLabelError: 'Error',
+        orchestratorLabelMachine: 'Machine',
+        orchestratorRunMachines: 'Machines',
 
         // Orchestrator dynamic strings
         orchestratorUpdatedTime: ({ time }: { time: string }) => `Updated ${time}`,

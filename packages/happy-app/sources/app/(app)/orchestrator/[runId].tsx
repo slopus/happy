@@ -11,10 +11,13 @@ import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorS
 import { OrchestratorProgressBar } from '@/components/orchestrator/OrchestratorProgressBar';
 import {
     formatOrchestratorProviderLabel,
+    resolveTaskMachineId,
+    resolveMachineName,
     resolveOrchestratorAttemptDisplay,
     resolveOrchestratorSummaryLineDataFromTasks,
     sanitizeOrchestratorOutputSummary,
 } from '@/components/orchestrator/display';
+import { useMachineNameMap } from '@/hooks/useMachineNameMap';
 import { isRunActive } from '@/components/orchestrator/status';
 import { Modal } from '@/modal';
 import { delay } from '@/utils/time';
@@ -139,6 +142,7 @@ export default function OrchestratorRunDetailScreen() {
     const router = useRouter();
     const auth = useAuth();
     const credentials = auth.credentials;
+    const machineNameMap = useMachineNameMap();
 
     const [run, setRun] = React.useState<OrchestratorRunDetail | null>(null);
     const [loading, setLoading] = React.useState(true);
@@ -351,6 +355,14 @@ export default function OrchestratorRunDetailScreen() {
                                 <Text style={styles.taskMeta}>
                                     {t('settings.orchestratorTaskMeta', { provider: providerLabel, current: attempt.current, max: attempt.max })}
                                 </Text>
+                                {(() => {
+                                    const machineId = resolveTaskMachineId(task);
+                                    return machineId ? (
+                                        <Text style={styles.taskMeta}>
+                                            {t('settings.orchestratorLabelMachine')}: {resolveMachineName(machineId, machineNameMap)}
+                                        </Text>
+                                    ) : null;
+                                })()}
                                 {task.taskKey ? (
                                     <Text style={styles.taskMeta}>{t('settings.orchestratorLabelTaskKey')}: {task.taskKey}</Text>
                                 ) : null}
