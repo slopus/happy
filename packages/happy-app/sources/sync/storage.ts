@@ -590,13 +590,18 @@ export const storage = create<StorageState>()((set, get) => {
 
                     // Always update the session messages, even if no new messages were created
                     // This ensures the reducer state is updated with the new AgentState
-                    const mergedMessagesMap = { ...existingSessionMessages.messagesMap };
+                    const mergedMessagesMap: Record<string, Message> = {};
                     processedMessages.forEach(message => {
                         mergedMessagesMap[message.id] = message;
                     });
+                    for (const id in existingSessionMessages.messagesMap) {
+                        if (!(id in mergedMessagesMap)) {
+                            mergedMessagesMap[id] = existingSessionMessages.messagesMap[id];
+                        }
+                    }
 
                     const messagesArray = Object.values(mergedMessagesMap)
-                        .sort((a, b) => b.createdAt - a.createdAt);
+                        .sort((a, b) => b.createdAt - a.createdAt || (b.seq ?? 0) - (a.seq ?? 0));
 
                     updatedSessionMessages[session.id] = {
                         messages: messagesArray,
@@ -735,21 +740,31 @@ export const storage = create<StorageState>()((set, get) => {
                     hasReadyEvent = true;
                 }
 
-                // Merge messages
-                const mergedMessagesMap = { ...existingSession.messagesMap };
+                // Merge messages — put new/updated messages first so that
+                // Object.values() naturally reflects newest-first order
+                // (matches the descending sort, provides correct stable-sort
+                // tiebreak for same-createdAt messages)
+                const dedupRemovals = new Set<string>();
                 processedMessages.forEach(message => {
-                    // Dedup: if a server message arrives with a localId, remove any
-                    // optimistic message that was stored with id === localId
                     const localId = 'localId' in message ? message.localId : null;
-                    if (localId && message.id !== localId && mergedMessagesMap[localId]) {
-                        delete mergedMessagesMap[localId];
+                    if (localId && message.id !== localId && existingSession.messagesMap[localId]) {
+                        dedupRemovals.add(localId);
                     }
+                });
+                const mergedMessagesMap: Record<string, Message> = {};
+                processedMessages.forEach(message => {
                     mergedMessagesMap[message.id] = message;
                 });
+                for (const id in existingSession.messagesMap) {
+                    if (!(id in mergedMessagesMap) && !dedupRemovals.has(id)) {
+                        mergedMessagesMap[id] = existingSession.messagesMap[id];
+                    }
+                }
 
-                // Convert to array and sort by createdAt
+                // Convert to array and sort by createdAt, using seq as tiebreaker
+                // for messages with identical timestamps (common in rapid agent output)
                 const messagesArray = Object.values(mergedMessagesMap)
-                    .sort((a, b) => b.createdAt - a.createdAt);
+                    .sort((a, b) => b.createdAt - a.createdAt || (b.seq ?? 0) - (a.seq ?? 0));
 
                 // Update session with todos and latestUsage
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
@@ -815,7 +830,7 @@ export const storage = create<StorageState>()((set, get) => {
                     });
 
                     messages = Object.values(messagesMap)
-                        .sort((a, b) => b.createdAt - a.createdAt);
+                        .sort((a, b) => b.createdAt - a.createdAt || (b.seq ?? 0) - (a.seq ?? 0));
                 }
 
                 // Extract latestUsage from reducerState if available and update session

@@ -2344,6 +2344,7 @@ class Sync {
                 existingMessages.add(decrypted.id);
                 const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                 if (normalized) {
+                    normalized.seq = decrypted.seq;
                     normalized.sentBy = decrypted.sentBy;
                     normalized.sentByName = decrypted.sentByName;
                     const deliveryIssue = messagesToDecrypt[i]?.deliveryIssue;
@@ -3402,6 +3403,7 @@ class Sync {
                 if (decrypted) {
                     lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                     if (lastMessage) {
+                        lastMessage.seq = decrypted.seq;
                         lastMessage.sentBy = decrypted.sentBy;
                         lastMessage.sentByName = decrypted.sentByName;
                         if (updateData.body.message.deliveryIssue?.status === 'error') {

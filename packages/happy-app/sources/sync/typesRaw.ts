@@ -568,6 +568,7 @@ export type NormalizedMessage = ({
     sentBy?: string | null,
     sentByName?: string | null,
     deliveryError?: string | null,
+    seq?: number | null,
 };
 
 type PlanStepStatus = 'pending' | 'in_progress' | 'completed';
