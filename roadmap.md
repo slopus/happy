@@ -400,7 +400,7 @@ The session protocol (`role: 'session'` envelopes in `happy-wire/src/sessionProt
 - Rebuild with `yarn env:ios` or `yarn env:android` only when the build is missing, outdated, or native dependencies/config changed.
 - Native app test flow:
   1. Start an authenticated env with `yarn env:up:authenticated` or reuse the current env from `yarn env:current`.
-  2. Source the env so Expo picks up the right server and dev auth vars: `source .environments/<env-name>/env.sh`.
+  2. Source the env so Expo picks up the right server and dev auth vars: `source environments/data/envs/<env-name>/env.sh`.
   3. For JS-only work, start Metro without recompiling native: `APP_ENV=development yarn --cwd packages/happy-app start --dev-client --port 8081`.
   4. Open the installed simulator or device build from Metro with `i` or `a`, or reopen the dev client onto the Metro URL.
   5. Confirm native auth is correct in Metro logs:
