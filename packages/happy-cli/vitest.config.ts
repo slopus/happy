@@ -28,6 +28,7 @@ export default defineConfig({
                     minWorkers: 1,
                     testTimeout: 60_000,
                     include: [
+                        'src/claude/claude.integration.test.ts',
                         'src/codex/codex.integration.test.ts',
                         'src/sandbox/network.integration.test.ts',
                     ],
