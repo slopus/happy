@@ -11,6 +11,7 @@ import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 import { layout } from './layout';
+import { createScrollButtonVisibilityController } from './scrollButtonVisibilityController';
 
 const LOCAL_COMMAND_STDOUT_PATTERN = /^<local-command-stdout>[\s\S]*<\/local-command-stdout>$/;
 
@@ -55,6 +56,7 @@ const ListFooter = React.memo((props: { sessionId: string }) => {
 
 // Threshold in pixels for showing the scroll-to-bottom button
 const SCROLL_THRESHOLD = 100;
+const SHOW_SCROLL_BUTTON_DELAY_MS = 300;
 
 const ChatListInternal = React.memo((props: {
     metadata: Metadata | null,
@@ -92,6 +94,8 @@ const ChatListInternal = React.memo((props: {
 
     // Track if scroll-to-bottom button should be visible
     const [showScrollButton, setShowScrollButton] = useState(false);
+    const visibilityControllerRef = useRef<ReturnType<typeof createScrollButtonVisibilityController> | null>(null);
+    const visibleMessagesRef = useRef(visibleMessages);
 
     // Track the newest message timestamp when button became visible (for unread count)
     const lastSeenTimestampRef = useRef<number>(visibleMessages[0]?.createdAt ?? 0);
@@ -125,19 +129,38 @@ const ChatListInternal = React.memo((props: {
         />
     ), [props.metadata, props.sessionId, props.onFillInput, props.isSharedSession, props.currentUserId, senderVisibility]);
 
+    React.useEffect(() => {
+        visibleMessagesRef.current = visibleMessages;
+    }, [visibleMessages]);
+
+    React.useEffect(() => {
+        const controller = createScrollButtonVisibilityController({
+            showDelayMs: SHOW_SCROLL_BUTTON_DELAY_MS,
+            onShow: () => {
+                setShowScrollButton((prev) => {
+                    if (prev) return prev;
+                    lastSeenTimestampRef.current = visibleMessagesRef.current[0]?.createdAt ?? 0;
+                    return true;
+                });
+            },
+            onHide: () => {
+                setShowScrollButton(false);
+            },
+        });
+
+        visibilityControllerRef.current = controller;
+        return () => {
+            controller.dispose();
+            visibilityControllerRef.current = null;
+        };
+    }, []);
+
     // Handle scroll position changes
     const handleScroll = useCallback((event: any) => {
         const offsetY = event.nativeEvent.contentOffset.y;
         const shouldShow = offsetY > SCROLL_THRESHOLD;
-
-        setShowScrollButton(prev => {
-            // When button becomes visible, record newest message timestamp
-            if (shouldShow && !prev) {
-                lastSeenTimestampRef.current = visibleMessages[0]?.createdAt ?? 0;
-            }
-            return shouldShow;
-        });
-    }, [visibleMessages]);
+        visibilityControllerRef.current?.update(shouldShow);
+    }, []);
 
     // Scroll to bottom when button is pressed
     const handleScrollToBottom = useCallback(() => {
