@@ -1,17 +1,81 @@
 # Provider Envelope Redesign
 
-Status: **DRAFT — v2 (OpenCode-derived)**
+Status: **PLAN OF RECORD**
+Branch: `messaging-protocol-v3`
 
-Previous version of this doc proposed `user-message` + `agent-event` as two flat
-payload kinds. This revision replaces that with OpenCode's message+parts model,
-adapted for Happy's encrypted storage and with permissions/questions unified into
-tool state instead of side-channel events.
+---
+
+## Acceptance criteria
+
+Done when:
+
+1. **Shared types in `happy-wire`** — `Message` (UserMessage | AssistantMessage),
+   `Part` (discriminated union), `ToolState` (with `blocked`), `Block` types.
+   Both CLI and app import from here.
+
+2. **Claude adapter emits canonical messages+parts** — provider-native output
+   normalized at CLI boundary. Text, reasoning, tool calls with full state
+   machine including `blocked`, step lifecycle. First adapter.
+
+3. **Codex adapter emits canonical messages+parts** — same shape. Codex
+   approval model mapped to `blocked` tool state. Second adapter.
+
+4. **OpenCode adapter emits canonical messages+parts** — same shape. OpenCode
+   permission side-channel mapped to `blocked` tool state. Third adapter.
+
+5. **Expo app store uses messages+parts** — legacy payloads converted to the
+   new format on ingestion, before going into the store. The store only holds
+   the new shape. Decrypt → convert (if legacy) → parse → store → render.
+   One code path for rendering. No normalizer fan-in from 6 payload families
+   at render time.
+
+6. **Permission decisions on tool parts** — `block` field with `decision` and
+   `decidedAt` survives encrypt → server → decrypt → refetch. Auditable.
+
+7. **Question answers on tool parts** — same. `block.answers` survives the
+   round trip.
+
+8. **Legacy sessions still render** — old encrypted messages from before the
+   migration are converted to the new format when ingested into the store.
+   Legacy parsing is an ingestion-time concern, not a render-time concern.
+
+9. **Integration test passes the exercise flow** — one long sequential test
+   against lab-rat-todo-project covering: text response, permission
+   reject/once/always/auto-approve, tool blocked→completed, question
+   blocked→answered, cancel+cleanup, session resume with transcript intact.
+
+10. **No new update mechanism for permissions/questions** — tool state changes
+    (including blocked/unblocked) flow through the same message update path
+    we use today. No new event types, no new side-channels.
+
+---
+
+## Scope
+
+### In scope
+
+Providers: **Claude, Codex, OpenCode** — in that order.
+
+Packages touched:
+- `happy-wire` — new shared types
+- `happy-cli` — adapter normalization per provider
+- `happy-app` — store migration, legacy conversion on ingestion, renderer
+
+### Out of scope (for now)
+
+- ACP adapter
+- Gemini adapter
+- OpenClaw adapter (will follow the pattern once the first three prove it)
+- Replacing v3 HTTP message transport
+- Replacing Socket.IO invalidation
+- Redesigning encrypted media transport
+- Standardizing tool RPC or MCP
+
+---
 
 ## Why this exists
 
-The current inner message layer has become too hard to reason about.
-
-Today the app must normalize multiple plaintext payload families after decryption:
+The app normalizes 6 plaintext payload families after decryption:
 
 - legacy user messages
 - legacy agent `output` messages
@@ -20,225 +84,131 @@ Today the app must normalize multiple plaintext payload families after decryptio
 - legacy `event` messages
 - modern `role: "session"` envelopes
 
-That fan-in is visible in
-[`packages/happy-app/sources/sync/typesRaw.ts`](../../packages/happy-app/sources/sync/typesRaw.ts),
-and it is the real source of the complexity.
+Visible in `packages/happy-app/sources/sync/typesRaw.ts`. This is the real
+source of reducer complexity.
 
-The problem is not transport. Transport is fine (encrypted blobs, ordered
-per-session messages, v3 HTTP read/write, Socket.IO invalidation). The messy
-part is the **provider envelope shape inside the encrypted message body**.
+Transport is fine. The messy part is the **provider envelope shape inside the
+encrypted message body**.
 
 ## Research base
-
-This design is grounded in cross-vendor protocol research:
 
 - `docs/competition/opencode/runtime-tracing.md` — real traced exchanges
 - `docs/competition/opencode/message-protocol.md` — protocol analysis
 - `docs/competition/codex/message-protocol.md` — approval model reference
 - `docs/competition/claude/message-protocol.md` — agent teams reference
 - `docs/competition/comparison-matrix.md` — cross-vendor summary
+- `docs/competition/opencode/trace-opencode.sh` — rerunnable tracing harness
 
-OpenCode source at commit `2e0d5d230893dbddcefb35a02f53ff2e7a58e5d0`:
-
-- `packages/opencode/src/session/message-v2.ts` — message + part schemas
-- `packages/opencode/src/session/processor.ts` — tool state machine
-- `packages/opencode/src/permission/index.ts` — permission ask/reply flow
-- `packages/opencode/src/question/index.ts` — question ask/reply flow
-- `packages/opencode/src/tool/todo.ts` — todo tool
-- `packages/opencode/src/tool/question.ts` — question tool
-
-## Key decisions up front
+## Key decisions
 
 ### 1. Adopt OpenCode's message+parts shape
 
-Two record types: **Message** (the envelope) and **Part** (ordered content).
-Messages are discriminated on `role` (user / assistant). Parts are discriminated
-on `type` (text, tool, reasoning, etc).
+Two record types: **Message** (envelope) and **Part** (ordered content).
+Messages discriminated on `role`. Parts discriminated on `type`.
 
-We are copying this almost verbatim. It is proven in production, we have full
-runtime traces, and there is no reason to invent a different shape.
+### 2. Permissions and questions live on the tool part
 
-### 2. Permissions and questions live on the tool part — not side-channel
+Explicit `"blocked"` status in the tool state machine. The tool part carries
+the permission/question request and the decision. No side-channel.
 
-OpenCode puts permissions on a separate SSE event (`permission.asked` /
-`permission.replied`). The tool part stays `"running"` while blocked, and the
-permission decision is not durably recorded on the tool.
+Why not OpenCode's approach (separate `permission.asked` events):
 
-We think this is wrong. In OpenCode:
+- No durable record — reload after session ends, permission history gone
+- App must merge two event streams — more reducer branches
+- Ambiguous — `"running"` could mean executing or waiting for user
 
-- If you reload after a session completes, you cannot tell which tool calls
-  required approval vs which auto-approved
-- The app must listen to two separate event types and merge them with tool state
-- Permission history is ephemeral
+With `"blocked"`:
 
-Instead, we add an explicit `"blocked"` status to the tool state machine. The
-tool part itself carries the permission/question request and decision. No
-separate event types needed — the tool part updates, which emits the same
-`message.part.updated` that every other tool state transition uses.
+- Durable — decision on the tool part forever
+- Same update path — tool state change, same as every other transition
+- Unambiguous — `"running"` = executing, `"blocked"` = waiting
 
-### 3. No special SSE event types for permissions, questions, or todos
+### 3. No new update mechanisms
 
-A tool state change is a tool state change. When a tool becomes blocked, the
-SSE stream emits `message.part.updated` with the tool part showing `status:
-"blocked"`. When the user responds, another `message.part.updated` fires with
-the tool part showing `status: "running"` or `status: "error"`.
-
-Push notifications (mobile, desktop) are a separate concern — triggered by
-whatever state change is relevant, not coupled to protocol event taxonomy.
+Tool state changes (including blocked/unblocked) use the same message update
+path we already have. Not a new event type — just a message that changed.
 
 ### 4. Subagents are child sessions
 
-The `task` tool creates a real child session with its own `sessionID`,
-`parentID`, and constrained permissions. The parent transcript records the
-delegation as a tool part. The child session has its own full transcript.
-Resumable by session ID.
+`task` tool creates a child session with `parentID` and constrained
+permissions. Parent records delegation as a tool part.
 
 ### 5. Todos are a tool + side store
 
-`todowrite` is a normal tool — creates a tool part. Separately, it writes to a
-todo store (separate table or state). The todo store exists for quick reads
-("what are current todos?") without walking the transcript. This is the one
-case where a side store earns its keep.
+`todowrite` is a normal tool (tool part in transcript). Also writes to a
+separate todo store for quick reads.
 
-### 6. Patchable canonical messages, not delta replay
+### 6. Patchable canonical messages
 
-Messages are patched in place as they evolve (tool pending → blocked →
-running → completed). Sync sends the full updated message. Refetch returns
-latest state. We do not adopt OpenCode's raw `message.part.delta` replay as
-the durable sync model.
+Messages patched in place as tool parts evolve. Sync sends full updated
+message. Refetch returns latest state. No delta replay.
+
+### 7. Legacy conversion at ingestion, not render
+
+Old messages are converted to the new format when they enter the app store.
+The store only holds messages+parts. Rendering has one code path.
+
+---
 
 ## The model
 
 ### Message Info (envelope)
 
-Discriminated on `role`:
-
 ```ts
-// ── User Message ──────────────────────────────────────────
 type UserMessage = {
-  id: string            // "msg_..." ascending
-  sessionID: string     // "ses_..."
+  id: string
+  sessionID: string
   role: "user"
   time: { created: number }
-  agent: string         // "build" | "explore" | "plan" | ...
-  model: {
-    providerID: string  // "anthropic" | "openai" | ...
-    modelID: string     // "claude-sonnet-4-6" | ...
-  }
+  agent: string
+  model: { providerID: string; modelID: string }
   format?: OutputFormat
-  system?: string       // system prompt snapshot (debugging only)
+  system?: string
   tools?: Record<string, boolean>
   variant?: string
-  summary?: {
-    title?: string
-    body?: string
-    diffs: FileDiff[]
-  }
+  summary?: { title?: string; body?: string; diffs: FileDiff[] }
 }
 
-// ── Assistant Message ─────────────────────────────────────
 type AssistantMessage = {
   id: string
   sessionID: string
   role: "assistant"
-  time: {
-    created: number
-    completed?: number
-  }
-  parentID: string      // FK → UserMessage.id that triggered this
+  time: { created: number; completed?: number }
+  parentID: string
   modelID: string
   providerID: string
   agent: string
-  path: {
-    cwd: string
-    root: string
-  }
+  path: { cwd: string; root: string }
   cost: number
   tokens: {
-    input: number
-    output: number
-    reasoning: number
+    input: number; output: number; reasoning: number
     cache: { read: number; write: number }
   }
-  finish?: string       // "stop" | "tool-calls" | "length"
+  finish?: string
   error?: MessageError
-  summary?: boolean     // true if compaction summary
+  summary?: boolean
   variant?: string
 }
 
 type Message = UserMessage | AssistantMessage
 ```
 
-All usage stats, cost, model info, token counts live here. The app always has
-this data without walking parts.
-
-### Parts (ordered content within a message)
-
-Every part shares a base:
+### Parts
 
 ```ts
 type PartBase = {
-  id: string         // "prt_..." ascending
+  id: string
   sessionID: string
-  messageID: string  // FK → Message.id
+  messageID: string
 }
-```
 
-Discriminated union on `type`:
-
-```ts
 type Part =
-  | TextPart
-  | ReasoningPart
-  | ToolPart
-  | FilePart
-  | StepStartPart
-  | StepFinishPart
-  | SubtaskPart
-  | AgentPart
-  | SnapshotPart
-  | PatchPart
-  | CompactionPart
-  | RetryPart
+  | TextPart | ReasoningPart | ToolPart | FilePart
+  | StepStartPart | StepFinishPart | SubtaskPart | AgentPart
+  | SnapshotPart | PatchPart | CompactionPart | RetryPart
 ```
 
-#### TextPart
-
-```ts
-type TextPart = PartBase & {
-  type: "text"
-  text: string
-  synthetic?: boolean   // injected by system, not typed by user
-  ignored?: boolean     // present but excluded from model context
-  time?: { start: number; end?: number }
-  metadata?: Record<string, unknown>
-}
-```
-
-#### ReasoningPart
-
-```ts
-type ReasoningPart = PartBase & {
-  type: "reasoning"
-  text: string
-  time: { start: number; end?: number }
-  metadata?: Record<string, unknown>
-}
-```
-
-#### ToolPart — the big one
-
-```ts
-type ToolPart = PartBase & {
-  type: "tool"
-  callID: string
-  tool: string          // "bash" | "writeFile" | "task" | "question" | ...
-  state: ToolState
-  metadata?: Record<string, unknown>
-}
-```
-
-#### Tool state machine
+### Tool state machine
 
 ```
 pending ──→ running ──→ completed
@@ -252,66 +222,31 @@ pending ──→ running ──→ completed
 
 ```ts
 type ToolState =
-  | ToolStatePending
-  | ToolStateRunning
-  | ToolStateBlocked
-  | ToolStateCompleted
-  | ToolStateError
-
-type ToolStatePending = {
-  status: "pending"
-  input: Record<string, unknown>
-  raw: string                    // raw input string as it streams in
-}
-
-type ToolStateRunning = {
-  status: "running"
-  input: Record<string, unknown>
-  title?: string
-  metadata?: Record<string, unknown>
-  time: { start: number }
-}
-
-type ToolStateBlocked = {
-  status: "blocked"
-  input: Record<string, unknown>
-  title?: string
-  metadata?: Record<string, unknown>
-  time: { start: number }
-  block: PermissionBlock | QuestionBlock
-}
-
-type ToolStateCompleted = {
-  status: "completed"
-  input: Record<string, unknown>
-  output: string
-  title: string
-  metadata: Record<string, unknown>
-  time: { start: number; end: number; compacted?: number }
-  attachments?: FilePart[]
-  block?: ResolvedBlock          // preserved if tool was blocked before completing
-}
-
-type ToolStateError = {
-  status: "error"
-  input: Record<string, unknown>
-  error: string
-  metadata?: Record<string, unknown>
-  time: { start: number; end: number }
-  block?: ResolvedBlock          // preserved if tool was blocked before erroring
-}
+  | { status: "pending"; input: Record<string, unknown>; raw: string }
+  | { status: "running"; input: Record<string, unknown>; title?: string;
+      metadata?: Record<string, unknown>; time: { start: number } }
+  | { status: "blocked"; input: Record<string, unknown>; title?: string;
+      metadata?: Record<string, unknown>; time: { start: number };
+      block: PermissionBlock | QuestionBlock }
+  | { status: "completed"; input: Record<string, unknown>; output: string;
+      title: string; metadata: Record<string, unknown>;
+      time: { start: number; end: number; compacted?: number };
+      attachments?: FilePart[]; block?: ResolvedBlock }
+  | { status: "error"; input: Record<string, unknown>; error: string;
+      metadata?: Record<string, unknown>;
+      time: { start: number; end: number }; block?: ResolvedBlock }
 ```
 
-#### Block types
+### Block types
 
 ```ts
 type PermissionBlock = {
   type: "permission"
-  id: string                     // stable request ID
-  permission: string             // "edit" | "bash" | "task" | ...
-  patterns: string[]             // ["src/api/server.ts"] — what's being accessed
-  always: string[]               // patterns to auto-approve if user says "always"
-  metadata: Record<string, unknown>  // diff payload, filepath, etc
+  id: string
+  permission: string
+  patterns: string[]
+  always: string[]
+  metadata: Record<string, unknown>
 }
 
 type QuestionBlock = {
@@ -320,176 +255,69 @@ type QuestionBlock = {
   questions: QuestionInfo[]
 }
 
-type QuestionInfo = {
-  question: string
-  header: string                 // short label (max 30 chars)
-  options: { label: string; description: string }[]
-  multiple?: boolean
-  custom?: boolean               // allow free-text answer (default true)
-}
-
-// After the user responds, the block becomes resolved and is preserved
-// on the completed/error state for audit trail
-type ResolvedBlock =
-  | ResolvedPermissionBlock
-  | ResolvedQuestionBlock
-
-type ResolvedPermissionBlock = {
-  type: "permission"
-  id: string
-  permission: string
-  patterns: string[]
-  metadata: Record<string, unknown>
+type ResolvedPermissionBlock = PermissionBlock & {
   decision: "once" | "always" | "reject"
   decidedAt: number
 }
 
-type ResolvedQuestionBlock = {
-  type: "question"
-  id: string
-  questions: QuestionInfo[]
-  answers: string[][]            // per-question array of selected labels
+type ResolvedQuestionBlock = QuestionBlock & {
+  answers: string[][]
   decidedAt: number
 }
+
+type ResolvedBlock = ResolvedPermissionBlock | ResolvedQuestionBlock
 ```
 
-#### Why `blocked` instead of OpenCode's approach
-
-OpenCode keeps the tool at `"running"` while permission is pending and fires a
-separate `permission.asked` SSE event. The problems:
-
-1. **No durable record** — permission decisions are ephemeral events, not
-   persisted on the tool part. Reload the page after the session ends and you
-   lose all permission history.
-2. **Separate event types** — the app must handle `permission.asked`,
-   `permission.replied`, `question.asked`, `question.replied` as special
-   protocol events and merge them with tool state. More reducer branches.
-3. **Ambiguous tool state** — a tool at `"running"` could mean "executing" or
-   "blocked waiting for the user". The app cannot distinguish without checking
-   the side-channel.
-
-With `"blocked"`:
-
-1. **Durable** — the permission request and decision live on the tool part
-   forever. Auditable.
-2. **Same update path** — tool goes blocked → `message.part.updated`. Tool
-   unblocks → `message.part.updated`. No new event types. The app reducer
-   just handles tool state transitions.
-3. **Unambiguous** — `"running"` means executing, `"blocked"` means waiting
-   for user. The UI knows exactly what to render without checking anything else.
-
-#### Remaining part types
+### Remaining part types
 
 ```ts
+type TextPart = PartBase & {
+  type: "text"; text: string; synthetic?: boolean;
+  ignored?: boolean; time?: { start: number; end?: number };
+  metadata?: Record<string, unknown>
+}
+
+type ReasoningPart = PartBase & {
+  type: "reasoning"; text: string;
+  time: { start: number; end?: number };
+  metadata?: Record<string, unknown>
+}
+
+type ToolPart = PartBase & {
+  type: "tool"; callID: string; tool: string;
+  state: ToolState; metadata?: Record<string, unknown>
+}
+
 type FilePart = PartBase & {
-  type: "file"
-  mime: string
-  filename?: string
-  url: string                    // "data:..." inline or ref to encrypted blob
-  source?: FilePartSource
+  type: "file"; mime: string; filename?: string;
+  url: string; source?: FilePartSource
 }
 
 type StepStartPart = PartBase & {
-  type: "step-start"
-  snapshot?: string              // git commit hash
+  type: "step-start"; snapshot?: string
 }
 
 type StepFinishPart = PartBase & {
-  type: "step-finish"
-  reason: string                 // "stop" | "tool-calls" | "length"
-  snapshot?: string
-  cost: number
-  tokens: {
-    input: number; output: number; reasoning: number
-    cache: { read: number; write: number }
-  }
+  type: "step-finish"; reason: string; snapshot?: string;
+  cost: number;
+  tokens: { input: number; output: number; reasoning: number;
+            cache: { read: number; write: number } }
 }
 
 type SubtaskPart = PartBase & {
-  type: "subtask"
-  prompt: string
-  description: string
-  agent: string
-  model?: { providerID: string; modelID: string }
+  type: "subtask"; prompt: string; description: string;
+  agent: string; model?: { providerID: string; modelID: string };
   command?: string
 }
 
-type AgentPart = PartBase & {
-  type: "agent"
-  name: string
-}
-
+type AgentPart = PartBase & { type: "agent"; name: string }
 type SnapshotPart = PartBase & { type: "snapshot"; snapshot: string }
-type PatchPart    = PartBase & { type: "patch"; hash: string; files: string[] }
-
-type CompactionPart = PartBase & {
-  type: "compaction"
-  auto: boolean
-  overflow?: boolean
-}
-
-type RetryPart = PartBase & {
-  type: "retry"
-  attempt: number
-  error: APIError
-  time: { created: number }
-}
+type PatchPart = PartBase & { type: "patch"; hash: string; files: string[] }
+type CompactionPart = PartBase & { type: "compaction"; auto: boolean; overflow?: boolean }
+type RetryPart = PartBase & { type: "retry"; attempt: number; error: APIError; time: { created: number } }
 ```
 
-## Session record
-
-```ts
-type Session = {
-  id: string
-  projectID: string
-  directory: string
-  parentID?: string              // set for child sessions (subagents)
-  title: string
-  time: {
-    created: number
-    updated: number
-    compacting?: number
-  }
-  permission?: PermissionRule[]  // session-level rules
-  summary?: {
-    additions: number
-    deletions: number
-    files: number
-    diffs?: FileDiff[]
-  }
-}
-```
-
-## SSE event types
-
-Minimal set. No special types for permissions, questions, or todos.
-
-| Event | When |
-|---|---|
-| `session.created` | New session (including child sessions) |
-| `session.updated` | Title, summary, metadata changed |
-| `session.status` | idle / busy / retry |
-| `session.error` | Unrecoverable session error |
-| `session.compacted` | Context compaction completed |
-| `message.updated` | Message info created or final state changed (tokens, cost, finish) |
-| `message.removed` | Message deleted |
-| `message.part.updated` | Part created or state changed (**including tool blocked/unblocked**) |
-| `message.part.delta` | Streaming text append (partID + field + delta string) |
-| `message.part.removed` | Part removed |
-| `todo.updated` | Todo list replaced (convenience for todo dock, not a tool concern) |
-| `file.edited` | File on disk changed by agent |
-| `file.watcher.updated` | External file change detected |
-
-Things conspicuously absent from this list:
-
-- ~~`permission.asked`~~ — tool part goes `blocked`, `message.part.updated` fires
-- ~~`permission.replied`~~ — tool part goes `running`/`error`, `message.part.updated` fires
-- ~~`question.asked`~~ — tool part goes `blocked`, `message.part.updated` fires
-- ~~`question.replied`~~ — tool part goes `running`/`error`, `message.part.updated` fires
-
-Push notifications (mobile badge, desktop toast) are triggered by whatever
-state change is relevant. That's a notification-layer concern, not a protocol
-event taxonomy concern.
+---
 
 ## Full exchange example
 
@@ -514,7 +342,7 @@ Session has edit permission rule forcing asks.
 }
 ```
 
-### Message 2 — Assistant (tool call, gets blocked, then completes)
+### Message 2 — Assistant (tool call, blocked, then completed)
 
 ```jsonc
 {
@@ -554,6 +382,7 @@ Session has edit permission rule forcing asks.
           "id": "per_001",
           "permission": "edit",
           "patterns": ["hello.txt"],
+          "always": ["*"],
           "metadata": {
             "filepath": "hello.txt",
             "files": [{ "relativePath": "hello.txt", "type": "add",
@@ -574,21 +403,17 @@ Session has edit permission rule forcing asks.
 }
 ```
 
-Note: when this message is **final / persisted**, the tool part shows
-`status: "completed"` with the resolved `block` showing what happened. But
-during the live exchange, the SSE stream saw the tool part transition through:
+Live, the tool part transitioned through:
 
 ```
-1.  message.part.updated → tool, status: "pending"
-2.  message.part.updated → tool, status: "running"
-3.  message.part.updated → tool, status: "blocked", block: { type: "permission", ... }
-    ← app renders permission prompt with diff preview
-4.  message.part.updated → tool, status: "running"
-    ← user approved, tool resumes
-5.  message.part.updated → tool, status: "completed", block: { ..., decision: "once" }
+1. tool, status: "pending"
+2. tool, status: "running"
+3. tool, status: "blocked", block: { type: "permission", ... }
+4. tool, status: "running"        ← user approved
+5. tool, status: "completed", block: { ..., decision: "once" }
 ```
 
-No special event types. Just tool state transitions.
+Each transition is a message update through the existing path.
 
 ### Message 3 — Assistant (final text)
 
@@ -621,38 +446,20 @@ No special event types. Just tool state transitions.
 }
 ```
 
-## Question tool exchange example
-
-Agent calls the `question` tool to ask the user something:
-
-```
-1.  message.part.updated → tool "question", status: "pending"
-2.  message.part.updated → tool "question", status: "running"
-3.  message.part.updated → tool "question", status: "blocked",
-      block: { type: "question", id: "q_001",
-               questions: [{ question: "Which database?", header: "DB choice",
-                             options: [{ label: "PostgreSQL", description: "..." },
-                                       { label: "SQLite", description: "..." }] }] }
-    ← app renders question UI
-4.  message.part.updated → tool "question", status: "completed",
-      block: { type: "question", ..., answers: [["PostgreSQL"]], decidedAt: ... },
-      output: "User answered: Which database? = PostgreSQL"
-```
-
-Same update path. Same reducer logic.
+---
 
 ## Subagents
 
-### Creation
-
-Parent agent calls `task` tool → CLI creates child session:
+Parent calls `task` tool → CLI creates child session with `parentID` and
+constrained permissions. Parent tool part has `metadata.sessionId` linking
+to the child. Child has its own messages and parts. Resumable by session ID.
 
 ```jsonc
+// child session
 {
   "id": "ses_child_001",
   "parentID": "ses_01xyz",
-  "title": "Find all API endpoints (@explore)",
-  "directory": "/home/user/app",
+  "title": "Find API endpoints (@explore)",
   "permission": [
     { "permission": "edit", "pattern": "*", "action": "deny" },
     { "permission": "bash", "pattern": "*", "action": "deny" },
@@ -661,207 +468,142 @@ Parent agent calls `task` tool → CLI creates child session:
 }
 ```
 
-### Parent transcript records it
-
-The `task` tool part on the parent assistant message:
-
-```jsonc
-{
-  "type": "tool",
-  "callID": "call_task_001",
-  "tool": "task",
-  "state": {
-    "status": "completed",
-    "input": { "description": "Find API endpoints", "prompt": "...",
-               "subagent_type": "explore" },
-    "output": "task_id: ses_child_001\n\n<task_result>\n...\n</task_result>",
-    "title": "task → explore",
-    "metadata": {
-      "sessionId": "ses_child_001",
-      "model": { "providerID": "anthropic", "modelID": "claude-haiku-4-5" }
-    },
-    "time": { "start": 1753120005000, "end": 1753120012000 }
-  }
-}
-```
-
-### Child session
-
-Has its own messages, parts, full transcript. Fetched via
-`GET /session/:parentID/children` or `GET /session/:childID/message`.
-
-### Permission constraining
-
-Agent types define default permission overrides. Child cannot escalate beyond
-parent. The merge is restrictive.
-
-### UI
-
-- Parent shows `task` tool part (collapsed, expandable)
-- Clicking navigates to child session transcript
-- `parentID` on session gives nesting
-
 ## Todos
 
-`todowrite` is a normal tool → tool part in the transcript.
-
-Inside execution, it writes to a separate todo store AND the tool output
-contains the current list as JSON.
-
-The `todo.updated` SSE event is the one side-channel we keep — it exists so
-the UI can update a todo dock without scanning tool parts. The todo table is
-the quick-read store for "what are current todos?"
-
-```ts
-type Todo = {
-  content: string
-  status: "pending" | "in_progress" | "completed" | "cancelled"
-  priority: "high" | "medium" | "low"
-}
-```
+`todowrite` is a normal tool → tool part in transcript. Also writes to
+separate todo store for quick reads. One side-channel that earns its keep.
 
 ## Permission rules
 
-Rules come from three sources, merged in order:
+Three sources merged in order: project config, session creation, runtime
+approvals. `deny` → immediate error. `allow` → no block. `ask` → blocked.
+`always` reply adds to runtime rules and auto-unblocks matching pending tools.
+`reject` cascades to all pending blocked tools in the session.
 
-1. **Project config** — `.happy/config.json` or equivalent
-2. **Session creation** — passed when session is created
-3. **Runtime approvals** — accumulated "always" decisions during the session
+---
 
-```ts
-type PermissionRule = {
-  permission: string   // "edit" | "bash" | "read" | "task" | ...
-  pattern: string      // glob: "*", "*.ts", "src/**"
-  action: "allow" | "deny" | "ask"
-}
+## Architecture: shared model
+
+```
+CLI adapters ──→ Message + Parts (canonical) ──→ encrypt ──→ server
+                                                                │
+                                          ┌─────────────────────┘
+                                          ▼
+                              app decrypts ──→ if legacy: convert to
+                                                Message + Parts
+                                              ──→ store (new format only)
+                                              ──→ render (one code path)
 ```
 
-Evaluation: check rules in order. `deny` → tool errors immediately.
-`allow` → tool runs, no block. `ask` → tool goes `blocked`.
+The shared package is `happy-wire`. Both CLI and app import `Message`, `Part`,
+`ToolState`, `Block` types from there. CLI produces them, app consumes them.
+Encrypted transport in between is dumb pipe.
 
-If the user says `"always"`, the patterns from `block.always` are added to
-runtime rules. Any other currently-blocked tools matching those patterns
-auto-unblock.
+The app store holds only the new format. Legacy messages are converted on
+ingestion (decrypt → detect format → convert if needed → store). Rendering
+never sees legacy shapes.
 
-If the user says `"reject"`, the tool errors AND all other pending blocked
-tools in the same session also error (cascade reject — same as OpenCode).
+---
 
-## Storage model
+## Implementation plan
 
-### Happy's constraint: encrypted storage
+Work happens on branch `messaging-protocol-v3`. Incremental commits at
+meaningful checkpoints.
 
-OpenCode stores plaintext rows in SQLite and patches them freely. Happy stores
-opaque encrypted blobs.
+### Phase 1: shared types
 
-We choose **patchable canonical messages**:
+Define Zod schemas in `happy-wire`:
+- `Message` (UserMessage | AssistantMessage)
+- `Part` (discriminated union)
+- `ToolState` (with `blocked`)
+- `Block` types (PermissionBlock, QuestionBlock, resolved variants)
 
-- Message IDs are stable
-- When a tool part transitions (pending → blocked → completed), re-encrypt
-  the full message and store the update
-- Sync sends the full updated encrypted message
-- Refetch returns latest state without replay
-- No append-only event log as primary storage
+No runtime changes. Just the type definitions that both sides will import.
 
-This matches Happy's existing message delivery model. The inner plaintext
-shape changes; the storage/sync envelope does not.
+### Phase 2: Claude adapter
 
-### What does NOT change
+Normalize Claude provider output into messages+parts at the CLI boundary.
+This is the first adapter because:
+- Claude is our primary provider
+- `claude.integration.test.ts` already covers clarification, model switch,
+  MCP tools, write boundaries, permission deny, interrupt, TodoWrite
+- Most surface area to validate the format against
 
-- DB rows
-- `seq` ordering
-- `localId`
-- v3 HTTP message APIs
-- Socket.IO invalidation
-- Encrypted blob format
+Checkpoint: Claude sessions produce canonical messages+parts that pass
+schema validation.
 
-## What moves out of agentState
+### Phase 3: Codex adapter
 
-Keep in agentState:
-- Current mode
-- Available models / modes
-- Live session config
-- Transient backend capabilities
+Map Codex's thread/turn/item model and approval requests into the same
+messages+parts shape. Codex approvals map to `blocked` tool state.
 
-Move to tool parts:
-- Pending permission requests → tool `status: "blocked"`
-- Completed permission decisions → tool `block` field
-- Question prompts → tool `status: "blocked"`
-- Question answers → tool `block` field
+Codex is second because:
+- `codex.integration.test.ts` already covers permission approve/deny/cancel,
+  context preservation, reconnect+resume, interrupt during permission
+- Codex has the most different approval model — proving it normalizes
+  validates the blocked/unblocked design
 
-## Provider adapters
+Checkpoint: Codex sessions produce same canonical shape as Claude.
 
-Every provider adapter normalizes into this exact format at the CLI boundary:
+### Phase 4: OpenCode adapter
 
-- Claude adapter → messages + parts
-- Codex adapter → messages + parts
-- OpenClaw adapter → messages + parts
-- ACP runner → messages + parts
-- Gemini adapter → messages + parts
+Map OpenCode's message+parts (which we're largely copying) through our
+adapter. OpenCode's `permission.asked` side-channel maps to `blocked`.
 
-The app sees one shape. Provider weirdness stays in CLI.
+OpenCode is third because:
+- Closest to our target format already
+- Validates that the shape works when the source is nearly identical
 
-## App impact
+Checkpoint: all three providers produce identical message+parts shape.
 
-The normalizer converges to: parse `UserMessage` + `AssistantMessage`, hydrate
-parts, done.
+### Phase 5: app store migration
 
-Delete:
-- Provider-specific `codex` parsing
-- Provider-specific `acp` parsing
-- `output` compatibility logic
-- `role: "session"` handling
+- Add legacy → messages+parts converter at ingestion boundary
+- Migrate app store to hold only the new format
+- Single rendering code path for messages+parts
+- Legacy parsing becomes ingestion-only, not render-time
 
-The reducer gets simpler:
-- Tool lifecycle is one state machine on one part type
-- Permissions are just tool state transitions — no separate merge
-- Questions are just tool state transitions
-- Grouping from `parentID` on sessions + tool metadata
+Checkpoint: app renders old and new sessions through one code path.
 
-## Migration plan
+### Phase 6: integration test
 
-### Phase 1: add new schemas alongside existing
+One long sequential test against lab-rat-todo-project following the
+exercise flow in `environments/lab-rat-todo-project/exercise-flow.md`.
 
-- Define `UserMessage`, `AssistantMessage`, `Part` types in CLI and app
-- Keep legacy parsing
-- Add compatibility path in reducer
-- Support patching existing canonical messages
+Must cover:
+- Text response, reasoning
+- Permission reject → error
+- Permission once → completed
+- Permission always → auto-approve
+- Tool blocked → completed with block.decision preserved
+- Question blocked → answered with block.answers preserved
+- Cancel + cleanup
+- Session resume with full transcript intact
+- Legacy session still renders after store migration
 
-### Phase 2: migrate one provider end to end
+### Phase 7: delete legacy rendering
 
-Target: ACP runner or Codex (both have adapter boundaries and event streams).
+After all three providers emit messages+parts and old sessions convert
+cleanly, remove legacy parsing from the rendering path. It stays only
+in the ingestion converter.
 
-### Phase 3: migrate permissions into tool state
-
-- Tool goes `blocked` instead of emitting to agentState
-- Keep agentState fallback temporarily
-- Switch UI to render from tool part state
-
-### Phase 4: migrate remaining providers
-
-Claude, OpenClaw, Gemini.
-
-### Phase 5: delete legacy parsing
-
-Remove codex, acp, output, `role: "session"` parsing.
+---
 
 ## Open questions
 
 1. Should `block.metadata` for permissions always include the full diff, or
    should large diffs be a separate encrypted blob reference?
-2. Do we need a `tool-progress` part type for long-running tools (e.g. bash
-   streaming output), or is periodic patching of the running state enough?
-3. Should provider-native IDs (e.g. OpenAI `call_...`) be stored on tool
-   parts for debugging, or fully discarded after mapping?
-4. Exact Zod schemas and field naming TBD during implementation — this doc
-   specifies the shape and semantics, not final field names.
+2. Do we need `tool-progress` for long-running tools (e.g. bash streaming),
+   or is periodic patching of running state enough?
+3. Should provider-native IDs (OpenAI `call_...`) be stored for debugging
+   or discarded after mapping?
 
 ## What we are NOT doing
 
-- ~~Special SSE event types for permissions~~ — tool state transitions
-- ~~Special SSE event types for questions~~ — tool state transitions
-- ~~Side-channel permission store~~ — it's on the tool part
-- ~~Side-channel question store~~ — it's on the tool part
+- ~~ACP / Gemini / OpenClaw adapters~~ — later, same pattern
+- ~~New SSE event types for permissions~~ — same message update path
+- ~~Side-channel permission store~~ — on the tool part
 - ~~`role: "session"` wrapper~~ — dead
 - ~~Nested `ev.t`~~ — dead
-- ~~Raw delta replay as primary sync model~~ — patchable canonical messages
+- ~~Raw delta replay as sync model~~ — patchable canonical messages
 - ~~New "session protocol" umbrella~~ — it's just messages and parts
