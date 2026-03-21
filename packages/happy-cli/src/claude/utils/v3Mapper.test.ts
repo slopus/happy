@@ -81,15 +81,17 @@ describe('v3Mapper', () => {
       const r2 = handleClaudeMessage(assistantTextMsg('Hi there!'), state);
       expect(r2.messages).toHaveLength(0); // not finalized yet
       expect(r2.currentAssistant).not.toBeNull();
-      expect(r2.currentAssistant!.parts.some(p => p.type === 'text')).toBe(true);
+      expect(r2.currentAssistant!.parts.some((p: any) => p.type === 'text')).toBe(true);
 
       // Flush (end of session or next user message)
       const flushed = flushV3Turn(state);
       expect(flushed).toHaveLength(1);
       expect(flushed[0].info.role).toBe('assistant');
-      expect(flushed[0].info.finish).toBe('stop');
-      expect(flushed[0].parts.some(p => p.type === 'step-start')).toBe(true);
-      expect(flushed[0].parts.some(p => p.type === 'step-finish')).toBe(true);
+      const info = flushed[0].info;
+      expect(info.role).toBe('assistant');
+      if (info.role === 'assistant') expect(info.finish).toBe('stop');
+      expect(flushed[0].parts.some((p: any) => p.type === 'step-start')).toBe(true);
+      expect(flushed[0].parts.some((p: any) => p.type === 'step-finish')).toBe(true);
     });
   });
 
@@ -116,7 +118,7 @@ describe('v3Mapper', () => {
       const r = handleClaudeMessage(assistantToolMsg('writeFile', 'call_1', { path: 'test.txt', content: 'hello' }), state);
 
       expect(r.currentAssistant).not.toBeNull();
-      const toolPart = r.currentAssistant!.parts.find(p => p.type === 'tool');
+      const toolPart = r.currentAssistant!.parts.find((p: any) => p.type === 'tool');
       expect(toolPart).toBeDefined();
       if (toolPart?.type === 'tool') {
         expect(toolPart.tool).toBe('writeFile');
@@ -134,10 +136,10 @@ describe('v3Mapper', () => {
       const r = handleClaudeMessage(userToolResultMsg('call_1', 'Created test.txt'), state);
 
       // The user tool result finalizes the previous assistant turn
-      const finalized = r.messages.find(m => m.info.role === 'assistant');
+      const finalized = r.messages.find((m: any) => m.info.role === 'assistant');
       expect(finalized).toBeDefined();
       if (finalized) {
-        const toolPart = finalized.parts.find(p => p.type === 'tool');
+        const toolPart = finalized.parts.find((p: any) => p.type === 'tool');
         expect(toolPart).toBeDefined();
         if (toolPart?.type === 'tool') {
           expect(toolPart.state.status).toBe('completed');
@@ -145,7 +147,7 @@ describe('v3Mapper', () => {
             expect(toolPart.state.output).toBe('Created test.txt');
           }
         }
-        expect(finalized.info.finish).toBe('tool-calls');
+        if (finalized.info.role === 'assistant') expect(finalized.info.finish).toBe('tool-calls');
       }
     });
 
@@ -155,10 +157,10 @@ describe('v3Mapper', () => {
       handleClaudeMessage(assistantToolMsg('bash', 'call_2', { command: 'bad_cmd' }), state);
 
       const r = handleClaudeMessage(userToolResultMsg('call_2', 'command not found', true), state);
-      const finalized = r.messages.find(m => m.info.role === 'assistant');
+      const finalized = r.messages.find((m: any) => m.info.role === 'assistant');
       expect(finalized).toBeDefined();
       if (finalized) {
-        const toolPart = finalized.parts.find(p => p.type === 'tool');
+        const toolPart = finalized.parts.find((p: any) => p.type === 'tool');
         if (toolPart?.type === 'tool') {
           expect(toolPart.state.status).toBe('error');
         }
@@ -176,13 +178,13 @@ describe('v3Mapper', () => {
 
       // Tool result → finalizes first assistant message
       const r1 = handleClaudeMessage(userToolResultMsg('call_3', 'File contents here'), state);
-      expect(r1.messages.some(m => m.info.role === 'assistant')).toBe(true);
+      expect(r1.messages.some((m: any) => m.info.role === 'assistant')).toBe(true);
 
       // Second assistant message with summary
       handleClaudeMessage(assistantTextMsg('Here is the summary.'), state);
       const flushed = flushV3Turn(state);
       expect(flushed).toHaveLength(1);
-      expect(flushed[0].info.finish).toBe('stop');
+      if (flushed[0].info.role === 'assistant') expect(flushed[0].info.finish).toBe('stop');
     });
   });
 

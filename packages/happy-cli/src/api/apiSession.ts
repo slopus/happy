@@ -17,6 +17,12 @@ import {
     mapClaudeLogMessageToSessionEnvelopes,
     type ClaudeSessionProtocolState,
 } from '@/claude/utils/sessionProtocolMapper';
+import {
+    handleClaudeMessage,
+    flushV3Turn,
+    createV3MapperState,
+    type V3MapperState,
+} from '@/claude/utils/v3Mapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
 
@@ -97,6 +103,7 @@ export class ApiSessionClient extends EventEmitter {
         startedSubagents: new Set<string>(),
         activeSubagents: new Set<string>(),
     };
+    private v3MapperState: V3MapperState | null = null;
     private lastSeq = 0;
     private pendingOutbox: Array<{ content: string; localId: string }> = [];
     private readonly sendSync: InvalidateSync;
@@ -350,11 +357,15 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
+        // v1 path (existing)
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         for (const envelope of mapped.envelopes) {
             this.sendSessionProtocolMessage(envelope);
         }
+
+        // v3 path (dual-write, behind HAPPY_V3_PROTOCOL flag)
+        this.sendClaudeV3Message(body);
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
@@ -381,6 +392,60 @@ export class ApiSessionClient extends EventEmitter {
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         for (const envelope of mapped.envelopes) {
             this.sendSessionProtocolMessage(envelope);
+        }
+        this.flushClaudeV3Turn();
+    }
+
+    /**
+     * Send a v3 protocol message (Message + Parts canonical format).
+     * The content is wrapped with { v: 3 } so the app can distinguish it from legacy payloads.
+     */
+    sendV3ProtocolMessage(message: { info: unknown; parts: unknown[] }) {
+        this.enqueueMessage({
+            v: 3,
+            message,
+        });
+    }
+
+    /**
+     * Process a Claude SDK message through the v3 mapper and send any finalized messages.
+     * Also sends the in-flight assistant message as a partial update.
+     *
+     * Enable with HAPPY_V3_PROTOCOL=1 env var. Dual-writes alongside the existing
+     * session protocol path until migration is complete.
+     */
+    sendClaudeV3Message(body: RawJSONLines) {
+        if (!process.env.HAPPY_V3_PROTOCOL) return;
+
+        if (!this.v3MapperState) {
+            this.v3MapperState = createV3MapperState({
+                sessionID: this.sessionId,
+                providerID: 'anthropic',
+            });
+        }
+
+        const result = handleClaudeMessage(body, this.v3MapperState);
+
+        // Send finalized messages (completed turns)
+        for (const msg of result.messages) {
+            this.sendV3ProtocolMessage(msg);
+        }
+
+        // Send partial in-flight assistant message (for live streaming)
+        if (result.currentAssistant) {
+            this.sendV3ProtocolMessage(result.currentAssistant);
+        }
+    }
+
+    /**
+     * Flush any in-flight v3 assistant message (e.g. on session end or turn close).
+     */
+    flushClaudeV3Turn() {
+        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
+
+        const messages = flushV3Turn(this.v3MapperState);
+        for (const msg of messages) {
+            this.sendV3ProtocolMessage(msg);
         }
     }
 
