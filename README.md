@@ -58,11 +58,11 @@ yarn env:server    # Terminal 1 — server
 yarn env:web       # Terminal 2 — web app
 
 # CLI — works from any directory after sourcing:
-source .environments/<name>/env.sh
+source environments/data/envs/<name>/env.sh
 happy
 ```
 
-Each environment gets its own database, ports, and config. Run `yarn env:list` to see all environments.
+Each environment gets its own database, ports, config, and a copied `lab-rat-todo-project`. Run `yarn env:list` to see all environments.
 
 <h3 align="center">
 Release (Maintainers)

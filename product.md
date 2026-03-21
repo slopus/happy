@@ -28,7 +28,7 @@ Useful helpers:
 For daemon and agent work, use a sourced shell:
 
 ```bash
-source .environments/<name>/env.sh
+source environments/data/envs/<name>/env.sh
 happy daemon start
 ```
 
@@ -47,7 +47,7 @@ If you are driving the flow from an external CLI such as `agent-browser`, run
 it from the same sourced shell:
 
 ```bash
-source .environments/<name>/env.sh
+source environments/data/envs/<name>/env.sh
 agent-browser ...
 ```
 

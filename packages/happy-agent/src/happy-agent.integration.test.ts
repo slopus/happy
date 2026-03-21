@@ -8,7 +8,8 @@ import { decodeBase64, encodeBase64, libsodiumEncryptForPublicKey } from './encr
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(__dirname, '..');
 const repoRoot = resolve(packageDir, '..', '..');
-const environmentsDir = join(repoRoot, '.environments');
+const environmentsDir = join(repoRoot, 'environments', 'data', 'envs');
+const currentEnvironmentPath = join(repoRoot, 'environments', 'data', 'current.json');
 const binPath = resolve(packageDir, 'bin', 'happy-agent.mjs');
 const keepIntegrationEnv = ['1', 'true', 'yes'].includes((process.env.HAPPY_AGENT_KEEP_ENV ?? '').toLowerCase());
 
@@ -54,12 +55,11 @@ function runCommand(command: string, args: string[], cwd = repoRoot, env: NodeJS
 }
 
 function readCurrentEnvName(): string | null {
-    const currentPath = join(environmentsDir, 'current.json');
-    if (!existsSync(currentPath)) {
+    if (!existsSync(currentEnvironmentPath)) {
         return null;
     }
 
-    const parsed = JSON.parse(readFileSync(currentPath, 'utf-8')) as { current?: string };
+    const parsed = JSON.parse(readFileSync(currentEnvironmentPath, 'utf-8')) as { current?: string };
     return parsed.current ?? null;
 }
 

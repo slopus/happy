@@ -50,6 +50,7 @@ CLAUDE.local.md
 
 # Local dev environments
 .environments/
+environments/data/
 
 # Development planning notes (keep local, don't commit)
 notes/
