@@ -49,7 +49,6 @@ import {
 import {
   parseOptionsFromText,
   hasIncompleteOptions,
-  formatOptionsXml,
 } from '@/gemini/utils/optionsParser';
 import { ConversationHistory } from '@/gemini/utils/conversationHistory';
 import { GeminiSessionWriter } from '@/gemini/utils/sessionWriter';
@@ -1471,17 +1470,17 @@ export async function runGemini(opts: {
         // Send accumulated response to mobile app ONLY when turn is complete
         // This prevents message fragmentation from Gemini's chunked responses
         if (accumulatedResponse.trim()) {
-          const { text: messageText, options } = parseOptionsFromText(accumulatedResponse);
-          
+          const { text: messageText, options, rawOptionsXml } = parseOptionsFromText(accumulatedResponse);
+
           // Record assistant response in conversation history for context preservation
           conversationHistory.addAssistantMessage(messageText);
           sessionWriter.writeAssistant(messageText, displayedModel);
 
           // Mobile app parses options from text via parseMarkdown
+          // Use rawOptionsXml to preserve attributes (recommended, destructive)
           let finalMessageText = messageText;
           if (options.length > 0) {
-            const optionsXml = formatOptionsXml(options);
-            finalMessageText = messageText + optionsXml;
+            finalMessageText = messageText + rawOptionsXml;
             logger.debug(`[gemini] Found ${options.length} options in response:`, options);
           } else if (hasIncompleteOptions(accumulatedResponse)) {
             logger.debug(`[gemini] Warning: Incomplete options block detected`);

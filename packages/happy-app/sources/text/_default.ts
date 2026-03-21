@@ -1395,6 +1395,9 @@ export const en = {
         unknownSender: 'Unknown',
         confirmOverwriteInput: 'Overwrite current input?',
         confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
+        optionRecommended: 'Recommended',
+        confirmDestructive: 'Confirm action',
+        confirmDestructiveMessage: 'This is a destructive action. Are you sure you want to proceed?',
     },
 
     codex: {

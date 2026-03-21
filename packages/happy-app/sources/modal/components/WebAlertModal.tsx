@@ -5,6 +5,7 @@ import { AlertModalConfig, ConfirmModalConfig } from '../types';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 interface WebAlertModalProps {
     config: AlertModalConfig | ConfirmModalConfig;
@@ -27,10 +28,10 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
 
     const buttons = isConfirm
         ? [
-            { text: config.cancelText || 'Cancel', style: 'cancel' as const },
-            { text: config.confirmText || 'OK', style: config.destructive ? 'destructive' as const : 'default' as const }
+            { text: config.cancelText || t('common.cancel'), style: 'cancel' as const },
+            { text: config.confirmText || t('common.ok'), style: config.destructive ? 'destructive' as const : 'default' as const }
         ]
-        : config.buttons || [{ text: 'OK', style: 'default' as const }];
+        : config.buttons || [{ text: t('common.ok'), style: 'default' as const }];
 
     const styles = StyleSheet.create({
         container: {

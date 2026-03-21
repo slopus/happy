@@ -1,5 +1,11 @@
 import { parseMarkdownBlock } from "./parseMarkdownBlock"
 
+export type OptionItem = {
+    title: string;
+    recommended?: boolean;
+    destructive?: boolean;
+}
+
 export type MarkdownBlock = {
     type: 'text'
     content: MarkdownSpan[]
@@ -24,7 +30,7 @@ export type MarkdownBlock = {
     type: 'horizontal-rule'
 } | {
     type: 'options',
-    items: string[]
+    items: OptionItem[]
 } | {
     type: 'table',
     headers: MarkdownSpan[][],

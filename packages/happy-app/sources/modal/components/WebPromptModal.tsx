@@ -6,6 +6,7 @@ import { Modal } from '../ModalManager';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 interface WebPromptModalProps {
     config: PromptModalConfig;
@@ -182,7 +183,7 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                             styles.cancelText,
                             Typography.default()
                         ]}>
-                            {config.cancelText || 'Cancel'}
+                            {config.cancelText || t('common.cancel')}
                         </Text>
                     </Pressable>
                     <View style={styles.buttonSeparator} />
@@ -197,7 +198,7 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                             styles.buttonText,
                             Typography.default('semiBold')
                         ]}>
-                            {config.confirmText || 'OK'}
+                            {config.confirmText || t('common.ok')}
                         </Text>
                     </Pressable>
                 </View>

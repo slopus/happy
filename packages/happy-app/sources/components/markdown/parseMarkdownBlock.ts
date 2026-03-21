@@ -1,4 +1,4 @@
-import type { MarkdownBlock } from "./parseMarkdown";
+import type { MarkdownBlock, OptionItem } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
 
 const EMPTY_TABLE_CELL_PLACEHOLDER = '\u200B';
@@ -176,17 +176,25 @@ export function parseMarkdownBlock(markdown: string) {
 
         // Options block
         if (trimmed.startsWith('<options>')) {
-            let items: string[] = [];
+            let items: OptionItem[] = [];
             while (index < lines.length) {
                 const nextLine = lines[index];
                 if (nextLine.trim() === '</options>') {
                     index++;
                     break;
                 }
-                // Extract content from <option> tags
-                const optionMatch = nextLine.match(/<option>(.*?)<\/option>/);
+                // Extract content and attributes from <option> tags
+                const optionMatch = nextLine.match(/<option(\s[^>]*)?>(.+?)<\/option>/);
                 if (optionMatch) {
-                    items.push(optionMatch[1]);
+                    const attrs = optionMatch[1] || '';
+                    const title = optionMatch[2].trim();
+                    if (title) {
+                        items.push({
+                            title,
+                            recommended: /\brecommended\b/.test(attrs),
+                            destructive: /\bdestructive\b/.test(attrs),
+                        });
+                    }
                 }
                 index++;
             }

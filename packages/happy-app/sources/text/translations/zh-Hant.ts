@@ -1379,6 +1379,9 @@ export const zhHant: TranslationStructure = {
         unknownSender: '未知',
         confirmOverwriteInput: '覆蓋當前輸入？',
         confirmOverwriteInputMessage: '輸入框已有內容，是否替換？',
+        optionRecommended: '推薦',
+        confirmDestructive: '確認操作',
+        confirmDestructiveMessage: '這是一個危險操作，確定要執行嗎？',
     },
 
     codex: {

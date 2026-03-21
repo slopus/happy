@@ -1376,6 +1376,9 @@ export const ru: TranslationStructure = {
         unknownSender: 'Неизвестно',
         confirmOverwriteInput: 'Overwrite current input?',
         confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
+        optionRecommended: 'Рекомендуется',
+        confirmDestructive: 'Подтвердите действие',
+        confirmDestructiveMessage: 'Это деструктивное действие. Вы уверены, что хотите продолжить?',
     },
 
     codex: {

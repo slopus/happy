@@ -1,4 +1,4 @@
-import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
+import { MarkdownSpan, OptionItem as OptionItemData, parseMarkdown } from './parseMarkdown';
 import { resolveMarkdownLink } from './markdownLinkUtils';
 import { Link } from 'expo-router';
 import * as React from 'react';
@@ -17,11 +17,14 @@ import * as Haptics from 'expo-haptics';
 import { hapticsLight } from '@/components/haptics';
 import { showCopiedToast } from '@/components/Toast';
 import { MermaidRenderer } from './MermaidRenderer';
+import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
 // Option type for callback
 export type Option = {
     title: string;
+    recommended?: boolean;
+    destructive?: boolean;
 };
 
 // Loading state for options - tracks which option is loading (by index)
@@ -31,8 +34,8 @@ export type OptionsLoadingState = {
 
 export const MarkdownView = React.memo((props: {
     markdown: string;
-    onOptionPress?: (option: Option, allOptions: string[]) => void;
-    onOptionLongPress?: (option: Option, allOptions: string[]) => void;
+    onOptionPress?: (option: Option, allOptions: OptionItemData[]) => void;
+    onOptionLongPress?: (option: Option, allOptions: OptionItemData[]) => void;
     optionsLoadingState?: OptionsLoadingState;
     sessionId?: string;
     sessionWorkingDirectory?: string | null;
@@ -253,13 +256,14 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
 
 // Individual option item component to use hooks properly
 const OptionItem = React.memo((props: {
-    item: string,
+    item: OptionItemData,
     index: number,
     isThisLoading: boolean,
     isDisabled: boolean,
     onPress: () => void,
     onLongPress: () => void,
 }) => {
+    const { theme } = useUnistyles();
     // Use GestureDetector to handle long press, which takes priority over parent GestureDetector
     const longPressGesture = Gesture.LongPress()
         .minDuration(500)
@@ -286,18 +290,28 @@ const OptionItem = React.memo((props: {
             <View
                 style={[
                     style.optionItem,
-                    props.isDisabled && style.optionItemDisabled
+                    props.isDisabled && style.optionItemDisabled,
                 ]}
             >
                 <Text
                     selectable={false}
                     style={[
                         style.optionText,
-                        props.isDisabled && style.optionTextDisabled
+                        props.item.destructive && style.optionTextDestructive,
+                        props.isDisabled && style.optionTextDisabled,
                     ]}
                 >
-                    {props.item}
+                    {props.item.title}
                 </Text>
+                {props.item.recommended && (
+                    <View style={[
+                            style.optionRecommendedBadge,
+                            { opacity: theme.dark ? 0.8 : 0.2 },
+                        ]}
+                    >
+                        <Text style={style.optionRecommendedBadgeText}>{t('message.optionRecommended')}</Text>
+                    </View>
+                )}
                 {props.isThisLoading && (
                     <View style={style.optionLoadingOverlay}>
                         <ActivityIndicator size="small" />
@@ -309,22 +323,22 @@ const OptionItem = React.memo((props: {
 });
 
 function RenderOptionsBlock(props: {
-    items: string[],
+    items: OptionItemData[],
     first: boolean,
     last: boolean,
     selectable: boolean,
-    onOptionPress?: (option: Option, allOptions: string[]) => void,
-    onOptionLongPress?: (option: Option, allOptions: string[]) => void,
+    onOptionPress?: (option: Option, allOptions: OptionItemData[]) => void,
+    onOptionLongPress?: (option: Option, allOptions: OptionItemData[]) => void,
     optionsLoadingState?: OptionsLoadingState
 }) {
     const isLoading = props.optionsLoadingState?.loadingIndex !== null && props.optionsLoadingState?.loadingIndex !== undefined;
 
-    const handleLongPress = React.useCallback((item: string) => {
+    const handleLongPress = React.useCallback((item: OptionItemData) => {
         // Only trigger long press on mobile
         if (Platform.OS !== 'web') {
             // Haptic feedback
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            props.onOptionLongPress?.({ title: item }, props.items);
+            props.onOptionLongPress?.(item, props.items);
         }
     }, [props.onOptionLongPress, props.items]);
 
@@ -342,14 +356,17 @@ function RenderOptionsBlock(props: {
                             index={index}
                             isThisLoading={isThisLoading}
                             isDisabled={isDisabled}
-                            onPress={() => props.onOptionPress?.({ title: item }, props.items)}
+                            onPress={() => props.onOptionPress?.(item, props.items)}
                             onLongPress={() => handleLongPress(item)}
                         />
                     );
                 } else {
                     return (
                         <View key={index} style={style.optionItem}>
-                            <Text selectable={props.selectable} style={style.optionText}>{item}</Text>
+                            <Text selectable={props.selectable} style={[
+                                style.optionText,
+                                item.destructive && style.optionTextDestructive,
+                            ]}>{item.title}</Text>
                         </View>
                     );
                 }
@@ -763,6 +780,8 @@ const style = StyleSheet.create((theme) => ({
         paddingVertical: 12,
         borderWidth: 1,
         borderColor: theme.colors.divider,
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     optionItemDisabled: {
         opacity: 0.5,
@@ -773,8 +792,25 @@ const style = StyleSheet.create((theme) => ({
         lineHeight: 24,
         color: theme.colors.text,
     },
+    optionTextDestructive: {
+        color: theme.colors.textDestructive,
+    },
     optionTextDisabled: {
         opacity: 0.6,
+    },
+    optionRecommendedBadge: {
+        opacity: 0.8,
+        backgroundColor: '#3A4A5C',
+        borderRadius: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        marginLeft: 12,
+    },
+    optionRecommendedBadgeText: {
+        ...Typography.default('semiBold'),
+        fontSize: 12,
+        lineHeight: 18,
+        color: '#fff',
     },
     optionLoadingOverlay: {
         position: 'absolute',

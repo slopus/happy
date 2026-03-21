@@ -11,6 +11,7 @@ import { layout } from "./layout";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { Option } from './markdown/MarkdownView';
+import { OptionItem as OptionItemData } from './markdown/parseMarkdown';
 import { Modal } from "@/modal";
 import { sync } from "@/sync/sync";
 import { useSetting } from "@/sync/storage";
@@ -126,9 +127,16 @@ function UserTextBlock(props: {
   const [optionsLoadingState, setOptionsLoadingState] = React.useState<OptionsLoadingState>({ loadingIndex: null });
 
   // Click to send
-  const handleOptionPress = React.useCallback(async (option: Option, allOptions: string[]) => {
-    // If not newest message, show confirmation
-    if (!props.isNewestMessage) {
+  const handleOptionPress = React.useCallback(async (option: Option, allOptions: OptionItemData[]) => {
+    if (option.destructive) {
+      // Destructive confirmation takes priority (skip old-option confirmation)
+      const confirmed = await Modal.confirm(
+        t('message.confirmDestructive'),
+        t('message.confirmDestructiveMessage'),
+        { destructive: true }
+      );
+      if (!confirmed) return;
+    } else if (!props.isNewestMessage) {
       const confirmed = await Modal.confirm(
         t('message.confirmOldOption'),
         t('message.confirmOldOptionMessage')
@@ -137,7 +145,7 @@ function UserTextBlock(props: {
     }
 
     // Find the index of this option for loading state
-    const index = allOptions.indexOf(option.title);
+    const index = allOptions.findIndex(o => o.title === option.title);
     setOptionsLoadingState({ loadingIndex: index });
 
     try {
@@ -148,8 +156,8 @@ function UserTextBlock(props: {
   }, [props.sessionId, props.isNewestMessage]);
 
   // Long press to fill input (mobile only, handled in MarkdownView)
-  const handleOptionLongPress = React.useCallback((option: Option, allOptions: string[]) => {
-    props.onFillInput?.(option.title, allOptions);
+  const handleOptionLongPress = React.useCallback((option: Option, allOptions: OptionItemData[]) => {
+    props.onFillInput?.(option.title, allOptions.map(o => o.title));
   }, [props.onFillInput]);
 
   const images = props.message.images ?? [];
@@ -230,9 +238,16 @@ function AgentTextBlock(props: {
   }
 
   // Click to send
-  const handleOptionPress = React.useCallback(async (option: Option, allOptions: string[]) => {
-    // If not newest message, show confirmation
-    if (!props.isNewestMessage) {
+  const handleOptionPress = React.useCallback(async (option: Option, allOptions: OptionItemData[]) => {
+    if (option.destructive) {
+      // Destructive confirmation takes priority (skip old-option confirmation)
+      const confirmed = await Modal.confirm(
+        t('message.confirmDestructive'),
+        t('message.confirmDestructiveMessage'),
+        { destructive: true }
+      );
+      if (!confirmed) return;
+    } else if (!props.isNewestMessage) {
       const confirmed = await Modal.confirm(
         t('message.confirmOldOption'),
         t('message.confirmOldOptionMessage')
@@ -241,7 +256,7 @@ function AgentTextBlock(props: {
     }
 
     // Find the index of this option for loading state
-    const index = allOptions.indexOf(option.title);
+    const index = allOptions.findIndex(o => o.title === option.title);
     setOptionsLoadingState({ loadingIndex: index });
 
     try {
@@ -252,8 +267,8 @@ function AgentTextBlock(props: {
   }, [props.sessionId, props.isNewestMessage]);
 
   // Long press to fill input (mobile only, handled in MarkdownView)
-  const handleOptionLongPress = React.useCallback((option: Option, allOptions: string[]) => {
-    props.onFillInput?.(option.title, allOptions);
+  const handleOptionLongPress = React.useCallback((option: Option, allOptions: OptionItemData[]) => {
+    props.onFillInput?.(option.title, allOptions.map(o => o.title));
   }, [props.onFillInput]);
 
   return (
