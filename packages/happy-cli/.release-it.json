@@ -4,7 +4,7 @@
         "tagName": "v${version}",
         "push": true,
         "requireCleanWorkingDir": true,
-        "requireBranch": "main",
+        "requireBranch": ["main", "beta"],
         "addUntrackedFiles": false
     },
     "github": {

@@ -216,6 +216,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     }, []);
 
     const handleCopyUpdateCommand = useCallback(async () => {
+        // TODO: Update to 'npm install -g happy@latest' after CLI is published to npm as 'happy'
         const updateCommand = 'npm install -g happy-coder@latest';
         try {
             await Clipboard.setStringAsync(updateCommand);

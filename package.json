@@ -2,7 +2,7 @@
     "name": "monorepo",
     "private": true,
     "scripts": {
-        "cli": "yarn workspace happy-coder cli",
+        "cli": "yarn workspace happy cli",
         "release": "node ./scripts/release.cjs",
         "web": "yarn workspace happy-app web",
         "postinstall": "node ./scripts/postinstall.cjs",
