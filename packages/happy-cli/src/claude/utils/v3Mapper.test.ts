@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { handleClaudeMessage, createV3MapperState, flushV3Turn } from './v3Mapper';
+import {
+  handleClaudeMessage, createV3MapperState, flushV3Turn,
+  blockToolForPermission, unblockToolApproved, unblockToolRejected,
+  blockToolForQuestion, unblockToolWithAnswers,
+} from './v3Mapper';
 import type { RawJSONLines } from '@/claude/types';
 
 function makeState() {
@@ -231,6 +235,102 @@ describe('v3Mapper', () => {
       const parts = flushed[0].parts;
       expect(parts[0].type).toBe('step-start');
       expect(parts[parts.length - 1].type).toBe('step-finish');
+    });
+  });
+
+  describe('permission blocking', () => {
+    it('blocks tool for permission and unblocks with approval', () => {
+      const state = makeState();
+      handleClaudeMessage(userMsg('Write a file'), state);
+      handleClaudeMessage(assistantToolMsg('writeFile', 'call_perm', { path: 'test.txt' }), state);
+
+      // Block the tool
+      const blocked = blockToolForPermission(state, 'call_perm', 'edit', ['test.txt'], { filepath: 'test.txt' });
+      expect(blocked).not.toBeNull();
+      const blockedTool = blocked!.parts.find((p: any) => p.type === 'tool');
+      if (blockedTool?.type === 'tool') {
+        expect(blockedTool.state.status).toBe('blocked');
+        if (blockedTool.state.status === 'blocked') {
+          expect(blockedTool.state.block.type).toBe('permission');
+        }
+      }
+
+      // Approve
+      const unblocked = unblockToolApproved(state, 'call_perm', 'once');
+      expect(unblocked).not.toBeNull();
+      const unblockedTool = unblocked!.parts.find((p: any) => p.type === 'tool');
+      if (unblockedTool?.type === 'tool') {
+        expect(unblockedTool.state.status).toBe('running');
+      }
+
+      // Tool result arrives → completed with resolved block
+      const r = handleClaudeMessage(userToolResultMsg('call_perm', 'Created test.txt'), state);
+      const finalized = r.messages.find((m: any) => m.info.role === 'assistant');
+      if (finalized) {
+        const completed = finalized.parts.find((p: any) => p.type === 'tool');
+        if (completed?.type === 'tool' && completed.state.status === 'completed') {
+          expect(completed.state.block).toBeDefined();
+          expect((completed.state.block as any).decision).toBe('once');
+        }
+      }
+    });
+
+    it('blocks tool and rejects', () => {
+      const state = makeState();
+      handleClaudeMessage(userMsg('Write'), state);
+      handleClaudeMessage(assistantToolMsg('writeFile', 'call_rej', { path: 'bad.txt' }), state);
+
+      blockToolForPermission(state, 'call_rej', 'edit', ['bad.txt'], {});
+      const rejected = unblockToolRejected(state, 'call_rej', 'User said no');
+      expect(rejected).not.toBeNull();
+      const tool = rejected!.parts.find((p: any) => p.type === 'tool');
+      if (tool?.type === 'tool') {
+        expect(tool.state.status).toBe('error');
+        if (tool.state.status === 'error') {
+          expect(tool.state.error).toBe('User said no');
+          expect(tool.state.block).toBeDefined();
+          expect((tool.state.block as any).decision).toBe('reject');
+        }
+      }
+    });
+  });
+
+  describe('question blocking', () => {
+    it('blocks tool for question and resolves with answers', () => {
+      const state = makeState();
+      handleClaudeMessage(userMsg('Ask me'), state);
+      handleClaudeMessage(assistantToolMsg('AskUserQuestion', 'call_q', { question: 'Which DB?' }), state);
+
+      blockToolForQuestion(state, 'call_q', [{
+        question: 'Which DB?', header: 'DB',
+        options: [{ label: 'PG', description: 'PostgreSQL' }, { label: 'SQLite', description: 'Simple' }],
+      }]);
+
+      const tool = state.currentAssistant!.parts.find((p: any) => p.type === 'tool');
+      if (tool?.type === 'tool') {
+        expect(tool.state.status).toBe('blocked');
+        if (tool.state.status === 'blocked') {
+          expect(tool.state.block.type).toBe('question');
+        }
+      }
+
+      unblockToolWithAnswers(state, 'call_q', [['PG']]);
+
+      const tool2 = state.currentAssistant!.parts.find((p: any) => p.type === 'tool');
+      if (tool2?.type === 'tool') {
+        expect(tool2.state.status).toBe('running');
+      }
+
+      // Tool result arrives with the answer
+      const r = handleClaudeMessage(userToolResultMsg('call_q', 'User chose: PostgreSQL'), state);
+      const finalized = r.messages.find((m: any) => m.info.role === 'assistant');
+      if (finalized) {
+        const completed = finalized.parts.find((p: any) => p.type === 'tool');
+        if (completed?.type === 'tool' && completed.state.status === 'completed') {
+          expect(completed.state.block).toBeDefined();
+          expect((completed.state.block as any).answers).toEqual([['PG']]);
+        }
+      }
     });
   });
 });

@@ -182,6 +182,7 @@ function handleUserMessage(
             ? block.content.map((b: any) => typeof b.text === 'string' ? b.text : '').join('\n')
             : '';
         const isError = block.is_error === true;
+        const resolvedBlock = (toolPart as any)._resolvedBlock;
 
         toolPart.state = isError
           ? {
@@ -189,6 +190,7 @@ function handleUserMessage(
               input: toolPart.state.input,
               error: output || 'Tool execution failed',
               time: { start: (toolPart.state as any).time?.start ?? Date.now(), end: Date.now() },
+              ...(resolvedBlock ? { block: resolvedBlock } : {}),
             }
           : {
               status: 'completed',
@@ -201,7 +203,9 @@ function handleUserMessage(
                 ? ((toolPart.state as any).metadata ?? {})
                 : {},
               time: { start: (toolPart.state as any).time?.start ?? Date.now(), end: Date.now() },
+              ...(resolvedBlock ? { block: resolvedBlock } : {}),
             };
+        delete (toolPart as any)._resolvedBlock;
         state.toolParts.delete(block.tool_use_id);
       }
     }
@@ -398,6 +402,169 @@ export function flushV3Turn(state: V3MapperState): MessageWithParts[] {
   const result: V3MapperResult = { messages: [], currentAssistant: null };
   finalizeAssistantMessage(state, result);
   return result.messages;
+}
+
+// ─── Permission / Question integration ────────────────────────────────────────
+
+/**
+ * Mark a tool as blocked waiting for permission.
+ * Call this from the permission handler when a tool needs approval.
+ * Returns the updated in-flight assistant message for sending to the app.
+ */
+export function blockToolForPermission(
+  state: V3MapperState,
+  callID: string,
+  permission: string,
+  patterns: string[],
+  metadata: Record<string, unknown>,
+): MessageWithParts | null {
+  const toolPart = state.toolParts.get(callID);
+  if (!toolPart) return null;
+  if (toolPart.state.status !== 'running') return null;
+
+  toolPart.state = {
+    status: 'blocked',
+    input: toolPart.state.input,
+    title: toolPart.state.title,
+    metadata: toolPart.state.metadata,
+    time: { start: toolPart.state.time.start },
+    block: {
+      type: 'permission',
+      id: callID,
+      permission,
+      patterns,
+      always: ['*'],
+      metadata,
+    },
+  };
+
+  if (!state.currentAssistant) return null;
+  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
+}
+
+/**
+ * Mark a blocked tool as approved.
+ * The tool goes back to running — it will be completed when the tool result arrives.
+ */
+export function unblockToolApproved(
+  state: V3MapperState,
+  callID: string,
+  decision: 'once' | 'always',
+): MessageWithParts | null {
+  const toolPart = state.toolParts.get(callID);
+  if (!toolPart) return null;
+  if (toolPart.state.status !== 'blocked') return null;
+
+  const block = toolPart.state.block;
+  toolPart.state = {
+    status: 'running',
+    input: toolPart.state.input,
+    title: toolPart.state.title,
+    metadata: toolPart.state.metadata,
+    time: { start: toolPart.state.time.start },
+  };
+
+  // Store the resolved block so it ends up on the completed/error state later
+  (toolPart as any)._resolvedBlock = {
+    ...block,
+    decision,
+    decidedAt: Date.now(),
+  };
+
+  if (!state.currentAssistant) return null;
+  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
+}
+
+/**
+ * Mark a blocked tool as rejected.
+ * The tool goes to error state with the rejection reason.
+ */
+export function unblockToolRejected(
+  state: V3MapperState,
+  callID: string,
+  reason: string,
+): MessageWithParts | null {
+  const toolPart = state.toolParts.get(callID);
+  if (!toolPart) return null;
+  if (toolPart.state.status !== 'blocked') return null;
+
+  const block = toolPart.state.block;
+  toolPart.state = {
+    status: 'error',
+    input: toolPart.state.input,
+    error: reason || 'Permission rejected',
+    time: { start: toolPart.state.time.start, end: Date.now() },
+    block: {
+      ...block,
+      decision: 'reject',
+      decidedAt: Date.now(),
+    } as any,
+  };
+  state.toolParts.delete(callID);
+
+  if (!state.currentAssistant) return null;
+  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
+}
+
+/**
+ * Block a tool for a question.
+ */
+export function blockToolForQuestion(
+  state: V3MapperState,
+  callID: string,
+  questions: Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiple?: boolean; custom?: boolean }>,
+): MessageWithParts | null {
+  const toolPart = state.toolParts.get(callID);
+  if (!toolPart) return null;
+  if (toolPart.state.status !== 'running') return null;
+
+  toolPart.state = {
+    status: 'blocked',
+    input: toolPart.state.input,
+    title: toolPart.state.title,
+    metadata: toolPart.state.metadata,
+    time: { start: toolPart.state.time.start },
+    block: {
+      type: 'question',
+      id: callID,
+      questions,
+    },
+  };
+
+  if (!state.currentAssistant) return null;
+  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
+}
+
+/**
+ * Resolve a question block with answers.
+ */
+export function unblockToolWithAnswers(
+  state: V3MapperState,
+  callID: string,
+  answers: string[][],
+): MessageWithParts | null {
+  const toolPart = state.toolParts.get(callID);
+  if (!toolPart) return null;
+  if (toolPart.state.status !== 'blocked') return null;
+  if (toolPart.state.block.type !== 'question') return null;
+
+  const block = toolPart.state.block;
+  toolPart.state = {
+    status: 'running',
+    input: toolPart.state.input,
+    title: toolPart.state.title,
+    metadata: toolPart.state.metadata,
+    time: { start: toolPart.state.time.start },
+  };
+
+  (toolPart as any)._resolvedBlock = {
+    ...block,
+    answers,
+    decidedAt: Date.now(),
+  };
+
+  if (!state.currentAssistant) return null;
+  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
