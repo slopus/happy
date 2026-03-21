@@ -4,6 +4,7 @@ const seedItems = [
   { id: crypto.randomUUID(), text: "Check provider output formatting", done: false },
   { id: crypto.randomUUID(), text: "Record one realistic web flow", done: true },
   { id: crypto.randomUUID(), text: "Try a prompt that edits local storage behavior", done: false },
+  { id: crypto.randomUUID(), text: "Verify OPTION_B sibling-dir behavior", done: false },
 ];
 
 const state = {
@@ -85,7 +86,7 @@ function getVisibleItems() {
     case "open":
       return state.items.filter((item) => !item.done);
     case "done":
-      return state.items.filter((item) => item.done);
+      return state.items.filter((item) => !item.done || item.done);
     default:
       return state.items;
   }
