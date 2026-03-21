@@ -26,6 +26,7 @@ import { resetIdentityCache } from './openclawAuth';
 import { AcpSessionManager } from '@/agent/acp/AcpSessionManager';
 import type { AgentMessage } from '@/agent/core/AgentBackend';
 import type { SessionEnvelope } from '@slopus/happy-wire';
+import { getIntegrationEnv } from '@/testing/currentIntegrationEnv';
 import {
   listDaemonSessions,
   stopDaemonSession,
@@ -35,6 +36,7 @@ import { readDaemonState } from '@/persistence';
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL ?? 'ws://127.0.0.1:18789';
+const integrationEnv = getIntegrationEnv();
 
 function readGatewayToken(): string | undefined {
   try {
@@ -404,7 +406,7 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        directory: process.cwd(),
+        directory: integrationEnv.projectPath,
         agent: 'openclaw',
         environmentVariables: {
           OPENCLAW_GATEWAY_URL: GATEWAY_URL,
@@ -467,7 +469,7 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        directory: process.cwd(),
+        directory: integrationEnv.projectPath,
         agent: 'openclaw',
         environmentVariables: {
           OPENCLAW_GATEWAY_URL: GATEWAY_URL,
@@ -486,7 +488,7 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        directory: process.cwd(),
+        directory: integrationEnv.projectPath,
         agent: 'openclaw',
         environmentVariables: {
           OPENCLAW_GATEWAY_URL: GATEWAY_URL,

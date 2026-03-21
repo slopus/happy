@@ -63,7 +63,6 @@
     "cli": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
     "dev:local-server": "$npm_execpath run build && tsx --env-file .env.dev-local-server src/index.ts",
-    "dev:integration-test-env": "$npm_execpath run build && tsx --env-file .env.integration-test src/index.ts",
     "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
     "release": "npx --no-install release-it",
     "postinstall": "node scripts/unpack-tools.cjs",

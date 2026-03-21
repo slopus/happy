@@ -13,14 +13,16 @@
  *   npx vitest run src/codex/codex.integration.test.ts
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { execSync } from "child_process";
 import { CodexAppServerClient } from "./codexAppServerClient";
 import type { ReviewDecision, EventMsg } from "./codexAppServerTypes";
+import { getIntegrationEnv } from "@/testing/currentIntegrationEnv";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const DEFAULT_MODEL = "gpt-5.2-codex";
+const integrationEnv = getIntegrationEnv();
 
 type PermissionPolicy = "approve" | "deny" | "cancel" | "hold";
 
@@ -208,10 +210,13 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
     "Codex Integration (app-server)",
     { timeout: 180_000 },
     () => {
-        let driver: CodexDriver;
+        let driver: CodexDriver | null = null;
 
         afterEach(async () => {
-            if (driver) await driver.close();
+            if (driver) {
+                await driver.close();
+                driver = null;
+            }
         });
 
         it("should complete turn gracefully after permission cancel", async () => {
@@ -221,7 +226,7 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             driver.permissionPolicy = "cancel";
             const result = await driver.send(
                 'create a file called /tmp/codex-cancel-test.txt with the text "hello"',
-                { approvalPolicy: "on-request", sandbox: "read-only" }
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
             );
 
             // Codex v2 (0.115+): approval cancel declines the action, model
@@ -240,7 +245,7 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             driver.permissionPolicy = "approve";
             await driver.send(
                 'The project name we are working on is "blue-falcon-42". Confirm by repeating the project name. Do NOT use any tools or run any commands.',
-                { approvalPolicy: "on-request", sandbox: "read-only" }
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
             );
             expect(driver.getMessages().join(" ").toLowerCase()).toContain("blue-falcon-42");
 
@@ -275,7 +280,7 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
 
             const turnPromise = driver.send(
                 'Create a file called /tmp/codex-interrupt-test.txt with the text "hello". Use a shell command.',
-                { approvalPolicy: "on-request", sandbox: "read-only" }
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
             );
 
             // Wait for a permission request to arrive
@@ -301,7 +306,7 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             driver.permissionPolicy = "approve";
             await driver.send(
                 'The project codename is "steady-orchid-19". Confirm by repeating the project codename. Do NOT use any tools or run any commands.',
-                { approvalPolicy: "on-request", sandbox: "read-only" }
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
             );
             expect(driver.getMessages().join(" ").toLowerCase()).toContain("steady-orchid-19");
 
@@ -325,7 +330,7 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             driver.permissionPolicy = "approve";
             await driver.send(
                 'The project codename is "golden-phoenix-77". Confirm by repeating the project codename. Do NOT use any tools or run any commands.',
-                { approvalPolicy: "on-request", sandbox: "read-only" }
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
             );
             expect(driver.getMessages().join(" ").toLowerCase()).toContain("golden-phoenix-77");
 
