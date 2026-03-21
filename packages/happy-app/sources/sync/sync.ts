@@ -163,6 +163,7 @@ class Sync {
     private sessionMessageDispatchQueues = new Map<string, SessionMessageDispatchTask[]>();
     private sessionMessageDispatchRunning = new Set<string>();
     private sessionMessageDispatchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private sessionMessageDispatchLastRunAt = new Map<string, number>();
     private sessionMessageDispatchGeneration = new Map<string, number>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     /** Per-session last-known seq for v3 incremental fetch */
@@ -3289,6 +3290,9 @@ class Sync {
         // already be awaiting it. Let the timer resolve naturally, then generation-check skip
         // any stale work and continue with the fresh queue state.
         this.sessionMessageDispatchGeneration.set(sessionId, (this.sessionMessageDispatchGeneration.get(sessionId) ?? 0) + 1);
+
+        // Clear last-run timestamp so the first message after reset executes immediately.
+        this.sessionMessageDispatchLastRunAt.delete(sessionId);
     }
 
     private enqueueSessionMessageDispatch = (
@@ -3341,7 +3345,6 @@ class Sync {
         }
 
         this.sessionMessageDispatchRunning.add(sessionId);
-        let first = true;
 
         try {
             while (true) {
@@ -3352,10 +3355,16 @@ class Sync {
                     break;
                 }
 
-                if (!first) {
-                    await this.waitForSessionMessageDispatchInterval(sessionId);
+                // Enforce minimum interval since the last dispatch, even across
+                // queue cycles.  Without this, each cycle's first task would
+                // execute immediately, allowing back-to-back store updates that
+                // break maintainVisibleContentPosition auto-scroll.
+                const lastRunAt = this.sessionMessageDispatchLastRunAt.get(sessionId) ?? 0;
+                const elapsed = performance.now() - lastRunAt;
+                if (lastRunAt > 0 && elapsed < Sync.MESSAGE_LIST_DISPATCH_INTERVAL_MS) {
+                    const remaining = Sync.MESSAGE_LIST_DISPATCH_INTERVAL_MS - elapsed;
+                    await new Promise<void>(r => setTimeout(r, remaining));
                 }
-                first = false;
 
                 const currentGeneration = this.sessionMessageDispatchGeneration.get(sessionId) ?? 0;
                 if (next.generation !== currentGeneration) {
@@ -3368,6 +3377,7 @@ class Sync {
                 } catch (error) {
                     console.error(`Failed to run session message dispatch (${next.reason}) for ${sessionId}:`, error);
                 } finally {
+                    this.sessionMessageDispatchLastRunAt.set(sessionId, performance.now());
                     next.resolve();
                 }
             }
