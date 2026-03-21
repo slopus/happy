@@ -15,8 +15,9 @@ import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle, useMCPSubtitle, formatMCPIcon } from './views/MCPToolView';
 import { t } from '@/text';
-import { useOrchestratorRunningTaskCount } from '@/sync/storage';
+import { useOrchestratorActiveRunIds } from '@/sync/storage';
 import { shouldShowOrchestratorSubmitActivityIndicator } from './toolStatusIconRules';
+import { extractOrchestratorSubmitRunId } from './orchestratorRunId';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -87,7 +88,8 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     // Must be called unconditionally (React hooks rule) — drives orchestrator title cache
     const mcpSubtitle = useMCPSubtitle(tool);
-    const runningOrchestratorTaskCount = useOrchestratorRunningTaskCount(sessionId ?? '');
+    const activeOrchestratorRunIds = useOrchestratorActiveRunIds(sessionId ?? '');
+    const orchestratorSubmitRunId = React.useMemo(() => extractOrchestratorSubmitRunId(tool), [tool]);
 
     // Handle optional title and function type
     let toolTitle = tool.name;
@@ -145,9 +147,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         toolName: tool.name,
         toolState: tool.state,
         hasSessionId: !!sessionId,
-        runningTaskCount: runningOrchestratorTaskCount,
+        isMatchingOrchestratorSubmitRunId: !!orchestratorSubmitRunId && activeOrchestratorRunIds.includes(orchestratorSubmitRunId),
         noStatus,
     });
+    const shouldShowRunningElapsed = isActuallyRunning || showOrchestratorSubmitCompletedSpinner;
 
     let statusIcon = null;
 
@@ -197,7 +200,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </Text>
                             )}
                         </View>
-                        {isActuallyRunning && (
+                        {shouldShowRunningElapsed && (
                             <View style={styles.elapsedContainer}>
                                 <ElapsedView from={tool.startedAt ?? tool.createdAt} />
                             </View>
@@ -219,7 +222,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </Text>
                             )}
                         </View>
-                        {isActuallyRunning && (
+                        {shouldShowRunningElapsed && (
                             <View style={styles.elapsedContainer}>
                                 <ElapsedView from={tool.startedAt ?? tool.createdAt} />
                             </View>

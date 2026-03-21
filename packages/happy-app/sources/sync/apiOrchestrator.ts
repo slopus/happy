@@ -5,6 +5,7 @@ import { getServerUrl } from './serverConfig';
 export type OrchestratorRunStatus = 'queued' | 'running' | 'canceling' | 'completed' | 'failed' | 'cancelled';
 export type OrchestratorTaskStatus = 'queued' | 'dispatching' | 'running' | 'completed' | 'failed' | 'cancelled' | 'dependency_failed';
 export type OrchestratorExecutionStatus = 'dispatching' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout';
+export type OrchestratorSessionActivity = Record<string, string[]>;
 
 export type OrchestratorRunSummary = {
     total: number;
@@ -309,7 +310,7 @@ export async function cancelOrchestratorRun(
 export async function getOrchestratorActivity(
     credentials: AuthCredentials,
     controllerSessionId: string,
-): Promise<{ running: number }> {
+): Promise<{ activity: OrchestratorSessionActivity }> {
     const API_ENDPOINT = getServerUrl();
     const params = new URLSearchParams({ controllerSessionId });
 
@@ -319,13 +320,13 @@ export async function getOrchestratorActivity(
     if (!response.ok) {
         throw new Error(await readErrorMessage(response));
     }
-    const body = await response.json() as { ok: true; data: { running: number } };
+    const body = await response.json() as { ok: true; data: { activity: OrchestratorSessionActivity } };
     return body.data;
 }
 
 export async function getOrchestratorActivityBatch(
     credentials: AuthCredentials,
-): Promise<{ activity: Record<string, number> }> {
+): Promise<{ activity: Record<string, OrchestratorSessionActivity> }> {
     const API_ENDPOINT = getServerUrl();
     const response = await fetch(`${API_ENDPOINT}/v1/orchestrator/activity/batch`, {
         headers: buildAuthHeaders(credentials),
@@ -333,6 +334,6 @@ export async function getOrchestratorActivityBatch(
     if (!response.ok) {
         throw new Error(await readErrorMessage(response));
     }
-    const body = await response.json() as { ok: true; data: { activity: Record<string, number> } };
+    const body = await response.json() as { ok: true; data: { activity: Record<string, OrchestratorSessionActivity> } };
     return body.data;
 }

@@ -4,8 +4,8 @@ type ShouldShowOrchestratorSubmitActivityIndicatorArgs = {
     toolName: string;
     toolState: ToolCall['state'];
     hasSessionId: boolean;
-    runningTaskCount: number;
     noStatus: boolean;
+    isMatchingOrchestratorSubmitRunId: boolean;
 };
 
 export function shouldShowOrchestratorSubmitActivityIndicator(
@@ -15,7 +15,7 @@ export function shouldShowOrchestratorSubmitActivityIndicator(
         args.toolName.includes('orchestrator_submit') &&
         args.toolState === 'completed' &&
         args.hasSessionId &&
-        args.runningTaskCount > 0 &&
+        args.isMatchingOrchestratorSubmitRunId &&
         !args.noStatus
     );
 }

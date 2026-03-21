@@ -770,7 +770,7 @@ vi.mock('@/app/api/socket/rpcRegistry', () => ({
 
 vi.mock('@/app/events/eventRouter', () => ({
     eventRouter: eventRouterMock,
-    buildOrchestratorActivityEphemeral: vi.fn((_sessionId: string, _running: number) => ({ type: 'orchestrator-activity' })),
+    buildOrchestratorActivityEphemeral: vi.fn((_sessionId: string, _activity: Record<string, string[]>) => ({ type: 'orchestrator-activity' })),
 }));
 
 import { orchestratorRoutes } from '@/app/api/routes/orchestratorRoutes';

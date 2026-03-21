@@ -415,7 +415,7 @@ export const ApiEphemeralMachineActivityUpdateSchema = z.object({
 export const ApiEphemeralOrchestratorActivitySchema = z.object({
     type: z.literal('orchestrator-activity'),
     controllerSessionId: z.string(),
-    running: z.number(),
+    activity: z.record(z.string(), z.array(z.string())),
 });
 
 export const ApiEphemeralUpdateSchema = z.union([

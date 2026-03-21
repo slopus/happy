@@ -128,21 +128,41 @@ async function detectMachineProviders(
     return result;
 }
 
-/**
- * Emit an ephemeral orchestrator-activity event with the current running task count
- * for the given controllerSessionId. Called after status-changing transactions commit.
- */
-async function emitOrchestratorActivity(userId: string, controllerSessionId: string | null) {
-    if (!controllerSessionId) return;
-    const running = await db.orchestratorTask.count({
+async function queryOrchestratorSessionActivity(
+    userId: string,
+    controllerSessionId: string,
+): Promise<Record<string, string[]>> {
+    const rows = await db.orchestratorTask.findMany({
         where: {
             run: { accountId: userId, controllerSessionId, status: { in: ['queued', 'running', 'canceling'] } },
             status: { in: ['dispatching', 'running'] },
         },
+        select: {
+            id: true,
+            runId: true,
+        },
     });
+
+    const activity: Record<string, string[]> = {};
+    for (const row of rows) {
+        if (!activity[row.runId]) {
+            activity[row.runId] = [];
+        }
+        activity[row.runId].push(row.id);
+    }
+    return activity;
+}
+
+/**
+ * Emit an ephemeral orchestrator-activity event with current active run/task index
+ * for the given controllerSessionId. Called after status-changing transactions commit.
+ */
+async function emitOrchestratorActivity(userId: string, controllerSessionId: string | null) {
+    if (!controllerSessionId) return;
+    const activity = await queryOrchestratorSessionActivity(userId, controllerSessionId);
     eventRouter.emitEphemeral({
         userId,
-        payload: buildOrchestratorActivityEphemeral(controllerSessionId, running),
+        payload: buildOrchestratorActivityEphemeral(controllerSessionId, activity),
     });
 }
 
@@ -1894,14 +1914,8 @@ export function orchestratorRoutes(app: Fastify) {
         const userId = request.userId;
         const { controllerSessionId } = request.query;
 
-        const running = await db.orchestratorTask.count({
-            where: {
-                run: { accountId: userId, controllerSessionId, status: { in: ['queued', 'running', 'canceling'] } },
-                status: { in: ['dispatching', 'running'] },
-            },
-        });
-
-        return reply.send({ ok: true, data: { running } });
+        const activity = await queryOrchestratorSessionActivity(userId, controllerSessionId);
+        return reply.send({ ok: true, data: { activity } });
     });
 
     app.get('/v1/orchestrator/activity/batch', {
@@ -1909,8 +1923,7 @@ export function orchestratorRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
 
-        const groupedByRun = await db.orchestratorTask.groupBy({
-            by: ['runId'],
+        const rows = await db.orchestratorTask.findMany({
             where: {
                 run: {
                     accountId: userId,
@@ -1919,33 +1932,34 @@ export function orchestratorRoutes(app: Fastify) {
                 },
                 status: { in: ['dispatching', 'running'] },
             },
-            _count: { _all: true },
-        });
-
-        if (groupedByRun.length === 0) {
-            return reply.send({ ok: true, data: { activity: {} } });
-        }
-
-        const runIds = groupedByRun.map((row) => row.runId);
-        const runs = await db.orchestratorRun.findMany({
-            where: { id: { in: runIds } },
             select: {
                 id: true,
-                controllerSessionId: true,
+                runId: true,
+                run: {
+                    select: {
+                        controllerSessionId: true,
+                    },
+                },
             },
         });
 
-        const controllerSessionIdByRunId = new Map(
-            runs.map((run) => [run.id, run.controllerSessionId]),
-        );
+        if (rows.length === 0) {
+            return reply.send({ ok: true, data: { activity: {} } });
+        }
 
-        const activity: Record<string, number> = {};
-        for (const row of groupedByRun) {
-            const controllerSessionId = controllerSessionIdByRunId.get(row.runId);
+        const activity: Record<string, Record<string, string[]>> = {};
+        for (const row of rows) {
+            const controllerSessionId = row.run.controllerSessionId;
             if (!controllerSessionId) {
                 continue;
             }
-            activity[controllerSessionId] = (activity[controllerSessionId] ?? 0) + row._count._all;
+            if (!activity[controllerSessionId]) {
+                activity[controllerSessionId] = {};
+            }
+            if (!activity[controllerSessionId][row.runId]) {
+                activity[controllerSessionId][row.runId] = [];
+            }
+            activity[controllerSessionId][row.runId].push(row.id);
         }
 
         return reply.send({ ok: true, data: { activity } });

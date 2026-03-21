@@ -127,7 +127,7 @@ interface StorageState {
     realtimeMode: 'idle' | 'speaking' | 'thinking';
     microphoneMuted: boolean;
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
-    orchestratorActivity: Record<string, number>;
+    orchestratorActivity: Record<string, Record<string, string[]>>;
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
     isDataReady: boolean;
@@ -182,8 +182,8 @@ interface StorageState {
     clearRealtimeModeDebounce: () => void;
     setMicrophoneMuted: (muted: boolean) => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
-    setOrchestratorActivity: (controllerSessionId: string, running: number) => void;
-    setOrchestratorActivityBatch: (activity: Record<string, number>) => void;
+    setOrchestratorActivity: (controllerSessionId: string, activity: Record<string, string[]>) => void;
+    setOrchestratorActivityBatch: (activity: Record<string, Record<string, string[]>>) => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => void;
     updateSessionActivity: (sessionId: string, active: boolean) => void;
@@ -1245,11 +1245,11 @@ export const storage = create<StorageState>()((set, get) => {
                 ...updates
             };
         }),
-        setOrchestratorActivity: (controllerSessionId: string, running: number) => set((state) => ({
+        setOrchestratorActivity: (controllerSessionId: string, activity: Record<string, string[]>) => set((state) => ({
             ...state,
-            orchestratorActivity: { ...state.orchestratorActivity, [controllerSessionId]: running },
+            orchestratorActivity: { ...state.orchestratorActivity, [controllerSessionId]: activity },
         })),
-        setOrchestratorActivityBatch: (activity: Record<string, number>) => set((state) => ({
+        setOrchestratorActivityBatch: (activity: Record<string, Record<string, string[]>>) => set((state) => ({
             ...state,
             orchestratorActivity: { ...state.orchestratorActivity, ...activity },
         })),
@@ -2366,7 +2366,14 @@ export function useSocketStatus() {
 }
 
 export function useOrchestratorRunningTaskCount(sessionId: string): number {
-    return storage((state) => state.orchestratorActivity[sessionId] ?? 0);
+    return storage((state) => {
+        const byRun = state.orchestratorActivity[sessionId] ?? {};
+        return Object.values(byRun).reduce((sum, taskIds) => sum + taskIds.length, 0);
+    });
+}
+
+export function useOrchestratorActiveRunIds(sessionId: string): string[] {
+    return storage(useShallow((state) => Object.keys(state.orchestratorActivity[sessionId] ?? {})));
 }
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {

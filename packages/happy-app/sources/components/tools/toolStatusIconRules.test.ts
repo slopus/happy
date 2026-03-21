@@ -7,8 +7,8 @@ describe('shouldShowOrchestratorSubmitActivityIndicator', () => {
             toolName: 'mcp__happy__orchestrator_submit',
             toolState: 'completed',
             hasSessionId: true,
-            runningTaskCount: 2,
             noStatus: false,
+            isMatchingOrchestratorSubmitRunId: true,
         })).toBe(true);
     });
 
@@ -17,18 +17,18 @@ describe('shouldShowOrchestratorSubmitActivityIndicator', () => {
             toolName: 'mcp__happy__orchestrator_submit',
             toolState: 'running',
             hasSessionId: true,
-            runningTaskCount: 2,
             noStatus: false,
+            isMatchingOrchestratorSubmitRunId: true,
         })).toBe(false);
     });
 
-    it('returns false when there are no running tasks', () => {
+    it('returns false when tool is not associated with an active runId', () => {
         expect(shouldShowOrchestratorSubmitActivityIndicator({
             toolName: 'mcp__happy__orchestrator_submit',
             toolState: 'completed',
             hasSessionId: true,
-            runningTaskCount: 0,
             noStatus: false,
+            isMatchingOrchestratorSubmitRunId: false,
         })).toBe(false);
     });
 
@@ -37,8 +37,18 @@ describe('shouldShowOrchestratorSubmitActivityIndicator', () => {
             toolName: 'mcp__happy__orchestrator_pend',
             toolState: 'completed',
             hasSessionId: true,
-            runningTaskCount: 2,
             noStatus: false,
+            isMatchingOrchestratorSubmitRunId: true,
+        })).toBe(false);
+    });
+
+    it('returns false when runId does not match running orchestrator submit', () => {
+        expect(shouldShowOrchestratorSubmitActivityIndicator({
+            toolName: 'mcp__happy__orchestrator_submit',
+            toolState: 'completed',
+            hasSessionId: true,
+            noStatus: false,
+            isMatchingOrchestratorSubmitRunId: false,
         })).toBe(false);
     });
 });

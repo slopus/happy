@@ -718,16 +718,27 @@ export async function orchestratorSchedulerTick(now: Date = new Date()): Promise
         if (actions.length > 0) {
             await executeSchedulerActions(actions);
             if (run.controllerSessionId) {
-                const running = await db.orchestratorTask.count({
+                const rows = await db.orchestratorTask.findMany({
                     where: {
                         run: { accountId: run.accountId, controllerSessionId: run.controllerSessionId, status: { in: ACTIVE_RUN_STATUSES } },
                         status: { in: ACTIVE_EXECUTION_STATUSES },
                     },
+                    select: {
+                        id: true,
+                        runId: true,
+                    },
                 });
+                const activity: Record<string, string[]> = {};
+                for (const row of rows) {
+                    if (!activity[row.runId]) {
+                        activity[row.runId] = [];
+                    }
+                    activity[row.runId].push(row.id);
+                }
                 const { eventRouter, buildOrchestratorActivityEphemeral } = await import("@/app/events/eventRouter");
                 eventRouter.emitEphemeral({
                     userId: run.accountId,
-                    payload: buildOrchestratorActivityEphemeral(run.controllerSessionId, running),
+                    payload: buildOrchestratorActivityEphemeral(run.controllerSessionId, activity),
                 });
             }
         }

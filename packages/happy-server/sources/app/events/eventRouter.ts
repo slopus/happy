@@ -295,7 +295,7 @@ export type EphemeralEvent = {
 } | {
     type: 'orchestrator-activity';
     controllerSessionId: string;
-    running: number;
+    activity: Record<string, string[]>;
 } | {
     type: 'orchestrator-run-terminal';
     runId: string;
@@ -805,11 +805,11 @@ export function buildMachineStatusEphemeral(machineId: string, online: boolean):
     };
 }
 
-export function buildOrchestratorActivityEphemeral(controllerSessionId: string, running: number): EphemeralPayload {
+export function buildOrchestratorActivityEphemeral(controllerSessionId: string, activity: Record<string, string[]>): EphemeralPayload {
     return {
         type: 'orchestrator-activity',
         controllerSessionId,
-        running,
+        activity,
     };
 }
 
