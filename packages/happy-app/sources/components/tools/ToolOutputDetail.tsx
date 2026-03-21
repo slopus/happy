@@ -14,6 +14,10 @@ import { formatToolOutputContent, isTrimmedToolOutput } from './toolOutputConten
 import { createToolOutputLoadingCardStyles, formatToolOutputSummaryValue } from './toolOutputLoadingCard';
 import { LongPressCopy, useCopySelectable } from '../LongPressCopy';
 import { t } from '@/text';
+import { useAuth } from '@/auth/AuthContext';
+import { getOrchestratorRun, pendOrchestratorRun } from '@/sync/apiOrchestrator';
+import { create } from 'zustand';
+import { MMKV } from 'react-native-mmkv';
 
 interface ToolOutputDetailProps {
     tool: ToolCall;
@@ -235,7 +239,152 @@ function renderOrchestratorStructuredOutput(tool: ToolCall, result: unknown, fal
     }
 }
 
-function OrchestratorStructuredOutput({ context, runs }: { context: ParsedOrchestratorContext | null; runs: ParsedOrchestratorRun[] }) {
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+// Persisted cache: runId → latest known run state (stale-while-revalidate)
+const mmkv = new MMKV();
+const RUN_CACHE_KEY = 'orchestrator-run-cache';
+
+interface OrchestratorRunCacheState {
+    runs: Record<string, ParsedOrchestratorRun>;
+}
+
+function loadRunCache(): Record<string, ParsedOrchestratorRun> {
+    try {
+        const raw = mmkv.getString(RUN_CACHE_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return {};
+}
+
+const useOrchestratorRunCache = create<OrchestratorRunCacheState>()(() => ({
+    runs: loadRunCache(),
+}));
+
+useOrchestratorRunCache.subscribe((state) => {
+    mmkv.set(RUN_CACHE_KEY, JSON.stringify(state.runs));
+});
+
+function cacheRun(run: ParsedOrchestratorRun) {
+    if (!run.runId) return;
+    const runId = run.runId;
+    useOrchestratorRunCache.setState((state) => {
+        if (state.runs[runId] === run) return state;
+        return { runs: { ...state.runs, [runId]: run } };
+    });
+}
+
+function mergeWithCache(
+    initialRuns: ParsedOrchestratorRun[],
+    cached: Record<string, ParsedOrchestratorRun>,
+): ParsedOrchestratorRun[] {
+    return initialRuns.map((run) => {
+        if (!run.runId) return run;
+        const hit = cached[run.runId];
+        if (!hit) return run;
+        // Prefer cached version if it has a terminal status (more recent than initial snapshot)
+        if (hit.status && TERMINAL_STATUSES.has(hit.status)) return hit;
+        // Prefer cached version if initial is still non-terminal but cache is fresher (has tasks)
+        if (hit.tasks.length > 0 && run.tasks.length === 0) return hit;
+        return run;
+    });
+}
+
+function useOrchestratorRunPolling(initialRuns: ParsedOrchestratorRun[]): ParsedOrchestratorRun[] {
+    const { credentials } = useAuth();
+    const cachedRuns = useOrchestratorRunCache((state) => state.runs);
+    const merged = React.useMemo(() => mergeWithCache(initialRuns, cachedRuns), [initialRuns, cachedRuns]);
+    const [liveRuns, setLiveRuns] = React.useState(merged);
+
+    // Sync liveRuns when merged changes (new initialRuns or cache update) without double-paint
+    const prevMergedRef = React.useRef(merged);
+    if (prevMergedRef.current !== merged) {
+        prevMergedRef.current = merged;
+        setLiveRuns(merged);
+    }
+
+    React.useEffect(() => {
+        const activeRunIds = merged
+            .filter((run) => run.runId && run.status && !TERMINAL_STATUSES.has(run.status))
+            .map((run) => run.runId!);
+
+        if (activeRunIds.length === 0 || !credentials) {
+            return;
+        }
+
+        let cancelled = false;
+        const pendControllers = new Map<string, AbortController>();
+
+        const pollRun = async (runId: string) => {
+            let cursor: string | undefined;
+            while (!cancelled) {
+                try {
+                    const controller = new AbortController();
+                    pendControllers.set(runId, controller);
+                    const pend = await pendOrchestratorRun(credentials, runId, {
+                        cursor,
+                        waitFor: 'change',
+                        timeoutMs: 25_000,
+                        include: 'all_tasks',
+                    }, { signal: controller.signal });
+                    pendControllers.delete(runId);
+
+                    if (cancelled) break;
+                    cursor = pend.cursor;
+
+                    if (pend.changed) {
+                        try {
+                            const detail = await getOrchestratorRun(credentials, runId, { includeTasks: true });
+                            if (cancelled) break;
+                            const updates = {
+                                status: detail.status,
+                                summary: detail.summary,
+                                tasks: (detail.tasks ?? []).map((task) => ({
+                                    taskId: task.taskId,
+                                    seq: task.seq,
+                                    taskKey: task.taskKey ?? undefined,
+                                    title: task.title ?? undefined,
+                                    provider: task.provider,
+                                    model: task.model ?? undefined,
+                                    status: task.status,
+                                    outputSummary: task.outputSummary,
+                                })),
+                            };
+                            const baseRun = merged.find((r) => r.runId === runId);
+                            if (baseRun) cacheRun({ ...baseRun, ...updates });
+                            setLiveRuns((prev) =>
+                                prev.map((run) => run.runId === runId ? { ...run, ...updates } : run),
+                            );
+                        } catch (_fetchError) {
+                            // getOrchestratorRun failed — continue polling
+                        }
+                    }
+
+                    if (pend.terminal) break;
+                } catch (error) {
+                    pendControllers.delete(runId);
+                    if (cancelled) break;
+                    if (error instanceof Error && error.name === 'AbortError') break;
+                    await new Promise((resolve) => setTimeout(resolve, 1500));
+                    if (cancelled) break;
+                }
+            }
+        };
+
+        activeRunIds.forEach((runId) => void pollRun(runId));
+
+        return () => {
+            cancelled = true;
+            pendControllers.forEach((c) => c.abort());
+        };
+    }, [credentials, merged]);
+
+    return liveRuns;
+}
+
+function OrchestratorStructuredOutput({ context, runs: initialRuns }: { context: ParsedOrchestratorContext | null; runs: ParsedOrchestratorRun[] }) {
+    const runs = useOrchestratorRunPolling(initialRuns);
+
     return (
         <LongPressCopy text={JSON.stringify({ context, runs }, null, 2)}>
             <View style={styles.orchestratorContainer}>

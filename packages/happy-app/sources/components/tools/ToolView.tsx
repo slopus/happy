@@ -13,7 +13,7 @@ import { Metadata } from '@/sync/storageTypes';
 import { useRouter } from 'expo-router';
 import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
-import { formatMCPTitle, formatMCPSubtitle, formatMCPIcon } from './views/MCPToolView';
+import { formatMCPTitle, useMCPSubtitle, formatMCPIcon } from './views/MCPToolView';
 import { t } from '@/text';
 
 interface ToolViewProps {
@@ -83,13 +83,16 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         }
     }
 
+    // Must be called unconditionally (React hooks rule) — drives orchestrator title cache
+    const mcpSubtitle = useMCPSubtitle(tool);
+
     // Handle optional title and function type
     let toolTitle = tool.name;
-    
+
     // Special handling for MCP tools
     if (tool.name.startsWith('mcp__') || tool.name.startsWith('mcp:')) {
         toolTitle = formatMCPTitle(tool);
-        description = formatMCPSubtitle(tool);
+        description = mcpSubtitle;
         icon = formatMCPIcon(tool, 18, theme.colors.text, theme.colors.textSecondary);
         minimal = true;
     } else if (knownTool?.title) {
