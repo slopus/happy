@@ -344,33 +344,35 @@ function RenderOptionsBlock(props: {
 
     return (
         <View style={[style.optionsContainer, props.first && style.first, props.last && style.last]}>
-            {props.items.map((item, index) => {
-                const isThisLoading = props.optionsLoadingState?.loadingIndex === index;
-                const isDisabled = isLoading && !isThisLoading;
+            <View style={style.optionsInner}>
+                {props.items.map((item, index) => {
+                    const isThisLoading = props.optionsLoadingState?.loadingIndex === index;
+                    const isDisabled = isLoading && !isThisLoading;
 
-                if (props.onOptionPress) {
-                    return (
-                        <OptionItem
-                            key={index}
-                            item={item}
-                            index={index}
-                            isThisLoading={isThisLoading}
-                            isDisabled={isDisabled}
-                            onPress={() => props.onOptionPress?.(item, props.items)}
-                            onLongPress={() => handleLongPress(item)}
-                        />
-                    );
-                } else {
-                    return (
-                        <View key={index} style={style.optionItem}>
-                            <Text selectable={props.selectable} style={[
-                                style.optionText,
-                                item.destructive && style.optionTextDestructive,
-                            ]}>{item.title}</Text>
-                        </View>
-                    );
-                }
-            })}
+                    if (props.onOptionPress) {
+                        return (
+                            <OptionItem
+                                key={index}
+                                item={item}
+                                index={index}
+                                isThisLoading={isThisLoading}
+                                isDisabled={isDisabled}
+                                onPress={() => props.onOptionPress?.(item, props.items)}
+                                onLongPress={() => handleLongPress(item)}
+                            />
+                        );
+                    } else {
+                        return (
+                            <View key={index} style={style.optionItem}>
+                                <Text selectable={props.selectable} style={[
+                                    style.optionText,
+                                    item.destructive && style.optionTextDestructive,
+                                ]}>{item.title}</Text>
+                            </View>
+                        );
+                    }
+                })}
+            </View>
         </View>
     );
 }
@@ -769,9 +771,13 @@ const style = StyleSheet.create((theme) => ({
     //
 
     optionsContainer: {
+        marginVertical: 8,
+    },
+    optionsInner: {
         flexDirection: 'column',
         gap: 8,
-        marginVertical: 8,
+        alignSelf: 'flex-start',
+        maxWidth: '100%',
     },
     optionItem: {
         backgroundColor: theme.colors.surfaceHighest,
@@ -781,13 +787,14 @@ const style = StyleSheet.create((theme) => ({
         borderWidth: 1,
         borderColor: theme.colors.divider,
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
     },
     optionItemDisabled: {
         opacity: 0.5,
     },
     optionText: {
         ...Typography.default(),
+        flexShrink: 1,
         fontSize: 16,
         lineHeight: 24,
         color: theme.colors.text,
@@ -804,6 +811,7 @@ const style = StyleSheet.create((theme) => ({
         borderRadius: 6,
         paddingHorizontal: 6,
         paddingVertical: 2,
+        marginTop: 1,
         marginLeft: 12,
     },
     optionRecommendedBadgeText: {

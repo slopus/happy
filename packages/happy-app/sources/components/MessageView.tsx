@@ -271,8 +271,10 @@ function AgentTextBlock(props: {
     props.onFillInput?.(option.title, allOptions.map(o => o.title));
   }, [props.onFillInput]);
 
+  const hasOptions = props.message.text.includes('<options>');
+
   return (
-    <View style={[styles.agentMessageContainer, props.message.isThinking && { opacity: 0.3 }]}>
+    <View style={[styles.agentMessageContainer, props.message.isThinking && { opacity: 0.3 }, hasOptions && styles.agentMessageContainerStretch]}>
       <MarkdownView
         markdown={props.message.text}
         sessionId={props.sessionId}
@@ -397,6 +399,9 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 16,
     alignSelf: 'flex-start',
     maxWidth: '100%',
+  },
+  agentMessageContainerStretch: {
+    alignSelf: 'stretch',
   },
   agentEventContainer: {
     marginHorizontal: 8,
