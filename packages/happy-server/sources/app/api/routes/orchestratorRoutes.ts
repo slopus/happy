@@ -1903,4 +1903,51 @@ export function orchestratorRoutes(app: Fastify) {
 
         return reply.send({ ok: true, data: { running } });
     });
+
+    app.get('/v1/orchestrator/activity/batch', {
+        preHandler: app.authenticate,
+    }, async (request, reply) => {
+        const userId = request.userId;
+
+        const groupedByRun = await db.orchestratorTask.groupBy({
+            by: ['runId'],
+            where: {
+                run: {
+                    accountId: userId,
+                    controllerSessionId: { not: null },
+                    status: { in: ['queued', 'running', 'canceling'] },
+                },
+                status: { in: ['dispatching', 'running'] },
+            },
+            _count: { _all: true },
+        });
+
+        if (groupedByRun.length === 0) {
+            return reply.send({ ok: true, data: { activity: {} } });
+        }
+
+        const runIds = groupedByRun.map((row) => row.runId);
+        const runs = await db.orchestratorRun.findMany({
+            where: { id: { in: runIds } },
+            select: {
+                id: true,
+                controllerSessionId: true,
+            },
+        });
+
+        const controllerSessionIdByRunId = new Map(
+            runs.map((run) => [run.id, run.controllerSessionId]),
+        );
+
+        const activity: Record<string, number> = {};
+        for (const row of groupedByRun) {
+            const controllerSessionId = controllerSessionIdByRunId.get(row.runId);
+            if (!controllerSessionId) {
+                continue;
+            }
+            activity[controllerSessionId] = (activity[controllerSessionId] ?? 0) + row._count._all;
+        }
+
+        return reply.send({ ok: true, data: { activity } });
+    });
 }

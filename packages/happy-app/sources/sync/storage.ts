@@ -183,6 +183,7 @@ interface StorageState {
     setMicrophoneMuted: (muted: boolean) => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setOrchestratorActivity: (controllerSessionId: string, running: number) => void;
+    setOrchestratorActivityBatch: (activity: Record<string, number>) => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => void;
     updateSessionActivity: (sessionId: string, active: boolean) => void;
@@ -1247,6 +1248,10 @@ export const storage = create<StorageState>()((set, get) => {
         setOrchestratorActivity: (controllerSessionId: string, running: number) => set((state) => ({
             ...state,
             orchestratorActivity: { ...state.orchestratorActivity, [controllerSessionId]: running },
+        })),
+        setOrchestratorActivityBatch: (activity: Record<string, number>) => set((state) => ({
+            ...state,
+            orchestratorActivity: { ...state.orchestratorActivity, ...activity },
         })),
         updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => set((state) => {
             const isShared = sessionId in state.sharedSessions;

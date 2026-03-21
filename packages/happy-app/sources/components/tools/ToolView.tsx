@@ -15,6 +15,8 @@ import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle, useMCPSubtitle, formatMCPIcon } from './views/MCPToolView';
 import { t } from '@/text';
+import { useOrchestratorRunningTaskCount } from '@/sync/storage';
+import { shouldShowOrchestratorSubmitActivityIndicator } from './toolStatusIconRules';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -85,6 +87,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     // Must be called unconditionally (React hooks rule) — drives orchestrator title cache
     const mcpSubtitle = useMCPSubtitle(tool);
+    const runningOrchestratorTaskCount = useOrchestratorRunningTaskCount(sessionId ?? '');
 
     // Handle optional title and function type
     let toolTitle = tool.name;
@@ -138,6 +141,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         hideDefaultError = knownTool.hideDefaultError;
     }
 
+    const showOrchestratorSubmitCompletedSpinner = shouldShowOrchestratorSubmitActivityIndicator({
+        toolName: tool.name,
+        toolState: tool.state,
+        hasSessionId: !!sessionId,
+        runningTaskCount: runningOrchestratorTaskCount,
+        noStatus,
+    });
+
     let statusIcon = null;
 
     const parsedToolUseError = parseToolUseError(toolResultText);
@@ -160,9 +171,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 }
                 break;
             case 'completed':
-                // if (!noStatus) {
-                //     statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
-                // }
+                if (showOrchestratorSubmitCompletedSpinner) {
+                    statusIcon = <ActivityIndicator size="small" color={theme.colors.text} style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
+                }
                 break;
             case 'error':
                 statusIcon = <Ionicons name="alert-circle-outline" size={20} color={theme.colors.warning} />;

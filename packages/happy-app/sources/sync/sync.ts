@@ -56,7 +56,7 @@ import {
     processUpdateOpenClawMachineEvent,
 } from '../openclaw/storage';
 import { resolveModelSelectionForFlavor } from 'happy-wire';
-import { getOrchestratorActivity } from './apiOrchestrator';
+import { getOrchestratorActivity, getOrchestratorActivityBatch } from './apiOrchestrator';
 import { sessionAbort, sessionUpdateMetadataFields } from './ops';
 import { shouldInvalidateGitStatusOnActivityTransition } from './gitStatusRefreshPolicy';
 import { kvGet, kvMutate } from './apiKv';
@@ -475,6 +475,15 @@ class Sync {
         getOrchestratorActivity(this.credentials, sessionId)
             .then((data) => {
                 storage.getState().setOrchestratorActivity(sessionId, data.running);
+            })
+            .catch(() => { /* ignore — badge is best-effort */ });
+    }
+
+    private fetchOrchestratorActivityBatch = () => {
+        if (!this.credentials) return;
+        getOrchestratorActivityBatch(this.credentials)
+            .then((data) => {
+                storage.getState().setOrchestratorActivityBatch(data.activity);
             })
             .catch(() => { /* ignore — badge is best-effort */ });
     }
@@ -1156,6 +1165,7 @@ class Sync {
 
         // Apply to storage
         this.applySessions(decryptedSessions);
+        this.fetchOrchestratorActivityBatch();
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
 
     }

@@ -322,3 +322,17 @@ export async function getOrchestratorActivity(
     const body = await response.json() as { ok: true; data: { running: number } };
     return body.data;
 }
+
+export async function getOrchestratorActivityBatch(
+    credentials: AuthCredentials,
+): Promise<{ activity: Record<string, number> }> {
+    const API_ENDPOINT = getServerUrl();
+    const response = await fetch(`${API_ENDPOINT}/v1/orchestrator/activity/batch`, {
+        headers: buildAuthHeaders(credentials),
+    });
+    if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+    }
+    const body = await response.json() as { ok: true; data: { activity: Record<string, number> } };
+    return body.data;
+}

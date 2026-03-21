@@ -3,14 +3,13 @@ import { View, Pressable, FlatList, Platform, RefreshControl } from 'react-nativ
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
-import { SessionListViewItem } from '@/sync/storage';
+import { SessionListViewItem, useSetting, useOrchestratorRunningTaskCount } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSetting } from '@/sync/storage';
 import { useVisibleSessionListViewData, useInactiveSessionListViewData, useSharedSessionListViewData, useSharedByMeSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
@@ -182,6 +181,12 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '500',
         color: theme.colors.textSecondary,
         ...Typography.default(),
+    },
+    statusIndicatorsRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        transform: [{ translateY: 1 }],
     },
     avatarContainer: {
         position: 'relative',
@@ -496,6 +501,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const compactSessionView = useSetting('compactSessionView');
+    const runningTaskCount = useOrchestratorRunningTaskCount(session.id);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -597,20 +603,36 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                                 </Text>
                             </View>
 
-                            {/* Shared status indicator */}
-                            {session.ownerProfile ? (
-                                <Avatar id={session.ownerProfile.id} size={18} imageUrl={session.ownerProfile.avatar ?? undefined} />
-                            ) : session.isShared ? (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
-                                    <View style={styles.taskStatusContainer}>
-                                        <Ionicons
-                                            name="share-social-outline"
-                                            size={10}
-                                            color={styles.taskStatusText.color}
-                                        />
-                                    </View>
+                            {(runningTaskCount > 0 || session.ownerProfile || session.isShared) && (
+                                <View style={styles.statusIndicatorsRight}>
+                                    {runningTaskCount > 0 && !compactSessionView && (
+                                        <View style={styles.taskStatusContainer}>
+                                            <Ionicons
+                                                name="layers-outline"
+                                                size={10}
+                                                color={styles.taskStatusText.color}
+                                                style={{ marginRight: 2 }}
+                                            />
+                                            <Text style={styles.taskStatusText}>
+                                                {runningTaskCount > 99 ? '99+' : runningTaskCount}
+                                            </Text>
+                                        </View>
+                                    )}
+
+                                    {/* Shared status indicator */}
+                                    {session.ownerProfile ? (
+                                        <Avatar id={session.ownerProfile.id} size={18} imageUrl={session.ownerProfile.avatar ?? undefined} />
+                                    ) : session.isShared ? (
+                                        <View style={styles.taskStatusContainer}>
+                                            <Ionicons
+                                                name="share-social-outline"
+                                                size={10}
+                                                color={styles.taskStatusText.color}
+                                            />
+                                        </View>
+                                    ) : null}
                                 </View>
-                            ) : null}
+                            )}
                         </View>
                     </>
                 )}

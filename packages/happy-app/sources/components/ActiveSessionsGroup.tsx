@@ -9,7 +9,7 @@ import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativ
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSetting } from '@/sync/storage';
+import { useAllMachines, useOrchestratorRunningTaskCount, useSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
@@ -128,6 +128,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontWeight: '500',
         lineHeight: 16,
         ...Typography.default(),
+    },
+    statusIndicatorsRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        transform: [{ translateY: 1 }],
     },
     avatarContainer: {
         position: 'relative',
@@ -354,6 +360,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
+    const runningTaskCount = useOrchestratorRunningTaskCount(session.id);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -481,7 +488,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     </View>
 
                     {/* Status indicators on the right side */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
+                    <View style={styles.statusIndicatorsRight}>
                         {/* Draft status indicator */}
                         {session.draft && (
                             <View style={styles.taskStatusContainer}>
@@ -519,6 +526,20 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                                 </View>
                             );
                         })()}
+
+                        {runningTaskCount > 0 && (
+                            <View style={styles.taskStatusContainer}>
+                                <Ionicons
+                                    name="layers-outline"
+                                    size={10}
+                                    color={styles.taskStatusText.color}
+                                    style={{ marginRight: 2 }}
+                                />
+                                <Text style={styles.taskStatusText}>
+                                    {runningTaskCount > 99 ? '99+' : runningTaskCount}
+                                </Text>
+                            </View>
+                        )}
 
                         {/* Shared status indicator */}
                         {session.ownerProfile ? (
