@@ -408,16 +408,30 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
 
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
       inTurn = true;
-      sendEnvelopes(sessionManager.startTurn());
+
+      const turnStartResult = startOpenClawTurn(v3MapperState);
+      for (const finalizedMsg of turnStartResult.messages) {
+        sendV3Message(finalizedMsg);
+      }
+      updateV3Message(turnStartResult.currentAssistant);
+
       const turnEnded = waitForTurnEnd();
       try {
         await backend.sendPrompt(started.sessionId, batch.message);
         await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
+
+        const turnEndResult = endOpenClawTurn(v3MapperState, 'completed');
+        for (const finalizedMsg of turnEndResult.messages) {
+          sendV3Message(finalizedMsg);
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         log(`Turn ended: ${msg}`);
-        sendEnvelopes(sessionManager.endTurn('failed'));
+
+        const turnEndResult = endOpenClawTurn(v3MapperState, 'failed');
+        for (const finalizedMsg of turnEndResult.messages) {
+          sendV3Message(finalizedMsg);
+        }
       }
       inTurn = false;
       thinking = false;
