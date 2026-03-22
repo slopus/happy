@@ -15,7 +15,7 @@ import { Image } from 'expo-image';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
-import { MultiTextInput } from '@/components/MultiTextInput';
+import { MultiTextInput, MULTI_TEXT_INPUT_LINE_HEIGHT } from '@/components/MultiTextInput';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -83,6 +83,13 @@ type PickerType = 'machine' | 'path' | 'worktree';
 
 // Permission mode colors & icons matching Claude Code CLI
 type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
+
+const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
+const COMPOSER_SEND_BUTTON_SIZE = 32;
+const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
+    0,
+    Math.round((MULTI_TEXT_INPUT_LINE_HEIGHT + COMPOSER_INPUT_VERTICAL_PADDING * 2 - COMPOSER_SEND_BUTTON_SIZE) / 2),
+);
 
 function getPermissionStyle(key: string): PermissionStyle | null {
     switch (key) {
@@ -566,8 +573,9 @@ function SessionComposerDemo() {
                                     value={prompt}
                                     onChangeText={setPrompt}
                                     placeholder="What would you like to work on?"
-                                    paddingTop={Platform.OS === 'web' ? 10 : 8}
-                                    paddingBottom={Platform.OS === 'web' ? 10 : 8}
+                                    lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
+                                    paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
+                                    paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
                                     maxHeight={240}
                                 />
                             </View>
@@ -690,13 +698,13 @@ const styles = StyleSheet.create((theme) => ({
         gap: 8,
     },
     sendButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: COMPOSER_SEND_BUTTON_SIZE,
+        height: COMPOSER_SEND_BUTTON_SIZE,
+        borderRadius: COMPOSER_SEND_BUTTON_SIZE / 2,
         justifyContent: 'center',
         alignItems: 'center',
         flexShrink: 0,
-        marginBottom: 4,
+        marginBottom: COMPOSER_SEND_BUTTON_MARGIN_BOTTOM,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
