@@ -11,8 +11,11 @@ import {
     ScrollView,
     LayoutAnimation,
     ActivityIndicator,
+    TextInputSelectionChangeEventData,
+    NativeSyntheticEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { GlassView } from 'expo-glass-effect';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
@@ -81,6 +84,26 @@ const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
     0,
     Math.round((MULTI_TEXT_INPUT_LINE_HEIGHT + COMPOSER_INPUT_VERTICAL_PADDING * 2 - COMPOSER_SEND_BUTTON_SIZE) / 2),
 );
+const WORKTREE_PATH_DEBOUNCE_MS = 300;
+
+function trimPathInput(path: string | null | undefined): string {
+    return path?.trim() ?? '';
+}
+
+function trimTrailingPathSeparator(path: string): string {
+    if (path === '/' || /^[A-Za-z]:[\\/]?$/.test(path)) {
+        return path;
+    }
+    return path.replace(/[\\/]+$/, '');
+}
+
+function normalizePathForComparison(path: string | null | undefined, homeDir?: string): string | null {
+    const trimmed = trimPathInput(path);
+    if (!trimmed) {
+        return null;
+    }
+    return trimTrailingPathSeparator(resolveAbsolutePath(trimmed, homeDir));
+}
 
 function getPermissionStyle(key: string): PermissionStyle | null {
     switch (key) {
@@ -264,6 +287,179 @@ function PickerContent({
     );
 }
 
+function PathPickerContent({
+    title,
+    items,
+    value,
+    homeDir,
+    onChangeValue,
+    onDone,
+}: {
+    title: string;
+    items: PickerItem[];
+    value: string | null;
+    homeDir?: string;
+    onChangeValue: (value: string) => void;
+    onDone?: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const inputRef = React.useRef<TextInput>(null);
+    const currentValue = value ?? '';
+    const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
+
+    React.useEffect(() => {
+        const timeout = setTimeout(() => {
+            inputRef.current?.focus();
+        }, 50);
+        return () => clearTimeout(timeout);
+    }, []);
+
+    const matchedItemKey = React.useMemo(() => {
+        const normalizedValue = normalizePathForComparison(currentValue, homeDir);
+        if (!normalizedValue) {
+            return null;
+        }
+
+        const match = items.find((item) =>
+            normalizePathForComparison(item.key, homeDir) === normalizedValue,
+        );
+
+        return match?.key ?? null;
+    }, [currentValue, homeDir, items]);
+
+    const handleSuggestionPress = React.useCallback((item: PickerItem) => {
+        const nextValue = item.label;
+        const nextSelection = { start: nextValue.length, end: nextValue.length };
+
+        onChangeValue(nextValue);
+        setSelection(nextSelection);
+
+        setTimeout(() => {
+            inputRef.current?.focus();
+        }, 0);
+    }, [onChangeValue]);
+
+    const isCustomPath = currentValue.trim().length > 0 && matchedItemKey === null;
+    const handleSelectionChange = React.useCallback((event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+        setSelection(event.nativeEvent.selection);
+    }, []);
+    const doneIconColor = theme.colors.header.tint;
+
+    return (
+        <View style={pickerStyles.container}>
+            <View style={pickerStyles.titleRow}>
+                <Text style={[pickerStyles.title, { color: theme.colors.text }]}>{title}</Text>
+                {Platform.OS !== 'web' && onDone && (
+                    <Pressable
+                        onPress={onDone}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={({ pressed }) => [
+                            pickerStyles.doneButtonPressable,
+                            { opacity: pressed ? 0.82 : 1 },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Done"
+                    >
+                        <GlassView
+                            glassEffectStyle="regular"
+                            tintColor="rgba(255,255,255,0.10)"
+                            isInteractive={true}
+                            style={[
+                                pickerStyles.doneButtonGlass,
+                                { borderColor: 'rgba(255,255,255,0.16)' },
+                            ]}
+                        >
+                            <Ionicons
+                                name="checkmark"
+                                size={20}
+                                color={doneIconColor}
+                            />
+                        </GlassView>
+                    </Pressable>
+                )}
+            </View>
+
+            <View
+                style={[
+                    pickerStyles.pathInputRow,
+                    {
+                        backgroundColor: theme.colors.input.background,
+                        borderColor: theme.colors.divider,
+                    },
+                ]}
+            >
+                <Ionicons name="folder-outline" size={16} color={theme.colors.textSecondary} />
+                <View style={pickerStyles.pathInputField}>
+                    <TextInput
+                        ref={inputRef}
+                        value={currentValue}
+                        onChangeText={onChangeValue}
+                        onSelectionChange={handleSelectionChange}
+                        selection={selection}
+                        placeholder="Enter project path"
+                        placeholderTextColor={theme.colors.textSecondary}
+                        style={[pickerStyles.pathTextInput, { color: theme.colors.text }]}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        multiline={false}
+                        numberOfLines={1}
+                        returnKeyType="done"
+                        onSubmitEditing={onDone}
+                    />
+                </View>
+            </View>
+
+            {isCustomPath && (
+                <Text style={[pickerStyles.pathMetaText, { color: theme.colors.textSecondary }]}>
+                    using custom path above
+                </Text>
+            )}
+
+            <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
+                Recent
+            </Text>
+
+            <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+                {items.map((item) => {
+                    const isSelected = item.key === matchedItemKey;
+
+                    return (
+                        <Pressable
+                            key={item.key}
+                            style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                            onPress={() => handleSuggestionPress(item)}
+                        >
+                            <Ionicons
+                                name="folder-outline"
+                                size={16}
+                                color={theme.colors.textSecondary}
+                            />
+                            <View style={{ flex: 1 }}>
+                                <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>
+                                    {item.label}
+                                </Text>
+                            </View>
+                            {isSelected && (
+                                <Ionicons
+                                    name="checkmark-circle"
+                                    size={18}
+                                    color={theme.colors.button.primary.background}
+                                />
+                            )}
+                        </Pressable>
+                    );
+                })}
+
+                {items.length === 0 && (
+                    <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                        no recent projects yet
+                    </Text>
+                )}
+            </ScrollView>
+        </View>
+    );
+}
+
 // Helper: get machine display name
 function getMachineName(machine: Machine): string {
     return machine.metadata?.displayName || machine.metadata?.host || 'unknown';
@@ -320,6 +516,7 @@ function NewSessionScreen() {
         () => allMachines.find(m => m.id === selectedMachineId) ?? null,
         [allMachines, selectedMachineId],
     );
+    const selectedHomeDir = selectedMachine?.metadata?.homeDir;
 
     // Build machine picker items: online first, then offline
     const machineItems = React.useMemo<PickerItem[]>(() => {
@@ -355,15 +552,36 @@ function NewSessionScreen() {
 
     // Auto-select first path when machine changes
     React.useEffect(() => {
-        if (pathItems.length > 0 && !pathItems.find(p => p.key === selectedPath)) {
-            setSelectedPath(pathItems[0].key);
+        if (!selectedMachineId || selectedPath !== null) {
+            return;
         }
-    }, [pathItems, selectedPath, setSelectedPath]);
+
+        setSelectedPath(pathItems[0]?.label ?? '~');
+    }, [selectedMachineId, pathItems, selectedPath, setSelectedPath]);
+
+    const resolvedSelectedPath = React.useMemo(() => {
+        return normalizePathForComparison(selectedPath, selectedHomeDir);
+    }, [selectedHomeDir, selectedPath]);
+
+    const [debouncedResolvedSelectedPath, setDebouncedResolvedSelectedPath] = React.useState<string | null>(resolvedSelectedPath);
+
+    React.useEffect(() => {
+        if (!resolvedSelectedPath) {
+            setDebouncedResolvedSelectedPath(null);
+            return;
+        }
+
+        const timeout = setTimeout(() => {
+            setDebouncedResolvedSelectedPath(resolvedSelectedPath);
+        }, WORKTREE_PATH_DEBOUNCE_MS);
+
+        return () => clearTimeout(timeout);
+    }, [resolvedSelectedPath]);
 
     // Fetch existing worktrees from the selected machine/path
     const [worktreeItems, setWorktreeItems] = React.useState<PickerItem[]>([]);
     React.useEffect(() => {
-        if (!selectedMachineId || !selectedPath) {
+        if (!selectedMachineId || !debouncedResolvedSelectedPath) {
             setWorktreeItems([]);
             return;
         }
@@ -371,9 +589,8 @@ function NewSessionScreen() {
             setWorktreeItems([]);
             return;
         }
-        const absolutePath = resolveAbsolutePath(selectedPath, selectedMachine.metadata?.homeDir);
         let cancelled = false;
-        listWorktrees(selectedMachineId, absolutePath).then(worktrees => {
+        listWorktrees(selectedMachineId, debouncedResolvedSelectedPath).then(worktrees => {
             if (cancelled) return;
             setWorktreeItems(worktrees.map(wt => ({
                 key: wt.path,
@@ -382,7 +599,17 @@ function NewSessionScreen() {
             })));
         });
         return () => { cancelled = true; };
-    }, [selectedMachineId, selectedPath, selectedMachine]);
+    }, [debouncedResolvedSelectedPath, selectedMachineId, selectedMachine]);
+
+    React.useEffect(() => {
+        if (worktreeKey === '__none__' || worktreeKey === '__new__') {
+            return;
+        }
+
+        if (!worktreeItems.some((item) => item.key === worktreeKey)) {
+            setWorktreeKey('__none__');
+        }
+    }, [worktreeItems, worktreeKey]);
 
     // Filter available agents based on CLI availability from machine metadata
     const availableAgents = React.useMemo(() => {
@@ -507,8 +734,8 @@ function NewSessionScreen() {
 
     // Display values
     const machineName = selectedMachine ? getMachineName(selectedMachine) : 'Select machine';
-    const pathName = selectedPath
-        ? formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)
+    const pathName = trimPathInput(selectedPath)
+        ? formatPathRelativeToHome(trimPathInput(selectedPath), selectedHomeDir)
         : '~';
     const worktreeLabel = worktreeKey === '__none__'
         ? 'no worktree'
@@ -521,29 +748,24 @@ function NewSessionScreen() {
         switch (activePicker) {
             case 'machine':
                 return { title: 'Machine', items: machineItems, selectedKey: selectedMachineId, searchPlaceholder: 'search machines...' };
-            case 'path':
-                return { title: 'Project', items: pathItems, selectedKey: selectedPath, searchPlaceholder: 'search projects...' };
             case 'worktree':
                 return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems, selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
             default:
                 return null;
         }
-    }, [activePicker, machineItems, selectedMachineId, pathItems, selectedPath, worktreeKey, worktreeItems]);
+    }, [activePicker, machineItems, selectedMachineId, worktreeKey, worktreeItems]);
 
     const handlePickerSelect = React.useCallback((key: string) => {
         switch (activePicker) {
             case 'machine':
                 setSelectedMachineId(key);
                 break;
-            case 'path':
-                setSelectedPath(key);
-                break;
             case 'worktree':
                 setWorktreeKey(key);
                 break;
         }
         setActivePicker(null);
-    }, [activePicker, setSelectedMachineId, setSelectedPath, setWorktreeKey]);
+    }, [activePicker, setSelectedMachineId, setWorktreeKey]);
 
     // Spawn session handler
     const handleSend = React.useCallback(async (approvedNewDirectoryCreation: boolean = false) => {
@@ -558,7 +780,7 @@ function NewSessionScreen() {
 
         setIsSpawning(true);
         try {
-            const pathToUse = selectedPath || '~';
+            const pathToUse = trimPathInput(selectedPath) || '~';
             const absolutePath = resolveAbsolutePath(pathToUse, selectedMachine.metadata?.homeDir);
 
             // Handle worktree selection
@@ -790,9 +1012,20 @@ function NewSessionScreen() {
                     </View>
 
                     {/* Web: inline popover */}
-                    {Platform.OS === 'web' && activePicker && pickerData && (
+                    {Platform.OS === 'web' && activePicker && (
                         <View style={[styles.popover, { backgroundColor: theme.colors.header.background }]}>
-                            <PickerContent {...pickerData} onSelect={handlePickerSelect} />
+                            {activePicker === 'path' ? (
+                                <PathPickerContent
+                                    title="Project"
+                                    items={pathItems}
+                                    value={selectedPath}
+                                    homeDir={selectedHomeDir}
+                                    onChangeValue={setSelectedPath}
+                                    onDone={() => setActivePicker(null)}
+                                />
+                            ) : pickerData ? (
+                                <PickerContent {...pickerData} onSelect={handlePickerSelect} />
+                            ) : null}
                         </View>
                     )}
                 </View>
@@ -867,7 +1100,18 @@ function NewSessionScreen() {
                     visible={!!activePicker}
                     onClose={() => setActivePicker(null)}
                 >
-                    {pickerData && <PickerContent {...pickerData} onSelect={handlePickerSelect} />}
+                    {activePicker === 'path' ? (
+                        <PathPickerContent
+                            title="Project"
+                            items={pathItems}
+                            value={selectedPath}
+                            homeDir={selectedHomeDir}
+                            onChangeValue={setSelectedPath}
+                            onDone={() => setActivePicker(null)}
+                        />
+                    ) : pickerData ? (
+                        <PickerContent {...pickerData} onSelect={handlePickerSelect} />
+                    ) : null}
                 </BottomSheet>
             )}
         </KeyboardAvoidingView>
@@ -1038,6 +1282,27 @@ const pickerStyles = {
         ...Typography.default('semiBold'),
         ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
     } as const,
+    titleRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+    },
+    doneButtonPressable: {
+        width: 44,
+        height: 44,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    },
+    doneButtonGlass: {
+        width: 40,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        overflow: 'hidden' as const,
+        borderWidth: 1,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
     searchRow: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
@@ -1053,6 +1318,44 @@ const pickerStyles = {
         padding: 0,
         ...Typography.default(),
         ...Platform.select({ web: { outlineStyle: 'none' } as any, default: {} }),
+    } as const,
+    pathInputRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 10,
+        paddingHorizontal: 12,
+        minHeight: 46,
+        borderRadius: 12,
+        marginBottom: 8,
+        borderWidth: 1,
+    },
+    pathInputField: {
+        flex: 1,
+    } as const,
+    pathTextInput: {
+        fontSize: 16,
+        minHeight: 44,
+        paddingVertical: 0,
+        ...Typography.default(),
+        ...Platform.select({
+            android: { textAlignVertical: 'center' as const },
+            web: { outlineStyle: 'none' } as any,
+            default: {},
+        }),
+    } as const,
+    pathMetaText: {
+        fontSize: 13,
+        paddingHorizontal: 4,
+        paddingBottom: 8,
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+    sectionLabel: {
+        fontSize: 13,
+        paddingHorizontal: 4,
+        paddingBottom: 8,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
     } as const,
     option: {
         flexDirection: 'row' as const,
