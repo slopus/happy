@@ -275,6 +275,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dev/session-composer"
+                options={{
+                    headerTitle: 'Session Composer',
+                }}
+            />
+            <Stack.Screen
                 name="session/recent"
                 options={{
                     headerShown: true,
@@ -295,27 +301,6 @@ export default function RootLayout() {
                     // headerTitleStyle: {
                     //     color: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
                     // },
-                }}
-            />
-            <Stack.Screen
-                name="new/pick/machine"
-                options={{
-                    headerTitle: '',
-                    headerBackTitle: t('common.back'),
-                }}
-            />
-            <Stack.Screen
-                name="new/pick/path"
-                options={{
-                    headerTitle: '',
-                    headerBackTitle: t('common.back'),
-                }}
-            />
-            <Stack.Screen
-                name="new/pick/profile-edit"
-                options={{
-                    headerTitle: '',
-                    headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen

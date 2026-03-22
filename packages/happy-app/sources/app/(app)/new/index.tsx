@@ -1,1940 +1,1394 @@
 import React from 'react';
-import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
-import Constants from 'expo-constants';
-import { Typography } from '@/constants/Typography';
-import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
-import { Ionicons, Octicons } from '@expo/vector-icons';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useUnistyles } from 'react-native-unistyles';
-import { layout } from '@/components/layout';
-import { t } from '@/text';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useHeaderHeight } from '@/utils/responsive';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { Modal } from '@/modal';
-import { sync } from '@/sync/sync';
-import { SessionTypeSelector } from '@/components/SessionTypeSelector';
-import { createWorktree } from '@/utils/createWorktree';
-import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
-import type { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import {
-    getAvailableModels,
-    getAvailablePermissionModes,
-    getDefaultModelKey,
-    getDefaultPermissionModeKey,
-    resolveCurrentOption,
-} from '@/components/modelModeOptions';
-import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
-import { AgentInput } from '@/components/AgentInput';
-import { StyleSheet } from 'react-native-unistyles';
-import { randomUUID } from 'expo-crypto';
-import { useCLIDetection } from '@/hooks/useCLIDetection';
-import { useEnvironmentVariables, resolveEnvVarSubstitution, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
-import { MultiTextInput } from '@/components/MultiTextInput';
+    View,
+    Text,
+    Platform,
+    Pressable,
+    Modal as RNModal,
+    TouchableWithoutFeedback,
+    Animated,
+    TextInput,
+    ScrollView,
+    LayoutAnimation,
+    ActivityIndicator,
+    TextInputSelectionChangeEventData,
+    NativeSyntheticEvent,
+} from 'react-native';
+import { Image } from 'expo-image';
+import { GlassView } from 'expo-glass-effect';
+import { Ionicons, Octicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { Typography } from '@/constants/Typography';
+import { layout } from '@/components/layout';
+import {
+    MultiTextInput,
+    MULTI_TEXT_INPUT_LINE_HEIGHT,
+    type KeyPressEvent,
+} from '@/components/MultiTextInput';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import Constants from 'expo-constants';
+import { useHeaderHeight } from '@/utils/responsive';
+import { t } from '@/text';
+import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
+import type { NewSessionAgentType } from '@/sync/persistence';
+import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { StatusDot } from '@/components/StatusDot';
-import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
-import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { createWorktree, listWorktrees } from '@/utils/worktree';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { Modal } from '@/modal';
+import type { Machine, Session } from '@/sync/storageTypes';
+import {
+    getHardcodedPermissionModes,
+    getHardcodedModelModes,
+    getEffortLevelsForModel,
+    getDefaultEffortKeyForModel,
+    getDefaultPermissionModeKey,
+    getDefaultModelKey,
+    getSupportsWorktree,
+    type PermissionMode,
+    type ModelMode,
+    type EffortLevel,
+} from '@/components/modelModeOptions';
 
-// Simple temporary state for passing selections back from picker screens
-let onMachineSelected: (machineId: string) => void = () => { };
-let onProfileSaved: (profile: AIBackendProfile) => void = () => { };
+// Agent icon assets
+const agentIcons = {
+    claude: require('@/assets/images/icon-claude.png'),
+    codex: require('@/assets/images/icon-gpt.png'),
+    openclaw: require('@/assets/images/icon-openclaw.png'),
+    gemini: require('@/assets/images/icon-gemini.png'),
+};
 
-export const callbacks = {
-    onMachineSelected: (machineId: string) => {
-        onMachineSelected(machineId);
-    },
-    onProfileSaved: (profile: AIBackendProfile) => {
-        onProfileSaved(profile);
+type AgentKey = NewSessionAgentType;
+const ALL_AGENTS: { key: AgentKey; label: string }[] = [
+    { key: 'claude', label: 'claude code' },
+    { key: 'codex', label: 'codex' },
+    { key: 'openclaw', label: 'openclaw' },
+    { key: 'gemini', label: 'gemini' },
+];
+
+type PickerItem = { key: string; label: string; subtitle?: string };
+
+type PickerType = 'machine' | 'path' | 'worktree';
+
+type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
+
+const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
+const COMPOSER_SEND_BUTTON_SIZE = 32;
+const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
+    0,
+    Math.round((MULTI_TEXT_INPUT_LINE_HEIGHT + COMPOSER_INPUT_VERTICAL_PADDING * 2 - COMPOSER_SEND_BUTTON_SIZE) / 2),
+);
+const WORKTREE_PATH_DEBOUNCE_MS = 300;
+
+function trimPathInput(path: string | null | undefined): string {
+    return path?.trim() ?? '';
+}
+
+function trimTrailingPathSeparator(path: string): string {
+    if (path === '/' || /^[A-Za-z]:[\\/]?$/.test(path)) {
+        return path;
+    }
+    return path.replace(/[\\/]+$/, '');
+}
+
+function normalizePathForComparison(path: string | null | undefined, homeDir?: string): string | null {
+    const trimmed = trimPathInput(path);
+    if (!trimmed) {
+        return null;
+    }
+    return trimTrailingPathSeparator(resolveAbsolutePath(trimmed, homeDir));
+}
+
+function getPermissionStyle(key: string): PermissionStyle | null {
+    switch (key) {
+        case 'acceptEdits':
+        case 'auto_edit':
+            return { color: '#A78BFA', icon: 'play-forward' };
+        case 'plan':
+            return { color: '#5EABA4', icon: 'pause' };
+        case 'dontAsk':
+        case 'safe-yolo':
+            return { color: '#FBBF24', icon: 'play-forward' };
+        case 'bypassPermissions':
+        case 'yolo':
+            return { color: '#F87171', icon: 'play-forward' };
+        case 'read-only':
+            return { color: '#60A5FA', icon: 'pause' };
+        default:
+            return null;
     }
 }
 
-// Optimized profile lookup utility
-const useProfileMap = (profiles: AIBackendProfile[]) => {
-    return React.useMemo(() =>
-        new Map(profiles.map(p => [p.id, p])),
-        [profiles]
-    );
-};
-
-// Environment variable transformation helper
-// Returns ALL profile environment variables - daemon will use them as-is
-const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' = 'claude') => {
-    // getProfileEnvironmentVariables already returns ALL env vars from profile
-    // including custom environmentVariables array and provider-specific configs
-    return getProfileEnvironmentVariables(profile);
-};
-
-// Helper function to get the most recent path for a machine
-// Returns the path from the most recently CREATED session for this machine
-const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ machineId: string; path: string }>): string => {
-    if (!machineId) return '';
-
-    const machine = storage.getState().machines[machineId];
-    const defaultPath = machine?.metadata?.homeDir || '';
-
-    // Get all sessions for this machine, sorted by creation time (most recent first)
-    const sessions = Object.values(storage.getState().sessions);
-    const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
-
-    sessions.forEach(session => {
-        if (session.metadata?.machineId === machineId && session.metadata?.path) {
-            pathsWithTimestamps.push({
-                path: session.metadata.path,
-                timestamp: session.createdAt // Use createdAt, not updatedAt
-            });
-        }
-    });
-
-    // Sort by creation time (most recently created first)
-    pathsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
-
-    // Return the most recently created session's path, or default
-    return pathsWithTimestamps[0]?.path || defaultPath;
-};
-
-// Configuration constants
-const RECENT_PATHS_DEFAULT_VISIBLE = 5;
-const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 character spaces at 11px font
-
-const styles = StyleSheet.create((theme, rt) => ({
-    container: {
-        flex: 1,
-        justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
-        paddingTop: Platform.OS === 'web' ? 0 : 40,
-    },
-    scrollContainer: {
-        flex: 1,
-    },
-    contentContainer: {
-        width: '100%',
-        alignSelf: 'center',
-        paddingTop: rt.insets.top,
-        paddingBottom: 16,
-    },
-    wizardContainer: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 16,
-        marginHorizontal: 16,
-        padding: 16,
-        marginBottom: 16,
-    },
-    sectionHeader: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.text,
-        marginBottom: 8,
-        marginTop: 12,
-        ...Typography.default('semiBold')
-    },
-    sectionDescription: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        marginBottom: 12,
-        lineHeight: 18,
-        ...Typography.default()
-    },
-    profileListItem: {
-        backgroundColor: theme.colors.input.background,
-        borderRadius: 12,
-        padding: 8,
-        marginBottom: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'transparent',
-    },
-    profileListItemSelected: {
-        borderWidth: 2,
-        borderColor: theme.colors.text,
-    },
-    profileIcon: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        backgroundColor: theme.colors.button.primary.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 10,
-    },
-    profileListName: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: theme.colors.text,
-        ...Typography.default('semiBold')
-    },
-    profileListDetails: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        marginTop: 2,
-        ...Typography.default()
-    },
-    addProfileButton: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 12,
-        padding: 12,
-        marginBottom: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    addProfileButtonText: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: theme.colors.button.secondary.tint,
-        marginLeft: 8,
-        ...Typography.default('semiBold')
-    },
-    selectorButton: {
-        backgroundColor: theme.colors.input.background,
-        borderRadius: 8,
-        padding: 10,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    selectorButtonText: {
-        color: theme.colors.text,
-        fontSize: 13,
-        flex: 1,
-        ...Typography.default()
-    },
-    advancedHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 12,
-    },
-    advancedHeaderText: {
-        fontSize: 13,
-        fontWeight: '500',
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
-    },
-    permissionGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        marginBottom: 16,
-    },
-    permissionButton: {
-        width: '48%',
-        backgroundColor: theme.colors.input.background,
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 12,
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'transparent',
-    },
-    permissionButtonSelected: {
-        borderColor: theme.colors.button.primary.background,
-        backgroundColor: theme.colors.button.primary.background + '10',
-    },
-    permissionButtonText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.text,
-        marginTop: 8,
-        textAlign: 'center',
-        ...Typography.default('semiBold')
-    },
-    permissionButtonTextSelected: {
-        color: theme.colors.button.primary.background,
-    },
-    permissionButtonDesc: {
-        fontSize: 11,
-        color: theme.colors.textSecondary,
-        marginTop: 4,
-        textAlign: 'center',
-        ...Typography.default()
-    },
-}));
-
-function NewSessionWizard() {
-    const { theme, rt } = useUnistyles();
-    const router = useRouter();
+// Bottom sheet modal — native formSheet on iOS, slide-up sheet on Android
+function BottomSheet({
+    visible,
+    onClose,
+    children,
+}: {
+    visible: boolean;
+    onClose: () => void;
+    children: React.ReactNode;
+}) {
+    const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
-    const { prompt, dataId, machineId: machineIdParam, path: pathParam } = useLocalSearchParams<{
-        prompt?: string;
-        dataId?: string;
-        machineId?: string;
-        path?: string;
-    }>();
 
-    // Try to get data from temporary store first
-    const tempSessionData = React.useMemo(() => {
-        if (dataId) {
-            return getTempData<NewSessionData>(dataId);
-        }
-        return null;
-    }, [dataId]);
-
-    // Load persisted draft state (survives remounts/screen navigation)
-    const persistedDraft = React.useRef(loadNewSessionDraft()).current;
-
-    // Settings and state
-    const recentMachinePaths = useSetting('recentMachinePaths');
-    const lastUsedAgent = useSetting('lastUsedAgent');
-
-    // A/B Test Flag - determines which wizard UI to show
-    // Control A (false): Simpler AgentInput-driven layout
-    // Variant B (true): Enhanced profile-first wizard with sections
-    const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
-    const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
-    const lastUsedModelMode = useSetting('lastUsedModelMode');
-    const experimentsEnabled = useSetting('experiments');
-    const [profiles, setProfiles] = useSettingMutable('profiles');
-    const lastUsedProfile = useSetting('lastUsedProfile');
-    const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
-    const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
-    const [dismissedCLIWarnings, setDismissedCLIWarnings] = useSettingMutable('dismissedCLIWarnings');
-
-    // Combined profiles (built-in + custom)
-    const allProfiles = React.useMemo(() => {
-        const builtInProfiles = DEFAULT_PROFILES.map(bp => getBuiltInProfile(bp.id)!);
-        return [...builtInProfiles, ...profiles];
-    }, [profiles]);
-
-    const profileMap = useProfileMap(allProfiles);
-    const machines = useAllMachines();
-    const sessions = useSessions();
-
-    // Wizard state
-    const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
-        if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
-            return lastUsedProfile;
-        }
-        return 'anthropic'; // Default to Anthropic
-    });
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
-        // Check if agent type was provided in temp data
-        if (tempSessionData?.agentType) {
-            // Only allow gemini if experiments are enabled
-            if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
-                return 'claude';
-            }
-            return tempSessionData.agentType;
-        }
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
-            return lastUsedAgent;
-        }
-        // Only allow gemini if experiments are enabled
-        if (lastUsedAgent === 'gemini' && experimentsEnabled) {
-            return lastUsedAgent;
-        }
-        return 'claude';
-    });
-
-    // Agent cycling handler (for cycling through claude -> codex -> gemini)
-    // Note: Does NOT persist immediately - persistence is handled by useEffect below
-    const handleAgentClick = React.useCallback(() => {
-        setAgentType(prev => {
-            // Cycle: claude -> codex -> gemini (if experiments) -> claude
-            if (prev === 'claude') return 'codex';
-            if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
-            return 'claude';
-        });
-    }, [experimentsEnabled]);
-
-    // Persist agent selection changes (separate from setState to avoid race condition)
-    // This runs after agentType state is updated, ensuring the value is stable
-    React.useEffect(() => {
-        sync.applySettings({ lastUsedAgent: agentType });
-    }, [agentType]);
-
-    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
-    const availableModes = React.useMemo(() => (
-        getAvailablePermissionModes(agentType, null, t)
-    ), [agentType]);
-    const availableModels = React.useMemo(() => (
-        getAvailableModels(agentType, null, t)
-    ), [agentType]);
-
-    const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        const modes = getAvailablePermissionModes(agentType, null, t);
-        return resolveCurrentOption(modes, [
-            lastUsedPermissionMode,
-            getDefaultPermissionModeKey(agentType),
-        ]) ?? modes[0];
-    });
-
-    const [modelMode, setModelMode] = React.useState<ModelMode | null>(() => {
-        const models = getAvailableModels(agentType, null, t);
-        return resolveCurrentOption(models, [
-            lastUsedModelMode,
-            getDefaultModelKey(agentType),
-        ]);
-    });
-
-    // Session details state
-    const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
-        if (machines.length > 0) {
-            if (recentMachinePaths.length > 0) {
-                for (const recent of recentMachinePaths) {
-                    if (machines.find(m => m.id === recent.machineId)) {
-                        return recent.machineId;
-                    }
-                }
-            }
-            return machines[0].id;
-        }
-        return null;
-    });
-
-    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
-        setPermissionMode(mode);
-        // Save the new selection immediately
-        sync.applySettings({ lastUsedPermissionMode: mode.key });
-    }, []);
-
-    const handleModelModeChange = React.useCallback((mode: ModelMode) => {
-        setModelMode(mode);
-        sync.applySettings({ lastUsedModelMode: mode.key });
-    }, []);
-
-    //
-    // Path selection
-    //
-
-    const [selectedPath, setSelectedPath] = React.useState<string>(() => {
-        return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
-    });
-    const [sessionPrompt, setSessionPrompt] = React.useState(() => {
-        return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
-    });
-    const [isCreating, setIsCreating] = React.useState(false);
-    const [showAdvanced, setShowAdvanced] = React.useState(false);
-
-    // Handle machineId route param from picker screens (main's navigation pattern)
-    React.useEffect(() => {
-        if (typeof machineIdParam !== 'string' || machines.length === 0) {
-            return;
-        }
-        if (!machines.some(m => m.id === machineIdParam)) {
-            return;
-        }
-        if (machineIdParam !== selectedMachineId) {
-            setSelectedMachineId(machineIdParam);
-            const bestPath = getRecentPathForMachine(machineIdParam, recentMachinePaths);
-            setSelectedPath(bestPath);
-        }
-    }, [machineIdParam, machines, recentMachinePaths, selectedMachineId]);
-
-    // Handle path route param from picker screens (main's navigation pattern)
-    React.useEffect(() => {
-        if (typeof pathParam !== 'string') {
-            return;
-        }
-        const trimmedPath = pathParam.trim();
-        if (trimmedPath && trimmedPath !== selectedPath) {
-            setSelectedPath(trimmedPath);
-        }
-    }, [pathParam, selectedPath]);
-
-    // Path selection state - initialize with formatted selected path
-
-    // Refs for scrolling to sections
-    const scrollViewRef = React.useRef<ScrollView>(null);
-    const profileSectionRef = React.useRef<View>(null);
-    const machineSectionRef = React.useRef<View>(null);
-    const pathSectionRef = React.useRef<View>(null);
-    const permissionSectionRef = React.useRef<View>(null);
-
-    // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
-    const cliAvailability = useCLIDetection(selectedMachineId);
-
-    // Auto-correct invalid agent selection after CLI detection completes
-    // This handles the case where lastUsedAgent was 'codex' but codex is not installed
-    React.useEffect(() => {
-        // Only act when detection has completed (timestamp > 0)
-        if (cliAvailability.timestamp === 0) return;
-
-        // Check if currently selected agent is available
-        const agentAvailable = cliAvailability[agentType];
-
-        if (agentAvailable === false) {
-            // Current agent not available - find first available
-            const availableAgent: 'claude' | 'codex' | 'gemini' =
-                cliAvailability.claude === true ? 'claude' :
-                cliAvailability.codex === true ? 'codex' :
-                (cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
-                'claude'; // Fallback to claude (will fail at spawn with clear error)
-
-            console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
-            setAgentType(availableAgent);
-        }
-    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
-
-    // Extract all ${VAR} references from profiles to query daemon environment
-    const envVarRefs = React.useMemo(() => {
-        const refs = new Set<string>();
-        allProfiles.forEach(profile => {
-            extractEnvVarReferences(profile.environmentVariables || [])
-                .forEach(ref => refs.add(ref));
-        });
-        return Array.from(refs);
-    }, [allProfiles]);
-
-    // Query daemon environment for ${VAR} resolution
-    const { variables: daemonEnv } = useEnvironmentVariables(selectedMachineId, envVarRefs);
-
-    // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
-    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean; gemini: boolean }>({ claude: false, codex: false, gemini: false });
-
-    // Helper to check if CLI warning has been dismissed (checks both global and per-machine)
-    const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex' | 'gemini'): boolean => {
-        // Check global dismissal first
-        if (dismissedCLIWarnings.global?.[cli] === true) return true;
-        // Check per-machine dismissal
-        if (!selectedMachineId) return false;
-        return dismissedCLIWarnings.perMachine?.[selectedMachineId]?.[cli] === true;
-    }, [selectedMachineId, dismissedCLIWarnings]);
-
-    // Unified dismiss handler for all three button types (easy to use correctly, hard to use incorrectly)
-    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex' | 'gemini', type: 'temporary' | 'machine' | 'global') => {
-        if (type === 'temporary') {
-            // X button: Hide for current session only (not persisted)
-            setHiddenBanners(prev => ({ ...prev, [cli]: true }));
-        } else if (type === 'global') {
-            // [any machine] button: Permanent dismissal across all machines
-            setDismissedCLIWarnings({
-                ...dismissedCLIWarnings,
-                global: {
-                    ...dismissedCLIWarnings.global,
-                    [cli]: true,
-                },
-            });
-        } else {
-            // [this machine] button: Permanent dismissal for current machine only
-            if (!selectedMachineId) return;
-            const machineWarnings = dismissedCLIWarnings.perMachine?.[selectedMachineId] || {};
-            setDismissedCLIWarnings({
-                ...dismissedCLIWarnings,
-                perMachine: {
-                    ...dismissedCLIWarnings.perMachine,
-                    [selectedMachineId]: {
-                        ...machineWarnings,
-                        [cli]: true,
-                    },
-                },
-            });
-        }
-    }, [selectedMachineId, dismissedCLIWarnings, setDismissedCLIWarnings]);
-
-    // Helper to check if profile is available (compatible + CLI detected)
-    const isProfileAvailable = React.useCallback((profile: AIBackendProfile): { available: boolean; reason?: string } => {
-        // Check profile compatibility with selected agent type
-        if (!validateProfileForAgent(profile, agentType)) {
-            // Build list of agents this profile supports (excluding current)
-            // Uses Object.entries to iterate over compatibility flags - scales automatically with new agents
-            const supportedAgents = (Object.entries(profile.compatibility) as [string, boolean][])
-                .filter(([agent, supported]) => supported && agent !== agentType)
-                .map(([agent]) => agent.charAt(0).toUpperCase() + agent.slice(1)); // 'claude' -> 'Claude'
-            const required = supportedAgents.join(' or ') || 'another agent';
-            return {
-                available: false,
-                reason: `requires-agent:${required}`,
-            };
-        }
-
-        // Check if required CLI is detected on machine (only if detection completed)
-        // Determine required CLI: if profile supports exactly one CLI, that CLI is required
-        // Uses Object.entries to iterate - scales automatically when new agents are added
-        const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
-            .filter(([, supported]) => supported)
-            .map(([agent]) => agent);
-        const requiredCLI = supportedCLIs.length === 1 ? supportedCLIs[0] as 'claude' | 'codex' | 'gemini' : null;
-
-        if (requiredCLI && cliAvailability[requiredCLI] === false) {
-            return {
-                available: false,
-                reason: `cli-not-detected:${requiredCLI}`,
-            };
-        }
-
-        // Optimistic: If detection hasn't completed (null) or profile supports both, assume available
-        return { available: true };
-    }, [agentType, cliAvailability]);
-
-    // Computed values
-    const compatibleProfiles = React.useMemo(() => {
-        return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
-    }, [allProfiles, agentType]);
-
-    const selectedProfile = React.useMemo(() => {
-        if (!selectedProfileId) {
-            return null;
-        }
-        // Check custom profiles first
-        if (profileMap.has(selectedProfileId)) {
-            return profileMap.get(selectedProfileId)!;
-        }
-        // Check built-in profiles
-        return getBuiltInProfile(selectedProfileId);
-    }, [selectedProfileId, profileMap]);
-
-    const selectedMachine = React.useMemo(() => {
-        if (!selectedMachineId) return null;
-        return machines.find(m => m.id === selectedMachineId);
-    }, [selectedMachineId, machines]);
-
-    // Get recent paths for the selected machine
-    // Recent machines computed from sessions (for inline machine selection)
-    const recentMachines = React.useMemo(() => {
-        const machineIds = new Set<string>();
-        const machinesWithTimestamp: Array<{ machine: typeof machines[0]; timestamp: number }> = [];
-
-        sessions?.forEach(item => {
-            if (typeof item === 'string') return; // Skip section headers
-            const session = item as any;
-            if (session.metadata?.machineId && !machineIds.has(session.metadata.machineId)) {
-                const machine = machines.find(m => m.id === session.metadata.machineId);
-                if (machine) {
-                    machineIds.add(machine.id);
-                    machinesWithTimestamp.push({
-                        machine,
-                        timestamp: session.updatedAt || session.createdAt
-                    });
-                }
-            }
-        });
-
-        return machinesWithTimestamp
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .map(item => item.machine);
-    }, [sessions, machines]);
-
-    const recentPaths = React.useMemo(() => {
-        if (!selectedMachineId) return [];
-
-        const paths: string[] = [];
-        const pathSet = new Set<string>();
-
-        // First, add paths from recentMachinePaths (these are the most recent)
-        recentMachinePaths.forEach(entry => {
-            if (entry.machineId === selectedMachineId && !pathSet.has(entry.path)) {
-                paths.push(entry.path);
-                pathSet.add(entry.path);
-            }
-        });
-
-        // Then add paths from sessions if we need more
-        if (sessions) {
-            const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
-
-            sessions.forEach(item => {
-                if (typeof item === 'string') return; // Skip section headers
-
-                const session = item as any;
-                if (session.metadata?.machineId === selectedMachineId && session.metadata?.path) {
-                    const path = session.metadata.path;
-                    if (!pathSet.has(path)) {
-                        pathSet.add(path);
-                        pathsWithTimestamps.push({
-                            path,
-                            timestamp: session.updatedAt || session.createdAt
-                        });
-                    }
-                }
-            });
-
-            // Sort session paths by most recent first and add them
-            pathsWithTimestamps
-                .sort((a, b) => b.timestamp - a.timestamp)
-                .forEach(item => paths.push(item.path));
-        }
-
-        return paths;
-    }, [sessions, selectedMachineId, recentMachinePaths]);
-
-    // Validation
-    const canCreate = React.useMemo(() => {
+    if (Platform.OS === 'ios') {
         return (
-            selectedProfileId !== null &&
-            selectedMachineId !== null &&
-            selectedPath.trim() !== ''
-        );
-    }, [selectedProfileId, selectedMachineId, selectedPath]);
-
-    const selectProfile = React.useCallback((profileId: string) => {
-        setSelectedProfileId(profileId);
-        // Check both custom profiles and built-in profiles
-        const profile = profileMap.get(profileId) || getBuiltInProfile(profileId);
-        if (profile) {
-            // Auto-select agent based on profile's EXCLUSIVE compatibility
-            // Only switch if profile supports exactly one CLI - scales automatically with new agents
-            const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
-                .filter(([, supported]) => supported)
-                .map(([agent]) => agent);
-
-            if (supportedCLIs.length === 1) {
-                const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini';
-                // Check if this agent is available and allowed
-                const isAvailable = cliAvailability[requiredAgent] !== false;
-                const isAllowed = requiredAgent !== 'gemini' || experimentsEnabled;
-
-                if (isAvailable && isAllowed) {
-                    setAgentType(requiredAgent);
-                }
-                // If the required CLI is unavailable or not allowed, keep current agent (profile will show as unavailable)
-            }
-            // If supportedCLIs.length > 1, profile supports multiple CLIs - don't force agent switch
-
-            // Set session type from profile's default
-            if (profile.defaultSessionType) {
-                setSessionType(profile.defaultSessionType);
-            }
-            // Set permission mode from profile's default
-            if (profile.defaultPermissionMode) {
-                const profileMode = resolveCurrentOption(availableModes, [
-                    profile.defaultPermissionMode,
-                    getDefaultPermissionModeKey(agentType),
-                ]);
-                if (profileMode) {
-                    setPermissionMode(profileMode);
-                }
-            }
-        }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled, availableModes, agentType]);
-
-    // Ensure permission mode is valid for current agent, falling back when needed.
-    React.useEffect(() => {
-        const resolvedPermissionMode = resolveCurrentOption(availableModes, [
-            permissionMode?.key,
-            getDefaultPermissionModeKey(agentType),
-        ]);
-        if (resolvedPermissionMode && resolvedPermissionMode.key !== permissionMode?.key) {
-            setPermissionMode(resolvedPermissionMode);
-        }
-    }, [agentType, permissionMode?.key, availableModes]);
-
-    // Ensure model mode is valid for current agent, falling back when needed.
-    React.useEffect(() => {
-        const resolvedModelMode = resolveCurrentOption(availableModels, [
-            modelMode?.key,
-            getDefaultModelKey(agentType),
-        ]);
-        if (resolvedModelMode?.key !== modelMode?.key) {
-            setModelMode(resolvedModelMode);
-        }
-    }, [agentType, modelMode?.key, availableModels]);
-
-    // Scroll to section helpers - for AgentInput button clicks
-    const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
-        if (!ref.current || !scrollViewRef.current) return;
-
-        // Use requestAnimationFrame to ensure layout is painted before measuring
-        requestAnimationFrame(() => {
-            if (ref.current && scrollViewRef.current) {
-                ref.current.measureLayout(
-                    scrollViewRef.current as any,
-                    (x, y) => {
-                        scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
-                    },
-                    () => {
-                        console.warn('measureLayout failed');
-                    }
-                );
-            }
-        });
-    }, []);
-
-    const handleAgentInputProfileClick = React.useCallback(() => {
-        scrollToSection(profileSectionRef);
-    }, [scrollToSection]);
-
-    const handleAgentInputMachineClick = React.useCallback(() => {
-        scrollToSection(machineSectionRef);
-    }, [scrollToSection]);
-
-    const handleAgentInputPathClick = React.useCallback(() => {
-        scrollToSection(pathSectionRef);
-    }, [scrollToSection]);
-
-    const handleAgentInputPermissionChange = React.useCallback((mode: PermissionMode) => {
-        setPermissionMode(mode);
-        sync.applySettings({ lastUsedPermissionMode: mode.key });
-        scrollToSection(permissionSectionRef);
-    }, [scrollToSection]);
-
-    const handleAgentInputAgentClick = React.useCallback(() => {
-        scrollToSection(profileSectionRef); // Agent tied to profile section
-    }, [scrollToSection]);
-
-    const handleAddProfile = React.useCallback(() => {
-        const newProfile: AIBackendProfile = {
-            id: randomUUID(),
-            name: '',
-            anthropicConfig: {},
-            environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
-            isBuiltIn: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            version: '1.0.0',
-        };
-        const profileData = encodeURIComponent(JSON.stringify(newProfile));
-        router.push(`/new/pick/profile-edit?profileData=${profileData}`);
-    }, [router]);
-
-    const handleEditProfile = React.useCallback((profile: AIBackendProfile) => {
-        const profileData = encodeURIComponent(JSON.stringify(profile));
-        const machineId = selectedMachineId || '';
-        router.push(`/new/pick/profile-edit?profileData=${profileData}&machineId=${machineId}`);
-    }, [router, selectedMachineId]);
-
-    const handleDuplicateProfile = React.useCallback((profile: AIBackendProfile) => {
-        const duplicatedProfile: AIBackendProfile = {
-            ...profile,
-            id: randomUUID(),
-            name: `${profile.name} (Copy)`,
-            isBuiltIn: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-        };
-        const profileData = encodeURIComponent(JSON.stringify(duplicatedProfile));
-        router.push(`/new/pick/profile-edit?profileData=${profileData}`);
-    }, [router]);
-
-    // Helper to get meaningful subtitle text for profiles
-    const getProfileSubtitle = React.useCallback((profile: AIBackendProfile): string => {
-        const parts: string[] = [];
-        const availability = isProfileAvailable(profile);
-
-        // Add "Built-in" indicator first for built-in profiles
-        if (profile.isBuiltIn) {
-            parts.push('Built-in');
-        }
-
-        // Add CLI type second (before warnings/availability)
-        if (profile.compatibility.claude && profile.compatibility.codex) {
-            parts.push('Claude & Codex CLI');
-        } else if (profile.compatibility.claude) {
-            parts.push('Claude CLI');
-        } else if (profile.compatibility.codex) {
-            parts.push('Codex CLI');
-        }
-
-        // Add availability warning if unavailable
-        if (!availability.available && availability.reason) {
-            if (availability.reason.startsWith('requires-agent:')) {
-                const required = availability.reason.split(':')[1];
-                parts.push(`⚠️ This profile uses ${required} CLI only`);
-            } else if (availability.reason.startsWith('cli-not-detected:')) {
-                const cli = availability.reason.split(':')[1];
-                const cliName = cli === 'claude' ? 'Claude' : 'Codex';
-                parts.push(`⚠️ ${cliName} CLI not detected (this profile needs it)`);
-            }
-        }
-
-        // Get model name - check both anthropicConfig and environmentVariables
-        let modelName: string | undefined;
-        if (profile.anthropicConfig?.model) {
-            // User set in GUI - literal value, no evaluation needed
-            modelName = profile.anthropicConfig.model;
-        } else if (profile.openaiConfig?.model) {
-            modelName = profile.openaiConfig.model;
-        } else {
-            // Check environmentVariables - may need ${VAR} evaluation
-            const modelEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_MODEL');
-            if (modelEnvVar) {
-                const resolved = resolveEnvVarSubstitution(modelEnvVar.value, daemonEnv);
-                if (resolved) {
-                    // Show as "VARIABLE: value" when evaluated from ${VAR}
-                    const varName = modelEnvVar.value.match(/^\$\{(.+)\}$/)?.[1];
-                    modelName = varName ? `${varName}: ${resolved}` : resolved;
-                } else {
-                    // Show raw ${VAR} if not resolved (machine not selected or var not set)
-                    modelName = modelEnvVar.value;
-                }
-            }
-        }
-
-        if (modelName) {
-            parts.push(modelName);
-        }
-
-        // Add base URL if exists in environmentVariables
-        const baseUrlEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_BASE_URL');
-        if (baseUrlEnvVar) {
-            const resolved = resolveEnvVarSubstitution(baseUrlEnvVar.value, daemonEnv);
-            if (resolved) {
-                // Extract hostname and show with variable name
-                const varName = baseUrlEnvVar.value.match(/^\$\{([A-Z_][A-Z0-9_]*)/)?.[1];
-                try {
-                    const url = new URL(resolved);
-                    const display = varName ? `${varName}: ${url.hostname}` : url.hostname;
-                    parts.push(display);
-                } catch {
-                    // Not a valid URL, show as-is with variable name
-                    parts.push(varName ? `${varName}: ${resolved}` : resolved);
-                }
-            } else {
-                // Show raw ${VAR} if not resolved (machine not selected or var not set)
-                parts.push(baseUrlEnvVar.value);
-            }
-        }
-
-        return parts.join(', ');
-    }, [agentType, isProfileAvailable, daemonEnv]);
-
-    const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
-        Modal.alert(
-            t('profiles.delete.title'),
-            t('profiles.delete.message', { name: profile.name }),
-            [
-                { text: t('profiles.delete.cancel'), style: 'cancel' },
-                {
-                    text: t('profiles.delete.confirm'),
-                    style: 'destructive',
-                    onPress: () => {
-                        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
-                        setProfiles(updatedProfiles); // Use mutable setter for persistence
-                        if (selectedProfileId === profile.id) {
-                            setSelectedProfileId('anthropic'); // Default to Anthropic
-                        }
-                    }
-                }
-            ]
-        );
-    }, [profiles, selectedProfileId, setProfiles]);
-
-    // Handle machine and path selection callbacks
-    React.useEffect(() => {
-        let handler = (machineId: string) => {
-            let machine = storage.getState().machines[machineId];
-            if (machine) {
-                setSelectedMachineId(machineId);
-                const bestPath = getRecentPathForMachine(machineId, recentMachinePaths);
-                setSelectedPath(bestPath);
-            }
-        };
-        onMachineSelected = handler;
-        return () => {
-            onMachineSelected = () => { };
-        };
-    }, [recentMachinePaths]);
-
-    React.useEffect(() => {
-        let handler = (savedProfile: AIBackendProfile) => {
-            // Handle saved profile from profile-edit screen
-
-            // Check if this is a built-in profile being edited
-            const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === savedProfile.id);
-            let profileToSave = savedProfile;
-
-            // For built-in profiles, create a new custom profile instead of modifying the built-in
-            if (isBuiltIn) {
-                profileToSave = {
-                    ...savedProfile,
-                    id: randomUUID(), // Generate new UUID for custom profile
-                    isBuiltIn: false,
-                };
-            }
-
-            const existingIndex = profiles.findIndex(p => p.id === profileToSave.id);
-            let updatedProfiles: AIBackendProfile[];
-
-            if (existingIndex >= 0) {
-                // Update existing profile
-                updatedProfiles = [...profiles];
-                updatedProfiles[existingIndex] = profileToSave;
-            } else {
-                // Add new profile
-                updatedProfiles = [...profiles, profileToSave];
-            }
-
-            setProfiles(updatedProfiles); // Use mutable setter for persistence
-            setSelectedProfileId(profileToSave.id);
-        };
-        onProfileSaved = handler;
-        return () => {
-            onProfileSaved = () => { };
-        };
-    }, [profiles, setProfiles]);
-
-    const handleMachineClick = React.useCallback(() => {
-        router.push('/new/pick/machine');
-    }, [router]);
-
-    const handlePathClick = React.useCallback(() => {
-        if (selectedMachineId) {
-            router.push({
-                pathname: '/new/pick/path',
-                params: {
-                    machineId: selectedMachineId,
-                    selectedPath,
-                },
-            });
-        }
-    }, [selectedMachineId, selectedPath, router]);
-
-    // Session creation
-    const handleCreateSession = React.useCallback(async () => {
-        if (!selectedMachineId) {
-            Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
-            return;
-        }
-        if (!selectedPath) {
-            Modal.alert(t('common.error'), t('newSession.noPathSelected'));
-            return;
-        }
-
-        setIsCreating(true);
-
-        try {
-            let actualPath = selectedPath;
-
-            // Handle worktree creation
-            if (sessionType === 'worktree' && experimentsEnabled) {
-                const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
-
-                if (!worktreeResult.success) {
-                    if (worktreeResult.error === 'Not a Git repository') {
-                        Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
-                    } else {
-                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
-                    }
-                    setIsCreating(false);
-                    return;
-                }
-
-                actualPath = worktreeResult.worktreePath;
-            }
-
-            // Save settings
-            const updatedPaths = [{ machineId: selectedMachineId, path: selectedPath }, ...recentMachinePaths.filter(rp => rp.machineId !== selectedMachineId)].slice(0, 10);
-            sync.applySettings({
-                recentMachinePaths: updatedPaths,
-                lastUsedAgent: agentType,
-                lastUsedProfile: selectedProfileId,
-                lastUsedPermissionMode: permissionMode.key,
-                lastUsedModelMode: modelMode?.key ?? null,
-            });
-
-            // Get environment variables from selected profile
-            let environmentVariables = undefined;
-            if (selectedProfileId) {
-                const selectedProfile = profileMap.get(selectedProfileId);
-                if (selectedProfile) {
-                    environmentVariables = transformProfileToEnvironmentVars(selectedProfile, agentType);
-                }
-            }
-
-            const result = await machineSpawnNewSession({
-                machineId: selectedMachineId,
-                directory: actualPath,
-                approvedNewDirectoryCreation: true,
-                agent: agentType,
-                environmentVariables
-            });
-
-            if ('sessionId' in result && result.sessionId) {
-                // Clear draft state on successful session creation
-                clearNewSessionDraft();
-
-                await sync.refreshSessions();
-
-                // Set permission mode and model mode on the session
-                storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode.key);
-                if (modelMode) {
-                    storage.getState().updateSessionModelMode(result.sessionId, modelMode.key);
-                }
-
-                // Send initial message if provided
-                if (sessionPrompt.trim()) {
-                    await sync.sendMessage(result.sessionId, sessionPrompt);
-                }
-
-                router.replace(`/session/${result.sessionId}`, {
-                    dangerouslySingular() {
-                        return 'session'
-                    },
-                });
-            } else {
-                throw new Error('Session spawning failed - no session ID returned.');
-            }
-        } catch (error) {
-            console.error('Failed to start session', error);
-            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
-            if (error instanceof Error) {
-                if (error.message.includes('timeout')) {
-                    errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
-                } else if (error.message.includes('Socket not connected')) {
-                    errorMessage = 'Not connected to server. Check your internet connection.';
-                }
-            }
-            Modal.alert(t('common.error'), errorMessage);
-            setIsCreating(false);
-        }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
-
-    const screenWidth = useWindowDimensions().width;
-
-    // Machine online status for AgentInput (DRY - reused in info box too)
-    const connectionStatus = React.useMemo(() => {
-        if (!selectedMachine) return undefined;
-        const isOnline = isMachineOnline(selectedMachine);
-
-        // Include CLI status only when in wizard AND detection completed
-        const includeCLI = selectedMachineId && cliAvailability.timestamp > 0;
-
-        return {
-            text: isOnline ? 'online' : 'offline',
-            color: isOnline ? theme.colors.success : theme.colors.textDestructive,
-            dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
-            isPulsing: isOnline,
-            cliStatus: includeCLI ? {
-                claude: cliAvailability.claude,
-                codex: cliAvailability.codex,
-                ...(experimentsEnabled && { gemini: cliAvailability.gemini }),
-            } : undefined,
-        };
-    }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
-
-    // Persist the current wizard state so it survives remounts and screen navigation
-    // Uses debouncing to avoid excessive writes
-    const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    React.useEffect(() => {
-        if (draftSaveTimerRef.current) {
-            clearTimeout(draftSaveTimerRef.current);
-        }
-        draftSaveTimerRef.current = setTimeout(() => {
-            saveNewSessionDraft({
-                input: sessionPrompt,
-                selectedMachineId,
-                selectedPath,
-                agentType,
-                permissionMode: permissionMode.key,
-                sessionType,
-                updatedAt: Date.now(),
-            });
-        }, 250);
-        return () => {
-            if (draftSaveTimerRef.current) {
-                clearTimeout(draftSaveTimerRef.current);
-            }
-        };
-    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode.key, sessionType]);
-
-    // ========================================================================
-    // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
-    // Shows machine/path selection via chips that navigate to picker screens
-    // ========================================================================
-    if (!useEnhancedSessionWizard) {
-        return (
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
-                style={styles.container}
+            <RNModal
+                visible={visible}
+                animationType="slide"
+                presentationStyle="formSheet"
+                onRequestClose={onClose}
             >
-                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-                    {/* Session type selector only if experiments enabled */}
-                    {experimentsEnabled && (
-                        <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
-                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                <SessionTypeSelector
-                                    value={sessionType}
-                                    onChange={setSessionType}
-                                />
-                            </View>
-                        </View>
-                    )}
-
-                    {/* AgentInput with inline chips - sticky at bottom */}
-                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
-                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                            <AgentInput
-                                value={sessionPrompt}
-                                onChangeText={setSessionPrompt}
-                                onSend={handleCreateSession}
-                                isSendDisabled={!canCreate}
-                                isSending={isCreating}
-                                placeholder="What would you like to work on?"
-                                autocompletePrefixes={[]}
-                                autocompleteSuggestions={async () => []}
-                                agentType={agentType}
-                                onAgentClick={handleAgentClick}
-                                permissionMode={permissionMode}
-                                availableModes={availableModes}
-                                onPermissionModeChange={handlePermissionModeChange}
-                                modelMode={modelMode}
-                                availableModels={availableModels}
-                                onModelModeChange={handleModelModeChange}
-                                connectionStatus={connectionStatus}
-                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                                onMachineClick={handleMachineClick}
-                                currentPath={selectedPath}
-                                onPathClick={handlePathClick}
-                            />
-                        </View>
+                <View style={[sheetStyles.iosContainer, { backgroundColor: theme.colors.header.background }]}>
+                    <View style={sheetStyles.handleRow}>
+                        <View style={[sheetStyles.handle, { backgroundColor: theme.colors.textSecondary }]} />
                     </View>
+                    {children}
+                    <View style={{ height: safeArea.bottom }} />
                 </View>
-            </KeyboardAvoidingView>
+            </RNModal>
         );
     }
 
-    // ========================================================================
-    // VARIANT B: Enhanced profile-first wizard (flag ON)
-    // Full wizard with numbered sections, profile management, CLI detection
-    // ========================================================================
+    // Android: slide-up sheet with backdrop
+    const fadeAnim = React.useRef(new Animated.Value(0)).current;
+    const slideAnim = React.useRef(new Animated.Value(300)).current;
+
+    React.useEffect(() => {
+        if (visible) {
+            Animated.parallel([
+                Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+                Animated.spring(slideAnim, { toValue: 0, damping: 25, stiffness: 300, useNativeDriver: true }),
+            ]).start();
+        } else {
+            Animated.parallel([
+                Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+                Animated.timing(slideAnim, { toValue: 300, duration: 200, useNativeDriver: true }),
+            ]).start();
+        }
+    }, [visible, fadeAnim, slideAnim]);
+
+    return (
+        <RNModal
+            visible={visible}
+            transparent
+            animationType="none"
+            onRequestClose={onClose}
+        >
+            <View style={sheetStyles.overlay}>
+                <TouchableWithoutFeedback onPress={onClose}>
+                    <Animated.View style={[sheetStyles.backdrop, { opacity: fadeAnim }]} />
+                </TouchableWithoutFeedback>
+                <Animated.View
+                    style={[
+                        sheetStyles.sheet,
+                        {
+                            backgroundColor: theme.colors.header.background,
+                            paddingBottom: Math.max(16, safeArea.bottom),
+                            transform: [{ translateY: slideAnim }],
+                        },
+                    ]}
+                >
+                    <View style={sheetStyles.handleRow}>
+                        <View style={[sheetStyles.handle, { backgroundColor: theme.colors.textSecondary }]} />
+                    </View>
+                    {children}
+                </Animated.View>
+            </View>
+        </RNModal>
+    );
+}
+
+// Generic picker content — reused for machine, path, and worktree selection
+function PickerContent({
+    title,
+    fixedItems,
+    items,
+    selectedKey,
+    onSelect,
+    searchPlaceholder,
+}: {
+    title: string;
+    fixedItems?: PickerItem[];
+    items: PickerItem[];
+    selectedKey: string | null;
+    onSelect: (key: string) => void;
+    searchPlaceholder?: string;
+}) {
+    const { theme } = useUnistyles();
+    const [search, setSearch] = React.useState('');
+
+    const filtered = React.useMemo(() => {
+        if (!search) return items;
+        const q = search.toLowerCase();
+        return items.filter(item => item.label.toLowerCase().includes(q));
+    }, [search, items]);
+
+    const renderOption = (item: PickerItem) => {
+        const isSelected = item.key === selectedKey;
+        return (
+            <Pressable
+                key={item.key}
+                style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                onPress={() => onSelect(item.key)}
+            >
+                <Octicons
+                    name={isSelected ? 'check-circle-fill' : 'circle'}
+                    size={16}
+                    color={isSelected ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                />
+                <View style={{ flex: 1 }}>
+                    <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>{item.label}</Text>
+                    {item.subtitle && (
+                        <Text style={[pickerStyles.optionText, { color: theme.colors.textSecondary, fontSize: 13 }]}>{item.subtitle}</Text>
+                    )}
+                </View>
+            </Pressable>
+        );
+    };
+
+    return (
+        <View style={pickerStyles.container}>
+            <Text style={[pickerStyles.title, { color: theme.colors.text }]}>{title}</Text>
+
+            <View style={[pickerStyles.searchRow, { backgroundColor: theme.colors.input.background }]}>
+                <Ionicons name="search" size={16} color={theme.colors.textSecondary} />
+                <TextInput
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder={searchPlaceholder ?? 'search...'}
+                    placeholderTextColor={theme.colors.textSecondary}
+                    style={[pickerStyles.searchInput, { color: theme.colors.text }]}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                />
+            </View>
+
+            <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+                {fixedItems?.map(renderOption)}
+                {fixedItems && fixedItems.length > 0 && filtered.length > 0 && (
+                    <View style={[pickerStyles.divider, { backgroundColor: theme.colors.divider }]} />
+                )}
+                {filtered.map(renderOption)}
+                {filtered.length === 0 && search.length > 0 && (
+                    <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                        no results
+                    </Text>
+                )}
+            </ScrollView>
+        </View>
+    );
+}
+
+function PathPickerContent({
+    title,
+    items,
+    value,
+    homeDir,
+    onChangeValue,
+    onDone,
+}: {
+    title: string;
+    items: PickerItem[];
+    value: string | null;
+    homeDir?: string;
+    onChangeValue: (value: string) => void;
+    onDone?: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const inputRef = React.useRef<TextInput>(null);
+    const currentValue = value ?? '';
+    const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
+
+    React.useEffect(() => {
+        const timeout = setTimeout(() => {
+            inputRef.current?.focus();
+        }, 50);
+        return () => clearTimeout(timeout);
+    }, []);
+
+    const matchedItemKey = React.useMemo(() => {
+        const normalizedValue = normalizePathForComparison(currentValue, homeDir);
+        if (!normalizedValue) {
+            return null;
+        }
+
+        const match = items.find((item) =>
+            normalizePathForComparison(item.key, homeDir) === normalizedValue,
+        );
+
+        return match?.key ?? null;
+    }, [currentValue, homeDir, items]);
+
+    const handleSuggestionPress = React.useCallback((item: PickerItem) => {
+        const nextValue = item.label;
+        const nextSelection = { start: nextValue.length, end: nextValue.length };
+
+        onChangeValue(nextValue);
+        setSelection(nextSelection);
+
+        setTimeout(() => {
+            inputRef.current?.focus();
+        }, 0);
+    }, [onChangeValue]);
+
+    const isCustomPath = currentValue.trim().length > 0 && matchedItemKey === null;
+    const handleSelectionChange = React.useCallback((event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+        setSelection(event.nativeEvent.selection);
+    }, []);
+    const doneIconColor = theme.colors.header.tint;
+
+    return (
+        <View style={pickerStyles.container}>
+            <View style={pickerStyles.titleRow}>
+                <Text style={[pickerStyles.title, { color: theme.colors.text }]}>{title}</Text>
+                {Platform.OS !== 'web' && onDone && (
+                    <Pressable
+                        onPress={onDone}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={({ pressed }) => [
+                            pickerStyles.doneButtonPressable,
+                            { opacity: pressed ? 0.82 : 1 },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Done"
+                    >
+                        <GlassView
+                            glassEffectStyle="regular"
+                            tintColor="rgba(255,255,255,0.10)"
+                            isInteractive={true}
+                            style={[
+                                pickerStyles.doneButtonGlass,
+                                { borderColor: 'rgba(255,255,255,0.16)' },
+                            ]}
+                        >
+                            <Ionicons
+                                name="checkmark"
+                                size={20}
+                                color={doneIconColor}
+                            />
+                        </GlassView>
+                    </Pressable>
+                )}
+            </View>
+
+            <View
+                style={[
+                    pickerStyles.pathInputRow,
+                    {
+                        backgroundColor: theme.colors.input.background,
+                        borderColor: theme.colors.divider,
+                    },
+                ]}
+            >
+                <Ionicons name="folder-outline" size={16} color={theme.colors.textSecondary} />
+                <View style={pickerStyles.pathInputField}>
+                    <TextInput
+                        ref={inputRef}
+                        value={currentValue}
+                        onChangeText={onChangeValue}
+                        onSelectionChange={handleSelectionChange}
+                        selection={selection}
+                        placeholder="Enter project path"
+                        placeholderTextColor={theme.colors.textSecondary}
+                        style={[pickerStyles.pathTextInput, { color: theme.colors.text }]}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        multiline={false}
+                        numberOfLines={1}
+                        returnKeyType="done"
+                        onSubmitEditing={onDone}
+                    />
+                </View>
+            </View>
+
+            {isCustomPath && (
+                <Text style={[pickerStyles.pathMetaText, { color: theme.colors.textSecondary }]}>
+                    using custom path above
+                </Text>
+            )}
+
+            <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
+                Recent
+            </Text>
+
+            <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+                {items.map((item) => {
+                    const isSelected = item.key === matchedItemKey;
+
+                    return (
+                        <Pressable
+                            key={item.key}
+                            style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                            onPress={() => handleSuggestionPress(item)}
+                        >
+                            <Ionicons
+                                name="folder-outline"
+                                size={16}
+                                color={theme.colors.textSecondary}
+                            />
+                            <View style={{ flex: 1 }}>
+                                <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>
+                                    {item.label}
+                                </Text>
+                            </View>
+                            {isSelected && (
+                                <Ionicons
+                                    name="checkmark-circle"
+                                    size={18}
+                                    color={theme.colors.button.primary.background}
+                                />
+                            )}
+                        </Pressable>
+                    );
+                })}
+
+                {items.length === 0 && (
+                    <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                        no recent projects yet
+                    </Text>
+                )}
+            </ScrollView>
+        </View>
+    );
+}
+
+// Helper: get machine display name
+function getMachineName(machine: Machine): string {
+    return machine.metadata?.displayName || machine.metadata?.host || 'unknown';
+}
+
+function NewSessionScreen() {
+    const { theme } = useUnistyles();
+    const safeArea = useSafeAreaInsets();
+    const headerHeight = useHeaderHeight();
+    const router = useRouter();
+    const navigateToSession = useNavigateToSession();
+
+    // Real data sources
+    const allMachines = useAllMachines({ includeOffline: true });
+    const sessions = useSessions();
+    const agentInputEnterToSend = useSetting('agentInputEnterToSend');
+
+    // Persisted draft state (survives navigation)
+    const draft = useNewSessionDraft();
+    const prompt = draft.input;
+    const setPrompt = draft.setInput;
+    const selectedAgent = draft.agentType;
+    const setSelectedAgent = draft.setAgentType;
+    const selectedMachineId = draft.selectedMachineId;
+    const setSelectedMachineId = draft.setMachineId;
+    const selectedPath = draft.selectedPath;
+    const setSelectedPath = draft.setPath;
+    const [worktreeKey, setWorktreeKey] = React.useState<string>(
+        draft.sessionType === 'worktree' ? '__new__' : '__none__'
+    );
+    React.useEffect(() => {
+        draft.setSessionType(worktreeKey !== '__none__' ? 'worktree' : 'simple');
+    }, [worktreeKey]);
+
+    // Local-only UI state (not persisted)
+    const [permissionIndex, setPermissionIndex] = React.useState(0);
+    const [modelIndex, setModelIndex] = React.useState(0);
+    const [effortIndex, setEffortIndex] = React.useState(0);
+    const [isSpawning, setIsSpawning] = React.useState(false);
+    const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
+
+    // Config collapse — auto-collapses when typing, expands when empty
+    const [isConfigExpanded, setIsConfigExpanded] = React.useState(true);
+
+    // Auto-select first machine when none selected (first-ever use, no draft)
+    React.useEffect(() => {
+        if (selectedMachineId) return;
+        if (allMachines.length > 0) {
+            setSelectedMachineId(allMachines[0].id);
+        }
+    }, [allMachines, selectedMachineId]);
+
+    const selectedMachine = React.useMemo(
+        () => allMachines.find(m => m.id === selectedMachineId) ?? null,
+        [allMachines, selectedMachineId],
+    );
+    const selectedHomeDir = selectedMachine?.metadata?.homeDir;
+
+    // Build machine picker items: online first, then offline
+    const machineItems = React.useMemo<PickerItem[]>(() => {
+        const sorted = [...allMachines].sort((a, b) => {
+            const aOnline = isMachineOnline(a) ? 0 : 1;
+            const bOnline = isMachineOnline(b) ? 0 : 1;
+            return aOnline - bOnline;
+        });
+        return sorted.map(m => ({
+            key: m.id,
+            label: getMachineName(m),
+            subtitle: isMachineOnline(m) ? undefined : t('status.lastSeen', { time: formatLastSeen(m.activeAt, false) }),
+        }));
+    }, [allMachines]);
+
+    // Build path items from session history for selected machine
+    const pathItems = React.useMemo<PickerItem[]>(() => {
+        if (!selectedMachineId || !sessions) return [];
+        const paths = new Set<string>();
+        for (const s of sessions) {
+            if (typeof s === 'string') continue;
+            const session = s as Session;
+            if (session.metadata?.machineId === selectedMachineId && session.metadata?.path) {
+                paths.add(session.metadata.path);
+            }
+        }
+        const homeDir = selectedMachine?.metadata?.homeDir;
+        return Array.from(paths).sort().map(p => ({
+            key: p,
+            label: formatPathRelativeToHome(p, homeDir),
+        }));
+    }, [selectedMachineId, sessions, selectedMachine]);
+
+    // Auto-select first path when machine changes
+    React.useEffect(() => {
+        if (!selectedMachineId || selectedPath !== null) {
+            return;
+        }
+
+        setSelectedPath(pathItems[0]?.label ?? '~');
+    }, [selectedMachineId, pathItems, selectedPath, setSelectedPath]);
+
+    const resolvedSelectedPath = React.useMemo(() => {
+        return normalizePathForComparison(selectedPath, selectedHomeDir);
+    }, [selectedHomeDir, selectedPath]);
+
+    const [debouncedResolvedSelectedPath, setDebouncedResolvedSelectedPath] = React.useState<string | null>(resolvedSelectedPath);
+
+    React.useEffect(() => {
+        if (!resolvedSelectedPath) {
+            setDebouncedResolvedSelectedPath(null);
+            return;
+        }
+
+        const timeout = setTimeout(() => {
+            setDebouncedResolvedSelectedPath(resolvedSelectedPath);
+        }, WORKTREE_PATH_DEBOUNCE_MS);
+
+        return () => clearTimeout(timeout);
+    }, [resolvedSelectedPath]);
+
+    // Fetch existing worktrees from the selected machine/path
+    const [worktreeItems, setWorktreeItems] = React.useState<PickerItem[]>([]);
+    React.useEffect(() => {
+        if (!selectedMachineId || !debouncedResolvedSelectedPath) {
+            setWorktreeItems([]);
+            return;
+        }
+        if (!selectedMachine || !isMachineOnline(selectedMachine)) {
+            setWorktreeItems([]);
+            return;
+        }
+        let cancelled = false;
+        listWorktrees(selectedMachineId, debouncedResolvedSelectedPath).then(worktrees => {
+            if (cancelled) return;
+            setWorktreeItems(worktrees.map(wt => ({
+                key: wt.path,
+                label: wt.branch,
+                subtitle: wt.path,
+            })));
+        });
+        return () => { cancelled = true; };
+    }, [debouncedResolvedSelectedPath, selectedMachineId, selectedMachine]);
+
+    React.useEffect(() => {
+        if (worktreeKey === '__none__' || worktreeKey === '__new__') {
+            return;
+        }
+
+        if (!worktreeItems.some((item) => item.key === worktreeKey)) {
+            setWorktreeKey('__none__');
+        }
+    }, [worktreeItems, worktreeKey]);
+
+    // Filter available agents based on CLI availability from machine metadata
+    const availableAgents = React.useMemo(() => {
+        const availability = selectedMachine?.metadata?.cliAvailability;
+        if (!availability) return ALL_AGENTS;
+        return ALL_AGENTS.filter(a => availability[a.key]);
+    }, [selectedMachine]);
+
+    // If current agent not available on this machine, switch to first available
+    React.useEffect(() => {
+        if (availableAgents.length > 0 && !availableAgents.find(a => a.key === selectedAgent)) {
+            setSelectedAgent(availableAgents[0].key);
+        }
+    }, [availableAgents, selectedAgent, setSelectedAgent]);
+
+    // Derive options from agent type
+    const permissionModes = React.useMemo<PermissionMode[]>(
+        () => getHardcodedPermissionModes(selectedAgent, t),
+        [selectedAgent],
+    );
+    const modelModes = React.useMemo<ModelMode[]>(
+        () => getHardcodedModelModes(selectedAgent, t),
+        [selectedAgent],
+    );
+
+    const currentModel = modelModes[modelIndex] ?? modelModes[0];
+    const currentModelKey = currentModel?.key ?? 'default';
+
+    const effortLevels = React.useMemo<EffortLevel[]>(
+        () => getEffortLevelsForModel(selectedAgent, currentModelKey),
+        [selectedAgent, currentModelKey],
+    );
+
+    const supportsWorktree = getSupportsWorktree(selectedAgent);
+    const showModel = modelModes.length > 1;
+    const showEffort = effortLevels.length > 0;
+    const showPermission = permissionModes.length > 1;
+
+    // Reset indices when agent changes — try draft keys first, then defaults
+    React.useEffect(() => {
+        const draftPermIdx = permissionModes.findIndex(m => m.key === draft.permissionMode);
+        const defaultPermIdx = permissionModes.findIndex(m => m.key === getDefaultPermissionModeKey(selectedAgent));
+        setPermissionIndex(draftPermIdx >= 0 ? draftPermIdx : (defaultPermIdx >= 0 ? defaultPermIdx : 0));
+
+        const draftModelIdx = modelModes.findIndex(m => m.key === draft.modelMode);
+        const defaultModelIdx = modelModes.findIndex(m => m.key === getDefaultModelKey(selectedAgent));
+        setModelIndex(draftModelIdx >= 0 ? draftModelIdx : (defaultModelIdx >= 0 ? defaultModelIdx : 0));
+
+        if (!supportsWorktree) setWorktreeKey('__none__');
+    }, [selectedAgent, permissionModes, modelModes, supportsWorktree]);
+
+    // Reset effort when model changes
+    React.useEffect(() => {
+        const defaultEffort = getDefaultEffortKeyForModel(selectedAgent, currentModelKey);
+        if (defaultEffort && effortLevels.length > 0) {
+            const idx = effortLevels.findIndex(e => e.key === defaultEffort);
+            setEffortIndex(idx >= 0 ? idx : effortLevels.length - 1);
+        } else {
+            setEffortIndex(0);
+        }
+    }, [selectedAgent, currentModelKey, effortLevels]);
+
+    const hasText = prompt.trim().length > 0;
+
+    // Auto collapse/expand config based on input text
+    const prevHasTextRef = React.useRef(false);
+    React.useEffect(() => {
+        if (hasText !== prevHasTextRef.current) {
+            prevHasTextRef.current = hasText;
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setIsConfigExpanded(!hasText);
+        }
+    }, [hasText]);
+
+    // Close any open picker when config collapses
+    React.useEffect(() => {
+        if (!isConfigExpanded) {
+            setActivePicker(null);
+        }
+    }, [isConfigExpanded]);
+
+    const toggleConfig = React.useCallback(() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setIsConfigExpanded(v => !v);
+    }, []);
+
+    const togglePicker = React.useCallback((type: PickerType) => {
+        setActivePicker(v => v === type ? null : type);
+    }, []);
+
+    const cyclePermission = React.useCallback(() => {
+        setPermissionIndex(i => {
+            const next = (i + 1) % permissionModes.length;
+            draft.setPermissionMode(permissionModes[next]?.key ?? 'default');
+            return next;
+        });
+    }, [permissionModes, draft.setPermissionMode]);
+
+    const cycleModel = React.useCallback(() => {
+        setModelIndex(i => {
+            const next = (i + 1) % modelModes.length;
+            draft.setModelMode(modelModes[next]?.key ?? 'default');
+            return next;
+        });
+    }, [modelModes, draft.setModelMode]);
+
+    const cycleEffort = React.useCallback(() => {
+        setEffortIndex(i => (i + 1) % effortLevels.length);
+    }, [effortLevels.length]);
+
+    const cycleAgent = React.useCallback(() => {
+        const idx = availableAgents.findIndex(a => a.key === selectedAgent);
+        const next = availableAgents[(idx + 1) % availableAgents.length].key;
+        setSelectedAgent(next);
+    }, [availableAgents, selectedAgent, setSelectedAgent]);
+
+    const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
+    const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
+    const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
+    const currentEffort = effortLevels[effortIndex] ?? effortLevels[0];
+    const permissionStyle = currentPermission?.key !== 'default' ? getPermissionStyle(currentPermission.key) : null;
+
+    // Display values
+    const machineName = selectedMachine ? getMachineName(selectedMachine) : 'Select machine';
+    const pathName = trimPathInput(selectedPath)
+        ? formatPathRelativeToHome(trimPathInput(selectedPath), selectedHomeDir)
+        : '~';
+    const worktreeLabel = worktreeKey === '__none__'
+        ? 'no worktree'
+        : worktreeKey === '__new__'
+            ? 'new worktree'
+            : worktreeItems.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
+
+    // Picker data derived from active picker type
+    const pickerData = React.useMemo(() => {
+        switch (activePicker) {
+            case 'machine':
+                return { title: 'Machine', items: machineItems, selectedKey: selectedMachineId, searchPlaceholder: 'search machines...' };
+            case 'worktree':
+                return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems, selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
+            default:
+                return null;
+        }
+    }, [activePicker, machineItems, selectedMachineId, worktreeKey, worktreeItems]);
+
+    const handlePickerSelect = React.useCallback((key: string) => {
+        switch (activePicker) {
+            case 'machine':
+                setSelectedMachineId(key);
+                break;
+            case 'worktree':
+                setWorktreeKey(key);
+                break;
+        }
+        setActivePicker(null);
+    }, [activePicker, setSelectedMachineId, setWorktreeKey]);
+
+    // Spawn session handler
+    const handleSend = React.useCallback(async (approvedNewDirectoryCreation: boolean = false) => {
+        if (!selectedMachineId || !selectedMachine) {
+            Modal.alert(t('common.error'), 'Please select a machine');
+            return;
+        }
+        if (!isMachineOnline(selectedMachine)) {
+            Modal.alert(t('common.error'), 'Machine is offline');
+            return;
+        }
+
+        setIsSpawning(true);
+        try {
+            const pathToUse = trimPathInput(selectedPath) || '~';
+            const absolutePath = resolveAbsolutePath(pathToUse, selectedMachine.metadata?.homeDir);
+
+            // Handle worktree selection
+            let spawnDirectory = absolutePath;
+            if (worktreeKey === '__new__') {
+                const worktreeResult = await createWorktree(selectedMachineId, absolutePath);
+                if (!worktreeResult.success) {
+                    Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
+                    return;
+                }
+                spawnDirectory = worktreeResult.worktreePath;
+            } else if (worktreeKey !== '__none__') {
+                // Existing worktree — use its path directly
+                spawnDirectory = worktreeKey;
+            }
+
+            // Persist last used settings
+            sync.applySettings({
+                lastUsedAgent: selectedAgent,
+                lastUsedPermissionMode: currentPermission.key,
+                lastUsedModelMode: currentModelKey,
+            });
+
+            const result = await machineSpawnNewSession({
+                machineId: selectedMachineId,
+                directory: spawnDirectory,
+                approvedNewDirectoryCreation,
+                agent: selectedAgent,
+            });
+
+            switch (result.type) {
+                case 'success':
+                    await sync.refreshSessions();
+
+                    // Set permission mode and model on the session before sending
+                    storage.getState().updateSessionPermissionMode(result.sessionId, currentPermission.key);
+                    storage.getState().updateSessionModelMode(result.sessionId, currentModelKey);
+
+                    // Clear input text so draft doesn't repeat the sent message
+                    setPrompt('');
+
+                    // Send initial message if provided
+                    if (prompt.trim()) {
+                        await sync.sendMessage(result.sessionId, prompt.trim());
+                    }
+
+                    router.back();
+                    navigateToSession(result.sessionId);
+                    break;
+                case 'requestToApproveDirectoryCreation': {
+                    const approved = await Modal.confirm(
+                        'Create Directory?',
+                        `The directory '${result.directory}' does not exist. Would you like to create it?`,
+                        { cancelText: t('common.cancel'), confirmText: t('common.create') },
+                    );
+                    if (approved) {
+                        await handleSend(true);
+                    }
+                    break;
+                }
+                case 'error':
+                    Modal.alert(t('common.error'), result.errorMessage);
+                    break;
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error
+                ? error.message
+                : 'Failed to start session';
+            Modal.alert(t('common.error'), errorMessage);
+        } finally {
+            setIsSpawning(false);
+        }
+    }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, prompt, router, navigateToSession, currentPermission.key, currentModelKey, worktreeKey]);
+
+    const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
+
+    // Handle Enter/Cmd+Enter to send on web
+    const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
+        if (Platform.OS === 'web' && event.key === 'Enter' && !event.shiftKey && agentInputEnterToSend) {
+            if (canSend) {
+                handleSend();
+                return true;
+            }
+        }
+        return false;
+    }, [agentInputEnterToSend, canSend, handleSend]);
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
             style={styles.container}
         >
-            <View style={{ flex: 1 }}>
-                <ScrollView
-                    ref={scrollViewRef}
-                    style={styles.scrollContainer}
-                    contentContainerStyle={styles.contentContainer}
-                    keyboardShouldPersistTaps="handled"
-                >
-                <View style={[
-                    { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
-                ]}>
-                    <View style={[
-                        { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
-                    ]}>
-                        <View ref={profileSectionRef} style={styles.wizardContainer}>
-                            {/* CLI Detection Status Banner - shows after detection completes */}
-                            {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
-                                <View style={{
-                                    backgroundColor: theme.colors.surfacePressed,
-                                    borderRadius: 10,
-                                    padding: 10,
-                                    paddingRight: 18,
-                                    marginBottom: 12,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: STATUS_ITEM_GAP,
-                                }}>
-                                    <Ionicons name="desktop-outline" size={16} color={theme.colors.textSecondary} />
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_ITEM_GAP, flexWrap: 'wrap' }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
+            <View style={styles.inner}>
+                <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center', paddingHorizontal: 12, gap: 8, paddingTop: 12 }}>
+
+                    {/* Config box */}
+                    <View style={styles.configBox}>
+                        {isConfigExpanded ? (
+                            <>
+                                {/* Machine row */}
+                                <Pressable
+                                    style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                    onPress={() => togglePicker('machine')}
+                                >
+                                    <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
+                                    <Text style={styles.configLabel} numberOfLines={1}>
+                                        {machineName}
+                                    </Text>
+                                    {selectedMachine && isOffline && (
+                                        <Text style={{ fontSize: 12, color: theme.colors.status.disconnected }}>
+                                            {t('status.lastSeen', { time: formatLastSeen(selectedMachine.activeAt, false) })}
                                         </Text>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <StatusDot
-                                                color={connectionStatus.dotColor}
-                                                isPulsing={connectionStatus.isPulsing}
-                                                size={6}
+                                    )}
+                                </Pressable>
+
+                                {/* Config rows below machine — grayed out when offline */}
+                                <View style={{ opacity: isOffline ? 0.4 : 1 }} pointerEvents={isOffline ? 'none' : 'auto'}>
+                                    {/* Path row */}
+                                    <Pressable
+                                        style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                        onPress={() => togglePicker('path')}
+                                    >
+                                        <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
+                                        <Text style={styles.configLabel} numberOfLines={1}>
+                                            {pathName}
+                                        </Text>
+                                    </Pressable>
+
+                                    {/* Agent + model + effort row */}
+                                    <View style={styles.configRow}>
+                                        <Pressable
+                                            onPress={cycleAgent}
+                                            style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 8 }, p.pressed && styles.configRowPressed]}
+                                        >
+                                            <Image
+                                                source={agentIcons[agent.key]}
+                                                style={{ width: 15, height: 15 }}
+                                                contentFit="contain"
+                                                tintColor={theme.colors.textSecondary}
                                             />
-                                            <Text style={{ fontSize: 11, color: connectionStatus.color, ...Typography.default() }}>
-                                                {connectionStatus.text}
+                                            <Text style={styles.configLabel} numberOfLines={1}>
+                                                {agent.label}
                                             </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                {cliAvailability.claude ? '✓' : '✗'}
-                                            </Text>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                claude
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                {cliAvailability.codex ? '✓' : '✗'}
-                                            </Text>
-                                            <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                codex
-                                            </Text>
-                                        </View>
-                                        {experimentsEnabled && (
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                    {cliAvailability.gemini ? '✓' : '✗'}
-                                                </Text>
-                                                <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
-                                                    gemini
-                                                </Text>
-                                            </View>
+                                        </Pressable>
+
+                                        {showModel && (
+                                            <>
+                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
+                                                <Pressable onPress={cycleModel} style={(p) => [p.pressed && styles.configRowPressed]}>
+                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                                        {currentModel.name}
+                                                    </Text>
+                                                </Pressable>
+                                            </>
+                                        )}
+
+                                        {showEffort && (
+                                            <>
+                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
+                                                <Pressable onPress={cycleEffort} style={(p) => [p.pressed && styles.configRowPressed]}>
+                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                                        {currentEffort?.name}
+                                                    </Text>
+                                                </Pressable>
+                                            </>
                                         )}
                                     </View>
-                                </View>
-                            )}
 
-                            {/* Section 1: Profile Management */}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
-                                <Ionicons name="person-outline" size={18} color={theme.colors.text} />
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Profile</Text>
-                            </View>
-                            <Text style={styles.sectionDescription}>
-                                Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.
-                            </Text>
-
-                            {/* Missing CLI Installation Banners */}
-                            {selectedMachineId && cliAvailability.claude === false && !isWarningDismissed('claude') && !hiddenBanners.claude && (
-                                <View style={{
-                                    backgroundColor: theme.colors.box.warning.background,
-                                    borderRadius: 10,
-                                    padding: 12,
-                                    marginBottom: 12,
-                                    borderWidth: 1,
-                                    borderColor: theme.colors.box.warning.border,
-                                }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                            <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Claude CLI Not Detected
-                                            </Text>
-                                            <View style={{ flex: 1, minWidth: 20 }} />
-                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
-                                            </Text>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('claude', 'machine')}
-                                                style={{
-                                                    borderRadius: 4,
-                                                    borderWidth: 1,
-                                                    borderColor: theme.colors.textSecondary,
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                }}
-                                            >
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
-                                                </Text>
-                                            </Pressable>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('claude', 'global')}
-                                                style={{
-                                                    borderRadius: 4,
-                                                    borderWidth: 1,
-                                                    borderColor: theme.colors.textSecondary,
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                }}
-                                            >
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
-                                                </Text>
-                                            </Pressable>
-                                        </View>
+                                    {/* Permission row */}
+                                    {showPermission && (
                                         <Pressable
-                                            onPress={() => handleCLIBannerDismiss('claude', 'temporary')}
-                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                            onPress={cyclePermission}
                                         >
-                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                        </Pressable>
-                                    </View>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install: npm install -g @anthropic-ai/claude-code •
-                                        </Text>
-                                        <Pressable onPress={() => {
-                                            if (Platform.OS === 'web') {
-                                                window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
-                                            }
-                                        }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide →
-                                            </Text>
-                                        </Pressable>
-                                    </View>
-                                </View>
-                            )}
-
-                            {selectedMachineId && cliAvailability.codex === false && !isWarningDismissed('codex') && !hiddenBanners.codex && (
-                                <View style={{
-                                    backgroundColor: theme.colors.box.warning.background,
-                                    borderRadius: 10,
-                                    padding: 12,
-                                    marginBottom: 12,
-                                    borderWidth: 1,
-                                    borderColor: theme.colors.box.warning.border,
-                                }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                            <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Codex CLI Not Detected
-                                            </Text>
-                                            <View style={{ flex: 1, minWidth: 20 }} />
-                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
-                                            </Text>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('codex', 'machine')}
-                                                style={{
-                                                    borderRadius: 4,
-                                                    borderWidth: 1,
-                                                    borderColor: theme.colors.textSecondary,
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                }}
-                                            >
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
-                                                </Text>
-                                            </Pressable>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('codex', 'global')}
-                                                style={{
-                                                    borderRadius: 4,
-                                                    borderWidth: 1,
-                                                    borderColor: theme.colors.textSecondary,
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                }}
-                                            >
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                        <Pressable
-                                            onPress={() => handleCLIBannerDismiss('codex', 'temporary')}
-                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                        >
-                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                        </Pressable>
-                                    </View>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install: npm install -g codex-cli •
-                                        </Text>
-                                        <Pressable onPress={() => {
-                                            if (Platform.OS === 'web') {
-                                                window.open('https://github.com/openai/openai-codex', '_blank');
-                                            }
-                                        }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide →
-                                            </Text>
-                                        </Pressable>
-                                    </View>
-                                </View>
-                            )}
-
-                            {selectedMachineId && cliAvailability.gemini === false && experimentsEnabled && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
-                                <View style={{
-                                    backgroundColor: theme.colors.box.warning.background,
-                                    borderRadius: 10,
-                                    padding: 12,
-                                    marginBottom: 12,
-                                    borderWidth: 1,
-                                    borderColor: theme.colors.box.warning.border,
-                                }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
-                                            <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Gemini CLI Not Detected
-                                            </Text>
-                                            <View style={{ flex: 1, minWidth: 20 }} />
-                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
-                                            </Text>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('gemini', 'machine')}
-                                                style={{
-                                                    borderRadius: 4,
-                                                    borderWidth: 1,
-                                                    borderColor: theme.colors.textSecondary,
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                }}
-                                            >
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
-                                                </Text>
-                                            </Pressable>
-                                            <Pressable
-                                                onPress={() => handleCLIBannerDismiss('gemini', 'global')}
-                                                style={{
-                                                    borderRadius: 4,
-                                                    borderWidth: 1,
-                                                    borderColor: theme.colors.textSecondary,
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                }}
-                                            >
-                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                        <Pressable
-                                            onPress={() => handleCLIBannerDismiss('gemini', 'temporary')}
-                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                        >
-                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                        </Pressable>
-                                    </View>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install gemini CLI if available •
-                                        </Text>
-                                        <Pressable onPress={() => {
-                                            if (Platform.OS === 'web') {
-                                                window.open('https://ai.google.dev/gemini-api/docs/get-started', '_blank');
-                                            }
-                                        }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Gemini Docs →
-                                            </Text>
-                                        </Pressable>
-                                    </View>
-                                </View>
-                            )}
-
-                            {/* Custom profiles - show first */}
-                            {profiles.map((profile) => {
-                                const availability = isProfileAvailable(profile);
-
-                                return (
-                                    <Pressable
-                                        key={profile.id}
-                                        style={[
-                                            styles.profileListItem,
-                                            selectedProfileId === profile.id && styles.profileListItemSelected,
-                                            !availability.available && { opacity: 0.5 }
-                                        ]}
-                                        onPress={() => availability.available && selectProfile(profile.id)}
-                                        disabled={!availability.available}
-                                    >
-                                        <View style={[styles.profileIcon, { backgroundColor: theme.colors.button.secondary.tint }]}>
-                                            <Text style={{ fontSize: 16, color: theme.colors.button.primary.tint, ...Typography.default() }}>
-                                                {profile.compatibility.claude && profile.compatibility.codex ? '✳꩜' :
-                                                 profile.compatibility.claude ? '✳' : '꩜'}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.profileListName}>{profile.name}</Text>
-                                            <Text style={styles.profileListDetails}>
-                                                {getProfileSubtitle(profile)}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                            {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                                            )}
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                                            </Pressable>
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDuplicateProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            </Pressable>
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEditProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            </Pressable>
-                                        </View>
-                                    </Pressable>
-                                );
-                            })}
-
-                            {/* Built-in profiles - show after custom */}
-                            {DEFAULT_PROFILES.map((profileDisplay) => {
-                                const profile = getBuiltInProfile(profileDisplay.id);
-                                if (!profile) return null;
-
-                                const availability = isProfileAvailable(profile);
-
-                                return (
-                                    <Pressable
-                                        key={profile.id}
-                                        style={[
-                                            styles.profileListItem,
-                                            selectedProfileId === profile.id && styles.profileListItemSelected,
-                                            !availability.available && { opacity: 0.5 }
-                                        ]}
-                                        onPress={() => availability.available && selectProfile(profile.id)}
-                                        disabled={!availability.available}
-                                    >
-                                        <View style={styles.profileIcon}>
-                                            <Text style={{ fontSize: 16, color: theme.colors.button.primary.tint, ...Typography.default() }}>
-                                                {profile.compatibility.claude && profile.compatibility.codex ? '✳꩜' :
-                                                 profile.compatibility.claude ? '✳' : '꩜'}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.profileListName}>{profile.name}</Text>
-                                            <Text style={styles.profileListDetails}>
-                                                {getProfileSubtitle(profile)}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                            {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                                            )}
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEditProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            </Pressable>
-                                        </View>
-                                    </Pressable>
-                                );
-                            })}
-
-                            {/* Profile Action Buttons */}
-                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                                <Pressable
-                                    style={[styles.addProfileButton, { flex: 1 }]}
-                                    onPress={handleAddProfile}
-                                >
-                                    <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                    <Text style={styles.addProfileButtonText}>
-                                        Add
-                                    </Text>
-                                </Pressable>
-                                <Pressable
-                                    style={[
-                                        styles.addProfileButton,
-                                        { flex: 1 },
-                                        !selectedProfile && { opacity: 0.4 }
-                                    ]}
-                                    onPress={() => selectedProfile && handleDuplicateProfile(selectedProfile)}
-                                    disabled={!selectedProfile}
-                                >
-                                    <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                    <Text style={styles.addProfileButtonText}>
-                                        Duplicate
-                                    </Text>
-                                </Pressable>
-                                <Pressable
-                                    style={[
-                                        styles.addProfileButton,
-                                        { flex: 1 },
-                                        (!selectedProfile || selectedProfile.isBuiltIn) && { opacity: 0.4 }
-                                    ]}
-                                    onPress={() => selectedProfile && !selectedProfile.isBuiltIn && handleDeleteProfile(selectedProfile)}
-                                    disabled={!selectedProfile || selectedProfile.isBuiltIn}
-                                >
-                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                                    <Text style={[styles.addProfileButtonText, { color: theme.colors.deleteAction }]}>
-                                        Delete
-                                    </Text>
-                                </Pressable>
-                            </View>
-
-                            {/* Section 2: Machine Selection */}
-                            <View ref={machineSectionRef}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>2.</Text>
-                                    <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
-                                </View>
-                            </View>
-
-                            <View style={{ marginBottom: 24 }}>
-                                <SearchableListSelector<typeof machines[0]>
-                                    config={{
-                                    getItemId: (machine) => machine.id,
-                                    getItemTitle: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                                    getItemSubtitle: undefined,
-                                    getItemIcon: (machine) => (
-                                        <Ionicons
-                                            name="desktop-outline"
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    getRecentItemIcon: (machine) => (
-                                        <Ionicons
-                                            name="time-outline"
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    getItemStatus: (machine) => {
-                                        const offline = !isMachineOnline(machine);
-                                        return {
-                                            text: offline ? 'offline' : 'online',
-                                            color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                            dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                            isPulsing: !offline,
-                                        };
-                                    },
-                                    formatForDisplay: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                                    parseFromDisplay: (text) => {
-                                        return machines.find(m =>
-                                            m.metadata?.displayName === text || m.metadata?.host === text || m.id === text
-                                        ) || null;
-                                    },
-                                    filterItem: (machine, searchText) => {
-                                        const displayName = (machine.metadata?.displayName || '').toLowerCase();
-                                        const host = (machine.metadata?.host || '').toLowerCase();
-                                        const search = searchText.toLowerCase();
-                                        return displayName.includes(search) || host.includes(search);
-                                    },
-                                    searchPlaceholder: "Type to filter machines...",
-                                    recentSectionTitle: "Recent Machines",
-                                    favoritesSectionTitle: "Favorite Machines",
-                                    noItemsMessage: "No machines available",
-                                    showFavorites: true,
-                                    showRecent: true,
-                                    showSearch: true,
-                                    allowCustomInput: false,
-                                    compactItems: true,
-                                }}
-                                items={machines}
-                                recentItems={recentMachines}
-                                favoriteItems={machines.filter(m => favoriteMachines.includes(m.id))}
-                                selectedItem={selectedMachine || null}
-                                onSelect={(machine) => {
-                                    setSelectedMachineId(machine.id);
-                                    const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);
-                                    setSelectedPath(bestPath);
-                                }}
-                                onToggleFavorite={(machine) => {
-                                    const isInFavorites = favoriteMachines.includes(machine.id);
-                                    if (isInFavorites) {
-                                        setFavoriteMachines(favoriteMachines.filter(id => id !== machine.id));
-                                    } else {
-                                        setFavoriteMachines([...favoriteMachines, machine.id]);
-                                    }
-                                }}
-                                />
-                            </View>
-
-                            {/* Section 3: Working Directory */}
-                            <View ref={pathSectionRef}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
-                                    <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
-                                </View>
-                            </View>
-
-                            <View style={{ marginBottom: 24 }}>
-                                <SearchableListSelector<string>
-                                    config={{
-                                    getItemId: (path) => path,
-                                    getItemTitle: (path) => formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
-                                    getItemSubtitle: undefined,
-                                    getItemIcon: (path) => (
-                                        <Ionicons
-                                            name="folder-outline"
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    getRecentItemIcon: (path) => (
-                                        <Ionicons
-                                            name="time-outline"
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    getFavoriteItemIcon: (path) => (
-                                        <Ionicons
-                                            name={path === selectedMachine?.metadata?.homeDir ? "home-outline" : "star-outline"}
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    ),
-                                    canRemoveFavorite: (path) => path !== selectedMachine?.metadata?.homeDir,
-                                    formatForDisplay: (path) => formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
-                                    parseFromDisplay: (text) => {
-                                        if (selectedMachine?.metadata?.homeDir) {
-                                            return resolveAbsolutePath(text, selectedMachine.metadata.homeDir);
-                                        }
-                                        return null;
-                                    },
-                                    filterItem: (path, searchText) => {
-                                        const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
-                                        return displayPath.toLowerCase().includes(searchText.toLowerCase());
-                                    },
-                                    searchPlaceholder: "Type to filter or enter custom directory...",
-                                    recentSectionTitle: "Recent Directories",
-                                    favoritesSectionTitle: "Favorite Directories",
-                                    noItemsMessage: "No recent directories",
-                                    showFavorites: true,
-                                    showRecent: true,
-                                    showSearch: true,
-                                    allowCustomInput: true,
-                                    compactItems: true,
-                                }}
-                                items={recentPaths}
-                                recentItems={recentPaths}
-                                favoriteItems={(() => {
-                                    if (!selectedMachine?.metadata?.homeDir) return [];
-                                    const homeDir = selectedMachine.metadata.homeDir;
-                                    // Include home directory plus user favorites
-                                    return [homeDir, ...favoriteDirectories.map(fav => resolveAbsolutePath(fav, homeDir))];
-                                })()}
-                                selectedItem={selectedPath}
-                                onSelect={(path) => {
-                                    setSelectedPath(path);
-                                }}
-                                onToggleFavorite={(path) => {
-                                    const homeDir = selectedMachine?.metadata?.homeDir;
-                                    if (!homeDir) return;
-
-                                    // Don't allow removing home directory (handled by canRemoveFavorite)
-                                    if (path === homeDir) return;
-
-                                    // Convert to relative format for storage
-                                    const relativePath = formatPathRelativeToHome(path, homeDir);
-
-                                    // Check if already in favorites
-                                    const isInFavorites = favoriteDirectories.some(fav =>
-                                        resolveAbsolutePath(fav, homeDir) === path
-                                    );
-
-                                    if (isInFavorites) {
-                                        // Remove from favorites
-                                        setFavoriteDirectories(favoriteDirectories.filter(fav =>
-                                            resolveAbsolutePath(fav, homeDir) !== path
-                                        ));
-                                    } else {
-                                        // Add to favorites
-                                        setFavoriteDirectories([...favoriteDirectories, relativePath]);
-                                    }
-                                }}
-                                    context={{ homeDir: selectedMachine?.metadata?.homeDir }}
-                                />
-                            </View>
-
-                            {/* Section 4: Permission Mode */}
-                            <View ref={permissionSectionRef}>
-                                <Text style={styles.sectionHeader}>4. Permission Mode</Text>
-                            </View>
-                            <ItemGroup title="">
-                                {availableModes.map((option, index, array) => {
-                                    const iconByKey: Record<string, string> = {
-                                        default: 'shield-outline',
-                                        acceptEdits: 'checkmark-outline',
-                                        plan: 'list-outline',
-                                        bypassPermissions: 'flash-outline',
-                                        'read-only': 'eye-outline',
-                                        'safe-yolo': 'shield-checkmark-outline',
-                                        yolo: 'flash-outline',
-                                    };
-                                    const isSelected = permissionMode.key === option.key;
-                                    return (
-                                    <Item
-                                        key={option.key}
-                                        title={option.name}
-                                        subtitle={option.description ?? undefined}
-                                        leftElement={
                                             <Ionicons
-                                                name={(iconByKey[option.key] ?? 'settings-outline') as any}
-                                                size={24}
-                                                color={isSelected ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                                                name={permissionStyle?.icon ?? 'shield-outline'}
+                                                size={15}
+                                                color={theme.colors.textSecondary}
                                             />
-                                        }
-                                        rightElement={isSelected ? (
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={20}
-                                                color={theme.colors.button.primary.tint}
-                                            />
-                                        ) : null}
-                                        onPress={() => handlePermissionModeChange(option)}
-                                        showChevron={false}
-                                        selected={isSelected}
-                                        showDivider={index < array.length - 1}
-                                        style={isSelected ? {
-                                            borderWidth: 2,
-                                            borderColor: theme.colors.button.primary.tint,
-                                            borderRadius: Platform.select({ ios: 10, default: 16 }),
-                                        } : undefined}
-                                    />
-                                );
-                                })}
-                            </ItemGroup>
-
-                            {/* Section 5: Advanced Options (Collapsible) */}
-                            {experimentsEnabled && (
-                                <>
-                                    <Pressable
-                                        style={styles.advancedHeader}
-                                        onPress={() => setShowAdvanced(!showAdvanced)}
-                                    >
-                                        <Text style={styles.advancedHeaderText}>Advanced Options</Text>
-                                        <Ionicons
-                                            name={showAdvanced ? "chevron-up" : "chevron-down"}
-                                            size={20}
-                                            color={theme.colors.text}
-                                        />
-                                    </Pressable>
-
-                                    {showAdvanced && (
-                                        <View style={{ marginBottom: 12 }}>
-                                            <SessionTypeSelector
-                                                value={sessionType}
-                                                onChange={setSessionType}
-                                            />
-                                        </View>
+                                            <Text style={styles.configLabel} numberOfLines={1}>
+                                                {currentPermission?.name}
+                                            </Text>
+                                        </Pressable>
                                     )}
-                                </>
-                            )}
+
+                                    {/* Worktree row */}
+                                    {supportsWorktree && (
+                                        <Pressable
+                                            style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
+                                            onPress={() => togglePicker('worktree')}
+                                        >
+                                            <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
+                                            <Text style={styles.configLabel} numberOfLines={1}>
+                                                {worktreeLabel}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+                                </View>
+
+                                {/* Offline help section */}
+                                {isOffline && (
+                                    <View style={styles.offlineHelp}>
+                                        <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.offlineHelpTitle, { color: theme.colors.status.disconnected }]}>
+                                                {t('newSession.machineOffline')}
+                                            </Text>
+                                            <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
+                                                {t('machine.offlineHelp')}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
+                            </>
+                        ) : (
+                            /* Collapsed: path + chevron to re-expand */
+                            <Pressable
+                                style={(p) => [styles.collapsedRow, p.pressed && styles.configRowPressed]}
+                                onPress={toggleConfig}
+                            >
+                                <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
+                                <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
+                                    {pathName}
+                                </Text>
+                                <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        )}
+                    </View>
+
+                    {/* Web: inline popover */}
+                    {Platform.OS === 'web' && activePicker && (
+                        <View style={[styles.popover, { backgroundColor: theme.colors.header.background }]}>
+                            {activePicker === 'path' ? (
+                                <PathPickerContent
+                                    title="Project"
+                                    items={pathItems}
+                                    value={selectedPath}
+                                    homeDir={selectedHomeDir}
+                                    onChangeValue={setSelectedPath}
+                                    onDone={() => setActivePicker(null)}
+                                />
+                            ) : pickerData ? (
+                                <PickerContent {...pickerData} onSelect={handlePickerSelect} />
+                            ) : null}
+                        </View>
+                    )}
+                </View>
+
+                {/* Web: click-away backdrop */}
+                {Platform.OS === 'web' && activePicker && (
+                    <Pressable
+                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 }}
+                        onPress={() => setActivePicker(null)}
+                    />
+                )}
+
+                {/* Spacer */}
+                <View style={{ flex: 1 }} />
+
+                <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center', paddingHorizontal: 12, gap: 8 }}>
+                    {/* Input box */}
+                    <View style={styles.inputBox}>
+                        <View style={styles.inputField}>
+                            <View style={{ flex: 1 }}>
+                                <MultiTextInput
+                                    value={prompt}
+                                    onChangeText={setPrompt}
+                                    placeholder="What would you like to work on?"
+                                    lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
+                                    paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
+                                    paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
+                                    maxHeight={240}
+                                    onKeyPress={handleKeyPress}
+                                />
+                            </View>
+                            <View style={[
+                                styles.sendButton,
+                                canSend ? styles.sendButtonActive : styles.sendButtonInactive,
+                            ]}>
+                                <Pressable
+                                    style={(p) => ({
+                                        width: '100%',
+                                        height: '100%',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        opacity: p.pressed ? 0.7 : 1,
+                                    })}
+                                    disabled={!canSend}
+                                    onPress={() => handleSend()}
+                                >
+                                    {isSpawning ? (
+                                        <ActivityIndicator
+                                            size="small"
+                                            color={theme.colors.button.primary.tint}
+                                        />
+                                    ) : (
+                                        <Octicons
+                                            name="arrow-up"
+                                            size={16}
+                                            color={theme.colors.button.primary.tint}
+                                            style={{ marginTop: Platform.OS === 'web' ? 2 : 0 }}
+                                        />
+                                    )}
+                                </Pressable>
+                            </View>
                         </View>
                     </View>
                 </View>
-                </ScrollView>
 
-                {/* Section 5: AgentInput - Sticky at bottom */}
-                <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
-                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                        <AgentInput
-                            value={sessionPrompt}
-                            onChangeText={setSessionPrompt}
-                            onSend={handleCreateSession}
-                            isSendDisabled={!canCreate}
-                            isSending={isCreating}
-                            placeholder="What would you like to work on?"
-                            autocompletePrefixes={[]}
-                            autocompleteSuggestions={async () => []}
-                            agentType={agentType}
-                            onAgentClick={handleAgentInputAgentClick}
-                            permissionMode={permissionMode}
-                            availableModes={availableModes}
-                            onPermissionModeChange={handleAgentInputPermissionChange}
-                            modelMode={modelMode}
-                            availableModels={availableModels}
-                            onModelModeChange={handleModelModeChange}
-                            connectionStatus={connectionStatus}
-                            machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                            onMachineClick={handleAgentInputMachineClick}
-                            currentPath={selectedPath}
-                            onPathClick={handleAgentInputPathClick}
-                            profileId={selectedProfileId}
-                            onProfileClick={handleAgentInputProfileClick}
-                        />
-                    </View>
-                </View>
+                <View style={{ height: Math.max(16, safeArea.bottom) }} />
             </View>
+
+            {/* Native: picker bottom sheet */}
+            {Platform.OS !== 'web' && (
+                <BottomSheet
+                    visible={!!activePicker}
+                    onClose={() => setActivePicker(null)}
+                >
+                    {activePicker === 'path' ? (
+                        <PathPickerContent
+                            title="Project"
+                            items={pathItems}
+                            value={selectedPath}
+                            homeDir={selectedHomeDir}
+                            onChangeValue={setSelectedPath}
+                            onDone={() => setActivePicker(null)}
+                        />
+                    ) : pickerData ? (
+                        <PickerContent {...pickerData} onSelect={handlePickerSelect} />
+                    ) : null}
+                </BottomSheet>
+            )}
         </KeyboardAvoidingView>
     );
 }
 
-export default React.memo(NewSessionWizard);
+const WORKTREE_FIXED_ITEMS: PickerItem[] = [
+    { key: '__none__', label: 'no worktree' },
+    { key: '__new__', label: 'new worktree' },
+];
+
+const styles = StyleSheet.create((theme) => ({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.header.background,
+    },
+    inner: {
+        flex: 1,
+    },
+    configBox: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        paddingVertical: 4,
+        paddingHorizontal: 4,
+        overflow: 'hidden',
+    },
+    popover: {
+        borderRadius: 12,
+        paddingVertical: 4,
+        marginTop: 4,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        ...Platform.select({
+            web: {
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.12)',
+            },
+            default: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.12,
+                shadowRadius: 10,
+                elevation: 8,
+            },
+        }),
+    },
+    configRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    collapsedRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    configRowPressed: {
+        opacity: 0.6,
+    },
+    configLabel: {
+        fontSize: 14,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    inputBox: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        overflow: 'hidden',
+        paddingVertical: 2,
+        paddingHorizontal: 8,
+    },
+    inputField: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        paddingLeft: 8,
+        paddingRight: 4,
+        paddingVertical: 4,
+        minHeight: 40,
+        gap: 8,
+    },
+    sendButton: {
+        width: COMPOSER_SEND_BUTTON_SIZE,
+        height: COMPOSER_SEND_BUTTON_SIZE,
+        borderRadius: COMPOSER_SEND_BUTTON_SIZE / 2,
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexShrink: 0,
+        marginBottom: COMPOSER_SEND_BUTTON_MARGIN_BOTTOM,
+    },
+    sendButtonActive: {
+        backgroundColor: theme.colors.button.primary.background,
+    },
+    sendButtonInactive: {
+        backgroundColor: theme.colors.button.primary.disabled,
+    },
+    offlineHelp: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    offlineHelpTitle: {
+        fontSize: 13,
+        ...Typography.default('semiBold'),
+        marginBottom: 4,
+    },
+    offlineHelpText: {
+        fontSize: 12,
+        lineHeight: 18,
+        ...Typography.default(),
+    },
+}));
+
+// Bottom sheet styles
+const sheetStyles = {
+    iosContainer: {
+        flex: 1,
+    } as const,
+    handleRow: {
+        alignItems: 'center' as const,
+        paddingTop: 10,
+        paddingBottom: 6,
+    },
+    handle: {
+        width: 36,
+        height: 4,
+        borderRadius: 2,
+        opacity: 0.3,
+    },
+    overlay: {
+        flex: 1,
+        justifyContent: 'flex-end' as const,
+    },
+    backdrop: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'black',
+        opacity: 0.4,
+    },
+    sheet: {
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        maxHeight: '70%' as const,
+    },
+};
+
+// Picker styles
+const pickerStyles = {
+    container: {
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+    } as const,
+    title: {
+        fontSize: 18,
+        paddingVertical: 12,
+        paddingHorizontal: 4,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+    titleRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+    },
+    doneButtonPressable: {
+        width: 44,
+        height: 44,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    },
+    doneButtonGlass: {
+        width: 40,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        overflow: 'hidden' as const,
+        borderWidth: 1,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    searchRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+        marginBottom: 8,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 15,
+        padding: 0,
+        ...Typography.default(),
+        ...Platform.select({ web: { outlineStyle: 'none' } as any, default: {} }),
+    } as const,
+    pathInputRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 10,
+        paddingHorizontal: 12,
+        minHeight: 46,
+        borderRadius: 12,
+        marginBottom: 8,
+        borderWidth: 1,
+    },
+    pathInputField: {
+        flex: 1,
+    } as const,
+    pathTextInput: {
+        fontSize: 16,
+        minHeight: 44,
+        paddingVertical: 0,
+        ...Typography.default(),
+        ...Platform.select({
+            android: { textAlignVertical: 'center' as const },
+            web: { outlineStyle: 'none' } as any,
+            default: {},
+        }),
+    } as const,
+    pathMetaText: {
+        fontSize: 13,
+        paddingHorizontal: 4,
+        paddingBottom: 8,
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+    sectionLabel: {
+        fontSize: 13,
+        paddingHorizontal: 4,
+        paddingBottom: 8,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+    option: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        borderRadius: 12,
+    },
+    optionPressed: {
+        opacity: 0.6,
+    } as const,
+    optionText: {
+        fontSize: 15,
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+    divider: {
+        height: 1,
+        marginHorizontal: 12,
+        marginVertical: 4,
+    } as const,
+    optionList: {
+        flexGrow: 0,
+        flexShrink: 1,
+    } as const,
+    emptyText: {
+        fontSize: 14,
+        textAlign: 'center' as const,
+        paddingVertical: 20,
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+};
+
+export default React.memo(NewSessionScreen);

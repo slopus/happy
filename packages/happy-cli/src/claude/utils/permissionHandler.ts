@@ -201,16 +201,17 @@ export class PermissionHandler {
             }
             
             // Send push notification
-            this.session.api.push().sendToAllDevices(
-                'Permission Request',
-                `Claude wants to ${getToolName(toolName)}`,
-                {
+            this.session.api.push().sendSessionNotification({
+                kind: 'permission',
+                metadata: this.session.client.getMetadata(),
+                data: {
                     sessionId: this.session.client.sessionId,
                     requestId: id,
                     tool: toolName,
-                    type: 'permission_request'
+                    type: 'permission_request',
+                    provider: 'claude',
                 }
-            );
+            });
 
             // Update agent state
             this.session.client.updateAgentState((currentState) => ({

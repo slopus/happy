@@ -12,11 +12,25 @@ import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { FileIcon } from '@/components/FileIcon';
+import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 
 interface FileContent {
     content: string;
     encoding: 'utf8' | 'base64';
     isBinary: boolean;
+}
+
+function decodeBase64ToBytes(base64: string): Uint8Array {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function decodeUtf8Bytes(bytes: Uint8Array): string {
+    return new TextDecoder().decode(bytes);
 }
 
 // Diff display component
@@ -74,21 +88,31 @@ export default function FileScreen() {
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
     const searchParams = useLocalSearchParams();
     const encodedPath = searchParams.path as string;
-    let filePath = '';
+    const lineParam = searchParams.line as string | undefined;
+    const columnParam = searchParams.column as string | undefined;
+    const requestedLine = lineParam ? Number.parseInt(lineParam, 10) : null;
+    const requestedColumn = columnParam ? Number.parseInt(columnParam, 10) : null;
+    const session = storage.getState().sessions[sessionId!];
+    const sessionPath = session?.metadata?.path ?? null;
+    let rawPath = '';
     
     // Decode base64 path with error handling
     try {
-        filePath = encodedPath ? atob(encodedPath) : '';
+        rawPath = encodedPath ? atob(encodedPath) : '';
     } catch (error) {
         console.error('Failed to decode file path:', error);
-        filePath = encodedPath || ''; // Fallback to original path if decoding fails
+        rawPath = encodedPath || ''; // Fallback to original path if decoding fails
     }
+    const resolvedPath = resolveSessionFilePath(rawPath, sessionPath);
+    const filePath = resolvedPath?.absolutePath ?? rawPath;
+    const gitDiffPath = resolvedPath?.withinSessionRoot ? resolvedPath.relativePath : null;
     
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
     const [diffContent, setDiffContent] = React.useState<string | null>(null);
     const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
+    const scrollViewRef = React.useRef<ScrollView | null>(null);
 
     // Determine file language from extension
     const getFileLanguage = React.useCallback((path: string): string | null => {
@@ -171,11 +195,10 @@ export default function FileScreen() {
             try {
                 setIsLoading(true);
                 setError(null);
+                setFileContent(null);
+                setDiffContent(null);
                 
                 // Get session metadata for git commands
-                const session = storage.getState().sessions[sessionId!];
-                const sessionPath = session?.metadata?.path;
-                
                 // Check if file is likely binary before trying to read
                 if (isBinaryFile(filePath)) {
                     if (!isCancelled) {
@@ -190,13 +213,13 @@ export default function FileScreen() {
                 }
                 
                 // Fetch git diff for the file (if in git repo)
-                if (sessionPath && sessionId) {
+                if (sessionPath && sessionId && gitDiffPath && gitDiffPath !== '.') {
                     try {
                         const diffResponse = await sessionBash(sessionId, {
                             // If someone is using a custom diff tool like
                             // difftastic, the parser would break. So instead
                             // force git to use the built in diff tool.
-                            command: `git diff --no-ext-diff "${filePath}"`,
+                            command: `git diff --no-ext-diff -- "${gitDiffPath}"`,
                             cwd: sessionPath,
                             timeout: 5000
                         });
@@ -215,9 +238,11 @@ export default function FileScreen() {
                 if (!isCancelled) {
                     if (response.success && response.content) {
                         // Decode base64 content to UTF-8 string
+                        let rawBytes: Uint8Array;
                         let decodedContent: string;
                         try {
-                            decodedContent = atob(response.content);
+                            rawBytes = decodeBase64ToBytes(response.content);
+                            decodedContent = decodeUtf8Bytes(rawBytes);
                         } catch (decodeError) {
                             // If base64 decode fails, treat as binary
                             setFileContent({
@@ -229,7 +254,7 @@ export default function FileScreen() {
                         }
                         
                         // Check if content contains binary data (null bytes or too many non-printable chars)
-                        const hasNullBytes = decodedContent.includes('\0');
+                        const hasNullBytes = rawBytes.some((byte) => byte === 0);
                         const nonPrintableCount = decodedContent.split('').filter(char => {
                             const code = char.charCodeAt(0);
                             return code < 32 && code !== 9 && code !== 10 && code !== 13; // Allow tab, LF, CR
@@ -262,7 +287,7 @@ export default function FileScreen() {
         return () => {
             isCancelled = true;
         };
-    }, [sessionId, filePath, isBinaryFile]);
+    }, [filePath, gitDiffPath, isBinaryFile, sessionId, sessionPath]);
 
     // Show error modal if there's an error
     React.useEffect(() => {
@@ -273,12 +298,24 @@ export default function FileScreen() {
 
     // Set default display mode based on diff availability
     React.useEffect(() => {
-        if (diffContent) {
+        if (requestedLine !== null && requestedLine > 0) {
+            setDisplayMode('file');
+        } else if (diffContent) {
             setDisplayMode('diff');
         } else if (fileContent) {
             setDisplayMode('file');
         }
-    }, [diffContent, fileContent]);
+    }, [diffContent, fileContent, requestedLine]);
+
+    React.useEffect(() => {
+        if (!fileContent?.content || displayMode !== 'file' || requestedLine === null || requestedLine <= 0) {
+            return;
+        }
+        const offset = Math.max(0, ((requestedLine - 1) * 20) - 40);
+        requestAnimationFrame(() => {
+            scrollViewRef.current?.scrollTo({ y: offset, animated: false });
+        });
+    }, [displayMode, fileContent?.content, requestedLine]);
 
     const fileName = filePath.split('/').pop() || filePath;
     const language = getFileLanguage(filePath);
@@ -386,14 +423,16 @@ export default function FileScreen() {
                 alignItems: 'center'
             }}>
                 <FileIcon fileName={fileName} size={20} />
-                <Text style={{
+                <Text style={{ 
                     fontSize: 14,
                     color: theme.colors.textSecondary,
                     marginLeft: 8,
                     flex: 1,
                     ...Typography.mono()
                 }}>
-                    {filePath}
+                    {requestedLine !== null && requestedLine > 0
+                        ? `${filePath}:${requestedLine}${requestedColumn !== null && requestedColumn > 0 ? `:${requestedColumn}` : ''}`
+                        : filePath}
                 </Text>
             </View>
 
@@ -450,6 +489,7 @@ export default function FileScreen() {
             
             {/* Content display */}
             <ScrollView 
+                ref={scrollViewRef}
                 style={{ flex: 1 }}
                 contentContainerStyle={{ padding: 16 }}
                 showsVerticalScrollIndicator={true}

@@ -134,8 +134,6 @@ export const es: TranslationStructure = {
         exchangingTokens: 'Intercambiando tokens...',
         usage: 'Uso',
         usageSubtitle: 'Ver tu uso de API y costos',
-        profiles: 'Perfiles',
-        profilesSubtitle: 'Gestionar perfiles de variables de entorno para sesiones',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Cuenta de ${service} conectada`,
@@ -205,9 +203,6 @@ export const es: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsación larga abre modal de copiado',
         hideInactiveSessions: 'Ocultar sesiones inactivas',
         hideInactiveSessionsSubtitle: 'Muestra solo los chats activos en tu lista',
-        enhancedSessionWizard: 'Asistente de sesión mejorado',
-        enhancedSessionWizardEnabled: 'Lanzador de sesión con perfil activo',
-        enhancedSessionWizardDisabled: 'Usando el lanzador de sesión estándar',
     },
 
     errors: {
@@ -258,35 +253,8 @@ export const es: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Iniciar nueva sesión',
-        noMachinesFound: 'No se encontraron máquinas. Inicia una sesión de Happy en tu computadora primero.',
-        allMachinesOffline: 'Todas las máquinas están desconectadas',
-        machineDetails: 'Ver detalles de la máquina →',
-        directoryDoesNotExist: 'Directorio no encontrado',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `El directorio ${directory} no existe. ¿Deseas crearlo?`,
-        sessionStarted: 'Sesión iniciada',
-        sessionStartedMessage: 'La sesión se ha iniciado correctamente.',
-        sessionSpawningFailed: 'Falló la creación de sesión - no se devolvió ID de sesión.',
-        failedToStart: 'Falló al iniciar sesión. Asegúrate de que el daemon esté ejecutándose en la máquina objetivo.',
-        sessionTimeout: 'El inicio de sesión expiró. La máquina puede ser lenta o el daemon puede no estar respondiendo.',
-        notConnectedToServer: 'No conectado al servidor. Verifica tu conexión a internet.',
-        startingSession: 'Iniciando sesión...',
-        startNewSessionInFolder: 'Nueva sesión aquí',
-        noMachineSelected: 'Por favor, selecciona una máquina para iniciar la sesión',
-        noPathSelected: 'Por favor, selecciona un directorio para iniciar la sesión',
-        sessionType: {
-            title: 'Tipo de sesión',
-            simple: 'Simple',
-            worktree: 'Worktree',
-            comingSoon: 'Próximamente',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Creando worktree '${name}'...`,
-            notGitRepo: 'Los worktrees requieren un repositorio git',
-            failed: ({ error }: { error: string }) => `Error al crear worktree: ${error}`,
-            success: 'Worktree creado exitosamente',
-        }
+        machineOffline: 'La máquina está desconectada',
     },
 
     sessionHistory: {
@@ -336,8 +304,11 @@ export const es: TranslationStructure = {
         happySessionId: 'ID de sesión de Happy',
         claudeCodeSessionId: 'ID de sesión de Claude Code',
         claudeCodeSessionIdCopied: 'ID de sesión de Claude Code copiado al portapapeles',
+        codexThreadId: 'ID del hilo de Codex',
+        codexThreadIdCopied: 'ID del hilo de Codex copiado al portapapeles',
         aiProvider: 'Proveedor de IA',
         failedToCopyClaudeCodeSessionId: 'Falló al copiar ID de sesión de Claude Code',
+        failedToCopyCodexThreadId: 'Falló al copiar ID del hilo de Codex',
         metadataCopied: 'Metadatos copiados al portapapeles',
         failedToCopyMetadata: 'Falló al copiar metadatos',
         failedToKillSession: 'Falló al terminar sesión',
@@ -349,6 +320,14 @@ export const es: TranslationStructure = {
         quickActions: 'Acciones rápidas',
         viewMachine: 'Ver máquina',
         viewMachineSubtitle: 'Ver detalles de máquina y sesiones',
+        resumeSession: 'Resume Session',
+        resumeSessionSubtitle: 'Resume this session on the same machine',
+        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
+        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
+        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
+        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
+        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
+        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Terminar inmediatamente la sesión',
         archiveSessionSubtitle: 'Archivar esta sesión y detenerla',
         metadata: 'Metadatos',
@@ -395,6 +374,7 @@ export const es: TranslationStructure = {
             default: 'Por defecto',
             acceptEdits: 'Aceptar ediciones',
             plan: 'Modo de planificación',
+            dontAsk: 'No preguntar',
             bypassPermissions: 'Modo Yolo',
             badgeAcceptAllEdits: 'Aceptar todas las ediciones',
             badgeBypassAllPermissions: 'Omitir todos los permisos',
@@ -404,6 +384,7 @@ export const es: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            openclaw: 'OpenClaw',
         },
         model: {
             title: 'MODELO',
@@ -432,12 +413,12 @@ export const es: TranslationStructure = {
         geminiPermissionMode: {
             title: 'MODO DE PERMISOS GEMINI',
             default: 'Por defecto',
-            readOnly: 'Solo lectura',
-            safeYolo: 'YOLO seguro',
+            autoEdit: 'Edición automática',
             yolo: 'YOLO',
-            badgeReadOnly: 'Solo lectura',
-            badgeSafeYolo: 'YOLO seguro',
+            plan: 'Planificación',
+            badgeAutoEdit: 'Edición automática',
             badgeYolo: 'YOLO',
+            badgePlan: 'Planificación',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
@@ -739,6 +720,10 @@ export const es: TranslationStructure = {
         lastSeen: 'Visto por última vez',
         never: 'Nunca',
         metadataVersion: 'Versión de metadatos',
+        cliAvailability: 'Disponibilidad de CLI',
+        cliInstalled: 'Instalado',
+        cliNotFound: 'No encontrado',
+        lastDetected: 'Última detección',
         untitledSession: 'Sesión sin título',
         back: 'Atrás',
     },
@@ -886,36 +871,6 @@ export const es: TranslationStructure = {
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
     },
 
-    profiles: {
-        // Profile management feature
-        title: 'Perfiles',
-        subtitle: 'Gestionar perfiles de variables de entorno para sesiones',
-        noProfile: 'Sin Perfil',
-        noProfileDescription: 'Usar configuración de entorno predeterminada',
-        defaultModel: 'Modelo Predeterminado',
-        addProfile: 'Agregar Perfil',
-        profileName: 'Nombre del Perfil',
-        enterName: 'Ingrese el nombre del perfil',
-        baseURL: 'URL Base',
-        authToken: 'Token de Autenticación',
-        enterToken: 'Ingrese el token de autenticación',
-        model: 'Modelo',
-        tmuxSession: 'Sesión Tmux',
-        enterTmuxSession: 'Ingrese el nombre de la sesión tmux',
-        tmuxTempDir: 'Directorio Temporal de Tmux',
-        enterTmuxTempDir: 'Ingrese la ruta del directorio temporal',
-        tmuxUpdateEnvironment: 'Actualizar entorno automáticamente',
-        nameRequired: 'El nombre del perfil es requerido',
-        deleteConfirm: '¿Estás seguro de que quieres eliminar el perfil "{name}"?',
-        editProfile: 'Editar Perfil',
-        addProfileTitle: 'Agregar Nuevo Perfil',
-        delete: {
-            title: 'Eliminar Perfil',
-            message: ({ name }: { name: string }) => `¿Estás seguro de que quieres eliminar "${name}"? Esta acción no se puede deshacer.`,
-            confirm: 'Eliminar',
-            cancel: 'Cancelar',
-        },
-    }
 } as const;
 
 export type TranslationsEs = typeof es;

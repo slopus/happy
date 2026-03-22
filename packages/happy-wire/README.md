@@ -700,7 +700,7 @@ if (!maybeEnvelope.success) {
 - `exports["."]` provides both CJS and ESM entrypoints with type paths.
 
 Build script:
-- `shx rm -rf dist && npx tsc --noEmit && pkgroll`
+- `shx rm -rf dist && tsc --noEmit && pkgroll`
 
 Tests:
 - `vitest` against `src/*.test.ts`

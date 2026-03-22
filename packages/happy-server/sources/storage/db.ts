@@ -37,8 +37,10 @@ function findPGliteWasm(): { wasmModule: WebAssembly.Module; fsBundle: Blob } | 
 }
 
 function createClient(): PrismaClient {
-    const pgliteDir = process.env.PGLITE_DIR;
-    if (pgliteDir) {
+    const provider = process.env.DB_PROVIDER || "postgres";
+
+    if (provider === "pglite") {
+        const pgliteDir = process.env.PGLITE_DIR || "./data/pglite";
         const wasmOpts = findPGliteWasm();
         if (wasmOpts) {
             pgliteInstance = new PGlite({ dataDir: pgliteDir, ...wasmOpts });
@@ -48,6 +50,7 @@ function createClient(): PrismaClient {
         const adapter = new PrismaPGlite(pgliteInstance);
         return new PrismaClient({ adapter } as any);
     }
+
     return new PrismaClient();
 }
 

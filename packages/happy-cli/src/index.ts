@@ -30,6 +30,8 @@ import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
+import { extractCodexResumeFlag } from '@/codex/cliArgs'
+import { handleResumeCommand } from '@/resume/handleResumeCommand'
 
 
 (async () => {
@@ -97,6 +99,17 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
   } else if (subcommand === 'bye') {
     console.log('Bye!');
     process.exit(0);
+  } else if (subcommand === 'resume') {
+    try {
+      await handleResumeCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
@@ -104,7 +117,8 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      const codexArgs = extractNoSandboxFlag(args.slice(1));
+      const sandboxArgs = extractNoSandboxFlag(args.slice(1));
+      const codexArgs = extractCodexResumeFlag(sandboxArgs.args);
       for (let i = 0; i < codexArgs.args.length; i++) {
         if (codexArgs.args[i] === '--started-by') {
           startedBy = codexArgs.args[++i] as 'daemon' | 'terminal';
@@ -114,7 +128,12 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await runCodex({credentials, startedBy, noSandbox: codexArgs.noSandbox});
+      await runCodex({
+        credentials,
+        startedBy,
+        noSandbox: sandboxArgs.noSandbox,
+        resumeThreadId: codexArgs.resumeThreadId ?? undefined,
+      });
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -396,6 +415,59 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'openclaw') {
+    try {
+      const { runOpenClaw } = await import('@/openclaw/runOpenClaw');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      let gatewayUrl: string | undefined;
+      let gatewayToken: string | undefined;
+      let gatewayPassword: string | undefined;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--verbose') {
+          verbose = true;
+        } else if (args[i] === '--gateway-url') {
+          gatewayUrl = args[++i];
+        } else if (args[i] === '--gateway-token') {
+          gatewayToken = args[++i];
+        } else if (args[i] === '--gateway-password') {
+          gatewayPassword = args[++i];
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      await runOpenClaw({
+        credentials,
+        startedBy,
+        verbose,
+        gatewayUrl,
+        gatewayToken,
+        gatewayPassword,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'logout') {
     // Keep for backward compatibility - redirect to auth logout
     console.log(chalk.yellow('Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n'));
@@ -632,6 +704,7 @@ ${chalk.bold('happy')} - Claude Code On the Go
 ${chalk.bold('Usage:')}
   happy [options]         Start Claude with mobile control
   happy auth              Manage authentication
+  happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
   happy acp               Start a generic ACP-compatible agent
@@ -644,6 +717,7 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Examples:')}
   happy                    Start session
+  happy resume cmmij8      Resume a previous session by Happy session ID
   happy --yolo             Start with bypassing permissions
                             happy sugar for --dangerously-skip-permissions
   happy --chrome           Enable Chrome browser access for this session

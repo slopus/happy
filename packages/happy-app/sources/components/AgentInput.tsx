@@ -22,8 +22,6 @@ import { hackMode, hackModes } from '@/sync/modeHacks';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
-import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile } from '@/sync/profileUtils';
 
 interface AgentInputProps {
     value: string;
@@ -65,7 +63,7 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -74,8 +72,6 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
-    profileId?: string | null;
-    onProfileClick?: () => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -302,10 +298,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const hasText = props.value.trim().length > 0;
 
-    // Check if this is a Codex or Gemini session
+    // Check if this is a Codex, Gemini, or OpenClaw session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const isOpenClaw = props.metadata?.flavor === 'openclaw' || props.agentType === 'openclaw';
     const displayPermissionMode = React.useMemo(() => (
         props.permissionMode ? hackMode(props.permissionMode) : null
     ), [props.permissionMode]);
@@ -337,17 +334,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         }
         return label;
     }, [isSandboxEnabled]);
-
-    // Profile data
-    const profiles = useSetting('profiles');
-    const currentProfile = React.useMemo(() => {
-        if (!props.profileId) return null;
-        // Check custom profiles first
-        const customProfile = profiles.find(p => p.id === props.profileId);
-        if (customProfile) return customProfile;
-        // Check built-in profiles
-        return getBuiltInProfile(props.profileId);
-    }, [profiles, props.profileId]);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -525,7 +511,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     return (
         <View style={[
             styles.container,
-            { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+            { paddingHorizontal: screenWidth > 700 ? 12 : 8 }
         ]}>
             <View style={[
                 styles.innerContainer,
@@ -718,7 +704,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || displayPermissionMode || props.modelMode) && (
+                {(props.connectionStatus || contextWarning || (displayPermissionMode && permissionModeKey !== 'default')) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -824,37 +810,32 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </Text>
                             )}
                         </View>
-                        <View style={{
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            minWidth: 150, // Fixed minimum width to prevent layout shift
-                        }}>
-                            {displayPermissionMode && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: isSandboxedYoloMode ? '#4169E1' :
-                                        permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                            permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                                permissionModeKey === 'plan' ? theme.colors.permission.plan :
-                                                    permissionModeKey === 'read-only' ? theme.colors.permission.readOnly :
-                                                        permissionModeKey === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                            permissionModeKey === 'yolo' ? theme.colors.permission.yolo :
-                                                                theme.colors.textSecondary, // Use secondary text color for default
-                                    ...Typography.default()
-                                }}>
-                                    {withSandboxSuffix(displayPermissionMode.name, permissionModeKey)}
-                                </Text>
-                            )}
-                            {props.modelMode && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: theme.colors.textSecondary,
-                                    ...Typography.default()
-                                }}>
-                                    {props.modelMode.name}
-                                </Text>
-                            )}
-                        </View>
+                        {/* Permission badge — only shown when non-default */}
+                        {displayPermissionMode && permissionModeKey !== 'default' && (() => {
+                            const permColor = isSandboxedYoloMode ? '#4169E1' :
+                                permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                    permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                        permissionModeKey === 'plan' ? theme.colors.permission.plan :
+                                            permissionModeKey === 'read-only' ? theme.colors.permission.readOnly :
+                                                permissionModeKey === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                    permissionModeKey === 'yolo' ? theme.colors.permission.yolo :
+                                                        theme.colors.textSecondary;
+                            const permIcon: 'play-forward' | 'pause' =
+                                permissionModeKey === 'plan' || permissionModeKey === 'read-only'
+                                    ? 'pause' : 'play-forward';
+                            return (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                    <Ionicons name={permIcon} size={11} color={permColor} />
+                                    <Text style={{
+                                        fontSize: 11,
+                                        color: permColor,
+                                        ...Typography.default()
+                                    }}>
+                                        {withSandboxSuffix(displayPermissionMode.name, permissionModeKey)}
+                                    </Text>
+                                </View>
+                            );
+                        })()}
                     </View>
                 )}
 
@@ -987,42 +968,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Pressable>
                                 )}
 
-                                {/* Profile selector button - FIRST */}
-                                {props.profileId && props.onProfileClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onProfileClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Ionicons
-                                            name="person-outline"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {currentProfile?.name || 'Select Profile'}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
                                 {/* Agent selector button */}
                                 {props.agentType && props.onAgentClick && (
                                     <Pressable
@@ -1054,7 +999,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             fontWeight: '600',
                                             ...Typography.default('semiBold'),
                                         }}>
-                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
+                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : props.agentType === 'openclaw' ? t('agentInput.agent.openclaw') : t('agentInput.agent.gemini')}
                                         </Text>
                                     </Pressable>
                                 )}

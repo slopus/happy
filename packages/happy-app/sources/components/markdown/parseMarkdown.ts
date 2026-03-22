@@ -29,6 +29,10 @@ export type MarkdownBlock = {
     type: 'table',
     headers: string[],
     rows: string[][]
+} | {
+    type: 'image',
+    alt: string,
+    url: string
 }
 
 export type MarkdownSpan = {

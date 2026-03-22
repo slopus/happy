@@ -138,18 +138,12 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini';
-    // Environment variables from AI backend profile
-    // Accepts any environment variables - daemon will pass them to the agent process
-    // Common variables include:
-    // - ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL
-    // - OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, OPENAI_API_TIMEOUT_MS
-    // - AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_DEPLOYMENT_NAME
-    // - TOGETHER_API_KEY, TOGETHER_MODEL
-    // - TMUX_SESSION_NAME, TMUX_TMPDIR, TMUX_UPDATE_ENVIRONMENT
-    // - API_TIMEOUT_MS, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
-    // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
-    environmentVariables?: Record<string, string>;
+    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw';
+}
+
+export interface ResumeSessionOptions {
+    machineId: string;
+    sessionId: string;
 }
 
 // Exported session operation functions
@@ -159,7 +153,7 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -167,12 +161,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini',
-            environmentVariables?: Record<string, string>;
+            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw',
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent }
         );
         return result;
     } catch (error) {
@@ -180,6 +173,24 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
+        };
+    }
+}
+
+export async function machineResumeSession(options: ResumeSessionOptions): Promise<SpawnSessionResult> {
+    const { machineId, sessionId } = options;
+
+    try {
+        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string }>(
+            machineId,
+            'resume-happy-session',
+            { sessionId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to resume session',
         };
     }
 }

@@ -10,7 +10,7 @@ import * as Application from 'expo-application';
 import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
-import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
+import { getServerUrl, setServerUrl, validateServerUrl, getLogServerUrl, setLogServerUrl } from '@/sync/serverConfig';
 import { Switch } from '@/components/Switch';
 import { useUnistyles } from 'react-native-unistyles';
 import { setLastViewedVersion, getLatestVersion } from '@/changelog';
@@ -42,6 +42,34 @@ export default function DevScreen() {
                 Modal.alert('Success', 'Server URL updated. Please restart the app for changes to take effect.');
             } else {
                 Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
+            }
+        }
+    };
+
+    const handleEditLogServerUrl = async () => {
+        const currentUrl = getLogServerUrl() || '';
+
+        const newUrl = await Modal.prompt(
+            'Remote Log Server',
+            'Sends ALL console output as unencrypted plaintext over HTTP to this URL. Use your Mac\'s local IP (e.g. http://192.168.1.5:8787). Run "yarn app-logs" on your Mac to receive. Clear to disable.',
+            {
+                defaultValue: currentUrl,
+                confirmText: 'Save'
+            }
+        );
+
+        if (newUrl !== undefined && newUrl !== currentUrl) {
+            if (!newUrl || !newUrl.trim()) {
+                setLogServerUrl(null);
+                Modal.alert('Success', 'Remote logging disabled. Restart app for changes to take effect.');
+            } else {
+                const validation = validateServerUrl(newUrl);
+                if (validation.valid) {
+                    setLogServerUrl(newUrl);
+                    Modal.alert('Success', 'Log server URL updated. Restart app for changes to take effect.');
+                } else {
+                    Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
+                }
             }
         }
     };
@@ -251,6 +279,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="qr-code-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/qr-test')}
                 />
+                <Item
+                    title="Session Composer"
+                    subtitle="New session creation screen layout"
+                    icon={<Ionicons name="add-circle-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/session-composer' as any)}
+                />
             </ItemGroup>
 
             {/* Test Features */}
@@ -336,6 +370,13 @@ export default function DevScreen() {
                     detail={getServerUrl()}
                     onPress={handleEditServerUrl}
                     detailStyle={{ flex: 1, textAlign: 'right', minWidth: '70%' }}
+                />
+                <Item
+                    title="Log Server"
+                    subtitle="Sends unencrypted console logs over HTTP"
+                    detail={getLogServerUrl() || 'Off'}
+                    onPress={handleEditLogServerUrl}
+                    detailStyle={{ flex: 1, textAlign: 'right', minWidth: '50%' }}
                 />
                 <Item
                     title="Socket.IO Status"

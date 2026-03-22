@@ -483,6 +483,21 @@ export const storage = create<StorageState>()((set, get) => {
         applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
             let changed = new Set<string>();
             let hasReadyEvent = false;
+
+            // Check if any incoming messages contain EnterPlanMode tool calls
+            let shouldEnterPlanMode = false;
+            for (const msg of messages) {
+                if (msg.role === 'agent') {
+                    for (const c of msg.content) {
+                        if (c.type === 'tool-call' && (c.name === 'EnterPlanMode' || c.name === 'enter_plan_mode')) {
+                            shouldEnterPlanMode = true;
+                            break;
+                        }
+                    }
+                    if (shouldEnterPlanMode) break;
+                }
+            }
+
             set((state) => {
 
                 // Resolve session messages state
@@ -524,7 +539,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
                 let updatedSessions = state.sessions;
-                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage) && session;
+                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode) && session;
 
                 if (needsUpdate) {
                     updatedSessions = {
@@ -535,7 +550,9 @@ export const storage = create<StorageState>()((set, get) => {
                             // Copy latestUsage from reducerState to make it immediately available
                             latestUsage: existingSession.reducerState.latestUsage ? {
                                 ...existingSession.reducerState.latestUsage
-                            } : session.latestUsage
+                            } : session.latestUsage,
+                            // Auto-switch to plan mode when EnterPlanMode tool call is detected
+                            ...(shouldEnterPlanMode && { permissionMode: 'plan' })
                         }
                     };
                 }
@@ -555,6 +572,18 @@ export const storage = create<StorageState>()((set, get) => {
                     }
                 };
             });
+
+            // Persist plan mode change
+            if (shouldEnterPlanMode) {
+                const allModes: Record<string, string> = {};
+                const currentState = get();
+                Object.entries(currentState.sessions).forEach(([id, sess]) => {
+                    if (sess.permissionMode && sess.permissionMode !== 'default') {
+                        allModes[id] = sess.permissionMode;
+                    }
+                });
+                saveSessionPermissionModes(allModes);
+            }
 
             return { changed: Array.from(changed), hasReadyEvent };
         },
@@ -1122,10 +1151,12 @@ export function useLocalSettings(): LocalSettings {
     return storage(useShallow((state) => state.localSettings));
 }
 
-export function useAllMachines(): Machine[] {
+export function useAllMachines(options?: { includeOffline?: boolean }): Machine[] {
+    const includeOffline = options?.includeOffline ?? false;
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        return (Object.values(state.machines).sort((a, b) => b.createdAt - a.createdAt)).filter((v) => v.active);
+        const machines = Object.values(state.machines).sort((a, b) => b.createdAt - a.createdAt);
+        return includeOffline ? machines : machines.filter((v) => v.active);
     }));
 }
 

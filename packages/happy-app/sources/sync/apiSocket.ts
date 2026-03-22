@@ -145,7 +145,7 @@ class ApiSocket {
         if (result.ok) {
             return await machineEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        throw new Error(result.error || 'RPC call failed');
     }
 
     send(event: string, data: any) {

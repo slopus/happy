@@ -12,6 +12,9 @@ export interface KeyPressEvent {
 
 export type OnKeyPressCallback = (event: KeyPressEvent) => boolean;
 
+export const MULTI_TEXT_INPUT_FONT_SIZE = 16;
+export const MULTI_TEXT_INPUT_LINE_HEIGHT = 22;
+
 export interface TextInputState {
     text: string;
     selection: {
@@ -31,6 +34,7 @@ interface MultiTextInputProps {
     onChangeText: (text: string) => void;
     placeholder?: string;
     maxHeight?: number;
+    lineHeight?: number;
     paddingTop?: number;
     paddingBottom?: number;
     paddingLeft?: number;
@@ -46,6 +50,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         onChangeText,
         placeholder,
         maxHeight = 120,
+        lineHeight = MULTI_TEXT_INPUT_LINE_HEIGHT,
         onKeyPress,
         onSelectionChange,
         onStateChange
@@ -182,7 +187,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 ref={inputRef}
                 style={{
                     width: '100%',
-                    fontSize: 16,
+                    fontSize: MULTI_TEXT_INPUT_FONT_SIZE,
+                    lineHeight,
                     maxHeight,
                     color: theme.colors.input.text,
                     textAlignVertical: 'top',

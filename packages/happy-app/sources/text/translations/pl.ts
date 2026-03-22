@@ -145,8 +145,6 @@ export const pl: TranslationStructure = {
         exchangingTokens: 'Wymiana tokenów...',
         usage: 'Użycie',
         usageSubtitle: 'Zobacz użycie API i koszty',
-        profiles: 'Profile',
-        profilesSubtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,
@@ -216,9 +214,6 @@ export const pl: TranslationStructure = {
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
         hideInactiveSessions: 'Ukryj nieaktywne sesje',
         hideInactiveSessionsSubtitle: 'Wyświetlaj tylko aktywne czaty na liście',
-        enhancedSessionWizard: 'Ulepszony kreator sesji',
-        enhancedSessionWizardEnabled: 'Aktywny launcher z profilem',
-        enhancedSessionWizardDisabled: 'Używanie standardowego launchera sesji',
     },
 
     errors: {
@@ -269,35 +264,8 @@ export const pl: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
         title: 'Rozpocznij nową sesję',
-        noMachinesFound: 'Nie znaleziono maszyn. Najpierw uruchom sesję Happy na swoim komputerze.',
-        allMachinesOffline: 'Wszystkie maszyny są offline',
-        machineDetails: 'Zobacz szczegóły maszyny →',
-        directoryDoesNotExist: 'Katalog nie został znaleziony',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `Katalog ${directory} nie istnieje. Czy chcesz go utworzyć?`,
-        sessionStarted: 'Sesja rozpoczęta',
-        sessionStartedMessage: 'Sesja została pomyślnie rozpoczęta.',
-        sessionSpawningFailed: 'Tworzenie sesji nie powiodło się - nie zwrócono ID sesji.',
-        failedToStart: 'Nie udało się uruchomić sesji. Upewnij się, że daemon działa na docelowej maszynie.',
-        sessionTimeout: 'Przekroczono czas uruchamiania sesji. Maszyna może działać wolno lub daemon może nie odpowiadać.',
-        notConnectedToServer: 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.',
-        startingSession: 'Rozpoczynanie sesji...',
-        startNewSessionInFolder: 'Nowa sesja tutaj',
-        noMachineSelected: 'Proszę wybrać maszynę do rozpoczęcia sesji',
-        noPathSelected: 'Proszę wybrać katalog do rozpoczęcia sesji',
-        sessionType: {
-            title: 'Typ sesji',
-            simple: 'Prosta',
-            worktree: 'Worktree',
-            comingSoon: 'Wkrótce dostępne',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `Tworzenie worktree '${name}'...`,
-            notGitRepo: 'Worktree wymaga repozytorium git',
-            failed: ({ error }: { error: string }) => `Nie udało się utworzyć worktree: ${error}`,
-            success: 'Worktree został utworzony pomyślnie',
-        }
+        machineOffline: 'Maszyna jest offline',
     },
 
     sessionHistory: {
@@ -347,8 +315,11 @@ export const pl: TranslationStructure = {
         happySessionId: 'ID sesji Happy',
         claudeCodeSessionId: 'ID sesji Claude Code',
         claudeCodeSessionIdCopied: 'ID sesji Claude Code skopiowane do schowka',
+        codexThreadId: 'ID wątku Codex',
+        codexThreadIdCopied: 'ID wątku Codex skopiowane do schowka',
         aiProvider: 'Dostawca AI',
         failedToCopyClaudeCodeSessionId: 'Nie udało się skopiować ID sesji Claude Code',
+        failedToCopyCodexThreadId: 'Nie udało się skopiować ID wątku Codex',
         metadataCopied: 'Metadane skopiowane do schowka',
         failedToCopyMetadata: 'Nie udało się skopiować metadanych',
         failedToKillSession: 'Nie udało się zakończyć sesji',
@@ -360,6 +331,14 @@ export const pl: TranslationStructure = {
         quickActions: 'Szybkie akcje',
         viewMachine: 'Zobacz maszynę',
         viewMachineSubtitle: 'Zobacz szczegóły maszyny i sesje',
+        resumeSession: 'Resume Session',
+        resumeSessionSubtitle: 'Resume this session on the same machine',
+        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
+        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
+        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
+        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
+        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
+        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Natychmiastowo zakończ sesję',
         archiveSessionSubtitle: 'Zarchiwizuj tę sesję i zatrzymaj ją',
         metadata: 'Metadane',
@@ -405,6 +384,7 @@ export const pl: TranslationStructure = {
             default: 'Domyślny',
             acceptEdits: 'Akceptuj edycje',
             plan: 'Tryb planowania',
+            dontAsk: 'Nie pytaj',
             bypassPermissions: 'Tryb YOLO',
             badgeAcceptAllEdits: 'Akceptuj wszystkie edycje',
             badgeBypassAllPermissions: 'Omiń wszystkie uprawnienia',
@@ -414,6 +394,7 @@ export const pl: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            openclaw: 'OpenClaw',
         },
         model: {
             title: 'MODEL',
@@ -442,12 +423,12 @@ export const pl: TranslationStructure = {
         geminiPermissionMode: {
             title: 'TRYB UPRAWNIEŃ GEMINI',
             default: 'Domyślny',
-            readOnly: 'Tylko do odczytu',
-            safeYolo: 'Bezpieczny YOLO',
+            autoEdit: 'Auto edycja',
             yolo: 'YOLO',
-            badgeReadOnly: 'Tylko do odczytu',
-            badgeSafeYolo: 'Bezpieczny YOLO',
+            plan: 'Planowanie',
+            badgeAutoEdit: 'Auto edycja',
             badgeYolo: 'YOLO',
+            badgePlan: 'Planowanie',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Pozostało ${percent}%`,
@@ -749,6 +730,10 @@ export const pl: TranslationStructure = {
         lastSeen: 'Ostatnio widziana',
         never: 'Nigdy',
         metadataVersion: 'Wersja metadanych',
+        cliAvailability: 'Dostępność CLI',
+        cliInstalled: 'Zainstalowany',
+        cliNotFound: 'Nie znaleziono',
+        lastDetected: 'Ostatnio wykryto',
         untitledSession: 'Sesja bez nazwy',
         back: 'Wstecz',
     },
@@ -909,36 +894,6 @@ export const pl: TranslationStructure = {
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
     },
 
-    profiles: {
-        // Profile management feature
-        title: 'Profile',
-        subtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
-        noProfile: 'Brak Profilu',
-        noProfileDescription: 'Użyj domyślnych ustawień środowiska',
-        defaultModel: 'Domyślny Model',
-        addProfile: 'Dodaj Profil',
-        profileName: 'Nazwa Profilu',
-        enterName: 'Wprowadź nazwę profilu',
-        baseURL: 'Adres URL',
-        authToken: 'Token Autentykacji',
-        enterToken: 'Wprowadź token autentykacji',
-        model: 'Model',
-        tmuxSession: 'Sesja Tmux',
-        enterTmuxSession: 'Wprowadź nazwę sesji tmux',
-        tmuxTempDir: 'Katalog tymczasowy Tmux',
-        enterTmuxTempDir: 'Wprowadź ścieżkę do katalogu tymczasowego',
-        tmuxUpdateEnvironment: 'Aktualizuj środowisko automatycznie',
-        nameRequired: 'Nazwa profilu jest wymagana',
-        deleteConfirm: 'Czy na pewno chcesz usunąć profil "{name}"?',
-        editProfile: 'Edytuj Profil',
-        addProfileTitle: 'Dodaj Nowy Profil',
-        delete: {
-            title: 'Usuń Profil',
-            message: ({ name }: { name: string }) => `Czy na pewno chcesz usunąć "${name}"? Tej czynności nie można cofnąć.`,
-            confirm: 'Usuń',
-            cancel: 'Anuluj',
-        },
-    }
 } as const;
 
 export type TranslationsPl = typeof pl;

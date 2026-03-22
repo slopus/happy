@@ -185,7 +185,7 @@ import { runAcp } from './runAcp';
 
 describe('runAcp', () => {
   const stripAnsi = (line: string) => line.replace(/\u001b\[[0-9;]*m/g, '');
-  const stripLogPrefix = (line: string) => stripAnsi(line).replace(/^\[\d{2}:\d{2}\]\s*/, '');
+  const stripLogPrefix = (line: string) => stripAnsi(line).replace(/^\[\d{2}:\d{2}\] /, '');
   const consoleLines = () => mocks.mockConsoleLog.mock.calls
     .map((args) => args.map((arg) => String(arg)).join(' '))
     .map(stripLogPrefix);

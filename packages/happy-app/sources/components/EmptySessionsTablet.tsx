@@ -65,7 +65,7 @@ export function EmptySessionsTablet() {
     }, [machines]);
     
     const handleStartNewSession = () => {
-        router.push('/new');
+        router.navigate('/new');
     };
     
     return (

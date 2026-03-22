@@ -34,6 +34,7 @@ export const MetadataSchema = z.object({
     }).optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
+    codexThreadId: z.string().optional(), // Codex app-server thread ID
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),
     homeDir: z.string().optional(), // User's home directory on the machine
@@ -130,7 +131,21 @@ export const MachineMetadataSchema = z.object({
     daemonLastKnownStatus: z.enum(['running', 'shutting-down']).optional(),
     daemonLastKnownPid: z.number().optional(),
     shutdownRequestedAt: z.number().optional(),
-    shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional()
+    shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional(),
+    cliAvailability: z.object({
+        claude: z.boolean(),
+        codex: z.boolean(),
+        gemini: z.boolean(),
+        openclaw: z.boolean(),
+        detectedAt: z.number(),
+    }).optional(),
+    resumeSupport: z.object({
+        rpcAvailable: z.boolean(),
+        requiresSameMachine: z.boolean(),
+        requiresHappyAgentAuth: z.boolean(),
+        happyAgentAuthenticated: z.boolean(),
+        detectedAt: z.number(),
+    }).optional(),
 });
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;

@@ -48,7 +48,14 @@ CLAUDE.local.md
 
 .dev/worktree/*
 
+# Local dev environments
+.environments/
+environments/data/
+
 # Development planning notes (keep local, don't commit)
 notes/
 # ralphex progress logs
 progress*.txt
+
+# OpenCode trace output (script is committed, output is not)
+docs/competition/opencode/traces/
