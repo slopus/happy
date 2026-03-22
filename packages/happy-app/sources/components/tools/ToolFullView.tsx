@@ -51,7 +51,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                                 <Ionicons name="log-in" size={20} color="#5856D6" />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.inputParams')}</Text>
                             </View>
-                            <ToolInputView input={tool.input} />
+                            <ToolInputView input={tool.input} toolName={tool.name} />
                         </View>
                     )}
 

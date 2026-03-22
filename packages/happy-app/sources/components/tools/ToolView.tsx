@@ -273,7 +273,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                         {/* Default content when no custom view available */}
                         {tool.input && (
                             <ToolSectionView title={t('toolView.input')}>
-                                <ToolInputView input={tool.input} />
+                                <ToolInputView input={tool.input} toolName={tool.name} />
                             </ToolSectionView>
                         )}
 
