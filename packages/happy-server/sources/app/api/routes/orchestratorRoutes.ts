@@ -10,6 +10,9 @@ import {
     buildOrchestratorRunTerminalEphemeral,
 } from "@/app/events/eventRouter";
 import { listConnectedUserRpcMethods, invokeUserRpc, hasUserRpcMethod } from "@/app/api/socket/rpcRegistry";
+import { inTx } from "@/storage/inTx";
+import { feedPost } from "@/app/feed/feedPost";
+import { Context } from "@/context";
 import { randomUUID } from "node:crypto";
 import {
     CLAUDE_MODEL_MODES,
@@ -1880,7 +1883,7 @@ export function orchestratorRoutes(app: Fastify) {
 
         void emitOrchestratorActivity(userId, result.controllerSessionId ?? null).catch(warn);
         if (isRunTerminal(result.runStatus) && result.controllerSessionId) {
-            eventRouter.emitEphemeral({
+            const delivery = eventRouter.emitEphemeral({
                 userId,
                 payload: buildOrchestratorRunTerminalEphemeral(
                     result.runId,
@@ -1892,6 +1895,15 @@ export function orchestratorRoutes(app: Fastify) {
                     sessionId: result.controllerSessionId,
                 },
             });
+            if (delivery.total === 0) {
+                const title = result.runTitle ?? 'Untitled run';
+                void inTx(async (tx) => {
+                    await feedPost(tx, Context.create(userId), {
+                        kind: 'text',
+                        text: `Orchestrator callback not delivered: "${title}" (${result.runStatus}). Session may be disconnected.`,
+                    });
+                }).catch(warn);
+            }
         }
 
         return reply.send({
