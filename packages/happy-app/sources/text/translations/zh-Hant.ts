@@ -268,6 +268,7 @@ export const zhHant: TranslationStructure = {
         orchestratorLabelRetryPolicy: '重試策略',
         orchestratorLabelNextAttempt: '下次重試',
         orchestratorLabelOutputSummary: '輸出摘要',
+        orchestratorLabelPrompt: '提示詞',
         orchestratorLabelErrorCode: '錯誤代碼',
         orchestratorLabelErrorMessage: '錯誤訊息',
         orchestratorLabelStarted: '開始時間',

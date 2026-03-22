@@ -231,6 +231,7 @@ export const ru: TranslationStructure = {
         orchestratorLabelRetryPolicy: 'Политика повторов',
         orchestratorLabelNextAttempt: 'Следующая попытка',
         orchestratorLabelOutputSummary: 'Итог вывода',
+        orchestratorLabelPrompt: 'Промпт',
         orchestratorLabelErrorCode: 'Код ошибки',
         orchestratorLabelErrorMessage: 'Сообщение об ошибке',
         orchestratorLabelStarted: 'Начало',

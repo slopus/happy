@@ -269,6 +269,7 @@ export const zhHans: TranslationStructure = {
         orchestratorLabelRetryPolicy: '重试策略',
         orchestratorLabelNextAttempt: '下次重试',
         orchestratorLabelOutputSummary: '输出摘要',
+        orchestratorLabelPrompt: '提示词',
         orchestratorLabelErrorCode: '错误代码',
         orchestratorLabelErrorMessage: '错误信息',
         orchestratorLabelStarted: '开始时间',

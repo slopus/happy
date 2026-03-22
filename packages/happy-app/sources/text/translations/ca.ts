@@ -267,6 +267,7 @@ export const ca: TranslationStructure = {
         orchestratorLabelRetryPolicy: 'Política de reintents',
         orchestratorLabelNextAttempt: 'Proper intent',
         orchestratorLabelOutputSummary: 'Resum de sortida',
+        orchestratorLabelPrompt: 'Prompt',
         orchestratorLabelErrorCode: 'Codi d\'error',
         orchestratorLabelErrorMessage: 'Missatge d\'error',
         orchestratorLabelStarted: 'Iniciat',

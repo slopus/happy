@@ -267,6 +267,7 @@ export const pt: TranslationStructure = {
         orchestratorLabelRetryPolicy: 'Política de retentativas',
         orchestratorLabelNextAttempt: 'Próxima tentativa',
         orchestratorLabelOutputSummary: 'Resumo da saída',
+        orchestratorLabelPrompt: 'Prompt',
         orchestratorLabelErrorCode: 'Código de erro',
         orchestratorLabelErrorMessage: 'Mensagem de erro',
         orchestratorLabelStarted: 'Iniciado',

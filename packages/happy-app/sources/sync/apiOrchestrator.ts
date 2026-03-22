@@ -28,6 +28,7 @@ export type OrchestratorExecutionRecord = {
     errorCode: string | null;
     errorMessage: string | null;
     outputSummary: string | null;
+    outputText: string | null;
     createdAt: string;
     updatedAt: string;
 };
@@ -40,6 +41,7 @@ export type OrchestratorTaskRecord = {
     status: OrchestratorTaskStatus;
     provider: 'claude' | 'codex' | 'gemini';
     model: string | null;
+    prompt?: string | null;
     workingDirectory: string | null;
     dependsOn: string[];
     retry: {
@@ -48,6 +50,7 @@ export type OrchestratorTaskRecord = {
     };
     nextAttemptAt: string | null;
     outputSummary: string | null;
+    outputText: string | null;
     errorCode: string | null;
     errorMessage: string | null;
     createdAt: string;

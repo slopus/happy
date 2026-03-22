@@ -231,6 +231,7 @@ type RunWithTasks = {
         dependsOnTaskKeys: string[];
         retryMaxAttempts: number;
         retryBackoffMs: number;
+        prompt?: string | null;
         nextAttemptAt: Date | null;
         status: string;
         outputSummary: string | null;
@@ -302,6 +303,7 @@ function mapTask(task: RunWithTasks['tasks'][number]) {
         status: task.status,
         provider: task.provider,
         model: task.model,
+        prompt: task.prompt,
         workingDirectory: task.workingDirectory,
         dependsOn: task.dependsOnTaskKeys,
         retry: {
@@ -506,6 +508,7 @@ async function loadTaskForUser(
             seq: true,
             taskKey: true,
             title: true,
+            prompt: true,
             provider: true,
             model: true,
             workingDirectory: true,

@@ -67,18 +67,17 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: 20,
     },
     monoText: {
-        marginTop: 8,
         fontSize: 12,
         color: theme.colors.text,
         lineHeight: 18,
         fontFamily: 'monospace',
     },
-    executionRow: {
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        borderRadius: 10,
-        padding: 12,
-        marginTop: 10,
+    sectionLabel: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: theme.colors.text,
+        marginTop: 4,
+        paddingLeft: 4,
     },
     executionHeader: {
         flexDirection: 'row',
@@ -224,37 +223,44 @@ export default function OrchestratorTaskDetailScreen() {
                     {!!task.nextAttemptAt && <Text style={styles.row}>{t('settings.orchestratorLabelNextAttempt')}: {formatDate(task.nextAttemptAt)}</Text>}
                 </View>
 
+                {!!task.prompt && (
+                    <>
+                        <Text style={styles.sectionLabel}>{t('settings.orchestratorLabelPrompt')}</Text>
+                        <View style={styles.card}>
+                            <Text style={styles.monoText} selectable>{task.prompt}</Text>
+                        </View>
+                    </>
+                )}
+
+                <Text style={styles.sectionLabel}>{t('settings.orchestratorResultTitle')}</Text>
                 <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>{t('settings.orchestratorResultTitle')}</Text>
-                    <Text style={styles.row}>{t('settings.orchestratorLabelOutputSummary')}: {taskOutputSummary || '-'}</Text>
                     {!!task.errorCode && <Text style={styles.row}>{t('settings.orchestratorLabelErrorCode')}: {task.errorCode}</Text>}
                     {!!task.errorMessage && <Text style={styles.row}>{t('settings.orchestratorLabelErrorMessage')}: {task.errorMessage}</Text>}
+                    <Text style={styles.monoText} selectable>{task.outputText || taskOutputSummary || '-'}</Text>
                 </View>
 
-                <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>{t('settings.orchestratorExecutionHistoryTitle')}</Text>
-                    {sortedExecutions.length === 0 ? (
-                        <Text style={styles.hint}>{t('settings.orchestratorNoExecutions')}</Text>
-                    ) : sortedExecutions.map((execution) => {
-                        const executionOutputSummary = sanitizeOrchestratorOutputSummary(execution.outputSummary);
-                        return (
-                            <View key={execution.executionId} style={styles.executionRow}>
-                                <View style={styles.executionHeader}>
-                                    <Text style={styles.executionTitle}>
-                                        {t('settings.orchestratorAttemptTitle', { attempt: execution.attempt, machineId: resolveMachineName(execution.machineId, machineNameMap) })}
-                                    </Text>
-                                    <OrchestratorStatusBadge status={execution.status} />
-                                </View>
-                                <Text style={styles.row}>{t('settings.orchestratorLabelStarted')}: {formatDate(execution.startedAt)}</Text>
-                                <Text style={styles.row}>{t('settings.orchestratorLabelFinished')}: {formatDate(execution.finishedAt)}</Text>
-                                <Text style={styles.row}>{t('settings.orchestratorLabelExitCode')}: {execution.exitCode ?? '-'}</Text>
-                                {!!execution.signal && <Text style={styles.row}>{t('settings.orchestratorLabelSignal')}: {execution.signal}</Text>}
-                                {(!!execution.errorCode || !!execution.errorMessage) && <Text style={styles.row}>{t('settings.orchestratorLabelError')}: {execution.errorCode || ''}{execution.errorMessage ? ` · ${execution.errorMessage}` : ''}</Text>}
-                                {executionOutputSummary ? <Text style={styles.bodyText}>{executionOutputSummary}</Text> : null}
+                <Text style={styles.sectionLabel}>{t('settings.orchestratorExecutionHistoryTitle')}</Text>
+                {sortedExecutions.length === 0 ? (
+                    <Text style={styles.hint}>{t('settings.orchestratorNoExecutions')}</Text>
+                ) : sortedExecutions.map((execution) => {
+                    const executionOutputSummary = sanitizeOrchestratorOutputSummary(execution.outputSummary);
+                    return (
+                        <View key={execution.executionId} style={styles.card}>
+                            <View style={styles.executionHeader}>
+                                <Text style={styles.executionTitle}>
+                                    {t('settings.orchestratorAttemptTitle', { attempt: execution.attempt, machineId: resolveMachineName(execution.machineId, machineNameMap) })}
+                                </Text>
+                                <OrchestratorStatusBadge status={execution.status} />
                             </View>
-                        );
-                    })}
-                </View>
+                            <Text style={styles.row}>{t('settings.orchestratorLabelStarted')}: {formatDate(execution.startedAt)}</Text>
+                            <Text style={styles.row}>{t('settings.orchestratorLabelFinished')}: {formatDate(execution.finishedAt)}</Text>
+                            <Text style={styles.row}>{t('settings.orchestratorLabelExitCode')}: {execution.exitCode ?? '-'}</Text>
+                            {!!execution.signal && <Text style={styles.row}>{t('settings.orchestratorLabelSignal')}: {execution.signal}</Text>}
+                            {(!!execution.errorCode || !!execution.errorMessage) && <Text style={styles.row}>{t('settings.orchestratorLabelError')}: {execution.errorCode || ''}{execution.errorMessage ? ` · ${execution.errorMessage}` : ''}</Text>}
+                            {executionOutputSummary ? <Text style={styles.bodyText}>{executionOutputSummary}</Text> : null}
+                        </View>
+                    );
+                })}
 
                 {!!error && <Text style={styles.errorText}>{error}</Text>}
             </ScrollView>

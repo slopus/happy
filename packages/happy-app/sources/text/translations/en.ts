@@ -283,6 +283,7 @@ export const en: TranslationStructure = {
         orchestratorLabelRetryPolicy: 'Retry Policy',
         orchestratorLabelNextAttempt: 'Next Attempt At',
         orchestratorLabelOutputSummary: 'Output Summary',
+        orchestratorLabelPrompt: 'Prompt',
         orchestratorLabelErrorCode: 'Error Code',
         orchestratorLabelErrorMessage: 'Error Message',
         orchestratorLabelStarted: 'Started',

@@ -299,6 +299,7 @@ export const ja: TranslationStructure = {
         orchestratorLabelRetryPolicy: 'リトライポリシー',
         orchestratorLabelNextAttempt: '次の試行予定',
         orchestratorLabelOutputSummary: '出力概要',
+        orchestratorLabelPrompt: 'プロンプト',
         orchestratorLabelErrorCode: 'エラーコード',
         orchestratorLabelErrorMessage: 'エラーメッセージ',
         orchestratorLabelStarted: '開始',
