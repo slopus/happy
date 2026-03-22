@@ -471,10 +471,9 @@ export async function listClaudeSessionsFromIndex(): Promise<ClaudeSessionIndexE
             }
         }
 
-        const originalPath = typeof data?.originalPath === 'string' ? data.originalPath : null;
-        if (!originalPath) {
-            continue;
-        }
+        const originalPath = typeof data?.originalPath === 'string'
+            ? data.originalPath
+            : '/' + projectId.replace(/^-/, '').replace(/-/g, '/');
 
         const indexedSessions = extractSessionsFromIndex(data);
         const indexedMap = new Map<string, ParsedSession>();
