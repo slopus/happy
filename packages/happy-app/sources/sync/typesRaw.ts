@@ -703,10 +703,9 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
     if (!parsed.success) {
-        console.error('=== VALIDATION ERROR ===');
-        console.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
-        console.error('Raw message:', JSON.stringify(raw, null, 2));
-        console.error('=== END ERROR ===');
+        const rawObj = raw as any;
+        const msgType = rawObj?.content?.data?.type ?? rawObj?.content?.type ?? 'unknown';
+        console.warn(`Unrecognized message type: ${msgType} (id: ${id})`);
         return null;
     }
     raw = parsed.data;

@@ -1703,16 +1703,9 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
-            const sessionsData = storage.getState().sessionsData;
-            if (sessionsData) {
-                for (const item of sessionsData) {
-                    if (typeof item !== 'string') {
-                        this.getMessagesSync(item.id).invalidate();
-                        // Also invalidate git status on reconnection
-                        gitStatusSync.invalidate(item.id);
-                    }
-                }
-            }
+            // Messages are fetched lazily per-session via onSessionVisible (called by SessionView
+            // when realtimeStatus changes). Session metadata + agentState (including permission
+            // requests) are already refreshed by sessionsSync.invalidate() above.
             for (const sync of this.sendSync.values()) {
                 sync.invalidate();
             }

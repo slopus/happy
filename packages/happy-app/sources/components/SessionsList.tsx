@@ -20,7 +20,6 @@ import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -292,6 +291,10 @@ export function SessionsList() {
                     keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
+                    windowSize={5}
+                    maxToRenderPerBatch={8}
+                    initialNumToRender={12}
+                    removeClippedSubviews={true}
                 />
             </View>
         </View>
@@ -387,7 +390,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
             ]}
-            onLongPress={Platform.OS === 'web' ? handleWebLongPress : undefined}
+            onLongPress={Platform.OS === 'web' ? handleWebLongPress : openActionsFromTrigger}
             onPress={handlePress}
             {...webMenuProps}
         >
@@ -441,23 +444,15 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             isFirst ? styles.sessionItemContainerFirst :
                 isLast ? styles.sessionItemContainerLast : {}
     ];
-    const wrappedItemContent = (
-        <SessionActionsNativeMenu session={session}>
-            {itemContent}
-        </SessionActionsNativeMenu>
-    );
-
     return (
         <View collapsable={false} ref={triggerRef} style={containerStyles}>
-            {wrappedItemContent}
-            {Platform.OS === 'web' && (
-                <SessionActionsPopover
-                    anchor={actionsAnchor}
-                    onClose={() => setActionsAnchor(null)}
-                    session={session}
-                    visible={!!actionsAnchor}
-                />
-            )}
+            {itemContent}
+            <SessionActionsPopover
+                anchor={actionsAnchor}
+                onClose={() => setActionsAnchor(null)}
+                session={session}
+                visible={!!actionsAnchor}
+            />
         </View>
     );
 });
