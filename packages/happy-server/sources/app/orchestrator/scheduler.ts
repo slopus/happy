@@ -232,6 +232,7 @@ async function failStaleDispatchingExecutionsTx(tx: any, runId: string, runStatu
         if (updated.count === 0) {
             continue;
         }
+        warn({ module: 'orchestrator-scheduler', runId, executionId: execution.id, taskId: execution.taskId }, `Stale dispatch detected: execution stuck in 'dispatching' for >${ORCHESTRATOR_DISPATCH_STALE_MS}ms, marking failed (retry=${shouldRetry})`);
         await tx.orchestratorTask.updateMany({
             where: { id: execution.taskId, status: 'dispatching' },
             data: {
@@ -292,6 +293,7 @@ async function failTimedOutRunningExecutionsTx(tx: any, runId: string, runStatus
         const shouldRetry = runStatus !== 'canceling'
             && runStatus !== 'cancelled'
             && execution.attempt < execution.task.retryMaxAttempts;
+        warn({ module: 'orchestrator-scheduler', runId, executionId: execution.id, taskId: execution.taskId }, `Execution timed out after ${timeoutMs}ms (retry=${shouldRetry})`);
         const nextAttemptAt = shouldRetry
             ? new Date(now.getTime() + execution.task.retryBackoffMs)
             : null;
