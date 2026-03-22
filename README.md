@@ -89,6 +89,9 @@ happy
 
 happy codex
 
+# Droid (ACP-compatible)
+happy droid
+
 ```
 
 <div align="center"><img src="/.github/mascot.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
