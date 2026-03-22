@@ -213,7 +213,7 @@ export default function OpenClawMachineDetailPage() {
 
         setIsLoadingSessions(true);
         try {
-            const result = await send('sessions.list', {});
+            const result = await send('sessions.list', { includeGlobal: true });
             if (result.ok && result.payload) {
                 const sessionList = (result.payload as { sessions?: OpenClawSession[] }).sessions ?? [];
                 setSessions(sessionList);
