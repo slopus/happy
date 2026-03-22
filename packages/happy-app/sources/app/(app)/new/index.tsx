@@ -271,7 +271,7 @@ function PickerContent({
                 />
             </View>
 
-            <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
                 {fixedItems?.map(renderOption)}
                 {fixedItems && fixedItems.length > 0 && filtered.length > 0 && (
                     <View style={[pickerStyles.divider, { backgroundColor: theme.colors.divider }]} />
@@ -419,7 +419,7 @@ function PathPickerContent({
                 Recent
             </Text>
 
-            <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
                 {items.map((item) => {
                     const isSelected = item.key === matchedItemKey;
 
@@ -1377,6 +1377,10 @@ const pickerStyles = {
         height: 1,
         marginHorizontal: 12,
         marginVertical: 4,
+    } as const,
+    optionList: {
+        flexGrow: 0,
+        flexShrink: 1,
     } as const,
     emptyText: {
         fontSize: 14,
