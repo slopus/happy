@@ -1409,7 +1409,6 @@ export const ja: TranslationStructure = {
         unknownSender: '不明',
         confirmOverwriteInput: 'Overwrite current input?',
         confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
-        optionRecommended: 'おすすめ',
         confirmDestructive: '操作の確認',
         confirmDestructiveMessage: 'これは破壊的な操作です。実行してもよろしいですか？',
     },

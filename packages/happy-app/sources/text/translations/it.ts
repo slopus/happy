@@ -1407,7 +1407,6 @@ export const it: TranslationStructure = {
         unknownSender: 'Sconosciuto',
         confirmOverwriteInput: 'Overwrite current input?',
         confirmOverwriteInputMessage: 'The input box already has content. Do you want to replace it?',
-        optionRecommended: 'Consigliato',
         confirmDestructive: 'Conferma azione',
         confirmDestructiveMessage: 'Questa è un\'azione distruttiva. Sei sicuro di voler procedere?',
     },

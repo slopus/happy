@@ -17,13 +17,11 @@ import * as Haptics from 'expo-haptics';
 import { hapticsLight } from '@/components/haptics';
 import { showCopiedToast } from '@/components/Toast';
 import { MermaidRenderer } from './MermaidRenderer';
-import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
 // Option type for callback
 export type Option = {
     title: string;
-    recommended?: boolean;
     destructive?: boolean;
 };
 
@@ -263,7 +261,6 @@ const OptionItem = React.memo((props: {
     onPress: () => void,
     onLongPress: () => void,
 }) => {
-    const { theme } = useUnistyles();
     // Use GestureDetector to handle long press, which takes priority over parent GestureDetector
     const longPressGesture = Gesture.LongPress()
         .minDuration(500)
@@ -303,15 +300,6 @@ const OptionItem = React.memo((props: {
                 >
                     {props.item.title}
                 </Text>
-                {props.item.recommended && (
-                    <View style={[
-                            style.optionRecommendedBadge,
-                            { opacity: theme.dark ? 0.8 : 0.2 },
-                        ]}
-                    >
-                        <Text style={style.optionRecommendedBadgeText}>{t('message.optionRecommended')}</Text>
-                    </View>
-                )}
                 {props.isThisLoading && (
                     <View style={style.optionLoadingOverlay}>
                         <ActivityIndicator size="small" />
@@ -804,21 +792,6 @@ const style = StyleSheet.create((theme) => ({
     },
     optionTextDisabled: {
         opacity: 0.6,
-    },
-    optionRecommendedBadge: {
-        opacity: 0.8,
-        backgroundColor: '#3A4A5C',
-        borderRadius: 6,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        marginTop: 1,
-        marginLeft: 12,
-    },
-    optionRecommendedBadgeText: {
-        ...Typography.default('semiBold'),
-        fontSize: 12,
-        lineHeight: 18,
-        color: '#fff',
     },
     optionLoadingOverlay: {
         position: 'absolute',

@@ -2,7 +2,6 @@ import { parseMarkdownBlock } from "./parseMarkdownBlock"
 
 export type OptionItem = {
     title: string;
-    recommended?: boolean;
     destructive?: boolean;
 }
 

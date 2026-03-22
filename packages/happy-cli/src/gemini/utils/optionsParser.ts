@@ -7,7 +7,6 @@
 
 export interface ParsedOption {
   title: string;
-  recommended?: boolean;
   destructive?: boolean;
 }
 

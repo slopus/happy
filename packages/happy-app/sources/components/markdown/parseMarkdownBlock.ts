@@ -191,7 +191,6 @@ export function parseMarkdownBlock(markdown: string) {
                     if (title) {
                         items.push({
                             title,
-                            recommended: /\brecommended\b/.test(attrs),
                             destructive: /\bdestructive\b/.test(attrs),
                         });
                     }

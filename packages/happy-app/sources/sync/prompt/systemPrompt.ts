@@ -6,7 +6,7 @@ export const systemPrompt = trimIdent(`
     When you can offer concrete answer choices, append at the very end of your response:
 
     <options>
-        <option recommended>Use Redis cache</option>
+        <option>Use Redis cache</option>
         <option>Use in-memory cache</option>
         <option destructive>Delete all data</option>
     </options>
@@ -15,10 +15,9 @@ export const systemPrompt = trimIdent(`
     - \`<options>\` must be the last content, on its own line, not in code fences.
     - Keep options minimal. Never include a "custom" option.
     - Do not repeat choices in both text and \`<options>\`.
-    - \`recommended\`: marks preferred choice (UI shows badge). \`destructive\`: marks dangerous action (UI shows red + confirmation).
-    - Never write labels like "(Recommended)", "(Danger)" in option text — use attributes instead.
-
-    In plan mode, always use \`<options>\` when a decision is needed and likely choices are known.
+    - Order options from most recommended to least recommended — the first option should be the best choice.
+    - \`destructive\`: marks dangerous action.
+    - Never write labels like "(Recommended)", "(Danger)" in option text — rely on ordering for preference, \`destructive\` attribute for danger.
 `);
 
 export function buildDootaskSystemPrompt(taskId: string): string {

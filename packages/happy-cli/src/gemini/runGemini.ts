@@ -1477,7 +1477,7 @@ export async function runGemini(opts: {
           sessionWriter.writeAssistant(messageText, displayedModel);
 
           // Mobile app parses options from text via parseMarkdown
-          // Use rawOptionsXml to preserve attributes (recommended, destructive)
+          // Use rawOptionsXml to preserve attributes (destructive)
           let finalMessageText = messageText;
           if (options.length > 0) {
             finalMessageText = messageText + rawOptionsXml;

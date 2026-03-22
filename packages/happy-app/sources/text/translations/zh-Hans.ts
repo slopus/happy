@@ -1379,7 +1379,6 @@ export const zhHans: TranslationStructure = {
         unknownSender: '未知',
         confirmOverwriteInput: '覆盖当前输入？',
         confirmOverwriteInputMessage: '输入框已有内容，是否替换？',
-        optionRecommended: '推荐',
         confirmDestructive: '确认操作',
         confirmDestructiveMessage: '这是一个危险操作，确定要执行吗？',
     },
