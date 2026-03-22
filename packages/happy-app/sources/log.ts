@@ -2,28 +2,65 @@
  * Simple logging mechanism that writes to console and maintains internal array
  * Keeps last 5k records in memory with change notifications for UI updates
  */
+type ConsoleLogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
+export const MAX_APP_LOG_ENTRIES = 5000;
+
 class Logger {
     private logs: string[] = [];
-    private maxLogs = 5000;
+    private maxLogs = MAX_APP_LOG_ENTRIES;
     private listeners: Array<() => void> = [];
+    private consoleCaptureEnabled = false;
+
+    private append(message: string): void {
+        this.logs.push(message);
+
+        // Maintain 5k limit with circular buffer
+        if (this.logs.length > this.maxLogs) {
+            this.logs.shift();
+        }
+
+        // Notify listeners for real-time updates
+        this.listeners.forEach(listener => listener());
+    }
+
+    private formatValue(value: unknown): string {
+        if (typeof value === 'string') {
+            return value;
+        }
+
+        try {
+            const serialized = JSON.stringify(value, null, 2);
+            return serialized ?? String(value);
+        } catch {
+            return String(value);
+        }
+    }
+
+    private formatConsoleMessage(level: ConsoleLogLevel, args: unknown[]): string {
+        const message = args.map(arg => this.formatValue(arg)).join('\n');
+        if (level === 'log') {
+            return message;
+        }
+        return `[${level}] ${message}`;
+    }
+
+    setConsoleCaptureEnabled(enabled: boolean): void {
+        this.consoleCaptureEnabled = enabled;
+    }
+
+    captureConsole(level: ConsoleLogLevel, args: unknown[]): void {
+        this.append(this.formatConsoleMessage(level, args));
+    }
 
     /**
      * Log a message - writes to both console and internal array
      */
     log(message: string): void {
-        // Add to internal array
-        this.logs.push(message);
-        
-        // Maintain 5k limit with circular buffer
-        if (this.logs.length > this.maxLogs) {
-            this.logs.shift();
+        if (!this.consoleCaptureEnabled) {
+            this.append(message);
         }
-        
-        // Write to console
+
         console.log(message);
-        
-        // Notify listeners for real-time updates
-        this.listeners.forEach(listener => listener());
     }
 
     /**
@@ -59,6 +96,10 @@ class Logger {
      */
     getCount(): number {
         return this.logs.length;
+    }
+
+    getMaxLogs(): number {
+        return this.maxLogs;
     }
 }
 

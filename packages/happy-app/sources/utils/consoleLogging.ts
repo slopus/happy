@@ -1,22 +1,34 @@
 /**
- * Remote logger for React Native
- * Patches console to send logs to a local log receiver server
+ * Console logging bootstrap for React Native
+ * Patches console to feed the in-app log buffer and optionally send logs to a local log receiver server
  * Configure via Dev screen → Log Server setting
  */
 
+import { log } from '@/log';
+import { MAX_APP_LOG_ENTRIES } from '@/log';
 import { getLogServerUrl } from '@/sync/serverConfig';
 import { Platform } from 'react-native';
 
 let logBuffer: any[] = []
-const MAX_BUFFER_SIZE = 1000
+const MAX_BUFFER_SIZE = MAX_APP_LOG_ENTRIES
+let isConsolePatched = false
+let remoteLogServerUrl: string | null = null
+let originalConsole: {
+  log: typeof console.log,
+  info: typeof console.info,
+  warn: typeof console.warn,
+  error: typeof console.error,
+  debug: typeof console.debug,
+} | null = null
 
-export function initRemoteLogging() {
-  const logServerUrl = getLogServerUrl();
-  if (!logServerUrl) {
+export function initConsoleLogging() {
+  remoteLogServerUrl = getLogServerUrl();
+
+  if (isConsolePatched) {
     return
   }
 
-  const originalConsole = {
+  originalConsole = {
     log: console.log,
     info: console.info,
     warn: console.warn,
@@ -24,9 +36,15 @@ export function initRemoteLogging() {
     debug: console.debug,
   }
 
+  log.setConsoleCaptureEnabled(true)
+
   const sendLog = async (level: string, args: any[]) => {
+    if (!remoteLogServerUrl) {
+      return
+    }
+
     try {
-      await fetch(logServerUrl + '/logs', {
+      await fetch(remoteLogServerUrl + '/logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -49,7 +67,10 @@ export function initRemoteLogging() {
   ;(['log', 'info', 'warn', 'error', 'debug'] as const).forEach(level => {
     console[level] = (...args: any[]) => {
       // Always call original
-      originalConsole[level](...args)
+      originalConsole![level](...args)
+
+      // Mirror console output into the in-app log buffer
+      log.captureConsole(level, args)
 
       // Buffer for developer settings
       const entry = {
@@ -62,12 +83,18 @@ export function initRemoteLogging() {
         logBuffer.shift()
       }
 
-      // Send to remote
-      sendLog(level, args)
+      // Send to remote if configured
+      void sendLog(level, args)
     }
   })
 
-  originalConsole.log('[RemoteLogger] Initialized with log server:', logServerUrl)
+  isConsolePatched = true
+
+  if (remoteLogServerUrl) {
+    originalConsole.log('[ConsoleLogging] Initialized with log server:', remoteLogServerUrl)
+  } else {
+    originalConsole.log('[ConsoleLogging] Console capture initialized without remote log server')
+  }
 }
 
 // For developer settings UI
