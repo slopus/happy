@@ -444,6 +444,118 @@ program
     });
 
 program
+    .command('permissions')
+    .description('List pending permission requests')
+    .argument('<session-id>', 'Session ID or prefix')
+    .option('--json', 'Output as JSON')
+    .action(async (sessionId: string, opts: { json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+        const session = await resolveSession(config, creds, sessionId);
+
+        const client = createClient(session, creds, config);
+        try {
+            await client.waitForConnect();
+            // Wait briefly for state to arrive
+            await new Promise<void>(resolve => {
+                const done = () => { clearTimeout(t); client.removeAllListeners('state-change'); resolve(); };
+                const t = setTimeout(done, 2000);
+                client.once('state-change', done);
+            });
+
+            const pending = client.getPendingPermissions();
+            if (opts.json) {
+                console.log(formatJson(pending));
+            } else if (pending.length === 0) {
+                console.log('No pending permission requests.');
+            } else {
+                for (const req of pending) {
+                    console.log(`- **${req.id}**: \`${req.tool}\``);
+                }
+            }
+        } finally {
+            client.close();
+        }
+    });
+
+program
+    .command('approve')
+    .description('Approve a pending permission request')
+    .argument('<session-id>', 'Session ID or prefix')
+    .argument('<request-id>', 'Permission request ID')
+    .option('--mode <mode>', 'Permission mode (default, acceptEdits, bypassPermissions)')
+    .option('--allow-tools <tools...>', 'Tools to allow for the session')
+    .option('--json', 'Output as JSON')
+    .action(async (sessionId: string, requestId: string, opts: { mode?: string; allowTools?: string[]; json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+        const session = await resolveSession(config, creds, sessionId);
+
+        const client = createClient(session, creds, config);
+        try {
+            await client.waitForConnect();
+            await client.approvePermission(requestId, {
+                mode: opts.mode,
+                allowTools: opts.allowTools,
+            });
+
+            // Allow time for ack
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            if (opts.json) {
+                console.log(formatJson({ sessionId: session.id, requestId, approved: true, mode: opts.mode, allowTools: opts.allowTools }));
+            } else {
+                console.log([
+                    '## Permission Approved',
+                    '',
+                    `- Session ID: \`${session.id}\``,
+                    `- Request ID: \`${requestId}\``,
+                    opts.mode ? `- Mode: ${opts.mode}` : null,
+                    opts.allowTools ? `- Allow Tools: ${opts.allowTools.join(', ')}` : null,
+                ].filter(Boolean).join('\n'));
+            }
+        } finally {
+            client.close();
+        }
+    });
+
+program
+    .command('deny')
+    .description('Deny a pending permission request')
+    .argument('<session-id>', 'Session ID or prefix')
+    .argument('<request-id>', 'Permission request ID')
+    .option('--reason <reason>', 'Reason for denial')
+    .option('--json', 'Output as JSON')
+    .action(async (sessionId: string, requestId: string, opts: { reason?: string; json?: boolean }) => {
+        const config = loadConfig();
+        const creds = requireCredentials(config);
+        const session = await resolveSession(config, creds, sessionId);
+
+        const client = createClient(session, creds, config);
+        try {
+            await client.waitForConnect();
+            await client.denyPermission(requestId, { reason: opts.reason });
+
+            // Allow time for ack
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            if (opts.json) {
+                console.log(formatJson({ sessionId: session.id, requestId, approved: false, reason: opts.reason }));
+            } else {
+                console.log([
+                    '## Permission Denied',
+                    '',
+                    `- Session ID: \`${session.id}\``,
+                    `- Request ID: \`${requestId}\``,
+                    opts.reason ? `- Reason: ${opts.reason}` : null,
+                ].filter(Boolean).join('\n'));
+            }
+        } finally {
+            client.close();
+        }
+    });
+
+program
     .command('stop')
     .description('Stop a session')
     .argument('<session-id>', 'Session ID or prefix')

@@ -84,7 +84,15 @@ export class PermissionHandler {
             this.permissionMode = response.mode;
         }
 
-        // Handle 
+        // Notify v3 mapper of the decision
+        if (response.approved) {
+            const decision = (response.allowTools && response.allowTools.length > 0) ? 'always' as const : 'once' as const;
+            this.session.client.unblockToolApprovedV3(response.id, decision);
+        } else {
+            this.session.client.unblockToolRejectedV3(response.id, response.reason || 'Permission rejected');
+        }
+
+        // Handle
         if (pending.toolName === 'exit_plan_mode' || pending.toolName === 'ExitPlanMode') {
             // Handle exit_plan_mode specially
             logger.debug('Plan mode result received', response);
@@ -225,8 +233,28 @@ export class PermissionHandler {
                 }
             }));
 
+            // Notify v3 mapper that this tool is blocked for permission
+            this.session.client.blockToolForPermissionV3(
+                id,
+                toolName,
+                this.extractPatterns(toolName, input),
+                typeof input === 'object' && input !== null ? input as Record<string, unknown> : {},
+            );
+
             logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
         });
+    }
+
+    /**
+     * Extracts file/command patterns from tool input for the v3 permission block.
+     */
+    private extractPatterns(toolName: string, input: unknown): string[] {
+        if (!input || typeof input !== 'object') return ['*'];
+        const inp = input as Record<string, unknown>;
+        if (toolName === 'Bash' && typeof inp.command === 'string') return [inp.command];
+        if (typeof inp.file_path === 'string') return [inp.file_path];
+        if (typeof inp.pattern === 'string') return [inp.pattern];
+        return ['*'];
     }
 
 
@@ -343,8 +371,9 @@ export class PermissionHandler {
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
 
-        // Cancel all pending requests
-        for (const [, pending] of this.pendingRequests.entries()) {
+        // Cancel all pending requests and notify v3 mapper
+        for (const [id, pending] of this.pendingRequests.entries()) {
+            this.session.client.unblockToolRejectedV3(id, 'Session reset');
             pending.reject(new Error('Session reset'));
         }
         this.pendingRequests.clear();

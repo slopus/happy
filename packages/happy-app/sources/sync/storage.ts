@@ -102,6 +102,7 @@ interface StorageState {
     applyLoaded: () => void;
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
+    applyDirectMessages: (sessionId: string, messages: Message[]) => void;
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
@@ -586,6 +587,42 @@ export const storage = create<StorageState>()((set, get) => {
             }
 
             return { changed: Array.from(changed), hasReadyEvent };
+        },
+        /**
+         * Inject pre-converted v3 messages directly into the store, bypassing the reducer.
+         * Used when v3 envelopes are detected at ingestion time.
+         */
+        applyDirectMessages: (sessionId: string, messages: Message[]) => {
+            if (messages.length === 0) return;
+
+            set((state) => {
+                const existingSession = state.sessionMessages[sessionId] || {
+                    messages: [],
+                    messagesMap: {},
+                    reducerState: createReducer(),
+                    isLoaded: false,
+                };
+
+                const mergedMap = { ...existingSession.messagesMap };
+                for (const msg of messages) {
+                    mergedMap[msg.id] = msg;
+                }
+
+                const messagesArray = Object.values(mergedMap)
+                    .sort((a, b) => b.createdAt - a.createdAt);
+
+                return {
+                    ...state,
+                    sessionMessages: {
+                        ...state.sessionMessages,
+                        [sessionId]: {
+                            ...existingSession,
+                            messages: messagesArray,
+                            messagesMap: mergedMap,
+                        },
+                    },
+                };
+            });
         },
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];

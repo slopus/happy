@@ -364,6 +364,124 @@ export class SessionClient extends EventEmitter {
         });
     }
 
+    /**
+     * Send an RPC call to the session's CLI daemon and return the decrypted response.
+     */
+    async sendRpc(method: string, params: unknown): Promise<unknown> {
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, params));
+        return new Promise<unknown>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('RPC timeout'));
+            }, 30_000);
+            this.socket.emit('rpc-call', {
+                method: `${this.sessionId}:${method}`,
+                params: encrypted,
+            }, (response: string) => {
+                clearTimeout(timeout);
+                if (!response) {
+                    resolve(null);
+                    return;
+                }
+                try {
+                    const decrypted = decrypt(
+                        this.encryptionKey,
+                        this.encryptionVariant,
+                        decodeBase64(response),
+                    );
+                    resolve(decrypted);
+                } catch {
+                    resolve(null);
+                }
+            });
+        });
+    }
+
+    /**
+     * Approve a pending permission request.
+     */
+    async approvePermission(
+        requestId: string,
+        opts?: { mode?: string; allowTools?: string[] },
+    ): Promise<void> {
+        await this.sendRpc('permission', {
+            id: requestId,
+            approved: true,
+            mode: opts?.mode,
+            allowTools: opts?.allowTools,
+        });
+    }
+
+    /**
+     * Deny a pending permission request.
+     */
+    async denyPermission(
+        requestId: string,
+        opts?: { reason?: string },
+    ): Promise<void> {
+        await this.sendRpc('permission', {
+            id: requestId,
+            approved: false,
+            reason: opts?.reason,
+        });
+    }
+
+    /**
+     * Return all pending permission requests from agentState.
+     */
+    getPendingPermissions(): Array<{ id: string; tool: string; arguments: unknown }> {
+        const state = this.agentState as Record<string, unknown> | null;
+        if (!state) return [];
+        const requests = state.requests;
+        if (!requests || typeof requests !== 'object' || Array.isArray(requests)) return [];
+        return Object.entries(requests as Record<string, Record<string, unknown>>).map(
+            ([id, req]) => ({
+                id,
+                tool: typeof req.tool === 'string' ? req.tool : 'unknown',
+                arguments: req.arguments ?? null,
+            }),
+        );
+    }
+
+    /**
+     * Wait until at least one permission request appears in agentState.
+     */
+    waitForPermission(timeoutMs = 60_000): Promise<{ id: string; tool: string; arguments: unknown }> {
+        return new Promise((resolve, reject) => {
+            const pending = this.getPendingPermissions();
+            if (pending.length > 0) {
+                resolve(pending[0]);
+                return;
+            }
+
+            const cleanup = () => {
+                clearTimeout(timeout);
+                this.removeListener('state-change', onStateChange);
+                this.removeListener('disconnected', onDisconnect);
+            };
+
+            const timeout = setTimeout(() => {
+                cleanup();
+                reject(new Error('Timeout waiting for permission request'));
+            }, timeoutMs);
+
+            const onStateChange = () => {
+                const p = this.getPendingPermissions();
+                if (p.length > 0) {
+                    cleanup();
+                    resolve(p[0]);
+                }
+            };
+
+            const onDisconnect = () => {
+                cleanup();
+                reject(new Error('Socket disconnected while waiting for permission'));
+            };
+
+            this.on('state-change', onStateChange);
+            this.on('disconnected', onDisconnect);
+        });
+    }
+
     sendStop(): void {
         this.socket.emit('session-end', {
             sid: this.sessionId,

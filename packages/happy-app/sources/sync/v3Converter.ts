@@ -70,6 +70,8 @@ function convertUserMessage(info: v3.UserMessage, parts: Part[]): Message[] {
 
 function convertAssistantMessage(info: v3.AssistantMessage, parts: Part[]): Message[] {
     const messages: Message[] = [];
+    // Increment createdAt by 1ms per part so sort order is stable within a message
+    let partOffset = 0;
 
     for (const part of parts) {
         // Skip structural parts
@@ -83,7 +85,7 @@ function convertAssistantMessage(info: v3.AssistantMessage, parts: Part[]): Mess
                 kind: 'agent-text',
                 id: part.id,
                 localId: null,
-                createdAt: info.time.created,
+                createdAt: info.time.created + partOffset++,
                 text: part.text,
                 isThinking: false,
             };
@@ -96,7 +98,7 @@ function convertAssistantMessage(info: v3.AssistantMessage, parts: Part[]): Mess
                 kind: 'agent-text',
                 id: part.id,
                 localId: null,
-                createdAt: info.time.created,
+                createdAt: info.time.created + partOffset++,
                 text: part.text,
                 isThinking: true,
             };
@@ -110,7 +112,7 @@ function convertAssistantMessage(info: v3.AssistantMessage, parts: Part[]): Mess
                 kind: 'tool-call',
                 id: part.id,
                 localId: null,
-                createdAt: info.time.created,
+                createdAt: info.time.created + partOffset++,
                 tool: toolCall,
                 children: [],
             };
@@ -124,7 +126,7 @@ function convertAssistantMessage(info: v3.AssistantMessage, parts: Part[]): Mess
                 kind: 'agent-text',
                 id: part.id,
                 localId: null,
-                createdAt: info.time.created,
+                createdAt: info.time.created + partOffset++,
                 text: `[Attached ${part.mime}: ${part.filename ?? 'file'}]`,
             };
             messages.push(msg);
@@ -139,9 +141,12 @@ function convertAssistantMessage(info: v3.AssistantMessage, parts: Part[]): Mess
 
 function convertToolPart(part: v3.ToolPart): ToolCall {
     const state = part.state;
+    // Normalize bash/terminal tool input: extract command string from Codex-style
+    // events that include { command, cwd, description } as the full input.
+    const input = normalizeBashInput(part.tool, state.input);
     const base = {
         name: part.tool,
-        input: state.input,
+        input,
         createdAt: Date.now(),
         startedAt: 'time' in state && state.time ? (state.time as { start: number }).start : null,
         completedAt: null as number | null,
@@ -206,6 +211,30 @@ function convertToolPart(part: v3.ToolPart): ToolCall {
             };
         }
     }
+}
+
+/**
+ * Normalize bash/terminal tool input so the app renders the command properly.
+ * Codex sends { command: "/bin/zsh -lc 'actual cmd'", cwd: "...", description: "..." }
+ * The app expects { command: "actual cmd" } to render it as a terminal block.
+ */
+function normalizeBashInput(tool: string, input: unknown): unknown {
+    if ((tool === 'bash' || tool === 'Bash' || tool === 'terminal' || tool === 'Terminal') && input && typeof input === 'object') {
+        const inp = input as Record<string, unknown>;
+        if (typeof inp.command === 'string') {
+            let command = inp.command;
+            // Strip shell wrapper: "/bin/zsh -lc 'actual command'" → "actual command"
+            const shellMatch = command.match(/^\/bin\/(?:ba)?sh\s+-lc\s+'(.+)'$/s) ??
+                               command.match(/^\/bin\/(?:ba)?sh\s+-lc\s+"(.+)"$/s) ??
+                               command.match(/^\/bin\/zsh\s+-lc\s+'(.+)'$/s) ??
+                               command.match(/^\/bin\/zsh\s+-lc\s+"(.+)"$/s);
+            if (shellMatch) {
+                command = shellMatch[1];
+            }
+            return { command, description: inp.description ?? undefined };
+        }
+    }
+    return input;
 }
 
 function convertResolvedBlock(block: v3.ResolvedBlock | undefined): ToolCall['permission'] {

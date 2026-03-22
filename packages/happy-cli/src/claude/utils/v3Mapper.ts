@@ -287,6 +287,13 @@ function handleAssistantMessage(
   const asst = state.currentAssistant;
   const blocks = Array.isArray(message.message?.content) ? message.message!.content : [];
 
+  // Claude SDK sends cumulative snapshots — each assistant message contains ALL
+  // content blocks so far. Rebuild text/reasoning parts from scratch to avoid
+  // duplicates, but preserve tool parts (tracked separately by callID).
+  const stepStart = asst.parts.find(p => p.type === 'step-start');
+  const existingTools = asst.parts.filter(p => p.type === 'tool');
+  asst.parts = stepStart ? [stepStart] : [];
+
   for (const block of blocks) {
     if (block.type === 'text' && typeof block.text === 'string') {
       const textPart: TextPart = {
@@ -316,6 +323,12 @@ function handleAssistantMessage(
 
     if (block.type === 'tool_use') {
       const callID = typeof block.id === 'string' ? block.id : createId();
+
+      // Tool parts are only created once per callID
+      if (state.toolParts.has(callID)) {
+        continue;
+      }
+
       const toolName = typeof block.name === 'string' ? block.name : 'unknown';
       const input = (block.input && typeof block.input === 'object')
         ? block.input as Record<string, unknown>
@@ -343,6 +356,13 @@ function handleAssistantMessage(
       asst.parts.push(toolPart);
       state.toolParts.set(callID, toolPart);
       continue;
+    }
+  }
+
+  // Re-add existing tool parts (they may have been updated by permission handlers)
+  for (const tool of existingTools) {
+    if (!asst.parts.some(p => p.type === 'tool' && (p as ToolPart).callID === (tool as ToolPart).callID)) {
+      asst.parts.push(tool);
     }
   }
 

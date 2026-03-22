@@ -15,6 +15,7 @@ import { registerPushToken } from './apiPush';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+import { isV3Envelope, convertV3ToAppMessages } from './v3Converter';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
@@ -1625,6 +1626,17 @@ class Sync {
                     if (!decrypted) {
                         continue;
                     }
+
+                    // v3 envelope → convert directly to app messages, bypassing reducer
+                    if (isV3Envelope(decrypted.content)) {
+                        const appMessages = convertV3ToAppMessages(decrypted.content);
+                        if (appMessages.length > 0) {
+                            storage.getState().applyDirectMessages(sessionId, appMessages);
+                            totalNormalized += appMessages.length;
+                        }
+                        continue;
+                    }
+
                     const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                     if (normalized) {
                         normalizedMessages.push(normalized);
@@ -1742,10 +1754,20 @@ class Sync {
 
             // Decrypt message
             let lastMessage: NormalizedMessage | null = null;
+            let v3Handled = false;
             if (updateData.body.message) {
                 const decrypted = await encryption.decryptMessage(updateData.body.message);
                 if (decrypted) {
-                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                    // v3 envelope → convert directly, bypassing reducer
+                    if (isV3Envelope(decrypted.content)) {
+                        const appMessages = convertV3ToAppMessages(decrypted.content);
+                        if (appMessages.length > 0) {
+                            storage.getState().applyDirectMessages(updateData.body.sid, appMessages);
+                        }
+                        v3Handled = true;
+                    }
+
+                    lastMessage = v3Handled ? null : normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
 
                     // Check for task lifecycle events to update thinking state
                     // This ensures UI updates even if volatile activity updates are lost
@@ -1800,7 +1822,14 @@ class Sync {
                     // Fast-path only on consecutive seq values, otherwise fetch from server.
                     const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
                     const incomingSeq = updateData.body.message.seq;
-                    if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
+                    if (v3Handled) {
+                        // v3 messages were already applied directly; just update seq tracking
+                        if (currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
+                            this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
+                        } else {
+                            this.getMessagesSync(updateData.body.sid).invalidate();
+                        }
+                    } else if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
                         console.log('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
                         this.enqueueMessages(updateData.body.sid, [lastMessage]);
                         this.sessionLastSeq.set(updateData.body.sid, incomingSeq);

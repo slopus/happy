@@ -505,7 +505,8 @@ export async function runCodex(opts: {
 
         // Convert events into the unified session-protocol envelope stream.
         // Reasoning deltas are handled by ReasoningProcessor to avoid duplicate text output.
-        if (msg.type !== 'agent_reasoning_delta' && msg.type !== 'agent_reasoning' && msg.type !== 'agent_reasoning_section_break' && msg.type !== 'turn_diff') {
+        // When v3 is enabled, skip v1 session protocol to avoid double rendering.
+        if (!process.env.HAPPY_V3_PROTOCOL && msg.type !== 'agent_reasoning_delta' && msg.type !== 'agent_reasoning' && msg.type !== 'agent_reasoning_section_break' && msg.type !== 'turn_diff') {
             const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, {
                 currentTurnId,
                 startedSubagents: codexStartedSubagents,
@@ -520,6 +521,9 @@ export async function runCodex(opts: {
                 session.sendSessionProtocolMessage(envelope);
             }
         }
+
+        // v3 path: send all events through the Codex v3 mapper
+        session.sendCodexV3Event(msg as Record<string, unknown>);
     });
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
@@ -626,6 +630,8 @@ export async function runCodex(opts: {
                 messageBuffer.addMessage('Process exited unexpectedly', 'status');
                 session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
             } finally {
+                // Flush v3 turn before resetting processors
+                session.flushCodexV3Turn();
                 // Reset permission handler, reasoning processor, and diff processor
                 permissionHandler.reset();
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls

@@ -21,8 +21,17 @@ import {
     handleClaudeMessage,
     flushV3Turn,
     createV3MapperState,
+    blockToolForPermission,
+    unblockToolApproved,
+    unblockToolRejected,
     type V3MapperState,
 } from '@/claude/utils/v3Mapper';
+import {
+    handleCodexEvent,
+    flushV3CodexTurn,
+    createV3CodexMapperState,
+    type V3CodexMapperState,
+} from '@/codex/utils/v3Mapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
 
@@ -104,6 +113,7 @@ export class ApiSessionClient extends EventEmitter {
         activeSubagents: new Set<string>(),
     };
     private v3MapperState: V3MapperState | null = null;
+    private v3CodexMapperState: V3CodexMapperState | null = null;
     private lastSeq = 0;
     private pendingOutbox: Array<{ content: string; localId: string }> = [];
     private readonly sendSync: InvalidateSync;
@@ -357,14 +367,17 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
-        // v1 path (existing)
-        const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
-        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-        for (const envelope of mapped.envelopes) {
-            this.sendSessionProtocolMessage(envelope);
+        // When v3 is enabled, skip v1 session protocol to avoid double rendering
+        if (!process.env.HAPPY_V3_PROTOCOL) {
+            // v1 path (existing)
+            const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
+            this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
+            for (const envelope of mapped.envelopes) {
+                this.sendSessionProtocolMessage(envelope);
+            }
         }
 
-        // v3 path (dual-write, behind HAPPY_V3_PROTOCOL flag)
+        // v3 path (behind HAPPY_V3_PROTOCOL flag)
         this.sendClaudeV3Message(body);
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -388,10 +401,12 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
-        const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
-        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-        for (const envelope of mapped.envelopes) {
-            this.sendSessionProtocolMessage(envelope);
+        if (!process.env.HAPPY_V3_PROTOCOL) {
+            const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
+            this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
+            for (const envelope of mapped.envelopes) {
+                this.sendSessionProtocolMessage(envelope);
+            }
         }
         this.flushClaudeV3Turn();
     }
@@ -431,10 +446,9 @@ export class ApiSessionClient extends EventEmitter {
             this.sendV3ProtocolMessage(msg);
         }
 
-        // Send partial in-flight assistant message (for live streaming)
-        if (result.currentAssistant) {
-            this.sendV3ProtocolMessage(result.currentAssistant);
-        }
+        // NOTE: Do NOT send currentAssistant partial updates here.
+        // Intermediate snapshots cause duplication when history is fetched.
+        // Permission state changes are sent via blockToolForPermissionV3 / unblockTool*.
     }
 
     /**
@@ -444,6 +458,71 @@ export class ApiSessionClient extends EventEmitter {
         if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
 
         const messages = flushV3Turn(this.v3MapperState);
+        for (const msg of messages) {
+            this.sendV3ProtocolMessage(msg);
+        }
+    }
+
+    // ─── v3 permission blocking (Claude) ───────────────────────────────────────
+
+    /**
+     * Mark a tool as blocked for permission in the v3 mapper.
+     * Does NOT send an envelope — the finalized message on turn completion
+     * will contain the correct final state. Sending intermediate states
+     * causes duplication when history is fetched.
+     */
+    blockToolForPermissionV3(callID: string, permission: string, patterns: string[], metadata: Record<string, unknown>): void {
+        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
+        blockToolForPermission(this.v3MapperState, callID, permission, patterns, metadata);
+    }
+
+    /**
+     * Mark a blocked tool as approved in the v3 mapper.
+     */
+    unblockToolApprovedV3(callID: string, decision: 'once' | 'always'): void {
+        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
+        unblockToolApproved(this.v3MapperState, callID, decision);
+    }
+
+    /**
+     * Mark a blocked tool as rejected in the v3 mapper.
+     */
+    unblockToolRejectedV3(callID: string, reason: string): void {
+        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
+        unblockToolRejected(this.v3MapperState, callID, reason);
+    }
+
+    // ─── v3 Codex dual-write ────────────────────────────────────────────────────
+
+    /**
+     * Process a Codex event through the v3 mapper and send any finalized messages.
+     */
+    sendCodexV3Event(event: Record<string, unknown>): void {
+        if (!process.env.HAPPY_V3_PROTOCOL) return;
+
+        if (!this.v3CodexMapperState) {
+            this.v3CodexMapperState = createV3CodexMapperState({
+                sessionID: this.sessionId,
+                providerID: 'openai',
+            });
+        }
+
+        const result = handleCodexEvent(event, this.v3CodexMapperState);
+
+        for (const msg of result.messages) {
+            this.sendV3ProtocolMessage(msg);
+        }
+
+        // NOTE: Do NOT send currentAssistant partial updates — causes duplication.
+    }
+
+    /**
+     * Flush any in-flight v3 Codex assistant message.
+     */
+    flushCodexV3Turn(): void {
+        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3CodexMapperState) return;
+
+        const messages = flushV3CodexTurn(this.v3CodexMapperState);
         for (const msg of messages) {
             this.sendV3ProtocolMessage(msg);
         }
