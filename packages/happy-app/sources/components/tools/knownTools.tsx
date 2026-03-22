@@ -1,6 +1,7 @@
 import { Metadata } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
+import { stringifyToolCommand } from '@/utils/toolCommand';
 import * as z from 'zod';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import React from 'react';
@@ -456,7 +457,7 @@ export const knownTools = {
         hideDefaultError: true,
         isMutable: true,
         input: z.object({
-            command: z.array(z.string()).describe('The command array to execute'),
+            command: z.union([z.string(), z.array(z.string())]).describe('The command to execute'),
             cwd: z.string().optional().describe('Current working directory'),
             parsed_cmd: z.array(z.object({
                 type: z.string().describe('Type of parsed command (read, write, bash, etc.)'),
@@ -484,16 +485,7 @@ export const knownTools = {
                     return parsedCmd.cmd;
                 }
             }
-            if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-                let cmdArray = opts.tool.input.command;
-                // Remove shell wrapper prefix if present (bash/zsh with -lc flag)
-                if (cmdArray.length >= 3 && (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') && cmdArray[1] === '-lc') {
-                    // The actual command is in the third element
-                    return cmdArray[2];
-                }
-                return cmdArray.join(' ');
-            }
-            return null;
+            return stringifyToolCommand(opts.tool.input?.command);
         },
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Provide a description based on the parsed command type
@@ -764,19 +756,11 @@ export const knownTools = {
         hideDefaultError: true,
         isMutable: true,
         input: z.object({
-            command: z.array(z.string()).describe('The command array to execute'),
+            command: z.union([z.string(), z.array(z.string())]).describe('The command to execute'),
             cwd: z.string().optional().describe('Current working directory')
         }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-                let cmdArray = opts.tool.input.command;
-                // Remove shell wrapper prefix if present (bash/zsh with -lc flag)
-                if (cmdArray.length >= 3 && (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') && cmdArray[1] === '-lc') {
-                    return cmdArray[2];
-                }
-                return cmdArray.join(' ');
-            }
-            return null;
+            return stringifyToolCommand(opts.tool.input?.command);
         }
     },
     'GeminiPatch': {

@@ -1,5 +1,6 @@
 import { type DecryptedMessage } from '@/sync/storageTypes';
 import { type ToolCall } from '@/sync/typesMessage';
+import { stringifyToolCommand } from './toolCommand';
 
 /**
  * Extracts plain text from markdown by removing formatting
@@ -52,8 +53,10 @@ function getToolSummary(tools: ToolCall[]): string {
       
       case 'Bash':
       case 'RunCommand':
-        const command = tool.input?.command;
-        if (command && typeof command === 'string') {
+      case 'CodexBash':
+      case 'GeminiBash':
+        const command = stringifyToolCommand(tool.input?.command);
+        if (command) {
           return `Ran: ${command.length > 20 ? command.substring(0, 20) + '...' : command}`;
         }
         return 'Ran command';
