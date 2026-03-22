@@ -449,11 +449,11 @@ export async function runCodex(opts: {
         } else if (msg.type === 'task_started') {
             messageBuffer.addMessage('Starting task...', 'status');
         } else if (msg.type === 'task_complete') {
+            // Ready is emitted from the main loop's idle check so pushes only fire once
+            // after the queue is actually drained.
             messageBuffer.addMessage('Task completed', 'status');
-            sendReady();
         } else if (msg.type === 'turn_aborted') {
             messageBuffer.addMessage('Turn aborted', 'status');
-            sendReady();
         }
 
         if (msg.type === 'task_started') {
