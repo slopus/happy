@@ -414,7 +414,7 @@ export async function runCodex(opts: {
         const toolName = params.type === 'exec' ? 'CodexBash' : 'CodexPatch';
         const input = params.type === 'exec'
             ? { command: params.command, cwd: params.cwd }
-            : { fileChanges: params.fileChanges };
+            : { changes: params.fileChanges };
 
         try {
             const result = await permissionHandler.handleToolCall(params.callId, toolName, input);

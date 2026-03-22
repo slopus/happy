@@ -494,6 +494,74 @@ describe('reducer', () => {
             }
         });
 
+        it('should merge real tool-call patch args into matched permission messages', () => {
+            const state = createReducer();
+            const fileChanges = {
+                'src/example.ts': {
+                    modify: {
+                        old_content: 'before',
+                        new_content: 'after'
+                    }
+                }
+            };
+            const changes = {
+                'src/example.ts': {
+                    modify: {
+                        old_content: 'before',
+                        new_content: 'after'
+                    }
+                }
+            };
+            const agentState: AgentState = {
+                completedRequests: {
+                    'tool-1': {
+                        tool: 'CodexPatch',
+                        arguments: { fileChanges },
+                        createdAt: 1000,
+                        completedAt: 2000,
+                        status: 'approved'
+                    }
+                }
+            };
+
+            reducer(state, [], agentState);
+
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 3000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'CodexPatch',
+                        input: {
+                            auto_approved: false,
+                            changes
+                        },
+                        description: 'Apply patch to 1 file',
+                        uuid: 'msg-1-uuid',
+                        parentUUID: null
+                    }]
+                }
+            ];
+
+            const result = reducer(state, messages, agentState);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.input).toEqual({
+                    auto_approved: false,
+                    changes,
+                    fileChanges
+                });
+                expect(result.messages[0].tool.startedAt).toBe(3000);
+            }
+        });
+
         it('should match tool calls by ID regardless of arguments', () => {
             const state = createReducer();
             

@@ -495,6 +495,220 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('maps raw file change items into legacy patch events', async () => {
+        const proc = createMockProcess({
+            pid: 3003,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-3', path: '/tmp/thread-raw-3' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-raw-3', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-raw-3',
+                                turn: { id: 'turn-raw-3', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-raw-3',
+                                turnId: 'turn-raw-3',
+                                item: {
+                                    type: 'fileChange',
+                                    id: 'patch-1',
+                                    status: 'inProgress',
+                                    changes: [{
+                                        path: 'README.md',
+                                        kind: { type: 'update', move_path: null },
+                                        diff: '@@ -1 +1 @@',
+                                    }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-3',
+                                turnId: 'turn-raw-3',
+                                item: {
+                                    type: 'fileChange',
+                                    id: 'patch-1',
+                                    status: 'completed',
+                                    changes: [{
+                                        path: 'README.md',
+                                        kind: { type: 'update', move_path: null },
+                                        diff: '@@ -1 +1 @@',
+                                    }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-3',
+                                turnId: 'turn-raw-3',
+                                item: {
+                                    type: 'agentMessage',
+                                    id: 'msg-3',
+                                    text: 'patched',
+                                    phase: 'final_answer',
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('patch the file')).resolves.toEqual({ aborted: false });
+
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'patch_apply_begin',
+                callId: 'patch-1',
+                changes: {
+                    'README.md': {
+                        diff: '@@ -1 +1 @@',
+                        kind: { type: 'update', move_path: null },
+                    },
+                },
+            }),
+            expect.objectContaining({
+                type: 'patch_apply_end',
+                callId: 'patch-1',
+                status: 'completed',
+            }),
+        ]));
+
+        await client.disconnect();
+    });
+
+    it('hydrates v2 file change approvals from raw item metadata', async () => {
+        const approvals: Array<Record<string, unknown>> = [];
+        const proc = createMockProcess({
+            pid: 3004,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-4', path: '/tmp/thread-raw-4' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite', writableRoots: [], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+                                reasoningEffort: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-raw-4',
+                                turnId: 'turn-raw-4',
+                                item: {
+                                    type: 'fileChange',
+                                    id: 'patch-approval-1',
+                                    status: 'inProgress',
+                                    changes: [{
+                                        path: 'README.md',
+                                        kind: { type: 'update', move_path: null },
+                                        diff: '@@ -1 +1 @@',
+                                    }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 99,
+                            method: 'item/fileChange/requestApproval',
+                            params: {
+                                threadId: 'thread-raw-4',
+                                turnId: 'turn-raw-4',
+                                itemId: 'patch-approval-1',
+                                reason: null,
+                                grantRoot: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setApprovalHandler(async (params) => {
+            approvals.push(params as Record<string, unknown>);
+            return 'approved';
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+
+        await waitFor(() => approvals.length === 1);
+
+        expect(approvals[0]).toEqual(expect.objectContaining({
+            type: 'patch',
+            callId: 'patch-approval-1',
+            fileChanges: {
+                'README.md': {
+                    diff: '@@ -1 +1 @@',
+                    kind: { type: 'update', move_path: null },
+                },
+            },
+            reason: null,
+        }));
+
+        await client.disconnect();
+    });
+
     it('falls back to final answer completion when raw turn/completed is missing', async () => {
         const proc = createMockProcess({
             pid: 3002,

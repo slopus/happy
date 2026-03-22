@@ -7,72 +7,11 @@ import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { Metadata } from '@/sync/storageTypes';
 import { useSetting } from '@/sync/storage';
 import { t } from '@/text';
+import { parseUnifiedDiff } from '@/utils/codexUnifiedDiff';
 
 interface CodexDiffViewProps {
     tool: ToolCall;
     metadata: Metadata | null;
-}
-
-/**
- * Parse a unified diff to extract old and new content
- * This is a simplified parser that handles basic unified diff format
- */
-function parseUnifiedDiff(unifiedDiff: string): { oldText: string; newText: string; fileName?: string } {
-    const lines = unifiedDiff.split('\n');
-    const oldLines: string[] = [];
-    const newLines: string[] = [];
-    let fileName: string | undefined;
-    let inHunk = false;
-
-    for (const line of lines) {
-        // Extract filename from diff header
-        if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
-            fileName = line.replace(/^\+\+\+ (b\/)?/, '');
-            continue;
-        }
-
-        // Skip other header lines
-        if (line.startsWith('diff --git') || 
-            line.startsWith('index ') || 
-            line.startsWith('---') ||
-            line.startsWith('new file mode') ||
-            line.startsWith('deleted file mode')) {
-            continue;
-        }
-
-        // Hunk header
-        if (line.startsWith('@@')) {
-            inHunk = true;
-            continue;
-        }
-
-        if (inHunk) {
-            if (line.startsWith('+')) {
-                // Added line
-                newLines.push(line.substring(1));
-            } else if (line.startsWith('-')) {
-                // Removed line
-                oldLines.push(line.substring(1));
-            } else if (line.startsWith(' ')) {
-                // Context line (unchanged)
-                oldLines.push(line.substring(1));
-                newLines.push(line.substring(1));
-            } else if (line === '\\ No newline at end of file') {
-                // Skip this meta line
-                continue;
-            } else if (line === '') {
-                // Empty line in diff
-                oldLines.push('');
-                newLines.push('');
-            }
-        }
-    }
-
-    return {
-        oldText: oldLines.join('\n'),
-        newText: newLines.join('\n'),
-        fileName
-    };
 }
 
 export const CodexDiffView = React.memo<CodexDiffViewProps>(({ tool, metadata }) => {

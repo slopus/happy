@@ -184,6 +184,17 @@ export function createReducer(): ReducerState {
 
 const ENABLE_LOGGING = false;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function mergeToolInputs(existingInput: unknown, nextInput: unknown): unknown {
+    if (isRecord(existingInput) && isRecord(nextInput)) {
+        return { ...nextInput, ...existingInput };
+    }
+    return nextInput ?? existingInput;
+}
+
 export type ReducerResult = {
     messages: Message[];
     todos?: Array<{
@@ -678,6 +689,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         const message = state.messages.get(existingMessageId);
                         if (message?.tool) {
                             message.realID = msg.id;
+                            message.tool.input = mergeToolInputs(message.tool.input, c.input);
                             message.tool.description = c.description;
                             message.tool.startedAt = msg.createdAt;
                             // If permission was approved and shown as completed (no tool), now it's running
@@ -709,7 +721,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         let toolCall: ToolCall = {
                             name: c.name,
                             state: 'running' as const,
-                            input: permission ? permission.arguments : c.input,  // Use permission args if available
+                            input: permission ? mergeToolInputs(permission.arguments, c.input) : c.input,
                             createdAt: permission ? permission.createdAt : msg.createdAt,  // Use permission timestamp if available
                             startedAt: msg.createdAt,
                             completedAt: null,

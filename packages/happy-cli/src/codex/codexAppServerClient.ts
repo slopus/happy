@@ -37,6 +37,8 @@ type PendingRequest = {
     epoch: number;
 };
 
+type LegacyPatchChanges = Record<string, Record<string, unknown>>;
+
 export type ApprovalHandler = (params: {
     type: 'exec' | 'patch';
     callId: string;
@@ -61,6 +63,36 @@ function isAppServerAvailable(): boolean {
     } catch {
         return false;
     }
+}
+
+function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | undefined {
+    if (!Array.isArray(changes)) {
+        return undefined;
+    }
+
+    const normalized: LegacyPatchChanges = {};
+    for (const change of changes) {
+        if (!change || typeof change !== 'object' || Array.isArray(change)) {
+            continue;
+        }
+
+        const path = typeof change.path === 'string' ? change.path : null;
+        if (!path) {
+            continue;
+        }
+
+        const entry: Record<string, unknown> = {};
+        if (typeof change.diff === 'string') {
+            entry.diff = change.diff;
+        }
+        if (change.kind && typeof change.kind === 'object' && !Array.isArray(change.kind)) {
+            entry.kind = change.kind;
+        }
+
+        normalized[path] = entry;
+    }
+
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 export class CodexAppServerClient {
@@ -98,6 +130,7 @@ export class CodexAppServerClient {
     private pendingInterrupt: Promise<void> | null = null;
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private completedTurnIds = new Set<string>();
+    private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -271,6 +304,39 @@ export class CodexAppServerClient {
                 command: item.command,
             });
             return true;
+        }
+
+        if (item.type === 'fileChange') {
+            const callId = typeof item.id === 'string' ? item.id : '';
+            const changes = normalizeRawFileChangeList(item.changes);
+
+            if (callId && changes) {
+                this.rawFileChangesByItemId.set(callId, changes);
+            }
+
+            if (method === 'item/started') {
+                this.eventHandler?.({
+                    type: 'patch_apply_begin',
+                    call_id: callId,
+                    callId,
+                    changes: changes ?? {},
+                });
+                return true;
+            }
+
+            if (method === 'item/completed') {
+                this.eventHandler?.({
+                    type: 'patch_apply_end',
+                    call_id: callId,
+                    callId,
+                    status: item.status,
+                });
+
+                if (callId && (item.status === 'completed' || item.status === 'failed' || item.status === 'declined')) {
+                    this.rawFileChangesByItemId.delete(callId);
+                }
+                return true;
+            }
         }
 
         if (method === 'item/completed' && item.type === 'agentMessage') {
@@ -972,10 +1038,13 @@ export class CodexAppServerClient {
         // File change / patch approval
         if (method === 'item/fileChange/requestApproval' || method === 'applyPatchApproval') {
             const legacy = method === 'applyPatchApproval';
+            const callId = params.itemId ?? params.callId ?? String(id);
             const decision = await this.handleApproval({
                 type: 'patch',
-                callId: params.itemId ?? String(id),
-                fileChanges: params.fileChanges,
+                callId,
+                fileChanges: params.fileChanges ?? (typeof callId === 'string'
+                    ? this.rawFileChangesByItemId.get(callId)
+                    : undefined),
                 reason: params.reason,
             });
             this.respond(id, { decision: this.mapDecisionToWire(decision, legacy) });
