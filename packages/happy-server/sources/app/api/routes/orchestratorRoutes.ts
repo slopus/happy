@@ -933,7 +933,7 @@ export function orchestratorRoutes(app: Fastify) {
                         summary: existing.summary,
                     },
                     tasks: existing.run.tasks.map(mapTask),
-                    next: isRunTerminal(existing.run.status) ? undefined : { tool: 'orchestrator_pend', runId: existing.run.id },
+                    next: isRunTerminal(existing.run.status) ? undefined : { hint: 'Await <orchestrator-callback>.', runId: existing.run.id },
                 },
             });
         }
@@ -1032,7 +1032,7 @@ export function orchestratorRoutes(app: Fastify) {
                         summary: created.summary,
                     },
                     tasks: created.run.tasks.map(mapTask),
-                    next: { tool: 'orchestrator_pend', runId: created.run.id },
+                    next: { hint: 'Await <orchestrator-callback>.', runId: created.run.id },
                 },
             });
         } catch (error) {
@@ -1053,7 +1053,7 @@ export function orchestratorRoutes(app: Fastify) {
                                 summary: duplicate.summary,
                             },
                             tasks: duplicate.run.tasks.map(mapTask),
-                            next: isRunTerminal(duplicate.run.status) ? undefined : { tool: 'orchestrator_pend', runId: duplicate.run.id },
+                            next: isRunTerminal(duplicate.run.status) ? undefined : { hint: 'Await <orchestrator-callback>.', runId: duplicate.run.id },
                         },
                     });
                 }
@@ -1288,7 +1288,7 @@ export function orchestratorRoutes(app: Fastify) {
                 runId: result.runId,
                 taskId: result.taskId,
                 executionId: result.executionId,
-                next: { tool: 'orchestrator_pend', runId: result.runId },
+                next: { hint: 'Await <orchestrator-callback>.', runId: result.runId },
             },
         });
     });
