@@ -1,15 +1,19 @@
 # happy-sync: Major Refactor
 
-Status: **SPECIFICATION — FUTURE WORK**
-Supersedes: `provider-envelope-redesign.md`, `provider-envelope-testing.md`
+Status: **SPECIFICATION — ACTIVE WORK** (branch: `happy-sync-refactor`)
+Supersedes: `provider-envelope-redesign.md`, `provider-envelope-testing.md`,
+the failed `messaging-protocol-v3` branch
 
-> **Note:** This plan describes the target architecture AFTER the current v3
-> migration lands. The v3 migration (on branch `messaging-protocol-v3`) must
-> ship first — it establishes the `MessageWithParts` types, the provider
-> mappers, and the basic message flow. This refactor builds on top of that
-> foundation by introducing `SyncNode`, killing the converter, and
-> restructuring the sync layer. It should be executed in a **separate
-> worktree/branch**, not mixed into the v3 migration work.
+> **Note:** The v3 migration on branch `messaging-protocol-v3` **failed**.
+> After 15 iterations (~8 hours) of a Codex agent loop, the integration tests
+> never once ran to completion (0/155 launches produced a result). The unit
+> tests pass — protocol schemas, Claude mapper, Codex mapper — but the
+> integration test approach was architecturally doomed (see "Lessons from the
+> failed v3 attempt" below). This refactor IS the v3 migration. We are doing
+> it all at once: building `SyncNode`, wiring it through everything, killing
+> the old transport/converter/agent code, and making the integration tests
+> actually work. The protocol types and mappers from the failed branch are
+> proven and will be carried forward.
 
 ---
 
@@ -132,7 +136,7 @@ conversations with their own `SyncNode` in the agent process.
 
 ```
 Account
-  ├── Session abc (root — main conversation, all 24 exercise-flow steps)
+  ├── Session abc (root — main conversation, all 34 exercise-flow steps)
   │     ├── Message (user): "Use a subagent to explore keyboard events..."
   │     ├── Message (assistant): [subtask part → links to child session]
   │     └── ...
@@ -153,6 +157,8 @@ the child session's ID. The app discovers child sessions via these links.
 interface SessionState {
   info: SessionInfo;           // includes parentID for child sessions
   messages: MessageWithParts[];
+
+  // Derived from messages by SyncNode — not independently tracked
   permissions: PermissionRequest[];
   questions: QuestionRequest[];
   todos: Todo[];
@@ -163,6 +169,10 @@ interface SyncState {
   sessions: Map<SessionID, SessionState>;
 }
 ```
+
+All derived fields (`permissions`, `questions`, `todos`, `status`) are
+computed by SyncNode from scanning `messages`. They are convenience
+accessors, not independent state. Messages are the single source of truth.
 
 All types are strongly typed with branded IDs from the protocol Zod schemas.
 No `Record<string, unknown>`. No untyped dictionaries. `SessionInfo` already
@@ -256,7 +266,7 @@ authorized to do.
 
 | Consumer                  | Token Scope | What it does                                              |
 |---------------------------|-------------|-----------------------------------------------------------|
-| CLI session (Claude)      | session     | Mapper → `node.sendMessage()`. Receives state updates.    |
+| CLI session (Claude)      | session     | Mapper reads `node.state`, applies agent event, writes back via `node.updateMessage()`. |
 | CLI session (Codex)       | session     | Same, different mapper.                                   |
 | CLI session (OpenCode)    | session     | Same, different mapper.                                   |
 | Daemon                    | account     | `createSession()`, `listSessions()`, `stopSession()`.     |
@@ -272,15 +282,15 @@ Daemon process
        │
        ├─ Spawns: Claude session process
        │    └─ Session-scoped SyncNode (sessionID: abc)
-       │         └─ Claude v3Mapper → node.sendMessage(sessionId, ...)
+       │         └─ Claude mapper: reads node.state → applies SDK event → node.updateMessage()
        │
        ├─ Spawns: Codex session process
        │    └─ Session-scoped SyncNode (sessionID: def)
-       │         └─ Codex v3Mapper → node.sendMessage(sessionId, ...)
+       │         └─ Codex mapper: reads node.state → applies event → node.updateMessage()
        │
        └─ Spawns: OpenCode session process
             └─ Session-scoped SyncNode (sessionID: ghi)
-                 └─ OpenCode adapter → node.sendMessage(sessionId, ...)
+                 └─ OpenCode mapper: reads node.state → applies event → node.updateMessage()
 
 App process (separate, on user's phone/browser)
   └─ Account-scoped SyncNode
@@ -298,10 +308,13 @@ Integration tests
 Provider SDK output (Claude JSON / Codex events / OpenCode events)
   │
   ▼
-Provider mapper (happy-cli, per-agent)
-  │  produces: MessageWithParts
+Provider mapper (happy-cli, per-agent) — STATELESS
+  │  1. reads current message from syncNode.state
+  │  2. applies agent event as a delta (new part, state transition, text append)
+  │  3. returns updated MessageWithParts
   ▼
 Session-scoped SyncNode (happy-sync)
+  │  node.updateMessage(sessionId, updatedMessage)
   │  encrypts, queues, flushes via HTTP POST
   ▼
 Server (happy-server)
@@ -323,6 +336,41 @@ UI renders Part directly (no conversion)
 
 No conversion. No intermediate types. The type that enters the pipeline is
 the type that renders on screen.
+
+### Mapper Model
+
+The mapper is a **stateless pure function**: `(currentMessage, agentEvent) →
+updatedMessage`. It does NOT maintain its own state. All state lives in
+`SyncNode`:
+
+```ts
+// Mapper signature (conceptual — each agent has its own)
+function applyAgentEvent(
+  current: MessageWithParts | null,  // from syncNode.state, null for first message
+  event: AgentEvent,                 // from provider SDK
+): MessageWithParts;
+
+// Usage in CLI session process
+agentSDK.on('event', (event) => {
+  const sessionState = syncNode.state.sessions.get(sessionId);
+  const currentMsg = sessionState?.messages.at(-1) ?? null;
+  const updated = applyAgentEvent(currentMsg, event);
+  syncNode.updateMessage(sessionId, updated);
+});
+```
+
+This means:
+- **SyncNode is the single source of truth** for all session state. Messages,
+  permissions, todos, status — everything is derived from the messages that
+  SyncNode holds.
+- **Mappers have zero side state.** They read from SyncNode, transform, write
+  back. If the process crashes and restarts, SyncNode rehydrates from the
+  server and the mapper picks up where it left off — there's nothing to
+  reconstruct.
+- **Session state (permissions, todos, status) is derived by SyncNode** from
+  scanning its messages. The existing mapper tests remain valid — they test
+  the transformation logic. But the mapper no longer "owns" the message
+  being built; it borrows it from SyncNode and returns the update.
 
 ---
 
@@ -409,7 +457,7 @@ real server, real provider CLIs. `SyncNode` drives execution programmatically.
 
 **This test must cover ALL 34 steps of exercise-flow.md.** No steps skipped.
 No steps simplified. Each step must have explicit assertions. If the exercise
-flow grows beyond 31 steps, the tests must grow to match.
+flow grows beyond 34 steps, the tests must grow to match.
 
 The test uses an **account-scoped `SyncNode`** to:
 - Create sessions
@@ -583,7 +631,7 @@ the steps are designed to produce deterministic protocol behavior:
 
 #### Per-agent variants
 
-The same 24-step flow runs for each supported agent. Steps may behave
+The same 34-step flow runs for each supported agent. Steps may behave
 differently per agent — some support subagents, some don't; permissions work
 differently; etc. The test accounts for this:
 
@@ -692,8 +740,8 @@ invoked via `agent-browser` during or after Level 2 tests.
 
 | Path | Why |
 |------|------|
-| `happy-cli/src/claude/utils/v3Mapper.ts` + test | Claude-specific, produces `MessageWithParts` |
-| `happy-cli/src/codex/utils/v3Mapper.ts` + test | Codex-specific, produces `MessageWithParts` |
+| `happy-cli/src/claude/utils/v3Mapper.ts` + test | Stateless: `(currentMsg, sdkEvent) → updatedMsg` |
+| `happy-cli/src/codex/utils/v3Mapper.ts` + test | Stateless: `(currentMsg, event) → updatedMsg` |
 | `happy-sync/src/protocol.ts` + test | Source of truth types |
 | `exercise-flow.md` | Source of truth for Level 2 + 3 |
 | `happy-server` v3 routes | Unchanged — dumb encrypted pipe |
@@ -773,12 +821,30 @@ the snapshot is a cache that can be rebuilt.
 
 ## Implementation Order
 
+### Already proven (from failed `messaging-protocol-v3` branch)
+
+These artifacts have passing unit tests and are carried forward as-is:
+
+- `packages/happy-wire/src/protocol.ts` — v3 Zod schemas (MessageWithParts,
+  Part, ToolState, Block types). 21 passing tests.
+- `packages/happy-cli/src/claude/utils/v3Mapper.ts` — Claude SDK →
+  MessageWithParts mapper. 18 passing tests.
+- `packages/happy-cli/src/codex/utils/v3Mapper.ts` — Codex → MessageWithParts
+  mapper. 18 passing tests.
+- `environments/lab-rat-todo-project/exercise-flow.md` — 34-step exercise flow.
+
+### Build order
+
 1. Rename `happy-wire` → `happy-sync`, update all imports across monorepo.
+   Protocol types and existing Level 0 tests move with it.
 2. Build `SyncNode` — extract transport/encryption from `apiSession.ts`,
    implement state management (`SyncState` with `SessionState`),
    Socket.IO connection, outbox, pagination, reconnect, message patching.
-3. Level 0 tests — SyncNode state unit tests.
+3. Level 0 tests — SyncNode state unit tests (add to existing protocol/mapper
+   tests that already pass).
 4. Level 1 tests — sync engine integration (real server, synthetic messages).
+   **This is where the failed branch never got.** SyncNode as programmatic
+   test harness — no subprocess, no CLI binary, no execFileSync.
 5. Wire CLI session processes to use session-scoped `SyncNode` (mappers feed
    into `node.sendMessage()`).
 6. Wire daemon to use account-scoped `SyncNode` for lifecycle.
@@ -786,10 +852,10 @@ the snapshot is a cache that can be rebuilt.
    from `SyncNode.state`. React components render `Part` directly — kill the
    converter, kill the legacy reducer, kill the intermediate type system.
 8. Absorb `happy-agent` into daemon + `SyncNode` test harness.
-9. Level 2 tests — full 24-step exercise flow per agent type.
+9. Level 2 tests — full 34-step exercise flow per agent type.
 10. Write `ux-spec.md`. Level 3 browser verification via `agent-browser`.
 11. Delete dead code — converters, legacy types, `happy-agent` package,
-    legacy sync code.
+    legacy sync code, `HAPPY_V3_PROTOCOL` env var, dual-write paths.
 
 ---
 
@@ -810,20 +876,100 @@ the snapshot is a cache that can be rebuilt.
    exercise flow already defines what should happen at each step; the browser
    verification uses the same document as its source of truth.
 
+5. **Session-level state** — session state (permissions, todos, status) is
+   derived by the CLI from all messages and pushed as a session snapshot
+   (cache). The app can fetch just the snapshot for session lists without
+   loading all messages. Messages remain the source of truth; the snapshot
+   is a cache that can be rebuilt. This resolves the "Option A vs Option B"
+   question: it's both — messages are the source of truth (Option A), but
+   a derived snapshot is pushed to the server for lazy loading (Option B).
+
+6. **Subagents are child sessions** — not threads. `SessionInfo` already has
+   `parentID: SessionID.optional()`. No separate thread concept needed.
+
+7. **Permission/question resolution** — via decision/answer messages sent
+   into the session (new `decision` and `answer` part types on user
+   messages). No RPC. The CLI watches for these messages and acts on them.
+
+8. **Token delivery to CLI session processes** — environment variable.
+   The daemon passes the session-scoped JWT to the spawned CLI process
+   via env var.
+
 ## Open Questions
 
-1. **Session-level state vs message-embedded state** — permissions, todos,
-   questions are currently embedded in messages (on tool parts). But the app
-   needs session-level summaries without fetching all messages (e.g. listing
-   sessions shows active permission count, todo progress). Two options being
-   explored in parallel:
-   - **Option A**: derive session-level state on the `SyncNode` by scanning
-     messages — simple, single source of truth, but requires all messages
-     loaded.
-   - **Option B**: track session-level state separately (server-side or as
-     a special "session state" message) — allows lazy loading, but two
-     sources of truth to keep in sync.
-   Keep both options open; let cleaner code win in practice.
+None. All questions resolved — see "Resolved Questions" above.
+
+---
+
+## Lessons from the Failed v3 Attempt
+
+Branch `messaging-protocol-v3` was the first attempt at this migration. A
+Codex agent ran in a loop for 15 iterations (~8 hours), producing +3,400
+lines of code changes across 29 files. **The unit tests pass (57 tests).
+The integration tests never once ran to completion.** Across 155 launches,
+zero produced a result. They got killed by timeouts, stuck on environment
+boot, or hung waiting for agent responses.
+
+### Why it failed
+
+The integration test architecture was fundamentally broken:
+
+1. **Subprocess-based test driving** — tests drove everything via
+   `execFileSync(binPath, ['send', ...])` and `execFileSync(binPath,
+   ['history', ...])`, spawning the `happy-agent` CLI binary for every
+   operation. This meant every assertion required:
+   - Spawning a child process
+   - Waiting for it to boot
+   - Parsing JSON output from stdout
+   - Hoping it doesn't hang or timeout
+   There was no shared programmatic API. State was read by shelling out.
+
+2. **Fragile environment setup** — `yarn env:up:authenticated` boots a full
+   server + app + CLI daemon. Too many moving parts. Any one of them failing
+   to start, starting slowly, or hanging on auth would kill the test run.
+
+3. **No shared sync primitive** — the CLI, app, and tests all had their own
+   bespoke transport code. The test harness (`happy-agent`) was a separate
+   package with its own binary, its own session client, its own auth flow —
+   all duplicating what the daemon already does.
+
+4. **Too many layers of indirection** — test → subprocess → CLI binary →
+   daemon → server → app. Any layer could hang, timeout, or fail silently.
+   The e2e test strategy was doomed by architecture, not code quality.
+
+### What the new approach fixes
+
+- **`SyncNode` is the programmatic test harness.** Integration tests
+  instantiate `SyncNode` directly. No CLI binary. No `execFileSync`. No
+  parsing JSON from stdout. Tests call `node.sendMessage()` and read
+  `node.state` — same API the production code uses.
+- **No `happy-agent` package.** The daemon absorbs lifecycle. Tests use
+  `SyncNode`. The entire indirection layer is gone.
+- **Level 1 tests run in seconds.** Real server, synthetic messages, no LLM.
+  SyncNode ↔ server ↔ SyncNode. If this layer breaks, we know immediately.
+- **Level 2 tests add LLMs on top of a proven transport.** By the time we
+  run real agents, we already know SyncNode, encryption, and the server work.
+  The only variable is agent behavior — which is what we actually want to
+  test.
+
+### What was salvaged
+
+- Protocol types (`protocol.ts`) — 21 passing tests. Well-designed Zod
+  schemas. Carried forward as-is.
+- Claude mapper (`v3Mapper.ts`) — 18 passing tests. State machine logic for
+  tool tracking, permission blocking, question handling is correct.
+- Codex mapper (`v3Mapper.ts`) — 18 passing tests. Handles all Codex event
+  types correctly.
+- Exercise flow (`exercise-flow.md`) — expanded to 34 steps. The flow design
+  is good; only the test execution strategy was wrong.
+
+### Lesson for future agents
+
+If you are an AI agent reading this spec: **do not attempt subprocess-based
+integration testing.** A prior agent spent 8 hours in a loop trying to make
+it work. It cannot work with this architecture. Use `SyncNode` directly.
+The API is `node.sendMessage()` / `node.state` / `node.onStateChange()`.
+That is the only integration test strategy that will succeed.
 
 ---
 

@@ -16,7 +16,7 @@ while true; do
     echo ""
 
     timeout 3600 codex exec -s danger-full-access \
-        "Read docs/plans/provider-envelope-testing.md and do what it says." \
+        "Read docs/plans/happy-sync-major-refactor.md and do what it says." \
         2>&1 | tee "$LOGFILE" || true
 
     sleep 5
