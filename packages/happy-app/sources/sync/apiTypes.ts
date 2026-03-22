@@ -187,7 +187,9 @@ export const ApiNewFeedPostSchema = z.object({
     body: FeedBodySchema,
     cursor: z.string(),
     createdAt: z.number(),
-    repeatKey: z.string().nullable().optional()
+    repeatKey: z.string().nullable().optional(),
+    badge: z.boolean().optional(),
+    meta: z.record(z.unknown()).nullable().optional()
 });
 
 // KV batch update schema - kept for protocol compatibility (server may still emit these)

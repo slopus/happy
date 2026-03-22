@@ -58,6 +58,22 @@ export async function fetchFeed(
     });
 }
 
+export async function markFeedItemRead(
+    credentials: AuthCredentials,
+    itemId: string
+): Promise<void> {
+    const API_ENDPOINT = getServerUrl();
+    const response = await fetch(`${API_ENDPOINT}/v1/feed/${itemId}/read`, {
+        method: 'PATCH',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`
+        }
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to mark feed item as read: ${response.status}`);
+    }
+}
+
 export async function deleteFeedItem(
     credentials: AuthCredentials,
     itemId: string

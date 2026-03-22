@@ -225,6 +225,7 @@ interface StorageState {
     applyFeedItems: (items: FeedItem[]) => void;
     replaceFeedItems: (items: FeedItem[]) => void;
     removeFeedItem: (itemId: string) => void;
+    markFeedItemRead: (itemId: string) => void;
     clearFeed: () => void;
     // DooTask methods
     setDootaskProfile: (profile: DooTaskProfile | null) => void;
@@ -1829,6 +1830,12 @@ export const storage = create<StorageState>()((set, get) => {
             ...state,
             feedItems: state.feedItems.filter(item => item.id !== itemId)
         })),
+        markFeedItemRead: (itemId: string) => set((state) => ({
+            ...state,
+            feedItems: state.feedItems.map(item =>
+                item.id === itemId ? { ...item, badge: false } : item
+            )
+        })),
         clearFeed: () => set((state) => ({
             ...state,
             feedItems: [],
@@ -2410,6 +2417,9 @@ export function useFeedItems() {
 }
 export function useFeedLoaded() {
     return storage((state) => state.feedLoaded);
+}
+export function useFeedHasBadge() {
+    return storage((state) => state.feedItems.some(item => item.badge));
 }
 export function useFriendsLoaded() {
     return storage((state) => state.friendsLoaded);

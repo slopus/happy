@@ -4,7 +4,8 @@ import { z } from 'zod';
 export const FeedBodySchema = z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('friend_request'), uid: z.string() }),
     z.object({ kind: z.literal('friend_accepted'), uid: z.string() }),
-    z.object({ kind: z.literal('text'), text: z.string() })
+    z.object({ kind: z.literal('text'), text: z.string() }),
+    z.object({ kind: z.literal('notice'), title: z.string(), text: z.string() }),
 ]);
 
 export type FeedBody = z.infer<typeof FeedBodySchema>;
@@ -14,6 +15,8 @@ export const FeedItemSchema = z.object({
     id: z.string(),
     repeatKey: z.string().nullable(),
     body: FeedBodySchema,
+    badge: z.boolean(),
+    meta: z.record(z.unknown()).nullable(),
     createdAt: z.number(),
     cursor: z.string(),
     counter: z.number()
@@ -27,6 +30,8 @@ export const FeedResponseSchema = z.object({
         id: z.string(),
         body: FeedBodySchema,
         repeatKey: z.string().nullable(),
+        badge: z.boolean(),
+        meta: z.record(z.unknown()).nullable(),
         cursor: z.string(),
         createdAt: z.number()
     })),

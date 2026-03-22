@@ -14,7 +14,9 @@ export async function feedPost(
     tx: Tx,
     ctx: Context,
     body: FeedBody,
-    repeatKey?: string | null
+    repeatKey?: string | null,
+    badge?: boolean,
+    meta?: Record<string, unknown> | null,
 ): Promise<UserFeedItem> {
 
 
@@ -41,15 +43,21 @@ export async function feedPost(
             counter: user.feedSeq,
             userId: ctx.uid,
             repeatKey: repeatKey,
-            body: body
+            body: body,
+            badge: badge ?? false,
+            meta: meta ?? undefined,
         }
     });
 
-    const result = {
-        ...item,
+    const result: UserFeedItem = {
+        id: item.id,
+        userId: item.userId,
+        repeatKey: item.repeatKey,
         body: item.body as FeedBody,
+        badge: item.badge,
+        meta: item.meta as Record<string, unknown> | null,
         createdAt: item.createdAt.getTime(),
-        cursor: '0-' + item.counter.toString(10)
+        cursor: '0-' + item.counter.toString(10),
     };
 
     // Emit socket event after transaction completes

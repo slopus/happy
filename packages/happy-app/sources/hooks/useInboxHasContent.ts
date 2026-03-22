@@ -1,5 +1,5 @@
 import { useUpdates } from './useUpdates';
-import { useFriendRequests, useRequestedFriends } from '@/sync/storage';
+import { useFriendRequests, useRequestedFriends, useFeedHasBadge } from '@/sync/storage';
 import { useChangelog } from './useChangelog';
 import { useNativeUpdate } from './useNativeUpdate';
 
@@ -10,6 +10,7 @@ export function useInboxHasContent(): boolean {
     const friendRequests = useFriendRequests();
     const requestedFriends = useRequestedFriends();
     const changelog = useChangelog();
+    const feedHasBadge = useFeedHasBadge();
 
     // Show dot if there's any actionable content:
     // - Native app update available (App Store / Play Store)
@@ -17,5 +18,6 @@ export function useInboxHasContent(): boolean {
     // - Incoming friend requests (also shown as badge number)
     // - Outgoing friend requests pending
     // - Unread changelog entries
-    return !!nativeUpdateUrl || updateAvailable || friendRequests.length > 0 || requestedFriends.length > 0 || (changelog.hasUnread === true);
+    // - Feed items with badge (e.g. unread notices)
+    return !!nativeUpdateUrl || updateAvailable || friendRequests.length > 0 || requestedFriends.length > 0 || (changelog.hasUnread === true) || feedHasBadge;
 }

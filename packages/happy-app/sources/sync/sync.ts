@@ -3097,6 +3097,8 @@ class Sync {
                 cursor: feedUpdate.cursor,
                 createdAt: feedUpdate.createdAt,
                 repeatKey: feedUpdate.repeatKey ?? null,
+                badge: feedUpdate.badge ?? false,
+                meta: feedUpdate.meta ?? null,
                 counter: parseInt(feedUpdate.cursor.substring(2), 10)
             };
             

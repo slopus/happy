@@ -121,6 +121,24 @@ export const FeedItemCard = React.memo(({ item, showDivider }: FeedItemCardProps
                     />
                 );
 
+            case 'notice':
+                return (
+                    <Item
+                        title={item.body.title}
+                        subtitle={getTimeAgo(item.createdAt)}
+                        icon={
+                            <View>
+                                <Ionicons name="notifications" size={20} color={theme.colors.textLink} />
+                                {item.badge && <View style={styles.badgeDot} />}
+                            </View>
+                        }
+                        iconContainerStyle={{ marginRight: 20 }}
+                        onPress={() => router.push({ pathname: '/inbox/notice/[id]', params: { id: item.id } })}
+                        showChevron={true}
+                        showDivider={showDivider}
+                    />
+                );
+
             default:
                 return null;
         }
@@ -165,5 +183,14 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 12,
         color: '#FFFFFF',
         ...Typography.default('semiBold'),
+    },
+    badgeDot: {
+        position: 'absolute',
+        top: -2,
+        right: -2,
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: theme.colors.status.error,
     },
 }));

@@ -1548,6 +1548,8 @@ export const pl: TranslationStructure = {
         friendRequestGeneric: 'Nowe zaproszenie do znajomych',
         friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
+        noticeDetail: 'Powiadomienie',
+        noticeNotFound: 'Powiadomienie nie znalezione',
     },
 
     duplicate: {

@@ -1572,6 +1572,8 @@ export const zhHans: TranslationStructure = {
         friendRequestGeneric: '新的好友请求',
         friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
         friendAcceptedGeneric: '好友请求已接受',
+        noticeDetail: '通知',
+        noticeNotFound: '通知未找到',
     },
 
     wizard: {

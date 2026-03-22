@@ -1547,6 +1547,8 @@ export const ru: TranslationStructure = {
         friendRequestGeneric: 'Новый запрос в друзья',
         friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
         friendAcceptedGeneric: 'Запрос в друзья принят',
+        noticeDetail: 'Уведомление',
+        noticeNotFound: 'Уведомление не найдено',
     },
 
     duplicate: {

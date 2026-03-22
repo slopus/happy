@@ -1556,6 +1556,8 @@ export const ja: TranslationStructure = {
         friendRequestGeneric: '新しい友達リクエスト',
         friendAccepted: ({ name }: { name: string }) => `${name}さんと友達になりました`,
         friendAcceptedGeneric: '友達リクエストが承認されました',
+        noticeDetail: 'お知らせ',
+        noticeNotFound: 'お知らせが見つかりません',
     },
 
     duplicate: {

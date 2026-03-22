@@ -481,6 +481,8 @@ model UserFeedItem {
   repeatKey String?
   /// [FeedBody]
   body      Json
+  badge     Boolean  @default(false)
+  meta      Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

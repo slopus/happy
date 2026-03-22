@@ -46,10 +46,14 @@ export async function feedGet(
     // Return only requested limit
     return {
         items: items.slice(0, limit).map(item => ({
-            ...item,
+            id: item.id,
+            userId: item.userId,
+            repeatKey: item.repeatKey,
             body: item.body as FeedBody,
+            badge: item.badge,
+            meta: item.meta as Record<string, unknown> | null,
             createdAt: item.createdAt.getTime(),
-            cursor: '0-' + item.counter.toString(10)
+            cursor: '0-' + item.counter.toString(10),
         })),
         hasMore
     };

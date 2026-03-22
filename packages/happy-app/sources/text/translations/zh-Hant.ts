@@ -1525,6 +1525,8 @@ export const zhHant: TranslationStructure = {
         friendRequestGeneric: '新的好友請求',
         friendAccepted: ({ name }: { name: string }) => `您現在與 ${name} 成為了好友`,
         friendAcceptedGeneric: '好友請求已接受',
+        noticeDetail: '通知',
+        noticeNotFound: '通知未找到',
     },
 
     duplicate: {

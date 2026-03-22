@@ -1868,6 +1868,7 @@ export function orchestratorRoutes(app: Fastify) {
                 runTitle: execution.run.title ?? null,
                 runStatus: nextRunStatus,
                 controllerSessionId: execution.run.controllerSessionId,
+                summary: toPublicSummary(internal),
             };
         });
 
@@ -1895,12 +1896,21 @@ export function orchestratorRoutes(app: Fastify) {
                     sessionId: result.controllerSessionId,
                 },
             });
-            if (delivery.total === 0) {
+            if (delivery.sessionScoped === 0) {
                 const title = result.runTitle ?? 'Untitled run';
+                const s = result.summary;
+                const parts: string[] = [
+                    `Status: ${result.runStatus}`,
+                    `Tasks: ${s.total} total — ${s.completed} completed, ${s.failed} failed, ${s.cancelled} cancelled`,
+                    `Run ID: ${result.runId}`,
+                ];
                 void inTx(async (tx) => {
                     await feedPost(tx, Context.create(userId), {
-                        kind: 'text',
-                        text: `Orchestrator callback not delivered: "${title}" (${result.runStatus}). Session may be disconnected.`,
+                        kind: 'notice',
+                        title,
+                        text: parts.join('\n'),
+                    }, null, true, {
+                        links: [{ label: 'Run Details', url: `/orchestrator/${result.runId}` }],
                     });
                 }).catch(warn);
             }

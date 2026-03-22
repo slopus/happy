@@ -54,6 +54,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="inbox/notice/[id]"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('feed.noticeDetail'),
+                    headerBackTitle: t('common.back')
+                }}
+            />
+            <Stack.Screen
                 name="settings/index"
                 options={{
                     headerShown: true,

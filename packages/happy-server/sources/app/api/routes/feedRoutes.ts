@@ -20,6 +20,8 @@ export function feedRoutes(app: Fastify) {
                         id: z.string(),
                         body: FeedBodySchema,
                         repeatKey: z.string().nullable(),
+                        badge: z.boolean(),
+                        meta: z.record(z.unknown()).nullable(),
                         cursor: z.string(),
                         createdAt: z.number()
                     })),
@@ -36,6 +38,27 @@ export function feedRoutes(app: Fastify) {
             limit: request.query?.limit
         });
         return reply.send({ items: items.items, hasMore: items.hasMore });
+    });
+
+    app.patch('/v1/feed/:id/read', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            response: {
+                200: z.object({ ok: z.boolean() })
+            }
+        }
+    }, async (request, reply) => {
+        await db.userFeedItem.updateMany({
+            where: {
+                id: request.params.id,
+                userId: request.userId
+            },
+            data: { badge: false }
+        });
+        return reply.send({ ok: true });
     });
 
     app.delete('/v1/feed/:id', {

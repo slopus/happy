@@ -1541,6 +1541,8 @@ export const en: TranslationStructure = {
         friendRequestGeneric: 'New friend request',
         friendAccepted: ({ name }: { name: string }) => `You are now friends with ${name}`,
         friendAcceptedGeneric: 'Friend request accepted',
+        noticeDetail: 'Notice',
+        noticeNotFound: 'Notice not found',
     },
 
     duplicate: {
