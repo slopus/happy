@@ -33,7 +33,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && npx tsc --noEmit && pkgroll",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
     "test:integration": "$npm_execpath run build && vitest run --config vitest.integration.config.ts",
     "dev": "tsx src/index.ts",
