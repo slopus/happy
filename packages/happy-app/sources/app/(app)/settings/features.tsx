@@ -13,6 +13,7 @@ export default function FeaturesSettingsScreen() {
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
+    const [expResumeSession, setExpResumeSession] = useSettingMutable('expResumeSession');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -53,6 +54,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={hideInactiveSessions}
                             onValueChange={setHideInactiveSessions}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title="Resume Session"
+                    subtitle="Allow resuming disconnected sessions via the machine daemon"
+                    icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
+                    rightElement={
+                        <Switch
+                            value={expResumeSession}
+                            onValueChange={setExpResumeSession}
                         />
                     }
                     showChevron={false}

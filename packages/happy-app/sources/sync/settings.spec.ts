@@ -189,6 +189,7 @@ describe('settings', () => {
                 compactSessionView: false,
                 agentInputEnterToSend: true,
                 hideInactiveSessions: false,
+                expResumeSession: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,

@@ -3,7 +3,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
 import { machineResumeSession, machineSpawnNewSession, sessionKill } from '@/sync/ops';
-import { storage, useLocalSetting, useMachine } from '@/sync/storage';
+import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
@@ -107,9 +107,10 @@ export function useSessionQuickActions(
     const machineId = session.metadata?.machineId ?? '';
     const machine = useMachine(machineId);
     const devModeEnabled = useLocalSetting('devModeEnabled');
+    const expResumeSession = useSetting('expResumeSession');
     const resumeAvailability = React.useMemo(
-        () => getResumeAvailability(session, machine, sessionStatus.isConnected),
-        [machine, session, sessionStatus.isConnected],
+        () => expResumeSession ? getResumeAvailability(session, machine, sessionStatus.isConnected) : { canResume: false, canShowResume: false, subtitle: '', message: '' },
+        [machine, session, sessionStatus.isConnected, expResumeSession],
     );
 
     const openDetails = React.useCallback(() => {
