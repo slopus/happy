@@ -23,12 +23,11 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
         return { table: null, nextIndex: startIndex };
     }
 
-    // Extract header cells from the first line, filtering out empty cells that may result from leading/trailing pipes
-    const headerLine = tableLines[0].trim();
+    // Extract header cells from the first line, stripping leading/trailing pipes but preserving empty interior cells
+    const headerLine = tableLines[0].trim().replace(/^\||\|$/g, '');
     const headers = headerLine
         .split('|')
-        .map(cell => cell.trim())
-        .filter(cell => cell.length > 0);
+        .map(cell => cell.trim());
 
     if (headers.length === 0) {
         return { table: null, nextIndex: startIndex };
@@ -39,15 +38,11 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     for (let i = 2; i < tableLines.length; i++) {
         const rowLine = tableLines[i].trim();
         if (rowLine.startsWith('|')) {
-            const rowCells = rowLine
+            const rowCells = rowLine.replace(/^\||\|$/g, '')
                 .split('|')
-                .map(cell => cell.trim())
-                .filter(cell => cell.length > 0);
+                .map(cell => cell.trim());
 
-            // Include rows that contain actual content, filtering out empty rows
-            if (rowCells.length > 0) {
-                rows.push(rowCells);
-            }
+            rows.push(rowCells);
         }
     }
 

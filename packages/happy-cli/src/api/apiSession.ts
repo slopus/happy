@@ -313,25 +313,31 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
-        const batch = this.pendingOutbox.slice();
-        const response = await axios.post<V3PostSessionMessagesResponse>(
-            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-            {
-                messages: batch
-            },
-            {
-                headers: this.authHeaders(),
-                timeout: 60000
-            }
-        );
+        const BATCH_LIMIT = 100;
+        let flushed = 0;
 
-        this.pendingOutbox.splice(0, batch.length);
+        while (flushed < this.pendingOutbox.length) {
+            const batch = this.pendingOutbox.slice(flushed, flushed + BATCH_LIMIT);
+            const response = await axios.post<V3PostSessionMessagesResponse>(
+                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                {
+                    messages: batch
+                },
+                {
+                    headers: this.authHeaders(),
+                    timeout: 60000
+                }
+            );
 
-        const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-        const maxSeq = messages.reduce((acc, message) => (
-            message.seq > acc ? message.seq : acc
-        ), this.lastSeq);
-        this.lastSeq = maxSeq;
+            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+            const maxSeq = messages.reduce((acc, message) => (
+                message.seq > acc ? message.seq : acc
+            ), this.lastSeq);
+            this.lastSeq = maxSeq;
+            flushed += batch.length;
+        }
+
+        this.pendingOutbox.splice(0, flushed);
     }
 
     private enqueueMessage(content: unknown, invalidate: boolean = true) {

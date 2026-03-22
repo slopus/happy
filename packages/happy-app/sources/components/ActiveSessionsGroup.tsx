@@ -436,7 +436,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         {/* No longer showing git status per item - it's in the header */}
 
                         {/* Task status indicator */}
-                        {session.todos && session.todos.length > 0 && (() => {
+                        {Array.isArray(session.todos) && session.todos.length > 0 && (() => {
                             const totalTasks = session.todos.length;
                             const completedTasks = session.todos.filter(t => t.status === 'completed').length;
 
