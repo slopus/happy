@@ -351,9 +351,10 @@ export default function OpenClawChatPage() {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const { width: screenWidth } = useWindowDimensions();
-    const { machineId, sessionKey } = useLocalSearchParams<{
+    const { machineId, sessionKey, sessionName: sessionNameParam } = useLocalSearchParams<{
         machineId: string;
         sessionKey: string;
+        sessionName?: string;
     }>();
 
     // Left: back button (1), Right: loading indicator (1)
@@ -679,7 +680,11 @@ export default function OpenClawChatPage() {
     }, [inputText, isConnected, isStreaming, handleSend]);
 
     // Session name for header title (decode URL encoding)
-    const sessionName = sessionKey ? decodeURIComponent(sessionKey) : t('openclaw.sessions');
+    const sessionName = sessionNameParam
+        ? decodeURIComponent(sessionNameParam)
+        : sessionKey
+            ? decodeURIComponent(sessionKey)
+            : t('openclaw.sessions');
     // Machine name for header subtitle
     const machineName = machine?.metadata?.name;
 

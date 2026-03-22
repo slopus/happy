@@ -8,7 +8,7 @@
 import React from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl, Platform, ActionSheetIOS, useWindowDimensions } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { t } from '@/text';
@@ -235,6 +235,15 @@ export default function OpenClawMachineDetailPage() {
         }
     }, [isConnected, fetchSessions]);
 
+    // Refresh sessions when page regains focus (e.g., return from chat page)
+    useFocusEffect(
+        React.useCallback(() => {
+            if (isConnected) {
+                fetchSessions();
+            }
+        }, [isConnected, fetchSessions])
+    );
+
     // Clear initial loading when connection fails or encounters error
     React.useEffect(() => {
         if (status === 'error' || status === 'pairing_required') {
@@ -251,11 +260,13 @@ export default function OpenClawMachineDetailPage() {
 
     // Handle session press
     const handleSessionPress = React.useCallback((session: OpenClawSession) => {
+        const sessionName = session.displayName || session.label || session.key;
         router.push({
             pathname: '/openclaw/chat',
             params: {
                 machineId: machineId,
                 sessionKey: session.key,
+                sessionName,
             },
         });
     }, [router, machineId]);
