@@ -126,14 +126,13 @@ export function SessionActionsPopover({
     const {
         archiveSession,
         canArchive,
-        canBugReport,
+        canCopySessionMetadata,
         canShowResume,
+        copySessionMetadata,
         openDetails,
-        reportBug,
         resumeSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
-        onAfterBugReport: onClose,
         onAfterDelete,
     });
 
@@ -165,12 +164,12 @@ export function SessionActionsPopover({
             });
         }
 
-        if (canBugReport) {
+        if (canCopySessionMetadata) {
             items.push({
-                id: 'bug-report',
+                id: 'copy-session-metadata',
                 icon: 'bug-outline',
-                label: 'Bug report',
-                onPress: reportBug,
+                label: t('sessionInfo.copyMetadata'),
+                onPress: copySessionMetadata,
             });
         }
 
@@ -178,10 +177,10 @@ export function SessionActionsPopover({
     }, [
         archiveSession,
         canArchive,
-        canBugReport,
+        canCopySessionMetadata,
         canShowResume,
+        copySessionMetadata,
         openDetails,
-        reportBug,
         resumeSession,
     ]);
 

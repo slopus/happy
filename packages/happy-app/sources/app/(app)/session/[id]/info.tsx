@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete } from '@/sync/ops';
@@ -21,6 +21,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { copySessionMetadataToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { HappyError } from '@/utils/errors';
 
 // Animated status dot component
@@ -147,14 +148,8 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, [session]);
 
-    const handleCopyMetadata = useCallback(async () => {
-        if (!session?.metadata) return;
-        try {
-            await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
-            Modal.alert(t('common.success'), t('sessionInfo.metadataCopied'));
-        } catch (error) {
-            Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
-        }
+    const handleCopyMetadata = useCallback(() => {
+        void copySessionMetadataToClipboard(session);
     }, [session]);
 
     // Use HappyAction for archiving - it handles errors automatically
@@ -306,6 +301,16 @@ function SessionInfoContent({ session }: { session: Session }) {
                                     Modal.alert(t('common.error'), t('sessionInfo.failedToCopyCodexThreadId'));
                                 }
                             }}
+                        />
+                    )}
+                    {/* Resume command — shown for disconnected sessions with a backend session ID */}
+                    {/* TODO: migrate to `happy resume <happy-session-id>` once it works without happy-agent auth */}
+                    {!sessionStatus.isConnected && getResumeCommand(session) && (
+                        <CopyableItem
+                            title="Resume Command"
+                            subtitle={getResumeCommand(session)!}
+                            icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
+                            copyText={getResumeCommand(session)!}
                         />
                     )}
                     <Item
@@ -595,3 +600,21 @@ export default React.memo(() => {
 
     return <SessionInfoContent session={session} />;
 });
+
+function CopyableItem({ title, subtitle, icon, copyText }: { title: string; subtitle: string; icon: React.ReactNode; copyText: string }) {
+    const [copied, setCopied] = React.useState(false);
+    return (
+        <Item
+            title={title}
+            subtitle={subtitle}
+            icon={icon}
+            showChevron={false}
+            rightElement={<Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? '#30D158' : '#8E8E93'} />}
+            onPress={async () => {
+                await Clipboard.setStringAsync(copyText);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            }}
+        />
+    );
+}

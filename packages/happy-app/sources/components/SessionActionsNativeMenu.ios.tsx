@@ -2,11 +2,11 @@ import * as React from 'react';
 import { Button, ContextMenu, Host } from '@expo/ui/swift-ui';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { Session } from '@/sync/storageTypes';
+import { t } from '@/text';
 
 interface SessionActionsNativeMenuProps {
     children: React.ReactNode;
     onAfterArchive?: () => void;
-    onAfterBugReport?: () => void;
     onAfterDelete?: () => void;
     session: Session;
 }
@@ -17,21 +17,19 @@ const iosSymbol = (name: string) =>
 export function SessionActionsNativeMenu({
     children,
     onAfterArchive,
-    onAfterBugReport,
     onAfterDelete,
     session,
 }: SessionActionsNativeMenuProps) {
     const {
         archiveSession,
         canArchive,
-        canBugReport,
+        canCopySessionMetadata,
         canShowResume,
+        copySessionMetadata,
         openDetails,
-        reportBug,
         resumeSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
-        onAfterBugReport,
         onAfterDelete,
     });
 
@@ -52,9 +50,9 @@ export function SessionActionsNativeMenu({
                             Resume
                         </Button>
                     )}
-                    {canBugReport && (
-                        <Button onPress={reportBug} systemImage={iosSymbol('ladybug')}>
-                            Bug report
+                    {canCopySessionMetadata && (
+                        <Button onPress={copySessionMetadata} systemImage={iosSymbol('ladybug')}>
+                            {t('sessionInfo.copyMetadata')}
                         </Button>
                     )}
                 </ContextMenu.Items>

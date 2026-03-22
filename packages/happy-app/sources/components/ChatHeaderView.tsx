@@ -26,7 +26,6 @@ interface ChatHeaderViewProps {
     avatarMenuExpanded?: boolean;
     avatarMenuSession?: Session | null;
     onAfterAvatarArchive?: () => void;
-    onAfterAvatarBugReport?: () => void;
     onAfterAvatarDelete?: () => void;
 }
 
@@ -42,7 +41,6 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     avatarMenuExpanded = false,
     avatarMenuSession,
     onAfterAvatarArchive,
-    onAfterAvatarBugReport,
     onAfterAvatarDelete,
 }) => {
     const { theme } = useUnistyles();
@@ -164,7 +162,6 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             {avatarMenuSession ? (
                                 <SessionActionsNativeMenu
                                     onAfterArchive={onAfterAvatarArchive}
-                                    onAfterBugReport={onAfterAvatarBugReport}
                                     onAfterDelete={onAfterAvatarDelete}
                                     session={avatarMenuSession}
                                 >

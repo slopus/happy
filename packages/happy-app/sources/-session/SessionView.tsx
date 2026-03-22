@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import { layout } from '@/components/layout';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
@@ -29,8 +30,9 @@ import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, getResumeCommand, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
@@ -134,7 +136,6 @@ export const SessionView = React.memo((props: { id: string }) => {
                             setSessionActionsAnchor(null);
                             router.replace('/');
                         }}
-                        onAfterAvatarBugReport={() => setSessionActionsAnchor(null)}
                         onAfterAvatarDelete={() => {
                             setSessionActionsAnchor(null);
                             router.replace('/');
@@ -194,10 +195,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
+    const isTablet = useIsTablet();
     const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
+    const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
 
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
@@ -232,6 +235,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
+    const expResumeSession = useSetting('expResumeSession');
+    const resumeCommand = getResumeCommand(session);
     const {
         canResume,
         canShowResume,
@@ -384,53 +389,59 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
         />
-    ) : canShowResume ? (
-        <View style={{
-            paddingHorizontal: 16,
-            paddingTop: 12,
-            paddingBottom: 10,
-            gap: 10,
-        }}>
-            <Pressable
-                onPress={resumeSession}
-                style={{
-                    minHeight: 48,
-                    borderRadius: 14,
-                    backgroundColor: canResume ? theme.colors.button.primary.background : theme.colors.surfaceHigh,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    gap: 8,
-                    opacity: resumingSession ? 0.7 : 1,
-                }}
-            >
-                {resumingSession ? (
-                    <ActivityIndicator size="small" color={canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary} />
-                ) : (
-                    <Ionicons
-                        name="play-circle-outline"
-                        size={18}
-                        color={canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary}
-                    />
-                )}
-                <Text style={{
-                    color: canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary,
-                    fontSize: 15,
-                    fontWeight: '600',
-                }}>
-                    {t('sessionInfo.resumeSession')}
-                </Text>
-            </Pressable>
-            <Text style={{
-                color: theme.colors.textSecondary,
-                fontSize: 13,
-                lineHeight: 18,
-                textAlign: 'center',
-                paddingHorizontal: 8,
+    ) : canShowResume && expResumeSession ? (
+        <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+            <View style={{
+                paddingHorizontal: 16,
+                paddingTop: 12,
+                paddingBottom: 10,
+                gap: 10,
             }}>
-                {resumeSessionSubtitle}
-            </Text>
-        </View>
+                <Pressable
+                    onPress={resumeSession}
+                    style={{
+                        minHeight: 48,
+                        borderRadius: 14,
+                        backgroundColor: canResume ? theme.colors.button.primary.background : theme.colors.surfaceHigh,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexDirection: 'row',
+                        gap: 8,
+                        opacity: resumingSession ? 0.7 : 1,
+                    }}
+                >
+                    {resumingSession ? (
+                        <ActivityIndicator size="small" color={canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary} />
+                    ) : (
+                        <Ionicons
+                            name="play-circle-outline"
+                            size={18}
+                            color={canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                        />
+                    )}
+                    <Text style={{
+                        color: canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary,
+                        fontSize: 15,
+                        fontWeight: '600',
+                    }}>
+                        {t('sessionInfo.resumeSession')}
+                    </Text>
+                </Pressable>
+                <Text style={{
+                    color: theme.colors.textSecondary,
+                    fontSize: 13,
+                    lineHeight: 18,
+                    textAlign: 'center',
+                    paddingHorizontal: 8,
+                }}>
+                    {resumeSessionSubtitle}
+                </Text>
+            </View>
+        </CenteredInputWidth>
+    ) : !sessionStatus.isConnected && resumeCommand ? (
+        <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+            <ResumeCommandHint command={resumeCommand} />
+        </CenteredInputWidth>
     ) : null;
 
 
@@ -518,4 +529,74 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }
         </>
     )
+}
+
+function ResumeCommandHint({ command }: { command: string }) {
+    const { theme } = useUnistyles();
+    const [copied, setCopied] = React.useState(false);
+    return (
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, gap: 8 }}>
+            <Pressable
+                onPress={async () => {
+                    await Clipboard.setStringAsync(command);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                }}
+                style={{
+                    minHeight: 48,
+                    borderRadius: 14,
+                    backgroundColor: theme.colors.surfaceHigh,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 8,
+                    paddingHorizontal: 16,
+                }}
+            >
+                <Ionicons name="terminal-outline" size={16} color={theme.colors.textSecondary} />
+                <Text style={{
+                    color: theme.colors.text,
+                    fontSize: 13,
+                    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                    flex: 1,
+                }} numberOfLines={1}>
+                    {command}
+                </Text>
+                <Ionicons
+                    name={copied ? 'checkmark' : 'copy-outline'}
+                    size={16}
+                    color={copied ? '#30D158' : theme.colors.textSecondary}
+                />
+            </Pressable>
+            <Text style={{
+                color: theme.colors.textSecondary,
+                fontSize: 12,
+                lineHeight: 16,
+                textAlign: 'center',
+                paddingHorizontal: 8,
+            }}>
+                Run this command in your terminal to resume this session
+            </Text>
+        </View>
+    );
+}
+
+function CenteredInputWidth(props: {
+    children: React.ReactNode;
+    horizontalPadding: number;
+}) {
+    return (
+        <View style={{
+            width: '100%',
+            paddingHorizontal: props.horizontalPadding,
+            alignItems: 'center',
+        }}>
+            <View style={{
+                width: '100%',
+                maxWidth: layout.maxWidth,
+            }}>
+                {props.children}
+            </View>
+        </View>
+    );
 }

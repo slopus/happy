@@ -2,11 +2,11 @@ import * as React from 'react';
 import { Button, ContextMenu } from '@expo/ui/jetpack-compose';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { Session } from '@/sync/storageTypes';
+import { t } from '@/text';
 
 interface SessionActionsNativeMenuProps {
     children: React.ReactNode;
     onAfterArchive?: () => void;
-    onAfterBugReport?: () => void;
     onAfterDelete?: () => void;
     session: Session;
 }
@@ -17,21 +17,19 @@ const androidIcon = (name: string) =>
 export function SessionActionsNativeMenu({
     children,
     onAfterArchive,
-    onAfterBugReport,
     onAfterDelete,
     session,
 }: SessionActionsNativeMenuProps) {
     const {
         archiveSession,
         canArchive,
-        canBugReport,
+        canCopySessionMetadata,
         canShowResume,
+        copySessionMetadata,
         openDetails,
-        reportBug,
         resumeSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
-        onAfterBugReport,
         onAfterDelete,
     });
 
@@ -65,14 +63,14 @@ export function SessionActionsNativeMenu({
         );
     }
 
-    if (canBugReport) {
+    if (canCopySessionMetadata) {
         items.push(
             <Button
-                key="bug-report"
+                key="copy-session-metadata"
                 leadingIcon={androidIcon('outlined.BugReport')}
-                onPress={reportBug}
+                onPress={copySessionMetadata}
             >
-                Bug report
+                {t('sessionInfo.copyMetadata')}
             </Button>,
         );
     }

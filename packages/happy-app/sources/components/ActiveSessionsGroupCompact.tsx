@@ -20,6 +20,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -295,6 +296,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
+    const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(session.id);
@@ -312,6 +314,20 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         navigateToSession(session.id);
     }, [navigateToSession, session.id]);
 
+    const handleContextMenu = React.useCallback((event: any) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        setActionsAnchor({
+            type: 'point',
+            x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,
+            y: event.nativeEvent.clientY ?? event.nativeEvent.pageY ?? 0,
+        });
+    }, []);
+
+    const webMenuProps = Platform.OS === 'web' ? {
+        onContextMenu: handleContextMenu,
+    } as any : {};
+
     const itemContent = (
         <Pressable
             style={[
@@ -320,6 +336,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 selected && styles.sessionRowSelected
             ]}
             onPress={handlePress}
+            {...webMenuProps}
         >
             <View style={styles.sessionContent}>
                 {/* Title line with status */}
@@ -380,7 +397,17 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     );
 
     if (!swipeEnabled) {
-        return itemContent;
+        return (
+            <>
+                {itemContent}
+                <SessionActionsPopover
+                    anchor={actionsAnchor}
+                    onClose={() => setActionsAnchor(null)}
+                    session={session}
+                    visible={!!actionsAnchor}
+                />
+            </>
+        );
     }
 
     const renderRightActions = () => (
