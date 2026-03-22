@@ -20,8 +20,6 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
-import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -296,10 +294,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
-    const triggerRef = React.useRef<View | null>(null);
-    const suppressPressUntilRef = React.useRef(0);
     const swipeEnabled = Platform.OS !== 'web';
-    const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(session.id);
@@ -313,61 +308,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         performArchive();
     }, [performArchive]);
 
-    const openActionsFromTrigger = React.useCallback(() => {
-        if (!triggerRef.current) {
-            return;
-        }
-
-        suppressPressUntilRef.current = Date.now() + 750;
-        triggerRef.current.measureInWindow((x, y, width, height) => {
-            setActionsAnchor({
-                type: 'rect',
-                x,
-                y,
-                width,
-                height,
-            });
-        });
-    }, []);
-
-    const handleContextMenu = React.useCallback((event: any) => {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        suppressPressUntilRef.current = Date.now() + 750;
-        setActionsAnchor({
-            type: 'point',
-            x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,
-            y: event.nativeEvent.clientY ?? event.nativeEvent.pageY ?? 0,
-        });
-    }, []);
-
-    const handleKeyDown = React.useCallback((event: any) => {
-        const key = event.nativeEvent?.key;
-        const shiftKey = !!event.nativeEvent?.shiftKey;
-        if (key === 'ContextMenu' || (shiftKey && key === 'F10')) {
-            event.preventDefault?.();
-            openActionsFromTrigger();
-        }
-    }, [openActionsFromTrigger]);
-
     const handlePress = React.useCallback(() => {
-        if (Date.now() < suppressPressUntilRef.current) {
-            return;
-        }
         navigateToSession(session.id);
     }, [navigateToSession, session.id]);
-
-    const handleWebLongPress = React.useCallback(() => {
-        suppressPressUntilRef.current = Date.now() + 750;
-        openActionsFromTrigger();
-    }, [openActionsFromTrigger]);
-
-    const webMenuProps = Platform.OS === 'web' ? {
-        'aria-expanded': !!actionsAnchor,
-        'aria-haspopup': 'menu',
-        onContextMenu: handleContextMenu,
-        onKeyDown: handleKeyDown,
-    } as any : {};
 
     const itemContent = (
         <Pressable
@@ -376,9 +319,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 showBorder && styles.sessionRowWithBorder,
                 selected && styles.sessionRowSelected
             ]}
-            onLongPress={Platform.OS === 'web' ? handleWebLongPress : undefined}
             onPress={handlePress}
-            {...webMenuProps}
         >
             <View style={styles.sessionContent}>
                 {/* Title line with status */}
@@ -438,24 +379,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         </Pressable>
     );
 
-    const wrappedItemContent = (
-        <SessionActionsNativeMenu session={session}>
-            {itemContent}
-        </SessionActionsNativeMenu>
-    );
-
     if (!swipeEnabled) {
-        return (
-            <View collapsable={false} ref={triggerRef}>
-                {wrappedItemContent}
-                <SessionActionsPopover
-                    anchor={actionsAnchor}
-                    onClose={() => setActionsAnchor(null)}
-                    session={session}
-                    visible={!!actionsAnchor}
-                />
-            </View>
-        );
+        return itemContent;
     }
 
     const renderRightActions = () => (
@@ -472,15 +397,13 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     );
 
     return (
-        <View collapsable={false} ref={triggerRef}>
-            <Swipeable
-                ref={swipeableRef}
-                renderRightActions={renderRightActions}
-                overshootRight={false}
-                enabled={!archivingSession}
-            >
-                {wrappedItemContent}
-            </Swipeable>
-        </View>
+        <Swipeable
+            ref={swipeableRef}
+            renderRightActions={renderRightActions}
+            overshootRight={false}
+            enabled={!archivingSession}
+        >
+            {itemContent}
+        </Swipeable>
     );
 });
