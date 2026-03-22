@@ -24,7 +24,7 @@ import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIn
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
 // import * as SystemUI from 'expo-system-ui';
-import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
+import { initRemoteLogging } from '@/utils/remoteLogger';
 import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
 
@@ -64,12 +64,8 @@ SplashScreen.preventAutoHideAsync();
 // Set window background color - now handled by Unistyles
 // SystemUI.setBackgroundColorAsync('white');
 
-// NEVER ENABLE REMOTE LOGGING IN PRODUCTION
-// This is for local debugging with AI only
-// So AI will have all the logs easily accessible in one file for analysis
-if (!!process.env.EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
-    monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds()
-}
+// Remote logging to local log server (configured via Dev > Log Server setting)
+initRemoteLogging()
 
 // Component to apply horizontal safe area padding
 function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) {

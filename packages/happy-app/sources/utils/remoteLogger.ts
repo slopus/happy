@@ -1,22 +1,18 @@
 /**
- * Simple remote logger for React Native
- * Patches console to send logs to remote server
- * 
- * ONLY ENABLE IN LOCAL BUILD
- * PRIMARILY FOR AI AUTO DEBUGGING
+ * Remote logger for React Native
+ * Patches console to send logs to a local log receiver server
+ * Configure via Dev screen → Log Server setting
  */
 
-import { config } from '@/config';
-
+import { getLogServerUrl } from '@/sync/serverConfig';
+import { Platform } from 'react-native';
 
 let logBuffer: any[] = []
 const MAX_BUFFER_SIZE = 1000
 
-export function monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds() {
-  // NEVER ENABLE REMOTE LOGGING IN PRODUCTION
-  // This is for local debugging with AI only
-  // So AI will have all the logs easily accessible in one file for analysis
-  if (!process.env.EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
+export function initRemoteLogging() {
+  const logServerUrl = getLogServerUrl();
+  if (!logServerUrl) {
     return
   }
 
@@ -28,31 +24,23 @@ export function monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyIn
     debug: console.debug,
   }
 
-  const url = config.serverUrl
-  
-  if (!url) {
-    console.log('[RemoteLogger] No server URL provided, remote logging disabled')
-    return
-  }
-
   const sendLog = async (level: string, args: any[]) => {
     try {
-      await fetch(url + '/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', {
+      await fetch(logServerUrl + '/logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
           level,
-          message: args.map(a => 
+          message: args.map(a =>
             typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
           ).join('\n'),
           messageRawObject: args,
           source: 'mobile',
-          platform: 'ios', // or android
+          platform: Platform.OS,
         })
       })
     } catch (e) {
-      // console.error('[RemoteLogger] Failed to send log:', e)
       // Fail silently
     }
   }
@@ -62,7 +50,7 @@ export function monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyIn
     console[level] = (...args: any[]) => {
       // Always call original
       originalConsole[level](...args)
-      
+
       // Buffer for developer settings
       const entry = {
         timestamp: new Date().toISOString(),
@@ -79,7 +67,7 @@ export function monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyIn
     }
   })
 
-  console.log('[RemoteLogger] Initialized with server:', url)
+  originalConsole.log('[RemoteLogger] Initialized with log server:', logServerUrl)
 }
 
 // For developer settings UI

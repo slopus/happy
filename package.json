@@ -5,6 +5,7 @@
         "cli": "yarn workspace happy cli",
         "release": "node ./scripts/release.cjs",
         "web": "yarn workspace happy-app web",
+        "app-logs": "yarn workspace happy-app-logs start",
         "postinstall": "node ./scripts/postinstall.cjs",
         "env:new": "tsx environments/environments.ts new",
         "env:list": "tsx environments/environments.ts list",
@@ -28,7 +29,8 @@
             "packages/happy-agent",
             "packages/happy-cli",
             "packages/happy-server",
-            "packages/happy-wire"
+            "packages/happy-wire",
+            "packages/happy-app-logs"
         ],
         "nohoist": [
             "**/zod",
