@@ -39,6 +39,7 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    onImagePaste?: (image: { base64: string; mediaType: string }) => void;
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
@@ -125,6 +126,34 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         }
     }, [onChangeText, onStateChange, onSelectionChange]);
 
+    const handlePaste = React.useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        if (!props.onImagePaste) return;
+
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                if (!file) continue;
+
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = reader.result as string;
+                    // dataUrl format: "data:image/png;base64,iVBOR..."
+                    const commaIndex = dataUrl.indexOf(',');
+                    const base64 = dataUrl.substring(commaIndex + 1);
+                    const mediaType = item.type;
+                    props.onImagePaste!({ base64, mediaType });
+                };
+                reader.readAsDataURL(file);
+                return; // Only handle the first image
+            }
+        }
+    }, [props.onImagePaste]);
+
     const handleSelect = React.useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
         const target = e.target as HTMLTextAreaElement;
         const selection = { 
@@ -196,6 +225,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 onChange={handleChange}
                 onSelect={handleSelect}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 maxRows={maxRows}
                 autoCapitalize="sentences"
                 autoCorrect="on"

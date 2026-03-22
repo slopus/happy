@@ -30,7 +30,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: string, images?: Array<{ base64: string, mediaType: string }>, mode: EnhancedMode } | null>,
     onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -145,13 +145,25 @@ export async function claudeRemote(opts: {
         }
     };
 
+    // Build SDK content: plain string when no images, content array when images are present
+    function buildContent(text: string, images?: Array<{ base64: string, mediaType: string }>): string | Array<Record<string, unknown>> {
+        if (!images || images.length === 0) return text;
+        return [
+            ...images.map(img => ({
+                type: 'image' as const,
+                source: { type: 'base64' as const, media_type: img.mediaType, data: img.base64 },
+            })),
+            { type: 'text' as const, text },
+        ];
+    }
+
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     messages.push({
         type: 'user',
         message: {
             role: 'user',
-            content: initial.message,
+            content: buildContent(initial.message, initial.images),
         },
     });
 
@@ -213,7 +225,7 @@ export async function claudeRemote(opts: {
                     return;
                 }
                 mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                messages.push({ type: 'user', message: { role: 'user', content: buildContent(next.message, next.images) } });
             }
 
             // Handle tool result
