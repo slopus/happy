@@ -1,10 +1,11 @@
-import { ApiSessionClient } from "@/api/apiSession"
+import { SyncBridge } from "@/api/syncBridge"
+import { RpcHandlerManager } from "@/api/rpc/RpcHandlerManager"
+import { PushNotificationClient } from "@/api/pushNotifications"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
 import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
-import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
 import type { SandboxConfig } from "@/persistence"
 
@@ -30,8 +31,10 @@ interface LoopOptions {
     startingMode?: 'local' | 'remote'
     onModeChange: (mode: 'local' | 'remote') => void
     mcpServers: Record<string, any>
-    session: ApiSessionClient
-    api: ApiClient,
+    syncBridge: SyncBridge
+    rpcHandlerManager: RpcHandlerManager
+    push: PushNotificationClient
+    hapSessionId: string
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     messageQueue: MessageQueue2<EnhancedMode>
@@ -49,8 +52,10 @@ export async function loop(opts: LoopOptions): Promise<number> {
     // Get log path for debug display
     const logPath = logger.logFilePath;
     let session = new Session({
-        api: opts.api,
-        client: opts.session,
+        syncBridge: opts.syncBridge,
+        rpcHandlerManager: opts.rpcHandlerManager,
+        push: opts.push,
+        hapSessionId: opts.hapSessionId,
         path: opts.path,
         sessionId: null,
         claudeEnvVars: opts.claudeEnvVars,

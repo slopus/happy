@@ -1,6 +1,7 @@
 import { Fastify } from "../types";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
+import { resolveSyncNodeTokenClaims } from "@/app/auth/syncNodeToken";
 
 export function enableAuthentication(app: Fastify) {
     app.decorate('authenticate', async function (request: any, reply: any) {
@@ -19,8 +20,15 @@ export function enableAuthentication(app: Fastify) {
                 return reply.code(401).send({ error: 'Invalid token' });
             }
 
+            const syncNodeClaims = resolveSyncNodeTokenClaims(verified.userId, verified.extras);
+            if (!syncNodeClaims) {
+                log({ module: 'auth-decorator' }, "Auth failed - invalid sync node claims");
+                return reply.code(401).send({ error: 'Invalid token claims' });
+            }
+
             log({ module: 'auth-decorator' }, `Auth success - user: ${verified.userId}`);
             request.userId = verified.userId;
+            request.syncNodeClaims = syncNodeClaims;
         } catch (error) {
             return reply.code(401).send({ error: 'Authentication failed' });
         }

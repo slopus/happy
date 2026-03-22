@@ -19,7 +19,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { ApiSessionClient } from '@/api/apiSession';
 import { getIntegrationEnv } from '@/testing/currentIntegrationEnv';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { query, type QueryOptions, type SDKAssistantMessage, type SDKMessage, type SDKResultMessage, type SDKSystemMessage } from './sdk';
@@ -149,9 +148,9 @@ class ClaudeQueryDriver {
     private titleSummaries: string[] = [];
 
     async start(): Promise<void> {
-        const fakeSessionClient = {
+        this.happyServer = await startHappyServer({
             sessionId: 'claude-integration-test',
-            sendClaudeSessionMessage: (message: unknown) => {
+            sendClaudeMessage: (message: unknown) => {
                 if (
                     message
                     && typeof message === 'object'
@@ -161,9 +160,7 @@ class ClaudeQueryDriver {
                     this.titleSummaries.push(String((message as { summary?: string }).summary ?? ''));
                 }
             },
-        } as unknown as ApiSessionClient;
-
-        this.happyServer = await startHappyServer(fakeSessionClient);
+        });
     }
 
     stop(): void {

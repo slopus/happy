@@ -14,7 +14,7 @@
 
 import { createId } from '@paralleldrive/cuid2';
 import type { RawJSONLines } from '@/claude/types';
-import type { v3 } from '@slopus/happy-wire';
+import { v3 } from '@slopus/happy-sync';
 
 type MessageWithParts = v3.MessageWithParts;
 type Part = v3.Part;
@@ -159,18 +159,7 @@ function handleUserMessage(
     return result;
   }
 
-  // A non-sidechain user message means the previous turn ended.
-  // Finalize any in-flight assistant message.
-  if (state.currentAssistant) {
-    finalizeAssistantMessage(state, result);
-  }
-
-  // Build the user message
-  const textContent = typeof message.message.content === 'string'
-    ? message.message.content
-    : extractTextFromBlocks(message.message.content);
-
-  // Check for tool_result blocks (these are tool outputs coming back)
+  // Process tool_result blocks BEFORE finalizing — they complete tools from the previous turn
   const blocks = Array.isArray(message.message.content) ? message.message.content : [];
   for (const block of blocks) {
     if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
@@ -211,6 +200,16 @@ function handleUserMessage(
     }
   }
 
+  // Now finalize the in-flight assistant message (tools have correct final states)
+  if (state.currentAssistant) {
+    finalizeAssistantMessage(state, result);
+  }
+
+  // Build the user message
+  const textContent = typeof message.message.content === 'string'
+    ? message.message.content
+    : extractTextFromBlocks(message.message.content);
+
   if (textContent.trim().length > 0) {
     const userMsgId = msgId();
     state.currentUserMessageID = userMsgId;
@@ -231,7 +230,7 @@ function handleUserMessage(
         text: textContent,
       }],
     };
-    result.messages.push(userMsg);
+    result.messages.push(validateMessageWithParts(userMsg));
   }
 
   return result;
@@ -403,10 +402,10 @@ function finalizeAssistantMessage(state: V3MapperState, result: V3MapperResult):
   asst.info.cost = state.turnCost;
   asst.info.tokens = { ...state.turnTokens };
 
-  result.messages.push({
+  result.messages.push(validateMessageWithParts({
     info: asst.info,
     parts: asst.parts,
-  });
+  }));
 
   // Reset turn state
   state.currentAssistant = null;
@@ -585,6 +584,13 @@ export function unblockToolWithAnswers(
 
   if (!state.currentAssistant) return null;
   return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
+}
+
+// ─── Validation ──────────────────────────────────────────────────────────────
+
+/** Validate a finalized message against the v3 schema. Throws on invalid data. */
+function validateMessageWithParts(msg: MessageWithParts): MessageWithParts {
+  return v3.MessageWithPartsSchema.parse(msg);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

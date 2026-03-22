@@ -1,0 +1,38 @@
+Here's a summary of what was done:
+
+## Completed work
+
+### Step 8: Absorb happy-agent
+- Deleted `packages/happy-agent/` entirely (was already removed from root workspaces, nothing imported it)
+
+### Step 5 (extended): SyncNode lifecycle methods
+Added to `packages/happy-sync/src/sync-node.ts`:
+- **`keepAlive(sessionId, thinking, mode)`** — volatile socket emit for heartbeats
+- **`sendSessionDeath(sessionId)`** — socket emit for session end
+- **`sendUsageData(report)`** — socket emit for usage/cost tracking
+- **`updateMetadata(sessionId, handler)`** — CAS protocol with encrypted round-trip and exponential backoff
+- **`updateAgentState(sessionId, handler)`** — same CAS pattern for agent state
+- **`setRpcHandler(handler)`** / **`registerRpcMethods(methods)`** — RPC registration on socket
+- **`flush(sessionId)`** — outbox flush + socket drain
+- Session metadata/agentState tracking on `SessionState` (versions, decrypted values)
+- `casRetry` helper for CAS backoff loops
+
+Updated `packages/happy-cli/src/api/syncBridge.ts` with passthrough methods for all lifecycle operations.
+
+### Step 5 (wire CLI): Claude session runner → SyncBridge
+- **`packages/happy-cli/src/claude/session.ts`**: Added SyncBridge support. v3MapperState now owned by Session (not ApiSessionClient). New methods: `sendClaudeMessage()`, `closeClaudeTurn()`, `blockToolForPermission()`, `unblockToolApproved()`, `unblockToolRejected()`, `updateMetadata()`, `updateAgentState()`, `sendSessionDeath()`, `flush()`. All prefer SyncBridge with ApiSessionClient fallback.
+- **`packages/happy-cli/src/claude/claudeLocalLauncher.ts`**: Migrated from `session.client.sendClaudeSessionMessage` → `session.sendClaudeMessage`, `session.client.closeClaudeSessionTurn` → `session.closeClaudeTurn`
+- **`packages/happy-cli/src/claude/claudeRemoteLauncher.ts`**: Same migrations
+- **`packages/happy-cli/src/claude/utils/permissionHandler.ts`**: Migrated from `session.client.blockToolForPermissionV3` → `session.blockToolForPermission`, etc.
+
+### Verification
+- All 4 packages compile (`happy-sync`, `happy-cli`, `happy-server`, `happy-app`)
+- 109 passing tests (87 happy-sync, 13 Claude mapper, 9 Codex mapper)
+- Server v3 routes: 8 passing
+- Dockerfiles, postinstall, root workspaces all correctly reference happy-sync
+
+### What remains
+The spec's remaining work is large-scale:
+1. **Full ApiSessionClient removal** — RPC handler, `sendSessionEvent`, and some sessionId references still go through `session.client`. Needs socket exposure on SyncNode or a thin wrapper.
+2. **App UI migration** — ~60+ files import `storageTypes.ts`. The React components need to render `MessageWithParts` directly instead of using the legacy type system. This is the biggest remaining effort.
+3. **OpenClaw/ACP v3 mappers** — These agents use `sendSessionProtocolMessage()` (legacy envelope format). They need new v3 mappers before SyncBridge can be their primary transport.

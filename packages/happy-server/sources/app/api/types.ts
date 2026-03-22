@@ -1,6 +1,7 @@
 import { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { ZodTypeProvider } from "fastify-type-provider-zod";
 import { IncomingMessage, Server, ServerResponse } from "http";
+import type { SyncNodeTokenClaims } from "@slopus/happy-sync";
 
 export interface GitHubProfile {
     id: number;
@@ -53,6 +54,7 @@ export type Fastify = FastifyInstance<
 declare module 'fastify' {
     interface FastifyRequest {
         userId: string;
+        syncNodeClaims: SyncNodeTokenClaims;
         startTime?: number;
     }
     interface FastifyInstance {

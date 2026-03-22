@@ -44,6 +44,46 @@ describe('v3 Codex Mapper', () => {
     expect(reasoning).toBeDefined();
   });
 
+  it('handles synthetic reasoning messages', () => {
+    const state = makeState();
+    handleCodexEvent({ type: 'task_started' }, state);
+    handleCodexEvent({ type: 'reasoning', message: 'Coalesced reasoning' }, state);
+
+    const flushed = flushV3CodexTurn(state);
+    const reasoning = flushed[0].parts.find((p: any) => p.type === 'reasoning');
+    expect(reasoning).toBeDefined();
+    if (reasoning?.type === 'reasoning') {
+      expect(reasoning.text).toBe('Coalesced reasoning');
+    }
+  });
+
+  it('handles synthetic tool-call lifecycle', () => {
+    const state = makeState();
+    handleCodexEvent({ type: 'task_started' }, state);
+    handleCodexEvent({
+      type: 'tool-call',
+      callId: 'reasoning-1',
+      name: 'CodexReasoning',
+      input: { title: 'Plan' },
+    }, state);
+    handleCodexEvent({
+      type: 'tool-call-result',
+      callId: 'reasoning-1',
+      output: { content: 'Reasoned result', status: 'completed' },
+    }, state);
+
+    const flushed = flushV3CodexTurn(state);
+    const tool = flushed[0].parts.find((p: any) => p.type === 'tool');
+    expect(tool).toBeDefined();
+    if (tool?.type === 'tool') {
+      expect(tool.tool).toBe('CodexReasoning');
+      expect(tool.state.status).toBe('completed');
+      if (tool.state.status === 'completed') {
+        expect(tool.state.output).toBe('Reasoned result');
+      }
+    }
+  });
+
   it('handles exec_command lifecycle', () => {
     const state = makeState();
     handleCodexEvent({ type: 'task_started' }, state);

@@ -11,12 +11,13 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
-import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
-    closeClaudeTurnWithStatus,
-    mapClaudeLogMessageToSessionEnvelopes,
-    type ClaudeSessionProtocolState,
-} from '@/claude/utils/sessionProtocolMapper';
+    type v3,
+} from '@slopus/happy-sync';
+import {
+    type SessionEnvelope,
+    type SessionTurnEndStatus,
+} from '@/legacy/sessionProtocol';
 import {
     handleClaudeMessage,
     flushV3Turn,
@@ -32,8 +33,8 @@ import {
     createV3CodexMapperState,
     type V3CodexMapperState,
 } from '@/codex/utils/v3Mapper';
-import { InvalidateSync } from '@/utils/sync';
-import axios from 'axios';
+import { SyncBridge, type SyncBridgeOpts } from './syncBridge';
+import { resolveSessionScopedSyncNodeToken } from './syncNodeToken';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -62,30 +63,6 @@ export type ACPMessageData =
 
 export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
 
-type V3SessionMessage = {
-    id: string;
-    seq: number;
-    content: { t: 'encrypted'; c: string };
-    localId: string | null;
-    createdAt: number;
-    updatedAt: number;
-};
-
-type V3GetSessionMessagesResponse = {
-    messages: V3SessionMessage[];
-    hasMore: boolean;
-};
-
-type V3PostSessionMessagesResponse = {
-    messages: Array<{
-        id: string;
-        seq: number;
-        localId: string | null;
-        createdAt: number;
-        updatedAt: number;
-    }>;
-};
-
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     readonly sessionId: string;
@@ -101,23 +78,9 @@ export class ApiSessionClient extends EventEmitter {
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
-    private claudeSessionProtocolState: ClaudeSessionProtocolState = {
-        currentTurnId: null,
-        uuidToProviderSubagent: new Map<string, string>(),
-        taskPromptToSubagents: new Map<string, string[]>(),
-        providerSubagentToSessionSubagent: new Map<string, string>(),
-        subagentTitles: new Map<string, string>(),
-        bufferedSubagentMessages: new Map<string, RawJSONLines[]>(),
-        hiddenParentToolCalls: new Set<string>(),
-        startedSubagents: new Set<string>(),
-        activeSubagents: new Set<string>(),
-    };
     private v3MapperState: V3MapperState | null = null;
     private v3CodexMapperState: V3CodexMapperState | null = null;
-    private lastSeq = 0;
-    private pendingOutbox: Array<{ content: string; localId: string }> = [];
-    private readonly sendSync: InvalidateSync;
-    private readonly receiveSync: InvalidateSync;
+    private syncBridge: SyncBridge | null = null;
 
     constructor(token: string, session: Session) {
         super()
@@ -129,8 +92,6 @@ export class ApiSessionClient extends EventEmitter {
         this.agentStateVersion = session.agentStateVersion;
         this.encryptionKey = session.encryptionKey;
         this.encryptionVariant = session.encryptionVariant;
-        this.sendSync = new InvalidateSync(() => this.flushOutbox());
-        this.receiveSync = new InvalidateSync(() => this.fetchMessages());
 
         // Initialize RPC handler manager
         this.rpcHandlerManager = new RpcHandlerManager({
@@ -168,7 +129,6 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully');
             this.rpcHandlerManager.onSocketConnect(this.socket);
-            this.receiveSync.invalidate();
         })
 
         // Set up global RPC request handler
@@ -197,19 +157,18 @@ export class ApiSessionClient extends EventEmitter {
                 }
 
                 if (data.body.t === 'new-message') {
-                    const messageSeq = data.body.message?.seq;
-                    if (this.lastSeq === 0) {
-                        this.receiveSync.invalidate();
-                        return;
+                    // When SyncBridge is attached, incoming messages arrive through SyncNode
+                    if (this.syncBridge) return;
+
+                    const message = data.body.message;
+                    if (!message || message.content?.t !== 'encrypted') return;
+                    try {
+                        const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
+                        logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
+                        this.routeIncomingMessage(body);
+                    } catch (error) {
+                        logger.debug('[SOCKET] [UPDATE] Failed to decrypt new-message', { error });
                     }
-                    if (typeof messageSeq !== 'number' || messageSeq !== this.lastSeq + 1 || data.body.message.content.t !== 'encrypted') {
-                        this.receiveSync.invalidate();
-                        return;
-                    }
-                    const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
-                    logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
-                    this.routeIncomingMessage(body);
-                    this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
@@ -250,13 +209,6 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    private authHeaders() {
-        return {
-            'Authorization': `Bearer ${this.token}`,
-            'Content-Type': 'application/json'
-        };
-    }
-
     private routeIncomingMessage(message: unknown) {
         const userResult = UserMessageSchema.safeParse(message);
         if (userResult.success) {
@@ -270,96 +222,22 @@ export class ApiSessionClient extends EventEmitter {
         this.emit('message', message);
     }
 
-    private async fetchMessages() {
-        let afterSeq = this.lastSeq;
-        while (true) {
-            const response = await axios.get<V3GetSessionMessagesResponse>(
-                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                {
-                    params: {
-                        after_seq: afterSeq,
-                        limit: 100
-                    },
-                    headers: this.authHeaders(),
-                    timeout: 60000
-                }
-            );
-
-            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-            let maxSeq = afterSeq;
-
-            for (const message of messages) {
-                if (message.seq > maxSeq) {
-                    maxSeq = message.seq;
-                }
-
-                if (message.content?.t !== 'encrypted') {
-                    continue;
-                }
-
-                try {
-                    const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
-                    this.routeIncomingMessage(body);
-                } catch (error) {
-                    logger.debug('[API] Failed to decrypt fetched message', {
-                        sessionId: this.sessionId,
-                        seq: message.seq,
-                        error
-                    });
-                }
-            }
-
-            this.lastSeq = Math.max(this.lastSeq, maxSeq);
-            const hasMore = !!response.data.hasMore;
-            if (hasMore && maxSeq === afterSeq) {
-                logger.debug('[API] fetchMessages pagination stalled, stopping to avoid infinite loop', {
-                    sessionId: this.sessionId,
-                    afterSeq
-                });
-                break;
-            }
-            afterSeq = maxSeq;
-            if (!hasMore) {
-                break;
-            }
-        }
-    }
-
-    private async flushOutbox() {
-        if (this.pendingOutbox.length === 0) {
+    private enqueueMessage(content: unknown) {
+        if (!this.syncBridge) {
+            logger.debug('[API] enqueueMessage called but no SyncBridge attached — message dropped', { content });
             return;
         }
-
-        const batch = this.pendingOutbox.slice();
-        const response = await axios.post<V3PostSessionMessagesResponse>(
-            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-            {
-                messages: batch
-            },
-            {
-                headers: this.authHeaders(),
-                timeout: 60000
-            }
-        );
-
-        this.pendingOutbox.splice(0, batch.length);
-
-        const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-        const maxSeq = messages.reduce((acc, message) => (
-            message.seq > acc ? message.seq : acc
-        ), this.lastSeq);
-        this.lastSeq = maxSeq;
-    }
-
-    private enqueueMessage(content: unknown, invalidate: boolean = true) {
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.pendingOutbox.push({
-            content: encrypted,
-            localId: randomUUID()
+        // Legacy bridge: wraps non-v3 content in a MessageWithParts envelope.
+        // TODO: These paths (ACP, session protocol, events) should be migrated
+        // to produce proper v3 MessageWithParts. The `as unknown` cast is
+        // intentional — this envelope does NOT conform to MessageWithParts.
+        const envelope = {
+            info: { id: randomUUID(), role: 'system', createdAt: Date.now() },
+            parts: [{ type: 'legacy-envelope', data: content }],
+        };
+        this.syncBridge.sendMessage(envelope as unknown as v3.MessageWithParts).catch((err) => {
+            logger.debug('[API] SyncBridge sendMessage failed (enqueueMessage)', { error: err });
         });
-        if (invalidate) {
-            this.sendSync.invalidate();
-        }
     }
 
     /**
@@ -367,17 +245,7 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
-        // When v3 is enabled, skip v1 session protocol to avoid double rendering
-        if (!process.env.HAPPY_V3_PROTOCOL) {
-            // v1 path (existing)
-            const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
-            this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-            for (const envelope of mapped.envelopes) {
-                this.sendSessionProtocolMessage(envelope);
-            }
-        }
-
-        // v3 path (behind HAPPY_V3_PROTOCOL flag)
+        // v3 only — v1 session protocol removed
         this.sendClaudeV3Message(body);
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -401,36 +269,62 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
-        if (!process.env.HAPPY_V3_PROTOCOL) {
-            const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
-            this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-            for (const envelope of mapped.envelopes) {
-                this.sendSessionProtocolMessage(envelope);
-            }
-        }
+        // v3 only — v1 turn close removed
         this.flushClaudeV3Turn();
     }
 
     /**
-     * Send a v3 protocol message (Message + Parts canonical format).
-     * The content is wrapped with { v: 3 } so the app can distinguish it from legacy payloads.
+     * Attach a SyncBridge for v3 message transport.
+     * When attached, v3 messages go through SyncNode instead of the legacy outbox.
      */
-    sendV3ProtocolMessage(message: { info: unknown; parts: unknown[] }) {
-        this.enqueueMessage({
-            v: 3,
-            message,
+    async attachSyncBridge(opts: Omit<SyncBridgeOpts, 'sessionId'>): Promise<SyncBridge> {
+        const sessionToken = await resolveSessionScopedSyncNodeToken({
+            serverUrl: opts.serverUrl,
+            sessionId: this.sessionId,
+            token: opts.token,
+        });
+        const bridge = new SyncBridge({
+            ...opts,
+            token: sessionToken,
+            sessionId: this.sessionId as v3.SessionID,
+        });
+        await bridge.connect();
+        this.syncBridge = bridge;
+
+        // Wire permission decisions from the app through to the mapper
+        bridge.onPermissionDecision((decision) => {
+            if (decision.decision === 'reject') {
+                this.unblockToolRejectedV3(decision.permissionId, decision.reason ?? 'rejected');
+            } else {
+                this.unblockToolApprovedV3(decision.permissionId, decision.decision);
+            }
+        });
+
+        return bridge;
+    }
+
+    getSyncBridge(): SyncBridge | null {
+        return this.syncBridge;
+    }
+
+    /**
+     * Send a v3 protocol message (Message + Parts canonical format) through SyncNode.
+     */
+    sendV3ProtocolMessage(message: v3.MessageWithParts) {
+        if (!this.syncBridge) {
+            logger.debug('[API] sendV3ProtocolMessage called but no SyncBridge attached — message dropped');
+            return;
+        }
+        this.syncBridge.sendMessage(message).catch((err) => {
+            logger.debug('[API] SyncBridge sendMessage failed', { error: err });
         });
     }
 
     /**
      * Process a Claude SDK message through the v3 mapper and send any finalized messages.
      * Also sends the in-flight assistant message as a partial update.
-     *
-     * Enable with HAPPY_V3_PROTOCOL=1 env var. Dual-writes alongside the existing
-     * session protocol path until migration is complete.
      */
     sendClaudeV3Message(body: RawJSONLines) {
-        if (!process.env.HAPPY_V3_PROTOCOL) return;
 
         if (!this.v3MapperState) {
             this.v3MapperState = createV3MapperState({
@@ -455,7 +349,7 @@ export class ApiSessionClient extends EventEmitter {
      * Flush any in-flight v3 assistant message (e.g. on session end or turn close).
      */
     flushClaudeV3Turn() {
-        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
+        if (!this.v3MapperState) return;
 
         const messages = flushV3Turn(this.v3MapperState);
         for (const msg of messages) {
@@ -472,7 +366,7 @@ export class ApiSessionClient extends EventEmitter {
      * causes duplication when history is fetched.
      */
     blockToolForPermissionV3(callID: string, permission: string, patterns: string[], metadata: Record<string, unknown>): void {
-        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
+        if (!this.v3MapperState) return;
         blockToolForPermission(this.v3MapperState, callID, permission, patterns, metadata);
     }
 
@@ -480,7 +374,7 @@ export class ApiSessionClient extends EventEmitter {
      * Mark a blocked tool as approved in the v3 mapper.
      */
     unblockToolApprovedV3(callID: string, decision: 'once' | 'always'): void {
-        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
+        if (!this.v3MapperState) return;
         unblockToolApproved(this.v3MapperState, callID, decision);
     }
 
@@ -488,7 +382,7 @@ export class ApiSessionClient extends EventEmitter {
      * Mark a blocked tool as rejected in the v3 mapper.
      */
     unblockToolRejectedV3(callID: string, reason: string): void {
-        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3MapperState) return;
+        if (!this.v3MapperState) return;
         unblockToolRejected(this.v3MapperState, callID, reason);
     }
 
@@ -498,7 +392,6 @@ export class ApiSessionClient extends EventEmitter {
      * Process a Codex event through the v3 mapper and send any finalized messages.
      */
     sendCodexV3Event(event: Record<string, unknown>): void {
-        if (!process.env.HAPPY_V3_PROTOCOL) return;
 
         if (!this.v3CodexMapperState) {
             this.v3CodexMapperState = createV3CodexMapperState({
@@ -520,7 +413,7 @@ export class ApiSessionClient extends EventEmitter {
      * Flush any in-flight v3 Codex assistant message.
      */
     flushCodexV3Turn(): void {
-        if (!process.env.HAPPY_V3_PROTOCOL || !this.v3CodexMapperState) return;
+        if (!this.v3CodexMapperState) return;
 
         const messages = flushV3CodexTurn(this.v3CodexMapperState);
         for (const msg of messages) {
@@ -542,7 +435,7 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content);
     }
 
-    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope) {
         const content = {
             role: 'session',
             content: envelope,
@@ -551,7 +444,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
-        this.enqueueMessage(content, invalidate);
+        this.enqueueMessage(content);
     }
 
     sendSessionProtocolMessage(envelope: SessionEnvelope) {
@@ -723,7 +616,7 @@ export class ApiSessionClient extends EventEmitter {
      */
     async flush(): Promise<void> {
         await Promise.race([
-            this.sendSync.invalidateAndAwait(),
+            this.syncBridge?.flush() ?? Promise.resolve(),
             delay(10000)
         ]);
         if (!this.socket.connected) {
@@ -741,8 +634,7 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
-        this.sendSync.stop();
-        this.receiveSync.stop();
+        this.syncBridge?.disconnect();
         this.socket.close();
     }
 }

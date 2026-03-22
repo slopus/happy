@@ -1,0 +1,3 @@
+The i18n background agent completed — all 9 language files updated with translations for `compactionMarker` and `subtask`.
+
+The summary above covers everything done in this session. The big wins are the Part-based rendering pipeline (acceptance criterion 3), the Gemini v3 mapper, and the ACP test fixes. The remaining work is wiring the new mapper into `runGemini.ts`, migrating ACP/OpenClaw off legacy protocol, and then deleting `ApiSessionClient`. Want me to continue with wiring the Gemini mapper into `runGemini.ts` next?

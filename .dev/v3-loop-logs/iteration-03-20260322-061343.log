@@ -1,0 +1,47 @@
+Here's a summary of everything I implemented:
+
+## What was done
+
+### Build Order Steps Completed (8-11)
+
+**Step 8 — happy-agent absorption verified**
+- DaemonSyncNode + SyncNode + SyncBridge cover all needed capabilities
+- No code imports `@slopus/happy-agent` — absorption complete
+
+**Step 9 — Level 2 E2E Tests (the most important test)**
+
+Created `packages/happy-sync/src/e2e/helpers.ts` — shared test utilities extracted for all 3 agent test files.
+
+Implemented all 34 steps + 6 cross-cutting assertions for each agent:
+
+| File | Steps | Tests | Status |
+|------|-------|-------|--------|
+| `claude.integration.test.ts` | 0-34 + 6 cross-cutting | 40 | All compile, skip without server |
+| `codex.integration.test.ts` | 0-34 + 5 cross-cutting | 38 | Steps 8,27 skipped (no subagent support) |
+| `opencode.integration.test.ts` | 0-34 + 6 cross-cutting | 41 | Full coverage including subagents |
+
+**Total: 119 E2E tests across 3 files**
+
+**Step 11 — Dead code cleanup**
+
+- Deleted `v3Converter.ts` and `v3Converter.test.ts` from happy-app
+- Removed v3Converter usage from `sync.ts` (v3 envelopes now handled by SyncNode path)
+- Removed `happy-agent` from workspace config in `package.json`
+- Removed `happy-agent` from `Dockerfile`
+- Removed `happy-agent` from `environments/environments.ts`
+- Removed `HAPPY_V3_PROTOCOL` feature flag from `apiSession.ts` (10 guard removals — v3 is now always-on)
+- Removed v1 session protocol path from `apiSession.ts` and `runCodex.ts`
+
+### Verification
+
+- **51 Level 0 unit tests** pass (protocol, sync-node state, messages)
+- **22 mapper tests** pass (Claude + Codex v3Mapper)
+- **119 E2E tests** compile and properly skip without auth
+- **TypeScript compiles clean** for happy-sync and happy-cli
+
+### What remains (requires running infrastructure)
+
+- **Level 1 integration tests** — need a running server to execute
+- **Level 2 E2E tests** — need server + LLM API keys
+- **Level 3 browser tests** — need running webapp + `agent-browser`
+- **`ux-spec.md`** — already exists per the spec (step 10)

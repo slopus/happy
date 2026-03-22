@@ -4,6 +4,7 @@ import { allocateSessionSeqBatch, allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
+import { canAccessSession } from "@/app/auth/syncNodeToken";
 
 const getMessagesQuerySchema = z.object({
     after_seq: z.coerce.number().int().min(0).default(0),
@@ -61,6 +62,10 @@ export function v3SessionRoutes(app: Fastify) {
         const { sessionId } = request.params;
         const { after_seq, limit } = request.query;
 
+        if (!canAccessSession(request.syncNodeClaims, sessionId)) {
+            return reply.code(403).send({ error: 'Token cannot access requested session' });
+        }
+
         const session = await db.session.findFirst({
             where: {
                 id: sessionId,
@@ -112,6 +117,10 @@ export function v3SessionRoutes(app: Fastify) {
         const { sessionId } = request.params;
         const { messages } = request.body;
 
+        if (!canAccessSession(request.syncNodeClaims, sessionId)) {
+            return reply.code(403).send({ error: 'Token cannot access requested session' });
+        }
+
         const session = await db.session.findFirst({
             where: {
                 id: sessionId,
@@ -157,8 +166,42 @@ export function v3SessionRoutes(app: Fastify) {
                 }
             }
 
+            const changedMessages: SelectedMessage[] = [];
             const newMessages = uniqueMessages.filter((message) => !existingByLocalId.has(message.localId));
-            const seqs = await allocateSessionSeqBatch(sessionId, newMessages.length, tx);
+            const seqs = newMessages.length > 0
+                ? await allocateSessionSeqBatch(sessionId, newMessages.length, tx)
+                : [];
+
+            for (const message of uniqueMessages) {
+                const existingMessage = existingByLocalId.get(message.localId);
+                if (!existingMessage) {
+                    continue;
+                }
+
+                const updatedMessage = await tx.sessionMessage.update({
+                    where: {
+                        sessionId_localId: {
+                            sessionId,
+                            localId: message.localId,
+                        }
+                    },
+                    data: {
+                        content: {
+                            t: 'encrypted',
+                            c: message.content,
+                        }
+                    },
+                    select: {
+                        id: true,
+                        seq: true,
+                        content: true,
+                        localId: true,
+                        createdAt: true,
+                        updatedAt: true
+                    }
+                });
+                changedMessages.push(updatedMessage);
+            }
 
             const createdMessages: Omit<SelectedMessage, 'content'>[] = [];
             for (let i = 0; i < newMessages.length; i += 1) {
@@ -183,17 +226,27 @@ export function v3SessionRoutes(app: Fastify) {
                     }
                 });
                 createdMessages.push(createdMessage);
+                changedMessages.push(createdMessage);
             }
 
-            const responseMessages = [...existing, ...createdMessages].sort((a, b) => a.seq - b.seq);
+            const changedByLocalId = new Map<string, Omit<SelectedMessage, 'content'>>();
+            for (const message of changedMessages) {
+                if (message.localId) {
+                    changedByLocalId.set(message.localId, message);
+                }
+            }
+            const responseMessages = uniqueMessages
+                .map((message) => changedByLocalId.get(message.localId) ?? existingByLocalId.get(message.localId))
+                .filter((message): message is Omit<SelectedMessage, 'content'> => Boolean(message))
+                .sort((a, b) => a.seq - b.seq);
 
             return {
                 responseMessages,
-                createdMessages
+                changedMessages
             };
         });
 
-        for (const message of txResult.createdMessages) {
+        for (const message of txResult.changedMessages) {
             const content = message.localId ? contentByLocalId.get(message.localId) : null;
             if (!content) {
                 continue;

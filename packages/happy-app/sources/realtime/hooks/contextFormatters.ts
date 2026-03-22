@@ -1,5 +1,5 @@
 import { Session } from "@/sync/storageTypes";
-import { Message } from "@/sync/typesMessage";
+import { type v3 } from '@slopus/happy-sync';
 import { trimIdent } from "@/utils/trimIdent";
 import { VOICE_CONFIG } from "../voiceConfig";
 
@@ -33,31 +33,44 @@ export function formatPermissionRequest(
 // Message formatting
 //
 
-export function formatMessage(message: Message): string | null {
+export function formatMessage(message: v3.MessageWithParts): string | null {
+    const lines: string[] = [];
+    const role = message.info.role;
 
-    // Lines
-    let lines: string[] = [];
-    if (message.kind === 'agent-text') {
-        lines.push(`Claude Code: \n<text>${message.text}</text>`);
-    } else if (message.kind === 'user-text') {
-        lines.push(`User sent message: \n<text>${message.text}</text>`);
-    } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
-        const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
-        if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
-            if (message.tool.description) {
-                lines.push(`Claude Code is using ${message.tool.name}${toolDescription}`);
+    if (role === 'user') {
+        const textParts = message.parts.filter((p): p is v3.TextPart => p.type === 'text');
+        if (textParts.length > 0) {
+            lines.push(`User sent message: \n<text>${textParts.map(p => p.text).join('\n')}</text>`);
+        }
+    } else if (role === 'assistant') {
+        const textParts = message.parts.filter((p): p is v3.TextPart => p.type === 'text');
+        const toolParts = message.parts.filter((p): p is v3.ToolPart => p.type === 'tool');
+
+        if (textParts.length > 0) {
+            lines.push(`Claude Code: \n<text>${textParts.map(p => p.text).join('\n')}</text>`);
+        }
+
+        if (!VOICE_CONFIG.DISABLE_TOOL_CALLS) {
+            for (const tool of toolParts) {
+                const title = tool.state.status === 'completed' ? tool.state.title : tool.tool;
+                if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
+                    if (title) {
+                        lines.push(`Claude Code is using ${tool.tool} - ${title}`);
+                    }
+                } else {
+                    lines.push(`Claude Code is using ${tool.tool} (tool_use_id: ${tool.callID})`);
+                }
             }
-        } else {
-            lines.push(`Claude Code is using ${message.tool.name}${toolDescription} (tool_use_id: ${message.id}) with arguments: <arguments>${JSON.stringify(message.tool.input)}</arguments>`);
         }
     }
+
     if (lines.length === 0) {
         return null;
     }
     return lines.join('\n\n');
 }
 
-export function formatNewSingleMessage(sessionId: string, message: Message): string | null {
+export function formatNewSingleMessage(sessionId: string, message: v3.MessageWithParts): string | null {
     let formatted = formatMessage(message);
     if (!formatted) {
         return null;
@@ -65,15 +78,15 @@ export function formatNewSingleMessage(sessionId: string, message: Message): str
     return 'New message in session: ' + sessionId + '\n\n' + formatted;
 }
 
-export function formatNewMessages(sessionId: string, messages: Message[]): string | null {
-    let formatted = [...messages].sort((a, b) => a.createdAt - b.createdAt).map(formatMessage).filter(Boolean);
+export function formatNewMessages(sessionId: string, messages: v3.MessageWithParts[]): string | null {
+    let formatted = [...messages].sort((a, b) => a.info.time.created - b.info.time.created).map(formatMessage).filter(Boolean);
     if (formatted.length === 0) {
         return null;
     }
     return 'New messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
 }
 
-export function formatHistory(sessionId: string, messages: Message[]): string {
+export function formatHistory(sessionId: string, messages: v3.MessageWithParts[]): string {
     let messagesToFormat = VOICE_CONFIG.MAX_HISTORY_MESSAGES > 0
         ? messages.slice(0, VOICE_CONFIG.MAX_HISTORY_MESSAGES)
         : messages;
@@ -85,7 +98,7 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
 // Session states
 //
 
-export function formatSessionFull(session: Session, messages: Message[]): string {
+export function formatSessionFull(session: Session, messages: v3.MessageWithParts[]): string {
     const sessionName = session.metadata?.summary?.text;
     const sessionPath = session.metadata?.path;
     const lines: string[] = [];

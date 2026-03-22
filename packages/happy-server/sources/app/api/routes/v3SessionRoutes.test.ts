@@ -2,6 +2,7 @@ import fastify from "fastify";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Fastify } from "../types";
+import { buildAccountSyncNodeClaims } from "@/app/auth/syncNodeToken";
 
 type SessionRecord = {
     id: string;
@@ -161,13 +162,31 @@ const {
         return selectFields(row as unknown as Record<string, unknown>, args?.select);
     });
 
+    const sessionMessageUpdate = vi.fn(async (args: any) => {
+        const sessionId = args?.where?.sessionId_localId?.sessionId;
+        const localId = args?.where?.sessionId_localId?.localId;
+        const row = state.messages.find((message) => (
+            message.sessionId === sessionId &&
+            message.localId === localId
+        ));
+        if (!row) {
+            throw new Error("Message not found");
+        }
+
+        row.content = args?.data?.content;
+        row.updatedAt = new Date(state.nowMs);
+        state.nowMs += 1;
+        return selectFields(row as unknown as Record<string, unknown>, args?.select);
+    });
+
     const txClient = {
         session: {
             update: sessionUpdate
         },
         sessionMessage: {
             findMany: sessionMessageFindMany,
-            create: sessionMessageCreate
+            create: sessionMessageCreate,
+            update: sessionMessageUpdate,
         },
         account: {
             update: accountUpdate
@@ -184,7 +203,8 @@ const {
         },
         sessionMessage: {
             findMany: sessionMessageFindMany,
-            create: sessionMessageCreate
+            create: sessionMessageCreate,
+            update: sessionMessageUpdate,
         },
         $transaction: vi.fn(async (fn: any) => fn(txClient))
     };
@@ -239,6 +259,7 @@ async function createApp() {
             return reply.code(401).send({ error: "Unauthorized" });
         }
         request.userId = userId;
+        request.syncNodeClaims = buildAccountSyncNodeClaims(userId);
     });
 
     v3SessionRoutes(typed);
@@ -433,7 +454,7 @@ describe("v3SessionRoutes", () => {
         expect(body.messages.map((message: any) => message.localId)).toEqual(["existing", "new-1"]);
         expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2]);
         expect(state.messages).toHaveLength(2);
-        expect(emitUpdateMock).toHaveBeenCalledTimes(1);
+        expect(emitUpdateMock).toHaveBeenCalledTimes(2);
     });
 
     it("enforces send validation limits and auth/session ownership", async () => {

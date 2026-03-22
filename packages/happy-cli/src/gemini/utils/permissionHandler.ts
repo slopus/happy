@@ -6,12 +6,12 @@
  */
 
 import { logger } from "@/ui/logger";
-import { ApiSessionClient } from "@/api/apiSession";
 import type { PermissionMode } from '@/api/types';
 import {
     BasePermissionHandler,
     PermissionResult,
-    PendingRequest
+    PendingRequest,
+    type PermissionHandlerDeps,
 } from '@/utils/BasePermissionHandler';
 
 // Re-export types for backwards compatibility
@@ -23,19 +23,12 @@ export type { PermissionResult, PendingRequest };
 export class GeminiPermissionHandler extends BasePermissionHandler {
     private currentPermissionMode: PermissionMode = 'default';
 
-    constructor(session: ApiSessionClient) {
-        super(session);
+    constructor(deps: PermissionHandlerDeps) {
+        super(deps);
     }
 
     protected getLogPrefix(): string {
         return '[Gemini]';
-    }
-
-    /**
-     * Update session reference (override for type visibility)
-     */
-    updateSession(newSession: ApiSessionClient): void {
-        super.updateSession(newSession);
     }
 
     /**
@@ -58,17 +51,17 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         // - save_memory: Saving memories is safe
         const alwaysAutoApproveNames = ['change_title', 'happy__change_title', 'GeminiReasoning', 'CodexReasoning', 'think', 'save_memory'];
         const alwaysAutoApproveIds = ['change_title', 'save_memory'];
-        
+
         // Check by tool name
         if (alwaysAutoApproveNames.some(name => toolName.toLowerCase().includes(name.toLowerCase()))) {
             return true;
         }
-        
+
         // Check by toolCallId (Gemini CLI may send change_title as "other" but toolCallId contains "change_title")
         if (alwaysAutoApproveIds.some(id => toolCallId.toLowerCase().includes(id.toLowerCase()))) {
             return true;
         }
-        
+
         switch (this.currentPermissionMode) {
             case 'yolo':
                 // Auto-approve everything in yolo mode
@@ -108,7 +101,7 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
             logger.debug(`${this.getLogPrefix()} Auto-approving tool ${toolName} (${toolCallId}) in ${this.currentPermissionMode} mode`);
 
             // Update agent state with auto-approved request
-            this.session.updateAgentState((currentState) => ({
+            this.deps.updateAgentState((currentState) => ({
                 ...currentState,
                 completedRequests: {
                     ...currentState.completedRequests,
@@ -145,4 +138,3 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         });
     }
 }
-

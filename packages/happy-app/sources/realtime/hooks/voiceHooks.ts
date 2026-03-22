@@ -10,7 +10,7 @@ import {
     formatSessionOnline
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
-import { Message } from '@/sync/typesMessage';
+import { type v3 } from '@slopus/happy-sync';
 import { VOICE_CONFIG } from '../voiceConfig';
 
 /**
@@ -59,7 +59,7 @@ function reportSession(sessionId: string) {
     shownSessions.add(sessionId);
     const session = storage.getState().sessions[sessionId];
     if (!session) return;
-    const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
+    const messages = storage.getState().v3SessionMessages[sessionId]?.messages ?? [];
     const contextUpdate = formatSessionFull(session, messages);
     reportContextualUpdate(contextUpdate);
 }
@@ -71,7 +71,7 @@ export const voiceHooks = {
      */
     onSessionOnline(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
-        
+
         reportSession(sessionId);
         const contextUpdate = formatSessionOnline(sessionId, metadata);
         reportContextualUpdate(contextUpdate);
@@ -82,7 +82,7 @@ export const voiceHooks = {
      */
     onSessionOffline(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
-        
+
         reportSession(sessionId);
         const contextUpdate = formatSessionOffline(sessionId, metadata);
         reportContextualUpdate(contextUpdate);
@@ -105,7 +105,7 @@ export const voiceHooks = {
      */
     onPermissionRequested(sessionId: string, requestId: string, toolName: string, toolArgs: any) {
         if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
-        
+
         reportSession(sessionId);
         reportTextUpdate(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
     },
@@ -113,9 +113,9 @@ export const voiceHooks = {
     /**
      * Called when agent sends a message/response
      */
-    onMessages(sessionId: string, messages: Message[]) {
+    onMessages(sessionId: string, messages: v3.MessageWithParts[]) {
         if (VOICE_CONFIG.DISABLE_MESSAGES) return;
-        
+
         reportSession(sessionId);
         reportContextualUpdate(formatNewMessages(sessionId, messages));
     },
@@ -129,13 +129,8 @@ export const voiceHooks = {
         }
         shownSessions.clear();
         let prompt = '';
-        prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
+        prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().v3SessionMessages[sessionId]?.messages ?? []);
         shownSessions.add(sessionId);
-        // prompt += 'Another active sessions: \n\n';
-        // for (let s of storage.getState().getActiveSessions()) {
-        //     if (s.id === sessionId) continue;
-        //     prompt += formatSessionFull(s, storage.getState().sessionMessages[s.id]?.messages ?? []);
-        // }
         return prompt;
     },
 
@@ -144,7 +139,7 @@ export const voiceHooks = {
      */
     onReady(sessionId: string) {
         if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;
-        
+
         reportSession(sessionId);
         reportTextUpdate(formatReadyEvent(sessionId));
     },

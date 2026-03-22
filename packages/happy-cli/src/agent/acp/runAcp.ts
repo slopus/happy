@@ -2,17 +2,24 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { SyncBridge } from '@/api/syncBridge';
+import { resolveSessionScopedSyncNodeToken } from '@/api/syncNodeToken';
+import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
-import type { SessionEnvelope } from '@slopus/happy-wire';
+import type { SessionEnvelope } from '@/legacy/sessionProtocol';
+import type { v3 } from '@slopus/happy-sync';
 import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { Credentials, readSettings } from '@/persistence';
+import type { AgentState } from '@/api/types';
 import { initialMachineMetadata } from '@/daemon/run';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { configuration } from '@/configuration';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
@@ -406,8 +413,12 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
 
-  constructor(session: ApiSessionClient, agentName: string) {
-    super(session);
+  constructor(
+    rpcManager: RpcHandlerManager,
+    updateAgentState: (handler: (state: AgentState) => AgentState) => void,
+    agentName: string,
+  ) {
+    super({ rpcHandlerManager: rpcManager, updateAgentState });
     this.logPrefix = `[${agentName}]`;
   }
 
@@ -490,7 +501,12 @@ export async function runAcp(opts: {
     onSessionSwap: (newSession) => {
       session = newSession;
       if (permissionHandler) {
-        permissionHandler.updateSession(newSession);
+        permissionHandler.updateDeps({
+          rpcHandlerManager: rpcHandlerManager ?? newSession.rpcHandlerManager,
+          updateAgentState: syncBridge
+            ? (handler) => syncBridge!.updateAgentState(handler as any)
+            : (handler) => newSession.updateAgentState(handler),
+        });
       }
     },
   });
@@ -504,7 +520,63 @@ export async function runAcp(opts: {
     }
   }
 
-  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  // ─── Create SyncBridge directly ──────────────────────────────────────────
+
+  let syncBridge: SyncBridge | null = null;
+  let rpcHandlerManager: RpcHandlerManager | null = null;
+
+  if (response) {
+    const sessionScopedToken = await resolveSessionScopedSyncNodeToken({
+      serverUrl: configuration.serverUrl,
+      sessionId: response.id,
+      token: {
+        raw: opts.credentials.token,
+        claims: {
+          scope: { type: 'account', userId: 'cli' },
+          permissions: ['read', 'write', 'admin'],
+        },
+      },
+    });
+
+    syncBridge = new SyncBridge({
+      serverUrl: configuration.serverUrl,
+      token: sessionScopedToken,
+      keyMaterial: {
+        key: response.encryptionKey,
+        variant: response.encryptionVariant,
+      },
+      sessionId: response.id as v3.SessionID,
+    });
+    await syncBridge.connect();
+    logAcp('muted', `SyncBridge connected`);
+
+    // ─── Create RpcHandlerManager and wire to SyncBridge ─────────────────
+
+    rpcHandlerManager = new RpcHandlerManager({
+      scopePrefix: response.id,
+      encryptionKey: response.encryptionKey,
+      encryptionVariant: response.encryptionVariant,
+    });
+
+    syncBridge.setRpcHandler(async (method: string, params: string) => {
+      return rpcHandlerManager!.handleRequest({ method, params });
+    });
+
+    rpcHandlerManager.setRegistrationCallback((prefixedMethod) => {
+      syncBridge!.registerRpcMethods([prefixedMethod]);
+    });
+
+    registerCommonHandlers(rpcHandlerManager, process.cwd());
+    syncBridge.registerRpcMethods(rpcHandlerManager.getRegisteredMethods());
+  }
+
+  permissionHandler = new GenericAcpPermissionHandler(
+    rpcHandlerManager ?? session.rpcHandlerManager,
+    syncBridge
+      ? (handler) => syncBridge!.updateAgentState(handler as any)
+      : (handler) => session.updateAgentState(handler),
+    opts.agentName,
+  );
   const sessionManager = new AcpSessionManager();
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
@@ -517,7 +589,7 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
-  const happyServer = await startHappyServer(session);
+  const happyServer = await startHappyServer({ sessionId: session.sessionId, sendClaudeMessage: (body) => session.sendClaudeSessionMessage(body) });
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
@@ -673,6 +745,14 @@ export async function runAcp(opts: {
     }
   };
 
+  const updateMetadata = (handler: (current: any) => any) => {
+    if (syncBridge) {
+      syncBridge.updateMetadata(handler);
+    } else {
+      session.updateMetadata(handler);
+    }
+  };
+
   const onBackendMessage = (msg: AgentMessage) => {
     if (verbose) {
       logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
@@ -688,7 +768,7 @@ export async function runAcp(opts: {
           logAcp('muted', `  /${command.name}${formatOptionalDetail(command.description, 160)}`);
         }
       }
-      session.updateMetadata((currentMetadata) => ({
+      updateMetadata((currentMetadata: any) => ({
         ...currentMetadata,
         slashCommands: commandNames,
       }));
@@ -731,7 +811,7 @@ export async function runAcp(opts: {
             logAcp('muted', `Outgoing model options from ${opts.agentName}: not reported in config options`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
+        updateMetadata((currentMetadata: any) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { configOptions }),
         );
       }
@@ -748,7 +828,7 @@ export async function runAcp(opts: {
             logAcp('muted', `  mode=${mode.id} name=${mode.name}${formatOptionalDetail(mode.description, 160)}`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
+        updateMetadata((currentMetadata: any) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { modes }),
         );
       }
@@ -765,7 +845,7 @@ export async function runAcp(opts: {
             logAcp('muted', `  model=${model.modelId} name=${model.name}`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
+        updateMetadata((currentMetadata: any) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { models }),
         );
       }
@@ -786,7 +866,7 @@ export async function runAcp(opts: {
             currentModeId,
           };
         }
-        session.updateMetadata((currentMetadata) =>
+        updateMetadata((currentMetadata: any) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { currentModeId }),
         );
       }
@@ -799,7 +879,11 @@ export async function runAcp(opts: {
       const nextThinking = msg.status === 'running';
       if (thinking !== nextThinking) {
         thinking = nextThinking;
-        session.keepAlive(thinking, 'remote');
+        if (syncBridge) {
+          syncBridge.keepAlive(thinking, 'remote');
+        } else {
+          session.keepAlive(thinking, 'remote');
+        }
       }
       if (msg.status === 'idle') {
         clearPendingTurn();
@@ -819,30 +903,62 @@ export async function runAcp(opts: {
 
   backend.onMessage(onBackendMessage);
 
-  session.onUserMessage((message) => {
-    if (!message.content.text) {
-      return;
-    }
+  if (syncBridge) {
+    syncBridge.onUserMessage((message) => {
+      const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
+      if (!textPart) return;
 
-    if (typeof message.meta?.permissionMode === 'string') {
-      currentPermissionMode = message.meta.permissionMode;
-      logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
-    }
+      const meta = (message.info as any).meta;
+      if (typeof meta?.permissionMode === 'string') {
+        currentPermissionMode = meta.permissionMode;
+        logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
+      }
 
-    if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
-      currentModel = message.meta.model ?? null;
-      logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
-    }
+      if (meta && Object.prototype.hasOwnProperty.call(meta, 'model')) {
+        currentModel = meta.model ?? null;
+        logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
+      }
 
-    messageQueue.push(message.content.text, {
-      permissionMode: currentPermissionMode,
-      model: currentModel,
+      messageQueue.push(textPart.text, {
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+      });
     });
-  });
-  session.keepAlive(thinking, 'remote');
+  } else {
+    session.onUserMessage((message) => {
+      if (!message.content.text) {
+        return;
+      }
+
+      if (typeof message.meta?.permissionMode === 'string') {
+        currentPermissionMode = message.meta.permissionMode;
+        logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
+      }
+
+      if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
+        currentModel = message.meta.model ?? null;
+        logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
+      }
+
+      messageQueue.push(message.content.text, {
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+      });
+    });
+  }
+
+  if (syncBridge) {
+    syncBridge.keepAlive(thinking, 'remote');
+  } else {
+    session.keepAlive(thinking, 'remote');
+  }
 
   const keepAliveInterval = setInterval(() => {
-    session.keepAlive(thinking, 'remote');
+    if (syncBridge) {
+      syncBridge.keepAlive(thinking, 'remote');
+    } else {
+      session.keepAlive(thinking, 'remote');
+    }
   }, 2000);
 
   async function handleAbort() {
@@ -859,8 +975,9 @@ export async function runAcp(opts: {
     }
   }
 
-  session.rpcHandlerManager.registerHandler('abort', handleAbort);
-  registerKillSessionHandler(session.rpcHandlerManager, async () => {
+  const activeRpcManager = rpcHandlerManager ?? session.rpcHandlerManager;
+  activeRpcManager.registerHandler('abort', handleAbort);
+  registerKillSessionHandler(activeRpcManager, async () => {
     shouldExit = true;
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
@@ -912,13 +1029,27 @@ export async function runAcp(opts: {
         await backend.sendPrompt(acpSessionId, batch.message);
         await turnEnded;
         sendEnvelopes(sessionManager.endTurn('completed'));
-        session.sendSessionEvent({ type: 'ready' });
+        if (syncBridge) {
+          syncBridge.updateAgentState((currentState: any) => ({
+            ...currentState,
+            lastEvent: { type: 'ready', time: Date.now() },
+          }));
+        } else {
+          session.sendSessionEvent({ type: 'ready' });
+        }
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
         sendEnvelopes(sessionManager.endTurn('failed'));
-        session.sendSessionEvent({ type: 'ready' });
+        if (syncBridge) {
+          syncBridge.updateAgentState((currentState: any) => ({
+            ...currentState,
+            lastEvent: { type: 'ready', time: Date.now() },
+          }));
+        } else {
+          session.sendSessionEvent({ type: 'ready' });
+        }
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
         throw error;
@@ -945,16 +1076,22 @@ export async function runAcp(opts: {
     }
 
     try {
-      session.updateMetadata((currentMetadata) => ({
+      updateMetadata((currentMetadata: any) => ({
         ...currentMetadata,
         lifecycleState: 'archived',
         lifecycleStateSince: Date.now(),
         archivedBy: 'cli',
         archiveReason: 'Session ended',
       }));
-      session.sendSessionDeath();
-      await session.flush();
-      await session.close();
+      if (syncBridge) {
+        syncBridge.sendSessionDeath();
+        await syncBridge.flush();
+        syncBridge.disconnect();
+      } else {
+        session.sendSessionDeath();
+        await session.flush();
+        await session.close();
+      }
     } catch (error) {
       logger.debug(`[${opts.agentName}] Session close failed:`, error);
     }

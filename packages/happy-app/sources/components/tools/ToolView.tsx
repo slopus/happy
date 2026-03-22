@@ -23,10 +23,11 @@ interface ToolViewProps {
     onPress?: () => void;
     sessionId?: string;
     messageId?: string;
+    partId?: string;
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
-    const { tool, onPress, sessionId, messageId } = props;
+    const { tool, onPress, sessionId, messageId, partId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
 
@@ -35,9 +36,12 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         if (onPress) {
             onPress();
         } else if (sessionId && messageId) {
-            router.push(`/session/${sessionId}/message/${messageId}`);
+            router.push({
+                pathname: '/session/[id]/message/[messageId]',
+                params: { id: sessionId, messageId, ...(partId ? { partId } : {}) },
+            });
         }
-    }, [onPress, sessionId, messageId, router]);
+    }, [onPress, sessionId, messageId, partId, router]);
 
     // Enable pressable if either onPress is provided or we have navigation params
     const isPressable = !!(onPress || (sessionId && messageId));

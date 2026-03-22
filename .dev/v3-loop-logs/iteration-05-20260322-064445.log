@@ -1,0 +1,37 @@
+Here's a summary of what was accomplished:
+
+## What I did
+
+### Build order progress (from the spec's 11 steps):
+
+**Step 1: Rename `happy-wire` → `happy-sync`** — Already done on branch. Verified clean: no `happy-wire` imports remain in source code, workspaces updated, Dockerfiles updated, postinstall script updated.
+
+**Step 2: Build `SyncNode`** — Already done on branch. Fixed:
+- **Seq tracking**: Added `sessionLastSeq` map to SyncNode so reconnects use `getLastSeq()` instead of always returning 0 (full rehydrate). `processServerMessage()` now tracks seq numbers. Exposed `getSessionLastSeq()` for external use.
+
+**Step 3: Level 0 tests** — Added 10 new protocol tests covering all 14 part types (was 7/14). Added proper token scope enforcement test. **52 tests** (up from 42).
+
+**Step 4: Level 1 integration tests** — All **15 tests** pass against a real standalone server.
+
+**Step 5: Wire CLI session processes** — Added `attachSyncBridge()` to `ApiSessionClient` that:
+- Creates a `SyncBridge` and connects it
+- Routes all v3 `sendV3ProtocolMessage()` calls through SyncBridge (falls back to legacy outbox on error)
+- Wires incoming permission decisions from the app back to the mapper's `unblockTool*` methods
+- Disconnects SyncBridge on `close()`
+
+**Step 6: Wire daemon** — `DaemonSyncNode` was already written. Verified it's correct.
+
+**Step 7: Wire app** — Added `AppSyncStore` initialization in the `Sync` class's `#init()` method. The store connects with account-scoped token and provides real-time `MessageWithParts` to React components.
+
+**Steps 8-11** (absorb happy-agent, Level 2/3 tests, dead code deletion) — Partially done: dead code is verified clean, `happy-agent` is still present but its integration test files are the only things referencing `HAPPY_V3_PROTOCOL`.
+
+### Test results
+- **4 packages typecheck clean**: happy-sync, happy-cli, happy-app, happy-server
+- **108 tests pass**: 93 unit + 15 integration
+- **0 failures**
+
+### What remains (requires real LLM costs / deeper rewiring):
+- **Level 2 tests** (34-step exercise flow with real agents) — needs running LLMs
+- **Level 3 tests** (browser verification via agent-browser) — needs UX spec + running app
+- **Full `happy-agent` absorption** — needs daemon integration testing
+- **Completing the ApiSessionClient replacement** — the current approach is incremental (SyncBridge is wired alongside legacy socket); full elimination requires rewriting the launch code in `claudeRemoteLauncher.ts`, `runCodex.ts`, etc.

@@ -92,8 +92,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     // When to abort
-    session.client.rpcHandlerManager.registerHandler('abort', doAbort); // When abort clicked
-    session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
+    session.rpcHandlerManager.registerHandler('abort', doAbort); // When abort clicked
+    session.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
     // Create permission handler
@@ -101,7 +101,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
-        (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
+        (logMessage) => session.sendClaudeMessage(logMessage)
     );
 
     // Set up callback to release delayed messages when permission is requested
@@ -375,19 +375,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     onMessage,
                     onCompletionEvent: (message: string) => {
                         logger.debug(`[remote]: Completion event: ${message}`);
-                        session.client.sendSessionEvent({ type: 'message', message });
+                        session.sendSessionEvent({ type: 'message', message });
                     },
                     onSessionReset: () => {
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
                     onReady: () => {
-                        session.client.closeClaudeSessionTurn('completed');
+                        session.closeClaudeTurn('completed');
                         if (!pending && session.queue.size() === 0) {
-                            session.api.push().sendToAllDevices(
+                            session.push.sendToAllDevices(
                                 'It\'s ready!',
                                 `Claude is waiting for your command`,
-                                { sessionId: session.client.sessionId }
+                                { sessionId: session.hapSessionId }
                             );
                         }
                     },
@@ -398,14 +398,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 session.consumeOneTimeFlags();
                 
                 if (!exitReason && abortController.signal.aborted) {
-                    session.client.closeClaudeSessionTurn('cancelled');
-                    session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+                    session.closeClaudeTurn('cancelled');
+                    session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
-                    session.client.closeClaudeSessionTurn('failed');
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.closeClaudeTurn('failed');
+                    session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     continue;
                 }
             } finally {
@@ -417,7 +417,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     const converted = sdkToLogConverter.generateInterruptedToolResult(toolCallId, parentToolCallId);
                     if (converted) {
                         logger.debug('[remote]: terminating tool call ' + toolCallId + ' parent: ' + parentToolCallId);
-                        session.client.sendClaudeSessionMessage(converted);
+                        session.sendClaudeMessage(converted);
                     }
                 }
                 ongoingToolCalls.clear();

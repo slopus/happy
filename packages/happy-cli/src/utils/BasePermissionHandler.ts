@@ -8,7 +8,7 @@
  */
 
 import { logger } from "@/ui/logger";
-import { ApiSessionClient } from "@/api/apiSession";
+import { RpcHandlerManager } from "@/api/rpc/RpcHandlerManager";
 import { AgentState } from "@/api/types";
 
 /**
@@ -38,6 +38,15 @@ export interface PermissionResult {
 }
 
 /**
+ * Dependencies required by BasePermissionHandler.
+ * Can be satisfied by ApiSessionClient (legacy) or by passing SyncBridge-based deps directly.
+ */
+export interface PermissionHandlerDeps {
+    rpcHandlerManager: RpcHandlerManager;
+    updateAgentState: (handler: (state: AgentState) => AgentState) => void;
+}
+
+/**
  * Abstract base class for permission handlers.
  *
  * Subclasses must implement:
@@ -45,7 +54,7 @@ export interface PermissionResult {
  */
 export abstract class BasePermissionHandler {
     protected pendingRequests = new Map<string, PendingRequest>();
-    protected session: ApiSessionClient;
+    protected deps: PermissionHandlerDeps;
     private isResetting = false;
 
     /**
@@ -53,19 +62,19 @@ export abstract class BasePermissionHandler {
      */
     protected abstract getLogPrefix(): string;
 
-    constructor(session: ApiSessionClient) {
-        this.session = session;
+    constructor(deps: PermissionHandlerDeps) {
+        this.deps = deps;
         this.setupRpcHandler();
     }
 
     /**
-     * Update the session reference (used after offline reconnection swaps sessions).
-     * This is critical for avoiding stale session references after onSessionSwap.
+     * Update the deps reference (used after offline reconnection swaps sessions).
+     * This is critical for avoiding stale references after onSessionSwap.
      */
-    updateSession(newSession: ApiSessionClient): void {
-        logger.debug(`${this.getLogPrefix()} Session reference updated`);
-        this.session = newSession;
-        // Re-setup RPC handler with new session
+    updateDeps(newDeps: PermissionHandlerDeps): void {
+        logger.debug(`${this.getLogPrefix()} Deps reference updated`);
+        this.deps = newDeps;
+        // Re-setup RPC handler with new deps
         this.setupRpcHandler();
     }
 
@@ -73,7 +82,7 @@ export abstract class BasePermissionHandler {
      * Setup RPC handler for permission responses.
      */
     protected setupRpcHandler(): void {
-        this.session.rpcHandlerManager.registerHandler<PermissionResponse, void>(
+        this.deps.rpcHandlerManager.registerHandler<PermissionResponse, void>(
             'permission',
             async (response) => {
                 const pending = this.pendingRequests.get(response.id);
@@ -93,7 +102,7 @@ export abstract class BasePermissionHandler {
                 pending.resolve(result);
 
                 // Move request to completed in agent state
-                this.session.updateAgentState((currentState) => {
+                this.deps.updateAgentState((currentState) => {
                     const request = currentState.requests?.[response.id];
                     if (!request) return currentState;
 
@@ -124,7 +133,7 @@ export abstract class BasePermissionHandler {
      * Add a pending request to the agent state.
      */
     protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
-        this.session.updateAgentState((currentState) => ({
+        this.deps.updateAgentState((currentState) => ({
             ...currentState,
             requests: {
                 ...currentState.requests,
@@ -159,7 +168,7 @@ export abstract class BasePermissionHandler {
         }
 
         // Move pending requests to completed as canceled in agent state
-        this.session.updateAgentState((currentState) => {
+        this.deps.updateAgentState((currentState) => {
             const pendingRequests = currentState.requests || {};
             const completedRequests = { ...currentState.completedRequests };
 
@@ -209,7 +218,7 @@ export abstract class BasePermissionHandler {
             }
 
             // Clear requests in agent state
-            this.session.updateAgentState((currentState) => {
+            this.deps.updateAgentState((currentState) => {
                 const pendingRequests = currentState.requests || {};
                 const completedRequests = { ...currentState.completedRequests };
 

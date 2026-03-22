@@ -20,6 +20,7 @@ export class RpcHandlerManager {
     private readonly encryptionVariant: 'legacy' | 'dataKey';
     private readonly logger: (message: string, data?: any) => void;
     private socket: Socket | null = null;
+    private registrationCallback: ((prefixedMethod: string) => void) | null = null;
 
     constructor(config: RpcHandlerConfig) {
         this.scopePrefix = config.scopePrefix;
@@ -45,6 +46,7 @@ export class RpcHandlerManager {
         if (this.socket) {
             this.socket.emit('rpc-register', { method: prefixedMethod });
         }
+        this.registrationCallback?.(prefixedMethod);
     }
 
     unregisterHandler(method: string): void {
@@ -128,6 +130,21 @@ export class RpcHandlerManager {
     clearHandlers(): void {
         this.handlers.clear();
         this.logger('Cleared all RPC handlers');
+    }
+
+    /**
+     * Set a callback that fires whenever a handler is registered.
+     * Used by SyncBridge to forward registrations to SyncNode.
+     */
+    setRegistrationCallback(callback: ((prefixedMethod: string) => void) | null): void {
+        this.registrationCallback = callback;
+    }
+
+    /**
+     * Get all currently registered prefixed method names.
+     */
+    getRegisteredMethods(): string[] {
+        return Array.from(this.handlers.keys());
     }
 
     /**

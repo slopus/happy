@@ -70,7 +70,7 @@ function readAgentCredentials() {
     const credentials = readLocalHappyAgentCredentials();
     if (!credentials) {
         throw new Error(
-            `Cannot resume historical Happy sessions without ${credentialPath}. Run \`happy-agent auth login\` in this environment first.`,
+            `Cannot resume historical Happy sessions without ${credentialPath}. Run \`happy auth login\` in this environment first.`,
         );
     }
     return credentials;
@@ -127,7 +127,7 @@ export async function resolveHappySession(sessionId: string): Promise<ResumableH
     } catch (error) {
         if (error instanceof AxiosError) {
             if (error.response?.status === 401) {
-                throw new Error('Happy session lookup authentication expired. Run `happy-agent auth login` in this environment.');
+                throw new Error('Happy session lookup authentication expired. Run `happy auth login` in this environment.');
             }
             throw new Error(`Failed to load Happy sessions: ${error.message}`);
         }

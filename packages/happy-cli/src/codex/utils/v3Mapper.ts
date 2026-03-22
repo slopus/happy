@@ -15,7 +15,7 @@
  */
 
 import { createId } from '@paralleldrive/cuid2';
-import type { v3 } from '@slopus/happy-wire';
+import { v3 } from '@slopus/happy-sync';
 
 type MessageWithParts = v3.MessageWithParts;
 type Part = v3.Part;
@@ -147,6 +147,83 @@ export function handleCodexEvent(
         text,
         time: { start: Date.now() },
       } satisfies ReasoningPart);
+    }
+    result.currentAssistant = { info: asst.info, parts: asst.parts };
+    return result;
+  }
+
+  if (type === 'reasoning') {
+    const text = typeof event.message === 'string' ? event.message : '';
+    if (text.length > 0) {
+      asst.parts.push({
+        id: partId(),
+        sessionID: state.sessionID,
+        messageID: asst.info.id,
+        type: 'reasoning',
+        text,
+        time: { start: Date.now() },
+      } satisfies ReasoningPart);
+    }
+    result.currentAssistant = { info: asst.info, parts: asst.parts };
+    return result;
+  }
+
+  if (type === 'tool-call') {
+    const callID = pickCallId(event);
+    const toolName = typeof event.name === 'string' && event.name.length > 0
+      ? event.name
+      : 'tool';
+    const input = event.input && typeof event.input === 'object'
+      ? event.input as Record<string, unknown>
+      : {};
+
+    const toolPart: ToolPart = {
+      id: partId(),
+      sessionID: state.sessionID,
+      messageID: asst.info.id,
+      type: 'tool',
+      callID,
+      tool: toolName,
+      state: {
+        status: 'running',
+        input,
+        title: toolName,
+        time: { start: Date.now() },
+      },
+    };
+    asst.parts.push(toolPart);
+    state.toolParts.set(callID, toolPart);
+    result.currentAssistant = { info: asst.info, parts: asst.parts };
+    return result;
+  }
+
+  if (type === 'tool-call-result') {
+    const callID = pickCallId(event);
+    const toolPart = state.toolParts.get(callID);
+    if (toolPart && toolPart.state.status === 'running') {
+      const output = event.output && typeof event.output === 'object'
+        ? event.output as { content?: unknown; status?: unknown }
+        : {};
+      const content = typeof output.content === 'string' ? output.content : '';
+      const status = output.status === 'canceled' ? 'canceled' : 'completed';
+
+      toolPart.state = status === 'completed'
+        ? {
+            status: 'completed',
+            input: toolPart.state.input,
+            output: content,
+            title: toolPart.state.title ?? toolPart.tool,
+            metadata: {},
+            time: { start: toolPart.state.time.start, end: Date.now() },
+          }
+        : {
+            status: 'error',
+            input: toolPart.state.input,
+            error: content || 'Canceled',
+            metadata: { canceled: true },
+            time: { start: toolPart.state.time.start, end: Date.now() },
+          };
+      state.toolParts.delete(callID);
     }
     result.currentAssistant = { info: asst.info, parts: asst.parts };
     return result;
@@ -365,8 +442,13 @@ function finalizeAssistant(
   asst.info.time.completed = Date.now();
   asst.info.finish = finish;
 
-  result.messages.push({ info: asst.info, parts: asst.parts });
+  result.messages.push(validateMessageWithParts({ info: asst.info, parts: asst.parts }));
   state.currentAssistant = null;
+}
+
+/** Validate a finalized message against the v3 schema. Throws on invalid data. */
+function validateMessageWithParts(msg: MessageWithParts): MessageWithParts {
+  return v3.MessageWithPartsSchema.parse(msg);
 }
 
 function pickCallId(event: Record<string, unknown>): string {

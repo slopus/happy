@@ -1,23 +1,23 @@
 import * as React from 'react';
-import { useSession, useSessionMessages } from "@/sync/storage";
-import { ActivityIndicator, FlatList, Platform, View } from 'react-native';
+import { useSession, useV3SessionMessages } from "@/sync/storage";
+import { FlatList, Platform, View } from 'react-native';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MessageView } from './MessageView';
-import { Metadata, Session } from '@/sync/storageTypes';
+import { V3MessageView } from './parts/V3MessageView';
+import { Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
-import { Message } from '@/sync/typesMessage';
+import { type v3 } from '@slopus/happy-sync';
 
 export const ChatList = React.memo((props: { session: Session }) => {
-    const { messages } = useSessionMessages(props.session.id);
+    const { messages } = useV3SessionMessages(props.session.id);
+
     return (
-        <ChatListInternal
-            metadata={props.session.metadata}
+        <V3ChatListInternal
             sessionId={props.session.id}
             messages={messages}
         />
-    )
+    );
 });
 
 const ListHeader = React.memo(() => {
@@ -33,15 +33,15 @@ const ListFooter = React.memo((props: { sessionId: string }) => {
     )
 });
 
-const ChatListInternal = React.memo((props: {
-    metadata: Metadata | null,
+// v3: renders MessageWithParts directly via PartView — no conversion
+const V3ChatListInternal = React.memo((props: {
     sessionId: string,
-    messages: Message[],
+    messages: v3.MessageWithParts[],
 }) => {
-    const keyExtractor = useCallback((item: any) => item.id, []);
-    const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
-    ), [props.metadata, props.sessionId]);
+    const keyExtractor = useCallback((item: v3.MessageWithParts) => item.info.id as string, []);
+    const renderItem = useCallback(({ item }: { item: v3.MessageWithParts }) => (
+        <V3MessageView message={item} sessionId={props.sessionId} />
+    ), [props.sessionId]);
     return (
         <FlatList
             data={props.messages}
@@ -57,5 +57,6 @@ const ChatListInternal = React.memo((props: {
             ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
             ListFooterComponent={<ListHeader />}
         />
-    )
+    );
 });
+

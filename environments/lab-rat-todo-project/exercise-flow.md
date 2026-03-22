@@ -1,8 +1,11 @@
 # Agent Exercise Flow
 
-33 steps against lab-rat-todo-project. One continuous session. Execute
-sequentially. Each section labels what's being tested. The flow is linear
-and realistic — each step builds on the last.
+34 user interactions against lab-rat-todo-project. One continuous session.
+Execute sequentially. Each section labels what's being tested. The flow is
+linear and realistic — each step builds on the last.
+
+The step numbering intentionally skips `24` for historical continuity, but the
+flow still contains 34 total interactions (`0-23`, `25-34`).
 
 Not all agents support every primitive. Record what happens, skip what
 doesn't apply, note what's missing.

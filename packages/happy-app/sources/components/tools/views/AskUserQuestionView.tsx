@@ -3,8 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
-import { sessionAllow } from '@/sync/ops';
-import { sync } from '@/sync/sync';
+import { sessionAnswerQuestion } from '@/sync/ops';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,7 +16,8 @@ interface Question {
     question: string;
     header: string;
     options: QuestionOption[];
-    multiSelect: boolean;
+    multiple?: boolean;
+    multiSelect?: boolean;
 }
 
 interface AskUserQuestionInput {
@@ -224,30 +224,30 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         // captured the values above. TODO: Revisit this logic.
         setIsSubmitted(true);
 
-        // Format answers as readable text
-        const responseLines: string[] = [];
+        const structuredAnswers: string[][] = [];
         questions.forEach((q, qIndex) => {
             const selected = selections.get(qIndex);
             if (selected && selected.size > 0) {
                 const selectedLabels = Array.from(selected)
                     .map(optIndex => q.options[optIndex]?.label)
-                    .filter(Boolean)
-                    .join(', ');
-                responseLines.push(`${q.header}: ${selectedLabels}`);
+                    .filter((label): label is string => Boolean(label));
+                structuredAnswers.push(selectedLabels);
             }
         });
 
-        const responseText = responseLines.join('\n');
-
         try {
-            // 1. Approve the permission (like PermissionFooter.handleApprove does)
-            if (tool.permission?.id) {
-                await sessionAllow(sessionId, tool.permission.id);
+            const questionId = tool.permission?.id;
+            if (!questionId) {
+                throw new Error('Question tool is missing its question id');
             }
-            // 2. Send the answer as a message
-            await sync.sendMessage(sessionId, responseText);
+
+            const answered = await sessionAnswerQuestion(sessionId, questionId, structuredAnswers);
+            if (!answered) {
+                throw new Error(`Question ${questionId} is no longer pending in session ${sessionId}`);
+            }
         } catch (error) {
             console.error('Failed to submit answer:', error);
+            setIsSubmitted(false);
         } finally {
             setIsSubmitting(false);
         }
@@ -302,11 +302,11 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                                                 isSelected && styles.optionButtonSelected,
                                                 !canInteract && styles.optionButtonDisabled,
                                             ]}
-                                            onPress={() => handleOptionToggle(qIndex, oIndex, question.multiSelect)}
+                                            onPress={() => handleOptionToggle(qIndex, oIndex, question.multiple ?? question.multiSelect ?? false)}
                                             disabled={!canInteract}
                                             activeOpacity={0.7}
                                         >
-                                            {question.multiSelect ? (
+                                            {question.multiple ?? question.multiSelect ? (
                                                 <View style={[
                                                     styles.checkboxOuter,
                                                     isSelected && styles.checkboxOuterSelected,

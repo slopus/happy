@@ -16,6 +16,7 @@ import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
+import { DaemonSyncNode } from './syncNode';
 import { startDaemonControlServer } from './controlServer';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -660,6 +661,28 @@ export async function startDaemon(): Promise<void> {
     });
     logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);
 
+    // Create account-scoped DaemonSyncNode for session lifecycle
+    const daemonSyncNode = new DaemonSyncNode({
+      serverUrl: configuration.serverUrl,
+      token: {
+        raw: credentials.token,
+        claims: {
+          scope: { type: 'account', userId: 'daemon' },
+          permissions: ['read', 'write', 'admin'],
+        },
+      },
+      keyMaterial: {
+        key: machine.encryptionKey,
+        variant: machine.encryptionVariant,
+      },
+    });
+    try {
+      await daemonSyncNode.connect();
+      logger.debug('[DAEMON RUN] DaemonSyncNode connected');
+    } catch (err) {
+      logger.debug('[DAEMON RUN] DaemonSyncNode connect failed, continuing without sync', err);
+    }
+
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
 
@@ -788,6 +811,7 @@ export async function startDaemon(): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       apiMachine.shutdown();
+      daemonSyncNode.disconnect();
       await stopControlServer();
       await cleanupDaemonState();
       await stopCaffeinate();

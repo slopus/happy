@@ -87,9 +87,9 @@ export class PermissionHandler {
         // Notify v3 mapper of the decision
         if (response.approved) {
             const decision = (response.allowTools && response.allowTools.length > 0) ? 'always' as const : 'once' as const;
-            this.session.client.unblockToolApprovedV3(response.id, decision);
+            this.session.unblockToolApproved(response.id, decision);
         } else {
-            this.session.client.unblockToolRejectedV3(response.id, response.reason || 'Permission rejected');
+            this.session.unblockToolRejected(response.id, response.reason || 'Permission rejected');
         }
 
         // Handle
@@ -209,11 +209,11 @@ export class PermissionHandler {
             }
             
             // Send push notification
-            this.session.api.push().sendToAllDevices(
+            this.session.push.sendToAllDevices(
                 'Permission Request',
                 `Claude wants to ${getToolName(toolName)}`,
                 {
-                    sessionId: this.session.client.sessionId,
+                    sessionId: this.session.hapSessionId,
                     requestId: id,
                     tool: toolName,
                     type: 'permission_request'
@@ -221,7 +221,7 @@ export class PermissionHandler {
             );
 
             // Update agent state
-            this.session.client.updateAgentState((currentState) => ({
+            this.session.updateAgentState((currentState) => ({
                 ...currentState,
                 requests: {
                     ...currentState.requests,
@@ -234,7 +234,7 @@ export class PermissionHandler {
             }));
 
             // Notify v3 mapper that this tool is blocked for permission
-            this.session.client.blockToolForPermissionV3(
+            this.session.blockToolForPermission(
                 id,
                 toolName,
                 this.extractPatterns(toolName, input),
@@ -373,13 +373,13 @@ export class PermissionHandler {
 
         // Cancel all pending requests and notify v3 mapper
         for (const [id, pending] of this.pendingRequests.entries()) {
-            this.session.client.unblockToolRejectedV3(id, 'Session reset');
+            this.session.unblockToolRejected(id, 'Session reset');
             pending.reject(new Error('Session reset'));
         }
         this.pendingRequests.clear();
 
         // Move all pending requests to completedRequests with canceled status
-        this.session.client.updateAgentState((currentState) => {
+        this.session.updateAgentState((currentState) => {
             const pendingRequests = currentState.requests || {};
             const completedRequests = { ...currentState.completedRequests };
 
@@ -405,7 +405,7 @@ export class PermissionHandler {
      * Sets up the client handler for permission responses
      */
     private setupClientHandler(): void {
-        this.session.client.rpcHandlerManager.registerHandler<PermissionResponse, void>('permission', async (message) => {
+        this.session.rpcHandlerManager.registerHandler<PermissionResponse, void>('permission', async (message) => {
             logger.debug(`Permission response: ${JSON.stringify(message)}`);
 
             const id = message.id;
@@ -424,7 +424,7 @@ export class PermissionHandler {
             this.handlePermissionResponse(message, pending);
 
             // Move processed request to completedRequests
-            this.session.client.updateAgentState((currentState) => {
+            this.session.updateAgentState((currentState) => {
                 const request = currentState.requests?.[id];
                 if (!request) return currentState;
                 let r = { ...currentState.requests };

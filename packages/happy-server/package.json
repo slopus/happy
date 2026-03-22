@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "build:standalone": "bun build ./sources/standalone.ts --compile --outfile dist/happy-server --target bun && find ../../node_modules/@electric-sql/pglite/dist -name 'pglite.wasm' -exec cp {} dist/ \\; && find ../../node_modules/@electric-sql/pglite/dist -name 'pglite.data' -exec cp {} dist/ \\; && cp -r prisma/migrations dist/prisma/migrations",
     "start": "tsx ./sources/main.ts",
     "standalone": "tsx ./sources/standalone.ts",
@@ -42,7 +43,7 @@
     "@fastify/cors": "^10.0.1",
     "@prisma/client": "^6.11.1",
     "@socket.io/redis-streams-adapter": "^0.2.2",
-    "@slopus/happy-wire": "^0.1.0",
+    "@slopus/happy-sync": "^0.1.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/semver": "^7.7.0",
     "axios": "^1.6.8",
