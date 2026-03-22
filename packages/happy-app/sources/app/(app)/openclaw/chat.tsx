@@ -735,10 +735,7 @@ export default function OpenClawChatPage() {
     const input = (
         <View style={[styles.inputContainer, { paddingBottom: safeArea.bottom + 16 }]}>
             <View style={styles.inputInner}>
-                <View style={[
-                    styles.inputPanel,
-                    !(isConnected && !isStreaming) && { opacity: 0.5 },
-                ]}>
+                <View style={styles.inputPanel}>
                     <View style={styles.inputWrapper}>
                         <MultiTextInput
                             value={inputText}
