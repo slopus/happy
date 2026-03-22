@@ -3,6 +3,7 @@ import { ToolCall } from '@/sync/typesMessage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { create } from 'zustand';
 import { MMKV } from 'react-native-mmkv';
+import { parseMcpResult } from '../parseMcpResult';
 
 const mmkv = new MMKV();
 const TITLE_CACHE_KEY = 'orchestrator-title-cache';
@@ -39,19 +40,6 @@ function cacheTitle(id: string, title: string) {
         if (state.titles[id]) return state;
         return { titles: { ...state.titles, [id]: title } };
     });
-}
-
-function parseToolResult(result: unknown): any {
-    let text: string | null = null;
-    if (Array.isArray(result)) {
-        const first = result[0];
-        if (first && typeof first === 'object' && 'text' in first && typeof first.text === 'string') {
-            text = first.text;
-        }
-    } else if (typeof result === 'string') {
-        text = result;
-    }
-    return text ? JSON.parse(text) : result;
 }
 
 function stripMCPPrefix(name: string): string {
@@ -99,7 +87,7 @@ export function useMCPSubtitle(tool: ToolCall): string {
         const runTitle = tool.input?.title;
         if (!runTitle || typeof runTitle !== 'string' || !tool.result) return;
         try {
-            const parsed = parseToolResult(tool.result);
+            const parsed = parseMcpResult(tool.result);
             const data = parsed?.data;
             if (!data) return;
 

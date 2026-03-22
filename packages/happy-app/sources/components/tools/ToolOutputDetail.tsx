@@ -12,6 +12,7 @@ import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorS
 import { sanitizeOrchestratorOutputSummary } from '@/components/orchestrator/display';
 import { formatToolOutputContent, isTrimmedToolOutput } from './toolOutputContent';
 import { createToolOutputLoadingCardStyles, formatToolOutputSummaryValue } from './toolOutputLoadingCard';
+import { parseMcpResult } from './parseMcpResult';
 import { LongPressCopy, useCopySelectable } from '../LongPressCopy';
 import { t } from '@/text';
 import { useAuth } from '@/auth/AuthContext';
@@ -227,7 +228,7 @@ function renderOrchestratorStructuredOutput(tool: ToolCall, result: unknown, fal
     }
 
     try {
-        const payload = decodeOrchestratorMcpPayload(result);
+        const payload = parseMcpResult(result);
         const context = extractOrchestratorContext(payload);
         const runs = extractOrchestratorRuns(payload);
         if (!context && runs.length === 0) {
@@ -488,53 +489,6 @@ function OrchestratorContextCard({ context }: { context: ParsedOrchestratorConte
 function isOrchestratorToolName(toolName: string): boolean {
     const normalized = toolName.replace(/:/g, '__');
     return /(^|__)orchestrator_(get_context|submit|pend|list|cancel|send_message)$/.test(normalized);
-}
-
-function decodeOrchestratorMcpPayload(result: unknown): unknown {
-    const textPayload = extractMcpTextPayload(result);
-    if (textPayload !== null) {
-        const trimmed = textPayload.trim();
-        if (!trimmed) {
-            throw new Error('Empty MCP text payload');
-        }
-        return JSON.parse(trimmed);
-    }
-
-    if (typeof result === 'string') {
-        const trimmed = result.trim();
-        if (!trimmed) {
-            throw new Error('Empty string payload');
-        }
-        return JSON.parse(trimmed);
-    }
-
-    return result;
-}
-
-function extractMcpTextPayload(value: unknown): string | null {
-    if (isPlainObject(value) && Array.isArray(value.content)) {
-        return extractTextFromContentArray(value.content);
-    }
-
-    if (Array.isArray(value)) {
-        return extractTextFromContentArray(value);
-    }
-
-    if (isPlainObject(value) && value.type === 'text' && typeof value.text === 'string') {
-        return value.text;
-    }
-
-    return null;
-}
-
-function extractTextFromContentArray(blocks: unknown[]): string | null {
-    const textParts = blocks
-        .map((block) => (isPlainObject(block) && block.type === 'text' && typeof block.text === 'string' ? block.text : null))
-        .filter((value): value is string => typeof value === 'string');
-    if (textParts.length === 0) {
-        return null;
-    }
-    return textParts.join('\n');
 }
 
 function extractOrchestratorRuns(payload: unknown): ParsedOrchestratorRun[] {
