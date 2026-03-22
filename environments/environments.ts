@@ -569,9 +569,14 @@ function commandList() {
         const serverStatus = serverUp ? "running" : "stopped";
         const expoStatus = expoUp ? "running" : "stopped";
 
+        const serverUrl = `http://localhost:${config.serverPort}`;
+        const bundlerUrl = `http://localhost:${config.expoPort}`;
+        const webAppUrl = config.authenticatedWebUrl ?? bundlerUrl;
+
         console.log(`${marker} ${envName}`);
-        console.log(`     Server: :${config.serverPort} (${serverStatus})`);
-        console.log(`     Webapp: :${config.expoPort} (${expoStatus})`);
+        console.log(`     Server:  ${serverUrl} (${serverStatus})`);
+        console.log(`     Bundler: ${bundlerUrl} (${expoStatus})`);
+        console.log(`     Web app: ${webAppUrl}`);
         console.log(`     Created: ${config.createdAt}`);
         console.log("");
     }
@@ -618,6 +623,12 @@ function commandCurrent() {
         process.exit(1);
     }
     console.log(envShPath);
+
+    const config = readEnvironmentConfig(currentConfig.current);
+    const webAppUrl = config.authenticatedWebUrl ?? `http://localhost:${config.expoPort}`;
+    console.log(`\nServer:  http://localhost:${config.serverPort}`);
+    console.log(`Bundler: http://localhost:${config.expoPort}`);
+    console.log(`Web app: ${webAppUrl}`);
 }
 
 function commandRun(service: string, serviceArgs: string[] = []) {
