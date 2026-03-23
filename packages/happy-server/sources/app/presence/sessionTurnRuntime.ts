@@ -11,7 +11,7 @@ export type SessionTurnState = {
  * - dispatching (beginDispatch -> dispatching=true)
  * - awaitingTurnStart (markDispatched after enqueue/send-now/direct-send)
  * - thinking (markTurnStarted / thinking heartbeat true)
- * - back to idle (thinking heartbeat false and no awaiting/dispatching)
+ * - back to idle (thinking heartbeat false clears both thinking and awaitingTurnStart)
  *
  * Note: this is an in-memory coordination guard for a single server process.
  * Cross-process ordering must be enforced by database-side operations.
@@ -87,20 +87,28 @@ export function updateThinkingState(sessionId: string, thinking: boolean, timest
 } {
     const state = ensureSessionState(sessionId);
     const previousThinking = state.thinking;
+    const wasAwaiting = state.awaitingTurnStart;
 
     if (thinking) {
         markTurnStarted(sessionId);
     } else {
         state.thinking = false;
+        // Clear awaitingTurnStart on thinking=false so commands that complete
+        // without entering thinking mode (e.g. /clear) don't leave the session
+        // permanently stuck in "busy" state.
+        state.awaitingTurnStart = false;
     }
 
     state.lastHeartbeatAt = timestampMs;
 
     const turnStarted = !previousThinking && thinking;
-    const turnEnded = previousThinking && !thinking;
+    // Turn ended either when thinking transitions true→false (normal),
+    // or when awaitingTurnStart is cleared without thinking ever starting
+    // (instant commands like /clear).
+    const turnEnded = (previousThinking && !thinking) || (wasAwaiting && !thinking);
 
     return {
-        thinkingChanged: previousThinking !== thinking,
+        thinkingChanged: previousThinking !== thinking || wasAwaiting,
         turnStarted,
         turnEnded,
         current: { ...state },
