@@ -326,9 +326,9 @@ User opens session on phone, agent runs on CLI, user steers mid-turn, switches m
 
 `runGemini.ts` is the only runner still on `sendAgentMessage()`. Wire in `AcpSessionManager` (already works for the generic ACP runner and OpenClaw) and route all message dispatch through it.
 
-### CLI: dual-emit for user text
+### CLI: user text format
 
-The `ENABLE_SESSION_PROTOCOL_SEND` flag controls legacy vs modern user text. Once all production CLIs emit session protocol, enable by default and remove the flag.
+The CLI already emits only the modern `role: 'session'` envelope for user text. The `ENABLE_SESSION_PROTOCOL_SEND` flag that was planned as a rollout toggle was never implemented in code — removed from docs.
 
 ### App legacy branches to remove (in `typesRaw.ts` rawAgentRecordSchema)
 

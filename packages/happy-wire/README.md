@@ -84,12 +84,6 @@ Protocol invariant:
 - outer `role = "session"` marks modern session-protocol payloads.
 - inside `content`, envelope `role` is only `"user"` or `"agent"`.
 
-Session protocol send rollout (`ENABLE_SESSION_PROTOCOL_SEND`):
-- sender emits modern session-protocol user payloads (`role = "session"` with `content.role = "user"`).
-- default (disabled): app consumes legacy user payloads (`role = "user"`, `content.type = "text"`) and drops modern user payloads.
-- enabled: app consumes modern user payloads and drops legacy user payloads.
-- truthy values: `1`, `true`, `yes` (case-insensitive).
-
 Wire-level encrypted container (same for legacy and new):
 
 ```json
@@ -607,11 +601,6 @@ Output:
   }
 }
 ```
-
-For user text migration behavior:
-- clients emit only the modern payload (`role = "session"` with `content.role = "user"`).
-- if `ENABLE_SESSION_PROTOCOL_SEND` is disabled, app keeps consuming legacy payloads and drops modern payloads.
-- if `ENABLE_SESSION_PROTOCOL_SEND` is enabled, app consumes modern payloads and drops legacy payloads.
 
 ## Update container with `update-session`
 
