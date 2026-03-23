@@ -51,7 +51,10 @@ export default {
                 "android.permission.POST_NOTIFICATIONS",
             ],
             blockedPermissions: [
-                "android.permission.ACTIVITY_RECOGNITION"
+                "android.permission.ACTIVITY_RECOGNITION",
+                // Not using external storage for now — blocks Google Play photo/video permission declaration
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE",
             ],
             edgeToEdgeEnabled: true,
             package: bundleId,
