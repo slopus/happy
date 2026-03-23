@@ -420,6 +420,20 @@ export const ApiEphemeralOrchestratorActivitySchema = z.object({
     activity: z.record(z.string(), z.array(z.string())),
 });
 
+export const ApiEphemeralOrchestratorRunTerminalSchema = z.object({
+    type: z.literal('orchestrator-run-terminal'),
+    runId: z.string(),
+    status: z.string(),
+    title: z.string(),
+});
+
+export const ApiEphemeralMachineStatusSchema = z.object({
+    type: z.literal('machine-status'),
+    machineId: z.string(),
+    online: z.boolean(),
+    timestamp: z.number(),
+});
+
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
@@ -432,6 +446,8 @@ export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralPendingMessageDeleteSchema,
     ApiEphemeralMachineActivityUpdateSchema,
     ApiEphemeralOrchestratorActivitySchema,
+    ApiEphemeralOrchestratorRunTerminalSchema,
+    ApiEphemeralMachineStatusSchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;
@@ -442,6 +458,8 @@ export type ApiEphemeralMessageDeliveryErrorUpdate = z.infer<typeof ApiEphemeral
 export type ApiEphemeralMessageDeliveryClearedUpdate = z.infer<typeof ApiEphemeralMessageDeliveryClearedSchema>;
 export type ApiEphemeralPendingMessageUpsertUpdate = z.infer<typeof ApiEphemeralPendingMessageUpsertSchema>;
 export type ApiEphemeralPendingMessageDeleteUpdate = z.infer<typeof ApiEphemeralPendingMessageDeleteSchema>;
+export type ApiEphemeralOrchestratorRunTerminalUpdate = z.infer<typeof ApiEphemeralOrchestratorRunTerminalSchema>;
+export type ApiEphemeralMachineStatusUpdate = z.infer<typeof ApiEphemeralMachineStatusSchema>;
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;
 
 // Machine metadata updates use Partial<MachineMetadata> from storageTypes
