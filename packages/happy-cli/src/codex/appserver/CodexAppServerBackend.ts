@@ -58,7 +58,7 @@ export interface CodexAppServerBackendOptions {
   cwd: string;
   /** Executable command (e.g. 'npx') */
   command: string;
-  /** Arguments for the command (e.g. ['-y', '@openai/codex@0.115.0', 'app-server']) */
+  /** Arguments for the command (e.g. ['-y', '@openai/codex@0.116.0', 'app-server']) */
   args?: string[];
   /** Environment variables passed to the spawned process */
   env?: Record<string, string>;

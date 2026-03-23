@@ -276,7 +276,7 @@ The CLI (`happy-next-cli`) received substantial upgrades.
 - **Latest CLI version** fetched from npm instead of hardcoded minimum
 - **Daemon auto-start on boot**: `happy daemon enable` / `happy daemon disable`
 - **Daemon restart command**: restart the daemon without manual kill
-- **Codex v0.115.0 with fast mode**: upgraded Codex with fast mode support
+- **Codex v0.116.0 with fast mode**: upgraded Codex with fast mode support
 - **Attribution setting**: new setting to control commit attribution, default off
 - **Unified system prompt injection**: shared prompt injection for Codex and Gemini
 - **Orchestrator guidance**: first-turn prompts include orchestrator usage guidance

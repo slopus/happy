@@ -8,7 +8,7 @@ Orchestrator arrives — define multi-agent task DAGs and let Happy schedule, ex
 - Pending message queue: messages sent while the CLI is busy are queued server-side and auto-dispatched when ready, with a queue panel UI, image count badges, and send-now option.
 - Session management: Active/Inactive tab filter replaces the old toggle, device and agent filter dropdowns in history, session preview expand/collapse, metadata caching for faster listing, and CLI hot-upgrade support.
 - File viewer: image preview with sharing support directly from the code browser.
-- CLI: daemon auto-start on boot (`happy daemon enable`), restart command, Codex v0.115.0 with fast mode, message receipt tracking, and attribution setting (default off).
+- CLI: daemon auto-start on boot (`happy daemon enable`), restart command, Codex v0.116.0 with fast mode, message receipt tracking, and attribution setting (default off).
 - DooTask: globalized WebSocket connection with real-time task updates, related task entry in session info, and persistent server-side connection.
 - MCP tools: `preview_html` for full-page HTML preview, dual-mode long-press copy in tool details, and colon-separated tool naming support.
 - Gemini and Codex compatibility: ACP result format normalization, tool ID prefix fallback matching, Codex v2 protocol fixes, and dynamic permission mode changes.

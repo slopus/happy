@@ -31,7 +31,7 @@ describe('runOneShot spawn plan', () => {
     const plan = buildSpawnPlan('codex', 'hello', '/tmp/workdir', 'gpt-5.3-codex-high', 'initial');
     expect(plan.command).toBe('npx');
     expect(plan.args).toContain('-y');
-    expect(plan.args).toContain('@openai/codex@0.115.0');
+    expect(plan.args).toContain('@openai/codex@0.116.0');
     expect(plan.args).toContain('--dangerously-bypass-approvals-and-sandbox');
     expect(plan.args).toContain('hello');
     expect(plan.args).toContain('--model');

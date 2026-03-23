@@ -66,7 +66,7 @@ export function createCodexBackend(options: CodexBackendOptions): CodexBackendRe
   const backendOptions: CodexAppServerBackendOptions = {
     cwd: options.cwd,
     command: 'npx',
-    args: ['-y', '@openai/codex@0.115.0', 'app-server'],
+    args: ['-y', '@openai/codex@0.116.0', 'app-server'],
     env: {
       ...options.env,
     },

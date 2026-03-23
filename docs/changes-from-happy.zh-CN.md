@@ -276,7 +276,7 @@ CLI（`happy-next-cli`）收到了大量升级。
 - **最新 CLI 版本**，从 npm 获取而非硬编码最低版本
 - **守护进程开机自启动**：`happy daemon enable` / `happy daemon disable`
 - **守护进程重启命令**：无需手动 kill 即可重启守护进程
-- **Codex v0.115.0 + fast mode**：升级 Codex 并支持快速模式
+- **Codex v0.116.0 + fast mode**：升级 Codex 并支持快速模式
 - **归因设置**：新设置控制提交归因，默认关闭
 - **统一系统提示注入**：Codex 和 Gemini 共享提示注入
 - **编排器引导**：首轮提示包含编排器使用指南
