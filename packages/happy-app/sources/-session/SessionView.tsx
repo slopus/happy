@@ -16,7 +16,6 @@ import { EmptyMessages } from '@/components/EmptyMessages';
 import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
-import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -30,7 +29,7 @@ import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, getResumeCommand, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
@@ -236,14 +235,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
-    const resumeCommand = getResumeCommand(session);
-    const {
-        canResume,
-        canShowResume,
-        resumeSession,
-        resumeSessionSubtitle,
-        resumingSession,
-    } = useSessionQuickActions(session);
+    const isArchivedSession = session.metadata?.lifecycleState === 'archived';
+    const isDisconnected = !sessionStatus.isConnected;
+    const isInactiveArchivedSession = isArchivedSession && isDisconnected;
+    const resumeCommandBlock = getResumeCommandBlock(session);
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -340,7 +335,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     ) : null;
 
-    const input = sessionStatus.isConnected ? (
+    const composer = (
         <AgentInput
             placeholder={t('session.inputPlaceholder')}
             value={message}
@@ -359,6 +354,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing
             }}
+            blockSend={isDisconnected}
             onSend={() => {
                 if (message.trim()) {
                     setMessage('');
@@ -367,9 +363,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     trackMessageSent();
                 }
             }}
-            onMicPress={micButtonState.onMicPress}
-            isMicActive={micButtonState.isMicActive}
-            onAbort={() => sessionAbort(sessionId)}
+            onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
+            isMicActive={isDisconnected ? false : micButtonState.isMicActive}
+            onAbort={isDisconnected ? undefined : () => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
             autocompletePrefixes={['@', '/']}
@@ -389,60 +385,31 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
         />
-    ) : canShowResume && expResumeSession ? (
+    );
+
+    const archivedHint = isInactiveArchivedSession ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-            <View style={{
-                paddingHorizontal: 16,
-                paddingTop: 12,
-                paddingBottom: 10,
-                gap: 10,
-            }}>
-                <Pressable
-                    onPress={resumeSession}
-                    style={{
-                        minHeight: 48,
-                        borderRadius: 14,
-                        backgroundColor: canResume ? theme.colors.button.primary.background : theme.colors.surfaceHigh,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexDirection: 'row',
-                        gap: 8,
-                        opacity: resumingSession ? 0.7 : 1,
-                    }}
-                >
-                    {resumingSession ? (
-                        <ActivityIndicator size="small" color={canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary} />
-                    ) : (
-                        <Ionicons
-                            name="play-circle-outline"
-                            size={18}
-                            color={canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary}
-                        />
-                    )}
-                    <Text style={{
-                        color: canResume ? theme.colors.button.primary.tint : theme.colors.textSecondary,
-                        fontSize: 15,
-                        fontWeight: '600',
-                    }}>
-                        {t('sessionInfo.resumeSession')}
-                    </Text>
-                </Pressable>
-                <Text style={{
-                    color: theme.colors.textSecondary,
-                    fontSize: 13,
-                    lineHeight: 18,
-                    textAlign: 'center',
-                    paddingHorizontal: 8,
-                }}>
-                    {resumeSessionSubtitle}
-                </Text>
-            </View>
-        </CenteredInputWidth>
-    ) : !sessionStatus.isConnected && resumeCommand ? (
-        <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-            <ResumeCommandHint command={resumeCommand} />
+            <InactiveArchivedHint
+                resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
+            />
         </CenteredInputWidth>
     ) : null;
+
+    const input = isInactiveArchivedSession ? (
+        <>
+            {archivedHint}
+            {composer}
+        </>
+    ) : (
+        <>
+            {expResumeSession && isDisconnected && resumeCommandBlock && (
+                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+                    <ResumeCommandHint resumeCommandBlock={resumeCommandBlock} />
+                </CenteredInputWidth>
+            )}
+            {composer}
+        </>
+    );
 
 
     return (
@@ -531,43 +498,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     )
 }
 
-function ResumeCommandHint({ command }: { command: string }) {
+function ResumeCommandHint({ resumeCommandBlock }: {
+    resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>>;
+}) {
     const { theme } = useUnistyles();
-    const [copied, setCopied] = React.useState(false);
+
     return (
         <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, gap: 8 }}>
-            <Pressable
-                onPress={async () => {
-                    await Clipboard.setStringAsync(command);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                }}
-                style={{
-                    minHeight: 48,
-                    borderRadius: 14,
-                    backgroundColor: theme.colors.surfaceHigh,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    gap: 8,
-                    paddingHorizontal: 16,
-                }}
-            >
-                <Ionicons name="terminal-outline" size={16} color={theme.colors.textSecondary} />
-                <Text style={{
-                    color: theme.colors.text,
-                    fontSize: 13,
-                    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                    flex: 1,
-                }} numberOfLines={1}>
-                    {command}
-                </Text>
-                <Ionicons
-                    name={copied ? 'checkmark' : 'copy-outline'}
-                    size={16}
-                    color={copied ? '#30D158' : theme.colors.textSecondary}
-                />
-            </Pressable>
+            <ResumeCommandCopyBlock resumeCommandBlock={resumeCommandBlock} />
             <Text style={{
                 color: theme.colors.textSecondary,
                 fontSize: 12,
@@ -578,6 +516,90 @@ function ResumeCommandHint({ command }: { command: string }) {
                 Run this command in your terminal to resume this session
             </Text>
         </View>
+    );
+}
+
+function InactiveArchivedHint(props: {
+    resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>> | null;
+}) {
+    const { theme } = useUnistyles();
+    const hintTextStyle = {
+        color: theme.colors.agentEventText,
+        fontSize: 13,
+        lineHeight: 18,
+        textAlign: 'left' as const,
+    };
+
+    return (
+        <View style={{
+            paddingTop: 12,
+            paddingBottom: 10,
+            gap: 10,
+            alignItems: 'stretch',
+        }}>
+            <View style={{ paddingHorizontal: 8, gap: 4 }}>
+                <Text style={hintTextStyle}>
+                    {t('session.inactiveArchived')}
+                </Text>
+                {props.resumeCommandBlock && (
+                    <Text style={hintTextStyle}>
+                        {t('session.resumeFromTerminal')}
+                    </Text>
+                )}
+            </View>
+            {props.resumeCommandBlock && (
+                <ResumeCommandCopyBlock resumeCommandBlock={props.resumeCommandBlock} />
+            )}
+        </View>
+    );
+}
+
+function ResumeCommandCopyBlock({ resumeCommandBlock }: {
+    resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>>;
+}) {
+    const { theme } = useUnistyles();
+    const [copied, setCopied] = React.useState(false);
+
+    return (
+        <Pressable
+            onPress={async () => {
+                await Clipboard.setStringAsync(resumeCommandBlock.copyText);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            }}
+            style={{
+                minHeight: 48,
+                borderRadius: 14,
+                backgroundColor: theme.colors.surfaceHigh,
+                flexDirection: 'row',
+                gap: 8,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                alignItems: 'flex-start',
+            }}
+        >
+            <View style={{ flex: 1 }}>
+                {resumeCommandBlock.lines.map((line, index) => (
+                    <Text
+                        key={`${line}-${index}`}
+                        style={{
+                            color: theme.colors.text,
+                            fontSize: 13,
+                            lineHeight: 18,
+                            fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                        }}
+                    >
+                        {line}
+                    </Text>
+                ))}
+            </View>
+            <Ionicons
+                name={copied ? 'checkmark' : 'copy-outline'}
+                size={16}
+                color={copied ? '#30D158' : theme.colors.textSecondary}
+                style={{ marginTop: 1 }}
+            />
+        </Pressable>
     );
 }
 

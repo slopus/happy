@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
-import { buildResumeCommand } from './resumeCommand';
+import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -110,6 +110,10 @@ export function getSessionAvatarId(session: Session): string {
  */
 export function getResumeCommand(session: Session): string | null {
     return buildResumeCommand(session.metadata ?? {});
+}
+
+export function getResumeCommandBlock(session: Session): ResumeCommandBlock | null {
+    return buildResumeCommandBlock(session.metadata ?? {});
 }
 
 /**

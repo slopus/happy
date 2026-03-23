@@ -270,6 +270,8 @@ export const ja: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'メッセージを入力...',
+        inactiveArchived: 'このセッションは非アクティブです。',
+        resumeFromTerminal: 'ターミナルから再開するには:',
     },
 
     commandPalette: {

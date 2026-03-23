@@ -371,6 +371,8 @@ export const ru: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
+        inactiveArchived: 'Эта сессия неактивна.',
+        resumeFromTerminal: 'Чтобы возобновить её из терминала:',
     },
 
     commandPalette: {

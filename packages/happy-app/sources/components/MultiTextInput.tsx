@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { TextInput, Platform, View, NativeSyntheticEvent, TextInputKeyPressEventData, TextInputSelectionChangeEventData } from 'react-native';
+import { Text, TextInput, Platform, View, NativeSyntheticEvent, TextInputKeyPressEventData, TextInputSelectionChangeEventData } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
@@ -33,6 +33,7 @@ interface MultiTextInputProps {
     value: string;
     onChangeText: (text: string) => void;
     placeholder?: string;
+    editable?: boolean;
     maxHeight?: number;
     lineHeight?: number;
     paddingTop?: number;
@@ -49,6 +50,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         value,
         onChangeText,
         placeholder,
+        editable = true,
         maxHeight = 120,
         lineHeight = MULTI_TEXT_INPUT_LINE_HEIGHT,
         onKeyPress,
@@ -60,9 +62,30 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     // Track latest selection in a ref
     const selectionRef = React.useRef({ start: 0, end: 0 });
     const inputRef = React.useRef<TextInput>(null);
+    const textStyle = {
+        width: '100%' as const,
+        fontSize: MULTI_TEXT_INPUT_FONT_SIZE,
+        lineHeight,
+        maxHeight,
+        color: theme.colors.input.text,
+        textAlignVertical: 'top' as const,
+        padding: 0,
+        paddingTop: props.paddingTop,
+        paddingBottom: props.paddingBottom,
+        paddingLeft: props.paddingLeft,
+        paddingRight: props.paddingRight,
+        opacity: editable ? 1 : 0.58,
+        ...Typography.default(),
+    };
+
+    React.useEffect(() => {
+        if (!editable) {
+            inputRef.current?.blur();
+        }
+    }, [editable]);
 
     const handleKeyPress = React.useCallback((e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
-        if (!onKeyPress) return;
+        if (!editable || !onKeyPress) return;
 
         const nativeEvent = e.nativeEvent;
         const key = nativeEvent.key;
@@ -109,7 +132,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 e.preventDefault();
             }
         }
-    }, [onKeyPress]);
+    }, [editable, onKeyPress]);
 
     const handleTextChange = React.useCallback((text: string) => {
         // When text changes, assume cursor moves to end
@@ -183,37 +206,40 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
 
     return (
         <View style={{ width: '100%' }}>
-            <TextInput
-                ref={inputRef}
-                style={{
-                    width: '100%',
-                    fontSize: MULTI_TEXT_INPUT_FONT_SIZE,
-                    lineHeight,
-                    maxHeight,
-                    color: theme.colors.input.text,
-                    textAlignVertical: 'top',
-                    padding:0,
-                    paddingTop: props.paddingTop,
-                    paddingBottom: props.paddingBottom,
-                    paddingLeft: props.paddingLeft,
-                    paddingRight: props.paddingRight,
-                    ...Typography.default(),
-                }}
-                placeholder={placeholder}
-                placeholderTextColor={theme.colors.input.placeholder}
-                value={value}
-                onChangeText={handleTextChange}
-                onKeyPress={handleKeyPress}
-                onSelectionChange={handleSelectionChange}
-                multiline={true}
-                autoCapitalize="sentences"
-                autoCorrect={true}
-                keyboardType="default"
-                returnKeyType="default"
-                autoComplete="off"
-                textContentType="none"
-                submitBehavior="newline"
-            />
+            {editable ? (
+                <TextInput
+                    ref={inputRef}
+                    style={textStyle}
+                    placeholder={placeholder}
+                    placeholderTextColor={theme.colors.input.placeholder}
+                    value={value}
+                    editable={editable}
+                    onChangeText={handleTextChange}
+                    onKeyPress={handleKeyPress}
+                    onSelectionChange={handleSelectionChange}
+                    multiline={true}
+                    autoCapitalize="sentences"
+                    autoCorrect={true}
+                    keyboardType="default"
+                    returnKeyType="default"
+                    autoComplete="off"
+                    textContentType="none"
+                    submitBehavior="newline"
+                />
+            ) : (
+                <View pointerEvents="none">
+                    <Text
+                        style={[
+                            textStyle,
+                            {
+                                color: value ? theme.colors.input.text : theme.colors.input.placeholder,
+                            },
+                        ]}
+                    >
+                        {value || placeholder || ' '}
+                    </Text>
+                </View>
+            )}
         </View>
     );
 });

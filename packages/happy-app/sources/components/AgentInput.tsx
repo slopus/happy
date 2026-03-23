@@ -69,6 +69,7 @@ interface AgentInputProps {
     onMachineClick?: () => void;
     currentPath?: string | null;
     onPathClick?: () => void;
+    blockSend?: boolean;
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
@@ -262,6 +263,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonInactive: {
         backgroundColor: theme.colors.button.primary.disabled,
     },
+    sendButtonLocked: {
+        backgroundColor: theme.colors.surfaceHigh,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
     sendButtonInner: {
         width: '100%',
         height: '100%',
@@ -295,8 +301,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
+    const isSendBlocked = props.blockSend ?? false;
 
     const hasText = props.value.trim().length > 0;
+    const canPressSendButton = !props.isSending
+        && !props.isSendDisabled
+        && (isSendBlocked ? hasText : (hasText || !!props.onMicPress));
 
     // Check if this is a Codex, Gemini, or OpenClaw session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
@@ -346,6 +356,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Abort button state
     const [isAborting, setIsAborting] = React.useState(false);
     const shakerRef = React.useRef<ShakeInstance>(null);
+    const sendBlockShakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
 
     // Forward ref to the MultiTextInput
@@ -449,6 +460,27 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         }
     }, [props.onAbort]);
 
+    const handleBlockedSendAttempt = React.useCallback(() => {
+        if (!isSendBlocked || !hasText || props.isSending) return;
+        hapticsError();
+        sendBlockShakerRef.current?.shake();
+    }, [hasText, isSendBlocked, props.isSending]);
+
+    const handleSendPress = React.useCallback(() => {
+        if (isSendBlocked) {
+            handleBlockedSendAttempt();
+            return;
+        }
+        if (props.isSendDisabled || props.isSending) return;
+
+        hapticsLight();
+        if (hasText) {
+            props.onSend();
+        } else {
+            props.onMicPress?.();
+        }
+    }, [handleBlockedSendAttempt, hasText, isSendBlocked, props]);
+
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
         // Handle autocomplete navigation first
@@ -491,7 +523,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !isTouchDevice) {
                 if (props.value.trim()) {
-                    props.onSend();
+                    if (isSendBlocked) {
+                        handleBlockedSendAttempt();
+                    } else if (!props.isSendDisabled) {
+                        props.onSend();
+                    }
                     return true; // Key was handled
                 }
             }
@@ -506,7 +542,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
 
 
 
@@ -924,6 +960,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Box 2: Action Area (Input + Send) */}
+                <Shaker ref={sendBlockShakerRef}>
                 <View style={styles.unifiedPanel}>
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
@@ -1049,6 +1086,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 <View
                                     style={[
                                         styles.sendButton,
+                                        isSendBlocked ? styles.sendButtonLocked :
                                         (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
@@ -1063,20 +1101,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             opacity: p.pressed ? 0.7 : 1,
                                         })}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        onPress={() => {
-                                            hapticsLight();
-                                            if (hasText) {
-                                                props.onSend();
-                                            } else {
-                                                props.onMicPress?.();
-                                            }
-                                        }}
-                                        disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
+                                        onPress={handleSendPress}
+                                        disabled={!canPressSendButton}
                                     >
                                         {props.isSending ? (
                                             <ActivityIndicator
                                                 size="small"
                                                 color={theme.colors.button.primary.tint}
+                                            />
+                                        ) : isSendBlocked ? (
+                                            <Ionicons
+                                                name="lock-closed"
+                                                size={15}
+                                                color={theme.colors.textSecondary}
                                             />
                                         ) : hasText ? (
                                             <Octicons
@@ -1114,6 +1151,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         </View>
                     </View>
                 </View>
+                </Shaker>
             </View>
         </View>
     );

@@ -269,6 +269,8 @@ export const es: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Escriba un mensaje ...',
+        inactiveArchived: 'Esta sesión está inactiva.',
+        resumeFromTerminal: 'Para reanudarla desde la terminal:',
     },
 
     commandPalette: {

@@ -267,6 +267,8 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        inactiveArchived: 'This session is inactive.',
+        resumeFromTerminal: 'To resume it from the terminal:',
     },
 
     commandPalette: {

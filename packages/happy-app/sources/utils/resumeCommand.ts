@@ -6,12 +6,21 @@ export type ResumeCommandMetadata = {
     codexThreadId?: string | null;
 };
 
+export type ResumeCommandBlock = {
+    lines: string[];
+    copyText: string;
+};
+
 function quotePosixPath(path: string): string {
     return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
-function quoteWindowsPath(path: string): string {
-    return `"${path.replace(/"/g, '""')}"`;
+function quotePowerShellPath(path: string): string {
+    return `'${path.replace(/'/g, `''`)}'`;
+}
+
+function isWindows(metadata: ResumeCommandMetadata): boolean {
+    return metadata.os?.toLowerCase() === 'win32';
 }
 
 function buildResumeInvocation(metadata: ResumeCommandMetadata): string | null {
@@ -24,20 +33,38 @@ function buildResumeInvocation(metadata: ResumeCommandMetadata): string | null {
     return null;
 }
 
-export function buildResumeCommand(metadata: ResumeCommandMetadata): string | null {
+function buildChangeDirectoryCommand(metadata: ResumeCommandMetadata): string | null {
+    const path = metadata.path?.trim();
+    if (!path) {
+        return null;
+    }
+
+    return isWindows(metadata)
+        ? `Set-Location -LiteralPath ${quotePowerShellPath(path)}`
+        : `cd ${quotePosixPath(path)}`;
+}
+
+export function buildResumeCommandBlock(metadata: ResumeCommandMetadata): ResumeCommandBlock | null {
     const invocation = buildResumeInvocation(metadata);
     if (!invocation) {
         return null;
     }
 
-    const path = metadata.path?.trim();
-    if (!path) {
-        return invocation;
+    const changeDirectoryCommand = buildChangeDirectoryCommand(metadata);
+    const lines = changeDirectoryCommand
+        ? [changeDirectoryCommand, invocation]
+        : [invocation];
+
+    return {
+        lines,
+        copyText: lines.join('\n'),
+    };
+}
+
+export function buildResumeCommand(metadata: ResumeCommandMetadata): string | null {
+    const commandBlock = buildResumeCommandBlock(metadata);
+    if (!commandBlock) {
+        return null;
     }
-
-    const changeDirectoryCommand = metadata.os === 'win32'
-        ? `cd /d ${quoteWindowsPath(path)}`
-        : `cd ${quotePosixPath(path)}`;
-
-    return `${changeDirectoryCommand} && ${invocation}`;
+    return commandBlock.lines.join(isWindows(metadata) ? '; ' : ' && ');
 }
