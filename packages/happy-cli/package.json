@@ -1,13 +1,16 @@
 {
   "name": "happy",
-  "version": "1.1.0-5",
+  "version": "1.1.1",
   "description": "Mobile and Web client for Claude Code and Codex",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy-cli",
-  "bugs": "https://github.com/slopus/happy-cli/issues",
-  "repository": "slopus/happy-cli",
+  "homepage": "https://happy.engineering",
+  "bugs": "https://github.com/slopus/happy/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/slopus/happy"
+  },
   "bin": {
     "happy": "./bin/happy.mjs",
     "happy-mcp": "./bin/happy-mcp.mjs"
