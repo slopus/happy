@@ -34,46 +34,6 @@ npm install -g happy-coder
 ```
 
 <h3 align="center">
-Run From Source (Repo Checkout)
-</h3>
-
-```bash
-# from repository root
-yarn cli --help
-yarn cli codex
-```
-
-<h3 align="center">
-Local Dev Environment (Full Stack)
-</h3>
-
-Spin up an isolated local dev environment with server (PGlite), web app, and CLI — no Docker, no external databases.
-
-```bash
-# Create a new environment (allocates ports, runs migrations)
-yarn env:new
-
-# Start services in separate terminals:
-yarn env:server    # Terminal 1 — server
-yarn env:web       # Terminal 2 — web app
-
-# CLI — works from any directory after sourcing:
-source environments/data/envs/<name>/env.sh
-happy
-```
-
-Each environment gets its own database, ports, config, and a copied `lab-rat-todo-project`. Run `yarn env:list` to see all environments.
-
-<h3 align="center">
-Release (Maintainers)
-</h3>
-
-```bash
-# from repository root
-yarn release
-```
-
-<h3 align="center">
 Step 3: Start using `happy` instead of `claude` or `codex`
 </h3>
 
