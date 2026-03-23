@@ -59,3 +59,6 @@ progress*.txt
 
 # OpenCode trace output (script is committed, output is not)
 docs/competition/opencode/traces/
+
+# Loop iteration logs
+loop/logs/

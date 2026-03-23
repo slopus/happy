@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-mkdir -p .dev/v3-loop-logs
+mkdir -p loop/logs
 
 ITERATION=0
-PROMPT="$(cat .dev/loop-prompt.md)"
+PROMPT="$(cat loop/prompt.md)"
 
 while true; do
     ITERATION=$((ITERATION + 1))
-    LOGFILE=".dev/v3-loop-logs/iteration-$(printf '%02d' $ITERATION)-$(date +%Y%m%d-%H%M%S).log"
+    LOGFILE="loop/logs/iteration-$(printf '%02d' $ITERATION)-$(date +%Y%m%d-%H%M%S).log"
 
     echo ""
     echo "========================================="

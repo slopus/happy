@@ -2,18 +2,21 @@
 
 You are working on the happy-sync refactor. The full spec is in
 docs/plans/happy-sync-major-refactor.md — read it for context, but your
-IMMEDIATE task comes from `.dev/loop-state.md`.
+IMMEDIATE task comes from `loop/state.md`.
 
 ## Workflow
 
-1. Read `.dev/loop-state.md` — this is your task assignment
-2. Read `docs/plans/happy-sync-major-refactor.md` for context on the overall design
-3. Do the CURRENT TASK described in loop-state.md. Nothing else.
-4. When done (or blocked), update `.dev/loop-state.md`:
+1. Read `loop/state.md` — this is your task assignment
+2. Read `loop/learnings.md` — hard-won knowledge from previous iterations
+3. Read `docs/plans/happy-sync-major-refactor.md` for context on the overall design
+4. Do the CURRENT TASK described in state.md. Nothing else.
+5. When done (or blocked), update `loop/state.md`:
    - Move completed items to "Completed Tasks"
    - Update "Current Task" to the next priority item
    - Add any blockers or findings to "Blocked / Investigated"
    - Update "Last updated" timestamp
+6. If you discover something non-obvious (a subtle bug, a surprising behavior,
+   a technique that worked), append it to `loop/learnings.md`
 
 ## Rules
 
@@ -54,9 +57,11 @@ IMMEDIATE task comes from `.dev/loop-state.md`.
 
 ### State management
 
-- `.dev/loop-state.md` is the source of truth for progress. READ IT FIRST.
-- Update it when you finish or get blocked. Be honest about what works and what doesn't.
+- `loop/state.md` is the source of truth for progress. READ IT FIRST.
+- `loop/learnings.md` is accumulated knowledge. Read it before working, append to it when you learn something.
+- Update state when you finish or get blocked. Be honest about what works and what doesn't.
 - If you find the previous agent's work is broken, say so and explain why.
+- Before editing files, run `git diff --stat HEAD` to see what the previous iteration changed.
 
 ### Focus
 
