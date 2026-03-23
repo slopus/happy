@@ -52,9 +52,11 @@ export default {
             ],
             blockedPermissions: [
                 "android.permission.ACTIVITY_RECOGNITION",
-                // Not using external storage for now — blocks Google Play photo/video permission declaration
+                // Not using external storage/media access for now — blocks Google Play photo/video permission declaration
                 "android.permission.READ_EXTERNAL_STORAGE",
                 "android.permission.WRITE_EXTERNAL_STORAGE",
+                "android.permission.READ_MEDIA_IMAGES",
+                "android.permission.READ_MEDIA_VIDEO",
             ],
             edgeToEdgeEnabled: true,
             package: bundleId,
