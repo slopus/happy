@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { useMachine } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
@@ -89,19 +90,21 @@ export function EmptyMessages({ session }: EmptyMessagesProps) {
     const osIcon = getOSIcon(session.metadata?.os);
     const sessionStatus = useSessionStatus(session);
     const startedTime = formatRelativeTime(session.createdAt);
-    
+    const machine = useMachine(session.metadata?.machineId ?? '');
+    const hostDisplayName = machine?.metadata?.displayName || session.metadata?.host;
+
     return (
         <View style={styles.container}>
-            <Ionicons 
+            <Ionicons
                 name={osIcon}
-                size={72} 
+                size={72}
                 color={theme.colors.textSecondary}
                 style={styles.iconContainer}
             />
-            
-            {session.metadata?.host && (
+
+            {hostDisplayName && (
                 <Text style={styles.hostText}>
-                    {session.metadata.host}
+                    {hostDisplayName}
                 </Text>
             )}
             
