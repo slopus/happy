@@ -445,15 +445,32 @@ export class TmuxUtilities {
             return this.executeCommand(fullCmd);
         } else {
             // Non-send-keys commands
-            const fullCmd = [...baseCmd, ...cmd];
+            // IMPORTANT: Insert -t target BEFORE positional arguments (e.g. shell-command).
+            // tmux follows POSIX-style parsing: once a non-option positional argument is
+            // encountered, all subsequent arguments are treated as positional — so flags
+            // like -t placed after the shell-command are passed INTO the shell command
+            // rather than being interpreted by tmux. This caused spawned processes to
+            // receive "-t <session>" as extra argv, leading to immediate exit.
+            const fullCmd = [...baseCmd, cmd[0]];
 
-            // Add target specification for commands that support it
+            // Add target specification for commands that support it (before remaining args)
             if (cmd.length > 0 && COMMANDS_SUPPORTING_TARGET.has(cmd[0])) {
                 let target = targetSession;
-                if (window) target += `:${window}`;
+                if (window) {
+                    target += `:${window}`;
+                } else if (cmd[0] === 'new-window') {
+                    // For new-window, append ':' so tmux interprets the target as a
+                    // session (auto-assigning the next window index) rather than as a
+                    // window index. Without this, a purely numeric session name like "0"
+                    // is mistaken for window index 0 and fails with "index in use".
+                    target += ':';
+                }
                 if (pane) target += `.${pane}`;
                 fullCmd.push('-t', target);
             }
+
+            // Now add the rest of the arguments (options and positional args like shell-command)
+            fullCmd.push(...cmd.slice(1));
 
             return this.executeCommand(fullCmd);
         }
@@ -824,12 +841,15 @@ export class TmuxUtilities {
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
-            // Add the command to run in the window (runs immediately when window is created)
-            createWindowArgs.push(fullCommand);
-
             // Add -P flag to print the pane PID immediately
+            // IMPORTANT: -P and -F must come BEFORE the shell-command argument.
+            // tmux treats everything after the first positional arg as part of the
+            // shell command, so flags placed after it are passed to the shell, not tmux.
             createWindowArgs.push('-P');
             createWindowArgs.push('-F', '#{pane_pid}');
+
+            // Add the command to run in the window (must be last — it's a positional arg)
+            createWindowArgs.push(fullCommand);
 
             // Create window with command and get PID immediately
             const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
