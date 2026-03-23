@@ -13,6 +13,14 @@ import { t } from '@/text';
 import { ToolOutputDetail } from './ToolOutputDetail';
 import { CopyableText, LongPressCopy, useCopySelectable } from '../LongPressCopy';
 
+function hasResultContent(result: unknown): boolean {
+    if (result == null) return false;
+    if (typeof result === 'string') return result.trim().length > 0;
+    if (Array.isArray(result)) return result.length > 0;
+    if (typeof result === 'object') return Object.keys(result).length > 0;
+    return true;
+}
+
 interface ToolFullViewProps {
     tool: ToolCall;
     metadata?: Metadata | null;
@@ -56,7 +64,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                     )}
 
                     {/* Result/Output */}
-                    {tool.state === 'completed' && tool.result && (
+                    {tool.state === 'completed' && hasResultContent(tool.result) && (
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
                                 <Ionicons name="log-out" size={20} color="#34C759" />
@@ -82,7 +90,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                     )}
 
                     {/* No Output Message */}
-                    {tool.state === 'completed' && !tool.result && (
+                    {tool.state === 'completed' && !hasResultContent(tool.result) && (
                         <View style={styles.section}>
                             <View style={styles.emptyOutputContainer}>
                                 <Ionicons name="checkmark-circle-outline" size={48} color="#34C759" />
