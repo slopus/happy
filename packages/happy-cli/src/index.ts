@@ -21,7 +21,7 @@ import { killRunawayHappyProcesses } from './daemon/doctor'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
-import { runDoctorCommand } from './ui/doctor'
+import { runDoctorCommand, runDoctorDaemon } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
@@ -560,8 +560,7 @@ import { handleResumeCommand } from '@/resume/handleResumeCommand'
       await stopDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'status') {
-      // Show daemon-specific doctor output
-      await runDoctorCommand('daemon')
+      await runDoctorDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'logs') {
       // Simply print the path to the latest daemon log file
