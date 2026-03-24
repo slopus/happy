@@ -90,41 +90,63 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 }
 
 export const RealtimeVoiceSession: React.FC = () => {
+    // Track whether a session was successfully connected to distinguish
+    // initialization errors (silent) from runtime errors (show to user)
+    const wasConnected = useRef(false);
+
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: (data) => {
             console.log('Realtime session connected:', data);
+            wasConnected.current = true;
             storage.getState().setRealtimeStatus('connected');
             storage.getState().setRealtimeMode('idle');
         },
         onDisconnect: () => {
             console.log('Realtime session disconnected');
+            const hadConnection = wasConnected.current;
+            wasConnected.current = false;
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true); // immediate mode change
             storage.getState().clearRealtimeModeDebounce();
+
+            // If the session was connected (greeting played) but disconnected
+            // unexpectedly, set error status so the UI can inform the user
+            if (hadConnection && storage.getState().realtimeStatus !== 'disconnected') {
+                // Already set above, but this branch is for logging
+                console.warn('Voice session disconnected unexpectedly after connection');
+            }
         },
         onMessage: (data) => {
             console.log('Realtime message:', data);
         },
         onError: (error) => {
-            // Log but don't block app - voice features will be unavailable
-            // This prevents initialization errors from showing "Terminals error" on startup
-            console.warn('Realtime voice not available:', error);
-            // Don't set error status during initialization - just set disconnected
-            // This allows the app to continue working without voice features
-            storage.getState().setRealtimeStatus('disconnected');
-            storage.getState().setRealtimeMode('idle', true); // immediate mode change
+            console.warn('Realtime voice error:', error);
+
+            if (wasConnected.current) {
+                // Runtime error after connection was established — inform the user
+                // This catches the "greeting plays then disconnects" scenario
+                console.error('Voice session error after connection:', error);
+                wasConnected.current = false;
+                storage.getState().setRealtimeStatus('error');
+                storage.getState().setRealtimeMode('idle', true);
+            } else {
+                // Initialization error — silent degradation
+                // This prevents startup errors from showing "Terminals error"
+                storage.getState().setRealtimeStatus('disconnected');
+                storage.getState().setRealtimeMode('idle', true);
+            }
         },
         onStatusChange: (data) => {
             console.log('Realtime status change:', data);
         },
         onModeChange: (data) => {
             console.log('Realtime mode change:', data);
-            
+
             // Only animate when speaking
             const mode = data.mode as string;
             const isSpeaking = mode === 'speaking';
-            
+
             // Use centralized debounce logic from storage
             storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
         },
