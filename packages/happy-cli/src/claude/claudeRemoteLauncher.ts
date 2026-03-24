@@ -8,6 +8,7 @@ import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import { Query, SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
+import { isDebug } from "@/utils/env";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
@@ -40,7 +41,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         console.clear();
         inkInstance = render(React.createElement(RemoteModeDisplay, {
             messageBuffer,
-            logPath: process.env.DEBUG ? session.logPath : undefined,
+            logPath: isDebug() ? session.logPath : undefined,
             onExit: async () => {
                 // Exit the entire client
                 logger.debug('[remote]: Exiting client via Ctrl-C');

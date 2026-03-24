@@ -8,6 +8,7 @@
 
 
 import chalk from 'chalk'
+import { isDebug } from '@/utils/env'
 import { runClaude, StartOptions } from '@/claude/runClaude'
 import { logger } from './ui/logger'
 import { readCredentials, readSettings } from './persistence'
@@ -69,7 +70,7 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
       process.exit(exitCode);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error);
       }
       process.exit(1);
@@ -93,7 +94,7 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
       await handleAuthCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error)
       }
       process.exit(1)
@@ -105,7 +106,7 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
       await handleConnectCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error)
       }
       process.exit(1)
@@ -145,7 +146,7 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error)
       }
       process.exit(1)
@@ -363,7 +364,7 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
       await runGemini({credentials, startedBy});
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error)
       }
       process.exit(1)
@@ -374,7 +375,7 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
       await handleUpdateCommand();
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error)
       }
       process.exit(1)
@@ -387,7 +388,7 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
       await handleAuthCommand(['logout']);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error)
       }
       process.exit(1)
@@ -399,7 +400,7 @@ async function spawnAndWaitForDaemon(): Promise<boolean> {
       await handleNotifyCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error)
       }
       process.exit(1)
@@ -698,7 +699,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       await runClaude(credentials, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error(error)
       }
       process.exit(1)

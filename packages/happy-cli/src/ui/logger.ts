@@ -8,6 +8,7 @@
 import chalk from 'chalk'
 import { appendFileSync } from 'fs'
 import { configuration } from '@/configuration'
+import { isDebug } from '@/utils/env'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 // Note: readDaemonState is imported lazily inside listDaemonLogFiles() to avoid
@@ -84,7 +85,7 @@ class Logger {
     maxStringLength: number = 100,
     maxArrayLength: number = 10,
   ): void {
-    if (!process.env.DEBUG) {
+    if (!isDebug()) {
       this.debug(`In production, skipping message inspection`)
     }
 
@@ -134,7 +135,7 @@ class Logger {
     this.debug(message, ...args)
     
     // Write to info if DEBUG mode is on
-    if (process.env.DEBUG) {
+    if (isDebug()) {
       this.logToConsole('info', '[DEV]', message, ...args)
     }
   }
@@ -224,7 +225,7 @@ class Logger {
     try {
       appendFileSync(this.logFilePath, logLine)
     } catch (appendError) {
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         console.error('[DEV MODE ONLY THROWING] Failed to append to log file:', appendError)
         throw appendError
       }

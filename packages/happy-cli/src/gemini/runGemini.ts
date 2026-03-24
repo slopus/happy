@@ -13,6 +13,7 @@ import os from 'node:os';
 
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
+import { isDebug } from '@/utils/env';
 import { Credentials, readSettings } from '@/persistence';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -537,7 +538,7 @@ export async function runGemini(opts: {
       // Don't log on every render to avoid spam - only log when model changes
       return React.createElement(GeminiDisplay, {
         messageBuffer,
-        logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+        logPath: isDebug() ? logger.getLogPath() : undefined,
         currentModel: currentModelValue,
         onExit: async () => {
           logger.debug('[gemini]: Exiting agent via Ctrl-C');

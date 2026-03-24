@@ -7,6 +7,7 @@ import { io, Socket } from 'socket.io-client';
 import { homedir } from 'node:os';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
+import { isDebug } from '@/utils/env';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { registerOpenClawHandlers, openClawTunnelManager } from '../modules/openclaw';
@@ -793,7 +794,7 @@ export class ApiMachineClient {
                 machineId: this.machine.id,
                 time: Date.now()
             };
-            if (process.env.DEBUG) { // too verbose for production
+            if (isDebug()) {
                 logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
             }
             this.socket.emit('machine-alive', payload);

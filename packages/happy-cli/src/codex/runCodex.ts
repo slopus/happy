@@ -11,6 +11,7 @@ import { DiffProcessor } from './utils/diffProcessor';
 import { parseClear } from '@/parsers/specialCommands';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
+import { isDebug } from '@/utils/env';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 // configuration and packageJson not currently used but kept for future use
@@ -384,7 +385,7 @@ export async function runCodex(opts: {
 
     // Debug helper
     function logActiveHandles(tag: string) {
-        if (!process.env.DEBUG) return;
+        if (!isDebug()) return;
         const anyProc: any = process as any;
         const handles = typeof anyProc._getActiveHandles === 'function' ? anyProc._getActiveHandles() : [];
         const requests = typeof anyProc._getActiveRequests === 'function' ? anyProc._getActiveRequests() : [];
@@ -517,7 +518,7 @@ export async function runCodex(opts: {
         console.clear();
         inkInstance = render(React.createElement(CodexDisplay, {
             messageBuffer,
-            logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+            logPath: isDebug() ? logger.getLogPath() : undefined,
             onExit: async () => {
                 logger.debug('[codex]: Exiting agent via Ctrl-C');
                 shouldExit = true;

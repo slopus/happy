@@ -10,6 +10,7 @@ import { execSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { logger } from '@/ui/logger'
 import { isBun } from '@/utils/runtime'
+import { isDebug } from '@/utils/env'
 
 /**
  * Get the directory path of the current module
@@ -178,7 +179,7 @@ export function getDefaultClaudeCodePath(): string {
  * Log debug message
  */
 export function logDebug(message: string): void {
-    if (process.env.DEBUG) {
+    if (isDebug()) {
         logger.debug(message)
         console.log(message)
     }

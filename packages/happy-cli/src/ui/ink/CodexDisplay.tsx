@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Box, Text, useStdout, useInput } from 'ink'
 import { MessageBuffer, type BufferedMessage } from './messageBuffer'
+import { isDebug } from '@/utils/env'
 
 interface CodexDisplayProps {
     messageBuffer: MessageBuffer
@@ -164,7 +165,7 @@ export const CodexDisplay: React.FC<CodexDisplayProps> = ({ messageBuffer, logPa
                             </Text>
                         </>
                     )}
-                    {process.env.DEBUG && logPath && (
+                    {isDebug() && logPath && (
                         <Text color="gray" dimColor>
                             Debug logs: {logPath}
                         </Text>

@@ -15,6 +15,7 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
+import { isDebug } from '@/utils/env';
 
 /** Tools whose tool_use.input should be trimmed and saved to diffStore */
 const INPUT_TRIMMABLE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
@@ -864,7 +865,7 @@ export class ApiSessionClient extends EventEmitter {
      * Send a ping message to keep the connection alive
      */
     keepAlive(thinking: boolean, mode: 'local' | 'remote') {
-        if (process.env.DEBUG) { // too verbose for production
+        if (isDebug()) {
             logger.debug(`[API] Sending keep alive message: ${thinking}`);
         }
         this.socket.volatile.emit('session-alive', {

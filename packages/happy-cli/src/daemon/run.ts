@@ -13,6 +13,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
+import { isDebug } from '@/utils/env';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables, validateProfileForAgent, getProfileEnvironmentVariables } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -884,7 +885,7 @@ export async function startDaemon(): Promise<void> {
           });
 
           // Log output for debugging
-          if (process.env.DEBUG) {
+          if (isDebug()) {
             happyProcess.stdout?.on('data', (data) => {
               logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
             });
@@ -1118,7 +1119,7 @@ export async function startDaemon(): Promise<void> {
       }
       heartbeatRunning = true;
 
-      if (process.env.DEBUG) {
+      if (isDebug()) {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
       }
 
@@ -1192,7 +1193,7 @@ export async function startDaemon(): Promise<void> {
           daemonLogPath: fileState.daemonLogPath
         };
         writeDaemonState(updatedState);
-        if (process.env.DEBUG) {
+        if (isDebug()) {
           logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
         }
       } catch (error) {

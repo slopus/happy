@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Box, Text, useStdout, useInput } from 'ink'
 import { MessageBuffer, type BufferedMessage } from './messageBuffer'
+import { isDebug } from '@/utils/env'
 
 interface RemoteModeDisplayProps {
     messageBuffer: MessageBuffer
@@ -190,7 +191,7 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
                             </Text>
                         </>
                     )}
-                    {process.env.DEBUG && logPath && (
+                    {isDebug() && logPath && (
                         <Text color="gray" dimColor>
                             Debug logs: {logPath}
                         </Text>

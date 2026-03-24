@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@/claude/sdk';
 import { logger } from './logger';
+import { isDebug } from '@/utils/env';
 
 export type OnAssistantResultCallback = (result: SDKResultMessage) => void | Promise<void>;
 
@@ -141,7 +142,7 @@ export function formatClaudeMessage(
 
         default: {
             // Handle other message types
-            if (process.env.DEBUG) {
+            if (isDebug()) {
                 console.log(chalk.gray(`[Unknown message type: ${message.type}]`));
             }
         }

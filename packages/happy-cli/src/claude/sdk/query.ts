@@ -25,6 +25,7 @@ import {
 import { getDefaultClaudeCodePath, getCleanEnv, logDebug, streamToStdin } from './utils'
 import type { Writable } from 'node:stream'
 import { logger } from '@/ui/logger'
+import { isDebug } from '@/utils/env'
 
 /**
  * Query class manages Claude Code process interaction
@@ -370,7 +371,7 @@ export function query(config: {
     }
 
     // Handle stderr in debug mode
-    if (process.env.DEBUG) {
+    if (isDebug()) {
         child.stderr.on('data', (data) => {
             console.error('Claude Code stderr:', data.toString())
         })

@@ -13,6 +13,7 @@ import { render } from 'ink';
 import React from 'react';
 import { randomUUID } from 'node:crypto';
 import { logger } from './logger';
+import { isDebug } from '@/utils/env';
 
 export async function doAuth(): Promise<Credentials | null> {
     console.clear();
@@ -30,7 +31,7 @@ export async function doAuth(): Promise<Credentials | null> {
 
     // Create a new authentication request
     try {
-        if (process.env.DEBUG) {
+        if (isDebug()) {
             console.log(`[AUTH DEBUG] Sending auth request to: ${configuration.serverUrl}/v1/auth/request`);
             console.log(`[AUTH DEBUG] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`);
         }
@@ -38,11 +39,11 @@ export async function doAuth(): Promise<Credentials | null> {
             publicKey: encodeBase64(keypair.publicKey),
             supportsV2: true
         });
-        if (process.env.DEBUG) {
+        if (isDebug()) {
             console.log(`[AUTH DEBUG] Auth request sent successfully`);
         }
     } catch (error) {
-        if (process.env.DEBUG) {
+        if (isDebug()) {
             console.log(`[AUTH DEBUG] Failed to send auth request:`, error);
         }
         console.log('Failed to create authentication request, please try again later.');
