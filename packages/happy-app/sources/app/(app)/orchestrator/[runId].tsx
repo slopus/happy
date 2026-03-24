@@ -4,8 +4,11 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Text } from '@/components/StyledText';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { Ionicons } from '@expo/vector-icons';
 import { layout } from '@/components/layout';
 import { useAuth } from '@/auth/AuthContext';
+import { ActionMenuModal } from '@/components/ActionMenuModal';
+import type { ActionMenuItem } from '@/components/ActionMenu';
 import { cancelOrchestratorRun, getOrchestratorRun, pendOrchestratorRun, type OrchestratorRunDetail } from '@/sync/apiOrchestrator';
 import { OrchestratorStatusBadge } from '@/components/orchestrator/OrchestratorStatusBadge';
 import { OrchestratorProgressBar } from '@/components/orchestrator/OrchestratorProgressBar';
@@ -123,14 +126,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textDestructive,
         textAlign: 'center',
     },
-    cancelButton: {
+    menuButton: {
         paddingHorizontal: 8,
         paddingVertical: 4,
-    },
-    cancelButtonText: {
-        color: theme.colors.textDestructive,
-        fontWeight: '600',
-        fontSize: 14,
     },
 }));
 
@@ -148,6 +146,7 @@ export default function OrchestratorRunDetailScreen() {
     const [refreshing, setRefreshing] = React.useState(false);
     const [canceling, setCanceling] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+    const [menuVisible, setMenuVisible] = React.useState(false);
 
     const loadRun = React.useCallback(async (opts?: { silent?: boolean; }) => {
         if (!credentials || !runId) {
@@ -266,6 +265,19 @@ export default function OrchestratorRunDetailScreen() {
     const canCancel = !!run && isRunActive(run.status) && run.status !== 'canceling';
     const runSummaryLine = run ? resolveOrchestratorSummaryLineDataFromTasks(run.summary, run.tasks) : null;
 
+    const menuItems = React.useMemo<ActionMenuItem[]>(() => {
+        if (!canCancel) {
+            return [];
+        }
+        return [{
+            label: canceling || run?.status === 'canceling'
+                ? t('settings.orchestratorCanceling')
+                : t('settings.orchestratorCancel'),
+            destructive: true,
+            onPress: handleCancelRun,
+        }];
+    }, [canCancel, canceling, run?.status, handleCancelRun]);
+
     if (loading && !run) {
         return (
             <View style={styles.center}>
@@ -293,16 +305,18 @@ export default function OrchestratorRunDetailScreen() {
                     headerTitle: run.title || t('settings.orchestratorRunDetails'),
                     headerRight: canCancel ? () => (
                         <Pressable
-                            style={styles.cancelButton}
-                            onPress={handleCancelRun}
-                            disabled={canceling || run.status === 'canceling'}
+                            style={styles.menuButton}
+                            onPress={() => setMenuVisible(true)}
                         >
-                            <Text style={styles.cancelButtonText}>
-                                {run.status === 'canceling' || canceling ? t('settings.orchestratorCanceling') : t('settings.orchestratorCancel')}
-                            </Text>
+                            <Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.header.tint} />
                         </Pressable>
                     ) : undefined,
                 }}
+            />
+            <ActionMenuModal
+                visible={menuVisible}
+                items={menuItems}
+                onClose={() => setMenuVisible(false)}
             />
             <ScrollView
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.textSecondary} />}
