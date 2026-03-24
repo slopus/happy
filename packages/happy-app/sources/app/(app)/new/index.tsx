@@ -72,7 +72,7 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'gemini', label: 'gemini' },
 ];
 
-type PickerItem = { key: string; label: string; subtitle?: string };
+type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
 
 type PickerType = 'machine' | 'path' | 'worktree';
 
@@ -236,7 +236,7 @@ function PickerContent({
         return (
             <Pressable
                 key={item.key}
-                style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed, item.dimmed && { opacity: 0.45 }]}
                 onPress={() => onSelect(item.key)}
             >
                 <Octicons
@@ -528,7 +528,8 @@ function NewSessionScreen() {
         return sorted.map(m => ({
             key: m.id,
             label: getMachineName(m),
-            subtitle: isMachineOnline(m) ? undefined : t('status.lastSeen', { time: formatLastSeen(m.activeAt, false) }),
+            subtitle: isMachineOnline(m) ? t('status.online') : t('status.lastSeen', { time: formatLastSeen(m.activeAt, false) }),
+            dimmed: !isMachineOnline(m),
         }));
     }, [allMachines]);
 
@@ -674,22 +675,16 @@ function NewSessionScreen() {
 
     const hasText = prompt.trim().length > 0;
 
-    // Auto collapse/expand config based on input text
-    const prevHasTextRef = React.useRef(false);
+    // Auto collapse config once when user starts typing, never auto-expand again
+    const hasCollapsedOnceRef = React.useRef(false);
     React.useEffect(() => {
-        if (hasText !== prevHasTextRef.current) {
-            prevHasTextRef.current = hasText;
+        if (hasText && !hasCollapsedOnceRef.current) {
+            hasCollapsedOnceRef.current = true;
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            setIsConfigExpanded(!hasText);
+            setIsConfigExpanded(false);
         }
     }, [hasText]);
 
-    // Close any open picker when config collapses
-    React.useEffect(() => {
-        if (!isConfigExpanded) {
-            setActivePicker(null);
-        }
-    }, [isConfigExpanded]);
 
     const toggleConfig = React.useCallback(() => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -742,6 +737,21 @@ function NewSessionScreen() {
         : worktreeKey === '__new__'
             ? 'new worktree'
             : worktreeItems.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
+
+    // Flash label for collapsed icon taps — shows label briefly above the icon
+    const flashOpacity = React.useRef(new Animated.Value(0)).current;
+    const [flashText, setFlashText] = React.useState('');
+    const flashTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const showFlash = React.useCallback((text: string) => {
+        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+        setFlashText(text);
+        flashOpacity.setValue(0);
+        Animated.timing(flashOpacity, { toValue: 1, duration: 120, useNativeDriver: true }).start();
+        flashTimerRef.current = setTimeout(() => {
+            Animated.timing(flashOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
+        }, 800);
+    }, [flashOpacity]);
 
     // Picker data derived from active picker type
     const pickerData = React.useMemo(() => {
@@ -868,6 +878,15 @@ function NewSessionScreen() {
         return false;
     }, [agentInputEnterToSend, canSend, handleSend]);
 
+    // Auto-focus the text input when the composer mounts
+    const composerInputRef = React.useRef<import('@/components/MultiTextInput').MultiTextInputHandle>(null);
+    React.useEffect(() => {
+        const timeout = setTimeout(() => {
+            composerInputRef.current?.focus();
+        }, 100);
+        return () => clearTimeout(timeout);
+    }, []);
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -882,20 +901,40 @@ function NewSessionScreen() {
                         {isConfigExpanded ? (
                             <>
                                 {/* Machine row */}
-                                <Pressable
-                                    style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                    onPress={() => togglePicker('machine')}
-                                >
-                                    <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
-                                    <Text style={styles.configLabel} numberOfLines={1}>
-                                        {machineName}
-                                    </Text>
-                                    {selectedMachine && isOffline && (
-                                        <Text style={{ fontSize: 12, color: theme.colors.status.disconnected }}>
-                                            {t('status.lastSeen', { time: formatLastSeen(selectedMachine.activeAt, false) })}
+                                <View style={styles.configRowWithToggle}>
+                                    <Pressable
+                                        style={(p) => [styles.configRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
+                                        onPress={() => togglePicker('machine')}
+                                    >
+                                        <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
+                                        <Text style={styles.configLabel} numberOfLines={1}>
+                                            {machineName}
                                         </Text>
-                                    )}
-                                </Pressable>
+                                    </Pressable>
+                                    <Pressable
+                                        onPress={toggleConfig}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        style={(p) => [styles.collapseToggle, p.pressed && styles.configRowPressed]}
+                                    >
+                                        <Ionicons name="chevron-up" size={16} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                </View>
+
+                                {/* Offline help section — right under machine */}
+                                {isOffline && (
+                                    <View style={styles.offlineHelp}>
+                                        <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.offlineHelpTitle, { color: theme.colors.status.disconnected }]}>
+                                                {t('newSession.machineOffline')}
+                                            </Text>
+                                            <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
+                                                {t('machine.offlineHelp')}
+                                                {'\n'}{t('newSession.switchMachinesHint')}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
 
                                 {/* Config rows below machine — grayed out when offline */}
                                 <View style={{ opacity: isOffline ? 0.4 : 1 }} pointerEvents={isOffline ? 'none' : 'auto'}>
@@ -981,7 +1020,83 @@ function NewSessionScreen() {
                                     )}
                                 </View>
 
-                                {/* Offline help section */}
+                            </>
+                        ) : (
+                            /* Collapsed: path row + icons row + optional offline warning */
+                            <>
+                                {/* Path row with expand chevron */}
+                                <View style={styles.configRowWithToggle}>
+                                    <Pressable
+                                        style={(p) => [styles.collapsedRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
+                                        onPress={() => togglePicker('path')}
+                                    >
+                                        <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
+                                        <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
+                                            {pathName}
+                                        </Text>
+                                    </Pressable>
+                                    <Pressable
+                                        onPress={toggleConfig}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        style={(p) => [styles.collapseToggle, p.pressed && styles.configRowPressed]}
+                                    >
+                                        <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                </View>
+
+                                {/* Tappable icons row: machine, agent, permission, worktree */}
+                                <View style={styles.collapsedIconsRow}>
+                                    {/* Machine */}
+                                    <Pressable
+                                        onPress={() => togglePicker('machine')}
+                                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                        style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                    >
+                                        <Ionicons name="desktop-outline" size={14} color={isOffline ? theme.colors.status.disconnected : theme.colors.textSecondary} />
+                                    </Pressable>
+
+                                    {/* Agent */}
+                                    <Pressable
+                                        onPress={() => { cycleAgent(); showFlash(availableAgents[(availableAgents.findIndex(a => a.key === selectedAgent) + 1) % availableAgents.length].label); }}
+                                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                        style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                    >
+                                        <Image
+                                            source={agentIcons[agent.key]}
+                                            style={{ width: 14, height: 14 }}
+                                            contentFit="contain"
+                                            tintColor={theme.colors.textSecondary}
+                                        />
+                                    </Pressable>
+
+                                    {/* Permission */}
+                                    {showPermission && (
+                                        <Pressable
+                                            onPress={() => { cyclePermission(); showFlash(permissionModes[(permissionIndex + 1) % permissionModes.length]?.name ?? 'default'); }}
+                                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                            style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                        >
+                                            <Ionicons
+                                                name={permissionStyle?.icon ?? 'shield-outline'}
+                                                size={14}
+                                                color={permissionStyle?.color ?? theme.colors.textSecondary}
+                                            />
+                                        </Pressable>
+                                    )}
+
+                                    {/* Worktree */}
+                                    {supportsWorktree && (
+                                        <Pressable
+                                            onPress={() => togglePicker('worktree')}
+                                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                            style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                        >
+                                            <Octicons name="git-branch" size={14} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    )}
+                                </View>
+
+                                {/* Offline warning in collapsed state */}
                                 {isOffline && (
                                     <View style={styles.offlineHelp}>
                                         <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
@@ -991,25 +1106,21 @@ function NewSessionScreen() {
                                             </Text>
                                             <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
                                                 {t('machine.offlineHelp')}
+                                                {'\n'}{t('newSession.switchMachinesHint')}
                                             </Text>
                                         </View>
                                     </View>
                                 )}
                             </>
-                        ) : (
-                            /* Collapsed: path + chevron to re-expand */
-                            <Pressable
-                                style={(p) => [styles.collapsedRow, p.pressed && styles.configRowPressed]}
-                                onPress={toggleConfig}
-                            >
-                                <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
-                                <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
-                                    {pathName}
-                                </Text>
-                                <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
-                            </Pressable>
                         )}
                     </View>
+
+                    {/* Flash label — centered below config box, hidden when picker is open */}
+                    {flashText !== '' && !activePicker && (
+                        <Animated.View style={[styles.flashLabel, { opacity: flashOpacity }]} pointerEvents="none">
+                            <Text style={[styles.flashLabelText, { color: theme.colors.textSecondary }]}>{flashText}</Text>
+                        </Animated.View>
+                    )}
 
                     {/* Web: inline popover */}
                     {Platform.OS === 'web' && activePicker && (
@@ -1047,6 +1158,7 @@ function NewSessionScreen() {
                         <View style={styles.inputField}>
                             <View style={{ flex: 1 }}>
                                 <MultiTextInput
+                                    ref={composerInputRef}
                                     value={prompt}
                                     onChangeText={setPrompt}
                                     placeholder="What would you like to work on?"
@@ -1165,6 +1277,16 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 10,
         borderRadius: 12,
     },
+    configRowWithToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    collapseToggle: {
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     collapsedRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1172,6 +1294,28 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         paddingVertical: 10,
         borderRadius: 12,
+    },
+    collapsedIconsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+        paddingHorizontal: 4,
+        paddingBottom: 8,
+    },
+    collapsedIconButton: {
+        width: 34,
+        height: 28,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    flashLabel: {
+        alignSelf: 'center',
+        paddingVertical: 4,
+    },
+    flashLabelText: {
+        fontSize: 12,
+        ...Typography.default(),
     },
     configRowPressed: {
         opacity: 0.6,

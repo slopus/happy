@@ -266,6 +266,7 @@ export const pl: TranslationStructure = {
     newSession: {
         title: 'Rozpocznij nową sesję',
         machineOffline: 'Maszyna jest offline',
+        switchMachinesHint: '• Przełącz maszynę, klikając na nią powyżej',
     },
 
     sessionHistory: {

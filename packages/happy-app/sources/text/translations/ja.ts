@@ -256,6 +256,7 @@ export const ja: TranslationStructure = {
     newSession: {
         title: '新しいセッションを開始',
         machineOffline: 'マシンがオフラインです',
+        switchMachinesHint: '• 上のマシンをクリックしてマシンを切り替えてください',
     },
 
     sessionHistory: {
