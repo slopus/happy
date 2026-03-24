@@ -598,6 +598,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 await copySessionMetadata(session, spawnResult.sessionId).catch(e => console.warn('copySessionMetadata failed:', e));
                 copySessionModeSettings(session, spawnResult.sessionId);
 
+                // Save the selected message as a draft in the new session so it appears in the input box
+                const selectedMessage = duplicateMessages?.find(m => m.uuid === uuid);
+                if (selectedMessage?.content) {
+                    storage.getState().updateSessionDraft(spawnResult.sessionId, {
+                        text: selectedMessage.content,
+                        images: [],
+                    });
+                }
+
                 // Close the sheet and navigate to the new Happy session
                 setDuplicateSheetVisible(false);
                 setDuplicateConfirming(false);
@@ -611,7 +620,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             setDuplicateConfirming(false);
             Modal.alert(t('common.error'), t('duplicate.failed'));
         }
-    }, [machineId, session.id, session.metadata?.flavor, session.metadata?.claudeSessionId, session.metadata?.codexSessionId, session.metadata?.path, session.metadata?.externalContext, session.metadata?.sessionIcon, router]);
+    }, [machineId, session.id, session.metadata?.flavor, session.metadata?.claudeSessionId, session.metadata?.codexSessionId, session.metadata?.path, session.metadata?.externalContext, session.metadata?.sessionIcon, router, duplicateMessages]);
 
     // Handle closing the duplicate sheet (prevent closing while confirming)
     const handleCloseDuplicateSheet = React.useCallback(() => {
