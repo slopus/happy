@@ -50,14 +50,13 @@ async function main() {
     if (connectPromise) return connectPromise;
 
     connectPromise = (async () => {
+      const client = new Client(
+        { name: 'happy-stdio-bridge', version: '1.0.0' },
+        { capabilities: {} }
+      );
+      const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
       try {
-        const client = new Client(
-          { name: 'happy-stdio-bridge', version: '1.0.0' },
-          { capabilities: {} }
-        );
-        const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
         transport.onclose = () => {
-          // Reset client on transport close so next call reconnects
           if (httpClient === client) {
             httpClient = null;
           }
@@ -70,6 +69,10 @@ async function main() {
         };
         httpClient = client;
         return client;
+      } catch (error) {
+        // Clean up on connect failure to avoid leaking SSE streams/timers
+        try { await client.close(); } catch { /* ignore */ }
+        throw error;
       } finally {
         connectPromise = null;
       }
