@@ -112,7 +112,8 @@ class ApiSocket {
      * RPC call for sessions - uses session-specific encryption
      */
     async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
-        if (!this.socket) {
+        const socket = this.socket;
+        if (!socket) {
             throw new Error('Socket not connected');
         }
         if (!this.encryption) {
@@ -123,7 +124,7 @@ class ApiSocket {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
 
-        const result = await this.socket.emitWithAck('rpc-call', {
+        const result = await socket.emitWithAck('rpc-call', {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
@@ -131,14 +132,15 @@ class ApiSocket {
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        throw new Error(result.error || 'RPC call failed');
     }
 
     /**
      * RPC call for machines - uses legacy/global encryption (for now)
      */
     async machineRPC<R, A>(machineId: string, method: string, params: A): Promise<R> {
-        if (!this.socket) {
+        const socket = this.socket;
+        if (!socket) {
             throw new Error('Socket not connected');
         }
         if (!this.encryption) {
@@ -149,7 +151,7 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket.emitWithAck('rpc-call', {
+        const result = await socket.emitWithAck('rpc-call', {
             method: `${machineId}:${method}`,
             params: await machineEncryption.encryptRaw(params)
         });
