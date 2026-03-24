@@ -27,7 +27,7 @@ import { tracking, trackMessageSent } from '@/track';
 import { handleImagePasteEvent } from '@/utils/imagePaste';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, generateCopyTitle, getSessionAvatarId, getSessionName, useSessionStatus, copySessionMetadata } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, generateCopyTitle, getSessionAvatarId, getSessionName, useSessionStatus, copySessionMetadata, copySessionModeSettings } from '@/utils/sessionUtils';
 import { isVersionSupported, useLatestCliVersion } from '@/utils/versionUtils';
 import { log } from '@/log';
 import { Ionicons } from '@expo/vector-icons';
@@ -594,7 +594,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             });
 
             if (spawnResult.type === 'success' && spawnResult.sessionId) {
+                await sync.refreshSessions();
                 await copySessionMetadata(session, spawnResult.sessionId).catch(e => console.warn('copySessionMetadata failed:', e));
+                copySessionModeSettings(session, spawnResult.sessionId);
 
                 // Close the sheet and navigate to the new Happy session
                 setDuplicateSheetVisible(false);

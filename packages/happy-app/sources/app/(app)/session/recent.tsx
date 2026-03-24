@@ -5,7 +5,7 @@ import { Text } from '@/components/StyledText';
 import { useAllSessions, useAllMachines } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { Avatar } from '@/components/Avatar';
-import { generateCopyTitle, getSessionName, getSessionSubtitle, getSessionAvatarId, useSessionStatus, copySessionMetadata } from '@/utils/sessionUtils';
+import { generateCopyTitle, getSessionName, getSessionSubtitle, getSessionAvatarId, useSessionStatus, copySessionMetadata, copySessionModeSettings } from '@/utils/sessionUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { ActionMenuModal } from '@/components/ActionMenuModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -438,6 +438,7 @@ function SessionHistory() {
             if (result.type === 'success') {
                 await sync.refreshSessions();
                 await copySessionMetadata(session, result.sessionId).catch(e => console.warn('copySessionMetadata failed:', e));
+                copySessionModeSettings(session, result.sessionId);
                 navigateToSession(result.sessionId);
             }
         } catch (error) {
