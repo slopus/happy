@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { registerGlobals } from '@livekit/react-native';
 import { Room, RoomEvent } from 'livekit-client';
-import { registerVoiceSession } from './RealtimeSession';
+import { registerVoiceSession, getSessionVersion, setRealtimeStatusIfCurrent, setRealtimeModeIfCurrent } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { getCurrentLanguage } from '@/text';
 import {
@@ -23,8 +23,9 @@ const THINKING_TIMEOUT_MS = 15000;
 
 class HappyVoiceSessionImpl implements VoiceSession {
     async startSession(config: VoiceSessionConfig): Promise<void> {
+        const version = getSessionVersion();
         try {
-            storage.getState().setRealtimeStatus('connecting');
+            setRealtimeStatusIfCurrent(version, 'connecting');
 
             const current = roomInstance;
             if (current) {
@@ -51,8 +52,8 @@ class HappyVoiceSessionImpl implements VoiceSession {
 
             room.on(RoomEvent.Disconnected, () => {
                 if (thinkingTimeoutId) { clearTimeout(thinkingTimeoutId); thinkingTimeoutId = null; }
-                storage.getState().setRealtimeStatus('disconnected');
-                storage.getState().setRealtimeMode('idle', true);
+                setRealtimeStatusIfCurrent(version, 'disconnected');
+                setRealtimeModeIfCurrent(version, 'idle', true);
                 storage.getState().clearRealtimeModeDebounce();
             });
 
@@ -60,7 +61,7 @@ class HappyVoiceSessionImpl implements VoiceSession {
                 const remoteSpeaking = speakers.some(
                     (speaker) => speaker.identity !== room.localParticipant.identity,
                 );
-                storage.getState().setRealtimeMode(remoteSpeaking ? 'speaking' : 'idle');
+                setRealtimeModeIfCurrent(version, remoteSpeaking ? 'speaking' : 'idle');
             });
 
             room.on(RoomEvent.DataReceived, (payload: Uint8Array, _participant, _kind, topic) => {
@@ -68,20 +69,20 @@ class HappyVoiceSessionImpl implements VoiceSession {
                 try {
                     const data = JSON.parse(new TextDecoder().decode(payload));
                     if (data.state === 'thinking') {
-                        storage.getState().setRealtimeMode('thinking', true);
+                        setRealtimeModeIfCurrent(version, 'thinking', true);
                         // Timeout fallback: clear thinking if no follow-up state arrives
                         if (thinkingTimeoutId) clearTimeout(thinkingTimeoutId);
                         thinkingTimeoutId = setTimeout(() => {
                             thinkingTimeoutId = null;
                             if (storage.getState().realtimeMode === 'thinking') {
-                                storage.getState().setRealtimeMode('idle', true);
+                                setRealtimeModeIfCurrent(version, 'idle', true);
                             }
                         }, THINKING_TIMEOUT_MS);
                     } else if (data.state === 'idle' || data.state === 'listening') {
                         // Agent finished processing without speaking — clear thinking
                         if (thinkingTimeoutId) { clearTimeout(thinkingTimeoutId); thinkingTimeoutId = null; }
                         if (storage.getState().realtimeMode === 'thinking') {
-                            storage.getState().setRealtimeMode('idle', true);
+                            setRealtimeModeIfCurrent(version, 'idle', true);
                         }
                     } else if (data.state === 'speaking') {
                         // Speaking is handled by ActiveSpeakersChanged, but clear timeout
@@ -95,11 +96,11 @@ class HappyVoiceSessionImpl implements VoiceSession {
 
             roomInstance = room;
             activeGatewaySessionId = start.gatewaySessionId;
-            storage.getState().setRealtimeStatus('connected');
-            storage.getState().setRealtimeMode('idle', true);
+            setRealtimeStatusIfCurrent(version, 'connected');
+            setRealtimeModeIfCurrent(version, 'idle', true);
         } catch (error) {
             console.error('[HappyVoice] Failed to start session:', error);
-            storage.getState().setRealtimeStatus('error');
+            setRealtimeStatusIfCurrent(version, 'error');
         }
     }
 

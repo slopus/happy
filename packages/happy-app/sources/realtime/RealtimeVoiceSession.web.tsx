@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
-import { registerVoiceSession } from './RealtimeSession';
+import { registerVoiceSession, getSessionVersion, setRealtimeStatusIfCurrent, setRealtimeModeIfCurrent } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
@@ -8,6 +8,8 @@ import type { VoiceSession, VoiceSessionConfig } from './types';
 
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
+// Version captured when startSession is called — callbacks check this to avoid stale updates
+let activeVersion: number | null = null;
 
 // Module-level mic mute state setter (provided by React component)
 let setMicMutedState: ((muted: boolean) => void) | null = null;
@@ -22,26 +24,27 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             return;
         }
 
+        activeVersion = getSessionVersion();
         try {
-            storage.getState().setRealtimeStatus('connecting');
+            setRealtimeStatusIfCurrent(activeVersion, 'connecting');
 
             // Request microphone permission first
             try {
                 await navigator.mediaDevices.getUserMedia({ audio: true });
             } catch (error) {
                 console.error('Failed to get microphone permission:', error);
-                storage.getState().setRealtimeStatus('error');
+                setRealtimeStatusIfCurrent(activeVersion, 'error');
                 return;
             }
 
             // Get user's preferred language for voice assistant
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
-            
+
             if (!config.agentId) {
                 throw new Error('Agent ID not provided');
             }
-            
+
             const sessionConfig: any = {
                 connectionType: 'webrtc',
                 dynamicVariables: {
@@ -55,13 +58,13 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                 },
                 agentId: config.agentId
             };
-            
+
             const conversationId = await conversationInstance.startSession(sessionConfig);
 
             console.log('Started conversation with ID:', conversationId);
         } catch (error) {
             console.error('Failed to start realtime session:', error);
-            storage.getState().setRealtimeStatus('error');
+            setRealtimeStatusIfCurrent(activeVersion, 'error');
         }
     }
 
@@ -117,13 +120,17 @@ export const RealtimeVoiceSession: React.FC = () => {
         clientTools: realtimeClientTools,
         onConnect: () => {
             console.log('Realtime session connected');
-            storage.getState().setRealtimeStatus('connected');
-            storage.getState().setRealtimeMode('idle');
+            if (activeVersion !== null) {
+                setRealtimeStatusIfCurrent(activeVersion, 'connected');
+                setRealtimeModeIfCurrent(activeVersion, 'idle');
+            }
         },
         onDisconnect: () => {
             console.log('Realtime session disconnected');
-            storage.getState().setRealtimeStatus('disconnected');
-            storage.getState().setRealtimeMode('idle', true); // immediate mode change
+            if (activeVersion !== null) {
+                setRealtimeStatusIfCurrent(activeVersion, 'disconnected');
+                setRealtimeModeIfCurrent(activeVersion, 'idle', true);
+            }
             storage.getState().clearRealtimeModeDebounce();
         },
         onMessage: (data) => {
@@ -135,21 +142,25 @@ export const RealtimeVoiceSession: React.FC = () => {
             console.warn('Realtime voice not available:', error);
             // Don't set error status during initialization - just set disconnected
             // This allows the app to continue working without voice features
-            storage.getState().setRealtimeStatus('disconnected');
-            storage.getState().setRealtimeMode('idle', true); // immediate mode change
+            if (activeVersion !== null) {
+                setRealtimeStatusIfCurrent(activeVersion, 'disconnected');
+                setRealtimeModeIfCurrent(activeVersion, 'idle', true);
+            }
         },
         onStatusChange: (data) => {
             console.log('Realtime status change:', data);
         },
         onModeChange: (data) => {
             console.log('Realtime mode change:', data);
-            
+
             // Only animate when speaking
             const mode = data.mode as string;
             const isSpeaking = mode === 'speaking';
-            
+
             // Use centralized debounce logic from storage
-            storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
+            if (activeVersion !== null) {
+                setRealtimeModeIfCurrent(activeVersion, isSpeaking ? 'speaking' : 'idle');
+            }
         },
         onDebug: (message) => {
             console.debug('Realtime debug:', message);
