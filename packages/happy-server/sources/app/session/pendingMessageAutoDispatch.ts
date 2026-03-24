@@ -37,6 +37,10 @@ export async function dispatchNextPendingIfPossible(params: {
     }
 
     try {
+        // Wait briefly so the AI's final response (which may still be in-flight)
+        // arrives at the app before the next pending message is dispatched.
+        await new Promise(r => setTimeout(r, 1000));
+
         const pending = await takeNextPendingMessageForDispatch(params.sessionId);
         if (!pending) {
             return { dispatched: false };
