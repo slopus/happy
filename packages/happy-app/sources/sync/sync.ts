@@ -57,7 +57,7 @@ import {
 } from '../openclaw/storage';
 import { resolveModelSelectionForFlavor } from 'happy-wire';
 import { getOrchestratorActivity, getOrchestratorActivityBatch } from './apiOrchestrator';
-import { sessionAbort, sessionUpdateMetadataFields } from './ops';
+import { sessionUpdateMetadataFields } from './ops';
 import { shouldInvalidateGitStatusOnActivityTransition } from './gitStatusRefreshPolicy';
 import { kvGet, kvMutate } from './apiKv';
 import {
@@ -670,48 +670,7 @@ class Sync {
         }
     }
 
-    async sendNowPendingMessage(sessionId: string, pendingId: string): Promise<boolean> {
-        if (!this.credentials) {
-            return false;
-        }
 
-        try {
-            const API_ENDPOINT = getServerUrl();
-            const response = await fetch(
-                `${API_ENDPOINT}/v3/sessions/${sessionId}/pending-messages/${pendingId}/send-now`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${this.credentials.token}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-
-            if (!response.ok) {
-                if (response.status === 404) {
-                    this.invalidatePendingMessagesSync(sessionId);
-                    try {
-                        await sessionAbort(sessionId);
-                    } catch {
-                        // best effort
-                    }
-                    return true;
-                }
-                return false;
-            }
-
-            storage.getState().removePendingMessage(sessionId, pendingId);
-            try {
-                await sessionAbort(sessionId);
-            } catch {
-                // best effort
-            }
-            return true;
-        } catch {
-            return false;
-        }
-    }
 
     private async prepareOutgoingMessage(
         sessionId: string,

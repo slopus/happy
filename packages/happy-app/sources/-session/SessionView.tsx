@@ -768,8 +768,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const canEdit = !session.accessLevel || session.accessLevel !== 'view';
 
     const handleSendNowPending = React.useCallback(async (pendingId: string) => {
-        const success = await sync.sendNowPendingMessage(sessionId, pendingId);
-        if (!success) {
+        try {
+            // Pin the message so it becomes the next to dispatch (pinnedAt desc ordering),
+            // then abort the current turn — the server auto-dispatches the first pending message.
+            await sync.pinPendingMessage(sessionId, pendingId);
+            await sessionAbort(sessionId);
+        } catch {
             Modal.alert(t('common.error'), t('status.operationFailed'));
         }
     }, [sessionId]);

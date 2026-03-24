@@ -212,7 +212,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 // pending message, preventing the queued message from arriving before
                 // the AI's last reply on the client side.
                 await receiveMessageLock.inLock(async () => {
-                    await dispatchNextPendingIfPossible({
+                    const result = await dispatchNextPendingIfPossible({
                         ownerId: userId,
                         sessionId: sid,
                     });

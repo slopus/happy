@@ -151,7 +151,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
                     const sessionId = method.substring(0, method.length - ':abort'.length);
                     const { turnEnded } = updateThinkingState(sessionId, false, Date.now());
                     if (turnEnded) {
-                        dispatchNextPendingIfPossible({ ownerId: userId, sessionId });
+                        await dispatchNextPendingIfPossible({ ownerId: userId, sessionId });
                     }
                 }
 

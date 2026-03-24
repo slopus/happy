@@ -117,6 +117,12 @@ export async function claudeRemote(opts: {
         if (opts.onSessionReset) {
             opts.onSessionReset();
         }
+        // Immediately signal thinking=false so the server clears awaitingTurnStart
+        // without waiting for the next 2s heartbeat interval. This prevents
+        // subsequent messages from being unnecessarily queued as pending.
+        if (opts.onThinkingChange) {
+            opts.onThinkingChange(false);
+        }
         return;
     }
 

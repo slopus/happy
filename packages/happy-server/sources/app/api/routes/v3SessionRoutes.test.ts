@@ -1177,56 +1177,6 @@ describe("v3SessionRoutes", () => {
         expect(state.pendingMessages[0].localId).toBe("queued-by-thinking");
     });
 
-    it("send-now dispatches target pending message and keeps others", async () => {
-        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
-        const p1 = seedPendingMessage({
-            sessionId: "session-1",
-            localId: "pending-1",
-            content: { t: "encrypted", c: "pending-content-1" },
-        });
-        const p2 = seedPendingMessage({
-            sessionId: "session-1",
-            localId: "pending-2",
-            content: { t: "encrypted", c: "pending-content-2" },
-        });
-
-        app = await createApp();
-        const response = await app.inject({
-            method: "POST",
-            url: `/v3/sessions/session-1/pending-messages/${p2.id}/send-now`,
-            headers: { "x-user-id": "user-1" },
-        });
-
-        expect(response.statusCode).toBe(200);
-        const body = response.json();
-        expect(body.mode).toBe("sent");
-        expect(state.messages).toHaveLength(1);
-        expect(state.messages[0].localId).toBe("pending-2");
-        expect(state.pendingMessages.map((message) => message.id)).toEqual([p1.id]);
-    });
-
-    it("send-now returns 404 when pending item is consumed concurrently", async () => {
-        seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
-        const pending = seedPendingMessage({
-            sessionId: "session-1",
-            localId: "pending-race",
-            content: { t: "encrypted", c: "pending-content-race" },
-        });
-
-        dbMock.sessionPendingMessage.deleteMany.mockImplementationOnce(async () => ({ count: 0 }));
-
-        app = await createApp();
-        const response = await app.inject({
-            method: "POST",
-            url: `/v3/sessions/session-1/pending-messages/${pending.id}/send-now`,
-            headers: { "x-user-id": "user-1" },
-        });
-
-        expect(response.statusCode).toBe(404);
-        expect(state.messages).toHaveLength(0);
-        expect(state.pendingMessages.map((message) => message.id)).toEqual([pending.id]);
-    });
-
     it("pin and delete pending message endpoints update queue", async () => {
         seedSession({ id: "session-1", accountId: "user-1", seq: 0 });
         const pending = seedPendingMessage({

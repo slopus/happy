@@ -176,7 +176,7 @@ export async function takeNextPendingMessageForDispatch(sessionId: string): Prom
                 sessionId,
             },
             orderBy: [
-                { pinnedAt: "desc" },
+                { pinnedAt: { sort: "desc", nulls: "last" } },
                 { createdAt: "asc" },
             ],
             select: pendingMessageSelect,
