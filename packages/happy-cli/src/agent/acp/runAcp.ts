@@ -11,6 +11,13 @@ import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@/legacy/sessionProtocol';
+import {
+  createV3AcpMapperState,
+  handleAcpMessage,
+  startAcpTurn,
+  endAcpTurn,
+  type V3AcpMapperState,
+} from './v3Mapper';
 import type { v3 } from '@slopus/happy-sync';
 import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
@@ -512,14 +519,6 @@ export async function runAcp(opts: {
   });
   session = initialSession;
 
-  if (response) {
-    try {
-      await notifyDaemonSessionStarted(response.id, metadata);
-    } catch (error) {
-      logger.debug('[acp] Failed to report session to daemon:', error);
-    }
-  }
-
   // ─── Create SyncBridge directly ──────────────────────────────────────────
 
   let syncBridge: SyncBridge | null = null;
@@ -577,7 +576,30 @@ export async function runAcp(opts: {
       : (handler) => session.updateAgentState(handler),
     opts.agentName,
   );
+  if (syncBridge) {
+    syncBridge.onPermissionDecision((decision) => {
+      permissionHandler.handleSyncDecision({
+        id: decision.permissionId,
+        approved: decision.decision !== 'reject',
+        decision: decision.decision === 'always'
+          ? 'approved_for_session'
+          : decision.decision === 'reject'
+            ? 'denied'
+            : 'approved',
+      });
+    });
+  }
   const sessionManager = new AcpSessionManager();
+  let v3MapperState: V3AcpMapperState | null = response
+    ? createV3AcpMapperState({
+        sessionID: response.id,
+        agent: opts.agentName,
+        modelID: opts.agentName,
+        providerID: opts.agentName,
+        cwd: process.cwd(),
+        root: process.cwd(),
+      })
+    : null;
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
   let currentModel: string | null | undefined;
@@ -657,6 +679,26 @@ export async function runAcp(opts: {
         logAcp('muted', `Incoming raw envelope for ${opts.agentName}: ${formatUnknownForConsole(envelope, ACP_RAW_PREVIEW_CHARS)}`);
       }
     }
+  };
+
+  const sendV3Messages = (messages: v3.MessageWithParts[]) => {
+    if (!syncBridge) {
+      return;
+    }
+    for (const message of messages) {
+      syncBridge.sendMessage(message).catch((error) => {
+        logger.debug(`[${opts.agentName}] Failed to send v3 message:`, error);
+      });
+    }
+  };
+
+  const updateV3Message = (message: v3.MessageWithParts | null) => {
+    if (!syncBridge || !message) {
+      return;
+    }
+    syncBridge.updateMessage(message).catch((error) => {
+      logger.debug(`[${opts.agentName}] Failed to update v3 message:`, error);
+    });
   };
 
   const switchPermissionModeIfRequested = async (requestedMode: string): Promise<void> => {
@@ -898,6 +940,13 @@ export async function runAcp(opts: {
       logAcp(frontendMessage.kind, frontendMessage.text);
     }
 
+    if (syncBridge && v3MapperState) {
+      const mapped = handleAcpMessage(msg, v3MapperState);
+      sendV3Messages(mapped.messages);
+      updateV3Message(mapped.currentAssistant);
+      return;
+    }
+
     sendEnvelopes(sessionManager.mapMessage(msg));
   };
 
@@ -907,6 +956,9 @@ export async function runAcp(opts: {
     syncBridge.onUserMessage((message) => {
       const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
       if (!textPart) return;
+      if (v3MapperState) {
+        v3MapperState.currentUserMessageID = message.info.id;
+      }
 
       const meta = (message.info as any).meta;
       if (typeof meta?.permissionMode === 'string') {
@@ -987,6 +1039,13 @@ export async function runAcp(opts: {
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    if (response) {
+      try {
+        await notifyDaemonSessionStarted(response.id, metadata);
+      } catch (error) {
+        logger.debug('[acp] Failed to report session to daemon:', error);
+      }
+    }
     if (verbose) {
       if (!sawSlashCommands) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
@@ -1017,7 +1076,13 @@ export async function runAcp(opts: {
       }
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
-      sendEnvelopes(sessionManager.startTurn());
+      if (syncBridge && v3MapperState) {
+        const startedTurn = startAcpTurn(v3MapperState);
+        sendV3Messages(startedTurn.messages);
+        updateV3Message(startedTurn.currentAssistant);
+      } else {
+        sendEnvelopes(sessionManager.startTurn());
+      }
       const turnEnded = waitForTurnEnd();
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
@@ -1028,7 +1093,13 @@ export async function runAcp(opts: {
         }
         await backend.sendPrompt(acpSessionId, batch.message);
         await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
+        if (syncBridge && v3MapperState) {
+          const endedTurn = endAcpTurn(v3MapperState, 'completed');
+          sendV3Messages(endedTurn.messages);
+          updateV3Message(endedTurn.currentAssistant);
+        } else {
+          sendEnvelopes(sessionManager.endTurn('completed'));
+        }
         if (syncBridge) {
           syncBridge.updateAgentState((currentState: any) => ({
             ...currentState,
@@ -1041,7 +1112,13 @@ export async function runAcp(opts: {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
-        sendEnvelopes(sessionManager.endTurn('failed'));
+        if (syncBridge && v3MapperState) {
+          const endedTurn = endAcpTurn(v3MapperState, 'failed');
+          sendV3Messages(endedTurn.messages);
+          updateV3Message(endedTurn.currentAssistant);
+        } else {
+          sendEnvelopes(sessionManager.endTurn('failed'));
+        }
         if (syncBridge) {
           syncBridge.updateAgentState((currentState: any) => ({
             ...currentState,

@@ -973,6 +973,271 @@ That is the only integration test strategy that will succeed.
 
 ---
 
+## Design Amendments (March 2026)
+
+These amendments were added after auditing the actual running code on the
+`happy-sync-refactor` branch. They refine and extend the original spec.
+
+### Amendment 1: Eliminate side-channels — control messages as first-class session messages
+
+Several pieces of session state currently bypass the v3 message pipeline via
+RPC, agent state blobs, or process signals. These MUST flow through the same
+encrypted session message stream — but as **flat, top-level control message
+types**, NOT nested inside user/assistant `MessageWithParts`.
+
+The session message stream becomes a union of:
+
+```typescript
+type SessionMessage =
+    | MessageWithParts           // conversation (user/assistant turns)
+    | RuntimeConfigChange        // model/mode/tools change
+    | AbortRequest               // stop the current turn
+    | SessionEnd                 // session death (clean or forced)
+    | DecisionMessage            // permission approve/deny (currently a part — may stay)
+    | AnswerMessage              // question answer (currently a part — may stay)
+```
+
+All go through the same `SyncNode.sendMessage()` → server encrypt/store/broadcast
+pipeline. Same seq, same dedup, same encryption. The server doesn't care — still
+opaque blobs. But they are flat siblings of `MessageWithParts`, not parts nested
+inside conversation messages.
+
+| Side-channel | Current | Required |
+|---|---|---|
+| **Abort/stop** | RPC `abort` → `AbortController` → kill process. Tools left `running`. | `AbortRequest` control message. CLI receives it, transitions all running tools to terminal state, emits `step-finish(reason: 'cancelled')`. |
+| **Model/mode change** | Piggybacked on `message.info.meta` via `as any` cast. Invisible in transcript. | `RuntimeConfigChange` control message. Both user AND agent can emit it. |
+| **Agent state permissions** | Duplicate tracking in separate encrypted blob (`requests[id]`, `completedRequests`). | Remove from agent state. v3 blocked/unblocked tool parts are authoritative. |
+| **Usage data** | Separate `SyncNode.sendUsageData()` report AND `AssistantMessage.info.tokens`. | Single source: v3 message info. Session-level usage = summation of message usage. Stored on session state as a cache. |
+| **Session death** | Separate `SyncNode.sendSessionDeath()` signal. | `SessionEnd` control message — transcript is self-contained. |
+
+### Amendment 2: Control message schemas
+
+Control messages are flat, top-level types in the session stream. They are NOT
+parts of a `MessageWithParts`. They are NOT nested inside user/assistant messages.
+
+```typescript
+// Runtime configuration change — user switches model, agent enters plan mode, etc.
+const RuntimeConfigChangeSchema = z.object({
+    type: z.literal('runtime-config-change'),
+    id: MessageID,
+    sessionID: SessionID,
+    time: z.object({ created: z.number() }),
+    source: z.enum(['user', 'agent']),     // who initiated the change
+    // All fields optional — only changed fields are set
+    model: z.string().optional(),
+    permissionMode: PermissionModeSchema.optional(),
+    customSystemPrompt: z.string().optional(),
+    appendSystemPrompt: z.string().optional(),
+    allowedTools: z.array(z.string()).optional(),
+    disallowedTools: z.array(z.string()).optional(),
+});
+
+// Abort request — stop the current turn
+const AbortRequestSchema = z.object({
+    type: z.literal('abort-request'),
+    id: MessageID,
+    sessionID: SessionID,
+    time: z.object({ created: z.number() }),
+    source: z.enum(['user', 'system']),    // user clicked stop, or system kill
+    reason: z.string().optional(),
+});
+
+// Session end — session is done
+const SessionEndSchema = z.object({
+    type: z.literal('session-end'),
+    id: MessageID,
+    sessionID: SessionID,
+    time: z.object({ created: z.number() }),
+    reason: z.enum(['completed', 'archived', 'killed', 'crashed']),
+    archivedBy: z.string().optional(),
+});
+```
+
+The CLI reads the latest `RuntimeConfigChange` to determine the active
+configuration. The transcript records exactly when each config change happened.
+The abort flows through the same pipeline as everything else — no RPC side-channel.
+
+### Amendment 3: Consolidate agent state + metadata into session state
+
+Currently there are THREE separate state blobs per session:
+1. `agentState` — pending permissions, lastEvent, controlledByUser
+2. `metadata` — claudeSessionId, summary, lifecycleState
+3. v3 messages — the actual transcript
+
+Consolidate into ONE `SessionState` update channel. The session state is a
+**cache/synthesis** of what's in the message log, plus truly session-level
+fields (lifecycle, summary). Specifically:
+
+```typescript
+interface SessionState {
+    // Lifecycle (not in messages)
+    lifecycleState: 'running' | 'idle' | 'archived';
+    summary?: string;
+
+    // Cached from messages (derivable but expensive to recompute)
+    pendingPermissions: PermissionRequest[];
+    pendingQuestions: QuestionRequest[];
+    todos: Todo[];
+    usage: { tokens: TokenCounts; cost: CostBreakdown };
+    runtimeConfig: RuntimeConfig;  // latest active config
+
+    // Identity
+    parentID?: SessionID;
+    agentType: 'claude' | 'codex' | 'opencode';
+    modelID: string;
+}
+```
+
+**Why cache**: When fetching a session list or getting a push notification,
+the app should NOT need to fetch + decrypt all messages. It fetches session
+state only. Messages are loaded lazily when the user opens a session.
+
+**Rule**: The cached fields MUST use the exact same types as the v3 protocol.
+`PermissionRequest` in session state is the same `PermissionRequest` that
+`SyncNode` derives from scanning messages. No separate type.
+
+### Amendment 4: Smart Zustand — no full-app re-render
+
+The app's Zustand store should NOT copy message data from SyncNode. SyncNode
+is the single source of truth for messages/parts/permissions/questions.
+
+**Zustand holds only**:
+- Current session ID
+- UI state (sidebar open, selected thread, scroll position, etc.)
+- Other client-only screen state
+
+**SyncNode state accessed via fine-grained selectors**:
+- `useSessionMessages(sessionId)` — returns stable reference if unchanged
+- `useToolPart(sessionId, messageId, partId)` — subscribes to one part
+- `useSessionState(sessionId)` — session-level cache (permissions, usage)
+
+Implementation: `useSyncExternalStore(node.subscribe, node.getSnapshot)` with
+per-selector snapshots that return the same object reference when unchanged.
+Or thin Zustand wrapper with `{ node, version }` and shallow selectors.
+
+**Test**: Browser e2e must verify that sending a message to session B while
+viewing session A does NOT cause session A's transcript to re-render.
+
+### Amendment 5: Migrate to official `@anthropic-ai/claude-agent-sdk`
+
+The project currently uses a **custom SDK wrapper** (`packages/happy-cli/src/claude/sdk/`)
+that manually spawns Claude as a subprocess, parses `stream-json` stdout, and
+handles `control_request`/`control_response` JSON over stdin for permissions.
+
+The official SDK (`@anthropic-ai/claude-agent-sdk`, latest 0.2.81) now does all
+of this natively and adds capabilities we need:
+
+| Feature | Custom wrapper | Official SDK |
+|---|---|---|
+| Model switch mid-session | Kill process, `--resume` with new `--model` | `query.setModel(model)` — no restart |
+| Permission mode change | Kill process, restart | `query.setPermissionMode(mode)` — no restart |
+| Abort/interrupt | `SIGTERM` the process | `query.interrupt()` — clean interruption |
+| Partial messages | Manual `stream-json` parsing | `includePartialMessages: true` |
+| TypeScript types | Hand-written in `sdk/types.ts` | Fully exported (30+ interfaces) |
+| Permission handling | Custom control_request/response protocol | Native `canUseTool` callback + hooks |
+| Session history | N/A | `getSessionMessages()` with pagination |
+
+**Migration**:
+1. `yarn add @anthropic-ai/claude-agent-sdk` in `happy-cli`
+2. Replace `src/claude/sdk/query.ts` + `src/claude/sdk/types.ts` with SDK imports
+3. Use SDK types directly in the v3Mapper (no re-declaration)
+4. Replace mode-hash-change restart cycle in `claudeRemoteLauncher.ts` with
+   `query.setModel()` / `query.setPermissionMode()` — no process kill needed
+5. Replace `AbortController` → SIGTERM with `query.interrupt()` for clean abort
+6. Delete `src/claude/sdk/` entirely
+
+**Impact on `RuntimeConfigChange` control message**: With the official SDK,
+the CLI receives a `RuntimeConfigChange` from the session stream, then calls
+`query.setModel()` / `query.setPermissionMode()` directly. No process restart.
+The config change is recorded in the transcript AND applied to the running SDK
+in one step.
+
+**Impact on `AbortRequest` control message**: CLI receives `AbortRequest` from
+the session stream, calls `query.interrupt()`. The SDK emits a final `result`
+message. The mapper produces a clean `step-finish(reason: 'cancelled')` with
+all tools transitioned to terminal state.
+
+**Note — `getSessionMessages()` for terminal sessions**: The official SDK's
+`getSessionMessages()` could replace file-based session reading for sessions
+started in the terminal (interactive/local mode). This would avoid the fragile
+JSONL file parsing path. Alternatively, the `claude_remote_launcher.cjs` proxy
+approach (see `docs/session-protocol-claude.md`) could unify local and remote
+sessions under the same remote-control model. Both are worth exploring but are
+**not planned for this refactor** — noting for future consideration.
+
+### Amendment 6: Permissions as separate control messages
+
+Permission requests and responses must be first-class control messages in the
+session stream — not parts nested inside `MessageWithParts`.
+
+```typescript
+const PermissionRequestSchema = z.object({
+    type: z.literal('permission-request'),
+    id: MessageID,
+    sessionID: SessionID,
+    time: z.object({ created: z.number() }),
+    callID: z.string(),             // SDK tool_use_id
+    tool: z.string(),               // tool name
+    patterns: z.array(z.string()),  // file paths, commands, etc.
+    input: z.record(z.unknown()),   // tool input for display
+});
+
+const PermissionResponseSchema = z.object({
+    type: z.literal('permission-response'),
+    id: MessageID,
+    sessionID: SessionID,
+    time: z.object({ created: z.number() }),
+    requestID: MessageID,           // links to PermissionRequest.id
+    callID: z.string(),             // SDK tool_use_id
+    decision: z.enum(['once', 'always', 'reject']),
+    allowTools: z.array(z.string()).optional(),
+    reason: z.string().optional(),
+});
+```
+
+**Race condition — MUST VALIDATE before implementing**: The current custom SDK
+wrapper has a race where the `canUseTool` callback fires before the `tool_use`
+block appears in the assistant message stream, requiring a queueing hack
+(`pendingPermissionTransitions` in `session.ts`). **This may not be a real
+issue with the official SDK.** Before implementing any buffering logic:
+
+1. Test the official SDK's `canUseTool` callback timing: does the `tool_use`
+   block always appear in the stream BEFORE the callback fires? If so, no
+   buffering is needed.
+2. Check if the callback provides enough context (tool_use_id, tool name,
+   input) to emit the `PermissionRequest` directly without needing to
+   correlate with a stream event.
+3. Check if `includePartialMessages` changes the ordering.
+
+Only implement buffering if the race is confirmed with the official SDK.
+The current queueing hack exists because of our custom subprocess wrapper —
+it may be an artifact of that approach, not an inherent SDK behavior.
+
+The `DecisionPart` and `AnswerPart` currently on user messages migrate to
+`PermissionResponse` and `QuestionAnswer` control messages respectively.
+
+### Amendment 7: Design principles
+
+These are non-negotiable constraints on all code in the pipeline:
+
+1. **No extra abstractions, no intermediate types.** The type chain is:
+   SDK types → v3Mapper → `v3.MessageWithParts` → wire → screen.
+   No wrapper types, no DTOs, no view-models.
+
+2. **Strictly typed end to end.** No `any`, no `Record<string, unknown>`
+   where a real schema exists. SDK input uses SDK's own types. Output uses
+   v3 protocol types. Validated with Zod at every trust boundary.
+
+3. **Screen type == SyncNode type.** React components consume
+   `v3.MessageWithParts` and `v3.Part` directly. Zero type duplication
+   between sync layer and render layer.
+
+4. **Client Zustand store CAN have other fields** — current thread/view,
+   UI state, etc. That's separate from sync state. But it must NOT duplicate
+   sync state.
+
+---
+
 ## What We Are NOT Doing
 
 - ~~Backwards compatibility with legacy message formats~~ — full migration

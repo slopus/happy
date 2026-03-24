@@ -62,3 +62,6 @@ docs/competition/opencode/traces/
 
 # Loop iteration logs
 loop/logs/
+
+# E2E test recordings (browser videos, screenshots)
+e2e-recordings/

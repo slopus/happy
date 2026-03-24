@@ -98,6 +98,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
+    const unsubscribeSyncPermissionDecisions = session.syncBridge.onPermissionDecision((decision) => {
+        permissionHandler.handleSyncDecision({
+            id: decision.permissionId,
+            approved: decision.decision !== 'reject',
+            reason: decision.reason,
+            allowTools: decision.allowTools,
+        });
+    });
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
@@ -439,6 +447,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             }
         }
     } finally {
+        unsubscribeSyncPermissionDecisions();
 
         // Clean up permission handler
         permissionHandler.reset();

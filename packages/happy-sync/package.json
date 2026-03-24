@@ -47,6 +47,7 @@
   "devDependencies": {
     "@types/node": ">=20",
     "pkgroll": "^2.14.2",
+    "playwright": "^1.58.2",
     "release-it": "^19.0.6",
     "shx": "^0.3.3",
     "typescript": "5.9.3",

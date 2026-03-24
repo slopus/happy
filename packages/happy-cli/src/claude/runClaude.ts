@@ -330,6 +330,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAllowedTools: string[] | undefined = undefined;
     let currentDisallowedTools: string[] | undefined = undefined;
 
+    const getCurrentEnhancedMode = (): EnhancedMode => ({
+        permissionMode: currentPermissionMode || 'default',
+        model: currentModel,
+        fallbackModel: currentFallbackModel,
+        customSystemPrompt: currentCustomSystemPrompt,
+        appendSystemPrompt: currentAppendSystemPrompt,
+        allowedTools: currentAllowedTools,
+        disallowedTools: currentDisallowedTools,
+    });
+
     syncBridge.onUserMessage((message) => {
         // Extract text from the first text part
         const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
@@ -366,15 +376,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(text);
 
-        const enhancedMode: EnhancedMode = {
-            permissionMode: currentPermissionMode || 'default',
-            model: currentModel,
-            fallbackModel: currentFallbackModel,
-            customSystemPrompt: currentCustomSystemPrompt,
-            appendSystemPrompt: currentAppendSystemPrompt,
-            allowedTools: currentAllowedTools,
-            disallowedTools: currentDisallowedTools,
-        };
+        const enhancedMode = getCurrentEnhancedMode();
 
         if (specialCommand.type === 'compact' || specialCommand.type === 'clear') {
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || text, enhancedMode);
@@ -383,6 +385,23 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         messageQueue.push(text, enhancedMode);
         logger.debug('User message pushed to queue via SyncBridge');
+    });
+
+    syncBridge.onQuestionAnswer((answer) => {
+        currentSession?.unblockToolWithAnswers(answer.questionId, answer.answers);
+
+        const answerText = answer.answers
+            .map(group => group.join(', ').trim())
+            .filter(text => text.length > 0)
+            .join('\n');
+
+        if (!answerText) {
+            logger.debug('Received empty question answer via SyncBridge');
+            return;
+        }
+
+        messageQueue.push(answerText, getCurrentEnhancedMode());
+        logger.debug('Question answer pushed to queue via SyncBridge');
     });
 
     // Setup signal handlers for graceful shutdown

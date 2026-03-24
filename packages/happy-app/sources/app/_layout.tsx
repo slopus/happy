@@ -1,6 +1,7 @@
 import 'react-native-quick-base64';
 import '../theme.css';
 import * as React from 'react';
+import { Buffer } from 'buffer';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Fonts from 'expo-font';
 import * as Notifications from 'expo-notifications';
@@ -69,6 +70,10 @@ SplashScreen.preventAutoHideAsync();
 // So AI will have all the logs easily accessible in one file for analysis
 if (!!process.env.EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
     monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds()
+}
+
+if (typeof globalThis.Buffer === 'undefined') {
+    globalThis.Buffer = Buffer;
 }
 
 // Component to apply horizontal safe area padding

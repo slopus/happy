@@ -36,6 +36,42 @@ IMMEDIATE task comes from `loop/state.md`.
 - The hard problems are: wiring real CLIs through SyncNode, making the daemon spawn
   sessions, getting e2e tests to actually execute against real processes.
 
+### Simplification pass after every task
+
+After completing each task (and ONLY after tests prove it works), do a quick
+simplification pass on the code you touched:
+
+- **Look for duplication.** The v3Mapper files (claude, codex, gemini, openclaw) are
+  ~2100 lines total and share massive structural overlap. Can shared logic be extracted?
+- **Question every new file and abstraction.** Is it pulling its weight? Could it be
+  inlined or merged?
+- **Check line counts.** Run `git diff main --stat` on the files you changed. If a file
+  grew significantly, ask: is this complexity necessary, or did I copy-paste when I
+  should have reused?
+- **Delete dead code aggressively.** If migration made something unused, remove it now
+  rather than leaving it for a cleanup task.
+- **Don't gold-plate.** This is a 5-minute check, not a refactoring project. If you spot
+  a big simplification opportunity, note it in `loop/state.md` under a "Simplification
+  opportunities" section and move on. Small wins (extract a shared helper, delete dead
+  code) — just do them.
+
+### SDK-first approach
+
+Each agent integration should use the OFFICIAL TYPED SDK, not hand-rolled protocol code:
+
+- **Claude**: `@anthropic-ai/claude-code` — already in use
+- **Codex**: `@openai/codex-sdk` — MUST migrate to this. The current
+  `codexAppServerClient.ts` is a manual JSON-RPC client. Replace its internals with
+  SDK calls. This gives us full TypeScript types and automatic protocol compat.
+  Install: `yarn add @openai/codex-sdk` in happy-cli.
+- **OpenCode/ACP**: `@agentclientprotocol/sdk` — already in use via `AcpBackend.ts`.
+  The ACP adapter (`packages/happy-cli/src/agent/acp/`) and openclaw adapter
+  (`packages/happy-cli/src/openclaw/`) are ALREADY FUNCTIONAL. When working on the
+  OpenCode e2e variant, lean on what's there — don't rewrite from scratch.
+
+The SyncBridge/v3Mapper layer is OUR protocol (happy-sync ↔ server). Keep it.
+The SDKs handle the agent ↔ happy-cli communication underneath.
+
 ### Environment
 
 - The CLIs (`claude`, `codex`) are ALREADY installed and authenticated on this machine.
@@ -62,6 +98,40 @@ IMMEDIATE task comes from `loop/state.md`.
 - Update state when you finish or get blocked. Be honest about what works and what doesn't.
 - If you find the previous agent's work is broken, say so and explain why.
 - Before editing files, run `git diff --stat HEAD` to see what the previous iteration changed.
+
+### Commit progress regularly
+
+- **Commit after every completed task** (or meaningful milestone). Do NOT let
+  work accumulate across many iterations without committing. Uncommitted work
+  is at risk of being lost.
+- Use descriptive commit messages: `checkpoint: OpenCode Steps 0-13 passing`
+- You can commit partial progress too — `wip: OpenCode e2e Steps 0-6 pass, 7+ in progress`
+
+### Clean up orphan processes
+
+- After running e2e tests, check for orphan agent processes:
+  `ps aux | grep -E 'opencode|codex|claude' | grep -v grep`
+- Kill orphans from prior test runs that were not cleaned up by teardown.
+- **DO NOT kill**: the loop process itself (`loop/run.sh`), the current
+  iteration's Claude/Codex process, or any process not started by the loop.
+- Only kill processes that are clearly leftovers from e2e test runs (look for
+  processes spawned by the daemon with temp directory paths).
+
+### Browser verification must be COMPLETE
+
+The Level 3 browser tests must verify ALL 34 exercise steps in the browser, not
+just a handful. After each step runs against the real agent, open the session in
+Chrome (Playwright) and assert the UX renders correctly. Additionally:
+
+- **Multi-session switching**: Create Claude + Codex sessions, switch between them
+  in the browser, verify independent transcripts. Send to session B while viewing A.
+- **Video recording**: EVERY browser test run MUST record video via Playwright:
+  ```typescript
+  const context = await browser.newContext({
+    recordVideo: { dir: 'e2e-recordings/', size: { width: 1280, height: 720 } }
+  });
+  ```
+  Save to `e2e-recordings/` (gitignored). We want to SEE the UX, not just assert it.
 
 ### Focus
 

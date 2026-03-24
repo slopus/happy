@@ -13,6 +13,8 @@ import { DiffProcessor } from './utils/diffProcessor';
 import {
     handleCodexEvent,
     flushV3CodexTurn,
+    unblockCodexToolApproved,
+    unblockCodexToolRejected,
     createV3CodexMapperState,
     type V3CodexMapperState,
 } from './utils/v3Mapper';
@@ -162,6 +164,7 @@ export async function runCodex(opts: {
     const workingDirectory = process.cwd();
     let syncBridge: SyncBridge | null = null;
     let rpcHandlerManager: RpcHandlerManager | null = null;
+    let unsubscribeSyncPermissionDecisions: (() => void) | undefined;
 
     if (response) {
         const sessionScopedToken = await resolveSessionScopedSyncNodeToken({
@@ -208,6 +211,17 @@ export async function runCodex(opts: {
     // v3 Codex mapper state — managed directly instead of through ApiSessionClient
     let v3CodexMapperState: V3CodexMapperState | null = null;
 
+    function publishCodexV3Message(message: v3.MessageWithParts): void {
+        if (!syncBridge) return;
+        const existing = syncBridge.currentAssistantMessage();
+        const publish = existing?.info.id === message.info.id
+            ? syncBridge.updateMessage(message)
+            : syncBridge.sendMessage(message);
+        publish.catch((err) => {
+            logger.debug('[Codex] SyncBridge publish failed', { error: err });
+        });
+    }
+
     /** Send a Codex event through the v3 mapper and push finalized messages via SyncBridge. */
     function sendCodexV3Event(event: Record<string, unknown>): void {
         if (!syncBridge) return;
@@ -218,10 +232,11 @@ export async function runCodex(opts: {
             });
         }
         const result = handleCodexEvent(event, v3CodexMapperState);
+        if (result.currentAssistant) {
+            publishCodexV3Message(result.currentAssistant);
+        }
         for (const msg of result.messages) {
-            syncBridge.sendMessage(msg).catch((err) => {
-                logger.debug('[Codex] SyncBridge sendMessage failed', { error: err });
-            });
+            publishCodexV3Message(msg);
         }
     }
 
@@ -230,9 +245,7 @@ export async function runCodex(opts: {
         if (!syncBridge || !v3CodexMapperState) return;
         const messages = flushV3CodexTurn(v3CodexMapperState);
         for (const msg of messages) {
-            syncBridge.sendMessage(msg).catch((err) => {
-                logger.debug('[Codex] SyncBridge sendMessage failed', { error: err });
-            });
+            publishCodexV3Message(msg);
         }
     }
 
@@ -548,6 +561,36 @@ export async function runCodex(opts: {
           ? (handler) => syncBridge!.updateAgentState<AgentState>(handler)
           : (handler) => session.updateAgentState(handler),
     });
+    if (syncBridge) {
+        unsubscribeSyncPermissionDecisions = syncBridge.onPermissionDecision((decision) => {
+            let updatedMessage: v3.MessageWithParts | null = null;
+            if (v3CodexMapperState) {
+                updatedMessage = decision.decision === 'reject'
+                    ? unblockCodexToolRejected(
+                        v3CodexMapperState,
+                        decision.permissionId,
+                        decision.reason ?? 'Permission rejected',
+                    )
+                    : unblockCodexToolApproved(
+                        v3CodexMapperState,
+                        decision.permissionId,
+                        decision.decision === 'always' ? 'always' : 'once',
+                    );
+            }
+            if (updatedMessage) {
+                publishCodexV3Message(updatedMessage);
+            }
+            permissionHandler.handleSyncDecision({
+                id: decision.permissionId,
+                approved: decision.decision !== 'reject',
+                decision: decision.decision === 'always'
+                    ? 'approved_for_session'
+                    : decision.decision === 'reject'
+                        ? 'denied'
+                        : 'approved',
+            });
+        });
+    }
     reasoningProcessor = new ReasoningProcessor((message) => {
         sendCodexV3Event(message as Record<string, unknown>);
     });
@@ -575,6 +618,21 @@ export async function runCodex(opts: {
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
     client.setEventHandler((msg) => {
         logger.debug(`[Codex] Event: ${JSON.stringify(msg)}`);
+
+        if (msg.type === 'thread_started' && typeof (msg as any).thread_id === 'string') {
+            const threadId = (msg as any).thread_id as string;
+            if (syncBridge) {
+                syncBridge.updateMetadata((currentMetadata: any) => ({
+                    ...currentMetadata,
+                    codexThreadId: threadId,
+                }));
+            } else {
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    codexThreadId: threadId,
+                }));
+            }
+        }
 
         // Add messages to the ink UI buffer based on message type
         if (msg.type === 'agent_message') {
@@ -650,7 +708,9 @@ export async function runCodex(opts: {
         }
 
         const handledBySyntheticV3Path =
-            msg.type === 'agent_reasoning_section_break'
+            msg.type === 'thread_started'
+            || msg.type === 'token_count'
+            || msg.type === 'agent_reasoning_section_break'
             || msg.type === 'agent_reasoning_delta'
             || msg.type === 'agent_reasoning'
             || msg.type === 'turn_diff';
@@ -754,16 +814,18 @@ export async function runCodex(opts: {
                         sandbox: executionPolicy.sandbox,
                         mcpServers,
                     });
-                    if (syncBridge) {
-                        syncBridge.updateMetadata((currentMetadata: any) => ({
-                            ...currentMetadata,
-                            codexThreadId: startedThread.threadId,
-                        }));
-                    } else {
-                        session.updateMetadata((currentMetadata) => ({
-                            ...currentMetadata,
-                            codexThreadId: startedThread.threadId,
-                        }));
+                    if (startedThread.threadId) {
+                        if (syncBridge) {
+                            syncBridge.updateMetadata((currentMetadata: any) => ({
+                                ...currentMetadata,
+                                codexThreadId: startedThread.threadId,
+                            }));
+                        } else {
+                            session.updateMetadata((currentMetadata) => ({
+                                ...currentMetadata,
+                                codexThreadId: startedThread.threadId,
+                            }));
+                        }
                     }
                 }
 
@@ -824,6 +886,7 @@ export async function runCodex(opts: {
             logger.debug('[codex]: Cancelling offline reconnection');
             reconnectionHandle.cancel();
         }
+        unsubscribeSyncPermissionDecisions?.();
 
         try {
             if (syncBridge) {

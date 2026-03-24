@@ -86,7 +86,7 @@ function getVisibleItems() {
     case "open":
       return state.items.filter((item) => !item.done);
     case "done":
-      return state.items.filter((item) => !item.done || item.done);
+      return state.items.filter((item) => item.done === true);
     default:
       return state.items;
   }

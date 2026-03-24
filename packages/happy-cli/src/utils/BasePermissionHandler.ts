@@ -68,6 +68,13 @@ export abstract class BasePermissionHandler {
     }
 
     /**
+     * Apply a permission decision that arrived over SyncNode instead of RPC.
+     */
+    handleSyncDecision(response: PermissionResponse): void {
+        this.applyPermissionResponse(response);
+    }
+
+    /**
      * Update the deps reference (used after offline reconnection swaps sessions).
      * This is critical for avoiding stale references after onSessionSwap.
      */
@@ -85,48 +92,48 @@ export abstract class BasePermissionHandler {
         this.deps.rpcHandlerManager.registerHandler<PermissionResponse, void>(
             'permission',
             async (response) => {
-                const pending = this.pendingRequests.get(response.id);
-                if (!pending) {
-                    logger.debug(`${this.getLogPrefix()} Permission request not found or already resolved`);
-                    return;
-                }
-
-                // Remove from pending
-                this.pendingRequests.delete(response.id);
-
-                // Resolve the permission request
-                const result: PermissionResult = response.approved
-                    ? { decision: response.decision === 'approved_for_session' ? 'approved_for_session' : 'approved' }
-                    : { decision: response.decision === 'denied' ? 'denied' : 'abort' };
-
-                pending.resolve(result);
-
-                // Move request to completed in agent state
-                this.deps.updateAgentState((currentState) => {
-                    const request = currentState.requests?.[response.id];
-                    if (!request) return currentState;
-
-                    const { [response.id]: _, ...remainingRequests } = currentState.requests || {};
-
-                    let res = {
-                        ...currentState,
-                        requests: remainingRequests,
-                        completedRequests: {
-                            ...currentState.completedRequests,
-                            [response.id]: {
-                                ...request,
-                                completedAt: Date.now(),
-                                status: response.approved ? 'approved' : 'denied',
-                                decision: result.decision
-                            }
-                        }
-                    } satisfies AgentState;
-                    return res;
-                });
-
-                logger.debug(`${this.getLogPrefix()} Permission ${response.approved ? 'approved' : 'denied'} for ${pending.toolName}`);
+                this.applyPermissionResponse(response);
             }
         );
+    }
+
+    private applyPermissionResponse(response: PermissionResponse): void {
+        const pending = this.pendingRequests.get(response.id);
+        if (!pending) {
+            logger.debug(`${this.getLogPrefix()} Permission request not found or already resolved`);
+            return;
+        }
+
+        this.pendingRequests.delete(response.id);
+
+        const result: PermissionResult = response.approved
+            ? { decision: response.decision === 'approved_for_session' ? 'approved_for_session' : 'approved' }
+            : { decision: response.decision === 'denied' ? 'denied' : 'abort' };
+
+        pending.resolve(result);
+
+        this.deps.updateAgentState((currentState) => {
+            const request = currentState.requests?.[response.id];
+            if (!request) return currentState;
+
+            const { [response.id]: _, ...remainingRequests } = currentState.requests || {};
+
+            return {
+                ...currentState,
+                requests: remainingRequests,
+                completedRequests: {
+                    ...currentState.completedRequests,
+                    [response.id]: {
+                        ...request,
+                        completedAt: Date.now(),
+                        status: response.approved ? 'approved' : 'denied',
+                        decision: result.decision,
+                    },
+                },
+            } satisfies AgentState;
+        });
+
+        logger.debug(`${this.getLogPrefix()} Permission ${response.approved ? 'approved' : 'denied'} for ${pending.toolName}`);
     }
 
     /**

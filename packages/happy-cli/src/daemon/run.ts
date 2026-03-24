@@ -195,12 +195,17 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    // Spawn a new session (sessionId reserved for future --resume functionality)
+    // Spawn a new session, or resume an existing one when sessionId is provided.
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
       const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
       let directoryCreated = false;
+
+      if (sessionId) {
+        logger.debug(`[DAEMON RUN] Resuming existing session ${sessionId}`);
+        return resumeSession(sessionId, options.agent, directory);
+      }
 
       try {
         await fs.access(directory);
@@ -337,9 +342,18 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          const commandArgs =
+            options.agent === 'opencode'
+              ? ['acp', 'opencode', '--happy-starting-mode', 'remote', '--started-by', 'daemon']
+              : options.agent === 'gemini'
+                ? ['gemini', '--happy-starting-mode', 'remote', '--started-by', 'daemon']
+                : options.agent === 'codex'
+                  ? ['codex', '--happy-starting-mode', 'remote', '--started-by', 'daemon']
+                  : options.agent === 'openclaw'
+                    ? ['openclaw', '--happy-starting-mode', 'remote', '--started-by', 'daemon']
+                    : ['claude', '--happy-starting-mode', 'remote', '--started-by', 'daemon'];
+          const agent = options.agent ?? 'claude';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${commandArgs.join(' ')}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -421,21 +435,45 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
-          let agentCommand: string;
+          // Construct arguments for the CLI - support claude, codex, gemini, and opencode ACP.
+          let args: string[];
           switch (options.agent) {
             case 'claude':
             case undefined:
-              agentCommand = 'claude';
+              args = [
+                'claude',
+                '--happy-starting-mode', 'remote',
+                '--started-by', 'daemon'
+              ];
               break;
             case 'codex':
-              agentCommand = 'codex';
+              args = [
+                'codex',
+                '--happy-starting-mode', 'remote',
+                '--started-by', 'daemon'
+              ];
               break;
             case 'gemini':
-              agentCommand = 'gemini';
+              args = [
+                'gemini',
+                '--happy-starting-mode', 'remote',
+                '--started-by', 'daemon'
+              ];
+              break;
+            case 'opencode':
+              args = [
+                'acp',
+                'opencode',
+                '--happy-starting-mode', 'remote',
+                '--started-by', 'daemon'
+              ];
               break;
             case 'openclaw':
-              agentCommand = 'openclaw';
+              args = [
+                'openclaw',
+                '--happy-starting-mode', 'remote',
+                '--started-by', 'daemon'
+              ];
               break;
             default:
               return {
@@ -443,11 +481,6 @@ export async function startDaemon(): Promise<void> {
                 errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
               };
           }
-          const args = [
-            agentCommand,
-            '--happy-starting-mode', 'remote',
-            '--started-by', 'daemon'
-          ];
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
           // For now, we ignore it - each spawn creates a new session
@@ -555,12 +588,18 @@ export async function startDaemon(): Promise<void> {
       });
     };
 
-    const resumeSession = async (happySessionId: string): Promise<SpawnSessionResult> => {
+    async function resumeSession(
+      happySessionId: string,
+      agent?: SpawnSessionOptions['agent'],
+      fallbackCwd?: string,
+    ): Promise<SpawnSessionResult> {
       try {
         const previousSession = await resolveHappySession(happySessionId);
         const launch = buildResumeLaunch(previousSession, {
           startedBy: 'daemon',
           claudeStartingMode: 'remote',
+          preferredAgent: agent === 'codex' ? 'codex' : agent === 'claude' ? 'claude' : undefined,
+          fallbackCwd,
         });
 
         await fs.access(launch.cwd);
@@ -578,7 +617,7 @@ export async function startDaemon(): Promise<void> {
           errorMessage: `Failed to resume session: ${errorMessage}`,
         };
       }
-    };
+    }
 
     // Stop a session by sessionId or PID fallback
     const stopSession = (sessionId: string): boolean => {

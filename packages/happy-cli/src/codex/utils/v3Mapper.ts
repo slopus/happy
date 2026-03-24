@@ -237,6 +237,19 @@ export function handleCodexEvent(
     delete input.call_id;
     delete input.callId;
 
+    const existingTool = state.toolParts.get(callID);
+    if (existingTool && (existingTool.state.status === 'blocked' || existingTool.state.status === 'running')) {
+      existingTool.tool = 'bash';
+      existingTool.state = {
+        status: 'running',
+        input: input as Record<string, unknown>,
+        title: command ? `Run \`${command.length > 60 ? command.slice(0, 57) + '...' : command}\`` : 'Run command',
+        time: { start: (existingTool.state as any).time?.start ?? Date.now() },
+      };
+      result.currentAssistant = { info: asst.info, parts: asst.parts };
+      return result;
+    }
+
     const toolPart: ToolPart = {
       id: partId(),
       sessionID: state.sessionID,
@@ -290,6 +303,19 @@ export function handleCodexEvent(
     const changes = event.changes as Record<string, unknown> | undefined;
     const fileCount = changes ? Object.keys(changes).length : 0;
 
+    const existingTool = state.toolParts.get(callID);
+    if (existingTool && (existingTool.state.status === 'blocked' || existingTool.state.status === 'running')) {
+      existingTool.tool = 'apply_patch';
+      existingTool.state = {
+        status: 'running',
+        input: { changes, auto_approved: event.auto_approved },
+        title: fileCount === 1 ? 'Apply patch to 1 file' : `Apply patch to ${fileCount} files`,
+        time: { start: (existingTool.state as any).time?.start ?? Date.now() },
+      };
+      result.currentAssistant = { info: asst.info, parts: asst.parts };
+      return result;
+    }
+
     const toolPart: ToolPart = {
       id: partId(),
       sessionID: state.sessionID,
@@ -313,15 +339,33 @@ export function handleCodexEvent(
   if (type === 'patch_apply_end') {
     const callID = pickCallId(event);
     const toolPart = state.toolParts.get(callID);
-    if (toolPart && toolPart.state.status === 'running') {
-      toolPart.state = {
-        status: 'completed',
-        input: toolPart.state.input,
-        output: 'Patch applied',
-        title: toolPart.state.title ?? 'apply_patch',
-        metadata: {},
-        time: { start: toolPart.state.time.start, end: Date.now() },
-      };
+    if (toolPart && (toolPart.state.status === 'running' || toolPart.state.status === 'blocked')) {
+      const status = typeof event.status === 'string' ? event.status : null;
+      const success = event.success === false
+        ? false
+        : status === null || status === 'completed';
+      const output = typeof event.stdout === 'string' && event.stdout.length > 0
+        ? event.stdout
+        : 'Patch applied';
+
+      toolPart.state = success
+        ? {
+            status: 'completed',
+            input: toolPart.state.input,
+            output,
+            title: toolPart.state.title ?? 'apply_patch',
+            metadata: status ? { status } : {},
+            time: { start: toolPart.state.time.start, end: Date.now() },
+          }
+        : {
+            status: 'error',
+            input: toolPart.state.input,
+            error: typeof event.stderr === 'string' && event.stderr.length > 0
+              ? event.stderr
+              : output || (status ? `Patch ${status}` : 'Patch failed'),
+            metadata: status ? { status } : {},
+            time: { start: toolPart.state.time.start, end: Date.now() },
+          };
       state.toolParts.delete(callID);
     }
     result.currentAssistant = { info: asst.info, parts: asst.parts };
@@ -331,9 +375,9 @@ export function handleCodexEvent(
   // exec_approval_request → tool blocked (permission)
   if (type === 'exec_approval_request') {
     const callID = typeof event.callId === 'string' ? event.callId : (typeof event.call_id === 'string' ? event.call_id : '');
+    const command = summarizeCommand(event.command);
     const toolPart = state.toolParts.get(callID);
     if (toolPart && (toolPart.state.status === 'running' || toolPart.state.status === 'pending')) {
-      const command = summarizeCommand(event.command);
       toolPart.state = {
         status: 'blocked',
         input: toolPart.state.input,
@@ -341,13 +385,41 @@ export function handleCodexEvent(
         time: { start: (toolPart.state as any).time?.start ?? Date.now() },
         block: {
           type: 'permission',
-          id: typeof event.approvalId === 'string' ? event.approvalId : callID,
+          id: callID,
           permission: 'bash',
           patterns: command ? [command] : ['*'],
           always: ['*'],
           metadata: { command: event.command, reason: event.reason },
         },
       };
+    } else {
+      const blockedTool: ToolPart = {
+        id: partId(),
+        sessionID: state.sessionID,
+        messageID: asst.info.id,
+        type: 'tool',
+        callID,
+        tool: 'bash',
+        state: {
+          status: 'blocked',
+          input: {
+            command: event.command,
+            cwd: event.cwd,
+          },
+          title: command ? `Run \`${command.length > 60 ? command.slice(0, 57) + '...' : command}\`` : 'Run command',
+          time: { start: Date.now() },
+          block: {
+            type: 'permission',
+            id: callID,
+            permission: 'bash',
+            patterns: command ? [command] : ['*'],
+            always: ['*'],
+            metadata: { command: event.command, reason: event.reason },
+          },
+        },
+      };
+      asst.parts.push(blockedTool);
+      state.toolParts.set(callID, blockedTool);
     }
     result.currentAssistant = { info: asst.info, parts: asst.parts };
     return result;
@@ -356,10 +428,10 @@ export function handleCodexEvent(
   // apply_patch_approval → tool blocked (permission)
   if (type === 'apply_patch_approval') {
     const callID = typeof event.callId === 'string' ? event.callId : (typeof event.call_id === 'string' ? event.call_id : '');
+    const changes = event.fileChanges ?? event.file_changes;
+    const files = changes && typeof changes === 'object' ? Object.keys(changes as Record<string, unknown>) : [];
     const toolPart = state.toolParts.get(callID);
     if (toolPart && (toolPart.state.status === 'running' || toolPart.state.status === 'pending')) {
-      const changes = event.fileChanges ?? event.file_changes;
-      const files = changes && typeof changes === 'object' ? Object.keys(changes as Record<string, unknown>) : [];
       toolPart.state = {
         status: 'blocked',
         input: toolPart.state.input,
@@ -374,6 +446,31 @@ export function handleCodexEvent(
           metadata: { fileChanges: changes, reason: event.reason },
         },
       };
+    } else {
+      const blockedTool: ToolPart = {
+        id: partId(),
+        sessionID: state.sessionID,
+        messageID: asst.info.id,
+        type: 'tool',
+        callID,
+        tool: 'apply_patch',
+        state: {
+          status: 'blocked',
+          input: { changes },
+          title: files.length === 1 ? 'Apply patch to 1 file' : `Apply patch to ${files.length} files`,
+          time: { start: Date.now() },
+          block: {
+            type: 'permission',
+            id: callID,
+            permission: 'edit',
+            patterns: files,
+            always: ['*'],
+            metadata: { fileChanges: changes, reason: event.reason },
+          },
+        },
+      };
+      asst.parts.push(blockedTool);
+      state.toolParts.set(callID, blockedTool);
     }
     result.currentAssistant = { info: asst.info, parts: asst.parts };
     return result;
@@ -388,6 +485,58 @@ export function flushV3CodexTurn(state: V3CodexMapperState): MessageWithParts[] 
     finalizeAssistant(state, result, 'completed');
   }
   return result.messages;
+}
+
+export function unblockCodexToolApproved(
+  state: V3CodexMapperState,
+  callID: string,
+  decision: 'once' | 'always',
+): MessageWithParts | null {
+  const toolPart = state.toolParts.get(callID);
+  if (!toolPart || toolPart.state.status !== 'blocked') return null;
+
+  const block = toolPart.state.block;
+  toolPart.state = {
+    status: 'running',
+    input: toolPart.state.input,
+    title: toolPart.state.title,
+    time: { start: toolPart.state.time.start },
+  };
+
+  (toolPart as any)._resolvedBlock = {
+    ...block,
+    decision,
+    decidedAt: Date.now(),
+  };
+
+  if (!state.currentAssistant) return null;
+  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
+}
+
+export function unblockCodexToolRejected(
+  state: V3CodexMapperState,
+  callID: string,
+  reason: string,
+): MessageWithParts | null {
+  const toolPart = state.toolParts.get(callID);
+  if (!toolPart || toolPart.state.status !== 'blocked') return null;
+
+  const block = toolPart.state.block;
+  toolPart.state = {
+    status: 'error',
+    input: toolPart.state.input,
+    error: reason || 'Permission rejected',
+    time: { start: toolPart.state.time.start, end: Date.now() },
+    block: {
+      ...block,
+      decision: 'reject',
+      decidedAt: Date.now(),
+    } as any,
+  };
+  state.toolParts.delete(callID);
+
+  if (!state.currentAssistant) return null;
+  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

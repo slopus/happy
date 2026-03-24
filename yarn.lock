@@ -2905,6 +2905,55 @@
     "@octokit/request-error" "^7.0.0"
     "@octokit/webhooks-methods" "^6.0.0"
 
+"@openai/codex-darwin-arm64@npm:@openai/codex@0.116.0-darwin-arm64":
+  version "0.116.0-darwin-arm64"
+  resolved "https://registry.yarnpkg.com/@openai/codex/-/codex-0.116.0-darwin-arm64.tgz#ff3bcefdd4cb928920ad1ddd6c1b24d583ac863d"
+  integrity sha512-WkdL083p8uMeASpg8bwV0DPGgzkm48LjN3MyU2m/YukujbiLnknAmG29O2q2rFCLm0oLSDIGUK8EnXA4ZcAF9Q==
+
+"@openai/codex-darwin-x64@npm:@openai/codex@0.116.0-darwin-x64":
+  version "0.116.0-darwin-x64"
+  resolved "https://registry.yarnpkg.com/@openai/codex/-/codex-0.116.0-darwin-x64.tgz#0dd173f0c1be489233e476d24a91dfe57ac05f97"
+  integrity sha512-Ax8uTwYSNIwGrzcNRcn0jJQhZzNcKGDbbn00Emde7gGOemjSLhRALjUaKjckAaW5xWnNqHTGdtzzPB4phNlDYg==
+
+"@openai/codex-linux-arm64@npm:@openai/codex@0.116.0-linux-arm64":
+  version "0.116.0-linux-arm64"
+  resolved "https://registry.yarnpkg.com/@openai/codex/-/codex-0.116.0-linux-arm64.tgz#e07ad7b5eb46bbfa5bb0827bbc63e14ae5ded779"
+  integrity sha512-X7cL8rBSGDB+RSZc2FoKiqcMVeLPMmo06bkss/en4lLQsV1XG2DZI56WuXg92IOX3SjYl6Av/eOWgsb1t3UeLQ==
+
+"@openai/codex-linux-x64@npm:@openai/codex@0.116.0-linux-x64":
+  version "0.116.0-linux-x64"
+  resolved "https://registry.yarnpkg.com/@openai/codex/-/codex-0.116.0-linux-x64.tgz#e606725f34020c35d34cfb6e6203786b429c1952"
+  integrity sha512-S9InOgJT3tj6uQp55NqrCA1k5tklwFaH00JdC2ElbRmxchm7ard4WxHSJZX9TiY8enj4cQoLIC04NFTUCO+/PQ==
+
+"@openai/codex-sdk@^0.116.0":
+  version "0.116.0"
+  resolved "https://registry.yarnpkg.com/@openai/codex-sdk/-/codex-sdk-0.116.0.tgz#0af010d29f36ad5263772e83062a8678f5174c06"
+  integrity sha512-qrn1Pu5G1GJ9w4m/Lk3L3466ulMGG9SfyR0LPAaXdisuQI1rqgoUOuoZ4byX7cCzn0x1g2+WPc0apZgjMEK04Q==
+  dependencies:
+    "@openai/codex" "0.116.0"
+
+"@openai/codex-win32-arm64@npm:@openai/codex@0.116.0-win32-arm64":
+  version "0.116.0-win32-arm64"
+  resolved "https://registry.yarnpkg.com/@openai/codex/-/codex-0.116.0-win32-arm64.tgz#e299b865645cc58349fc8dbe8afadf1d16f1fe91"
+  integrity sha512-kX2oAUzkgZX9OsYpd4omv9IGf+9VWj4Vy3UtIAnQKBu1DTSzmTJmXDuDn87mkyUciSZadm2QbeqQQzm2NC0NYw==
+
+"@openai/codex-win32-x64@npm:@openai/codex@0.116.0-win32-x64":
+  version "0.116.0-win32-x64"
+  resolved "https://registry.yarnpkg.com/@openai/codex/-/codex-0.116.0-win32-x64.tgz#647cc23970773e25925d2b0fc3c7d5d6f25fa500"
+  integrity sha512-6sBIMOoA9FNuxQvCCnK0P548Wqrlk3I9SMdtOCUg2zYzYU7jOF2mWS1VpRQ6R+Jvo2x50dxeJZ+W37dBmXfprw==
+
+"@openai/codex@0.116.0":
+  version "0.116.0"
+  resolved "https://registry.yarnpkg.com/@openai/codex/-/codex-0.116.0.tgz#f8c363d207bb8df5dd3cc21ebd62c61bebcf67c0"
+  integrity sha512-K6q9P2ZmpnzGmpS6Ybjvsdtvu8AbJx3f/Z4KmjH1u85StSS9TWMSQB8z0PPObKMejbtiIkHwhGyEIHi4iBYjig==
+  optionalDependencies:
+    "@openai/codex-darwin-arm64" "npm:@openai/codex@0.116.0-darwin-arm64"
+    "@openai/codex-darwin-x64" "npm:@openai/codex@0.116.0-darwin-x64"
+    "@openai/codex-linux-arm64" "npm:@openai/codex@0.116.0-linux-arm64"
+    "@openai/codex-linux-x64" "npm:@openai/codex@0.116.0-linux-x64"
+    "@openai/codex-win32-arm64" "npm:@openai/codex@0.116.0-win32-arm64"
+    "@openai/codex-win32-x64" "npm:@openai/codex@0.116.0-win32-x64"
+
 "@opentelemetry/api@1.9.0", "@opentelemetry/api@^1.4.0":
   version "1.9.0"
   resolved "https://registry.yarnpkg.com/@opentelemetry/api/-/api-1.9.0.tgz#d03eba68273dc0f7509e2a3d5cba21eae10379fe"
@@ -5941,11 +5990,6 @@ commander@^12.0.0, commander@^12.1.0:
   resolved "https://registry.yarnpkg.com/commander/-/commander-12.1.0.tgz#01423b36f501259fdaac4d0e4d60c96c991585d3"
   integrity sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==
 
-commander@^13.1.0:
-  version "13.1.0"
-  resolved "https://registry.yarnpkg.com/commander/-/commander-13.1.0.tgz#776167db68c78f38dcce1f9b8d7b8b9a488abf46"
-  integrity sha512-/rFeCpNJQbhSZjGVwO9RFV3xPqbnERS8MmIQzCtD/zl6gpJuV/bMLuN92oG3F7d8oDEHHRrujSXNUr8fpjntKw==
-
 commander@^2.20.0:
   version "2.20.3"
   resolved "https://registry.yarnpkg.com/commander/-/commander-2.20.3.tgz#fd485e84c03eb4881c20722ba48035e8531aeb33"
@@ -8238,6 +8282,11 @@ fs.realpath@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/fs.realpath/-/fs.realpath-1.0.0.tgz#1504ad2523158caa40db4a2787cb01411994ea4f"
   integrity sha512-OO0pH2lK6a0hZnAdau5ItzHPI6pUlvI7jMVnxUQRtw4owF2wk8lOSabtGDCTP4Ggrg2MbGnWO9X8K1t4+fGMDw==
+
+fsevents@2.3.2:
+  version "2.3.2"
+  resolved "https://registry.yarnpkg.com/fsevents/-/fsevents-2.3.2.tgz#8a526f78b8fdf4623b709e0b975c52c24c02fd1a"
+  integrity sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==
 
 fsevents@^2.3.2, fsevents@~2.3.2, fsevents@~2.3.3:
   version "2.3.3"
@@ -11130,6 +11179,20 @@ pkgroll@^2.14.2:
     rollup "^4.53.1"
     rollup-pluginutils "^2.8.2"
     yaml "^2.8.1"
+
+playwright-core@1.58.2:
+  version "1.58.2"
+  resolved "https://registry.yarnpkg.com/playwright-core/-/playwright-core-1.58.2.tgz#ac5f5b4b10d29bcf934415f0b8d133b34b0dcb13"
+  integrity sha512-yZkEtftgwS8CsfYo7nm0KE8jsvm6i/PTgVtB8DL726wNf6H2IMsDuxCpJj59KDaxCtSnrWan2AeDqM7JBaultg==
+
+playwright@^1.58.2:
+  version "1.58.2"
+  resolved "https://registry.yarnpkg.com/playwright/-/playwright-1.58.2.tgz#afe547164539b0bcfcb79957394a7a3fa8683cfd"
+  integrity sha512-vA30H8Nvkq/cPBnNw4Q8TWz1EJyqgpuinBcHET0YVJVFldr8JDNiU9LaWAE1KqSkRYazuaBhTpB5ZzShOezQ6A==
+  dependencies:
+    playwright-core "1.58.2"
+  optionalDependencies:
+    fsevents "2.3.2"
 
 plist@^3.0.5:
   version "3.1.0"

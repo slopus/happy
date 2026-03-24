@@ -133,14 +133,12 @@ export function v3SessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
-        const firstMessageByLocalId = new Map<string, { localId: string; content: string }>();
+        const latestMessageByLocalId = new Map<string, { localId: string; content: string }>();
         for (const message of messages) {
-            if (!firstMessageByLocalId.has(message.localId)) {
-                firstMessageByLocalId.set(message.localId, message);
-            }
+            latestMessageByLocalId.set(message.localId, message);
         }
 
-        const uniqueMessages = Array.from(firstMessageByLocalId.values());
+        const uniqueMessages = Array.from(latestMessageByLocalId.values());
         const contentByLocalId = new Map(uniqueMessages.map((message) => [message.localId, message.content]));
 
         const txResult = await db.$transaction(async (tx) => {

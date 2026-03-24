@@ -13,6 +13,8 @@ export type ResumeLaunch = {
 export type ResumeLaunchOptions = {
     claudeStartingMode?: 'local' | 'remote';
     startedBy?: 'daemon' | 'terminal';
+    preferredAgent?: 'claude' | 'codex';
+    fallbackCwd?: string;
 };
 
 export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; sessionId: string } {
@@ -36,37 +38,44 @@ export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; ses
     };
 }
 
-function resolveFlavor(metadata: Metadata): 'codex' | 'claude' | null {
+function resolveFlavor(metadata: Metadata, preferredAgent?: 'claude' | 'codex'): 'codex' | 'claude' | null {
     if (metadata.flavor === 'codex' || metadata.codexThreadId) {
         return 'codex';
     }
     if (metadata.flavor === 'claude' || metadata.claudeSessionId) {
         return 'claude';
     }
+    if (preferredAgent === 'codex' || preferredAgent === 'claude') {
+        return preferredAgent;
+    }
     return null;
 }
 
 export function buildResumeLaunch(session: ResumableHappySession, options: ResumeLaunchOptions = {}): ResumeLaunch {
     const { metadata } = session;
-    const flavor = resolveFlavor(metadata);
+    const flavor = resolveFlavor(metadata, options.preferredAgent);
+    const cwd = metadata.path && metadata.path.length > 0 ? metadata.path : options.fallbackCwd;
 
     if (flavor === 'codex') {
         if (!metadata.codexThreadId) {
             throw new Error(`Happy session ${session.id} is missing its Codex thread ID.`);
+        }
+        if (!cwd) {
+            throw new Error(`Happy session ${session.id} is missing its saved path.`);
         }
         const args = ['codex', '--resume', metadata.codexThreadId];
         if (options.startedBy) {
             args.push('--started-by', options.startedBy);
         }
         return {
-            cwd: metadata.path,
+            cwd,
             args,
         };
     }
 
     if (flavor === 'claude') {
-        if (!metadata.claudeSessionId) {
-            throw new Error(`Happy session ${session.id} is missing its Claude session ID.`);
+        if (!cwd) {
+            throw new Error(`Happy session ${session.id} is missing its saved path.`);
         }
         const args = ['claude'];
         if (options.claudeStartingMode) {
@@ -75,9 +84,13 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
         if (options.startedBy) {
             args.push('--started-by', options.startedBy);
         }
-        args.push('--resume', metadata.claudeSessionId);
+        if (metadata.claudeSessionId) {
+            args.push('--resume', metadata.claudeSessionId);
+        } else {
+            args.push('--continue');
+        }
         return {
-            cwd: metadata.path,
+            cwd,
             args,
         };
     }

@@ -114,12 +114,14 @@ import {
 type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
   toolCall?: {
     id?: string;
+    toolCallId?: string;
     kind?: string;
     toolName?: string;
     input?: Record<string, unknown>;
     arguments?: Record<string, unknown>;
     content?: Record<string, unknown>;
   };
+  toolCallId?: string;
   kind?: string;
   input?: Record<string, unknown>;
   arguments?: Record<string, unknown>;
@@ -130,6 +132,27 @@ type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
     kind?: string;
   }>;
 };
+
+type PermissionOptionLike = NonNullable<ExtendedRequestPermissionRequest['options']>[number];
+
+function normalizePermissionOption(option: PermissionOptionLike): {
+  optionId: string;
+  name: string;
+  kind: string;
+} {
+  return {
+    optionId: typeof option.optionId === 'string' ? option.optionId.toLowerCase() : '',
+    name: typeof option.name === 'string' ? option.name.toLowerCase() : '',
+    kind: typeof option.kind === 'string' ? option.kind.toLowerCase() : '',
+  };
+}
+
+function findPermissionOption(
+  options: PermissionOptionLike[],
+  predicate: (option: ReturnType<typeof normalizePermissionOption>) => boolean,
+): PermissionOptionLike | undefined {
+  return options.find((option) => predicate(normalizePermissionOption(option)));
+}
 
 /**
  * Extended SessionNotification with additional fields
@@ -330,6 +353,9 @@ export class AcpBackend implements AgentBackend {
 
   /** Map from permission request ID to real tool call ID for tracking */
   private permissionToToolCallMap = new Map<string, string>();
+
+  /** Tool calls denied locally; late ACP updates for them should be ignored */
+  private suppressedToolCallIds = new Set<string>();
 
   /** Map from real tool call ID to tool name for auto-approval */
   private toolCallIdToNameMap = new Map<string, string>();
@@ -571,7 +597,7 @@ export class AcpBackend implements AgentBackend {
           let toolName = toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
           // Use toolCallId as the single source of truth for permission ID
           // This ensures mobile app sends back the same ID that we use to store pending requests
-          const toolCallId = toolCall?.id || randomUUID();
+          const toolCallId = toolCall?.id || toolCall?.toolCallId || extendedParams.toolCallId || randomUUID();
           const permissionId = toolCallId; // Use same ID for consistency!
           
           // Extract input/arguments from various possible locations FIRST (before checking toolName)
@@ -637,27 +663,33 @@ export class AcpBackend implements AgentBackend {
                 input
               );
               
-              // Map permission decision to ACP response
-              // ACP uses optionId from the request options
-              let optionId = 'cancel'; // Default to cancel/deny
-              
               if (result.decision === 'approved' || result.decision === 'approved_for_session') {
+                this.suppressedToolCallIds.delete(toolCallId);
+
                 // Find the appropriate optionId from the request options
-                // Look for 'proceed_once' or 'proceed_always' in options
-                const proceedOnceOption = options.find((opt: any) => 
-                  opt.optionId === 'proceed_once' || opt.name?.toLowerCase().includes('once')
+                // ACP agents vary: some expose ids like "proceed_once"/"cancel",
+                // others use "once"/"always"/"reject". Match by kind first, then
+                // fall back to ids/names so we always echo a valid advertised option.
+                const proceedOnceOption = findPermissionOption(
+                  options,
+                  (opt) =>
+                    opt.kind === 'allow_once' ||
+                    opt.optionId === 'proceed_once' ||
+                    opt.optionId === 'once' ||
+                    opt.name.includes('once'),
                 );
-                const proceedAlwaysOption = options.find((opt: any) => 
-                  opt.optionId === 'proceed_always' || opt.name?.toLowerCase().includes('always')
+                const proceedAlwaysOption = findPermissionOption(
+                  options,
+                  (opt) =>
+                    opt.kind === 'allow_always' ||
+                    opt.optionId === 'proceed_always' ||
+                    opt.optionId === 'always' ||
+                    opt.name.includes('always'),
                 );
+                let optionId = proceedOnceOption?.optionId || options[0]?.optionId || 'proceed_once';
                 
                 if (result.decision === 'approved_for_session' && proceedAlwaysOption) {
                   optionId = proceedAlwaysOption.optionId || 'proceed_always';
-                } else if (proceedOnceOption) {
-                  optionId = proceedOnceOption.optionId || 'proceed_once';
-                } else if (options.length > 0) {
-                  // Fallback to first option if no specific match
-                  optionId = options[0].optionId || 'proceed_once';
                 }
                 
                 // Emit tool-result with permissionId so UI can close the timer
@@ -668,25 +700,46 @@ export class AcpBackend implements AgentBackend {
                   result: { status: 'approved', decision: result.decision },
                   callId: permissionId,
                 });
+
+                return { outcome: { outcome: 'selected', optionId } };
               } else {
-                // Denied or aborted - find cancel option
-                const cancelOption = options.find((opt: any) => 
-                  opt.optionId === 'cancel' || opt.name?.toLowerCase().includes('cancel')
+                this.suppressedToolCallIds.add(toolCallId);
+                this.cleanupTrackedToolCall(toolCallId);
+
+                const rejectOption = findPermissionOption(
+                  options,
+                  (opt) =>
+                    opt.kind === 'reject_once' ||
+                    opt.kind === 'reject_always' ||
+                    opt.optionId === 'reject' ||
+                    opt.optionId === 'cancel' ||
+                    opt.name.includes('reject') ||
+                    opt.name.includes('deny') ||
+                    opt.name.includes('cancel'),
                 );
-                if (cancelOption) {
-                  optionId = cancelOption.optionId || 'cancel';
-                }
+                const isAbort = result.decision === 'abort';
                 
                 // Emit tool-result for denied/aborted
                 this.emit({
                   type: 'tool-result',
                   toolName,
-                  result: { status: 'denied', decision: result.decision },
+                  result: { status: isAbort ? 'cancelled' : 'denied', decision: result.decision },
                   callId: permissionId,
                 });
+
+                this.scheduleIdleStatusIfQuiescent();
+
+                if (isAbort) {
+                  return { outcome: { outcome: 'cancelled' } };
+                }
+
+                if (rejectOption?.optionId) {
+                  return { outcome: { outcome: 'selected', optionId: rejectOption.optionId } };
+                }
+
+                logger.debug('[AcpBackend] No advertised reject option found; falling back to cancelled outcome');
+                return { outcome: { outcome: 'cancelled' } };
               }
-              
-              return { outcome: { outcome: 'selected', optionId } };
             } catch (error) {
               // Log to file only, not console
               logger.debug('[AcpBackend] Error in permission handler:', error);
@@ -895,6 +948,36 @@ export class AcpBackend implements AgentBackend {
     };
   }
 
+  private cleanupTrackedToolCall(toolCallId: string): void {
+    this.activeToolCalls.delete(toolCallId);
+    this.toolCallStartTimes.delete(toolCallId);
+    this.toolCallIdToNameMap.delete(toolCallId);
+
+    const timeout = this.toolCallTimeouts.get(toolCallId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.toolCallTimeouts.delete(toolCallId);
+    }
+  }
+
+  private scheduleIdleStatusIfQuiescent(): void {
+    if (this.activeToolCalls.size > 0) {
+      return;
+    }
+
+    if (this.idleTimeout) {
+      clearTimeout(this.idleTimeout);
+    }
+
+    const idleTimeoutMs = this.transport.getIdleTimeout?.() ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.idleTimeout = setTimeout(() => {
+      this.idleTimeout = null;
+      if (this.activeToolCalls.size === 0) {
+        this.emitIdleStatus();
+      }
+    }, idleTimeoutMs);
+  }
+
   private emitInitialSessionMetadata(sessionResponse: NewSessionResponse): void {
     if (Array.isArray(sessionResponse.configOptions)) {
       this.emit({
@@ -937,12 +1020,21 @@ export class AcpBackend implements AgentBackend {
 
     const sessionUpdateType = update.sessionUpdate;
     const updateType = sessionUpdateType as string | undefined;
+    const toolCallId = typeof update.toolCallId === 'string' ? update.toolCallId : null;
 
     logger.debug(`[AcpBackend] sessionUpdate: ${sessionUpdateType}`, JSON.stringify(update));
     if (this.options.verbose) {
       logAcpBackendMuted(
         `Incoming raw session update from ${this.options.agentName}: ${JSON.stringify(update)}`,
       );
+    }
+
+    if (toolCallId && this.suppressedToolCallIds.has(toolCallId)) {
+      logger.debug(`[AcpBackend] Ignoring late update for denied tool call: ${toolCallId} (${updateType ?? 'unknown'})`);
+      if (update.status === 'completed' || update.status === 'failed' || update.status === 'cancelled') {
+        this.suppressedToolCallIds.delete(toolCallId);
+      }
+      return;
     }
 
     const ctx = this.createHandlerContext();
@@ -1332,5 +1424,8 @@ export class AcpBackend implements AgentBackend {
     this.toolCallTimeouts.clear();
     this.toolCallStartTimes.clear();
     this.pendingPermissions.clear();
+    this.permissionToToolCallMap.clear();
+    this.suppressedToolCallIds.clear();
+    this.toolCallIdToNameMap.clear();
   }
 }

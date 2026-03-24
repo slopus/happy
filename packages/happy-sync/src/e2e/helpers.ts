@@ -6,20 +6,18 @@
  */
 
 import { SyncNode, type SyncNodeToken } from '../sync-node';
-import { type KeyMaterial, getRandomBytes } from '../encryption';
+import { type KeyMaterial } from '../encryption';
+import type { ResolveSessionKeyMaterial } from '../sync-node';
 import type { MessageWithParts, SessionID, MessageID, PartID, Part } from '../protocol';
 import { createId } from '@paralleldrive/cuid2';
-
-// ─── Config ──────────────────────────────────────────────────────────────────
-
-export const SERVER_URL = process.env.HAPPY_TEST_SERVER_URL ?? 'http://localhost:3005';
-export const AUTH_TOKEN = process.env.HAPPY_TEST_TOKEN ?? '';
+import { getServerUrl, getAuthToken, getEncryptionSecret } from './setup';
+import type { MessageMeta } from '../messageMeta';
 
 // ─── Token / Key helpers ─────────────────────────────────────────────────────
 
-export function makeAccountToken(token = AUTH_TOKEN): SyncNodeToken {
+export function makeAccountToken(): SyncNodeToken {
     return {
-        raw: token,
+        raw: getAuthToken(),
         claims: {
             scope: { type: 'account' as const, userId: 'test-user' },
             permissions: ['read', 'write', 'admin'],
@@ -27,9 +25,41 @@ export function makeAccountToken(token = AUTH_TOKEN): SyncNodeToken {
     };
 }
 
+/**
+ * Key material using the same encryption secret as the daemon/CLI.
+ * In legacy mode, the CLI encrypts sessions with the secret from access.key.
+ * The test's SyncNode needs the same key to decrypt messages.
+ */
 export function makeKeyMaterial(): KeyMaterial {
-    return { key: getRandomBytes(32), variant: 'dataKey' };
+    return { key: getEncryptionSecret(), variant: 'legacy' };
 }
+
+/**
+ * Session key resolver for the test's SyncNode.
+ *
+ * Handles two cases:
+ * 1. Sessions created by the CLI (legacy mode) — `dataEncryptionKey` is null,
+ *    so we fall back to defaultKeyMaterial (which is the shared secret).
+ * 2. Sessions with a stored data key (dataKey mode) — decode the base64 key.
+ */
+export const resolveSessionKeyMaterial: ResolveSessionKeyMaterial = async ({
+    encryptedDataKey,
+    defaultKeyMaterial,
+}) => {
+    if (!encryptedDataKey) {
+        // Legacy mode: no per-session key, use the shared secret
+        return defaultKeyMaterial;
+    }
+
+    // Try to decode as a raw 32-byte key (simple dataKey mode, no asymmetric encryption)
+    const keyBytes = Buffer.from(encryptedDataKey, 'base64');
+    if (keyBytes.length === 32) {
+        return { key: new Uint8Array(keyBytes), variant: 'dataKey' as const };
+    }
+
+    // Otherwise fall back to default
+    return defaultKeyMaterial;
+};
 
 // ─── Wait helpers ────────────────────────────────────────────────────────────
 
@@ -53,8 +83,12 @@ export function waitForCondition(
 }
 
 /**
- * Wait for a step-finish part on the latest assistant message that is newer
- * than `afterMessageCount` assistant messages.
+ * Wait for a final step-finish part on the latest assistant message.
+ *
+ * A "final" step-finish is one where `reason` is NOT `tool-calls` — meaning
+ * the agent completed its work rather than just pausing for tool execution.
+ * Each LLM turn produces its own step-start/step-finish pair; we want the
+ * turn where the agent is truly done (reason = "end_turn" or similar).
  */
 export async function waitForStepFinish(
     node: SyncNode,
@@ -62,12 +96,42 @@ export async function waitForStepFinish(
     afterAssistantCount: number,
     timeoutMs = 120000,
 ): Promise<void> {
+    let lastLogAt = 0;
     await waitForCondition(() => {
         const msgs = getAssistantMessages(node, sessionId);
         if (msgs.length <= afterAssistantCount) return false;
-        const last = msgs[msgs.length - 1];
-        return hasPart(last, 'step-finish');
+
+        // Debug: log assistant message structure every 10s
+        const now = Date.now();
+        if (now - lastLogAt > 10000) {
+            lastLogAt = now;
+            for (let i = afterAssistantCount; i < msgs.length; i++) {
+                const m = msgs[i];
+                const partTypes = m.parts.map(p => {
+                    if (p.type === 'step-finish') return `step-finish(reason=${(p as any).reason})`;
+                    if (p.type === 'tool') return `tool(${(p as any).tool},status=${(p as any).state?.status})`;
+                    if (p.type === 'text') return `text(${(p as any).text?.slice(0, 40)}...)`;
+                    return p.type;
+                });
+                console.log(`[waitForStepFinish] msg[${i}] (${m.parts.length} parts): ${partTypes.join(', ')}`);
+            }
+        }
+
+        // Check ALL new messages (not just the last one) for a final step-finish
+        for (let i = afterAssistantCount; i < msgs.length; i++) {
+            if (hasFinalStepFinish(msgs[i])) return true;
+        }
+        return false;
     }, timeoutMs);
+}
+
+/**
+ * Check if a message has a "final" step-finish (reason !== 'tool-calls').
+ */
+function hasFinalStepFinish(msg: MessageWithParts): boolean {
+    return msg.parts.some(
+        p => p.type === 'step-finish' && (p as any).reason !== 'tool-calls',
+    );
 }
 
 /**
@@ -151,6 +215,7 @@ export function makeUserMessage(
     text: string,
     agent = 'claude',
     model = { providerID: 'anthropic', modelID: 'claude-sonnet-4-20250514' },
+    meta?: MessageMeta,
 ): MessageWithParts {
     const msgId = `msg_${createId()}` as MessageID;
     return {
@@ -161,6 +226,7 @@ export function makeUserMessage(
             time: { created: Date.now() },
             agent,
             model,
+            ...(meta ? { meta } : {}),
         },
         parts: [{
             id: `prt_${createId()}` as PartID,
