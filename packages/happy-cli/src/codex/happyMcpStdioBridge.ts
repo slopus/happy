@@ -56,7 +56,18 @@ async function main() {
           { capabilities: {} }
         );
         const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
+        transport.onclose = () => {
+          // Reset client on transport close so next call reconnects
+          if (httpClient === client) {
+            httpClient = null;
+          }
+        };
         await client.connect(transport);
+        client.onclose = () => {
+          if (httpClient === client) {
+            httpClient = null;
+          }
+        };
         httpClient = client;
         return client;
       } finally {
@@ -87,9 +98,12 @@ async function main() {
       try {
         const client = await ensureHttpClient();
         const response = await client.callTool({ name: 'change_title', arguments: args });
-        // Pass-through response from HTTP server
         return response as any;
       } catch (error) {
+        // Clean up stale client so the next invocation reconnects
+        const staleClient = httpClient;
+        httpClient = null;
+        try { await staleClient?.close(); } catch { /* ignore close errors */ }
         return {
           content: [
             { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
