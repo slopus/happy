@@ -29,17 +29,23 @@ import { ImagePreview, LocalImage } from '@/components/ImagePreview';
 import { Switch } from '@/components/Switch';
 import { Modal } from '@/modal';
 import {
+    buildClaudeModelMode,
     buildCodexModelMode,
-    CLAUDE_MODEL_OPTIONS,
+    CLAUDE_MODEL_FAMILY_OPTIONS,
+    ClaudeModelFamily,
+    ClaudeReasoningEffort,
     CODEX_MODEL_FAMILY_OPTIONS,
     CodexModelFamily,
     CodexReasoningEffort,
+    formatReasoningEffortLabel,
+    FAST_MODE_ICON_COLOR,
     GEMINI_MODEL_OPTIONS,
+    getClaudeReasoningOptions,
     getCodexReasoningOptions,
     getMaxContextSize,
     MODEL_MODE_DEFAULT,
+    parseClaudeModelMode,
     parseCodexModelMode,
-    FAST_MODE_ICON_COLOR,
 } from 'happy-wire';
 
 interface AgentInputProps {
@@ -236,6 +242,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     selectionLabelInactive: {
         color: theme.colors.text,
     },
+    selectionDescription: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
 
     // Status styles
     statusContainer: {
@@ -351,27 +362,51 @@ const getContextWarning = (contextSize: number, maxContextSize: number, alwaysSh
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const renderRadioOptions = <T extends string>(
+        options: readonly { value: T; label: string; description?: string }[],
+        selectedValue: T | null,
+        onSelect: (value: T) => void,
+    ) => options.map(option => {
+        const isSelected = selectedValue === option.value;
+        return (
+            <Pressable key={option.value}
+                onPress={() => { hapticsLight(); onSelect(option.value); }}
+                style={({ pressed }) => [styles.selectionItem, pressed && styles.selectionItemPressed]}>
+                <View style={[styles.radioButton, isSelected ? styles.radioButtonActive : styles.radioButtonInactive]}>
+                    {isSelected && <View style={styles.radioButtonDot} />}
+                </View>
+                {option.description ? (
+                    <View>
+                        <Text style={[styles.selectionLabel, isSelected ? styles.selectionLabelActive : styles.selectionLabelInactive]}>
+                            {option.label}
+                        </Text>
+                        <Text style={styles.selectionDescription}>{option.description}</Text>
+                    </View>
+                ) : (
+                    <Text style={[styles.selectionLabel, isSelected ? styles.selectionLabelActive : styles.selectionLabelInactive]}>
+                        {option.label}
+                    </Text>
+                )}
+            </Pressable>
+        );
+    });
     const screenWidth = useWindowDimensions().width;
 
     // Check if this is a Codex or Gemini session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
     const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const isClaude = !isCodex && !isGemini;
     const selectedModelMode: ModelMode = props.modelMode || 'default';
     const codexSelection = React.useMemo<{ family: CodexModelFamily; effort: CodexReasoningEffort }>(() => {
         return parseCodexModelMode(selectedModelMode);
     }, [selectedModelMode]);
-    const codexFamilyOptions = React.useMemo<Array<{ value: CodexModelFamily; label: string; shortLabel: string; description: string }>>(
-        () => [...CODEX_MODEL_FAMILY_OPTIONS],
-        [],
-    );
+    const codexFamilyOptions = CODEX_MODEL_FAMILY_OPTIONS;
     const codexReasoningOptions = React.useMemo<Array<{ value: CodexReasoningEffort; label: string }>>(() => {
         const options = getCodexReasoningOptions(codexSelection.family);
         return options.map((value) => ({
             value,
-            label: value === 'xhigh'
-                ? 'XHigh'
-                : value.charAt(0).toUpperCase() + value.slice(1),
+            label: formatReasoningEffortLabel(value) ?? value,
         }));
     }, [codexSelection.family]);
     const handleCodexFamilyChange = React.useCallback((family: CodexModelFamily) => {
@@ -382,11 +417,48 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (!props.onModelModeChange || codexSelection.family === MODEL_MODE_DEFAULT) return;
         props.onModelModeChange(buildCodexModelMode(codexSelection.family, effort));
     }, [codexSelection.family, props.onModelModeChange]);
+    const claudeSelection = React.useMemo<{ family: ClaudeModelFamily; effort: ClaudeReasoningEffort | null }>(() => {
+        return parseClaudeModelMode(selectedModelMode);
+    }, [selectedModelMode]);
+    const claudeFamilyOptions = CLAUDE_MODEL_FAMILY_OPTIONS;
+    const claudeReasoningOptions = React.useMemo<Array<{ value: ClaudeReasoningEffort; label: string }>>(() => {
+        const options = getClaudeReasoningOptions(claudeSelection.family);
+        return options.map((value) => ({
+            value,
+            label: formatReasoningEffortLabel(value) ?? value,
+        }));
+    }, [claudeSelection.family]);
+    const handleClaudeFamilyChange = React.useCallback((family: ClaudeModelFamily) => {
+        if (!props.onModelModeChange) return;
+        if (family === MODEL_MODE_DEFAULT) {
+            props.onModelModeChange(MODEL_MODE_DEFAULT);
+            return;
+        }
+        const validOptions = getClaudeReasoningOptions(family);
+        const effort = claudeSelection.effort && validOptions.includes(claudeSelection.effort) ? claudeSelection.effort : validOptions[0];
+        props.onModelModeChange(buildClaudeModelMode(family, effort));
+    }, [claudeSelection.effort, props.onModelModeChange]);
+    const handleClaudeReasoningChange = React.useCallback((effort: ClaudeReasoningEffort) => {
+        if (!props.onModelModeChange || claudeSelection.family === MODEL_MODE_DEFAULT) return;
+        props.onModelModeChange(buildClaudeModelMode(claudeSelection.family, effort));
+    }, [claudeSelection.family, props.onModelModeChange]);
     const modelOptions = React.useMemo<Array<{ value: ModelMode; label: string; shortLabel: string; description: string }>>(() => {
         if (isGemini) return [...GEMINI_MODEL_OPTIONS];
-        if (isCodex) return [{ value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' }];
-        return [...CLAUDE_MODEL_OPTIONS];
-    }, [isCodex, isGemini]);
+        return [{ value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' }];
+    }, [isGemini]);
+
+    const currentModelLabel = React.useMemo(() => {
+        if (isCodex) {
+            return (codexFamilyOptions.find(o => o.value === codexSelection.family)?.shortLabel ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '');
+        }
+        if (isClaude && claudeSelection.family !== 'default') {
+            const base = claudeFamilyOptions.find(o => o.value === claudeSelection.family)?.shortLabel ?? '';
+            const is1m = typeof claudeSelection.family === 'string' && claudeSelection.family.includes('[1m]');
+            const parts = [is1m ? '1M' : '', claudeReasoningOptions.find(o => o.value === claudeSelection.effort)?.label ?? ''].filter(Boolean);
+            return base + (parts.length > 0 ? ` (${parts.join(', ')})` : '');
+        }
+        return modelOptions.find(o => o.value === selectedModelMode)?.shortLabel ?? '';
+    }, [isCodex, isClaude, codexFamilyOptions, codexSelection, codexReasoningOptions, claudeFamilyOptions, claudeSelection, claudeReasoningOptions, modelOptions, selectedModelMode]);
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -784,9 +856,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             : isGemini
                                                 ? (props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') : props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.readOnly') : props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.safeYolo') : props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.yolo') : '')
                                                 : (props.permissionMode === 'default' ? t('agentInput.permissionMode.default') : props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.acceptEdits') : props.permissionMode === 'plan' ? t('agentInput.permissionMode.plan') : props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.bypassPermissions') : props.permissionMode === 'yolo' ? t('agentInput.permissionMode.yolo') : '');
-                                        const currentModelLabel = isCodex
-                                            ? (codexFamilyOptions.find(o => o.value === codexSelection.family)?.shortLabel ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '')
-                                            : modelOptions.find(o => o.value === selectedModelMode)?.shortLabel ?? '';
                                         const currentModelSubtitle: React.ReactNode = props.fastMode
                                             ? <>{currentModelLabel} <MaterialCommunityIcons name="lightning-bolt" size={10} color={FAST_MODE_ICON_COLOR} /></>
                                             : currentModelLabel;
@@ -915,61 +984,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {showSettings === 'model' && <View style={{ paddingVertical: 8 }}>
                                     {isCodex ? (
                                         <>
-                                            {codexFamilyOptions.map((option) => {
-                                                const isSelected = codexSelection.family === option.value;
-                                                return (
-                                                    <Pressable
-                                                        key={option.value}
-                                                        onPress={() => {
-                                                            hapticsLight();
-                                                            handleCodexFamilyChange(option.value);
-                                                        }}
-                                                        style={({ pressed }) => ({
-                                                            flexDirection: 'row',
-                                                            alignItems: 'center',
-                                                            paddingHorizontal: 16,
-                                                            paddingVertical: 8,
-                                                            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                        })}
-                                                    >
-                                                        <View style={{
-                                                            width: 16,
-                                                            height: 16,
-                                                            borderRadius: 8,
-                                                            borderWidth: 2,
-                                                            borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            marginRight: 12
-                                                        }}>
-                                                            {isSelected && (
-                                                                <View style={{
-                                                                    width: 6,
-                                                                    height: 6,
-                                                                    borderRadius: 3,
-                                                                    backgroundColor: theme.colors.radio.dot
-                                                                }} />
-                                                            )}
-                                                        </View>
-                                                        <View>
-                                                            <Text style={{
-                                                                fontSize: 14,
-                                                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                                ...Typography.default()
-                                                            }}>
-                                                                {option.label}
-                                                            </Text>
-                                                            <Text style={{
-                                                                fontSize: 11,
-                                                                color: theme.colors.textSecondary,
-                                                                ...Typography.default()
-                                                            }}>
-                                                                {option.description}
-                                                            </Text>
-                                                        </View>
-                                                    </Pressable>
-                                                );
-                                            })}
+                                            {renderRadioOptions(codexFamilyOptions, codexSelection.family, handleCodexFamilyChange)}
                                             {codexSelection.family !== 'default' && (
                                                 <>
                                                     <View style={[styles.overlayDivider, { marginTop: 4, marginBottom: 6 }]} />
@@ -983,52 +998,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     }}>
                                                         {t('agentInput.model.reasoningEffort')}
                                                     </Text>
-                                                    {codexReasoningOptions.map((effortOption) => {
-                                                        const isSelected = codexSelection.effort === effortOption.value;
-                                                        return (
-                                                            <Pressable
-                                                                key={effortOption.value}
-                                                                onPress={() => {
-                                                                    hapticsLight();
-                                                                    handleCodexReasoningChange(effortOption.value);
-                                                                }}
-                                                                style={({ pressed }) => ({
-                                                                    flexDirection: 'row',
-                                                                    alignItems: 'center',
-                                                                    paddingHorizontal: 16,
-                                                                    paddingVertical: 8,
-                                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                                })}
-                                                            >
-                                                                <View style={{
-                                                                    width: 16,
-                                                                    height: 16,
-                                                                    borderRadius: 8,
-                                                                    borderWidth: 2,
-                                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                    marginRight: 12
-                                                                }}>
-                                                                    {isSelected && (
-                                                                        <View style={{
-                                                                            width: 6,
-                                                                            height: 6,
-                                                                            borderRadius: 3,
-                                                                            backgroundColor: theme.colors.radio.dot
-                                                                        }} />
-                                                                    )}
-                                                                </View>
-                                                                <Text style={{
-                                                                    fontSize: 14,
-                                                                    color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                                    ...Typography.default()
-                                                                }}>
-                                                                    {effortOption.label}
-                                                                </Text>
-                                                            </Pressable>
-                                                        );
-                                                    })}
+                                                    {renderRadioOptions(codexReasoningOptions, codexSelection.effort, handleCodexReasoningChange)}
                                                     <View style={[styles.overlayDivider, { marginTop: 4, marginBottom: 6 }]} />
                                                     <View style={{
                                                         flexDirection: 'row',
@@ -1056,62 +1026,28 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 </>
                                             )}
                                         </>
-                                    ) : (
-                                        modelOptions.map((modelOption) => {
-                                            const isSelected = selectedModelMode === modelOption.value;
-                                            return (
-                                                <Pressable
-                                                    key={modelOption.value}
-                                                    onPress={() => {
-                                                        hapticsLight();
-                                                        props.onModelModeChange?.(modelOption.value);
-                                                    }}
-                                                    style={({ pressed }) => ({
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
+                                    ) : isClaude ? (
+                                        <>
+                                            {renderRadioOptions(claudeFamilyOptions, claudeSelection.family, handleClaudeFamilyChange)}
+                                            {claudeSelection.family !== 'default' && (
+                                                <>
+                                                    <View style={[styles.overlayDivider, { marginTop: 4, marginBottom: 6 }]} />
+                                                    <Text style={{
+                                                        fontSize: 12,
+                                                        fontWeight: '600',
+                                                        color: theme.colors.textSecondary,
                                                         paddingHorizontal: 16,
-                                                        paddingVertical: 8,
-                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                    })}
-                                                >
-                                                    <View style={{
-                                                        width: 16,
-                                                        height: 16,
-                                                        borderRadius: 8,
-                                                        borderWidth: 2,
-                                                        borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        marginRight: 12
+                                                        paddingBottom: 4,
+                                                        ...Typography.default('semiBold')
                                                     }}>
-                                                        {isSelected && (
-                                                            <View style={{
-                                                                width: 6,
-                                                                height: 6,
-                                                                borderRadius: 3,
-                                                                backgroundColor: theme.colors.radio.dot
-                                                            }} />
-                                                        )}
-                                                    </View>
-                                                    <View>
-                                                        <Text style={{
-                                                            fontSize: 14,
-                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                            ...Typography.default()
-                                                        }}>
-                                                            {modelOption.label}
-                                                        </Text>
-                                                        <Text style={{
-                                                            fontSize: 11,
-                                                            color: theme.colors.textSecondary,
-                                                            ...Typography.default()
-                                                        }}>
-                                                            {modelOption.description}
-                                                        </Text>
-                                                    </View>
-                                                </Pressable>
-                                            );
-                                        })
+                                                        {t('agentInput.model.reasoningEffort')}
+                                                    </Text>
+                                                    {renderRadioOptions(claudeReasoningOptions, claudeSelection.effort, handleClaudeReasoningChange)}
+                                                </>
+                                            )}
+                                        </>
+                                    ) : (
+                                        renderRadioOptions(modelOptions, selectedModelMode, (v) => props.onModelModeChange?.(v))
                                     )}
                                 </View>}
 
@@ -1251,9 +1187,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         color: theme.colors.textSecondary,
                                         ...Typography.default()
                                     }}>
-                                        {isCodex
-                                            ? (codexFamilyOptions.find(o => o.value === codexSelection.family)?.shortLabel ?? '') + (codexSelection.family !== 'default' ? ` (${codexReasoningOptions.find(o => o.value === codexSelection.effort)?.label ?? codexSelection.effort})` : '')
-                                            : (modelOptions.find(o => o.value === selectedModelMode)?.shortLabel ?? '')}
+                                        {currentModelLabel}
                                         {props.fastMode && <>{' '}<MaterialCommunityIcons name="lightning-bolt" size={11} color={FAST_MODE_ICON_COLOR} /></>}
                                     </Text>
                                 </Pressable>

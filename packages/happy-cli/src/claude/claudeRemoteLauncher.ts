@@ -170,6 +170,22 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }, permissionHandler.getResponses());
 
 
+    // Sync model & reasoning effort into session metadata (mirrors Codex's syncSessionModelInfo)
+    let currentSyncedModel: string | undefined;
+    let currentSyncedEffort: string | undefined;
+    function syncModelMetadata(mode: EnhancedMode) {
+        const model = mode.model;
+        const effort = mode.reasoningEffort;
+        if (model === currentSyncedModel && effort === currentSyncedEffort) return;
+        currentSyncedModel = model;
+        currentSyncedEffort = effort;
+        session.client.updateMetadata((m) => ({
+            ...m,
+            ...(model ? { model } : {}),
+            ...(effort ? { reasoningEffort: effort } : {}),
+        }));
+    }
+
     // Handle messages
     let planModeToolCalls = new Set<string>();
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
@@ -413,6 +429,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             let p = pending;
                             pending = null;
                             permissionHandler.handleModeChange(p.mode.permissionMode);
+                            syncModelMetadata(p.mode);
                             return p;
                         }
 
@@ -428,6 +445,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             modeHash = msg.hash;
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
+                            syncModelMetadata(mode);
                             return {
                                 message: msg.message,
                                 mode: msg.mode

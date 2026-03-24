@@ -3,6 +3,7 @@ import {
     buildCodexModelMode,
     CODEX_MODEL_MODES,
     getCodexReasoningOptions,
+    getMaxContextSize,
     isModelMode,
     isModelModeForAgent,
     MODEL_MODE_DEFAULT,
@@ -69,5 +70,15 @@ describe('modelCatalog', () => {
     it('keeps codex model list in catalog shape', () => {
         expect(CODEX_MODEL_MODES[0]).toBe(MODEL_MODE_DEFAULT);
         expect(CODEX_MODEL_MODES).toContain('gpt-5.1-codex-mini-high');
+    });
+
+    it('resolves context windows for claude composite and fast model modes', () => {
+        expect(getMaxContextSize('claude-opus-4-6-high', 'claude')).toBe(200_000);
+        expect(getMaxContextSize('claude-opus-4-6-fast', 'claude')).toBe(200_000);
+        expect(getMaxContextSize('claude-opus-4-6', 'claude')).toBe(200_000);
+        // 1M context variants
+        expect(getMaxContextSize('claude-opus-4-6[1m]', 'claude')).toBe(1_000_000);
+        expect(getMaxContextSize('claude-opus-4-6[1m]-high', 'claude')).toBe(1_000_000);
+        expect(getMaxContextSize('claude-sonnet-4-6[1m]', 'claude')).toBe(1_000_000);
     });
 });

@@ -426,6 +426,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const messageQueue = new MessageQueue2<EnhancedMode, QueueMessageContent>(mode => hashObject({
         isPlan: mode.permissionMode === 'plan',
         model: mode.model,
+        reasoningEffort: mode.reasoningEffort,
         fallbackModel: mode.fallbackModel,
         customSystemPrompt: mode.customSystemPrompt,
         appendSystemPrompt: mode.appendSystemPrompt,
@@ -437,6 +438,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
     let currentPermissionMode: PermissionMode | undefined = options.permissionMode;
     let currentModel = options.model; // Track current model state
+    let currentReasoningEffort: string | undefined = undefined;
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
@@ -462,6 +464,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
         } else {
             logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);
+        }
+
+        let messageReasoningEffort = currentReasoningEffort;
+        if (message.meta?.hasOwnProperty('reasoningEffort')) {
+            messageReasoningEffort = message.meta.reasoningEffort || undefined;
+            currentReasoningEffort = messageReasoningEffort;
+            logger.debug(`[loop] Reasoning effort updated from user message: ${messageReasoningEffort || 'reset to default'}`);
+        } else {
+            logger.debug(`[loop] User message received with no reasoning effort override, using current: ${currentReasoningEffort || 'default'}`);
         }
 
         // Resolve custom system prompt - use message.meta.customSystemPrompt if provided, otherwise use current
@@ -516,18 +527,19 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(message.content.text);
+        const enhancedMode: EnhancedMode = {
+            permissionMode: messagePermissionMode || 'default',
+            model: messageModel,
+            reasoningEffort: messageReasoningEffort,
+            fallbackModel: messageFallbackModel,
+            customSystemPrompt: messageCustomSystemPrompt,
+            appendSystemPrompt: messageAppendSystemPrompt,
+            allowedTools: messageAllowedTools,
+            disallowedTools: messageDisallowedTools
+        };
 
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
-            };
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
@@ -535,30 +547,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         if (specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
-            };
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
-            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+            logger.debugLargeJson('[start] /clear command pushed to queue:', message);
             return;
         }
-
-        // Push with resolved permission mode, model, system prompts, and tools
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-            fallbackModel: messageFallbackModel,
-            customSystemPrompt: messageCustomSystemPrompt,
-            appendSystemPrompt: messageAppendSystemPrompt,
-            allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools
-        };
 
         // Pass full content object for mixed messages (with images), otherwise just text
         if (message.content.type === 'mixed') {

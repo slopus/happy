@@ -171,6 +171,7 @@ export interface QueryOptions {
     resume?: string
     forkSession?: boolean
     model?: string
+    effort?: string
     fallbackModel?: string
     strictMcpConfig?: boolean
     canCallTool?: CanCallToolCallback

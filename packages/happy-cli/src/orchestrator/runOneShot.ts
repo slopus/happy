@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { claudeCliPath } from '@/claude/claudeLocal';
 import { logger } from '@/ui/logger';
-import { MODEL_MODE_DEFAULT, isModelModeForAgent, parseCodexModelMode } from 'happy-wire';
+import { MODEL_MODE_DEFAULT, isModelModeForAgent, parseCodexModelMode, parseClaudeModelMode } from 'happy-wire';
 import {
   ORCHESTRATOR_ENV_KEYS,
   type OrchestratorProvider,
@@ -77,18 +77,37 @@ export function buildSpawnPlan(
   }
   const normalizedModelMode = modelMode === MODEL_MODE_DEFAULT ? undefined : modelMode;
   switch (provider) {
-    case 'claude':
+    case 'claude': {
+      const baseArgs = [claudeCliPath, '--dangerously-skip-permissions'];
+      if (executionType === 'resume') {
+        baseArgs.push('--resume', childSessionId!, '-p', prompt);
+      } else {
+        if (normalizedModelMode) {
+          if (isModelModeForAgent('claude', normalizedModelMode)) {
+            const parsed = parseClaudeModelMode(normalizedModelMode as any);
+            if (parsed.family !== MODEL_MODE_DEFAULT) {
+              baseArgs.push('--model', parsed.family);
+              if (parsed.effort) {
+                baseArgs.push('--effort', parsed.effort);
+              }
+            }
+          } else {
+            baseArgs.push('--model', normalizedModelMode);
+          }
+        }
+        if (childSessionId) baseArgs.push('--session-id', childSessionId);
+        baseArgs.push('-p', prompt);
+      }
       return {
         command: process.execPath,
-        args: executionType === 'resume'
-          ? [claudeCliPath, '--dangerously-skip-permissions', '--resume', childSessionId!, '-p', prompt]
-          : [claudeCliPath, '--dangerously-skip-permissions', ...(normalizedModelMode ? ['--model', normalizedModelMode] : []), ...(childSessionId ? ['--session-id', childSessionId] : []), '-p', prompt],
+        args: baseArgs,
         cwd: workingDirectory,
         env: {
           ...process.env,
           DISABLE_AUTOUPDATER: '1',
         },
       };
+    }
     case 'codex': {
       const codexArgs = ['-y', '@openai/codex@0.115.0', 'exec', '--dangerously-bypass-approvals-and-sandbox'];
       if (executionType === 'resume') {

@@ -11,14 +11,39 @@ export type CodexModelFamily =
     | 'gpt-5.2'
     | 'gpt-5.1-codex-max'
     | 'gpt-5.1-codex-mini';
+export type ClaudeReasoningEffort = 'low' | 'medium' | 'high' | 'max';
+export type ClaudeModelFamily =
+    | typeof MODEL_MODE_DEFAULT
+    | 'claude-opus-4-6'
+    | 'claude-opus-4-6[1m]'
+    | 'claude-sonnet-4-6'
+    | 'claude-sonnet-4-6[1m]'
+    | 'claude-haiku-4-5';
 
 export const MODEL_MODES = [
     MODEL_MODE_DEFAULT,
     'claude-opus-4-6',
-    'claude-opus-4-5',
+    'claude-opus-4-6[1m]',
     'claude-sonnet-4-6',
-    'claude-sonnet-4-5',
+    'claude-sonnet-4-6[1m]',
     'claude-haiku-4-5',
+    'claude-opus-4-6-low',
+    'claude-opus-4-6-medium',
+    'claude-opus-4-6-high',
+    'claude-opus-4-6-max',
+    'claude-opus-4-6[1m]-low',
+    'claude-opus-4-6[1m]-medium',
+    'claude-opus-4-6[1m]-high',
+    'claude-opus-4-6[1m]-max',
+    'claude-sonnet-4-6-low',
+    'claude-sonnet-4-6-medium',
+    'claude-sonnet-4-6-high',
+    'claude-sonnet-4-6[1m]-low',
+    'claude-sonnet-4-6[1m]-medium',
+    'claude-sonnet-4-6[1m]-high',
+    'claude-haiku-4-5-low',
+    'claude-haiku-4-5-medium',
+    'claude-haiku-4-5-high',
     'gpt-5.4-low',
     'gpt-5.4-medium',
     'gpt-5.4-high',
@@ -51,10 +76,27 @@ export type ModelMode = typeof MODEL_MODES[number];
 export const CLAUDE_MODEL_MODES = [
     MODEL_MODE_DEFAULT,
     'claude-opus-4-6',
-    'claude-opus-4-5',
+    'claude-opus-4-6[1m]',
     'claude-sonnet-4-6',
-    'claude-sonnet-4-5',
+    'claude-sonnet-4-6[1m]',
     'claude-haiku-4-5',
+    'claude-opus-4-6-low',
+    'claude-opus-4-6-medium',
+    'claude-opus-4-6-high',
+    'claude-opus-4-6-max',
+    'claude-opus-4-6[1m]-low',
+    'claude-opus-4-6[1m]-medium',
+    'claude-opus-4-6[1m]-high',
+    'claude-opus-4-6[1m]-max',
+    'claude-sonnet-4-6-low',
+    'claude-sonnet-4-6-medium',
+    'claude-sonnet-4-6-high',
+    'claude-sonnet-4-6[1m]-low',
+    'claude-sonnet-4-6[1m]-medium',
+    'claude-sonnet-4-6[1m]-high',
+    'claude-haiku-4-5-low',
+    'claude-haiku-4-5-medium',
+    'claude-haiku-4-5-high',
 ] as const satisfies readonly ModelMode[];
 
 export const GEMINI_MODEL_MODES = [
@@ -115,11 +157,38 @@ export function getValidModelModesForAgent(agent: AgentFlavor): readonly ModelMo
 export const CLAUDE_MODEL_OPTIONS = [
     { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' },
     { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', shortLabel: 'Opus 4.6', description: 'Most capable' },
-    { value: 'claude-opus-4-5', label: 'Claude Opus 4.5', shortLabel: 'Opus 4.5', description: 'Most capable' },
     { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', shortLabel: 'Sonnet 4.6', description: 'Balanced speed and quality' },
-    { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', shortLabel: 'Sonnet 4.5', description: 'Balanced speed and quality' },
     { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', shortLabel: 'Haiku 4.5', description: 'Fastest' },
 ] as const;
+
+export const CLAUDE_MODEL_FAMILY_OPTIONS = [
+    { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' },
+    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', shortLabel: 'Opus 4.6', description: 'Most capable' },
+    { value: 'claude-opus-4-6[1m]', label: 'Claude Opus 4.6 (1M)', shortLabel: 'Opus 4.6', description: 'Most capable, 1M context' },
+    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', shortLabel: 'Sonnet 4.6', description: 'Balanced speed and quality' },
+    { value: 'claude-sonnet-4-6[1m]', label: 'Claude Sonnet 4.6 (1M)', shortLabel: 'Sonnet 4.6', description: 'Balanced, 1M context' },
+    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', shortLabel: 'Haiku 4.5', description: 'Fastest' },
+] as const satisfies readonly { value: ClaudeModelFamily; label: string; shortLabel: string; description: string }[];
+
+const CLAUDE_MODE_TO_SELECTION: Partial<Record<ModelMode, { family: ClaudeModelFamily; effort: ClaudeReasoningEffort }>> = {
+    'claude-opus-4-6-low': { family: 'claude-opus-4-6', effort: 'low' },
+    'claude-opus-4-6-medium': { family: 'claude-opus-4-6', effort: 'medium' },
+    'claude-opus-4-6-high': { family: 'claude-opus-4-6', effort: 'high' },
+    'claude-opus-4-6-max': { family: 'claude-opus-4-6', effort: 'max' },
+    'claude-opus-4-6[1m]-low': { family: 'claude-opus-4-6[1m]', effort: 'low' },
+    'claude-opus-4-6[1m]-medium': { family: 'claude-opus-4-6[1m]', effort: 'medium' },
+    'claude-opus-4-6[1m]-high': { family: 'claude-opus-4-6[1m]', effort: 'high' },
+    'claude-opus-4-6[1m]-max': { family: 'claude-opus-4-6[1m]', effort: 'max' },
+    'claude-sonnet-4-6-low': { family: 'claude-sonnet-4-6', effort: 'low' },
+    'claude-sonnet-4-6-medium': { family: 'claude-sonnet-4-6', effort: 'medium' },
+    'claude-sonnet-4-6-high': { family: 'claude-sonnet-4-6', effort: 'high' },
+    'claude-sonnet-4-6[1m]-low': { family: 'claude-sonnet-4-6[1m]', effort: 'low' },
+    'claude-sonnet-4-6[1m]-medium': { family: 'claude-sonnet-4-6[1m]', effort: 'medium' },
+    'claude-sonnet-4-6[1m]-high': { family: 'claude-sonnet-4-6[1m]', effort: 'high' },
+    'claude-haiku-4-5-low': { family: 'claude-haiku-4-5', effort: 'low' },
+    'claude-haiku-4-5-medium': { family: 'claude-haiku-4-5', effort: 'medium' },
+    'claude-haiku-4-5-high': { family: 'claude-haiku-4-5', effort: 'high' },
+};
 
 export const GEMINI_MODEL_OPTIONS = [
     { value: MODEL_MODE_DEFAULT, label: 'Use CLI configured model', shortLabel: 'CLI', description: 'Use profile/CLI defaults' },
@@ -189,6 +258,30 @@ const CODEX_MODE_TO_SELECTION: Partial<Record<ModelMode, { family: CodexModelFam
     'gpt-5.1-codex-mini-high': { family: 'gpt-5.1-codex-mini', effort: 'high' },
 };
 
+export function parseClaudeModelMode(mode: ModelMode): { family: ClaudeModelFamily; effort: ClaudeReasoningEffort | null } {
+    const entry = CLAUDE_MODE_TO_SELECTION[mode];
+    if (entry) return entry;
+    if (mode === MODEL_MODE_DEFAULT) return { family: MODEL_MODE_DEFAULT, effort: null };
+    return { family: mode as ClaudeModelFamily, effort: null };
+}
+
+export function getClaudeReasoningOptions(family: ClaudeModelFamily): readonly ClaudeReasoningEffort[] {
+    if (family === 'claude-opus-4-6' || family === 'claude-opus-4-6[1m]') return ['max', 'high', 'medium', 'low'];
+    return ['high', 'medium', 'low'];
+}
+
+export function claudeSupportsFastMode(family: ClaudeModelFamily): boolean {
+    return family === 'claude-opus-4-6' || family === 'claude-opus-4-6[1m]';
+}
+
+export function buildClaudeModelMode(
+    family: ClaudeModelFamily,
+    effort: ClaudeReasoningEffort,
+): ModelMode {
+    if (family === MODEL_MODE_DEFAULT) return MODEL_MODE_DEFAULT;
+    return `${family}-${effort}` as ModelMode;
+}
+
 export function parseCodexModelMode(mode: ModelMode): { family: CodexModelFamily; effort: CodexReasoningEffort } {
     return CODEX_MODE_TO_SELECTION[mode] ?? { family: MODEL_MODE_DEFAULT, effort: 'medium' };
 }
@@ -213,7 +306,7 @@ export function buildCodexModelMode(
 
 export type ModelSelection = {
     model: string | null;
-    reasoningEffort: CodexReasoningEffort | null;
+    reasoningEffort: string | null;
 };
 
 const MODEL_NAME_LABELS: Record<string, string> = {
@@ -224,9 +317,7 @@ const MODEL_NAME_LABELS: Record<string, string> = {
     'gpt-5.1-codex-max': 'GPT-5.1-Codex-Max',
     'gpt-5.1-codex-mini': 'GPT-5.1-Codex-Mini',
     'claude-opus-4-6': 'Claude Opus 4.6',
-    'claude-opus-4-5': 'Claude Opus 4.5',
     'claude-sonnet-4-6': 'Claude Sonnet 4.6',
-    'claude-sonnet-4-5': 'Claude Sonnet 4.5',
     'claude-haiku-4-5': 'Claude Haiku 4.5',
     'gemini-3-pro-preview': 'Gemini 3 Pro (Preview)',
     'gemini-3-flash-preview': 'Gemini 3 Flash (Preview)',
@@ -237,6 +328,7 @@ const REASONING_EFFORT_LABELS: Record<string, string> = {
     low: 'Low',
     medium: 'Medium',
     high: 'High',
+    max: 'Max',
     xhigh: 'XHigh',
 };
 
@@ -248,7 +340,12 @@ export function resolveModelSelectionForFlavor(flavor: string | null | undefined
         if (parsed.family === MODEL_MODE_DEFAULT) return { model: modelMode, reasoningEffort: null };
         return { model: parsed.family, reasoningEffort: parsed.effort };
     }
-    if (flavor === 'claude' || flavor === 'gemini') return { model: modelMode, reasoningEffort: null };
+    if (flavor === 'claude') {
+        const parsed = parseClaudeModelMode(modelMode);
+        if (parsed.family === MODEL_MODE_DEFAULT) return { model: modelMode, reasoningEffort: null };
+        return { model: parsed.family, reasoningEffort: parsed.effort };
+    }
+    if (flavor === 'gemini') return { model: modelMode, reasoningEffort: null };
     return { model: null, reasoningEffort: null };
 }
 
@@ -259,6 +356,11 @@ export function resolveLocalModelDisplay(modelMode: string | null | undefined): 
     const parsedCodex = parseCodexModelMode(modelMode);
     if (parsedCodex.family !== MODEL_MODE_DEFAULT) {
         return { model: parsedCodex.family, reasoningEffort: parsedCodex.effort };
+    }
+
+    const parsedClaude = CLAUDE_MODE_TO_SELECTION[modelMode as ModelMode];
+    if (parsedClaude) {
+        return { model: parsedClaude.family, reasoningEffort: parsedClaude.effort };
     }
 
     return { model: modelMode, reasoningEffort: null };
@@ -291,10 +393,12 @@ export function isModelFast(model: string | null | undefined): boolean {
 }
 
 export function formatModelDisplay(model: string | null | undefined, reasoningEffort: string | null | undefined): string | null {
-    const modelLabel = formatModelNameLabel(model);
+    const is1m = typeof model === 'string' && model.includes('[1m]');
+    const modelLabel = formatModelNameLabel(is1m ? model!.replace(/\[1m\]/g, '') : model);
     if (!modelLabel) return null;
     const effortLabel = formatReasoningEffortLabel(reasoningEffort);
-    return effortLabel ? `${modelLabel} (${effortLabel})` : modelLabel;
+    const parts = [is1m ? '1M' : '', effortLabel ?? ''].filter(Boolean);
+    return parts.length > 0 ? `${modelLabel} (${parts.join(', ')})` : modelLabel;
 }
 
 // ─── Context Window Sizes ──────────────────────────────────────
@@ -308,11 +412,11 @@ const AGENT_DEFAULT_CONTEXT_WINDOWS: Record<AgentFlavor, number> = {
 };
 
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-    // Claude models
+    // Claude models (default 200K; 1M is opt-in via [1m] suffix in Claude Code)
     'claude-opus-4-6': 200_000,
-    'claude-opus-4-5': 200_000,
+    'claude-opus-4-6[1m]': 1_000_000,
     'claude-sonnet-4-6': 200_000,
-    'claude-sonnet-4-5': 200_000,
+    'claude-sonnet-4-6[1m]': 1_000_000,
     'claude-haiku-4-5': 200_000,
     // Codex models (fallback; actual value comes from CLI via context_window_size)
     'gpt-5.4': 258_400,
@@ -335,11 +439,25 @@ export function getMaxContextSize(modelMode: string | null | undefined, agentFla
     // Try exact model mode match (for composite codex modes, extract family)
     if (modelMode && modelMode !== MODEL_MODE_DEFAULT) {
         if (MODEL_CONTEXT_WINDOWS[modelMode]) return MODEL_CONTEXT_WINDOWS[modelMode];
+
+        // Strip -fast suffix for lookups
+        const stripped = modelMode.replace(/-fast$/, '');
+        if (stripped !== modelMode && MODEL_CONTEXT_WINDOWS[stripped]) return MODEL_CONTEXT_WINDOWS[stripped];
+
         // For codex composite modes like "gpt-5.3-codex-high", extract family
         if (isModelMode(modelMode)) {
             const parsed = parseCodexModelMode(modelMode);
             if (parsed.family !== MODEL_MODE_DEFAULT && MODEL_CONTEXT_WINDOWS[parsed.family]) {
                 return MODEL_CONTEXT_WINDOWS[parsed.family];
+            }
+        }
+
+        // For claude composite modes like "claude-opus-4-6-high", extract family
+        const claudeMode = isModelMode(modelMode) ? modelMode : (isModelMode(stripped) ? stripped : null);
+        if (claudeMode) {
+            const parsedClaude = parseClaudeModelMode(claudeMode);
+            if (parsedClaude.family !== MODEL_MODE_DEFAULT && MODEL_CONTEXT_WINDOWS[parsedClaude.family]) {
+                return MODEL_CONTEXT_WINDOWS[parsedClaude.family];
             }
         }
     }
