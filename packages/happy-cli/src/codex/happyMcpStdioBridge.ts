@@ -56,7 +56,18 @@ async function main() {
           { capabilities: {} }
         );
         const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
+        transport.onclose = () => {
+          // Reset client on transport close so next call reconnects
+          if (httpClient === client) {
+            httpClient = null;
+          }
+        };
         await client.connect(transport);
+        client.onclose = () => {
+          if (httpClient === client) {
+            httpClient = null;
+          }
+        };
         httpClient = client;
         return client;
       } finally {
@@ -84,19 +95,25 @@ async function main() {
       },
     },
     async (args) => {
-      try {
-        const client = await ensureHttpClient();
-        const response = await client.callTool({ name: 'change_title', arguments: args });
-        // Pass-through response from HTTP server
-        return response as any;
-      } catch (error) {
-        return {
-          content: [
-            { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
-          ],
-          isError: true,
-        };
+      // Retry once on failure — stale client from SSE timeout gets replaced
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const client = await ensureHttpClient();
+          const response = await client.callTool({ name: 'change_title', arguments: args });
+          return response as any;
+        } catch (error) {
+          httpClient = null; // Force reconnect on next attempt
+          if (attempt === 0) continue;
+          return {
+            content: [
+              { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
+            ],
+            isError: true,
+          };
+        }
       }
+      // Unreachable, but satisfies TypeScript
+      return { content: [{ type: 'text', text: 'Unexpected error' }], isError: true };
     }
   );
 
