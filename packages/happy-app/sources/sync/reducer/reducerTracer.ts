@@ -118,6 +118,19 @@ function isUuidLike(value: string): boolean {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function getToolCallParentIds(content: { id: string; input: any }): string[] {
+    const ids = new Set<string>([content.id]);
+    const sessionSubagent = content.input?.sessionSubagent;
+    if (typeof sessionSubagent === 'string' && sessionSubagent.length > 0) {
+        ids.add(sessionSubagent);
+    }
+    return [...ids];
+}
+
+function isSubagentToolCall(name: string): boolean {
+    return name === 'Task' || name === 'Agent';
+}
+
 // Process orphan messages recursively when their parent becomes available
 function processOrphans(state: TracerState, parentUuid: string, sidechainId: string): TracedMessage[] {
     const results: TracedMessage[] = [];
@@ -173,16 +186,18 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
         if (message.role === 'agent') {
             for (const content of message.content) {
                 if (content.type === 'tool-call') {
-                    state.toolCallToMessageId.set(content.id, message.id);
+                    for (const parentId of getToolCallParentIds(content)) {
+                        state.toolCallToMessageId.set(parentId, message.id);
 
-                    // Session protocol sidechain messages can arrive before their parent tool call.
-                    // If we already buffered children keyed by subagent/tool id, flush them now.
-                    const subagentOrphans = processOrphans(state, content.id, message.id);
-                    if (subagentOrphans.length > 0) {
-                        results.push(...subagentOrphans);
+                        // Session protocol sidechain messages can arrive before their parent tool call.
+                        // If we already buffered children keyed by subagent/tool id, flush them now.
+                        const subagentOrphans = processOrphans(state, parentId, message.id);
+                        if (subagentOrphans.length > 0) {
+                            results.push(...subagentOrphans);
+                        }
                     }
                 }
-                if (content.type === 'tool-call' && content.name === 'Task') {
+                if (content.type === 'tool-call' && isSubagentToolCall(content.name)) {
                     if (content.input && typeof content.input === 'object' && 'prompt' in content.input) {
                         // Store Task info indexed by message ID (not tool ID)
                         state.taskTools.set(message.id, {

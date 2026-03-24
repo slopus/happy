@@ -195,6 +195,45 @@ function mergeToolInputs(existingInput: unknown, nextInput: unknown): unknown {
     return nextInput ?? existingInput;
 }
 
+function getSidechainOwner(state: ReducerState, sidechainId: string): ReducerMessage | null {
+    const ownerMessageId = state.messageIds.get(sidechainId);
+    if (ownerMessageId) {
+        const owner = state.messages.get(ownerMessageId);
+        if (owner?.tool) {
+            return owner;
+        }
+    }
+
+    for (const message of state.messages.values()) {
+        if (message.realID === sidechainId && message.tool) {
+            return message;
+        }
+    }
+
+    return null;
+}
+
+function getVisibleSidechainPrompt(owner: ReducerMessage | null): string | null {
+    const prompt = owner?.tool?.input?.prompt;
+    if (typeof prompt !== 'string') {
+        return null;
+    }
+    const normalized = prompt.trim();
+    return normalized.length > 0 ? normalized : null;
+}
+
+function isDuplicateSidechainPrompt(
+    existingSidechain: ReducerMessage[],
+    ownerPrompt: string | null,
+    text: string,
+): boolean {
+    if (existingSidechain.length > 0 || !ownerPrompt) {
+        return false;
+    }
+
+    return text.trim() === ownerPrompt;
+}
+
 export type ReducerResult = {
     messages: Message[];
     todos?: Array<{
@@ -861,10 +900,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
         // Get or create the sidechain array for this Task
         const existingSidechain = state.sidechains.get(msg.sidechainId) || [];
+        const owner = getSidechainOwner(state, msg.sidechainId);
+        const ownerPrompt = getVisibleSidechainPrompt(owner);
 
         // Process and add new sidechain messages
         if (msg.role === 'agent' && msg.content[0]?.type === 'sidechain') {
             // This is the sidechain root - create a user message
+            if (isDuplicateSidechainPrompt(existingSidechain, ownerPrompt, msg.content[0].prompt)) {
+                state.sidechains.set(msg.sidechainId, existingSidechain);
+                continue;
+            }
             let mid = allocateId();
             let userMsg: ReducerMessage = {
                 id: mid,
@@ -882,6 +927,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             // Process agent content in sidechain
             for (let c of msg.content) {
                 if (c.type === 'text' || c.type === 'thinking') {
+                    const text = c.type === 'thinking' ? c.thinking : c.text;
+                    if (c.type === 'text' && isDuplicateSidechainPrompt(existingSidechain, ownerPrompt, text)) {
+                        continue;
+                    }
                     let mid = allocateId();
                     const isThinking = c.type === 'thinking';
                     let textMsg: ReducerMessage = {

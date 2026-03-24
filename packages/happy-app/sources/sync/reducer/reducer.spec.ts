@@ -2976,5 +2976,71 @@ describe('reducer', () => {
                 }
             }
         });
+
+        it('nests Agent sidechains via sessionSubagent and suppresses the duplicated prompt echo', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'agent-parent-msg',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-agent-parent',
+                        name: 'Agent',
+                        input: {
+                            description: 'Add translations for switchMachinesHint',
+                            prompt: 'Add translations for switchMachinesHint',
+                            sessionSubagent: 'session-subagent-1',
+                        },
+                        description: 'Add translations for switchMachinesHint',
+                        uuid: 'agent-parent-uuid',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'agent-prompt-echo',
+                    localId: null,
+                    createdAt: 1100,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'text',
+                        text: 'Add translations for switchMachinesHint',
+                        uuid: 'agent-prompt-uuid',
+                        parentUUID: 'session-subagent-1'
+                    }]
+                },
+                {
+                    id: 'agent-child-tool',
+                    localId: null,
+                    createdAt: 1200,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-read-child',
+                        name: 'Read',
+                        input: { file_path: '/tmp/example.ts' },
+                        description: null,
+                        uuid: 'agent-child-tool-uuid',
+                        parentUUID: 'session-subagent-1'
+                    }]
+                }
+            ]);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.name).toBe('Agent');
+                expect(result.messages[0].children).toHaveLength(1);
+                expect(result.messages[0].children[0].kind).toBe('tool-call');
+                if (result.messages[0].children[0].kind === 'tool-call') {
+                    expect(result.messages[0].children[0].tool.name).toBe('Read');
+                }
+            }
+        });
     });
 });
