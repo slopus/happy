@@ -1196,6 +1196,11 @@ export async function runGemini(opts: {
 
       try {
         if (first || !wasSessionCreated) {
+          // Notify server that the session is starting (process spawn + ACP init can be slow).
+          // Without this, the session stays non-"ing" until sendPrompt emits 'running'.
+          thinking = true;
+          session.keepAlive(thinking, 'remote');
+
           // First message or session not created yet - create backend and start session
           if (!geminiBackend) {
             const modelToUse = message.mode?.model === undefined ? undefined : (message.mode.model || null);
