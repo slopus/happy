@@ -957,6 +957,7 @@ export async function runCodex(opts: {
                 wasCreated = false;
                 currentModeHash = null;
                 nextResumeFile = null; // Don't resume - start fresh
+                storedSessionIdForResume = null;
 
                 // Reset processors
                 permissionHandler.reset();
