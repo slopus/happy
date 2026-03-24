@@ -536,6 +536,7 @@ export const es: TranslationStructure = {
         file: 'Archivo',
         fileEmpty: 'El archivo está vacío',
         noChanges: 'No hay cambios que mostrar',
+        deleted: 'Eliminado',
     },
 
     settingsVoice: {

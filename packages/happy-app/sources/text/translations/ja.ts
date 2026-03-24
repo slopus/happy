@@ -537,6 +537,7 @@ export const ja: TranslationStructure = {
         file: 'ファイル',
         fileEmpty: 'ファイルは空です',
         noChanges: '表示する変更はありません',
+        deleted: '削除済み',
     },
 
     settingsVoice: {

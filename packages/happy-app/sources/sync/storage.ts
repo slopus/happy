@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
 import { Session, Machine, GitStatus } from "./storageTypes";
+import type { GitStatusFiles } from "./gitStatusFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -80,6 +81,8 @@ interface StorageState {
     sessionListViewData: SessionListViewItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
     sessionGitStatus: Record<string, GitStatus | null>;
+    sessionGitStatusFiles: Record<string, GitStatusFiles | null>;
+    sessionFileCache: Record<string, Record<string, { content: string | null; diff: string | null; isBinary: boolean; cachedAt: number }>>;
     machines: Record<string, Machine>;
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
     friends: Record<string, UserProfile>;  // All relationships (friends, pending, requested, etc.)
@@ -109,6 +112,8 @@ interface StorageState {
     applyPurchases: (customerInfo: CustomerInfo) => void;
     applyProfile: (profile: Profile) => void;
     applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
+    applyGitStatusFiles: (sessionId: string, files: GitStatusFiles | null) => void;
+    applyFileCache: (sessionId: string, filePath: string, content: string | null, diff: string | null, isBinary: boolean) => void;
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
@@ -272,6 +277,8 @@ export const storage = create<StorageState>()((set, get) => {
         sessionListViewData: null,
         sessionMessages: {},
         sessionGitStatus: {},
+        sessionGitStatusFiles: {},
+        sessionFileCache: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
         socketStatus: 'disconnected',
@@ -714,6 +721,23 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
         }),
+        applyGitStatusFiles: (sessionId: string, files: GitStatusFiles | null) => set((state) => ({
+            ...state,
+            sessionGitStatusFiles: {
+                ...state.sessionGitStatusFiles,
+                [sessionId]: files
+            }
+        })),
+        applyFileCache: (sessionId: string, filePath: string, content: string | null, diff: string | null, isBinary: boolean) => set((state) => ({
+            ...state,
+            sessionFileCache: {
+                ...state.sessionFileCache,
+                [sessionId]: {
+                    ...(state.sessionFileCache[sessionId] || {}),
+                    [filePath]: { content, diff, isBinary, cachedAt: Date.now() }
+                }
+            }
+        })),
         applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => set((state) => ({
             ...state,
             nativeUpdateStatus: status
@@ -950,7 +974,9 @@ export const storage = create<StorageState>()((set, get) => {
             
             // Remove session git status if it exists
             const { [sessionId]: deletedGitStatus, ...remainingGitStatus } = state.sessionGitStatus;
-            
+            const { [sessionId]: _gitStatusFiles, ...remainingGitStatusFiles } = state.sessionGitStatusFiles;
+            const { [sessionId]: _fileCache, ...remainingFileCache } = state.sessionFileCache;
+
             // Clear drafts and permission modes from persistent storage
             const drafts = loadSessionDrafts();
             delete drafts[sessionId];
@@ -968,6 +994,8 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: remainingSessions,
                 sessionMessages: remainingSessionMessages,
                 sessionGitStatus: remainingGitStatus,
+                sessionGitStatusFiles: remainingGitStatusFiles,
+                sessionFileCache: remainingFileCache,
                 sessionListViewData
             };
         }),
@@ -1274,6 +1302,14 @@ export function useSocketStatus() {
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {
     return storage(useShallow((state) => state.sessionGitStatus[sessionId] ?? null));
+}
+
+export function useSessionGitStatusFiles(sessionId: string): GitStatusFiles | null {
+    return storage(useShallow((state) => state.sessionGitStatusFiles[sessionId] ?? null));
+}
+
+export function useSessionFileCache(sessionId: string, filePath: string) {
+    return storage(useShallow((state) => state.sessionFileCache[sessionId]?.[filePath] ?? null));
 }
 
 export function useIsDataReady(): boolean {

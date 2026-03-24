@@ -550,6 +550,7 @@ export const en: TranslationStructure = {
         file: 'File',
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
+        deleted: 'Deleted',
     },
 
     settingsVoice: {
