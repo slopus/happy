@@ -215,6 +215,7 @@ type ParsedOrchestratorContext = {
     modelModes: Record<string, string[]>;
     machines: Array<{
         machineId?: string;
+        providers?: string[];
         active?: boolean;
         online?: boolean;
         dispatchReady?: boolean;
@@ -400,7 +401,7 @@ function OrchestratorStructuredOutput({ context, runs: initialRuns }: { context:
                                     <Text style={styles.orchestratorRunMetaValue}>{run.runId ?? '-'}</Text>
                                     {run.title ? <Text style={styles.orchestratorRunTitle}>{run.title}</Text> : null}
                                 </View>
-                                {run.status ? <OrchestratorStatusBadge status={run.status as any} /> : null}
+                                {run.status ? <OrchestratorStatusBadge status={run.status === 'queued' ? 'running' : run.status as any} /> : null}
                             </View>
                             {summaryLine ? (
                                 <Text style={styles.orchestratorSummaryText}>{summaryLine}</Text>
@@ -416,7 +417,7 @@ function OrchestratorStructuredOutput({ context, runs: initialRuns }: { context:
                                                     <Text style={styles.orchestratorTaskTitle} numberOfLines={1}>
                                                         {formatTaskTitle(task, taskIndex)}
                                                     </Text>
-                                                    {task.status ? <OrchestratorStatusBadge status={task.status as any} /> : null}
+                                                    {task.status ? <OrchestratorStatusBadge status={task.status === 'queued' ? 'running' : task.status as any} /> : null}
                                                 </View>
                                                 {task.provider ? (
                                                     <Text style={styles.orchestratorTaskMeta}>
@@ -476,7 +477,7 @@ function OrchestratorContextCard({ context }: { context: ParsedOrchestratorConte
                     <Text style={styles.orchestratorRunMetaLabel}>machines</Text>
                     {context.machines.map((machine, index) => (
                         <Text key={machine.machineId ?? `machine-${index}`} style={styles.orchestratorTaskMeta}>
-                            {machine.machineId ?? '-'} · active:{formatBoolean(machine.active)} · online:{formatBoolean(machine.online)} · ready:{formatBoolean(machine.dispatchReady)}
+                            {machine.machineId ?? '-'} · providers:{machine.providers?.join(',') || '-'} · active:{formatBoolean(machine.active)} · online:{formatBoolean(machine.online)} · ready:{formatBoolean(machine.dispatchReady)}
                             {machine.lastActiveAt ? ` · lastActiveAt:${machine.lastActiveAt}` : ''}
                         </Text>
                     ))}
@@ -610,6 +611,7 @@ function parseOrchestratorContextCandidate(value: unknown): ParsedOrchestratorCo
             }
             return [{
                 machineId: asString(item.machineId),
+                providers: Array.isArray(item.providers) ? item.providers.filter((provider): provider is string => typeof provider === 'string') : [],
                 active: asBoolean(item.active),
                 online: asBoolean(item.online),
                 dispatchReady: asBoolean(item.dispatchReady),
