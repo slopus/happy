@@ -1,7 +1,6 @@
 import * as React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useRealtimeStatus, useRealtimeMode, storage } from '@/sync/storage';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,7 +49,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.error,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
-                    text: 'Connection Error',
+                    text: 'Voice disconnected',
                     textColor: theme.colors.text
                 };
             default:
@@ -73,6 +72,9 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
             } catch (error) {
                 console.error('Error stopping voice session:', error);
             }
+        } else if (realtimeStatus === 'error') {
+            // Dismiss the error bar
+            storage.getState().setRealtimeStatus('disconnected');
         }
     };
 
@@ -128,7 +130,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                                 />
                             )}
                             <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: isVoiceSpeaking ? 8 : 0 }]}>
-                                Tap to end
+                                {realtimeStatus === 'error' ? 'Tap to dismiss' : 'Tap to end'}
                             </Text>
                         </View>
                     </View>
