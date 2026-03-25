@@ -1,6 +1,5 @@
 import React from 'react';
-import { View, Pressable, Platform } from 'react-native';
-import { Image } from 'expo-image';
+import { View, Pressable, Platform, Image as RNImage } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
@@ -248,9 +247,8 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 }
 
 // Small agent icon with pulsing animation matching StatusDot behavior
-const PulsingAgentIcon = React.memo(({ flavorIcon, flavor, isPulsing, tintColor, opacity: baseOpacity }: {
+const PulsingAgentIcon = React.memo(({ flavorIcon, isPulsing, tintColor, opacity: baseOpacity }: {
     flavorIcon: any;
-    flavor: string;
     isPulsing: boolean;
     tintColor?: string;
     opacity: number;
@@ -275,10 +273,10 @@ const PulsingAgentIcon = React.memo(({ flavorIcon, flavor, isPulsing, tintColor,
 
     return (
         <Animated.View style={[{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center', marginRight: 8 }, animatedStyle]}>
-            <Image
+            <RNImage
                 source={flavorIcon}
                 style={{ width: 8, height: 8 }}
-                contentFit="contain"
+                resizeMode="contain"
                 tintColor={tintColor}
             />
         </Animated.View>
@@ -361,7 +359,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             return (
                                 <PulsingAgentIcon
                                     flavorIcon={flavorIcon}
-                                    flavor={flavor}
                                     isPulsing={sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking'}
                                     tintColor={
                                         (sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking')
