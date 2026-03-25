@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { GlassView } from 'expo-glass-effect';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
@@ -1012,7 +1012,7 @@ function NewSessionScreen() {
                                             style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
                                             onPress={() => togglePicker('worktree')}
                                         >
-                                            <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
+                                            <MaterialCommunityIcons name="tree" size={15} color={theme.colors.textSecondary} />
                                             <Text style={styles.configLabel} numberOfLines={1}>
                                                 {worktreeLabel}
                                             </Text>
@@ -1091,7 +1091,7 @@ function NewSessionScreen() {
                                             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                                             style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
                                         >
-                                            <Octicons name="git-branch" size={14} color={theme.colors.textSecondary} />
+                                            <MaterialCommunityIcons name="tree" size={14} color={theme.colors.textSecondary} />
                                         </Pressable>
                                     )}
                                 </View>
