@@ -36,6 +36,3 @@ claude-docs/
 note/
 happy-next-cli-*.tgz
 happy-code-*.tgz
-
-# npm auth token (never commit)
-.npmrc
