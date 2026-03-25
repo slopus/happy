@@ -366,6 +366,11 @@ export function resolveLocalModelDisplay(modelMode: string | null | undefined): 
     return { model: modelMode, reasoningEffort: null };
 }
 
+/** Strip date suffix (YYYYMMDD / YYYY-MM-DD) and -fast suffix to get the canonical model key. */
+function normalizeModelId(model: string): string {
+    return model.replace(/-\d{8}$/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '').replace(/-fast$/, '');
+}
+
 export function formatModelNameLabel(model: string | null | undefined): string | null {
     if (!model) return null;
     if (MODEL_NAME_LABELS[model]) return MODEL_NAME_LABELS[model];
@@ -375,8 +380,7 @@ export function formatModelNameLabel(model: string | null | undefined): string |
             return MODEL_NAME_LABELS[codexParsed.family] ?? codexParsed.family;
         }
     }
-    // Strip date suffix (YYYYMMDD / YYYY-MM-DD) then -fast suffix (order matters for "model-fast-20250101")
-    const stripped = model.replace(/-\d{8}$/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '').replace(/-fast$/, '');
+    const stripped = normalizeModelId(model);
     if (stripped !== model && MODEL_NAME_LABELS[stripped]) return MODEL_NAME_LABELS[stripped];
     return model;
 }
@@ -435,7 +439,20 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
  * Get the max context window size for a given model mode and agent flavor.
  * Falls back to agent default, then global default.
  */
-export function getMaxContextSize(modelMode: string | null | undefined, agentFlavor: AgentFlavor | string | null | undefined): number {
+function findContextWindow(model: string): number | undefined {
+    if (MODEL_CONTEXT_WINDOWS[model]) return MODEL_CONTEXT_WINDOWS[model];
+    const stripped = normalizeModelId(model);
+    if (stripped !== model && MODEL_CONTEXT_WINDOWS[stripped]) return MODEL_CONTEXT_WINDOWS[stripped];
+    return undefined;
+}
+
+export function getMaxContextSize(modelMode: string | null | undefined, agentFlavor: AgentFlavor | string | null | undefined, actualModel?: string | null): number {
+    // When modelMode is "default" (CLI configured), use the actual model reported by CLI if available
+    if ((!modelMode || modelMode === MODEL_MODE_DEFAULT) && actualModel) {
+        const found = findContextWindow(actualModel);
+        if (found) return found;
+    }
+
     // Try exact model mode match (for composite codex modes, extract family)
     if (modelMode && modelMode !== MODEL_MODE_DEFAULT) {
         if (MODEL_CONTEXT_WINDOWS[modelMode]) return MODEL_CONTEXT_WINDOWS[modelMode];

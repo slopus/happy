@@ -6,7 +6,7 @@ import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
-import { Query, SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKUserMessage } from "./sdk";
+import { Query, SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { isDebug } from "@/utils/env";
 import { logger } from "@/ui/logger";
@@ -195,6 +195,16 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
         // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);
+
+        // Extract model from system/init — contains the actual model ID (e.g. "claude-opus-4-6[1m]")
+        // which lets the app determine the correct context window size
+        if (message.type === 'system' && (message as SDKSystemMessage).subtype === 'init') {
+            const initModel = (message as SDKSystemMessage).model;
+            if (initModel && initModel !== currentSyncedModel) {
+                currentSyncedModel = initModel;
+                session.client.updateMetadata((m) => ({ ...m, model: initModel }));
+            }
+        }
 
         // Handle result messages with errors - send as session event
         if (message.type === 'result') {

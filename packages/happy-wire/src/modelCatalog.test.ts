@@ -81,4 +81,23 @@ describe('modelCatalog', () => {
         expect(getMaxContextSize('claude-opus-4-6[1m]-high', 'claude')).toBe(1_000_000);
         expect(getMaxContextSize('claude-sonnet-4-6[1m]', 'claude')).toBe(1_000_000);
     });
+
+    it('resolves context window from actualModel when modelMode is default', () => {
+        // Exact match
+        expect(getMaxContextSize('default', 'claude', 'claude-sonnet-4-6')).toBe(200_000);
+        // SDK date-stamped model ID (prefix match)
+        expect(getMaxContextSize('default', 'claude', 'claude-opus-4-20250514')).toBe(200_000);
+        expect(getMaxContextSize('default', 'claude', 'claude-sonnet-4-1-20250805')).toBe(200_000);
+        // -fast suffix
+        expect(getMaxContextSize('default', 'claude', 'claude-sonnet-4-6-fast')).toBe(200_000);
+        // Codex actual model
+        expect(getMaxContextSize('default', 'codex', 'gpt-5.2-codex')).toBe(258_400);
+        // Gemini actual model
+        expect(getMaxContextSize('default', 'gemini', 'gemini-2.5-pro')).toBe(1_000_000);
+        // Unknown model falls back to agent default
+        expect(getMaxContextSize('default', 'claude', 'some-unknown-model')).toBe(200_000);
+        // No actualModel falls back to agent default
+        expect(getMaxContextSize('default', 'claude')).toBe(200_000);
+        expect(getMaxContextSize('default', 'gemini')).toBe(1_000_000);
+    });
 });
