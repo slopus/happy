@@ -138,6 +138,10 @@ If you discover something non-obvious, append it here under the right section.
 - NEVER kill, restart, or signal the global daemon or any sessions you didn't
   spawn. Only clean up processes YOUR tests created (identifiable by temp dirs
   or test-specific ports).
+- `ps eww` is enough to identify test-owned daemons safely: the isolated e2e
+  harness exports `MODE=test`, `HAPPY_HOME_DIR=/tmp/happy-e2e-.../daemon-home`,
+  and temp project/PGlite paths. Only kill processes that carry those exact
+  temp-dir markers; leave anything without them alone.
 
 ## Process (what fails)
 
@@ -156,6 +160,16 @@ If you discover something non-obvious, append it here under the right section.
 
 ## Browser UX Testing
 
+- `AppSyncStore.getMessages()` must return a shared empty array when a session
+  has not hydrated yet. `useV3SessionMessages()` is backed by
+  `useSyncExternalStore`; if `getSnapshot()` sees a fresh `[]` on each read,
+  React logs `"The result of getSnapshot should be cached"` and can cascade
+  into `"Maximum update depth exceeded"` inside `<SessionViewLoaded>`.
+- Expo Router web imports dev-route modules during route discovery. A broken
+  dev-only screen can take down unrelated browser e2e tests before
+  `/session/:id` ever renders. On March 25, `dev/qr-test`,
+  `dev/session-composer`, and `dev/unistyles-demo` all needed web-safe
+  handling before the real session-page crash could even be reproduced.
 - Claude does NOT reliably use the formal `AskUserQuestion` tool for "Ask me
   which one I want" prompts. It may just list options in text with
   `step-finish(reason=stop)`. The browser test must handle both cases —

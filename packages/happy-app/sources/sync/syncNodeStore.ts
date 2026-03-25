@@ -31,6 +31,8 @@ type SessionID = v3.SessionID;
 type Part = v3.Part;
 type SessionControlMessage = v3.SessionControlMessage;
 
+const EMPTY_MESSAGES: MessageWithParts[] = [];
+
 interface SessionSnapshot {
     infoSignature: string;
     messageIds: string[];
@@ -143,7 +145,7 @@ export class AppSyncStore {
 
     /** Get messages for a session. */
     getMessages(sessionId: SessionID): MessageWithParts[] {
-        return this.getSession(sessionId)?.messages ?? [];
+        return this.getSession(sessionId)?.messages ?? EMPTY_MESSAGES;
     }
 
     /** Get a single message by ID. */

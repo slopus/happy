@@ -1,24 +1,23 @@
 # Loop State
 
-Last updated: 2026-03-25 01:40 PDT
+Last updated: 2026-03-25 01:59 PDT
 
 ## Current Task
 
-TASK: Fix pre-existing browser test "Maximum update depth exceeded" crash, then prove cross-session isolation test
+TASK: Level 3 full browser verification — extend the real browser suite toward all 34 exercise steps + multi-session + video
 
-The Level 3 browser tests (ALL of them, including Claude smoke) are broken
-in the committed code (`adccbb36`). The web app crashes with "Maximum update
-depth exceeded" when rendering any session page. This is NOT caused by
-Amendment 4 — proven by stashing all Amendment 4 changes and reproducing
-the same failure on the baseline. The root cause is likely in the session
-state cache or control message changes from the March 24 commit.
+The pre-existing browser blocker is fixed. The web app now boots on Expo web,
+session pages render again, and the existing cross-session isolation browser
+test passes on the real server + daemon + Claude stack. The next acceptance
+gap is the full Level 3 browser proof from the spec: cover the full exercise
+flow in Chrome, keep video recording enabled, and preserve the multi-session
+checks that now work again.
 
 ## Why This Task
 
-Amendment 4 code is complete and typecheck-clean. The browser test that
-would prove cross-session isolation already exists but is blocked by this
-pre-existing web rendering crash. Fix the crash, then the Amendment 4
-browser proof can be obtained.
+The browser blocker was the last thing preventing real Level 3 web proof.
+With the crash resolved and the cross-session test passing again, the next
+priority is closing the remaining browser-verification acceptance gap.
 
 ## Completed Tasks
 
@@ -378,10 +377,26 @@ browser proof can be obtained.
   - Level 1 proof on March 25, 2026:
     `HAPPY_TEST_SERVER_PORT=34143 npx vitest run src/sync-node.integration.test.ts --reporter=verbose`
     → `28 passed (28)`, file passed in 4.86s
-  - **BLOCKED**: Browser e2e proof blocked by pre-existing web rendering crash
-    ("Maximum update depth exceeded" in any session page). Proven NOT caused
-    by Amendment 4 — stashing all Amendment 4 changes reproduces the same failure.
-    Root cause is in committed code from March 24 commit (`adccbb36`).
+- [x] Fix pre-existing web render loop and prove cross-session isolation in the browser
+  - Before the session page mounted, Expo Router web route discovery was
+    crashing on dev-only screens (`dev/qr-test`, `dev/session-composer`,
+    `dev/unistyles-demo`). Those routes are now web-safe, so the app can boot
+    to `/session/:id` in browser e2e runs.
+  - Root cause of the real `"Maximum update depth exceeded"` crash:
+    `AppSyncStore.getMessages()` returned a fresh empty array when the sync
+    session had not hydrated yet. `useV3SessionMessages()` uses
+    `useSyncExternalStore`, so React saw a different snapshot on every read,
+    logged `"The result of getSnapshot should be cached"`, and then looped
+    inside `<SessionViewLoaded>`.
+  - `packages/happy-app/sources/sync/syncNodeStore.ts` now returns a shared
+    empty array for missing sessions, which restores referential stability
+    during the pre-hydration render.
+  - Real proof on March 25, 2026:
+    `npx vitest run src/e2e/browser.integration.test.ts --testNamePattern='Session B updates do not rerender the open Session A transcript' --reporter=verbose`
+    → `1 passed | 3 skipped (4)`, file passed in 112.22s
+  - The real browser opened Session A, rendered its transcript, then Session B
+    received a separate Claude turn while Session A stayed unchanged
+    (`renderCountA === 0`; Session B prompt absent from Session A).
 
 ## Remaining Tasks (in priority order)
 
@@ -393,8 +408,8 @@ look for duplication, dead code, unnecessary abstractions.
    top-level session messages (Amendments 1, 2, 6)~~ — DONE
 3. ~~Consolidate agent state + metadata into session state cache (Amendment 3)~~ — DONE
 4. ~~Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)~~ — CODE DONE, browser proof BLOCKED
-5. **FIX BLOCKER**: Debug and fix "Maximum update depth exceeded" crash in the web app
-   — ALL browser tests fail, even existing smoke tests. Root cause is in committed code.
+5. ~~FIX BLOCKER: Debug and fix "Maximum update depth exceeded" crash in the web app
+   — ALL browser tests fail, even existing smoke tests. Root cause is in committed code.~~ DONE
 6. Level 3: FULL browser verification — all 34 steps + multi-session + video (see design doc § "Level 3")
 7. Final dead code cleanup + simplification sweep
 
@@ -532,20 +547,19 @@ look for duplication, dead code, unnecessary abstractions.
   pre-existing flakiness — the Codex smoke test was not modified. The issue
   is that Codex's response may not include the specific file names the
   `waitForFunction` checks for (`index.html|styles.css|app.js|...`).
-- **BLOCKER (March 25, 2026)**: ALL Level 3 browser tests fail with "Maximum
-  update depth exceeded" error on web. The web app boots and connects to the
-  server (logs show `fetchSessions completed`), but any session page crashes
-  with an infinite render loop. The error boundary shows "Something went wrong."
-  This is NOT caused by Amendment 4 — stashing all Amendment 4 changes and
-  running the baseline reproduces the identical failure. The root cause is in
-  committed code (likely the March 24 commit `adccbb36` which added control
-  messages and session state cache). Metro cache clearing did not help.
-  The stack trace points to `<SessionViewLoaded>` or `<FaviconPermissionIndicator>`
-  components. The `FaviconPermissionIndicator` has a pre-existing rules-of-hooks
-  violation (hooks called after conditional early return) and an unstable array
-  selector that was fixed with `useShallow` in Amendment 4 work. However, even
-  with that fix, the crash persists in `<SessionViewLoaded>`, suggesting a deeper
-  state update cycle in the session rendering path.
+- Browser blocker investigation on March 25, 2026: before the session page
+  could mount, Expo Router web imported dev-only route modules and crashed on
+  `react-native-unistyles` setup errors from `dev/qr-test` and
+  `dev/session-composer`. `dev/unistyles-demo` also needed a web guard. These
+  were real browser-e2e blockers, but they were separate from the session-page
+  render loop.
+- **RESOLVED (March 25, 2026)**: the `"Maximum update depth exceeded"` browser
+  crash was caused by `AppSyncStore.getMessages()` returning a fresh `[]` for
+  unhydrated sessions. That broke `useSyncExternalStore` snapshot stability in
+  `useV3SessionMessages()`, produced React's `"The result of getSnapshot should
+  be cached"` warning, and then looped inside `<SessionViewLoaded>`. Returning
+  a shared empty array fixed the render path, and the real cross-session
+  isolation browser test now passes.
 
 ## Anti-patterns (DO NOT DO THESE)
 
