@@ -146,6 +146,11 @@ export interface ResumeSessionOptions {
     sessionId: string;
 }
 
+export interface StopSessionOptions {
+    machineId: string;
+    sessionId: string;
+}
+
 // Exported session operation functions
 
 /**
@@ -191,6 +196,27 @@ export async function machineResumeSession(options: ResumeSessionOptions): Promi
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to resume session',
+        };
+    }
+}
+
+export async function machineStopSession(options: StopSessionOptions): Promise<{ success: boolean; message: string }> {
+    const { machineId, sessionId } = options;
+
+    try {
+        const result = await apiSocket.machineRPC<{ message: string }, { sessionId: string }>(
+            machineId,
+            'stop-session',
+            { sessionId },
+        );
+        return {
+            success: true,
+            message: result.message,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Failed to stop session',
         };
     }
 }
@@ -486,7 +512,7 @@ export async function sessionRipgrep(
 /**
  * Kill the session process immediately
  */
-export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
+export async function sessionKill(sessionId: string, machineId?: string): Promise<SessionKillResponse> {
     try {
         const response = await apiSocket.sessionRPC<SessionKillResponse, {}>(
             sessionId,
@@ -495,6 +521,15 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
         );
         return response;
     } catch (error) {
+        if (machineId) {
+            const fallback = await machineStopSession({ machineId, sessionId });
+            if (fallback.success) {
+                return {
+                    success: true,
+                    message: fallback.message,
+                };
+            }
+        }
         return {
             success: false,
             message: error instanceof Error ? error.message : 'Unknown error'

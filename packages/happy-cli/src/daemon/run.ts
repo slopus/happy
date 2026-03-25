@@ -26,6 +26,7 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { resolveHappySession } from '@/resume/resolveHappySession';
+import { resolveCodexResumeContext } from '@/codex/resumeContext';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -168,20 +169,24 @@ export async function startDaemon(): Promise<void> {
       // Check if we already have this PID (daemon-spawned)
       const existingSession = pidToTrackedSession.get(pid);
 
-      if (existingSession && existingSession.startedBy === 'daemon') {
-        // Update daemon-spawned session with reported data
+      if (existingSession) {
+        // Update tracked session metadata for both daemon-spawned and
+        // directly-started sessions. This keeps daemon session listings in sync
+        // after providers discover their real backing session/thread IDs.
         existingSession.happySessionId = sessionId;
         existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
-        logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
+        logger.debug(`[DAEMON RUN] Updated tracked session ${sessionId} with metadata`);
 
-        // Resolve any awaiter for this PID
-        const awaiter = pidToAwaiter.get(pid);
-        if (awaiter) {
-          pidToAwaiter.delete(pid);
-          awaiter(existingSession);
-          logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
+        if (existingSession.startedBy === 'daemon') {
+          // Resolve any awaiter for this PID
+          const awaiter = pidToAwaiter.get(pid);
+          if (awaiter) {
+            pidToAwaiter.delete(pid);
+            awaiter(existingSession);
+            logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
+          }
         }
-      } else if (!existingSession) {
+      } else {
         // New session started externally
         const trackedSession: TrackedSession = {
           startedBy: 'happy directly - likely by user from terminal',
@@ -563,6 +568,14 @@ export async function startDaemon(): Promise<void> {
         });
 
         await fs.access(launch.cwd);
+
+        if (previousSession.metadata.codexThreadId) {
+          await resolveCodexResumeContext({
+            threadId: previousSession.metadata.codexThreadId,
+            currentCwd: launch.cwd,
+            interactive: false,
+          });
+        }
 
         return spawnTrackedHappyProcess({
           args: launch.args,

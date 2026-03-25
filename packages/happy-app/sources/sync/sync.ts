@@ -279,6 +279,51 @@ class Sync {
         return lock;
     }
 
+    private async fetchNormalizedMessagesPage(sourceSessionId: string, afterSeq: number): Promise<{
+        normalizedMessages: NormalizedMessage[];
+        maxSeq: number;
+        hasMore: boolean;
+    }> {
+        const encryption = this.encryption.getSessionEncryption(sourceSessionId);
+        if (!encryption) {
+            throw new Error(`Session encryption not ready for ${sourceSessionId}`);
+        }
+
+        const response = await apiSocket.request(`/v3/sessions/${sourceSessionId}/messages?after_seq=${afterSeq}&limit=100`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch messages for ${sourceSessionId}: ${response.status}`);
+        }
+
+        const data = await response.json() as V3GetSessionMessagesResponse;
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+
+        let maxSeq = afterSeq;
+        for (const message of messages) {
+            if (message.seq > maxSeq) {
+                maxSeq = message.seq;
+            }
+        }
+
+        const decryptedMessages = await encryption.decryptMessages(messages);
+        const normalizedMessages: NormalizedMessage[] = [];
+        for (let i = 0; i < decryptedMessages.length; i++) {
+            const decrypted = decryptedMessages[i];
+            if (!decrypted) {
+                continue;
+            }
+            const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+            if (normalized) {
+                normalizedMessages.push(normalized);
+            }
+        }
+
+        return {
+            normalizedMessages,
+            maxSeq,
+            hasMore: !!data.hasMore,
+        };
+    }
+
     private scheduleQueuedMessagesProcessing(sessionId: string) {
         if (this.sessionQueueProcessing.has(sessionId)) {
             return;
@@ -1593,56 +1638,26 @@ class Sync {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
         const lock = this.getSessionMessageLock(sessionId);
         await lock.inLock(async () => {
-            const encryption = this.encryption.getSessionEncryption(sessionId);
-            if (!encryption) {
-                log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
-                throw new Error(`Session encryption not ready for ${sessionId}`);
-            }
+            let totalNormalized = 0;
 
             let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
             let hasMore = true;
-            let totalNormalized = 0;
 
             while (hasMore) {
-                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
-                }
-                const data = await response.json() as V3GetSessionMessagesResponse;
-                const messages = Array.isArray(data.messages) ? data.messages : [];
+                const page = await this.fetchNormalizedMessagesPage(sessionId, afterSeq);
 
-                let maxSeq = afterSeq;
-                for (const message of messages) {
-                    if (message.seq > maxSeq) {
-                        maxSeq = message.seq;
-                    }
+                if (page.normalizedMessages.length > 0) {
+                    totalNormalized += page.normalizedMessages.length;
+                    this.enqueueMessages(sessionId, page.normalizedMessages);
                 }
 
-                const decryptedMessages = await encryption.decryptMessages(messages);
-                const normalizedMessages: NormalizedMessage[] = [];
-                for (let i = 0; i < decryptedMessages.length; i++) {
-                    const decrypted = decryptedMessages[i];
-                    if (!decrypted) {
-                        continue;
-                    }
-                    const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                    if (normalized) {
-                        normalizedMessages.push(normalized);
-                    }
-                }
-
-                if (normalizedMessages.length > 0) {
-                    totalNormalized += normalizedMessages.length;
-                    this.enqueueMessages(sessionId, normalizedMessages);
-                }
-
-                this.sessionLastSeq.set(sessionId, maxSeq);
-                hasMore = !!data.hasMore;
-                if (hasMore && maxSeq === afterSeq) {
+                this.sessionLastSeq.set(sessionId, page.maxSeq);
+                hasMore = page.hasMore;
+                if (hasMore && page.maxSeq === afterSeq) {
                     log.log(`💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`);
                     break;
                 }
-                afterSeq = maxSeq;
+                afterSeq = page.maxSeq;
             }
 
             storage.getState().applyMessagesLoaded(sessionId);

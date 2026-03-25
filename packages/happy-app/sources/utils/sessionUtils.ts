@@ -109,11 +109,21 @@ export function getSessionAvatarId(session: Session): string {
  * Uses flavor-specific commands which work without happy-agent auth.
  */
 export function getResumeCommand(session: Session): string | null {
-    return buildResumeCommand(session.metadata ?? {});
+    return buildResumeCommand({
+        ...(session.metadata ?? {}),
+        happySessionId: session.id,
+    });
 }
 
-export function getResumeCommandBlock(session: Session): ResumeCommandBlock | null {
-    return buildResumeCommandBlock(session.metadata ?? {});
+export function getResumeCommandBlock(
+    session: Session,
+    options?: { preferHappyResume?: boolean },
+): ResumeCommandBlock | null {
+    return buildResumeCommandBlock({
+        ...(session.metadata ?? {}),
+        happySessionId: session.id,
+        preferHappyResume: options?.preferHappyResume ?? false,
+    });
 }
 
 /**

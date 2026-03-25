@@ -1,11 +1,14 @@
-export function extractCodexResumeFlag(args: string[]): { resumeThreadId: string | null; args: string[] } {
+export function extractCodexResumeFlag(args: string[]): {
+    resumeThreadId: string | null;
+    args: string[];
+} {
     const remainingArgs: string[] = [];
     let resumeThreadId: string | null = null;
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
 
-        if (arg === '--resume' || arg === '-r') {
+        if (arg === '--resume' || arg === '-r' || arg === 'resume') {
             if (resumeThreadId !== null) {
                 throw new Error('Codex resume flag can only be provided once.');
             }
