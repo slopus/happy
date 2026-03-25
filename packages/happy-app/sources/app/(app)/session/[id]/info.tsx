@@ -159,7 +159,7 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     // Use HappyAction for archiving - it handles errors automatically
     const [archivingSession, performArchive] = useHappyAction(async () => {
-        const result = await sessionKill(session.id);
+        const result = await sessionKill(session.id, session.metadata?.machineId);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
         }
@@ -180,7 +180,7 @@ function SessionInfoContent({ session }: { session: Session }) {
 
         // Kill session first if it's still active (best-effort)
         if (sessionStatus.isConnected || session.active) {
-            await sessionKill(session.id).catch(() => {});
+            await sessionKill(session.id, session.metadata?.machineId).catch(() => {});
         }
 
         // Clean up worktree if this session was in one (best-effort)
