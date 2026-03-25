@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useSession, useV3SessionMessages } from "@/sync/storage";
+import { useV3SessionMessages, useSyncSessionState } from "@/sync/storage";
 import { FlatList, Platform, View } from 'react-native';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
@@ -27,9 +27,9 @@ const ListHeader = React.memo(() => {
 });
 
 const ListFooter = React.memo((props: { sessionId: string }) => {
-    const session = useSession(props.sessionId)!;
+    const syncSession = useSyncSessionState(props.sessionId);
     return (
-        <ChatFooter controlledByUser={session.agentState?.controlledByUser || false} />
+        <ChatFooter controlledByUser={syncSession?.controlledByUser || false} />
     )
 });
 

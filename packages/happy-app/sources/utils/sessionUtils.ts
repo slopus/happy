@@ -22,13 +22,11 @@ export interface SessionStatus {
 export function useSessionStatus(session: Session): SessionStatus {
     const isOnline = session.presence === "online";
     const syncSession = useSyncSessionState(session.id);
-    const hasPermissions = syncSession
-        ? syncSession.permissions.some((permission) => !permission.resolved)
-        : Boolean(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
+    const hasPermissions = syncSession?.permissions.some((permission) => !permission.resolved) ?? false;
     const isRunning = syncSession
         ? syncSession.status.type === 'running'
             || (syncSession.status.type === 'blocked' && syncSession.status.reason === 'question')
-        : session.thinking === true;
+        : false;
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';

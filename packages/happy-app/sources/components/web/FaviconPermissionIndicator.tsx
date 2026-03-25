@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
 import { storage, useAnyOnlineSyncSessionHasPendingPermissions } from '@/sync/storage';
 import { updateFaviconWithNotification, resetFavicon } from '@/utils/web/faviconGenerator';
 
@@ -12,11 +13,11 @@ export const FaviconPermissionIndicator = React.memo(() => {
         return null;
     }
 
-    const onlineSessionIds = storage((state) => (
+    const onlineSessionIds = storage(useShallow((state) => (
         Object.values(state.sessions)
             .filter((session) => session.presence === 'online')
             .map((session) => session.id)
-    ));
+    )));
     const hasOnlineSessionWithPermissions = useAnyOnlineSyncSessionHasPendingPermissions(onlineSessionIds);
 
     React.useLayoutEffect(() => {

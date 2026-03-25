@@ -201,3 +201,23 @@ If you discover something non-obvious, append it here under the right section.
   The teardown only kills the daemon, not individual sessions.
 - Step 30 (retry after stop) is the slowest step at 154s — Codex does
   extensive file reading, editing, and retry cycles.
+
+## Smart Zustand / Amendment 4
+
+- The fine-grained selectors (`useV3SessionMessages`, `useV3Message`,
+  `useV3ToolPart`, `useSyncSessionState`) were already implemented before
+  Amendment 4 started. The main work was migrating remaining old-path
+  consumers (`agentState.requests`, `agentState.controlledByUser`,
+  `session.thinking`) to read exclusively from SyncNode.
+- `FaviconPermissionIndicator` has a pre-existing rules-of-hooks violation
+  (hooks called after conditional early return) AND an unstable array selector
+  that produces new references on every Zustand notification. Fix the selector
+  with `useShallow` from `zustand/react/shallow`.
+- The `storage.ts:applySessions` reducer can safely read from
+  `sync.appSyncStore?.getSession()` — it's a getter with no side effects.
+  But be careful about triggering cascading state updates from inside reducers.
+- The web app "Maximum update depth exceeded" crash (blocking browser tests
+  since March 25) is NOT in the Amendment 4 code. It's in the committed code
+  from the March 24 commit. Stashing all Amendment 4 changes reproduces it.
+  The crash is in `<SessionViewLoaded>` or `<FaviconPermissionIndicator>` and
+  manifests as soon as any session page is opened in Chrome via Playwright.

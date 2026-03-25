@@ -1,16 +1,24 @@
 # Loop State
 
-Last updated: 2026-03-24 13:52 PDT
+Last updated: 2026-03-25 01:40 PDT
 
 ## Current Task
 
-TASK: Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)
+TASK: Fix pre-existing browser test "Maximum update depth exceeded" crash, then prove cross-session isolation test
+
+The Level 3 browser tests (ALL of them, including Claude smoke) are broken
+in the committed code (`adccbb36`). The web app crashes with "Maximum update
+depth exceeded" when rendering any session page. This is NOT caused by
+Amendment 4 — proven by stashing all Amendment 4 changes and reproducing
+the same failure on the baseline. The root cause is likely in the session
+state cache or control message changes from the March 24 commit.
 
 ## Why This Task
 
-Amendment 3 (session state cache) is now complete and proven. The next priority
-is Amendment 4: make the app's Zustand store a thin wrapper over SyncNode state
-with fine-grained selectors, so UI components don't re-render on every message.
+Amendment 4 code is complete and typecheck-clean. The browser test that
+would prove cross-session isolation already exists but is blocked by this
+pre-existing web rendering crash. Fix the crash, then the Amendment 4
+browser proof can be obtained.
 
 ## Completed Tasks
 
@@ -348,6 +356,32 @@ with fine-grained selectors, so UI components don't re-render on every message.
     present, so `packages/happy-server/sources/app/api/routes/sessionRoutes.ts`
     now uses a PGlite-only raw SQL path for those routes. `yarn workspace happy-server typecheck`
     passes with the route normalization fix.
+- [x] Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)
+  - Fine-grained `useSyncExternalStore`-based hooks were already in place from
+    previous iterations: `useV3SessionMessages`, `useV3Message`, `useV3ToolPart`,
+    `useSyncSessionState`, `useSyncSessionTodos`, `useSyncPendingPermissionCount`
+  - `AppSyncStore` version tracking ensures stable references when unchanged
+  - Migrated all remaining old-path consumers to SyncNode:
+    - `sessionUtils.ts:useSessionStatus` — permissions and running state now
+      exclusively from SyncNode (removed `agentState.requests` fallback)
+    - `realtimeClientTools.ts` — voice permission processing reads from
+      `sync.appSyncStore.getSession().permissions` instead of old agentState
+    - `ChatList.tsx:ListFooter` — `controlledByUser` from `useSyncSessionState`
+    - `info.tsx` — controlledByUser and thinking state from SyncNode with fallback
+    - `storage.ts:applySessions` — voice notification reads SyncNode permissions
+      with dedup tracking via `notifiedPermissionIds` set
+  - Fixed `FaviconPermissionIndicator.tsx` unstable array reference — added
+    `useShallow` to prevent infinite re-render loop from array selector
+  - Cross-session isolation test exists (`browser.integration.test.ts` line 526)
+    with render count instrumentation via `__HAPPY_TRANSCRIPT_RENDER_COUNTS__`
+  - Typecheck passes, happy-sync + happy-coder build clean
+  - Level 1 proof on March 25, 2026:
+    `HAPPY_TEST_SERVER_PORT=34143 npx vitest run src/sync-node.integration.test.ts --reporter=verbose`
+    → `28 passed (28)`, file passed in 4.86s
+  - **BLOCKED**: Browser e2e proof blocked by pre-existing web rendering crash
+    ("Maximum update depth exceeded" in any session page). Proven NOT caused
+    by Amendment 4 — stashing all Amendment 4 changes reproduces the same failure.
+    Root cause is in committed code from March 24 commit (`adccbb36`).
 
 ## Remaining Tasks (in priority order)
 
@@ -358,9 +392,11 @@ look for duplication, dead code, unnecessary abstractions.
 2. ~~Implement control messages — abort, runtime-config, permissions, session-end as flat
    top-level session messages (Amendments 1, 2, 6)~~ — DONE
 3. ~~Consolidate agent state + metadata into session state cache (Amendment 3)~~ — DONE
-4. Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)
-5. Level 3: FULL browser verification — all 34 steps + multi-session + video (see design doc § "Level 3")
-6. Final dead code cleanup + simplification sweep
+4. ~~Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)~~ — CODE DONE, browser proof BLOCKED
+5. **FIX BLOCKER**: Debug and fix "Maximum update depth exceeded" crash in the web app
+   — ALL browser tests fail, even existing smoke tests. Root cause is in committed code.
+6. Level 3: FULL browser verification — all 34 steps + multi-session + video (see design doc § "Level 3")
+7. Final dead code cleanup + simplification sweep
 
 ## Simplification Opportunities
 
@@ -373,11 +409,12 @@ look for duplication, dead code, unnecessary abstractions.
 - **opencode.integration.test.ts**: now +1189 lines vs `main`. Once OpenCode
   Steps 31-34 + cross-cutting proof lands, extract shared Level 2 e2e helpers
   instead of growing a fourth near-copy further
-- **agentState.requests/completedRequests**: Dead code — permissions are now
-  tracked as control messages. The app still reads `session.agentState?.requests`
-  in `FaviconPermissionIndicator.tsx`, `sessionUtils.ts`, and `info.tsx`.
-  Once the app migrates to `session.permissions` from SyncNode, remove the old
-  `requests`/`completedRequests` fields from the `AgentState` type
+- **agentState.requests/completedRequests**: Mostly migrated — UI consumers
+  now read from SyncNode permissions. Remaining old-path reads are in
+  `sync.ts:1520` (voice notification) and `sync.ts:1530` (controlledByUser
+  transition detection). These are sync infrastructure, not UI components.
+  Once the sync layer is also migrated, remove the old `requests`/
+  `completedRequests` fields from `AgentState` type.
 
 ## Blocked / Investigated
 
@@ -495,6 +532,20 @@ look for duplication, dead code, unnecessary abstractions.
   pre-existing flakiness — the Codex smoke test was not modified. The issue
   is that Codex's response may not include the specific file names the
   `waitForFunction` checks for (`index.html|styles.css|app.js|...`).
+- **BLOCKER (March 25, 2026)**: ALL Level 3 browser tests fail with "Maximum
+  update depth exceeded" error on web. The web app boots and connects to the
+  server (logs show `fetchSessions completed`), but any session page crashes
+  with an infinite render loop. The error boundary shows "Something went wrong."
+  This is NOT caused by Amendment 4 — stashing all Amendment 4 changes and
+  running the baseline reproduces the identical failure. The root cause is in
+  committed code (likely the March 24 commit `adccbb36` which added control
+  messages and session state cache). Metro cache clearing did not help.
+  The stack trace points to `<SessionViewLoaded>` or `<FaviconPermissionIndicator>`
+  components. The `FaviconPermissionIndicator` has a pre-existing rules-of-hooks
+  violation (hooks called after conditional early return) and an unstable array
+  selector that was fixed with `useShallow` in Amendment 4 work. However, even
+  with that fix, the crash persists in `<SessionViewLoaded>`, suggesting a deeper
+  state update cycle in the session rendering path.
 
 ## Anti-patterns (DO NOT DO THESE)
 

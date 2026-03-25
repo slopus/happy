@@ -1,7 +1,7 @@
 import { z } from 'zod';
+import { type v3 } from '@slopus/happy-sync';
 import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
-import { storage } from '@/sync/storage';
 import { trackPermissionResponse } from '@/track';
 import { getCurrentRealtimeSessionId } from './RealtimeSession';
 
@@ -63,16 +63,16 @@ export const realtimeClientTools = {
         
         console.log('🔍 processPermissionRequest called with:', decision);
         
-        // Get the current session to check for permission requests
-        const session = storage.getState().sessions[sessionId];
-        const requests = session?.agentState?.requests;
-        
-        if (!requests || Object.keys(requests).length === 0) {
+        // Get pending permissions from SyncNode (single source of truth)
+        const syncSession = sync.appSyncStore?.getSession(sessionId as v3.SessionID);
+        const pendingPermissions = syncSession?.permissions.filter((p) => !p.resolved) ?? [];
+
+        if (pendingPermissions.length === 0) {
             console.error('❌ No active permission request');
             return "error (no active permission request)";
         }
-        
-        const requestId = Object.keys(requests)[0];
+
+        const requestId = pendingPermissions[0].permissionId;
         
         try {
             if (decision === 'allow') {

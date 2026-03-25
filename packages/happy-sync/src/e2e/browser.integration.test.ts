@@ -569,14 +569,26 @@ describe('Level 3: Browser smoke (Claude + Codex)', () => {
             );
 
             await page.goto(sessionUrl, { waitUntil: 'networkidle' });
-            await page.waitForFunction(
-                (expectedPrompt: string) => {
-                    const body = (globalThis as { document?: { body?: { innerText?: string } } }).document?.body;
-                    return body?.innerText?.includes(expectedPrompt) ?? false;
-                },
-                promptA,
-                { timeout: 60000 },
-            );
+            try {
+                await page.waitForFunction(
+                    (expectedPrompt: string) => {
+                        const body = (globalThis as { document?: { body?: { innerText?: string } } }).document?.body;
+                        return body?.innerText?.includes(expectedPrompt) ?? false;
+                    },
+                    promptA,
+                    { timeout: 60000 },
+                );
+            } catch (waitErr) {
+                const debugBody = await page.textContent('body') ?? '<empty>';
+                const debugScreenshot = join(tmpdir(), `happy-browser-rerender-debug-${Date.now()}.png`);
+                await page.screenshot({ path: debugScreenshot, fullPage: true });
+                console.error(`[rerender test] waitForFunction timed out.`);
+                console.error(`[rerender test] Body (first 2000 chars): ${debugBody.slice(0, 2000)}`);
+                console.error(`[rerender test] Console messages:\n${consoleMessages.join('\n')}`);
+                console.error(`[rerender test] Page errors:\n${pageErrors.join('\n')}`);
+                console.error(`[rerender test] Debug screenshot: ${debugScreenshot}`);
+                throw waitErr;
+            }
 
             await page.waitForTimeout(1500);
             await page.evaluate((sessionId: string) => {

@@ -22,6 +22,9 @@ import { FeedItem } from "./feedTypes";
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const REALTIME_MODE_DEBOUNCE_MS = 150;
 
+// Track which permission IDs we've already notified the voice assistant about
+const notifiedPermissionIds = new Set<string>();
+
 /**
  * Centralized session online state resolver
  * Returns either "online" (string) or a timestamp (number) for last seen
@@ -306,28 +309,21 @@ export const storage = create<StorageState>()((set, get) => {
                 };
             });
 
-            // Check for NEW permission requests and notify voice assistant
+            // Check for NEW permission requests from SyncNode and notify voice assistant
             sessions.forEach(session => {
-                const oldSession = state.sessions[session.id];
-                const newSession = mergedSessions[session.id];
+                const currentRealtimeSessionId = getCurrentRealtimeSessionId();
+                const voiceSession = getVoiceSession();
+                if (currentRealtimeSessionId !== session.id || !voiceSession) return;
 
-                if (newSession.agentState &&
-                    (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))) {
-                    const currentRealtimeSessionId = getCurrentRealtimeSessionId();
-                    const voiceSession = getVoiceSession();
+                const syncSession = sync.appSyncStore?.getSession(session.id as v3.SessionID);
+                if (!syncSession) return;
 
-                    if (currentRealtimeSessionId === session.id && voiceSession) {
-                        const oldRequests = oldSession?.agentState?.requests || {};
-                        const newRequests = newSession.agentState?.requests || {};
-
-                        for (const [requestId, request] of Object.entries(newRequests)) {
-                            if (!oldRequests[requestId]) {
-                                const toolName = request.tool;
-                                voiceSession.sendTextMessage(
-                                    `Claude is requesting permission to use the ${toolName} tool`
-                                );
-                            }
-                        }
+                for (const perm of syncSession.permissions) {
+                    if (!perm.resolved && !notifiedPermissionIds.has(perm.permissionId)) {
+                        notifiedPermissionIds.add(perm.permissionId);
+                        voiceSession.sendTextMessage(
+                            `Claude is requesting permission to use the ${perm.block.permission} tool`
+                        );
                     }
                 }
             });
