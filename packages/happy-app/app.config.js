@@ -15,16 +15,11 @@ export default {
         name,
         slug: "happy",
         version: "1.7.0",
-        runtimeVersion: "20",
+        runtimeVersion: "21",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
         scheme: "happy",
         userInterfaceStyle: "automatic",
-        newArchEnabled: true,
-        notification: {
-            icon: "./sources/assets/images/icon-notification.png",
-            iosDisplayInForeground: true
-        },
         ios: {
             supportsTablet: true,
             bundleIdentifier: bundleId,
@@ -58,7 +53,6 @@ export default {
                 "android.permission.READ_MEDIA_IMAGES",
                 "android.permission.READ_MEDIA_VIDEO",
             ],
-            edgeToEdgeEnabled: true,
             package: bundleId,
             googleServicesFile: "./google-services.json",
             intentFilters: variant === 'production' ? [
@@ -131,7 +125,8 @@ export default {
             [
                 "expo-notifications",
                 {
-                    "enableBackgroundRemoteNotifications": true
+                    "enableBackgroundRemoteNotifications": true,
+                    "icon": "./sources/assets/images/icon-notification.png"
                 }
             ],
             [
