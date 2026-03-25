@@ -17,7 +17,7 @@ export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.6.2",
+        version: (process.env.APP_VERSION || "2.0.0").replace(/^v/, ''),
         runtimeVersion: "18",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
@@ -84,6 +84,7 @@ export default {
             favicon: "./sources/assets/images/favicon.png"
         },
         plugins: [
+            require("./plugins/withCIGradleMemory.js"),
             require("./plugins/withEinkCompatibility.js"),
             [
                 "expo-build-properties",
