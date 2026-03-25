@@ -22,14 +22,16 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
+import { listDaemonSessions, stopDaemonSession } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
-import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
+import { resolveCodexResumeContext } from './resumeContext';
+import { importResumedCodexHistory } from './importResumedHistory';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -106,16 +108,29 @@ export async function runCodex(opts: {
         metadata: initialMachineMetadata
     });
 
+    const resumeContext = opts.resumeThreadId
+        ? await resolveCodexResumeContext({
+            threadId: opts.resumeThreadId,
+            currentCwd: process.cwd(),
+            interactive: process.stdout.isTTY === true && process.stdin.isTTY === true && opts.startedBy !== 'daemon',
+        })
+        : null;
+    const sessionCwd = resumeContext?.selectedCwd ?? process.cwd();
+
     //
     // Create session
     //
 
-    const { state, metadata } = createSessionMetadata({
+    const { state, metadata: baseMetadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
         startedBy: opts.startedBy,
         sandbox: sandboxConfig,
     });
+    const metadata = {
+        ...baseMetadata,
+        path: sessionCwd,
+    };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
     // Handle server unreachable case - create offline stub with hot reconnection
@@ -195,10 +210,6 @@ export async function runCodex(opts: {
         messageQueue.push(message.content.text, enhancedMode);
     });
     let thinking = false;
-    let currentTurnId: string | null = null;
-    let codexStartedSubagents = new Set<string>();
-    let codexActiveSubagents = new Set<string>();
-    let codexProviderSubagentToSessionSubagent = new Map<string, string>();
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -219,6 +230,45 @@ export async function runCodex(opts: {
             });
         } catch (pushError) {
             logger.debug('[Codex] Failed to send ready push', pushError);
+        }
+    };
+
+    const reportSessionMetadataToDaemon = async (metadataOverride?: Record<string, unknown>) => {
+        if (!response) {
+            return;
+        }
+        const currentMetadata = session.getMetadata();
+        const metadata = currentMetadata
+            ? { ...currentMetadata, ...(metadataOverride ?? {}) }
+            : metadataOverride;
+        if (!metadata) {
+            return;
+        }
+
+        try {
+            await notifyDaemonSessionStarted(response.id, metadata as any);
+        } catch (error) {
+            logger.debug('[Codex] Failed to refresh daemon session metadata', error);
+        }
+    };
+
+    const stopDuplicateCodexSessions = async (threadId: string) => {
+        try {
+            const daemonSessions = await listDaemonSessions();
+            const duplicates = daemonSessions.filter((child: any) => (
+                child?.happySessionId
+                && child.happySessionId !== response?.id
+                && child.metadata?.flavor === 'codex'
+                && child.metadata?.codexThreadId === threadId
+            ));
+
+            for (const duplicate of duplicates) {
+                const duplicateId = String(duplicate.happySessionId);
+                const stopped = await stopDaemonSession(duplicateId);
+                logger.debug(`[Codex] Stopping duplicate session ${duplicateId}: ${stopped}`);
+            }
+        } catch (error) {
+            logger.debug('[Codex] Failed to stop duplicate sessions', error);
         }
     };
 
@@ -373,6 +423,18 @@ export async function runCodex(opts: {
         inkInstance = render(React.createElement(CodexDisplay, {
             messageBuffer,
             logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+            onSubmitPrompt: async (prompt: string) => {
+                const normalizedPrompt = prompt.trim();
+                if (!normalizedPrompt) {
+                    return;
+                }
+
+                const enhancedMode: EnhancedMode = {
+                    permissionMode: currentPermissionMode || 'default',
+                    model: currentModel,
+                };
+                messageQueue.push(normalizedPrompt, enhancedMode);
+            },
             onExit: async () => {
                 // Exit the agent
                 logger.debug('[codex]: Exiting agent via Ctrl-C');
@@ -401,15 +463,50 @@ export async function runCodex(opts: {
 
     permissionHandler = new CodexPermissionHandler(session);
     reasoningProcessor = new ReasoningProcessor((message) => {
-        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
-        for (const envelope of envelopes) {
-            session.sendSessionProtocolMessage(envelope);
+        if (message.type === 'reasoning') {
+            session.sendCodexMessage({
+                type: 'reasoning',
+                message: message.message,
+            });
+            return;
+        }
+        if (message.type === 'tool-call') {
+            session.sendCodexMessage({
+                type: 'tool-call',
+                callId: message.callId,
+                name: message.name,
+                input: message.input,
+                id: message.id,
+            });
+            return;
+        }
+        if (message.type === 'tool-call-result') {
+            session.sendCodexMessage({
+                type: 'tool-result',
+                callId: message.callId,
+                output: message.output,
+                id: message.id,
+            });
         }
     });
     const diffProcessor = new DiffProcessor((message) => {
-        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
-        for (const envelope of envelopes) {
-            session.sendSessionProtocolMessage(envelope);
+        if (message.type === 'tool-call') {
+            session.sendCodexMessage({
+                type: 'tool-call',
+                callId: message.callId,
+                name: message.name,
+                input: message.input,
+                id: message.id,
+            });
+            return;
+        }
+        if (message.type === 'tool-call-result') {
+            session.sendCodexMessage({
+                type: 'tool-result',
+                callId: message.callId,
+                output: message.output,
+                id: message.id,
+            });
         }
     });
 
@@ -437,12 +534,27 @@ export async function runCodex(opts: {
         // Add messages to the ink UI buffer based on message type
         if (msg.type === 'agent_message') {
             messageBuffer.addMessage((msg as any).message, 'assistant');
+            session.sendCodexMessage({
+                type: 'message',
+                message: String((msg as any).message ?? ''),
+            });
         } else if (msg.type === 'agent_reasoning_delta') {
             // Skip reasoning deltas in the UI to reduce noise
         } else if (msg.type === 'agent_reasoning') {
             messageBuffer.addMessage(`[Thinking] ${(msg as any).text.substring(0, 100)}...`, 'system');
         } else if (msg.type === 'exec_command_begin') {
             messageBuffer.addMessage(`Executing: ${(msg as any).command}`, 'tool');
+            session.sendCodexMessage({
+                type: 'tool-call',
+                callId: String((msg as any).call_id ?? (msg as any).callId ?? randomUUID()),
+                name: 'CodexBash',
+                input: {
+                    command: (msg as any).command,
+                    cwd: (msg as any).cwd,
+                    description: (msg as any).description,
+                },
+                id: randomUUID(),
+            });
         } else if (msg.type === 'exec_command_end') {
             const output = (msg as any).output || (msg as any).error || 'Command completed';
             const truncatedOutput = output.substring(0, 200);
@@ -450,6 +562,16 @@ export async function runCodex(opts: {
                 `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`,
                 'result'
             );
+            session.sendCodexMessage({
+                type: 'tool-result',
+                callId: String((msg as any).call_id ?? (msg as any).callId ?? randomUUID()),
+                output: {
+                    output: (msg as any).output,
+                    error: (msg as any).error,
+                    exit_code: (msg as any).exit_code,
+                },
+                id: randomUUID(),
+            });
         } else if (msg.type === 'task_started') {
             messageBuffer.addMessage('Starting task...', 'status');
         } else if (msg.type === 'task_complete') {
@@ -490,6 +612,13 @@ export async function runCodex(opts: {
             const changeCount = Object.keys(changes).length;
             const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
             messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
+            session.sendCodexMessage({
+                type: 'tool-call',
+                callId: String((msg as any).call_id ?? (msg as any).callId ?? randomUUID()),
+                name: 'CodexPatch',
+                input: { changes },
+                id: randomUUID(),
+            });
         }
         if (msg.type === 'patch_apply_end') {
             const { stdout, stderr, success } = msg as any;
@@ -500,6 +629,12 @@ export async function runCodex(opts: {
                 const errorMsg = stderr || 'Failed to modify files';
                 messageBuffer.addMessage(`Error: ${errorMsg.substring(0, 200)}`, 'result');
             }
+            session.sendCodexMessage({
+                type: 'tool-call-result',
+                callId: String((msg as any).call_id ?? (msg as any).callId ?? randomUUID()),
+                output: { stdout, stderr, success },
+                id: randomUUID(),
+            });
         }
         if (msg.type === 'turn_diff') {
             if ((msg as any).unified_diff) {
@@ -507,23 +642,6 @@ export async function runCodex(opts: {
             }
         }
 
-        // Convert events into the unified session-protocol envelope stream.
-        // Reasoning deltas are handled by ReasoningProcessor to avoid duplicate text output.
-        if (msg.type !== 'agent_reasoning_delta' && msg.type !== 'agent_reasoning' && msg.type !== 'agent_reasoning_section_break' && msg.type !== 'turn_diff') {
-            const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, {
-                currentTurnId,
-                startedSubagents: codexStartedSubagents,
-                activeSubagents: codexActiveSubagents,
-                providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
-            });
-            currentTurnId = mapped.currentTurnId;
-            codexStartedSubagents = mapped.startedSubagents;
-            codexActiveSubagents = mapped.activeSubagents;
-            codexProviderSubagentToSessionSubagent = mapped.providerSubagentToSessionSubagent;
-            for (const envelope of mapped.envelopes) {
-                session.sendSessionProtocolMessage(envelope);
-            }
-        }
     });
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
@@ -543,14 +661,23 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect done');
 
         if (opts.resumeThreadId) {
-            await resumeExistingThread({
+            const resumedThread = await resumeExistingThread({
                 client,
                 session,
                 messageBuffer,
                 threadId: opts.resumeThreadId,
-                cwd: process.cwd(),
+                cwd: sessionCwd,
                 mcpServers,
             });
+            await reportSessionMetadataToDaemon({ codexThreadId: resumedThread.threadId, path: sessionCwd });
+            await stopDuplicateCodexSessions(resumedThread.threadId);
+            if (resumeContext?.rolloutPath) {
+                await importResumedCodexHistory({
+                    rolloutPath: resumeContext.rolloutPath,
+                    session,
+                    messageBuffer,
+                });
+            }
             first = false;
         }
 
@@ -597,7 +724,7 @@ export async function runCodex(opts: {
                 if (!client.hasActiveThread()) {
                     const startedThread = await client.startThread({
                         model: message.mode.model,
-                        cwd: process.cwd(),
+                        cwd: sessionCwd,
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
                         mcpServers,
@@ -606,6 +733,7 @@ export async function runCodex(opts: {
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
                     }));
+                    await reportSessionMetadataToDaemon({ codexThreadId: startedThread.threadId, path: sessionCwd });
                 }
 
                 const turnPrompt = first

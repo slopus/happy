@@ -13,7 +13,6 @@ describe('resumeExistingThread', () => {
         const metadataHandlers: Array<(metadata: any) => any> = [];
         const session = {
             updateMetadata: vi.fn((handler) => metadataHandlers.push(handler)),
-            sendSessionEvent: vi.fn(),
         };
         const messageBuffer = {
             addMessage: vi.fn(),
@@ -43,10 +42,6 @@ describe('resumeExistingThread', () => {
             codexThreadId: '019ccca2-1a77-7481-9873-de72f3464372',
         });
         expect(messageBuffer.addMessage).toHaveBeenCalledWith(expect.stringContaining('Resumed thread'), 'status');
-        expect(session.sendSessionEvent).toHaveBeenCalledWith({
-            type: 'message',
-            message: 'Resumed Codex thread 019ccca2-1a77-7481-9873-de72f3464372',
-        });
     });
 
     it('wraps backend resume errors with the thread ID', async () => {
@@ -55,7 +50,6 @@ describe('resumeExistingThread', () => {
         };
         const session = {
             updateMetadata: vi.fn(),
-            sendSessionEvent: vi.fn(),
         };
         const messageBuffer = {
             addMessage: vi.fn(),

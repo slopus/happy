@@ -27,6 +27,15 @@ describe('buildResumeCommand', () => {
         })).toBe('happy claude --resume 93a9705e-bc6a-406d-8dce-8acc014dedbd');
     });
 
+    it('prefers happy resume when requested and a Happy session ID is available', () => {
+        expect(buildResumeCommand({
+            path: '/tmp/project',
+            os: 'darwin',
+            happySessionId: 'session-123',
+            preferHappyResume: true,
+        })).toBe(`cd '/tmp/project' && happy resume session-123`);
+    });
+
     it('returns null when there is no resumable session identifier', () => {
         expect(buildResumeCommand({
             path: '/tmp/project',
@@ -58,6 +67,21 @@ describe('buildResumeCommandBlock', () => {
         })).toEqual({
             lines: ['happy claude --resume 93a9705e-bc6a-406d-8dce-8acc014dedbd'],
             copyText: 'happy claude --resume 93a9705e-bc6a-406d-8dce-8acc014dedbd',
+        });
+    });
+
+    it('builds a happy resume command block when requested', () => {
+        expect(buildResumeCommandBlock({
+            path: '/tmp/project',
+            os: 'darwin',
+            happySessionId: 'session-123',
+            preferHappyResume: true,
+        })).toEqual({
+            lines: [
+                `cd '/tmp/project'`,
+                'happy resume session-123',
+            ],
+            copyText: `cd '/tmp/project'\nhappy resume session-123`,
         });
     });
 

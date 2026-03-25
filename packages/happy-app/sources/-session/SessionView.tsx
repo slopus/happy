@@ -21,7 +21,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useMachine, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -204,6 +204,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
     const machineId = session.metadata?.machineId;
+    const machine = useMachine(machineId ?? '');
     const isCliOutdated = cliVersion && !isVersionSupported(cliVersion, MINIMUM_CLI_VERSION);
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
@@ -238,7 +239,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isArchivedSession = session.metadata?.lifecycleState === 'archived';
     const isDisconnected = !sessionStatus.isConnected;
     const isInactiveArchivedSession = isArchivedSession && isDisconnected;
-    const resumeCommandBlock = getResumeCommandBlock(session);
+    const resumeCommandBlock = getResumeCommandBlock(session, {
+        preferHappyResume: !!machine?.metadata?.resumeSupport?.happyAgentAuthenticated,
+    });
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);

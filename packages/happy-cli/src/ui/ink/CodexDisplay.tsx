@@ -5,11 +5,13 @@ import { MessageBuffer, type BufferedMessage } from './messageBuffer'
 interface CodexDisplayProps {
     messageBuffer: MessageBuffer
     logPath?: string
+    onSubmitPrompt?: (prompt: string) => void | Promise<void>
     onExit?: () => void
 }
 
-export const CodexDisplay: React.FC<CodexDisplayProps> = ({ messageBuffer, logPath, onExit }) => {
+export const CodexDisplay: React.FC<CodexDisplayProps> = ({ messageBuffer, logPath, onSubmitPrompt, onExit }) => {
     const [messages, setMessages] = useState<BufferedMessage[]>([])
+    const [promptValue, setPromptValue] = useState<string>('')
     const [confirmationMode, setConfirmationMode] = useState<boolean>(false)
     const [actionInProgress, setActionInProgress] = useState<boolean>(false)
     const confirmationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -53,7 +55,7 @@ export const CodexDisplay: React.FC<CodexDisplayProps> = ({ messageBuffer, logPa
     useInput(useCallback(async (input, key) => {
         // Don't process input if action is in progress
         if (actionInProgress) return
-        
+
         // Handle Ctrl-C - exits the agent directly instead of switching modes
         if (key.ctrl && input === 'c') {
             if (confirmationMode) {
@@ -70,11 +72,37 @@ export const CodexDisplay: React.FC<CodexDisplayProps> = ({ messageBuffer, logPa
             return
         }
 
-        // Any other key cancels confirmation
         if (confirmationMode) {
             resetConfirmation()
         }
-    }, [confirmationMode, actionInProgress, onExit, setConfirmationWithTimeout, resetConfirmation]))
+
+        if (key.return) {
+            const submittedPrompt = promptValue.trim()
+            if (!submittedPrompt) {
+                return
+            }
+
+            setPromptValue('')
+            await onSubmitPrompt?.(submittedPrompt)
+            return
+        }
+
+        if (key.backspace || key.delete) {
+            setPromptValue((current) => current.slice(0, -1))
+            return
+        }
+
+        if (key.tab || key.escape || key.ctrl || key.meta) {
+            return
+        }
+
+        const sanitized = input.replace(/[\r\n]/g, '')
+        if (!sanitized) {
+            return
+        }
+
+        setPromptValue((current) => current + sanitized)
+    }, [confirmationMode, actionInProgress, onSubmitPrompt, onExit, promptValue, setConfirmationWithTimeout, resetConfirmation]))
 
     const getMessageColor = (type: BufferedMessage['type']): string => {
         switch (type) {
@@ -132,6 +160,12 @@ export const CodexDisplay: React.FC<CodexDisplayProps> = ({ messageBuffer, logPa
                         ))
                     )}
                 </Box>
+
+                <Box marginTop={1}>
+                    <Text color="green">
+                        {`> ${promptValue}`}
+                    </Text>
+                </Box>
             </Box>
 
             {/* Modal overlay at the bottom */}
@@ -160,7 +194,7 @@ export const CodexDisplay: React.FC<CodexDisplayProps> = ({ messageBuffer, logPa
                     ) : (
                         <>
                             <Text color="green" bold>
-                                🤖 Codex Agent Running • Ctrl-C to exit
+                                🤖 Codex Agent Running • Enter to send • Ctrl-C to exit
                             </Text>
                         </>
                     )}

@@ -7,7 +7,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady } from '@/sync/storage';
+import { useSession, useIsDataReady, useMachine } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -134,6 +134,11 @@ function SessionInfoContent({ session }: { session: Session }) {
         resumeSession,
         resumeSessionSubtitle,
     } = useSessionQuickActions(session);
+    const machine = useMachine(session.metadata?.machineId ?? '');
+    const prefersHappyResume = !!machine?.metadata?.resumeSupport?.happyAgentAuthenticated;
+    const resumeCommand = !sessionStatus.isConnected
+        ? (prefersHappyResume ? `happy resume ${session.id}` : getResumeCommand(session))
+        : null;
     
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -305,12 +310,12 @@ function SessionInfoContent({ session }: { session: Session }) {
                     )}
                     {/* Resume command — shown for disconnected sessions with a backend session ID */}
                     {/* TODO: migrate to `happy resume <happy-session-id>` once it works without happy-agent auth */}
-                    {!sessionStatus.isConnected && getResumeCommand(session) && (
+                    {!sessionStatus.isConnected && resumeCommand && (
                         <CopyableItem
                             title="Resume Command"
-                            subtitle={getResumeCommand(session)!}
+                            subtitle={resumeCommand}
                             icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
-                            copyText={getResumeCommand(session)!}
+                            copyText={resumeCommand}
                         />
                     )}
                     <Item

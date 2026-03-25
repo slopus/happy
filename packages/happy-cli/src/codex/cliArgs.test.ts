@@ -24,8 +24,21 @@ describe('extractCodexResumeFlag', () => {
         expect(parsed.args).toEqual(['--started-by', 'terminal']);
     });
 
+    it('accepts the user-facing `happy codex resume <thread-id>` command shape', () => {
+        const parsed = extractCodexResumeFlag(['resume', 'thread-789', '--started-by', 'terminal']);
+
+        expect(parsed.resumeThreadId).toBe('thread-789');
+        expect(parsed.args).toEqual(['--started-by', 'terminal']);
+    });
+
     it('throws when resume flag is missing a thread ID', () => {
         expect(() => extractCodexResumeFlag(['--resume'])).toThrow(
+            'Codex resume requires a thread ID: happy codex --resume <thread-id>',
+        );
+    });
+
+    it('throws when positional resume is missing a thread ID', () => {
+        expect(() => extractCodexResumeFlag(['resume'])).toThrow(
             'Codex resume requires a thread ID: happy codex --resume <thread-id>',
         );
     });

@@ -1,4 +1,6 @@
 export type ResumeCommandMetadata = {
+    happySessionId?: string | null;
+    preferHappyResume?: boolean;
     path?: string | null;
     os?: string | null;
     flavor?: string | null;
@@ -24,6 +26,10 @@ function isWindows(metadata: ResumeCommandMetadata): boolean {
 }
 
 function buildResumeInvocation(metadata: ResumeCommandMetadata): string | null {
+    const happySessionId = metadata.happySessionId?.trim();
+    if (metadata.preferHappyResume && happySessionId) {
+        return `happy resume ${happySessionId}`;
+    }
     if ((metadata.flavor === 'codex' || metadata.flavor === 'openai' || metadata.flavor === 'gpt') && metadata.codexThreadId) {
         return `happy codex --resume ${metadata.codexThreadId}`;
     }

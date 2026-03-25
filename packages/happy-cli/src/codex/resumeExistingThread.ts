@@ -10,7 +10,6 @@ type ResumeThreadClient = {
 
 type ResumeThreadSession = {
     updateMetadata: (handler: (currentMetadata: any) => any) => void;
-    sendSessionEvent: (event: { type: 'message'; message: string }) => void;
 };
 
 type ResumeThreadMessageBuffer = {
@@ -37,10 +36,6 @@ export async function resumeExistingThread(opts: {
             codexThreadId: resumedThread.threadId,
         }));
         opts.messageBuffer.addMessage(`Resumed thread ${trimIdent(resumedThread.threadId)}`, 'status');
-        opts.session.sendSessionEvent({
-            type: 'message',
-            message: `Resumed Codex thread ${resumedThread.threadId}`,
-        });
 
         return resumedThread;
     } catch (error) {

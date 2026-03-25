@@ -400,6 +400,46 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content);
     }
 
+    sendImportedCodexHistoryMessage(entry: {
+        role: 'user' | 'assistant';
+        text: string;
+        uuid: string;
+    }) {
+        const data = entry.role === 'user'
+            ? {
+                type: 'user',
+                uuid: entry.uuid,
+                parentUuid: null,
+                isSidechain: false,
+                message: {
+                    role: 'user',
+                    content: entry.text,
+                },
+            }
+            : {
+                type: 'assistant',
+                uuid: entry.uuid,
+                parentUuid: null,
+                isSidechain: false,
+                message: {
+                    role: 'assistant',
+                    model: 'restored-codex-history',
+                    content: [{ type: 'text', text: entry.text }],
+                },
+            };
+
+        this.enqueueMessage({
+            role: 'agent',
+            content: {
+                type: 'output',
+                data,
+            },
+            meta: {
+                sentFrom: 'cli',
+            },
+        });
+    }
+
     private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
         const content = {
             role: 'session',
