@@ -475,7 +475,7 @@ class Sync {
         if (!this.credentials) return;
         getOrchestratorActivity(this.credentials, sessionId)
             .then((data) => {
-                storage.getState().setOrchestratorActivity(sessionId, data.activity);
+                storage.getState().setOrchestratorActivity(sessionId, data.activity, data.totalRunCount);
             })
             .catch(() => { /* ignore — badge is best-effort */ });
     }
@@ -484,7 +484,7 @@ class Sync {
         if (!this.credentials) return;
         getOrchestratorActivityBatch(this.credentials)
             .then((data) => {
-                storage.getState().setOrchestratorActivityBatch(data.activity);
+                storage.getState().setOrchestratorActivityBatch(data.activity, data.totalRunCounts);
             })
             .catch(() => { /* ignore — badge is best-effort */ });
     }
@@ -3651,7 +3651,7 @@ class Sync {
         }
 
         if (updateData.type === 'orchestrator-activity') {
-            storage.getState().setOrchestratorActivity(updateData.controllerSessionId, updateData.activity);
+            storage.getState().setOrchestratorActivity(updateData.controllerSessionId, updateData.activity, updateData.totalRunCount);
         }
 
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity

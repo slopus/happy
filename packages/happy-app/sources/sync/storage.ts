@@ -128,6 +128,7 @@ interface StorageState {
     microphoneMuted: boolean;
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     orchestratorActivity: Record<string, Record<string, string[]>>;
+    orchestratorTotalRunCount: Record<string, number>;
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
     isDataReady: boolean;
@@ -182,8 +183,8 @@ interface StorageState {
     clearRealtimeModeDebounce: () => void;
     setMicrophoneMuted: (muted: boolean) => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
-    setOrchestratorActivity: (controllerSessionId: string, activity: Record<string, string[]>) => void;
-    setOrchestratorActivityBatch: (activity: Record<string, Record<string, string[]>>) => void;
+    setOrchestratorActivity: (controllerSessionId: string, activity: Record<string, string[]>, totalRunCount?: number) => void;
+    setOrchestratorActivityBatch: (activity: Record<string, Record<string, string[]>>, totalRunCounts?: Record<string, number>) => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => void;
     updateSessionActivity: (sessionId: string, active: boolean) => void;
@@ -434,6 +435,7 @@ export const storage = create<StorageState>()((set, get) => {
         microphoneMuted: false,
         socketStatus: 'disconnected',
         orchestratorActivity: {},
+        orchestratorTotalRunCount: {},
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
         isDataReady: false,
@@ -1246,13 +1248,19 @@ export const storage = create<StorageState>()((set, get) => {
                 ...updates
             };
         }),
-        setOrchestratorActivity: (controllerSessionId: string, activity: Record<string, string[]>) => set((state) => ({
+        setOrchestratorActivity: (controllerSessionId: string, activity: Record<string, string[]>, totalRunCount?: number) => set((state) => ({
             ...state,
             orchestratorActivity: { ...state.orchestratorActivity, [controllerSessionId]: activity },
+            ...(totalRunCount !== undefined && {
+                orchestratorTotalRunCount: { ...state.orchestratorTotalRunCount, [controllerSessionId]: totalRunCount },
+            }),
         })),
-        setOrchestratorActivityBatch: (activity: Record<string, Record<string, string[]>>) => set((state) => ({
+        setOrchestratorActivityBatch: (activity: Record<string, Record<string, string[]>>, totalRunCounts?: Record<string, number>) => set((state) => ({
             ...state,
             orchestratorActivity: { ...state.orchestratorActivity, ...activity },
+            ...(totalRunCounts && {
+                orchestratorTotalRunCount: { ...state.orchestratorTotalRunCount, ...totalRunCounts },
+            }),
         })),
         updateSessionDraft: (sessionId: string, draft: SessionDraft | null) => set((state) => {
             const isShared = sessionId in state.sharedSessions;
@@ -2377,6 +2385,10 @@ export function useOrchestratorRunningTaskCount(sessionId: string): number {
         const byRun = state.orchestratorActivity[sessionId] ?? {};
         return Object.values(byRun).reduce((sum, taskIds) => sum + taskIds.length, 0);
     });
+}
+
+export function useOrchestratorHasRuns(sessionId: string): boolean {
+    return storage((state) => (state.orchestratorTotalRunCount[sessionId] ?? 0) > 0);
 }
 
 export function useOrchestratorActiveRunIds(sessionId: string): string[] {

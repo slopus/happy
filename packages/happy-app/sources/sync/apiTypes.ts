@@ -418,6 +418,7 @@ export const ApiEphemeralOrchestratorActivitySchema = z.object({
     type: z.literal('orchestrator-activity'),
     controllerSessionId: z.string(),
     activity: z.record(z.string(), z.array(z.string())),
+    totalRunCount: z.number().optional(),
 });
 
 export const ApiEphemeralOrchestratorRunTerminalSchema = z.object({

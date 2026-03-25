@@ -807,11 +807,12 @@ export function buildMachineStatusEphemeral(machineId: string, online: boolean):
     };
 }
 
-export function buildOrchestratorActivityEphemeral(controllerSessionId: string, activity: Record<string, string[]>): EphemeralPayload {
+export function buildOrchestratorActivityEphemeral(controllerSessionId: string, activity: Record<string, string[]>, totalRunCount?: number): EphemeralPayload {
     return {
         type: 'orchestrator-activity',
         controllerSessionId,
         activity,
+        ...(totalRunCount !== undefined && { totalRunCount }),
     };
 }
 

@@ -313,7 +313,7 @@ export async function cancelOrchestratorRun(
 export async function getOrchestratorActivity(
     credentials: AuthCredentials,
     controllerSessionId: string,
-): Promise<{ activity: OrchestratorSessionActivity }> {
+): Promise<{ activity: OrchestratorSessionActivity; totalRunCount?: number }> {
     const API_ENDPOINT = getServerUrl();
     const params = new URLSearchParams({ controllerSessionId });
 
@@ -323,13 +323,13 @@ export async function getOrchestratorActivity(
     if (!response.ok) {
         throw new Error(await readErrorMessage(response));
     }
-    const body = await response.json() as { ok: true; data: { activity: OrchestratorSessionActivity } };
+    const body = await response.json() as { ok: true; data: { activity: OrchestratorSessionActivity; totalRunCount?: number } };
     return body.data;
 }
 
 export async function getOrchestratorActivityBatch(
     credentials: AuthCredentials,
-): Promise<{ activity: Record<string, OrchestratorSessionActivity> }> {
+): Promise<{ activity: Record<string, OrchestratorSessionActivity>; totalRunCounts?: Record<string, number> }> {
     const API_ENDPOINT = getServerUrl();
     const response = await fetch(`${API_ENDPOINT}/v1/orchestrator/activity/batch`, {
         headers: buildAuthHeaders(credentials),
@@ -337,6 +337,6 @@ export async function getOrchestratorActivityBatch(
     if (!response.ok) {
         throw new Error(await readErrorMessage(response));
     }
-    const body = await response.json() as { ok: true; data: { activity: Record<string, OrchestratorSessionActivity> } };
+    const body = await response.json() as { ok: true; data: { activity: Record<string, OrchestratorSessionActivity>; totalRunCounts?: Record<string, number> } };
     return body.data;
 }

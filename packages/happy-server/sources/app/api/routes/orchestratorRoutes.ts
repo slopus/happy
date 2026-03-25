@@ -162,10 +162,15 @@ async function queryOrchestratorSessionActivity(
  */
 async function emitOrchestratorActivity(userId: string, controllerSessionId: string | null) {
     if (!controllerSessionId) return;
-    const activity = await queryOrchestratorSessionActivity(userId, controllerSessionId);
+    const [activity, totalRunCount] = await Promise.all([
+        queryOrchestratorSessionActivity(userId, controllerSessionId),
+        db.orchestratorRun.count({
+            where: { accountId: userId, controllerSessionId },
+        }),
+    ]);
     eventRouter.emitEphemeral({
         userId,
-        payload: buildOrchestratorActivityEphemeral(controllerSessionId, activity),
+        payload: buildOrchestratorActivityEphemeral(controllerSessionId, activity, totalRunCount),
     });
 }
 
@@ -1939,8 +1944,13 @@ export function orchestratorRoutes(app: Fastify) {
         const userId = request.userId;
         const { controllerSessionId } = request.query;
 
-        const activity = await queryOrchestratorSessionActivity(userId, controllerSessionId);
-        return reply.send({ ok: true, data: { activity } });
+        const [activity, totalRunCount] = await Promise.all([
+            queryOrchestratorSessionActivity(userId, controllerSessionId),
+            db.orchestratorRun.count({
+                where: { accountId: userId, controllerSessionId },
+            }),
+        ]);
+        return reply.send({ ok: true, data: { activity, totalRunCount } });
     });
 
     app.get('/v1/orchestrator/activity/batch', {
@@ -1948,28 +1958,41 @@ export function orchestratorRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
 
-        const rows = await db.orchestratorTask.findMany({
-            where: {
-                run: {
-                    accountId: userId,
-                    controllerSessionId: { not: null },
-                    status: { in: ['queued', 'running', 'canceling'] },
+        const [rows, totalRows] = await Promise.all([
+            db.orchestratorTask.findMany({
+                where: {
+                    run: {
+                        accountId: userId,
+                        controllerSessionId: { not: null },
+                        status: { in: ['queued', 'running', 'canceling'] },
+                    },
+                    status: { in: ['dispatching', 'running'] },
                 },
-                status: { in: ['dispatching', 'running'] },
-            },
-            select: {
-                id: true,
-                runId: true,
-                run: {
-                    select: {
-                        controllerSessionId: true,
+                select: {
+                    id: true,
+                    runId: true,
+                    run: {
+                        select: {
+                            controllerSessionId: true,
+                        },
                     },
                 },
-            },
-        });
+            }),
+            db.orchestratorRun.groupBy({
+                by: ['controllerSessionId'],
+                where: {
+                    accountId: userId,
+                    controllerSessionId: { not: null },
+                },
+                _count: { _all: true },
+            }),
+        ]);
 
-        if (rows.length === 0) {
-            return reply.send({ ok: true, data: { activity: {} } });
+        const totalRunCounts: Record<string, number> = {};
+        for (const row of totalRows) {
+            if (row.controllerSessionId) {
+                totalRunCounts[row.controllerSessionId] = row._count._all;
+            }
         }
 
         const activity: Record<string, Record<string, string[]>> = {};
@@ -1987,6 +2010,6 @@ export function orchestratorRoutes(app: Fastify) {
             activity[controllerSessionId][row.runId].push(row.id);
         }
 
-        return reply.send({ ok: true, data: { activity } });
+        return reply.send({ ok: true, data: { activity, totalRunCounts } });
     });
 }

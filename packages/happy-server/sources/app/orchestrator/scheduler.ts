@@ -720,16 +720,21 @@ export async function orchestratorSchedulerTick(now: Date = new Date()): Promise
         if (actions.length > 0) {
             await executeSchedulerActions(actions);
             if (run.controllerSessionId) {
-                const rows = await db.orchestratorTask.findMany({
-                    where: {
-                        run: { accountId: run.accountId, controllerSessionId: run.controllerSessionId, status: { in: ACTIVE_RUN_STATUSES } },
-                        status: { in: ACTIVE_EXECUTION_STATUSES },
-                    },
-                    select: {
-                        id: true,
-                        runId: true,
-                    },
-                });
+                const [rows, totalRunCount] = await Promise.all([
+                    db.orchestratorTask.findMany({
+                        where: {
+                            run: { accountId: run.accountId, controllerSessionId: run.controllerSessionId, status: { in: ACTIVE_RUN_STATUSES } },
+                            status: { in: ACTIVE_EXECUTION_STATUSES },
+                        },
+                        select: {
+                            id: true,
+                            runId: true,
+                        },
+                    }),
+                    db.orchestratorRun.count({
+                        where: { accountId: run.accountId, controllerSessionId: run.controllerSessionId },
+                    }),
+                ]);
                 const activity: Record<string, string[]> = {};
                 for (const row of rows) {
                     if (!activity[row.runId]) {
@@ -740,7 +745,7 @@ export async function orchestratorSchedulerTick(now: Date = new Date()): Promise
                 const { eventRouter, buildOrchestratorActivityEphemeral } = await import("@/app/events/eventRouter");
                 eventRouter.emitEphemeral({
                     userId: run.accountId,
-                    payload: buildOrchestratorActivityEphemeral(run.controllerSessionId, activity),
+                    payload: buildOrchestratorActivityEphemeral(run.controllerSessionId, activity, totalRunCount),
                 });
             }
         }
