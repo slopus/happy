@@ -25,7 +25,6 @@ import {
 import { getDefaultClaudeCodePath, getCleanEnv, logDebug, streamToStdin } from './utils'
 import type { Writable } from 'node:stream'
 import { logger } from '@/ui/logger'
-import { isDebug } from '@/utils/env'
 
 /**
  * Query class manages Claude Code process interaction
@@ -370,12 +369,15 @@ export function query(config: {
         childStdin = child.stdin
     }
 
-    // Handle stderr in debug mode
-    if (isDebug()) {
-        child.stderr.on('data', (data) => {
-            console.error('Claude Code stderr:', data.toString())
-        })
-    }
+    // Capture stderr for diagnostics and error reporting
+    const stderrChunks: string[] = []
+    child.stderr.on('data', (data) => {
+        const text = data.toString().trim()
+        if (text) {
+            logger.debug(`[Claude SDK] stderr: ${text}`)
+            stderrChunks.push(text)
+        }
+    })
 
     // Track whether the child process has actually exited (child.killed only
     // indicates whether a kill signal was *sent*, not whether the process died).
@@ -411,7 +413,11 @@ export function query(config: {
                 query.setError(new AbortError('Claude Code process aborted by user'))
             }
             if (code !== 0) {
-                query.setError(new Error(`Claude Code process exited with code ${code}`))
+                const stderrOutput = stderrChunks.join('\n')
+                const errorMsg = stderrOutput
+                    ? `Claude Code process exited with code ${code}: ${stderrOutput}`
+                    : `Claude Code process exited with code ${code}`
+                query.setError(new Error(errorMsg))
             } else {
                 resolve()
             }

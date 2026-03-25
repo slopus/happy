@@ -124,6 +124,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     break;
                 }
             } catch (e) {
+                const errorMessage = e instanceof Error ? e.message : String(e);
                 logger.debug('[local]: launch error', e);
                 // If Claude exited with non-zero exit code, check if we already have an exit reason
                 if (e instanceof ExitCodeError) {
@@ -135,7 +136,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     break;
                 }
                 if (!exitReason) {
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.client.sendSessionEvent({ type: 'message', message: `Process exited unexpectedly: ${errorMessage}` });
                     continue;
                 } else {
                     break;
