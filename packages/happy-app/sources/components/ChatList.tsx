@@ -38,6 +38,19 @@ const V3ChatListInternal = React.memo((props: {
     sessionId: string,
     messages: v3.MessageWithParts[],
 }) => {
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') {
+            return;
+        }
+
+        const target = globalThis as typeof globalThis & {
+            __HAPPY_TRANSCRIPT_RENDER_COUNTS__?: Record<string, number>;
+        };
+        const counts = target.__HAPPY_TRANSCRIPT_RENDER_COUNTS__ ?? {};
+        counts[props.sessionId] = (counts[props.sessionId] ?? 0) + 1;
+        target.__HAPPY_TRANSCRIPT_RENDER_COUNTS__ = counts;
+    });
+
     const keyExtractor = useCallback((item: v3.MessageWithParts) => item.info.id as string, []);
     const renderItem = useCallback(({ item }: { item: v3.MessageWithParts }) => (
         <V3MessageView message={item} sessionId={props.sessionId} />
@@ -59,4 +72,3 @@ const V3ChatListInternal = React.memo((props: {
         />
     );
 });
-

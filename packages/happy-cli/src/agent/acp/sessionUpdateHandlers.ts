@@ -296,6 +296,16 @@ export function startToolCall(
       ctx.toolCallStartTimes.delete(toolCallId);
       ctx.toolCallTimeouts.delete(toolCallId);
 
+      ctx.emit({
+        type: 'tool-result',
+        toolName: realToolName,
+        result: {
+          error: `Tool call timed out after ${timeoutMs}ms`,
+          status: 'failed',
+        },
+        callId: toolCallId,
+      });
+
       if (ctx.activeToolCalls.size === 0) {
         scheduleIdleStatusIfQuiescent(ctx, 'No more active tool calls after timeout');
       }

@@ -442,7 +442,7 @@ describe('protocol v3', () => {
       };
       const parsed = ProtocolEnvelopeSchema.parse(envelope);
       expect(parsed.v).toBe(3);
-      expect(parsed.message.info.role).toBe('user');
+      expect('info' in parsed.message && parsed.message.info.role).toBe('user');
     });
 
     it('rejects wrong version', () => {

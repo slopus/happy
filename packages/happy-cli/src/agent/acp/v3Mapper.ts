@@ -100,12 +100,8 @@ export function handleAcpMessage(
     return result;
   }
 
-  if (!state.currentAssistant) {
-    startAssistant(state);
-  }
-  const asst = state.currentAssistant!;
-
   if (msg.type === 'event' && msg.name === 'thinking') {
+    const asst = ensureAssistant(state);
     const { text, streaming } = parseThinkingPayload(msg.payload);
     if (!text) {
       result.currentAssistant = snapshot(state);
@@ -134,6 +130,7 @@ export function handleAcpMessage(
   }
 
   if (msg.type === 'model-output') {
+    const asst = ensureAssistant(state);
     const text = msg.textDelta ?? msg.fullText ?? '';
     if (text) {
       flushIfTypeChanged(state, 'output', asst);
@@ -145,6 +142,7 @@ export function handleAcpMessage(
   }
 
   if (msg.type === 'tool-call') {
+    const asst = ensureAssistant(state);
     flushPending(state, asst);
 
     const callID = msg.callId || `call_${createId()}`;
@@ -184,6 +182,7 @@ export function handleAcpMessage(
   }
 
   if (msg.type === 'permission-request') {
+    const asst = ensureAssistant(state);
     flushPending(state, asst);
 
     const payload = toRecord(msg.payload);
@@ -232,6 +231,7 @@ export function handleAcpMessage(
   }
 
   if (msg.type === 'tool-result') {
+    const asst = ensureAssistant(state);
     flushPending(state, asst);
 
     const callID = msg.callId || '';
@@ -291,6 +291,7 @@ export function handleAcpMessage(
   }
 
   if (msg.type === 'terminal-output') {
+    const asst = ensureAssistant(state);
     flushPending(state, asst);
     if (msg.data) {
       asst.parts.push({
@@ -334,6 +335,13 @@ function startAssistant(state: V3AcpMapperState): void {
       type: 'step-start',
     }],
   };
+}
+
+function ensureAssistant(state: V3AcpMapperState): { info: AssistantMessage; parts: Part[] } {
+  if (!state.currentAssistant) {
+    startAssistant(state);
+  }
+  return state.currentAssistant!;
 }
 
 function finalizeAssistant(

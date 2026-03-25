@@ -982,6 +982,159 @@ describe('Level 1: Sync Engine Integration', () => {
         });
     });
 
+    describe('Control message round-trip', () => {
+        it('runtime-config changes survive transport and merge into the latest active config', async () => {
+            const producer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+            const consumer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+
+            try {
+                await consumer.connect();
+                const sessionId = await producer.createSession({
+                    directory: '/control-runtime',
+                    projectID: 'test-project',
+                    title: 'Control runtime config',
+                });
+
+                await producer.sendRuntimeConfigChange(sessionId, {
+                    source: 'user',
+                    permissionMode: 'read-only',
+                });
+                await producer.sendRuntimeConfigChange(sessionId, {
+                    source: 'user',
+                    model: 'gpt-5.4',
+                    appendSystemPrompt: 'Stay concise.',
+                });
+
+                await consumer.fetchMessages(sessionId);
+
+                const session = consumer.state.sessions.get(sessionId as string)!;
+                expect(session.controlMessages.filter(message => message.type === 'runtime-config-change')).toHaveLength(2);
+                expect(session.runtimeConfig?.permissionMode).toBe('read-only');
+                expect(session.runtimeConfig?.model).toBe('gpt-5.4');
+                expect(session.runtimeConfig?.appendSystemPrompt).toBe('Stay concise.');
+            } finally {
+                producer.disconnect();
+                consumer.disconnect();
+            }
+        });
+
+        it('permission request/response control messages derive pending permissions and resolve them', async () => {
+            const producer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+            const consumer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+
+            try {
+                await consumer.connect();
+                const sessionId = await producer.createSession({
+                    directory: '/control-permission',
+                    projectID: 'test-project',
+                    title: 'Control permission',
+                });
+
+                await producer.sendPermissionRequest(sessionId, {
+                    callID: 'call_control_perm',
+                    tool: 'Write',
+                    patterns: ['/control-permission.txt'],
+                    input: { path: '/control-permission.txt', content: 'hello' },
+                });
+
+                await consumer.fetchMessages(sessionId);
+
+                const pendingPermission = consumer.state.sessions.get(sessionId as string)!.permissions[0];
+                expect(pendingPermission).toBeDefined();
+                expect(pendingPermission.block.permission).toBe('Write');
+                expect(pendingPermission.resolved).toBe(false);
+
+                await consumer.approvePermission(sessionId, pendingPermission.permissionId, {
+                    decision: 'always',
+                    allowTools: ['Write'],
+                });
+
+                await producer.fetchMessages(sessionId);
+                await consumer.fetchMessages(sessionId);
+
+                const producerSession = producer.state.sessions.get(sessionId as string)!;
+                const response = producerSession.controlMessages.find(
+                    (message): message is Extract<typeof message, { type: 'permission-response' }> =>
+                        message.type === 'permission-response',
+                );
+                expect(response?.callID).toBe('call_control_perm');
+                expect(response?.decision).toBe('always');
+
+                const consumerPermission = consumer.state.sessions.get(sessionId as string)!.permissions[0];
+                expect(consumerPermission.resolved).toBe(true);
+            } finally {
+                producer.disconnect();
+                consumer.disconnect();
+            }
+        });
+
+        it('abort requests arrive via onSessionMessage but do not trigger onMessage listeners', async () => {
+            const producer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+            const consumer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+
+            try {
+                await consumer.connect();
+                const sessionId = await producer.createSession({
+                    directory: '/control-abort',
+                    projectID: 'test-project',
+                    title: 'Control abort',
+                });
+
+                let conversationMessages = 0;
+                let abortRequests = 0;
+                consumer.onMessage(sessionId, () => {
+                    conversationMessages += 1;
+                });
+                consumer.onSessionMessage(sessionId, (message) => {
+                    if (!('info' in message) && message.type === 'abort-request') {
+                        abortRequests += 1;
+                    }
+                });
+
+                await producer.sendAbortRequest(sessionId, {
+                    source: 'user',
+                    reason: 'Stop the current turn',
+                });
+
+                await waitForCondition(() => abortRequests === 1);
+                expect(conversationMessages).toBe(0);
+
+                const session = consumer.state.sessions.get(sessionId as string)!;
+                expect(session.controlMessages.some(message => message.type === 'abort-request')).toBe(true);
+            } finally {
+                producer.disconnect();
+                consumer.disconnect();
+            }
+        });
+
+        it('session-end control messages mark the session completed', async () => {
+            const producer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+            const consumer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+
+            try {
+                await consumer.connect();
+                const sessionId = await producer.createSession({
+                    directory: '/control-session-end',
+                    projectID: 'test-project',
+                    title: 'Control session end',
+                });
+
+                await producer.sendSessionEnd(sessionId, {
+                    reason: 'completed',
+                });
+
+                await consumer.fetchMessages(sessionId);
+
+                const session = consumer.state.sessions.get(sessionId as string)!;
+                expect(session.controlMessages.some(message => message.type === 'session-end')).toBe(true);
+                expect(session.status).toEqual({ type: 'completed' });
+            } finally {
+                producer.disconnect();
+                consumer.disconnect();
+            }
+        });
+    });
+
     describe('Question state round-trip', () => {
         it('blocked question survives full cycle', async () => {
             const node = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
@@ -1182,6 +1335,169 @@ describe('Level 1: Sync Engine Integration', () => {
                 expect(stopSessionResponse.status).toBe(403);
             } finally {
                 accountNode.disconnect();
+            }
+        });
+    });
+
+    describe('Session state cache (Amendment 3)', () => {
+        it('metadata blob fields are extracted into typed SessionState cache', async () => {
+            const producer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+            const consumer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+
+            try {
+                await producer.connect();
+                await consumer.connect();
+
+                const sessionId = await producer.createSession({
+                    directory: '/cache-test',
+                    projectID: 'cache-project',
+                    title: 'Cache test session',
+                });
+
+                // Update metadata with session-level fields
+                await producer.updateMetadata(sessionId, (current: Record<string, unknown>) => ({
+                    ...current,
+                    flavor: 'claude',
+                    lifecycleState: 'running',
+                    currentModelCode: 'claude-sonnet-4-20250514',
+                    summary: { text: 'Test summary' },
+                }));
+
+                // Verify producer-side cache is populated
+                const producerSession = producer.state.sessions.get(sessionId as string);
+                expect(producerSession?.agentType).toBe('claude');
+                expect(producerSession?.lifecycleState).toBe('running');
+                expect(producerSession?.modelID).toBe('claude-sonnet-4-20250514');
+                expect(producerSession?.summary).toBe('Test summary');
+
+                // Wait for consumer to receive the update-session push
+                await waitForCondition(() => {
+                    const s = consumer.state.sessions.get(sessionId as string);
+                    return s?.agentType === 'claude';
+                }, 5000);
+
+                const consumerSession = consumer.state.sessions.get(sessionId as string);
+                expect(consumerSession?.agentType).toBe('claude');
+                expect(consumerSession?.lifecycleState).toBe('running');
+                expect(consumerSession?.modelID).toBe('claude-sonnet-4-20250514');
+                expect(consumerSession?.summary).toBe('Test summary');
+            } finally {
+                producer.disconnect();
+                consumer.disconnect();
+            }
+        });
+
+        it('agentState controlledByUser is extracted into typed cache', async () => {
+            const producer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+
+            try {
+                await producer.connect();
+
+                const sessionId = await producer.createSession({
+                    directory: '/agent-state-cache',
+                    projectID: 'test-project',
+                    title: 'Agent state cache test',
+                });
+
+                // Initially controlledByUser is undefined
+                const before = producer.state.sessions.get(sessionId as string);
+                expect(before?.controlledByUser).toBeUndefined();
+
+                // Set controlledByUser via agentState
+                await producer.updateAgentState(sessionId, (current: Record<string, unknown>) => ({
+                    ...current,
+                    controlledByUser: true,
+                }));
+
+                const after = producer.state.sessions.get(sessionId as string);
+                expect(after?.controlledByUser).toBe(true);
+            } finally {
+                producer.disconnect();
+            }
+        });
+
+        it('lifecycle transitions update the cache', async () => {
+            const producer = new SyncNode(SERVER_URL, makeAccountToken(), keyMaterial);
+
+            try {
+                await producer.connect();
+
+                const sessionId = await producer.createSession({
+                    directory: '/lifecycle-cache',
+                    projectID: 'test-project',
+                    title: 'Lifecycle cache test',
+                });
+
+                // Default is 'running'
+                const initial = producer.state.sessions.get(sessionId as string);
+                expect(initial?.lifecycleState).toBe('running');
+
+                // Transition to archived
+                await producer.updateMetadata(sessionId, (current: Record<string, unknown>) => ({
+                    ...current,
+                    lifecycleState: 'archived',
+                }));
+
+                const archived = producer.state.sessions.get(sessionId as string);
+                expect(archived?.lifecycleState).toBe('archived');
+            } finally {
+                producer.disconnect();
+            }
+        });
+
+        it('session list provides cache fields without fetching messages', async () => {
+            const contentKeyPair = makeContentKeyPair();
+            const sessionKeyMaterial = makeKeyMaterial();
+
+            // Create session with metadata via the legacy path (simulating a CLI)
+            const sessionId = await createLegacyEncryptedSession({
+                tag: `cache-list-${Date.now()}`,
+                sessionKeyMaterial,
+                contentPublicKey: contentKeyPair.publicKey,
+                sessionMetadata: {
+                    session: {
+                        directory: '/cache-list-test',
+                        projectID: 'cache-list-project',
+                        title: 'Cache list test',
+                        parentID: null,
+                    },
+                    metadata: {
+                        flavor: 'codex',
+                        lifecycleState: 'running',
+                        currentModelCode: 'codex-mini-latest',
+                    },
+                },
+                agentState: {
+                    controlledByUser: false,
+                },
+            });
+
+            // Consumer fetches session list (no message fetch)
+            const consumer = new SyncNode(
+                SERVER_URL,
+                makeAccountToken(),
+                makeKeyMaterial(),
+                { resolveSessionKeyMaterial: makeSessionKeyResolver(contentKeyPair) },
+            );
+
+            try {
+                await consumer.connect();
+
+                const session = consumer.state.sessions.get(sessionId as string);
+                expect(session).toBeDefined();
+
+                // Cache fields are populated from metadata blob
+                expect(session?.agentType).toBe('codex');
+                expect(session?.lifecycleState).toBe('running');
+                expect(session?.modelID).toBe('codex-mini-latest');
+
+                // controlledByUser from agentState blob
+                expect(session?.controlledByUser).toBe(false);
+
+                // Messages are NOT fetched — should be empty
+                expect(session?.messages).toHaveLength(0);
+            } finally {
+                consumer.disconnect();
             }
         });
     });

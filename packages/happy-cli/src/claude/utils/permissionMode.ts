@@ -1,8 +1,8 @@
-import type { QueryOptions } from '@/claude/sdk';
+import type { PermissionMode as ClaudeSdkPermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionMode } from '@/api/types';
 
 /** Derived from SDK's QueryOptions - the modes Claude actually supports */
-export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']>;
+export type SupportedClaudeSdkPermissionMode = ClaudeSdkPermissionMode;
 
 /**
  * Map any PermissionMode (7 modes) to a Claude-compatible mode (4 modes)
@@ -16,13 +16,13 @@ export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']
  * Claude modes pass through unchanged:
  * - default, acceptEdits, bypassPermissions, plan
  */
-export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode {
-    const codexToClaudeMap: Record<string, ClaudeSdkPermissionMode> = {
+export function mapToClaudeMode(mode: PermissionMode): SupportedClaudeSdkPermissionMode {
+    const codexToClaudeMap: Record<string, SupportedClaudeSdkPermissionMode> = {
         'yolo': 'bypassPermissions',
         'safe-yolo': 'default',
         'read-only': 'default',
     };
-    return codexToClaudeMap[mode] ?? (mode as ClaudeSdkPermissionMode);
+    return codexToClaudeMap[mode] ?? (mode as SupportedClaudeSdkPermissionMode);
 }
 
 const VALID_PERMISSION_MODES: readonly PermissionMode[] = [

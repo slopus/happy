@@ -490,6 +490,88 @@ export const MessageWithPartsSchema = z.object({
 });
 export type MessageWithParts = z.infer<typeof MessageWithPartsSchema>;
 
+// ─── Flat session control messages ──────────────────────────────────────────
+
+export const RuntimeConfigPayloadSchema = MessageMetaSchema.pick({
+  permissionMode: true,
+  model: true,
+  fallbackModel: true,
+  customSystemPrompt: true,
+  appendSystemPrompt: true,
+  allowedTools: true,
+  disallowedTools: true,
+});
+export type RuntimeConfigPayload = z.infer<typeof RuntimeConfigPayloadSchema>;
+
+export const RuntimeConfigChangeSchema = z.object({
+  type: z.literal('runtime-config-change'),
+  id: MessageID,
+  sessionID: SessionID,
+  time: z.object({ created: z.number() }),
+  source: z.enum(['user', 'agent']),
+}).merge(RuntimeConfigPayloadSchema);
+export type RuntimeConfigChange = z.infer<typeof RuntimeConfigChangeSchema>;
+
+export const AbortRequestSchema = z.object({
+  type: z.literal('abort-request'),
+  id: MessageID,
+  sessionID: SessionID,
+  time: z.object({ created: z.number() }),
+  source: z.enum(['user', 'system']),
+  reason: z.string().optional(),
+});
+export type AbortRequest = z.infer<typeof AbortRequestSchema>;
+
+export const SessionEndSchema = z.object({
+  type: z.literal('session-end'),
+  id: MessageID,
+  sessionID: SessionID,
+  time: z.object({ created: z.number() }),
+  reason: z.enum(['completed', 'archived', 'killed', 'crashed']),
+  archivedBy: z.string().optional(),
+});
+export type SessionEnd = z.infer<typeof SessionEndSchema>;
+
+export const PermissionRequestMessageSchema = z.object({
+  type: z.literal('permission-request'),
+  id: MessageID,
+  sessionID: SessionID,
+  time: z.object({ created: z.number() }),
+  callID: z.string(),
+  tool: z.string(),
+  patterns: z.array(z.string()),
+  input: z.record(z.string(), z.unknown()),
+});
+export type PermissionRequestMessage = z.infer<typeof PermissionRequestMessageSchema>;
+
+export const PermissionResponseMessageSchema = z.object({
+  type: z.literal('permission-response'),
+  id: MessageID,
+  sessionID: SessionID,
+  time: z.object({ created: z.number() }),
+  requestID: MessageID,
+  callID: z.string(),
+  decision: z.enum(['once', 'always', 'reject']),
+  allowTools: z.array(z.string()).optional(),
+  reason: z.string().optional(),
+});
+export type PermissionResponseMessage = z.infer<typeof PermissionResponseMessageSchema>;
+
+export const SessionControlMessageSchema = z.union([
+  RuntimeConfigChangeSchema,
+  AbortRequestSchema,
+  SessionEndSchema,
+  PermissionRequestMessageSchema,
+  PermissionResponseMessageSchema,
+]);
+export type SessionControlMessage = z.infer<typeof SessionControlMessageSchema>;
+
+export const SessionStreamMessageSchema = z.union([
+  MessageWithPartsSchema,
+  SessionControlMessageSchema,
+]);
+export type SessionStreamMessage = z.infer<typeof SessionStreamMessageSchema>;
+
 // ─── Permission rules ─────────────────────────────────────────────────────────
 
 export const PermissionActionSchema = z.enum(['allow', 'deny', 'ask']);
@@ -545,6 +627,14 @@ export type SessionInfo = z.infer<typeof SessionInfoSchema>;
  */
 export const ProtocolEnvelopeSchema = z.object({
   v: z.literal(3),
-  message: MessageWithPartsSchema,
+  message: SessionStreamMessageSchema,
 });
 export type ProtocolEnvelope = z.infer<typeof ProtocolEnvelopeSchema>;
+
+export function isMessageWithParts(message: SessionStreamMessage): message is MessageWithParts {
+  return 'info' in message && 'parts' in message;
+}
+
+export function isSessionControlMessage(message: SessionStreamMessage): message is SessionControlMessage {
+  return 'type' in message;
+}

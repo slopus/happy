@@ -20,13 +20,21 @@ import {
     type SyncNodeToken,
 } from './token';
 import {
+    type AbortRequest,
     type MessageWithParts,
+    type PermissionRequestMessage,
+    type PermissionResponseMessage,
+    type RuntimeConfigChange,
     type SessionInfo,
     type SessionID,
     type MessageID,
     type PartID,
     type Block,
+    type SessionControlMessage,
+    type SessionEnd,
+    type SessionStreamMessage,
     type Todo,
+    isMessageWithParts,
     ProtocolEnvelopeSchema,
     SessionID as SessionIDSchema,
     TodoSchema,
@@ -54,14 +62,26 @@ const SyncNodeStoredSessionMetadataSchema = z.object({
 export interface SessionState {
     info: SessionInfo;
     messages: MessageWithParts[];
+    controlMessages: SessionControlMessage[];
 
     // Derived from messages by SyncNode
     permissions: PermissionRequest[];
     questions: QuestionRequest[];
     todos: Todo[];
     status: SessionStatus;
+    runtimeConfig: RuntimeConfigChange | null;
 
-    // Session-level encrypted properties (not in messages)
+    // ─── Session-level cache (Amendment 3) ──────────────────────────────
+    // Typed fields extracted from metadata/agentState blobs. The app reads
+    // these instead of reaching into the opaque blobs. Updated automatically
+    // whenever metadata or agentState changes.
+    lifecycleState: 'running' | 'idle' | 'archived';
+    agentType?: string;
+    modelID?: string;
+    summary?: string;
+    controlledByUser?: boolean;
+
+    // Raw encrypted blobs (transport layer — kept for CAS updates)
     metadata: unknown;
     metadataVersion: number;
     agentState: unknown;
@@ -77,7 +97,8 @@ export type SessionStatus =
 
 export interface PermissionRequest {
     sessionId: SessionID;
-    messageId: MessageID;
+    messageId: MessageID | null;
+    requestMessageId: MessageID;
     callId: string;
     permissionId: string;
     block: Block & { type: 'permission' };
@@ -286,6 +307,7 @@ export class SyncNode {
     private flushing = false;
     private stateListeners = new Set<(state: SyncState) => void>();
     private messageListeners = new Map<string, Set<(message: MessageWithParts) => void>>();
+    private sessionMessageListeners = new Map<string, Set<(message: SessionStreamMessage) => void>>();
     private sessionLastSeq = new Map<string, number>();
     private sessionLocalIds = new Map<string, Map<string, MessageID>>();
     private sessionKeyMaterials = new Map<string, KeyMaterial>();
@@ -392,6 +414,7 @@ export class SyncNode {
 
     /** Signal that a session process has ended. */
     sendSessionDeath(sessionId: SessionID): void {
+        void this.sendSessionEnd(sessionId, { reason: 'completed' });
         this.socket?.emit('session-end', {
             sid: sessionId as string,
             time: Date.now(),
@@ -447,7 +470,6 @@ export class SyncNode {
                     expectedVersion: session.metadataVersion,
                     metadata: encrypted,
                 });
-
                 if (answer.result === 'success') {
                     if (answer.metadata) {
                         this.applyStoredMetadataUpdate(session, answer.metadata, Date.now(), keyMaterial);
@@ -455,6 +477,7 @@ export class SyncNode {
                         session.metadata = updated;
                     }
                     session.metadataVersion = answer.version ?? session.metadataVersion + 1;
+                    this.deriveMetadataCache(session);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version && answer.version > session.metadataVersion) {
                         session.metadataVersion = answer.version;
@@ -462,6 +485,7 @@ export class SyncNode {
                             this.applyStoredMetadataUpdate(session, answer.metadata, Date.now(), keyMaterial);
                         }
                     }
+                    this.deriveMetadataCache(session);
                     throw new Error('Metadata version mismatch');
                 }
                 // 'error' result: silent ignore
@@ -507,6 +531,7 @@ export class SyncNode {
                         ? decryptMessage(keyMaterial, answer.agentState)
                         : updated;
                     session.agentStateVersion = answer.version ?? session.agentStateVersion + 1;
+                    this.deriveMetadataCache(session);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version && answer.version > session.agentStateVersion) {
                         session.agentStateVersion = answer.version;
@@ -514,6 +539,7 @@ export class SyncNode {
                             session.agentState = decryptMessage(keyMaterial, answer.agentState);
                         }
                     }
+                    this.deriveMetadataCache(session);
                     throw new Error('Agent state version mismatch');
                 }
             });
@@ -566,7 +592,10 @@ export class SyncNode {
             },
         };
 
-        this.state.sessions.set(sessionId as string, this.createSessionState(info));
+        this.state.sessions.set(sessionId as string, this.createSessionState(info, {
+            metadataVersion: res.session?.metadataVersion ?? 0,
+            agentStateVersion: res.session?.agentStateVersion ?? 0,
+        }));
         this.sessionKeyMaterials.set(sessionId as string, this.defaultKeyMaterial);
         this.sessionEncryptedDataKeys.set(sessionId as string, null);
 
@@ -624,20 +653,20 @@ export class SyncNode {
 
     // ─── Message operations ──────────────────────────────────────────────────
 
-    async sendMessage(sessionId: SessionID, message: MessageWithParts): Promise<void> {
+    async sendMessage(sessionId: SessionID, message: SessionStreamMessage): Promise<void> {
         this.assertSessionAccess(sessionId);
         this.assertPermission('sendMessage', 'write');
 
         const keyMaterial = await this.getKeyMaterialForSession(sessionId);
         const envelope = { v: 3 as const, message };
         const ciphertext = encryptMessage(keyMaterial, envelope);
-        const localId = `msg:${message.info.id}`;
+        const localId = this.getSessionMessageLocalId(message);
 
         return new Promise<void>((resolve, reject) => {
             this.outbox.push({ sessionId, localId, content: ciphertext, resolve, reject });
 
             // Optimistically add to local state
-            this.insertMessage(sessionId, message, localId);
+            this.insertSessionMessage(sessionId, message, localId);
 
             this.flushOutbox(sessionId);
         });
@@ -664,6 +693,62 @@ export class SyncNode {
         });
     }
 
+    async sendRuntimeConfigChange(
+        sessionId: SessionID,
+        change: Omit<RuntimeConfigChange, 'type' | 'id' | 'sessionID' | 'time'>,
+    ): Promise<void> {
+        const message: RuntimeConfigChange = {
+            type: 'runtime-config-change',
+            id: `msg_${createId()}` as MessageID,
+            sessionID: sessionId,
+            time: { created: Date.now() },
+            ...change,
+        };
+        await this.sendMessage(sessionId, message);
+    }
+
+    async sendAbortRequest(
+        sessionId: SessionID,
+        request: Omit<AbortRequest, 'type' | 'id' | 'sessionID' | 'time'>,
+    ): Promise<void> {
+        const message: AbortRequest = {
+            type: 'abort-request',
+            id: `msg_${createId()}` as MessageID,
+            sessionID: sessionId,
+            time: { created: Date.now() },
+            ...request,
+        };
+        await this.sendMessage(sessionId, message);
+    }
+
+    async sendSessionEnd(
+        sessionId: SessionID,
+        sessionEnd: Omit<SessionEnd, 'type' | 'id' | 'sessionID' | 'time'>,
+    ): Promise<void> {
+        const message: SessionEnd = {
+            type: 'session-end',
+            id: `msg_${createId()}` as MessageID,
+            sessionID: sessionId,
+            time: { created: Date.now() },
+            ...sessionEnd,
+        };
+        await this.sendMessage(sessionId, message);
+    }
+
+    async sendPermissionRequest(
+        sessionId: SessionID,
+        request: Omit<PermissionRequestMessage, 'type' | 'id' | 'sessionID' | 'time'>,
+    ): Promise<void> {
+        const message: PermissionRequestMessage = {
+            type: 'permission-request',
+            id: `msg_${createId()}` as MessageID,
+            sessionID: sessionId,
+            time: { created: Date.now() },
+            ...request,
+        };
+        await this.sendMessage(sessionId, message);
+    }
+
     async approvePermission(
         sessionId: SessionID,
         requestId: string,
@@ -673,7 +758,7 @@ export class SyncNode {
         const request = this.findPermissionRequest(sessionId, requestId);
         if (!request) throw new Error(`Permission request ${requestId} not found`);
 
-        const decisionMessage = this.buildDecisionMessage(sessionId, request, {
+        const decisionMessage = this.buildPermissionResponseMessage(sessionId, request, {
             decision: opts.decision,
             allowTools: opts.allowTools,
         });
@@ -690,7 +775,7 @@ export class SyncNode {
         const request = this.findPermissionRequest(sessionId, requestId);
         if (!request) throw new Error(`Permission request ${requestId} not found`);
 
-        const decisionMessage = this.buildDecisionMessage(sessionId, request, {
+        const decisionMessage = this.buildPermissionResponseMessage(sessionId, request, {
             decision: 'reject',
             reason: opts.reason,
         });
@@ -727,6 +812,17 @@ export class SyncNode {
         }
         this.messageListeners.get(key)!.add(callback);
         return () => { this.messageListeners.get(key)?.delete(callback); };
+    }
+
+    onSessionMessage(sessionId: SessionID, callback: (message: SessionStreamMessage) => void): () => void {
+        this.assertSessionAccess(sessionId);
+        this.assertPermission('onSessionMessage', 'read');
+        const key = sessionId as string;
+        if (!this.sessionMessageListeners.has(key)) {
+            this.sessionMessageListeners.set(key, new Set());
+        }
+        this.sessionMessageListeners.get(key)!.add(callback);
+        return () => { this.sessionMessageListeners.get(key)?.delete(callback); };
     }
 
     // ─── Fetch / hydrate ─────────────────────────────────────────────────────
@@ -832,6 +928,7 @@ export class SyncNode {
                 this.sessionLastSeq.delete(body.sid);
                 this.sessionKeyMaterials.delete(body.sid);
                 this.sessionEncryptedDataKeys.delete(body.sid);
+                this.sessionMessageListeners.delete(body.sid);
                 this.notifyStateChange();
                 break;
         }
@@ -869,7 +966,7 @@ export class SyncNode {
         if (!parsed.success) return;
 
         const message = parsed.data.message;
-        this.insertMessage(sessionId, message, serverMsg.localId ?? undefined, opts);
+        this.insertSessionMessage(sessionId, message, serverMsg.localId ?? undefined, opts);
     }
 
     // ─── Internal: state management ──────────────────────────────────────────
@@ -894,18 +991,23 @@ export class SyncNode {
         agentState?: unknown;
         agentStateVersion?: number;
     }): SessionState {
-        return {
+        const session: SessionState = {
             info,
             messages: [],
+            controlMessages: [],
             permissions: [],
             questions: [],
             todos: [],
             status: { type: 'idle' },
+            runtimeConfig: null,
+            lifecycleState: 'running',
             metadata: opts?.metadata ?? null,
             metadataVersion: opts?.metadataVersion ?? 0,
             agentState: opts?.agentState ?? null,
             agentStateVersion: opts?.agentStateVersion ?? 0,
         };
+        this.deriveMetadataCache(session);
+        return session;
     }
 
     private upsertSessionInfo(info: SessionInfo, opts?: {
@@ -929,7 +1031,50 @@ export class SyncNode {
             if (opts.agentState !== undefined) existing.agentState = opts.agentState;
             if (opts.agentStateVersion !== undefined) existing.agentStateVersion = opts.agentStateVersion;
         }
+        this.deriveMetadataCache(existing);
         this.notifyStateChange();
+    }
+
+    /**
+     * Extract typed session-level cache fields from the opaque metadata and
+     * agentState blobs. Called after any metadata/agentState update so that
+     * consumers can read typed fields directly from SessionState instead of
+     * reaching into the encrypted blobs.
+     */
+    private deriveMetadataCache(session: SessionState): void {
+        const meta = session.metadata as Record<string, unknown> | null;
+        if (meta && typeof meta === 'object') {
+            // Lifecycle
+            const lcs = meta.lifecycleState;
+            if (lcs === 'running' || lcs === 'idle' || lcs === 'archived') {
+                session.lifecycleState = lcs;
+            }
+
+            // Agent type (metadata calls it "flavor")
+            if (typeof meta.flavor === 'string') {
+                session.agentType = meta.flavor;
+            }
+
+            // Model
+            if (typeof meta.currentModelCode === 'string') {
+                session.modelID = meta.currentModelCode;
+            }
+
+            // Summary
+            const summary = meta.summary;
+            if (summary && typeof summary === 'object') {
+                const text = (summary as Record<string, unknown>).text;
+                if (typeof text === 'string') {
+                    session.summary = text;
+                }
+            }
+        }
+
+        // controlledByUser from agentState
+        const state = session.agentState as Record<string, unknown> | null;
+        if (state && typeof state === 'object' && 'controlledByUser' in state) {
+            session.controlledByUser = state.controlledByUser as boolean | undefined;
+        }
     }
 
     insertMessage(
@@ -938,28 +1083,49 @@ export class SyncNode {
         localId?: string,
         opts: MessageInsertOpts = {},
     ): void {
+        this.insertSessionMessage(sessionId, message, localId, opts);
+    }
+
+    private insertSessionMessage(
+        sessionId: SessionID,
+        message: SessionStreamMessage,
+        localId?: string,
+        opts: MessageInsertOpts = {},
+    ): void {
         const session = this.ensureSession(sessionId);
         if (localId) {
             const seenLocalIds = this.ensureSessionLocalIds(sessionId);
             const existingMessageId = seenLocalIds.get(localId);
-            if (existingMessageId && existingMessageId !== message.info.id) {
+            const nextMessageId = this.getSessionMessageId(message);
+            if (existingMessageId && existingMessageId !== nextMessageId) {
                 return;
             }
-            seenLocalIds.set(localId, message.info.id);
+            seenLocalIds.set(localId, nextMessageId);
         }
 
-        // Dedup by message ID
-        const existingIdx = session.messages.findIndex(m => m.info.id === message.info.id);
-        if (existingIdx >= 0) {
-            session.messages[existingIdx] = message;
+        if (isMessageWithParts(message)) {
+            const existingIdx = session.messages.findIndex(m => m.info.id === message.info.id);
+            if (existingIdx >= 0) {
+                session.messages[existingIdx] = message;
+            } else {
+                session.messages.push(message);
+            }
         } else {
-            session.messages.push(message);
+            const existingIdx = session.controlMessages.findIndex(m => m.id === message.id);
+            if (existingIdx >= 0) {
+                session.controlMessages[existingIdx] = message;
+            } else {
+                session.controlMessages.push(message);
+            }
         }
 
         this.deriveSessionState(session);
         this.notifyStateChange();
         if (opts.notifyListeners !== false) {
-            this.notifyMessageListeners(sessionId, message);
+            this.notifySessionMessageListeners(sessionId, message);
+            if (isMessageWithParts(message)) {
+                this.notifyMessageListeners(sessionId, message);
+            }
         }
     }
 
@@ -974,6 +1140,54 @@ export class SyncNode {
         let hasRunning = false;
         let hasBlocked = false;
         let blockReason: 'permission' | 'question' = 'permission';
+        const permissionResponsesByRequestId = new Map<string, PermissionResponseMessage>();
+        const permissionResponsesByCallId = new Map<string, PermissionResponseMessage>();
+        const permissionRequestsByCallId = new Map<string, PermissionRequestMessage>();
+
+        let runtimeConfig: RuntimeConfigChange | null = null;
+
+        for (const controlMessage of session.controlMessages) {
+            if (controlMessage.type === 'runtime-config-change') {
+                runtimeConfig = this.mergeRuntimeConfig(runtimeConfig, controlMessage);
+            }
+            if (controlMessage.type === 'permission-request') {
+                permissionRequestsByCallId.set(controlMessage.callID, controlMessage);
+            }
+            if (controlMessage.type === 'permission-response') {
+                permissionResponsesByRequestId.set(controlMessage.requestID, controlMessage);
+                permissionResponsesByCallId.set(controlMessage.callID, controlMessage);
+            }
+        }
+
+        session.runtimeConfig = runtimeConfig;
+
+        for (const controlMessage of session.controlMessages) {
+            if (controlMessage.type !== 'permission-request') {
+                continue;
+            }
+
+            const resolved = this.isPermissionResolved(
+                session,
+                null,
+                controlMessage.callID,
+                controlMessage.id,
+                permissionResponsesByRequestId,
+                permissionResponsesByCallId,
+            );
+            permissions.push({
+                sessionId: session.info.id,
+                messageId: this.findToolMessageIdByCallId(session, controlMessage.callID),
+                requestMessageId: controlMessage.id,
+                callId: controlMessage.callID,
+                permissionId: controlMessage.id,
+                block: this.toPermissionBlock(controlMessage),
+                resolved,
+            });
+            if (!resolved) {
+                hasBlocked = true;
+                blockReason = 'permission';
+            }
+        }
 
         for (const msg of session.messages) {
             for (const part of msg.parts) {
@@ -988,15 +1202,26 @@ export class SyncNode {
                 if (part.type === 'tool' && part.state.status === 'blocked') {
                     const block = part.state.block;
                     if (block.type === 'permission') {
-                        const resolved = this.isPermissionResolved(session, msg.info.id, part.callID, block.id);
-                        permissions.push({
-                            sessionId: session.info.id,
-                            messageId: msg.info.id,
-                            callId: part.callID,
-                            permissionId: block.id,
-                            block,
-                            resolved,
-                        });
+                        const controlRequest = permissionRequestsByCallId.get(part.callID);
+                        const resolved = this.isPermissionResolved(
+                            session,
+                            msg.info.id,
+                            part.callID,
+                            controlRequest?.id ?? block.id,
+                            permissionResponsesByRequestId,
+                            permissionResponsesByCallId,
+                        );
+                        if (!controlRequest) {
+                            permissions.push({
+                                sessionId: session.info.id,
+                                messageId: msg.info.id,
+                                requestMessageId: block.id as MessageID,
+                                callId: part.callID,
+                                permissionId: block.id,
+                                block,
+                                resolved,
+                            });
+                        }
                         if (!resolved) {
                             hasBlocked = true;
                             blockReason = 'permission';
@@ -1031,6 +1256,11 @@ export class SyncNode {
 
         if (hasBlocked) {
             session.status = { type: 'blocked', reason: blockReason };
+        } else if (this.getLatestSessionEnd(session)) {
+            const sessionEnd = this.getLatestSessionEnd(session)!;
+            session.status = sessionEnd.reason === 'crashed'
+                ? { type: 'error', error: 'Session crashed' }
+                : { type: 'completed' };
         } else if (hasRunning) {
             session.status = { type: 'running' };
         } else {
@@ -1038,7 +1268,22 @@ export class SyncNode {
         }
     }
 
-    private isPermissionResolved(session: SessionState, messageId: MessageID, callId: string, permissionId: string): boolean {
+    private isPermissionResolved(
+        session: SessionState,
+        messageId: MessageID | null,
+        callId: string,
+        permissionId: string,
+        responsesByRequestId: Map<string, PermissionResponseMessage>,
+        responsesByCallId: Map<string, PermissionResponseMessage>,
+    ): boolean {
+        if (responsesByRequestId.has(permissionId) || responsesByCallId.has(callId)) {
+            return true;
+        }
+
+        if (!messageId) {
+            return false;
+        }
+
         for (const msg of session.messages) {
             for (const part of msg.parts) {
                 if (part.type === 'decision'
@@ -1050,6 +1295,16 @@ export class SyncNode {
             }
         }
         return false;
+    }
+
+    private getLatestSessionEnd(session: SessionState): SessionEnd | null {
+        for (let i = session.controlMessages.length - 1; i >= 0; i -= 1) {
+            const controlMessage = session.controlMessages[i];
+            if (controlMessage.type === 'session-end') {
+                return controlMessage;
+            }
+        }
+        return null;
     }
 
     private isQuestionResolved(session: SessionState, messageId: MessageID, callId: string, questionId: string): boolean {
@@ -1064,6 +1319,70 @@ export class SyncNode {
             }
         }
         return false;
+    }
+
+    private findToolMessageIdByCallId(session: SessionState, callId: string): MessageID | null {
+        for (let i = session.messages.length - 1; i >= 0; i -= 1) {
+            const message = session.messages[i];
+            for (const part of message.parts) {
+                if (part.type === 'tool' && part.callID === callId) {
+                    return message.info.id;
+                }
+            }
+        }
+        return null;
+    }
+
+    private toPermissionBlock(request: PermissionRequestMessage): Block & { type: 'permission' } {
+        return {
+            type: 'permission',
+            id: request.id,
+            permission: request.tool,
+            patterns: request.patterns,
+            always: [],
+            metadata: request.input,
+        };
+    }
+
+    private mergeRuntimeConfig(
+        current: RuntimeConfigChange | null,
+        next: RuntimeConfigChange,
+    ): RuntimeConfigChange {
+        if (!current) {
+            return next;
+        }
+
+        const merged: RuntimeConfigChange = {
+            ...current,
+            id: next.id,
+            sessionID: next.sessionID,
+            time: next.time,
+            source: next.source,
+        };
+
+        if (Object.prototype.hasOwnProperty.call(next, 'permissionMode')) {
+            merged.permissionMode = next.permissionMode;
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'model')) {
+            merged.model = next.model;
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'fallbackModel')) {
+            merged.fallbackModel = next.fallbackModel;
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'customSystemPrompt')) {
+            merged.customSystemPrompt = next.customSystemPrompt;
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'appendSystemPrompt')) {
+            merged.appendSystemPrompt = next.appendSystemPrompt;
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'allowedTools')) {
+            merged.allowedTools = next.allowedTools;
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'disallowedTools')) {
+            merged.disallowedTools = next.disallowedTools;
+        }
+
+        return merged;
     }
 
     private extractTodosFromToolPart(part: Extract<MessageWithParts['parts'][number], { type: 'tool' }>): Todo[] | undefined {
@@ -1137,38 +1456,24 @@ export class SyncNode {
         return normalized === 'todowrite' || normalized === 'todo_write' || normalized === 'todo-write';
     }
 
-    // ─── Internal: build decision/answer messages ────────────────────────────
+    // ─── Internal: build control / answer messages ──────────────────────────
 
-    private buildDecisionMessage(
+    private buildPermissionResponseMessage(
         sessionId: SessionID,
         request: PermissionRequest,
         opts: { decision: 'once' | 'always' | 'reject'; allowTools?: string[]; reason?: string },
-    ): MessageWithParts {
+    ): PermissionResponseMessage {
         const msgId = `msg_${createId()}` as MessageID;
-        const partId = `prt_${createId()}` as PartID;
-
         return {
-            info: {
-                id: msgId,
-                sessionID: sessionId,
-                role: 'user' as const,
-                time: { created: Date.now() },
-                agent: 'user',
-                model: { providerID: 'user', modelID: 'user' },
-            },
-            parts: [{
-                id: partId,
-                sessionID: sessionId,
-                messageID: msgId,
-                type: 'decision' as const,
-                targetMessageID: request.messageId,
-                targetCallID: request.callId,
-                permissionID: request.permissionId,
-                decision: opts.decision,
-                allowTools: opts.allowTools,
-                reason: opts.reason,
-                decidedAt: Date.now(),
-            }],
+            type: 'permission-response',
+            id: msgId,
+            sessionID: sessionId,
+            time: { created: Date.now() },
+            requestID: request.requestMessageId,
+            callID: request.callId,
+            decision: opts.decision,
+            allowTools: opts.allowTools,
+            reason: opts.reason,
         };
     }
 
@@ -1207,7 +1512,11 @@ export class SyncNode {
 
     private findPermissionRequest(sessionId: SessionID, requestId: string): PermissionRequest | undefined {
         const session = this.state.sessions.get(sessionId as string);
-        return session?.permissions.find(p => p.permissionId === requestId);
+        return session?.permissions.find((p) =>
+            p.permissionId === requestId
+            || p.requestMessageId === requestId
+            || p.callId === requestId,
+        );
     }
 
     private findQuestionRequest(sessionId: SessionID, questionId: string): QuestionRequest | undefined {
@@ -1228,6 +1537,26 @@ export class SyncNode {
                 listener(message);
             }
         }
+    }
+
+    private notifySessionMessageListeners(sessionId: SessionID, message: SessionStreamMessage): void {
+        const listeners = this.sessionMessageListeners.get(sessionId as string);
+        if (listeners) {
+            for (const listener of listeners) {
+                listener(message);
+            }
+        }
+    }
+
+    private getSessionMessageId(message: SessionStreamMessage): MessageID {
+        return isMessageWithParts(message) ? message.info.id : message.id;
+    }
+
+    private getSessionMessageLocalId(message: SessionStreamMessage): string {
+        if (isMessageWithParts(message)) {
+            return `msg:${message.info.id}`;
+        }
+        return `ctl:${message.type}:${message.id}`;
     }
 
     private rememberSessionEncryptedDataKey(sessionId: SessionID, encryptedDataKey: string | null): void {
@@ -1324,6 +1653,7 @@ export class SyncNode {
         }
 
         if (changed) {
+            this.deriveMetadataCache(current);
             this.notifyStateChange();
         }
     }

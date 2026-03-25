@@ -383,6 +383,9 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
 
   const effectiveRpcManager = rpcHandlerManager ?? session.rpcHandlerManager;
   effectiveRpcManager.registerHandler('abort', handleAbort);
+  syncBridge?.onAbortRequest(() => {
+    void handleAbort();
+  });
   effectiveRpcManager.registerHandler('openclaw-retry-pairing', async () => {
     backend.retryConnect();
   });

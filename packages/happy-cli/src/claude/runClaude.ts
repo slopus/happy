@@ -15,7 +15,7 @@ import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
-import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
+import { extractSDKMetadataAsync } from '@/claude/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
@@ -338,6 +338,30 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         appendSystemPrompt: currentAppendSystemPrompt,
         allowedTools: currentAllowedTools,
         disallowedTools: currentDisallowedTools,
+    });
+
+    syncBridge.onRuntimeConfigChange((change) => {
+        if (change.permissionMode) {
+            currentPermissionMode = applySandboxPermissionPolicy(change.permissionMode, sandboxEnabled);
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'model')) {
+            currentModel = change.model || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'fallbackModel')) {
+            currentFallbackModel = change.fallbackModel || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'customSystemPrompt')) {
+            currentCustomSystemPrompt = change.customSystemPrompt || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'appendSystemPrompt')) {
+            currentAppendSystemPrompt = change.appendSystemPrompt || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'allowedTools')) {
+            currentAllowedTools = change.allowedTools || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'disallowedTools')) {
+            currentDisallowedTools = change.disallowedTools || undefined;
+        }
     });
 
     syncBridge.onUserMessage((message) => {

@@ -8,12 +8,12 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { stat } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chromium } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
 import { SyncNode } from '../sync-node';
 import { type KeyMaterial } from '../encryption';
@@ -44,6 +44,7 @@ import {
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const WEB_PORT = Number(process.env.HAPPY_BROWSER_WEB_PORT ?? '19006');
 const WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
+const VIDEO_DIR = join(REPO_ROOT, 'e2e-recordings');
 const STEP_TIMEOUT = 240000;
 
 const CLAUDE_MODEL = {
@@ -107,6 +108,45 @@ function startWebAppServer(serverUrl: string): {
     return {
         process: child,
         getLog: () => log,
+    };
+}
+
+async function createRecordedBrowserPage(opts: {
+    viewport: { width: number; height: number };
+}): Promise<{
+    browser: Browser;
+    context: BrowserContext;
+    page: Page;
+    consoleMessages: string[];
+    pageErrors: string[];
+}> {
+    await mkdir(VIDEO_DIR, { recursive: true });
+
+    const consoleMessages: string[] = [];
+    const pageErrors: string[] = [];
+    const browser = await chromium.launch({
+        headless: true,
+        channel: process.env.HAPPY_BROWSER_CHANNEL ?? 'chrome',
+    });
+    const context = await browser.newContext({
+        viewport: opts.viewport,
+        recordVideo: { dir: VIDEO_DIR, size: { width: 1280, height: 720 } },
+    });
+    const page = await context.newPage();
+
+    page.on('console', (message) => {
+        consoleMessages.push(`[${message.type()}] ${message.text()}`);
+    });
+    page.on('pageerror', (error) => {
+        pageErrors.push(error.stack || error.message);
+    });
+
+    return {
+        browser,
+        context,
+        page,
+        consoleMessages,
+        pageErrors,
     };
 }
 
@@ -188,26 +228,17 @@ describe('Level 3: Browser smoke (Claude + Codex)', () => {
             );
         }, STEP_TIMEOUT);
 
-        const consoleMessages: string[] = [];
-        const pageErrors: string[] = [];
-
-        const browser = await chromium.launch({
-            headless: true,
-            channel: process.env.HAPPY_BROWSER_CHANNEL ?? 'chrome',
+        const {
+            browser,
+            context,
+            page,
+            consoleMessages,
+            pageErrors,
+        } = await createRecordedBrowserPage({
+            viewport: { width: 1440, height: 1400 },
         });
 
         try {
-            const page = await browser.newPage({
-                viewport: { width: 1440, height: 1400 },
-            });
-
-            page.on('console', (message) => {
-                consoleMessages.push(`[${message.type()}] ${message.text()}`);
-            });
-            page.on('pageerror', (error) => {
-                pageErrors.push(error.stack || error.message);
-            });
-
             const screenshotPath = join(tmpdir(), `happy-browser-${opts.agent}-${Date.now()}.png`);
             const sessionUrl = (
                 `${WEB_URL}/session/${sessionId}` +
@@ -217,14 +248,17 @@ describe('Level 3: Browser smoke (Claude + Codex)', () => {
 
             await page.goto(sessionUrl, { waitUntil: 'networkidle' });
             await page.waitForFunction(
-                (expectedPrompt: string) => document.body?.innerText.includes(expectedPrompt) ?? false,
+                (expectedPrompt: string) => {
+                    const body = (globalThis as { document?: { body?: { innerText?: string } } }).document?.body;
+                    return body?.innerText?.includes(expectedPrompt) ?? false;
+                },
                 opts.prompt,
                 { timeout: 60000 },
             );
 
             await page.waitForFunction(
                 () => {
-                    const body = document.body?.innerText ?? '';
+                    const body = (globalThis as { document?: { body?: { innerText?: string } } }).document?.body?.innerText ?? '';
                     return /index\.html|styles\.css|app\.js|ux-spec\.md|exercise-flow\.md/.test(body);
                 },
                 undefined,
@@ -246,6 +280,7 @@ describe('Level 3: Browser smoke (Claude + Codex)', () => {
             const screenshotStats = await stat(screenshotPath);
             expect(screenshotStats.size).toBeGreaterThan(0);
         } finally {
+            await context.close();
             await browser.close();
         }
     }
@@ -378,24 +413,17 @@ describe('Level 3: Browser smoke (Claude + Codex)', () => {
 
         // ── Browser verification ────────────────────────────────────────────
         console.log('[UX test] Opening browser to verify rendered transcript');
-        const consoleMessages: string[] = [];
-        const pageErrors: string[] = [];
-        const browser = await chromium.launch({
-            headless: true,
-            channel: process.env.HAPPY_BROWSER_CHANNEL ?? 'chrome',
+        const {
+            browser,
+            context,
+            page,
+            consoleMessages,
+            pageErrors,
+        } = await createRecordedBrowserPage({
+            viewport: { width: 1440, height: 2000 },
         });
 
         try {
-            const page = await browser.newPage({
-                viewport: { width: 1440, height: 2000 },
-            });
-            page.on('console', (msg) => {
-                consoleMessages.push(`[${msg.type()}] ${msg.text()}`);
-            });
-            page.on('pageerror', (err) => {
-                pageErrors.push(err.stack || err.message);
-            });
-
             const sessionUrl = (
                 `${WEB_URL}/session/${uxSessionId}` +
                 `?dev_token=${encodeURIComponent(getAuthToken())}` +
@@ -407,7 +435,7 @@ describe('Level 3: Browser smoke (Claude + Codex)', () => {
             // Wait for transcript to render multiple steps
             await page.waitForFunction(
                 () => {
-                    const body = document.body?.innerText ?? '';
+                    const body = (globalThis as { document?: { body?: { innerText?: string } } }).document?.body?.innerText ?? '';
                     return (
                         body.includes('Read all files') &&
                         body.includes('Fix it.') &&
@@ -490,7 +518,106 @@ describe('Level 3: Browser smoke (Claude + Codex)', () => {
             console.log(`[UX test] Console messages: ${consoleMessages.length}`);
             console.log('[UX test] All browser assertions passed');
         } finally {
+            await context.close();
             await browser.close();
         }
     }, 600000);
+
+    it('Session B updates do not rerender the open Session A transcript', async () => {
+        const projectADir = await createIsolatedProjectCopy('environments/lab-rat-todo-project');
+        const projectBDir = await createIsolatedProjectCopy('environments/lab-rat-todo-project');
+        const sessionA = await spawnSessionViaDaemon({
+            directory: projectADir,
+            agent: 'claude',
+        }) as SessionID;
+        const sessionB = await spawnSessionViaDaemon({
+            directory: projectBDir,
+            agent: 'claude',
+        }) as SessionID;
+
+        await waitForCondition(
+            () => node.state.sessions.has(sessionA as string) && node.state.sessions.has(sessionB as string),
+            30000,
+        );
+
+        const promptA = 'Read all files, tell me what this does.';
+        const beforeA = getAssistantMessages(node, sessionA).length;
+        await node.sendMessage(sessionA, makeUserMessage(
+            'rerender-a',
+            sessionA,
+            promptA,
+            'claude',
+            CLAUDE_MODEL,
+        ));
+        await waitForStepFinish(node, sessionA, beforeA, 120000);
+
+        const {
+            browser,
+            context,
+            page,
+            consoleMessages,
+            pageErrors,
+        } = await createRecordedBrowserPage({
+            viewport: { width: 1440, height: 1600 },
+        });
+
+        try {
+            const sessionUrl = (
+                `${WEB_URL}/session/${sessionA}` +
+                `?dev_token=${encodeURIComponent(getAuthToken())}` +
+                `&dev_secret=${encodeURIComponent(encodeBase64Url(getEncryptionSecret()))}`
+            );
+
+            await page.goto(sessionUrl, { waitUntil: 'networkidle' });
+            await page.waitForFunction(
+                (expectedPrompt: string) => {
+                    const body = (globalThis as { document?: { body?: { innerText?: string } } }).document?.body;
+                    return body?.innerText?.includes(expectedPrompt) ?? false;
+                },
+                promptA,
+                { timeout: 60000 },
+            );
+
+            await page.waitForTimeout(1500);
+            await page.evaluate((sessionId: string) => {
+                const target = globalThis as typeof globalThis & {
+                    __HAPPY_TRANSCRIPT_RENDER_COUNTS__?: Record<string, number>;
+                };
+                target.__HAPPY_TRANSCRIPT_RENDER_COUNTS__ ??= {};
+                target.__HAPPY_TRANSCRIPT_RENDER_COUNTS__[sessionId] = 0;
+            }, sessionA as string);
+            await page.waitForTimeout(1500);
+
+            const promptB = "There's a bug in the Done filter — it shows all items instead of only completed ones. Find it.";
+            const beforeB = getAssistantMessages(node, sessionB).length;
+            await node.sendMessage(sessionB, makeUserMessage(
+                'rerender-b',
+                sessionB,
+                promptB,
+                'claude',
+                CLAUDE_MODEL,
+            ));
+            await waitForStepFinish(node, sessionB, beforeB, 120000);
+            await page.waitForTimeout(3000);
+
+            const renderCountA = await page.evaluate((sessionId: string) => {
+                const target = globalThis as typeof globalThis & {
+                    __HAPPY_TRANSCRIPT_RENDER_COUNTS__?: Record<string, number>;
+                };
+                return target.__HAPPY_TRANSCRIPT_RENDER_COUNTS__?.[sessionId] ?? 0;
+            }, sessionA as string);
+            const body = await page.textContent('body') ?? '';
+
+            expect(renderCountA).toBe(0);
+            expect(body).toContain(promptA);
+            expect(body).not.toContain(promptB);
+            expect(consoleMessages.join('\n')).not.toContain('Buffer is not defined');
+            expect(consoleMessages.join('\n')).not.toContain('AppSyncStore fetchSession failed');
+            expect(consoleMessages.join('\n')).not.toContain('AppSyncStore connect failed');
+            expect(pageErrors).toHaveLength(0);
+        } finally {
+            await context.close();
+            await browser.close();
+        }
+    }, 300000);
 });

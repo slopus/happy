@@ -107,15 +107,27 @@ The SDKs handle the agent ↔ happy-cli communication underneath.
 - Use descriptive commit messages: `checkpoint: OpenCode Steps 0-13 passing`
 - You can commit partial progress too — `wip: OpenCode e2e Steps 0-6 pass, 7+ in progress`
 
+### CRITICAL: Do NOT kill the global daemon or user sessions
+
+- The human is actively using the happy daemon and happy sessions on this machine.
+  **NEVER kill, restart, or send signals to the global daemon or any sessions you
+  did not spawn.** Doing so destroys the human's active work.
+- The daemon restart logic (`daemon start-sync`, version mismatch detection) will
+  SIGTERM the global daemon if triggered. Your tests MUST NOT trigger this.
+- Tests must spawn their OWN isolated daemon instance (e.g. on a different port,
+  with a different state directory) — never interact with the global one.
+- If your test code calls `daemon start-sync` or any daemon control function that
+  could restart the global daemon, that is a **critical bug**. Fix it.
+
 ### Clean up orphan processes
 
-- After running e2e tests, check for orphan agent processes:
-  `ps aux | grep -E 'opencode|codex|claude' | grep -v grep`
-- Kill orphans from prior test runs that were not cleaned up by teardown.
-- **DO NOT kill**: the loop process itself (`loop/run.sh`), the current
-  iteration's Claude/Codex process, or any process not started by the loop.
-- Only kill processes that are clearly leftovers from e2e test runs (look for
-  processes spawned by the daemon with temp directory paths).
+- After running e2e tests, check for orphan agent processes that YOUR TESTS spawned.
+- **ONLY clean up processes spawned by your test runs** (look for processes with
+  temp directory paths or test-specific ports).
+- **DO NOT kill**: the global daemon, any user-started happy sessions, the loop
+  process itself (`loop/run.sh`), or any process not started by the tests.
+- When in doubt, leave a process alone. It's better to leak a test process than
+  to kill the human's active session.
 
 ### Browser verification must be COMPLETE
 

@@ -1,6 +1,6 @@
 import { eventRouter, buildNewSessionUpdate } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
-import { db } from "@/storage/db";
+import { db, getPGlite } from "@/storage/db";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { log } from "@/utils/log";
@@ -35,6 +35,61 @@ const createSessionBodySchema = z.union([
     syncNodeCreateSessionBodySchema,
 ]);
 
+type SessionRouteRow = {
+    id: string;
+    seq: number;
+    createdAt: Date | string | number;
+    updatedAt: Date | string | number;
+    metadata: string;
+    metadataVersion: number;
+    agentState: string | null;
+    agentStateVersion: number;
+    dataEncryptionKey: Uint8Array | null;
+    active: boolean;
+    lastActiveAt: Date | string | number;
+};
+
+function toTimestamp(value: Date | string | number): number {
+    return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+
+function toDate(value: Date | string | number): Date {
+    return value instanceof Date ? value : new Date(value);
+}
+
+function encodeDataEncryptionKey(value: Uint8Array | null): string | null {
+    if (value == null) {
+        return null;
+    }
+    return Buffer.from(value).toString('base64');
+}
+
+function toNewSessionUpdateInput(session: SessionRouteRow): Parameters<typeof buildNewSessionUpdate>[0] {
+    return {
+        ...session,
+        createdAt: toDate(session.createdAt),
+        updatedAt: toDate(session.updatedAt),
+        lastActiveAt: toDate(session.lastActiveAt),
+    };
+}
+
+function toSessionResponse(session: SessionRouteRow) {
+    return {
+        id: session.id,
+        seq: session.seq,
+        createdAt: toTimestamp(session.createdAt),
+        updatedAt: toTimestamp(session.updatedAt),
+        active: session.active,
+        activeAt: toTimestamp(session.lastActiveAt),
+        metadata: session.metadata,
+        metadataVersion: session.metadataVersion,
+        agentState: session.agentState,
+        agentStateVersion: session.agentStateVersion,
+        dataEncryptionKey: encodeDataEncryptionKey(session.dataEncryptionKey),
+        lastMessage: null,
+    };
+}
+
 export function sessionRoutes(app: Fastify) {
 
     // Sessions API
@@ -46,6 +101,32 @@ export function sessionRoutes(app: Fastify) {
         }
 
         const userId = request.userId;
+
+        const pglite = getPGlite();
+        if (pglite) {
+            const result = await pglite.query<SessionRouteRow>(`
+                SELECT
+                    "id",
+                    "seq",
+                    "createdAt",
+                    "updatedAt",
+                    "metadata",
+                    "metadataVersion",
+                    "agentState",
+                    "agentStateVersion",
+                    "dataEncryptionKey",
+                    "active",
+                    "lastActiveAt"
+                FROM "Session"
+                WHERE "accountId" = $1
+                ORDER BY "updatedAt" DESC
+                LIMIT 150
+            `, [userId]);
+
+            return reply.send({
+                sessions: result.rows.map(toSessionResponse),
+            });
+        }
 
         const sessions = await db.session.findMany({
             where: { accountId: userId },
@@ -78,26 +159,7 @@ export function sessionRoutes(app: Fastify) {
         });
 
         return reply.send({
-            sessions: sessions.map((v) => {
-                // const lastMessage = v.messages[0];
-                const sessionUpdatedAt = v.updatedAt.getTime();
-                // const lastMessageCreatedAt = lastMessage ? lastMessage.createdAt.getTime() : 0;
-
-                return {
-                    id: v.id,
-                    seq: v.seq,
-                    createdAt: v.createdAt.getTime(),
-                    updatedAt: sessionUpdatedAt,
-                    active: v.active,
-                    activeAt: v.lastActiveAt.getTime(),
-                    metadata: v.metadata,
-                    metadataVersion: v.metadataVersion,
-                    agentState: v.agentState,
-                    agentStateVersion: v.agentStateVersion,
-                    dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
-                    lastMessage: null
-                };
-            })
+            sessions: sessions.map((session) => toSessionResponse(session)),
         });
     });
 
@@ -280,8 +342,38 @@ export function sessionRoutes(app: Fastify) {
             });
         const agentState = isLegacyCreate ? body.agentState ?? null : null;
         const dataEncryptionKey = body.dataEncryptionKey ?? null;
+        const pglite = getPGlite();
 
         if (isLegacyCreate) {
+            if (pglite) {
+                const existingResult = await pglite.query<SessionRouteRow>(`
+                    SELECT
+                        "id",
+                        "seq",
+                        "createdAt",
+                        "updatedAt",
+                        "metadata",
+                        "metadataVersion",
+                        "agentState",
+                        "agentStateVersion",
+                        "dataEncryptionKey",
+                        "active",
+                        "lastActiveAt"
+                    FROM "Session"
+                    WHERE "accountId" = $1 AND "tag" = $2
+                    LIMIT 1
+                `, [userId, tag]);
+
+                const existingSession = existingResult.rows[0];
+                if (existingSession) {
+                    log({ module: 'session-create', sessionId: existingSession.id, userId, tag }, `Found existing session: ${existingSession.id} for tag ${tag}`);
+                    return reply.send({
+                        id: existingSession.id,
+                        session: toSessionResponse(existingSession),
+                    });
+                }
+            }
+
             const existingSession = await db.session.findFirst({
                 where: {
                     accountId: userId,
@@ -311,20 +403,64 @@ export function sessionRoutes(app: Fastify) {
         }
 
         const updSeq = await allocateUserSeq(userId);
+        const newSessionId = randomKeyNaked(24);
 
         log({ module: 'session-create', userId, tag }, `Creating new session for user ${userId} with tag ${tag}`);
-        const session = await db.session.create({
-            data: {
-                accountId: userId,
+        const session = pglite
+            ? (await pglite.query<SessionRouteRow>(`
+                INSERT INTO "Session" (
+                    "id",
+                    "accountId",
+                    "tag",
+                    "metadata",
+                    "agentState",
+                    "dataEncryptionKey",
+                    "updatedAt"
+                ) VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    decode(CAST($6 AS text), 'base64'),
+                    now()
+                )
+                RETURNING
+                    "id",
+                    "seq",
+                    "createdAt",
+                    "updatedAt",
+                    "metadata",
+                    "metadataVersion",
+                    "agentState",
+                    "agentStateVersion",
+                    "dataEncryptionKey",
+                    "active",
+                    "lastActiveAt"
+            `, [
+                newSessionId,
+                userId,
                 tag,
                 metadata,
                 agentState,
-                dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
-            }
-        });
+                dataEncryptionKey,
+            ])).rows[0]
+            : await db.session.create({
+                data: {
+                    accountId: userId,
+                    tag,
+                    metadata,
+                    agentState,
+                    dataEncryptionKey: dataEncryptionKey ? Buffer.from(dataEncryptionKey, 'base64') : undefined,
+                }
+            });
         log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
 
-        const updatePayload = buildNewSessionUpdate(session, updSeq, randomKeyNaked(12));
+        const updatePayload = buildNewSessionUpdate(
+            toNewSessionUpdateInput(session),
+            updSeq,
+            randomKeyNaked(12),
+        );
         log({
             module: 'session-create',
             userId,
@@ -340,20 +476,7 @@ export function sessionRoutes(app: Fastify) {
 
         return reply.send({
             id: session.id,
-            session: {
-                id: session.id,
-                seq: session.seq,
-                metadata: session.metadata,
-                metadataVersion: session.metadataVersion,
-                agentState: session.agentState,
-                agentStateVersion: session.agentStateVersion,
-                dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
-                active: session.active,
-                activeAt: session.lastActiveAt.getTime(),
-                createdAt: session.createdAt.getTime(),
-                updatedAt: session.updatedAt.getTime(),
-                lastMessage: null
-            }
+            session: toSessionResponse(session),
         });
     });
 
@@ -439,7 +562,8 @@ export function sessionRoutes(app: Fastify) {
             data: {
                 active: false,
                 lastActiveAt: new Date(),
-            }
+            },
+            select: { id: true },
         });
 
         return reply.send({ ok: true });

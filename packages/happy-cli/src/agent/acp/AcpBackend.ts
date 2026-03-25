@@ -7,6 +7,8 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdir, readFile as readTextFileOnDisk, rm, writeFile as writeTextFileOnDisk } from 'node:fs/promises';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import {
   ClientSideConnection,
@@ -88,6 +90,96 @@ function summarizeSessionMetadataPayload(payload: unknown): string {
     : 0;
   return `configOptions=${configOptions} modes=${modes} models=${models}`;
 }
+
+function resolveAcpClientPath(cwd: string, filePath: string): string {
+  return isAbsolute(filePath) ? filePath : resolve(cwd, filePath);
+}
+
+function sliceAcpTextByLine(content: string, line?: number | null, limit?: number | null): string {
+  if (line == null && limit == null) {
+    return content;
+  }
+
+  const lines = content.split('\n');
+  const startIndex = Math.max((line ?? 1) - 1, 0);
+  const endIndex = limit == null ? undefined : startIndex + Math.max(limit, 0);
+  return lines.slice(startIndex, endIndex).join('\n');
+}
+
+function extractAcpPermissionFileWrites(
+  cwd: string,
+  rawInput: unknown,
+): Array<
+  | { path: string; type: 'delete' }
+  | { path: string; type: 'write'; content: string }
+> {
+  if (!rawInput || typeof rawInput !== 'object') {
+    return [];
+  }
+
+  const files = (rawInput as { files?: unknown }).files;
+  if (!Array.isArray(files)) {
+    return [];
+  }
+
+  const operations: Array<
+    | { path: string; type: 'delete' }
+    | { path: string; type: 'write'; content: string }
+  > = [];
+
+  for (const entry of files) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+
+    const filePathValue =
+      typeof (entry as { filePath?: unknown }).filePath === 'string'
+        ? (entry as { filePath: string }).filePath
+        : typeof (entry as { relativePath?: unknown }).relativePath === 'string'
+          ? (entry as { relativePath: string }).relativePath
+          : '';
+
+    if (!filePathValue) {
+      continue;
+    }
+
+    const path = resolveAcpClientPath(cwd, filePathValue);
+    const type = typeof (entry as { type?: unknown }).type === 'string'
+      ? (entry as { type: string }).type
+      : '';
+
+    if (type === 'delete') {
+      operations.push({ path, type: 'delete' });
+      continue;
+    }
+
+    const after = typeof (entry as { after?: unknown }).after === 'string'
+      ? (entry as { after: string }).after
+      : null;
+
+    if (after == null) {
+      continue;
+    }
+
+    operations.push({ path, type: 'write', content: after });
+  }
+
+  return operations;
+}
+
+async function applyAcpPermissionFileWrites(cwd: string, rawInput: unknown): Promise<number> {
+  const operations = extractAcpPermissionFileWrites(cwd, rawInput);
+  for (const operation of operations) {
+    if (operation.type === 'delete') {
+      await rm(operation.path, { force: true });
+      continue;
+    }
+
+    await mkdir(dirname(operation.path), { recursive: true });
+    await writeTextFileOnDisk(operation.path, operation.content, 'utf-8');
+  }
+  return operations.length;
+}
 import {
   type TransportHandler,
   type StderrContext,
@@ -120,6 +212,7 @@ type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
     input?: Record<string, unknown>;
     arguments?: Record<string, unknown>;
     content?: Record<string, unknown>;
+    rawInput?: Record<string, unknown>;
   };
   toolCallId?: string;
   kind?: string;
@@ -590,6 +683,30 @@ export class AcpBackend implements AgentBackend {
         sessionUpdate: async (params: SessionNotification) => {
           this.handleSessionUpdate(params);
         },
+        readTextFile: async (params) => {
+          const filePath = resolveAcpClientPath(this.options.cwd, params.path);
+          logger.debug('[AcpBackend] ACP readTextFile request:', {
+            requestedPath: params.path,
+            resolvedPath: filePath,
+            line: params.line,
+            limit: params.limit,
+          });
+          const content = await readTextFileOnDisk(filePath, 'utf-8');
+          return {
+            content: sliceAcpTextByLine(content, params.line, params.limit),
+          };
+        },
+        writeTextFile: async (params) => {
+          const filePath = resolveAcpClientPath(this.options.cwd, params.path);
+          logger.debug('[AcpBackend] ACP writeTextFile request:', {
+            requestedPath: params.path,
+            resolvedPath: filePath,
+            contentLength: params.content.length,
+          });
+          await mkdir(dirname(filePath), { recursive: true });
+          await writeTextFileOnDisk(filePath, params.content, 'utf-8');
+          return {};
+        },
         requestPermission: async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
           
           const extendedParams = params as ExtendedRequestPermissionRequest;
@@ -665,6 +782,16 @@ export class AcpBackend implements AgentBackend {
               
               if (result.decision === 'approved' || result.decision === 'approved_for_session') {
                 this.suppressedToolCallIds.delete(toolCallId);
+
+                const appliedFileWrites = await applyAcpPermissionFileWrites(
+                  this.options.cwd,
+                  toolCall?.rawInput,
+                );
+                if (appliedFileWrites > 0) {
+                  logger.debug(
+                    `[AcpBackend] Applied ${appliedFileWrites} file write(s) from ACP permission metadata for ${toolCallId}`,
+                  );
+                }
 
                 // Find the appropriate optionId from the request options
                 // ACP agents vary: some expose ids like "proceed_once"/"cancel",
@@ -769,8 +896,8 @@ export class AcpBackend implements AgentBackend {
         protocolVersion: 1,
         clientCapabilities: {
           fs: {
-            readTextFile: false,
-            writeTextFile: false,
+            readTextFile: true,
+            writeTextFile: true,
           },
         },
         clientInfo: {
@@ -1168,9 +1295,11 @@ export class AcpBackend implements AgentBackend {
       logger.debug(`[AcpBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2));
       await this.connection.prompt(promptRequest);
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
-      
-      // Don't emit 'idle' here - it will be emitted after all message chunks are received
-      // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
+
+      // If no tool calls are active, the agent finished without side-effects
+      // (or all tools already completed). Schedule idle so the turn lifecycle
+      // completes — without this, text-only responses would never emit idle.
+      this.scheduleIdleStatusIfQuiescent();
 
     } catch (error) {
       logger.debug('[AcpBackend] Error sending prompt:', error);
@@ -1340,6 +1469,19 @@ export class AcpBackend implements AgentBackend {
     } catch (error) {
       // Log to file only, not console
       logger.debug('[AcpBackend] Error cancelling:', error);
+    }
+  }
+
+  async cancelPromptTurn(sessionId: SessionId): Promise<void> {
+    if (!this.connection || !this.acpSessionId) {
+      return;
+    }
+
+    try {
+      await this.connection.cancel({ sessionId: this.acpSessionId });
+    } catch (error) {
+      logger.debug('[AcpBackend] Error sending prompt-turn cancel:', error);
+      throw error;
     }
   }
 

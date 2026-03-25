@@ -7,7 +7,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady } from '@/sync/storage';
+import { useSession, useIsDataReady, useSyncPendingPermissionCount } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -128,6 +128,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
+    const pendingPermissionCount = useSyncPendingPermissionCount(session.id);
     const {
         canShowResume,
         resumeSession,
@@ -462,10 +463,10 @@ function SessionInfoContent({ session }: { session: Session }) {
                             icon={<Ionicons name="person-outline" size={29} color="#FF9500" />}
                             showChevron={false}
                         />
-                        {session.agentState.requests && Object.keys(session.agentState.requests).length > 0 && (
+                        {pendingPermissionCount > 0 && (
                             <Item
                                 title={t('sessionInfo.pendingRequests')}
-                                detail={Object.keys(session.agentState.requests).length.toString()}
+                                detail={pendingPermissionCount.toString()}
                                 icon={<Ionicons name="hourglass-outline" size={29} color="#FF9500" />}
                                 showChevron={false}
                             />

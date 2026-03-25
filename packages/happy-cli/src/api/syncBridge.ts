@@ -22,11 +22,15 @@ import {
     type KeyMaterial,
     type UsageReport,
     type RpcHandler,
-    type v3,
+    v3,
 } from '@slopus/happy-sync';
 
 type MessageWithParts = v3.MessageWithParts;
 type SessionID = v3.SessionID;
+type AbortRequest = v3.AbortRequest;
+type PermissionRequestMessage = v3.PermissionRequestMessage;
+type RuntimeConfigChange = v3.RuntimeConfigChange;
+type SessionEnd = v3.SessionEnd;
 
 export type UserMessageCallback = (message: MessageWithParts) => void;
 
@@ -38,7 +42,9 @@ export interface SyncBridgeOpts {
 }
 
 export type PermissionDecisionCallback = (decision: {
+    requestId: string;
     permissionId: string;
+    callId: string;
     decision: 'once' | 'always' | 'reject';
     allowTools?: string[];
     reason?: string;
@@ -49,6 +55,10 @@ export type QuestionAnswerCallback = (answer: {
     answers: string[][];
 }) => void;
 
+export type RuntimeConfigChangeCallback = (change: RuntimeConfigChange) => void;
+export type AbortRequestCallback = (request: AbortRequest) => void;
+export type SessionEndCallback = (message: SessionEnd) => void;
+
 export class SyncBridge {
     readonly node: SyncNode;
     readonly sessionId: SessionID;
@@ -56,6 +66,9 @@ export class SyncBridge {
     private permissionCallbacks = new Set<PermissionDecisionCallback>();
     private questionCallbacks = new Set<QuestionAnswerCallback>();
     private userMessageCallbacks = new Set<UserMessageCallback>();
+    private runtimeConfigCallbacks = new Set<RuntimeConfigChangeCallback>();
+    private abortCallbacks = new Set<AbortRequestCallback>();
+    private sessionEndCallbacks = new Set<SessionEndCallback>();
 
     constructor(opts: SyncBridgeOpts) {
         if (opts.token.claims.scope.type !== 'session') {
@@ -70,8 +83,42 @@ export class SyncBridge {
         this.sessionId = opts.sessionId;
         this.node = new SyncNode(opts.serverUrl, opts.token, opts.keyMaterial);
 
-        // Watch for incoming messages — dispatch decisions, answers, and user messages
-        this.node.onMessage(this.sessionId, (message: MessageWithParts) => {
+        // Watch for incoming session messages — dispatch control messages and user inputs.
+        this.node.onSessionMessage(this.sessionId, (message) => {
+            if (!v3.isMessageWithParts(message)) {
+                switch (message.type) {
+                    case 'permission-response':
+                        for (const cb of this.permissionCallbacks) {
+                            cb({
+                                requestId: message.requestID,
+                                permissionId: message.requestID,
+                                callId: message.callID,
+                                decision: message.decision,
+                                allowTools: message.allowTools,
+                                reason: message.reason,
+                            });
+                        }
+                        return;
+                    case 'runtime-config-change':
+                        for (const cb of this.runtimeConfigCallbacks) {
+                            cb(message);
+                        }
+                        return;
+                    case 'abort-request':
+                        for (const cb of this.abortCallbacks) {
+                            cb(message);
+                        }
+                        return;
+                    case 'session-end':
+                        for (const cb of this.sessionEndCallbacks) {
+                            cb(message);
+                        }
+                        return;
+                    default:
+                        return;
+                }
+            }
+
             // User messages from the app
             if (message.info.role === 'user') {
                 for (const cb of this.userMessageCallbacks) {
@@ -83,7 +130,9 @@ export class SyncBridge {
                 if (part.type === 'decision') {
                     for (const cb of this.permissionCallbacks) {
                         cb({
+                            requestId: part.permissionID,
                             permissionId: part.permissionID,
+                            callId: part.targetCallID,
                             decision: part.decision,
                             allowTools: part.allowTools,
                             reason: part.reason,
@@ -158,6 +207,24 @@ export class SyncBridge {
         return () => { this.questionCallbacks.delete(callback); };
     }
 
+    /** Register a callback for runtime config changes. */
+    onRuntimeConfigChange(callback: RuntimeConfigChangeCallback): () => void {
+        this.runtimeConfigCallbacks.add(callback);
+        return () => { this.runtimeConfigCallbacks.delete(callback); };
+    }
+
+    /** Register a callback for abort requests. */
+    onAbortRequest(callback: AbortRequestCallback): () => void {
+        this.abortCallbacks.add(callback);
+        return () => { this.abortCallbacks.delete(callback); };
+    }
+
+    /** Register a callback for session-end control messages. */
+    onSessionEnd(callback: SessionEndCallback): () => void {
+        this.sessionEndCallbacks.add(callback);
+        return () => { this.sessionEndCallbacks.delete(callback); };
+    }
+
     /** Register a callback for user messages from the app. */
     onUserMessage(callback: UserMessageCallback): () => void {
         this.userMessageCallbacks.add(callback);
@@ -186,6 +253,22 @@ export class SyncBridge {
         this.node.sendSessionDeath(this.sessionId);
     }
 
+    async sendPermissionRequest(request: Omit<PermissionRequestMessage, 'type' | 'id' | 'sessionID' | 'time'>): Promise<void> {
+        await this.node.sendPermissionRequest(this.sessionId, request);
+    }
+
+    async sendRuntimeConfigChange(change: Omit<RuntimeConfigChange, 'type' | 'id' | 'sessionID' | 'time'>): Promise<void> {
+        await this.node.sendRuntimeConfigChange(this.sessionId, change);
+    }
+
+    async sendAbortRequest(request: Omit<AbortRequest, 'type' | 'id' | 'sessionID' | 'time'>): Promise<void> {
+        await this.node.sendAbortRequest(this.sessionId, request);
+    }
+
+    async sendSessionEnd(sessionEnd: Omit<SessionEnd, 'type' | 'id' | 'sessionID' | 'time'>): Promise<void> {
+        await this.node.sendSessionEnd(this.sessionId, sessionEnd);
+    }
+
     /** Send usage/cost data. */
     sendUsageData(report: UsageReport): void {
         this.node.sendUsageData(report);
@@ -199,6 +282,30 @@ export class SyncBridge {
     /** Update agent state with CAS. */
     async updateAgentState<T = unknown>(handler: (current: T) => T): Promise<void> {
         await this.node.updateAgentState(this.sessionId, handler);
+    }
+
+    // ─── Typed session-level setters (Amendment 3) ─────────────────────────
+
+    /** Set the session lifecycle state. */
+    async setLifecycleState(
+        state: 'running' | 'idle' | 'archived',
+        opts?: { archivedBy?: string; archiveReason?: string },
+    ): Promise<void> {
+        await this.updateMetadata((current: Record<string, unknown>) => ({
+            ...current,
+            lifecycleState: state,
+            lifecycleStateSince: Date.now(),
+            ...(opts?.archivedBy ? { archivedBy: opts.archivedBy } : {}),
+            ...(opts?.archiveReason ? { archiveReason: opts.archiveReason } : {}),
+        }));
+    }
+
+    /** Set whether the user is currently controlling the session. */
+    async setControlledByUser(value: boolean): Promise<void> {
+        await this.updateAgentState((current: Record<string, unknown>) => ({
+            ...current,
+            controlledByUser: value,
+        }));
     }
 
     /** Register an RPC handler for server-initiated calls. */

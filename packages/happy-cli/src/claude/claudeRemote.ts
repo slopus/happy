@@ -1,17 +1,37 @@
 import { EnhancedMode } from "./loop";
-import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import {
+    query,
+    type CanUseTool,
+    type Options as QueryOptions,
+    type PermissionResult,
+    type Query,
+    type SDKMessage,
+    type SDKSystemMessage,
+    type SDKUserMessage,
+    AbortError,
+} from '@anthropic-ai/claude-agent-sdk'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
-import { join, resolve } from 'node:path';
-import { projectPath } from "@/projectPath";
+import { join } from 'node:path';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { logger } from "@/lib";
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
-import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
+
+function toSDKUserMessage(message: string): SDKUserMessage {
+    return {
+        type: 'user',
+        session_id: '',
+        parent_tool_use_id: null,
+        message: {
+            role: 'user',
+            content: message,
+        },
+    };
+}
 
 export async function claudeRemote(opts: {
 
@@ -23,7 +43,7 @@ export async function claudeRemote(opts: {
     claudeArgs?: string[],
     allowedTools: string[],
     signal?: AbortSignal,
-    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }) => Promise<PermissionResult>,
+    canCallTool: (toolName: string, input: Record<string, unknown>, mode: EnhancedMode, options: Parameters<CanUseTool>[2]) => Promise<PermissionResult>,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -31,7 +51,9 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
-    onReady: () => void,
+    onReady: (status: 'completed' | 'cancelled') => void,
+    onModeApplied?: (mode: EnhancedMode) => void,
+    onQueryCreated?: (query: Query | null) => void,
     isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
@@ -74,13 +96,6 @@ export async function claudeRemote(opts: {
         }
     }
 
-    // Set environment variables for Claude Code SDK
-    if (opts.claudeEnvVars) {
-        Object.entries(opts.claudeEnvVars).forEach(([key, value]) => {
-            process.env[key] = value;
-        });
-    }
-
     // Get initial message
     const initial = await opts.nextMessage();
     if (!initial) { // No initial message - exit
@@ -113,24 +128,36 @@ export async function claudeRemote(opts: {
 
     // Prepare SDK options
     let mode = initial.mode;
+    const abortController = new AbortController();
+    if (opts.signal?.aborted) {
+        abortController.abort();
+    }
+    opts.signal?.addEventListener('abort', () => abortController.abort(), { once: true });
     const sdkOptions: QueryOptions = {
+        abortController,
         cwd: opts.path,
+        env: opts.claudeEnvVars ? { ...process.env, ...opts.claudeEnvVars } : process.env,
         resume: startFrom ?? undefined,
         mcpServers: opts.mcpServers,
         permissionMode: mapToClaudeMode(initial.mode.permissionMode),
+        allowDangerouslySkipPermissions: true,
         model: initial.mode.model,
         fallbackModel: initial.mode.fallbackModel,
-        customSystemPrompt: initial.mode.customSystemPrompt ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt : undefined,
-        appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
+        systemPrompt: initial.mode.customSystemPrompt
+            ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt
+            : {
+                type: 'preset',
+                preset: 'claude_code',
+                append: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
+            },
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
-        canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal }) => opts.canCallTool(toolName, input, mode, options),
+        canUseTool: (toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2]) => {
+            return opts.canCallTool(toolName, input, mode, options);
+        },
         executable: opts.jsRuntime ?? 'node',
-        abort: opts.signal,
-        pathToClaudeCodeExecutable: (() => {
-            return resolve(join(projectPath(), 'scripts', 'claude_remote_launcher.cjs'));
-        })(),
-        settingsPath: opts.hookSettingsPath,
+        settings: opts.hookSettingsPath,
+        settingSources: ['user', 'project', 'local'],
     }
 
     // Track thinking state
@@ -147,20 +174,17 @@ export async function claudeRemote(opts: {
 
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
-    messages.push({
-        type: 'user',
-        message: {
-            role: 'user',
-            content: initial.message,
-        },
-    });
+    messages.push(toSDKUserMessage(initial.message));
 
     // Start the loop
     const response = query({
         prompt: messages,
         options: sdkOptions,
     });
+    opts.onQueryCreated?.(response);
+    opts.onModeApplied?.(mode);
 
+    let turnInterrupted = false;
     updateThinking(true);
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
@@ -192,7 +216,7 @@ export async function claudeRemote(opts: {
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                logger.debug('[claudeRemote] Result received, awaiting next input');
 
                 // Send completion messages
                 if (isCompactCommand) {
@@ -204,7 +228,8 @@ export async function claudeRemote(opts: {
                 }
 
                 // Send ready event
-                opts.onReady();
+                opts.onReady(turnInterrupted ? 'cancelled' : 'completed');
+                turnInterrupted = false;
 
                 // Push next message
                 const next = await opts.nextMessage();
@@ -212,8 +237,17 @@ export async function claudeRemote(opts: {
                     messages.end();
                     return;
                 }
+                const previousPermissionMode = mapToClaudeMode(mode.permissionMode);
+                const nextPermissionMode = mapToClaudeMode(next.mode.permissionMode);
+                if (next.mode.model !== mode.model) {
+                    await response.setModel(next.mode.model);
+                }
+                if (nextPermissionMode !== previousPermissionMode) {
+                    await response.setPermissionMode(nextPermissionMode);
+                }
                 mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                opts.onModeApplied?.(mode);
+                messages.push(toSDKUserMessage(next.message));
             }
 
             // Handle tool result
@@ -237,6 +271,7 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
+        opts.onQueryCreated?.(null);
         updateThinking(false);
     }
 }

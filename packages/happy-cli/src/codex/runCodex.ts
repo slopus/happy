@@ -154,6 +154,9 @@ export async function runCodex(opts: {
                     updateAgentState: syncBridge
                         ? (handler) => syncBridge!.updateAgentState<AgentState>(handler)
                         : (handler) => newSession.updateAgentState(handler),
+                    sendPermissionRequest: syncBridge
+                        ? (request) => syncBridge!.sendPermissionRequest(request)
+                        : undefined,
                 });
             }
         }
@@ -273,6 +276,17 @@ export async function runCodex(opts: {
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
+
+    if (syncBridge) {
+        syncBridge.onRuntimeConfigChange((change) => {
+            if (typeof change.permissionMode === 'string') {
+                currentPermissionMode = change.permissionMode as import('@/api/types').PermissionMode;
+            }
+            if (Object.prototype.hasOwnProperty.call(change, 'model')) {
+                currentModel = change.model || undefined;
+            }
+        });
+    }
 
     if (syncBridge) {
         syncBridge.onUserMessage((message) => {
@@ -513,6 +527,9 @@ export async function runCodex(opts: {
     // Register abort handler — prefer SyncBridge-wired RpcHandlerManager
     const activeRpcManager = rpcHandlerManager ?? session.rpcHandlerManager;
     activeRpcManager.registerHandler('abort', handleAbort);
+    syncBridge?.onAbortRequest(() => {
+        void handleAbort();
+    });
 
     registerKillSessionHandler(activeRpcManager, handleKillSession);
 
@@ -560,6 +577,9 @@ export async function runCodex(opts: {
       updateAgentState: syncBridge
           ? (handler) => syncBridge!.updateAgentState<AgentState>(handler)
           : (handler) => session.updateAgentState(handler),
+      sendPermissionRequest: syncBridge
+          ? (request) => syncBridge!.sendPermissionRequest(request)
+          : undefined,
     });
     if (syncBridge) {
         unsubscribeSyncPermissionDecisions = syncBridge.onPermissionDecision((decision) => {
@@ -568,12 +588,12 @@ export async function runCodex(opts: {
                 updatedMessage = decision.decision === 'reject'
                     ? unblockCodexToolRejected(
                         v3CodexMapperState,
-                        decision.permissionId,
+                        decision.callId,
                         decision.reason ?? 'Permission rejected',
                     )
                     : unblockCodexToolApproved(
                         v3CodexMapperState,
-                        decision.permissionId,
+                        decision.callId,
                         decision.decision === 'always' ? 'always' : 'once',
                     );
             }
@@ -581,7 +601,7 @@ export async function runCodex(opts: {
                 publishCodexV3Message(updatedMessage);
             }
             permissionHandler.handleSyncDecision({
-                id: decision.permissionId,
+                id: decision.callId,
                 approved: decision.decision !== 'reject',
                 decision: decision.decision === 'always'
                     ? 'approved_for_session'

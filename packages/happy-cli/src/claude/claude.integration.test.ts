@@ -21,7 +21,15 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { getIntegrationEnv } from '@/testing/currentIntegrationEnv';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
-import { query, type QueryOptions, type SDKAssistantMessage, type SDKMessage, type SDKResultMessage, type SDKSystemMessage } from './sdk';
+import {
+    query,
+    type Options as QueryOptions,
+    type SDKAssistantMessage,
+    type SDKMessage,
+    type SDKResultMessage,
+    type SDKSystemMessage,
+    type SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import { startHappyServer } from './utils/startHappyServer';
 import { systemPrompt } from './utils/systemPrompt';
 
@@ -55,11 +63,35 @@ function inputRecord(input: unknown): Record<string, unknown> {
     return {};
 }
 
+function createAbortController(timeoutMs: number): AbortController {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    controller.signal.addEventListener('abort', () => clearTimeout(timeout), { once: true });
+    return controller;
+}
+
+function toSDKUserMessage(content: string): SDKUserMessage {
+    return {
+        type: 'user',
+        session_id: '',
+        parent_tool_use_id: null,
+        message: {
+            role: 'user',
+            content,
+        },
+    };
+}
+
 function assistantText(messages: SDKMessage[]): string {
     return messages
         .filter((message): message is SDKAssistantMessage => message.type === 'assistant')
         .flatMap((message) => {
-            return message.message.content
+            const content = message.message.content as Array<{
+                type: string;
+                text?: string;
+                thinking?: unknown;
+            }>;
+            return content
                 .filter((block) => block.type === 'text' || block.type === 'thinking')
                 .map((block) => block.type === 'text' ? block.text ?? '' : String(block.thinking ?? ''));
         })
@@ -74,7 +106,12 @@ function assistantToolUses(messages: SDKMessage[]): Array<{ input: unknown; name
     return messages
         .filter((message): message is SDKAssistantMessage => message.type === 'assistant')
         .flatMap((message) => {
-            return message.message.content
+            const content = message.message.content as Array<{
+                type: string;
+                input?: unknown;
+                name?: string;
+            }>;
+            return content
                 .filter((block) => block.type === 'tool_use')
                 .map((block) => ({
                     input: block.input,
@@ -92,6 +129,11 @@ function initMessage(messages: SDKMessage[]): SDKSystemMessage | undefined {
 
 function resultMessage(messages: SDKMessage[]): SDKResultMessage | undefined {
     return messages.find((message): message is SDKResultMessage => message.type === 'result');
+}
+
+function successResultMessage(messages: SDKMessage[]): Extract<SDKResultMessage, { subtype: 'success' }> | undefined {
+    const result = resultMessage(messages);
+    return result?.subtype === 'success' ? result : undefined;
 }
 
 function sessionIdFrom(messages: SDKMessage[]): string {
@@ -121,13 +163,14 @@ async function isClaudeQueryAvailable(): Promise<boolean> {
         const messages = await collectMessages(query({
             prompt: 'Say exactly ready',
             options: {
-                abort: AbortSignal.timeout(20_000),
+                abortController: createAbortController(20_000),
                 cwd: integrationEnv.projectPath,
                 model: MODEL_SONNET,
+                settingSources: ['user', 'project', 'local'],
             },
         }));
 
-        return resultMessage(messages)?.result?.trim() === 'ready';
+        return successResultMessage(messages)?.result?.trim() === 'ready';
     } catch (error) {
         console.log(`[claude-test] Skipping: Claude query unavailable (${String(error)})`);
         return false;
@@ -174,7 +217,7 @@ class ClaudeQueryDriver {
 
     buildOptions(options: {
         allowedTools: string[];
-        canCallTool?: QueryOptions['canCallTool'];
+        canCallTool?: QueryOptions['canUseTool'];
         disallowedTools?: string[];
         model: string;
         resume?: string;
@@ -184,8 +227,12 @@ class ClaudeQueryDriver {
         }
 
         return {
-            appendSystemPrompt: systemPrompt,
-            canCallTool: options.canCallTool ?? (async (_toolName, input) => {
+            systemPrompt: {
+                type: 'preset',
+                preset: 'claude_code',
+                append: systemPrompt,
+            },
+            canUseTool: options.canCallTool ?? (async (_toolName, input) => {
                 return {
                     behavior: 'allow',
                     updatedInput: inputRecord(input),
@@ -202,30 +249,25 @@ class ClaudeQueryDriver {
             model: options.model,
             allowedTools: options.allowedTools,
             resume: options.resume,
+            settingSources: ['user', 'project', 'local'],
         };
     }
 
     async runTurn(options: {
         allowedTools: string[];
-        canCallTool?: QueryOptions['canCallTool'];
+        canCallTool?: QueryOptions['canUseTool'];
         disallowedTools?: string[];
         model: string;
         prompt: string;
         resume?: string;
     }): Promise<ClaudeTurn> {
-        const promptStream = new PushableAsyncIterable<SDKMessage>();
+        const promptStream = new PushableAsyncIterable<SDKUserMessage>();
         const run = query({
             prompt: promptStream,
             options: this.buildOptions(options),
         });
 
-        promptStream.push({
-            type: 'user',
-            message: {
-                role: 'user',
-                content: options.prompt,
-            },
-        });
+        promptStream.push(toSDKUserMessage(options.prompt));
         promptStream.end();
 
         const messages = await collectMessages(run);
@@ -260,7 +302,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
     it('should clarify natively, resume across a model switch, use TodoWrite, and cross the project boundary with native tools', async () => {
         seedSiblingDir();
 
-        const clarificationPrompt = new PushableAsyncIterable<SDKMessage>();
+        const clarificationPrompt = new PushableAsyncIterable<SDKUserMessage>();
         const clarificationMessages: SDKMessage[] = [];
         let answeredClarification = false;
 
@@ -268,7 +310,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
             prompt: clarificationPrompt,
             options: {
                 allowedTools: ['AskUserQuestion'],
-                canCallTool: async (_toolName, input) => {
+                canUseTool: async (_toolName, input) => {
                     return {
                         behavior: 'allow',
                         updatedInput: inputRecord(input),
@@ -277,6 +319,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
                 cwd: integrationEnv.projectPath,
                 disallowedTools: ['Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'],
                 model: MODEL_OPUS,
+                settingSources: ['user', 'project', 'local'],
             },
         });
 
@@ -288,29 +331,17 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
                 });
                 if (askUserQuestion && !answeredClarification) {
                     answeredClarification = true;
-                    clarificationPrompt.push({
-                        type: 'user',
-                        message: {
-                            role: 'user',
-                            content: 'I choose OPTION_B.',
-                        },
-                    });
+                    clarificationPrompt.push(toSDKUserMessage('I choose OPTION_B.'));
                     clarificationPrompt.end();
                 }
             }
         })();
 
-        clarificationPrompt.push({
-            type: 'user',
-            message: {
-                role: 'user',
-                content: [
-                    'Remember the token ember-orbit-17.',
-                    'Use the native AskUserQuestion tool to ask me to choose between OPTION_A and OPTION_B.',
-                    'After I answer, reply with exactly ACK-OPTION_B and nothing else.',
-                ].join(' '),
-            },
-        });
+        clarificationPrompt.push(toSDKUserMessage([
+            'Remember the token ember-orbit-17.',
+            'Use the native AskUserQuestion tool to ask me to choose between OPTION_A and OPTION_B.',
+            'After I answer, reply with exactly ACK-OPTION_B and nothing else.',
+        ].join(' ')));
 
         await clarificationLoop;
 
@@ -322,7 +353,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
         expect(askUserQuestion).toBeDefined();
         expect(JSON.stringify(askUserQuestion?.input)).toContain('OPTION_A');
         expect(JSON.stringify(askUserQuestion?.input)).toContain('OPTION_B');
-        expect(resultMessage(clarificationMessages)?.result?.trim()).toBe('ACK-OPTION_B');
+        expect(successResultMessage(clarificationMessages)?.result?.trim()).toBe('ACK-OPTION_B');
 
         const execution = await driver!.runTurn({
             allowedTools: ['mcp__happy__change_title', 'TodoWrite', 'TodoRead', 'Write', 'Edit', 'Read', 'Glob', 'LS'],
@@ -356,7 +387,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
         expect(JSON.stringify(todoWrite?.input)).toContain('Implement OPTION_B follow-up');
         expect(JSON.stringify(todoWrite?.input)).toContain('Inspect ../sibling-dir boundary');
         expect(driver!.getTitleSummaries().some((summary) => summary.includes('OPTION_B'))).toBe(true);
-        expect(execution.result?.result?.trim()).toBe('DONE');
+        expect(successResultMessage(execution.messages)?.result?.trim()).toBe('DONE');
     });
 
     it('should leave the file untouched and explain the refusal when native write is explicitly disallowed', async () => {
@@ -375,21 +406,54 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
         expect(denied.toolUseNames).not.toContain('Bash');
         expect(existsSync(deniedFile)).toBe(false);
         expect(denied.assistantText.toLowerCase()).toMatch(/cannot|can't|unable|not available|restricted|limitation/);
-        expect(denied.result?.result?.toLowerCase()).toMatch(/cannot|can't|unable|not available|restricted|limitation/);
+        expect(successResultMessage(denied.messages)?.result?.toLowerCase()).toMatch(/cannot|can't|unable|not available|restricted|limitation/);
+    });
+
+    it('should continue to a final result after canUseTool denies a native write', async () => {
+        const denied = await driver!.runTurn({
+            allowedTools: ['mcp__happy__change_title', 'Read', 'LS'],
+            canCallTool: async (toolName, input, options) => {
+                const updatedInput = inputRecord(input);
+
+                if (WRITE_TOOL_NAMES.has(toolName)) {
+                    expect(options.toolUseID).toBeTruthy();
+                    return {
+                        behavior: 'deny',
+                        message: 'Denied by test callback. Explain the refusal and do not write the file.',
+                    };
+                }
+
+                return {
+                    behavior: 'allow',
+                    updatedInput,
+                };
+            },
+            disallowedTools: ['Bash'],
+            model: MODEL_SONNET,
+            prompt: [
+                'In the current working directory only, create a file named claude-denied-write.txt using a native Claude file tool, not Bash.',
+                'Put exactly DENIED-WRITE in the file.',
+                'If the write is denied, explain briefly what happened.',
+            ].join(' '),
+        });
+
+        expect(denied.toolUseNames.some((toolName) => WRITE_TOOL_NAMES.has(toolName))).toBe(true);
+        expect(denied.toolUseNames).not.toContain('Bash');
+        expect(existsSync(deniedFile)).toBe(false);
+        expect(denied.assistantText.toLowerCase()).toContain('denied');
+        expect(successResultMessage(denied.messages)?.result?.toLowerCase()).toContain('denied');
     });
 
     it('should stop a pending AskUserQuestion turn when the caller aborts it', async () => {
-        const abortController = new AbortController();
-        const promptStream = new PushableAsyncIterable<SDKMessage>();
+        const promptStream = new PushableAsyncIterable<SDKUserMessage>();
         const messages: SDKMessage[] = [];
-        let abortError: unknown = null;
+        let interrupted = false;
 
         const run = query({
             prompt: promptStream,
             options: {
-                abort: abortController.signal,
                 allowedTools: ['AskUserQuestion'],
-                canCallTool: async (_toolName, input) => {
+                canUseTool: async (_toolName, input) => {
                     return {
                         behavior: 'allow',
                         updatedInput: inputRecord(input),
@@ -398,46 +462,31 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
                 cwd: integrationEnv.projectPath,
                 disallowedTools: ['Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'],
                 model: MODEL_SONNET,
+                settingSources: ['user', 'project', 'local'],
             },
         });
 
         const messagesPromise = (async () => {
-            try {
-                for await (const message of run) {
-                    messages.push(message);
-                    if (assistantToolUses([message]).some((toolUse) => toolUse.name === 'AskUserQuestion')) {
-                        abortController.abort();
-                    }
+            for await (const message of run) {
+                messages.push(message);
+                if (!interrupted && assistantToolUses([message]).some((toolUse) => toolUse.name === 'AskUserQuestion')) {
+                    interrupted = true;
+                    await run.interrupt();
+                    promptStream.end();
                 }
-            } catch (error) {
-                abortError = error;
-            } finally {
-                promptStream.end();
             }
         })();
 
-        promptStream.push({
-            type: 'user',
-            message: {
-                role: 'user',
-                content: [
-                    'Use the native AskUserQuestion tool to ask me to choose between OPTION_A and OPTION_B.',
-                    'Do not do anything else after asking.',
-                ].join(' '),
-            },
-        });
+        promptStream.push(toSDKUserMessage([
+            'Use the native AskUserQuestion tool to ask me to choose between OPTION_A and OPTION_B.',
+            'Do not do anything else after asking.',
+        ].join(' ')));
 
         await messagesPromise;
 
-        const abortErrorName = (
-            abortError
-            && typeof abortError === 'object'
-            && 'name' in abortError
-            && typeof abortError.name === 'string'
-        ) ? abortError.name : null;
         expect(toolUseNames(messages)).toContain('AskUserQuestion');
-        expect(resultMessage(messages)).toBeUndefined();
-        expect(abortErrorName).toBe('AbortError');
+        expect(resultMessage(messages)).toBeDefined();
+        expect(interrupted).toBe(true);
         expect(existsSync(interruptedFile)).toBe(false);
     });
 });

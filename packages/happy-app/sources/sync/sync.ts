@@ -179,10 +179,23 @@ class Sync {
                     return resolved ?? defaultKeyMaterial;
                 },
             });
-            // Subscribe to state changes and push v3 messages into Zustand
             this.appSyncStore.subscribe((state) => {
                 for (const [sessionId, sessionState] of state.sessions) {
-                    storage.getState().applyV3Messages(sessionId, sessionState.messages);
+                    const shouldEnterPlanMode = sessionState.messages.some((message) => (
+                        message.info.role === 'assistant'
+                        && message.parts.some((part) => (
+                            part.type === 'tool'
+                            && (part.tool === 'EnterPlanMode' || part.tool === 'enter_plan_mode')
+                        ))
+                    ));
+                    if (!shouldEnterPlanMode) {
+                        continue;
+                    }
+
+                    const session = storage.getState().sessions[sessionId];
+                    if (session && session.permissionMode !== 'plan') {
+                        storage.getState().updateSessionPermissionMode(sessionId, 'plan');
+                    }
                 }
             });
 
@@ -242,8 +255,7 @@ class Sync {
             return;
         }
 
-        const v3Session = storage.getState().v3SessionMessages[sessionId];
-        if (!force && v3Session?.isLoaded) {
+        if (!force && this.appSyncStore.isSessionLoaded(sessionId as v3.SessionID)) {
             return;
         }
 
@@ -1444,8 +1456,6 @@ class Sync {
                         this.fetchSessions();
                     }
 
-                    // v3 messages are handled by SyncNode — refresh the session cache.
-                    this.maybeFetchV3Session(updateData.body.sid, true);
                 }
             }
 

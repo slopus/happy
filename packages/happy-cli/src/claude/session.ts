@@ -21,6 +21,7 @@ import {
     type V3MapperState,
 } from "./utils/v3Mapper";
 import { calculateCost } from "@/utils/pricing";
+import type { v3 } from "@slopus/happy-sync";
 
 type PendingPermissionTransition =
     | {
@@ -408,6 +409,23 @@ export class Session {
 
     sendSessionDeath(): void {
         this.syncBridge.sendSessionDeath();
+    }
+
+    sendPermissionRequest(toolCallId: string, toolName: string, patterns: string[], input: Record<string, unknown>): void {
+        this.syncBridge.sendPermissionRequest({
+            callID: toolCallId,
+            tool: toolName,
+            patterns,
+            input,
+        }).catch((err) => {
+            logger.debug('[Session] SyncBridge sendPermissionRequest failed', { error: err });
+        });
+    }
+
+    sendRuntimeConfigChange(change: Omit<v3.RuntimeConfigChange, 'type' | 'id' | 'sessionID' | 'time'>): void {
+        this.syncBridge.sendRuntimeConfigChange(change).catch((err) => {
+            logger.debug('[Session] SyncBridge sendRuntimeConfigChange failed', { error: err });
+        });
     }
 
     /** Send a session event (status message) via agent state update. */

@@ -11,7 +11,7 @@ import type {
     SDKAssistantMessage,
     SDKSystemMessage,
     SDKResultMessage
-} from '@/claude/sdk'
+} from '@anthropic-ai/claude-agent-sdk'
 import type { RawJSONLines } from '@/claude/types'
 
 /**
@@ -87,10 +87,11 @@ export class SDKToLogConverter {
         const timestamp = new Date().toISOString()
         let parentUuid = this.lastUuid;
         let isSidechain = false;
-        if (sdkMessage.parent_tool_use_id) {
+        const parentToolUseId = 'parent_tool_use_id' in sdkMessage ? sdkMessage.parent_tool_use_id : null;
+        if (parentToolUseId) {
             isSidechain = true;
-            parentUuid = this.sidechainLastUUID.get((sdkMessage as any).parent_tool_use_id) ?? null;
-            this.sidechainLastUUID.set((sdkMessage as any).parent_tool_use_id!, uuid);
+            parentUuid = this.sidechainLastUUID.get(parentToolUseId) ?? null;
+            this.sidechainLastUUID.set(parentToolUseId, uuid);
         }
         const baseFields = {
             parentUuid: parentUuid,
@@ -181,42 +182,8 @@ export class SDKToLogConverter {
                 break
             }
 
-            // Handle tool use results (often comes as user messages)
-            case 'tool_result': {
-                const toolMsg = sdkMessage as any
-                const baseLogMessage: any = {
-                    ...baseFields,
-                    type: 'user',
-                    message: {
-                        role: 'user',
-                        content: [{
-                            type: 'tool_result',
-                            tool_use_id: toolMsg.tool_use_id,
-                            content: toolMsg.content
-                        }]
-                    },
-                    toolUseResult: toolMsg.content
-                }
-
-                // Add mode if available from responses
-                if (toolMsg.tool_use_id && this.responses?.has(toolMsg.tool_use_id)) {
-                    const response = this.responses.get(toolMsg.tool_use_id)
-                    if (response?.mode) {
-                        baseLogMessage.mode = response.mode
-                    }
-                }
-
-                logMessage = baseLogMessage
-                break
-            }
-
             default:
-                // Unknown message type - pass through with all fields
-                logMessage = {
-                    ...baseFields,
-                    ...sdkMessage,
-                    type: (sdkMessage as any).type // Override type last to ensure it's set
-                } as any
+                return null
         }
 
         // Update last UUID for parent tracking

@@ -10,6 +10,7 @@ import {
     formatSessionOnline
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import { type v3 } from '@slopus/happy-sync';
 import { VOICE_CONFIG } from '../voiceConfig';
 
@@ -59,7 +60,7 @@ function reportSession(sessionId: string) {
     shownSessions.add(sessionId);
     const session = storage.getState().sessions[sessionId];
     if (!session) return;
-    const messages = storage.getState().v3SessionMessages[sessionId]?.messages ?? [];
+    const messages = sync.appSyncStore?.getMessages(sessionId as v3.SessionID) ?? [];
     const contextUpdate = formatSessionFull(session, messages);
     reportContextualUpdate(contextUpdate);
 }
@@ -129,7 +130,10 @@ export const voiceHooks = {
         }
         shownSessions.clear();
         let prompt = '';
-        prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().v3SessionMessages[sessionId]?.messages ?? []);
+        prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(
+            storage.getState().sessions[sessionId],
+            sync.appSyncStore?.getMessages(sessionId as v3.SessionID) ?? [],
+        );
         shownSessions.add(sessionId);
         return prompt;
     },

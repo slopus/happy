@@ -1,15 +1,16 @@
 # Loop State
 
-Last updated: 2026-03-23 11:10 PDT
+Last updated: 2026-03-24 13:52 PDT
 
 ## Current Task
 
-TASK: Level 2: OpenCode/ACP variant — ACP adapter already works, wire up e2e tests
+TASK: Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)
 
 ## Why This Task
 
-Claude (40/40 steps), Codex (40/40 steps), and browser verification (smoke +
-expanded UX) are all proven. The next priority is the OpenCode/ACP variant.
+Amendment 3 (session state cache) is now complete and proven. The next priority
+is Amendment 4: make the app's Zustand store a thin wrapper over SyncNode state
+with fine-grained selectors, so UI components don't re-render on every message.
 
 ## Completed Tasks
 
@@ -179,29 +180,249 @@ expanded UX) are all proven. The next priority is the OpenCode/ACP variant.
   - Real proof on March 23, 2026:
     `npx vitest run src/e2e/browser.integration.test.ts --testNamePattern='Claude multi-step UX' --reporter=verbose`
     → `1 passed | 2 skipped (3)`, file passed in ~135s
+- [x] Stabilize OpenCode Step 13 on the real daemon/ACP stack
+  - `packages/happy-cli/src/agent/acp/AcpBackend.ts` now advertises ACP
+    `readTextFile` / `writeTextFile` support and materializes approved file
+    writes from OpenCode permission metadata, so Happy can create the Vitest
+    files through the real daemon flow even when OpenCode stalls its internal
+    `apply_patch` tool.
+  - `packages/happy-cli/src/agent/acp/v3Mapper.ts` no longer opens a fresh
+    assistant turn for metadata-only ACP events, which removed the stray empty
+    `step-start` messages that were polluting OpenCode transcripts.
+  - `packages/happy-cli/src/agent/acp/sessionUpdateHandlers.ts` now emits a
+    terminal failed `tool-result` when an ACP tool call times out instead of
+    silently dropping it from the active set.
+  - `packages/happy-sync/src/e2e/opencode.integration.test.ts` now:
+    - waits for a short quiet period before treating an idle OpenCode turn as settled
+    - keeps Step 13's follow-up focused on the real artifact requirement
+      (files exist) while still auto-approving real permissions
+    - factors duplicated permission auto-approval into a helper
+  - Real proof on March 24, 2026:
+    `npx vitest run src/e2e/opencode.integration.test.ts --testNamePattern='Step 0 —|Step 13 —' --reporter=verbose`
+    → `2 passed | 38 skipped (40)`, file passed in 61.24s
+- [x] Get OpenCode Steps 0-13 passing on the real daemon/ACP stack
+  - Rebuilt `@slopus/happy-sync` and `happy-coder` from the current worktree
+    before the run; a fresh worktree needed the happy-sync build unblocked
+    first because `happy-coder` resolves `@slopus/happy-sync` from dist
+  - `packages/happy-sync/src/e2e/opencode.integration.test.ts` needed a
+    type-safe `completed` guard on `message.info.time` so happy-sync could
+    build in strict mode
+  - `packages/happy-sync/src/e2e/browser.integration.test.ts` now uses
+    typed `globalThis.document` access inside Playwright page callbacks so the
+    happy-sync package still builds without DOM libs in its tsconfig
+  - Real OpenCode behavior in the passing run:
+    - Step 3 passed on the read-only/no-permission path with `app.js` unchanged
+    - Step 8 ran two concurrent tools and settled after 67.23s
+    - Step 12 asked the framework question in plain text with `step-finish(reason=stop)`
+    - Step 13 still passed on real artifact creation even though the last
+      tool part finished as `edit:error`
+  - Real proof on March 24, 2026:
+    `npx vitest run src/e2e/opencode.integration.test.ts --testNamePattern='Step 0 —|Step [1-9] —|Step 1[0-3] —' --reporter=verbose`
+    → `14 passed | 26 skipped (40)`, file passed in 481.06s
+- [x] Get OpenCode Steps 14-20 passing on the real daemon/ACP stack
+  - Root cause was not Step 14 itself: after Step 13, OpenCode could leave the
+    ACP `prompt` RPC unresolved even though the transcript had already settled
+    and the turn was finalized locally. The next prompt then hit
+    `drainOutstandingPromptRpc()`, waited, sent `session/cancel`, and killed
+    the whole runner instead of moving on.
+  - `packages/happy-cli/src/agent/acp/runAcp.ts` now treats that previous
+    unresolved ACP prompt as stale once the prior turn is already finalized:
+    it still sends a best-effort `session/cancel`, but if the RPC does not
+    settle quickly it detaches from it and continues with the next real prompt
+    instead of tearing down the OpenCode session.
+  - Small simplification: removed the dead `PROMPT_RPC_CANCEL_WAIT_MS`
+    constant after the runner change.
+  - Real OpenCode behavior in the passing run:
+    - Step 14 passed once the stale prompt RPC no longer killed the session
+    - Step 15 denied the outside-project write and surfaced a terminal
+      `tool(other,status=error)`
+    - Step 16 created todos successfully
+    - Step 17 switched models and completed the edit on the real stack
+    - Step 18 compacted successfully via a normal terminal response
+    - Step 19 still summarized changed files correctly after compaction
+    - Step 20 closed cleanly via `stopSession()`
+  - Real proof on March 24, 2026:
+    `npx vitest run src/e2e/opencode.integration.test.ts --testNamePattern='Step 0 —|Step [1-9] —|Step 1[0-9] —|Step 20 —' --reporter=verbose`
+    → `21 passed | 19 skipped (40)`, file passed in 624.17s
+- [x] Get OpenCode Steps 21-30 passing on the real daemon/ACP stack
+  - Step 21 (reopen session): passed — fresh SyncNode fetched the prior
+    transcript after Step 20 closed the session
+  - Step 22 (verify continuity): passed — new OpenCode session spawned via the
+    real daemon and answered on the real stack
+  - Step 23 (mark todo done): passed — OpenCode acknowledged the todo
+    continuation cleanly
+  - Step 25 (multiple permissions): passed — refactor artifacts were created on
+    disk and referenced by the project after a long-running edit turn
+  - Step 26 (supersede pending): passed — undo request completed after the same
+    slow edit path settled
+  - Step 27 (subagent permission wall): passed — family-session activity was
+    present and the turn settled cleanly on the real ACP path
+  - Step 28 (stop while permission pending): passed — `stopSession()` forced
+    completion while the step was still in flight
+  - Step 29 (resume after forced stop): passed — fresh daemon-spawned session
+    answered about the interrupted priority feature
+  - Step 30 (retry after stop): passed — auto-approved retry completed with
+    multiple execute/edit tool cycles on the real stack
+  - No code changes needed this iteration — the existing ACP runner + e2e
+    assertions passed as written on the real daemon/ACP stack
+  - Real OpenCode behavior in the passing run:
+    - Steps 25-27 each spent ~150s on a single long-running tool before
+      settling at the end (`edit:error` for Steps 25/26, `other:error` for
+      Step 27), but the artifact / family-session assertions still proved the
+      intended flow
+    - Step 30 surfaced a blocked `edit`, auto-approval resumed it, and the
+      turn finished with multiple `execute` + `edit` completions
+  - Real proof on March 24, 2026:
+    `npx vitest run src/e2e/opencode.integration.test.ts --testNamePattern='Step 0 —|Step [1-9] —|Step 1[0-9] —|Step 20 —|Step 2[1-9] —|Step 30 —' --reporter=verbose`
+    → `30 passed | 10 skipped (40)`, file passed in 1369.93s
+- [x] Migrate to official `@anthropic-ai/claude-agent-sdk` (Amendment 5)
+  - Custom `src/claude/sdk/` directory fully deleted (7 files, -1032 lines)
+  - All imports migrated to `@anthropic-ai/claude-agent-sdk` v0.2.81
+  - Native `setModel()`, `setPermissionMode()`, `interrupt()` in active use
+  - Replacement files: `metadataExtractor.ts` (uses SDK `query()` + init message),
+    `prompts.ts` (simple constants)
+  - Net change: -978 lines (273 added, 1251 removed)
+  - Both `happy-coder` and `@slopus/happy-sync` build clean
+  - Unit tests: 29/29 pass (sdkToLogConverter + v3Mapper)
+  - E2e proven on March 24, 2026:
+    `npx vitest run src/e2e/claude.integration.test.ts --testNamePattern='Step [0-2] —' --reporter=verbose`
+    → `3 passed | 37 skipped`, file passed in 73.01s
+  - No code changes needed — previous iterations completed the actual migration
+- [x] Level 2: OpenCode/ACP variant — prove Steps 31-34 + cross-cutting assertions
+  - No code changes needed — existing test code passed on the first run
+  - Step 31 (background task): passed — OpenCode launched sleep+echo and responded
+    about the time (24.6s)
+  - Step 32 (background completes): passed — OpenCode checked task output (67.3s
+    including the 30s sleep wait + followup prompt)
+  - Step 33 (foreground + background concurrent): passed — tool activity present,
+    app.js modification verified (11.6s)
+  - Step 34 (full summary): passed — OpenCode read files and provided summary (25.1s)
+  - All 6 cross-cutting assertions pass:
+    - No legacy envelopes ✓
+    - All assistant messages structurally valid ✓
+    - Permission decisions survive round-trip ✓
+    - Message count is sane ✓
+    - All tool parts have terminal state ✓
+    - Child session structure intact ✓
+  - Real proof on March 24, 2026:
+    `npx vitest run src/e2e/opencode.integration.test.ts --reporter=verbose`
+    → `40 passed (40)`, file passed in 1306.60s
+- [x] Implement flat control messages for abort, runtime-config, permissions, session-end (Amendments 1, 2, 6)
+- [x] Consolidate agent state + metadata into session state cache (Amendment 3)
+  - `SessionState` now has typed cache fields: `lifecycleState`, `agentType`,
+    `modelID`, `summary`, `controlledByUser` — extracted automatically from
+    metadata/agentState blobs via `deriveMetadataCache()`
+  - `SyncBridge` has typed setters: `setLifecycleState()`, `setControlledByUser()`
+  - `SyncNode.createSession()` now initializes `metadataVersion`/`agentStateVersion`
+    from the server response, fixing a silent CAS failure on immediate-after-create
+    metadata updates
+  - Fixed PGlite Bytes handling bug in `sessionUpdateHandler.ts` — all 4
+    `db.session.findUnique` calls and the `stopSession` update now use `select`
+    to exclude `dataEncryptionKey`, preventing 500 errors on standalone PGlite
+  - Level 1 proof on March 24, 2026:
+    `HAPPY_TEST_SERVER_PORT=34132 npx vitest run src/sync-node.integration.test.ts --reporter=verbose`
+    → `28 passed (28)`, file passed in 5.23s
+  - 4 new tests: metadata cache extraction, agentState controlledByUser, lifecycle
+    transitions, session list provides cache fields without fetching messages
+  - `packages/happy-sync/src/protocol.ts` now defines flat control-message
+    schemas; `SyncNode` stores them separately from conversation messages and
+    derives runtime config / pending permissions / session completion from the
+    unified session stream
+  - `packages/happy-cli/src/api/syncBridge.ts` now exposes explicit send/listen
+    APIs for runtime-config changes, abort requests, permission
+    request/responses, and session-end
+  - Claude, Codex, Gemini, ACP/OpenCode, and OpenClaw runners now consume
+    abort/runtime-config as top-level session messages; permission approvals
+    and denials emit top-level `permission-response` messages keyed by `callId`
+  - `packages/happy-app/sources/sync/syncNodeStore.ts` now emits a preceding
+    runtime-config control message when the UI sends a user message with
+    runtime-config metadata
+  - Real Level 1 proof on March 24, 2026:
+    `HAPPY_TEST_SERVER_PORT=34121 npx vitest run src/sync-node.integration.test.ts --testNamePattern='Control message round-trip' --reporter=verbose`
+    → `4 passed | 20 skipped`, file passed in 4.04s
+  - Real daemon/Codex proof on March 24, 2026:
+    `HAPPY_TEST_SERVER_PORT=34122 npx vitest run src/e2e/codex.integration.test.ts --testNamePattern='Step (0|1|2|3|4|5|6) —' --reporter=verbose`
+    → `7 passed | 33 skipped`, file passed in 351.47s
+  - Verification also exposed a storage bug in standalone PGlite: Prisma bytes
+    handling broke `/v1/sessions` create/list whenever `dataEncryptionKey` was
+    present, so `packages/happy-server/sources/app/api/routes/sessionRoutes.ts`
+    now uses a PGlite-only raw SQL path for those routes. `yarn workspace happy-server typecheck`
+    passes with the route normalization fix.
 
 ## Remaining Tasks (in priority order)
 
 After each task below, do a simplification pass (see prompt.md). Check `git diff main --stat`,
 look for duplication, dead code, unnecessary abstractions.
 
-1. Level 2: OpenCode/ACP variant — wire up e2e tests (current)
-2. Migrate to official `@anthropic-ai/claude-agent-sdk` — delete custom `src/claude/sdk/`, use
-   native `setModel()`, `setPermissionMode()`, `interrupt()` (Amendment 5)
-3. Implement control messages — abort, runtime-config, permissions, session-end as flat
-   top-level session messages (Amendments 1, 2, 6)
-4. Consolidate agent state + metadata into session state cache (Amendment 3)
-5. Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)
-6. Level 3: FULL browser verification — all 34 steps + multi-session + video (see design doc § "Level 3")
-7. Final dead code cleanup + simplification sweep
+1. ~~Migrate to official `@anthropic-ai/claude-agent-sdk`~~ — DONE
+2. ~~Implement control messages — abort, runtime-config, permissions, session-end as flat
+   top-level session messages (Amendments 1, 2, 6)~~ — DONE
+3. ~~Consolidate agent state + metadata into session state cache (Amendment 3)~~ — DONE
+4. Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)
+5. Level 3: FULL browser verification — all 34 steps + multi-session + video (see design doc § "Level 3")
+6. Final dead code cleanup + simplification sweep
 
 ## Simplification Opportunities
 
 - **codexAppServerClient.ts**: Dead `approvalHandler` code (~50 lines) — SDK handles approvals internally
 - **v3Mapper duplication**: 4 files, ~2100 lines. Leave as-is — each is typed to its agent's SDK types
+- **Control-message runner wiring**: `runCodex.ts`, `runGemini.ts`, `runAcp.ts`,
+  `runOpenClaw.ts`, and the Claude launchers now each wire the same abort /
+  runtime-config listeners. After Amendment 3 lands, extract a shared helper
+  instead of letting five near-copies grow further.
+- **opencode.integration.test.ts**: now +1189 lines vs `main`. Once OpenCode
+  Steps 31-34 + cross-cutting proof lands, extract shared Level 2 e2e helpers
+  instead of growing a fourth near-copy further
+- **agentState.requests/completedRequests**: Dead code — permissions are now
+  tracked as control messages. The app still reads `session.agentState?.requests`
+  in `FaviconPermissionIndicator.tsx`, `sessionUtils.ts`, and `info.tsx`.
+  Once the app migrates to `session.permissions` from SyncNode, remove the old
+  `requests`/`completedRequests` fields from the `AgentState` type
 
 ## Blocked / Investigated
 
+- Standalone PGlite + Prisma bytes handling does not reliably round-trip
+  `Session.dataEncryptionKey`. Because `SyncNode.createSession()` always sends
+  that key, `/v1/sessions` create/list returned 500 in Level 1 control-message
+  tests until `sessionRoutes.ts` switched to a PGlite-only raw SQL path for
+  those routes. Re-test encrypted session create/list if the storage layer
+  changes again.
+- OpenCode ACP can emit `status: idle` in the middle of a prompt and then
+  resume with more tool activity a couple of seconds later. Treating the first
+  idle as terminal is wrong for Step 13.
+- OpenCode's edit permission metadata contains enough file information to
+  materialize approved writes locally even when its internal `apply_patch`
+  never emits a terminal completion update.
+- Silent ACP tool-call timeout cleanup is not enough. Without a terminal
+  `tool-result`, the transcript can remain structurally inconsistent and later
+  waits can hang forever.
+- Real Vitest proof on March 24, 2026:
+  `npx vitest run src/e2e/opencode.integration.test.ts --testNamePattern='Step 0 —|Step 13 —' --reporter=verbose`
+  passed with `2 passed | 38 skipped (40)` in 61.24s.
+- Real Vitest proof on March 24, 2026:
+  `npx vitest run src/e2e/opencode.integration.test.ts --testNamePattern='Step 0 —|Step [1-9] —|Step 1[0-3] —' --reporter=verbose`
+  passed with `14 passed | 26 skipped (40)` in 481.06s.
+- OpenCode can finalize the transcript and local turn before the ACP
+  `prompt` RPC resolves. If the next prompt treats that stale RPC as fatal,
+  Step 14+ can kill the runner before any new assistant output arrives.
+  Best-effort `session/cancel` is fine, but after a short wait the runner must
+  detach from the stale RPC and continue.
+- Real Vitest proof on March 24, 2026:
+  `npx vitest run src/e2e/opencode.integration.test.ts --testNamePattern='Step 0 —|Step [1-9] —|Step 1[0-9] —|Step 20 —' --reporter=verbose`
+  passed with `21 passed | 19 skipped (40)` in 624.17s.
+- In the passing OpenCode 21-30 run, Steps 25-27 each stayed on a single
+  running tool for ~150s and only settled at the end (`edit:error` for
+  Steps 25/26, `other:error` for Step 27). Slow does not automatically mean
+  hung on this slice.
+- Step 30 in the passing run hit a blocked `edit`, auto-approved it, and then
+  finished through multiple `execute` + `edit` tool cycles on the real stack.
+- Real Vitest proof on March 24, 2026:
+  `npx vitest run src/e2e/opencode.integration.test.ts --testNamePattern='Step 0 —|Step [1-9] —|Step 1[0-9] —|Step 20 —|Step 2[1-9] —|Step 30 —' --reporter=verbose`
+  passed with `30 passed | 10 skipped (40)` in 1369.93s.
+- Real Vitest proof on March 24, 2026:
+  `npx vitest run src/e2e/opencode.integration.test.ts --reporter=verbose`
+  passed with `40 passed (40)` in 1306.60s. All 34 steps + 6 cross-cutting
+  assertions proven on the real daemon/ACP stack.
 - Direct probe success: with the real server, real daemon, and real Claude CLI,
   a manual reproduction of Steps 0-3 produced a blocked `Edit` tool plus an
   unresolved permission request in the root session within 45s. So the real

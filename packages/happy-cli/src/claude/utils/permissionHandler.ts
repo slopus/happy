@@ -6,15 +6,14 @@
  */
 
 import { isDeepStrictEqual } from 'node:util';
+import type { CanUseTool, PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
 import { logger } from "@/lib";
-import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "../sdk";
-import { PermissionResult } from "../sdk/types";
-import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
+import type { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../prompts";
 import { Session } from "../session";
 import { getToolName } from "./getToolName";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
-import { delay } from "@/utils/time";
 
 interface PermissionResponse {
     id: string;
@@ -30,7 +29,8 @@ interface PendingRequest {
     resolve: (value: PermissionResult) => void;
     reject: (error: Error) => void;
     toolName: string;
-    input: unknown;
+    input: Record<string, unknown>;
+    suggestions?: PermissionUpdate[];
 }
 
 export class PermissionHandler {
@@ -115,7 +115,13 @@ export class PermissionHandler {
         } else {
             // Handle default case for all other tools
             const result: PermissionResult = response.approved
-                ? { behavior: 'allow', updatedInput: (pending.input as Record<string, unknown>) || {} }
+                ? {
+                    behavior: 'allow',
+                    updatedInput: pending.input,
+                    ...(pending.suggestions && response.allowTools && response.allowTools.length > 0
+                        ? { updatedPermissions: pending.suggestions }
+                        : {}),
+                }
                 : { behavior: 'deny', message: response.reason || `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.` };
 
             pending.resolve(result);
@@ -125,10 +131,13 @@ export class PermissionHandler {
     /**
      * Creates the canCallTool callback for the SDK
      */
-    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
-        const updatedInput = typeof input === 'object' && input !== null
-            ? input as Record<string, unknown>
-            : {};
+    handleToolCall = async (
+        toolName: string,
+        input: Record<string, unknown>,
+        mode: EnhancedMode,
+        options: Parameters<CanUseTool>[2],
+    ): Promise<PermissionResult> => {
+        const updatedInput = input ?? {};
 
         if (toolName === 'AskUserQuestion') {
             return { behavior: 'allow', updatedInput };
@@ -172,15 +181,11 @@ export class PermissionHandler {
         // Approval flow
         //
 
-        let toolCallId = this.resolveToolCallId(toolName, input);
-        if (!toolCallId) { // What if we got permission before tool call
-            await delay(1000);
-            toolCallId = this.resolveToolCallId(toolName, input);
-            if (!toolCallId) {
-                throw new Error(`Could not resolve tool call ID for ${toolName}`);
-            }
+        const toolCallId = options.toolUseID ?? this.resolveToolCallId(toolName, input);
+        if (!toolCallId) {
+            throw new Error(`Could not resolve tool call ID for ${toolName}`);
         }
-        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, options.suggestions);
     }
 
     /**
@@ -189,8 +194,9 @@ export class PermissionHandler {
     private async handlePermissionRequest(
         id: string,
         toolName: string,
-        input: unknown,
-        signal: AbortSignal
+        input: Record<string, unknown>,
+        signal: AbortSignal,
+        suggestions?: PermissionUpdate[],
     ): Promise<PermissionResult> {
         return new Promise<PermissionResult>((resolve, reject) => {
             // Set up abort signal handling
@@ -211,7 +217,8 @@ export class PermissionHandler {
                     reject(error);
                 },
                 toolName,
-                input
+                input,
+                suggestions,
             });
 
             // Trigger callback to send delayed messages immediately
@@ -246,6 +253,12 @@ export class PermissionHandler {
 
             // Notify v3 mapper that this tool is blocked for permission
             this.session.blockToolForPermission(
+                id,
+                toolName,
+                this.extractPatterns(toolName, input),
+                typeof input === 'object' && input !== null ? input as Record<string, unknown> : {},
+            );
+            this.session.sendPermissionRequest(
                 id,
                 toolName,
                 this.extractPatterns(toolName, input),
@@ -353,16 +366,13 @@ export class PermissionHandler {
     }
 
     /**
-     * Checks if a tool call is rejected
+     * Checks if a tool result should force the launcher to restart.
+     *
+     * Normal permission denials now continue inside the same official SDK query:
+     * Claude emits an error tool_result, explains the refusal, and ends the turn.
+     * We only force a restart for the plan-mode fake rejection shim.
      */
     isAborted(toolCallId: string): boolean {
-
-        // If tool not approved, it's aborted
-        if (this.responses.get(toolCallId)?.approved === false) {
-            return true;
-        }
-
-        // Always abort exit_plan_mode
         const toolCall = this.toolCalls.find(tc => tc.id === toolCallId);
         if (toolCall && (toolCall.name === 'exit_plan_mode' || toolCall.name === 'ExitPlanMode')) {
             return true;

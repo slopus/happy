@@ -292,6 +292,17 @@ export async function runGemini(opts: {
   let currentPermissionMode: PermissionMode | undefined = undefined;
   let currentModel: string | undefined = undefined;
 
+  syncBridge.onRuntimeConfigChange((change) => {
+    const validModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+    if (change.permissionMode && validModes.includes(change.permissionMode as PermissionMode)) {
+      currentPermissionMode = change.permissionMode as PermissionMode;
+      updatePermissionMode(currentPermissionMode);
+    }
+    if (Object.prototype.hasOwnProperty.call(change, 'model')) {
+      currentModel = change.model || undefined;
+    }
+  });
+
   syncBridge.onUserMessage((message) => {
     // Extract text from the first text part
     const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
@@ -494,6 +505,9 @@ export async function runGemini(opts: {
   };
 
   rpcHandlerManager.registerHandler('abort', handleAbort);
+  syncBridge.onAbortRequest(() => {
+    void handleAbort();
+  });
   registerKillSessionHandler(rpcHandlerManager, handleKillSession);
 
   //
@@ -598,6 +612,7 @@ export async function runGemini(opts: {
   permissionHandler = new GeminiPermissionHandler({
     rpcHandlerManager,
     updateAgentState: (handler) => syncBridge.updateAgentState(handler as any),
+    sendPermissionRequest: (request) => syncBridge.sendPermissionRequest(request),
   });
   
   // Create reasoning processor for handling thinking/reasoning chunks

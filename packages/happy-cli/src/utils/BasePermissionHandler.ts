@@ -44,6 +44,7 @@ export interface PermissionResult {
 export interface PermissionHandlerDeps {
     rpcHandlerManager: RpcHandlerManager;
     updateAgentState: (handler: (state: AgentState) => AgentState) => void;
+    sendPermissionRequest?: (request: { callID: string; tool: string; patterns: string[]; input: Record<string, unknown> }) => Promise<void>;
 }
 
 /**
@@ -151,6 +152,18 @@ export abstract class BasePermissionHandler {
                 }
             }
         }));
+
+        const normalizedInput = (input && typeof input === 'object')
+            ? input as Record<string, unknown>
+            : {};
+        this.deps.sendPermissionRequest?.({
+            callID: toolCallId,
+            tool: toolName,
+            patterns: this.extractPatterns(toolName, normalizedInput),
+            input: normalizedInput,
+        }).catch((error) => {
+            logger.debug(`${this.getLogPrefix()} Failed to send permission-request control message`, error);
+        });
     }
 
     /**
@@ -250,5 +263,18 @@ export abstract class BasePermissionHandler {
         } finally {
             this.isResetting = false;
         }
+    }
+
+    private extractPatterns(toolName: string, input: Record<string, unknown>): string[] {
+        if (toolName === 'Bash' && typeof input.command === 'string') {
+            return [input.command];
+        }
+        for (const key of ['file_path', 'path', 'pattern', 'command']) {
+            const value = input[key];
+            if (typeof value === 'string' && value.length > 0) {
+                return [value];
+            }
+        }
+        return ['*'];
     }
 }

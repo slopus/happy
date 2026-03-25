@@ -9,7 +9,7 @@ import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativ
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSetting } from '@/sync/storage';
+import { useAllMachines, useSetting, useSyncSessionTodos } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
@@ -338,6 +338,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
+    const sessionTodos = useSyncSessionTodos(session.id);
     const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -476,9 +477,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         {/* No longer showing git status per item - it's in the header */}
 
                         {/* Task status indicator */}
-                        {session.todos && session.todos.length > 0 && (() => {
-                            const totalTasks = session.todos.length;
-                            const completedTasks = session.todos.filter(t => t.status === 'completed').length;
+                        {sessionTodos.length > 0 && (() => {
+                            const totalTasks = sessionTodos.length;
+                            const completedTasks = sessionTodos.filter(t => t.status === 'completed').length;
 
                             // Don't show if all tasks are completed
                             if (completedTasks === totalTasks) {

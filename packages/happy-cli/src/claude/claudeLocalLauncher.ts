@@ -32,6 +32,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
     let exitReason: LauncherResult | null = null;
     const processAbortController = new AbortController();
     let exutFuture = new Future<void>();
+    let unsubscribeAbortRequests: (() => void) | null = null;
     try {
         async function abort() {
 
@@ -78,6 +79,9 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         // When to abort
         session.rpcHandlerManager.registerHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
         session.rpcHandlerManager.registerHandler('switch', doSwitch); // When user wants to switch to remote mode
+        unsubscribeAbortRequests = session.syncBridge.onAbortRequest(() => {
+            void doAbort();
+        });
         session.queue.setOnMessage((message: string, mode) => {
             // Switch to remote mode when message received
             doSwitch();
@@ -149,6 +153,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
         // Resolve future
         exutFuture.resolve(undefined);
+        unsubscribeAbortRequests?.();
 
         // Set handlers to no-op
         session.rpcHandlerManager.registerHandler('abort', async () => { });

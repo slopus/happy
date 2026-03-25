@@ -44,6 +44,8 @@ import {
 import type { SessionConfigOption, SessionModeState, SessionModelState } from '@agentclientprotocol/sdk';
 
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
+const IDLE_BEFORE_PROMPT_SETTLE_MS = 15_000;
+const PROMPT_RPC_DRAIN_WAIT_MS = 5_000;
 const ACP_EVENT_PREVIEW_CHARS = 240;
 const ACP_RAW_PREVIEW_CHARS = 2000;
 const ACP_COLOR_RESET = '\u001b[0m';
@@ -295,6 +297,15 @@ type AcpConfigSelector = {
   options: AcpSelectableOption[];
 };
 
+type MessageModelLike =
+  | string
+  | null
+  | undefined
+  | {
+      providerID?: string | null;
+      modelID?: string | null;
+    };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
 }
@@ -366,6 +377,29 @@ function normalizeComparable(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function resolveRequestedAcpModel(model: MessageModelLike): string | null {
+  if (typeof model === 'string') {
+    return model;
+  }
+
+  if (!model || typeof model !== 'object') {
+    return null;
+  }
+
+  const providerID = typeof model.providerID === 'string' ? model.providerID.trim() : '';
+  const modelID = typeof model.modelID === 'string' ? model.modelID.trim() : '';
+
+  if (!modelID) {
+    return null;
+  }
+
+  if (modelID.includes('/')) {
+    return modelID;
+  }
+
+  return providerID ? `${providerID}/${modelID}` : modelID;
+}
+
 function resolveRequestedCode(options: AcpSelectableOption[], requested: string): string | null {
   for (const option of options) {
     if (option.code === requested || option.value === requested) {
@@ -423,9 +457,10 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
   constructor(
     rpcManager: RpcHandlerManager,
     updateAgentState: (handler: (state: AgentState) => AgentState) => void,
+    sendPermissionRequest: ((request: { callID: string; tool: string; patterns: string[]; input: Record<string, unknown> }) => Promise<void>) | undefined,
     agentName: string,
   ) {
-    super({ rpcHandlerManager: rpcManager, updateAgentState });
+    super({ rpcHandlerManager: rpcManager, updateAgentState, sendPermissionRequest });
     this.logPrefix = `[${agentName}]`;
   }
 
@@ -574,12 +609,15 @@ export async function runAcp(opts: {
     syncBridge
       ? (handler) => syncBridge!.updateAgentState(handler as any)
       : (handler) => session.updateAgentState(handler),
+    syncBridge
+      ? (request) => syncBridge!.sendPermissionRequest(request)
+      : undefined,
     opts.agentName,
   );
   if (syncBridge) {
     syncBridge.onPermissionDecision((decision) => {
       permissionHandler.handleSyncDecision({
-        id: decision.permissionId,
+        id: decision.callId,
         approved: decision.decision !== 'reject',
         decision: decision.decision === 'always'
           ? 'approved_for_session'
@@ -611,6 +649,17 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
+  if (syncBridge) {
+    syncBridge.onRuntimeConfigChange((change) => {
+      if (typeof change.permissionMode === 'string') {
+        currentPermissionMode = change.permissionMode;
+      }
+      if (Object.prototype.hasOwnProperty.call(change, 'model')) {
+        currentModel = resolveRequestedAcpModel(change.model);
+      }
+    });
+  }
+
   const happyServer = await startHappyServer({ sessionId: session.sessionId, sendClaudeMessage: (body) => session.sendClaudeSessionMessage(body) });
   const mcpServers = {
     happy: {
@@ -635,28 +684,115 @@ export async function runAcp(opts: {
   let shouldExit = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
+  let activePromptRpc: Promise<void> | null = null;
+  let turnActivityVersion = 0;
+  let turnActivityWaiters: Array<() => void> = [];
 
   const clearPendingTurn = (error?: Error) => {
     if (!pendingTurn) {
+      logger.debug(`[${opts.agentName}] Turn-end signal received with no pending turn`);
       return;
     }
     clearTimeout(pendingTurn.timeout);
     const current = pendingTurn;
     pendingTurn = null;
     if (error) {
+      logger.debug(`[${opts.agentName}] Rejecting pending turn: ${error.message}`);
       current.reject(error);
       return;
     }
+    logger.debug(`[${opts.agentName}] Resolving pending turn`);
     current.resolve();
   };
 
   const waitForTurnEnd = () => new Promise<void>((resolve, reject) => {
+    logger.debug(`[${opts.agentName}] Registered pending turn waiter`);
     const timeout = setTimeout(() => {
       pendingTurn = null;
+      logger.debug(`[${opts.agentName}] Pending turn waiter timed out`);
       reject(new Error(`Timed out waiting for ${opts.agentName} to finish the turn`));
     }, TURN_TIMEOUT_MS);
     pendingTurn = { resolve, reject, timeout };
   });
+
+  const markTurnActivity = () => {
+    turnActivityVersion += 1;
+    const waiters = turnActivityWaiters;
+    turnActivityWaiters = [];
+    for (const wake of waiters) {
+      wake();
+    }
+  };
+
+  const waitForTurnActivityAfter = (version: number, timeoutMs: number): Promise<boolean> => new Promise((resolve) => {
+    if (turnActivityVersion > version) {
+      resolve(true);
+      return;
+    }
+
+    const onActivity = () => {
+      clearTimeout(timeout);
+      resolve(true);
+    };
+
+    const timeout = setTimeout(() => {
+      const index = turnActivityWaiters.indexOf(onActivity);
+      if (index !== -1) {
+        turnActivityWaiters.splice(index, 1);
+      }
+      resolve(false);
+    }, timeoutMs);
+
+    turnActivityWaiters.push(onActivity);
+  });
+
+  const waitForPromptRpcToSettle = async (
+    pending: Promise<void>,
+    timeoutMs: number,
+  ): Promise<boolean> => {
+    return await Promise.race([
+      pending.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+    ]);
+  };
+
+  const drainOutstandingPromptRpc = async (): Promise<void> => {
+    const pending = activePromptRpc;
+    if (!pending || !acpSessionId) {
+      return;
+    }
+
+    logger.debug(
+      `[${opts.agentName}] Waiting up to ${PROMPT_RPC_DRAIN_WAIT_MS}ms for previous ACP prompt RPC to settle before sending next prompt`,
+    );
+
+    if (await waitForPromptRpcToSettle(pending, PROMPT_RPC_DRAIN_WAIT_MS)) {
+      return;
+    }
+
+    logger.debug(
+      `[${opts.agentName}] Previous ACP prompt RPC still pending; sending session/cancel before next prompt`,
+    );
+    try {
+      await backend.cancelPromptTurn(acpSessionId);
+    } catch (error) {
+      logger.debug(
+        `[${opts.agentName}] Failed to cancel stale ACP prompt RPC; detaching anyway:`,
+        error,
+      );
+      activePromptRpc = null;
+      return;
+    }
+
+    if (await waitForPromptRpcToSettle(pending, PROMPT_RPC_DRAIN_WAIT_MS)) {
+      return;
+    }
+
+    logger.debug(
+      `[${opts.agentName}] Previous ACP prompt RPC still pending after session/cancel; detaching from stale prompt RPC and continuing`,
+    );
+    activePromptRpc = null;
+  };
 
   const stopRunnerFromBackendStatus = (status: 'error' | 'stopped', detail?: string) => {
     const reason = detail
@@ -796,6 +932,10 @@ export async function runAcp(opts: {
   };
 
   const onBackendMessage = (msg: AgentMessage) => {
+    if (msg.type !== 'status') {
+      markTurnActivity();
+    }
+
     if (verbose) {
       logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
     }
@@ -941,6 +1081,12 @@ export async function runAcp(opts: {
     }
 
     if (syncBridge && v3MapperState) {
+      // Transport status updates drive turn lifecycle and keep-alives, but they
+      // don't add transcript content. Publishing the idle snapshot here can race
+      // with the finalized flushed turn and overwrite the text/step-finish.
+      if (msg.type === 'status') {
+        return;
+      }
       const mapped = handleAcpMessage(msg, v3MapperState);
       sendV3Messages(mapped.messages);
       updateV3Message(mapped.currentAssistant);
@@ -967,7 +1113,10 @@ export async function runAcp(opts: {
       }
 
       if (meta && Object.prototype.hasOwnProperty.call(meta, 'model')) {
-        currentModel = meta.model ?? null;
+        currentModel = resolveRequestedAcpModel(meta.model);
+        logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
+      } else if (message.info.role === 'user') {
+        currentModel = resolveRequestedAcpModel(message.info.model);
         logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
       }
 
@@ -988,7 +1137,7 @@ export async function runAcp(opts: {
       }
 
       if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
-        currentModel = message.meta.model ?? null;
+        currentModel = resolveRequestedAcpModel(message.meta.model);
         logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
       }
 
@@ -1029,6 +1178,9 @@ export async function runAcp(opts: {
 
   const activeRpcManager = rpcHandlerManager ?? session.rpcHandlerManager;
   activeRpcManager.registerHandler('abort', handleAbort);
+  syncBridge?.onAbortRequest(() => {
+    void handleAbort();
+  });
   registerKillSessionHandler(activeRpcManager, async () => {
     shouldExit = true;
     messageQueue.close();
@@ -1075,6 +1227,8 @@ export async function runAcp(opts: {
         throw new Error('ACP session is not started');
       }
 
+      await drainOutstandingPromptRpc();
+
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       if (syncBridge && v3MapperState) {
         const startedTurn = startAcpTurn(v3MapperState);
@@ -1083,7 +1237,7 @@ export async function runAcp(opts: {
       } else {
         sendEnvelopes(sessionManager.startTurn());
       }
-      const turnEnded = waitForTurnEnd();
+      let turnEnded = waitForTurnEnd();
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
           await switchPermissionModeIfRequested(batch.mode.permissionMode);
@@ -1091,10 +1245,87 @@ export async function runAcp(opts: {
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
         }
-        await backend.sendPrompt(acpSessionId, batch.message);
-        await turnEnded;
+        // Some ACP agents keep the prompt RPC open until all background/subagent
+        // work finishes. Some also emit transient `status: idle` updates between
+        // phases of the same prompt, so only treat an idle-before-prompt-return
+        // as terminal if the session stays quiet for a short grace period.
+        let turnEndedBeforePromptReturned = false;
+        let promptReturned = false;
+        const promptPromise = backend.sendPrompt(acpSessionId, batch.message).catch((error) => {
+          if (turnEndedBeforePromptReturned) {
+            logger.debug(`[${opts.agentName}] Ignoring late ACP prompt rejection after turn end:`, error);
+            return;
+          }
+          throw error;
+        });
+        const promptSettled = promptPromise
+          .catch(() => undefined)
+          .finally(() => {
+            if (activePromptRpc === promptSettled) {
+              activePromptRpc = null;
+            }
+          });
+        activePromptRpc = promptSettled;
+        const trackedPromptPromise = promptPromise.then(() => {
+          promptReturned = true;
+        });
+
+        while (true) {
+          let raceResult: 'prompt' | 'idle' | null = null;
+          await Promise.race([
+            trackedPromptPromise.then(() => {
+              raceResult = 'prompt';
+            }),
+            turnEnded.then(() => {
+              raceResult = 'idle';
+            }),
+          ]);
+
+          if (raceResult === 'prompt') {
+            logger.debug(`[${opts.agentName}] Prompt RPC returned before turn end; waiting for idle`);
+            // Wait for idle with a grace period — if the agent returned without
+            // tool calls the backend may never emit idle on its own.
+            const idleOrTimeout = await Promise.race([
+              turnEnded.then(() => 'idle' as const),
+              new Promise<'timeout'>(resolve =>
+                setTimeout(() => resolve('timeout'), IDLE_BEFORE_PROMPT_SETTLE_MS),
+              ),
+            ]);
+            if (idleOrTimeout === 'timeout') {
+              logger.debug(
+                `[${opts.agentName}] No idle ${IDLE_BEFORE_PROMPT_SETTLE_MS}ms after prompt returned; finalizing`,
+              );
+            }
+            turnEndedBeforePromptReturned = true;
+            break;
+          }
+
+          if (promptReturned) {
+            turnEndedBeforePromptReturned = true;
+            break;
+          }
+
+          logger.debug(`[${opts.agentName}] Turn ended before prompt RPC returned`);
+          const activityVersionAtIdle = turnActivityVersion;
+          const sawMoreActivity = await waitForTurnActivityAfter(
+            activityVersionAtIdle,
+            IDLE_BEFORE_PROMPT_SETTLE_MS,
+          );
+          if (!sawMoreActivity) {
+            logger.debug(
+              `[${opts.agentName}] No new activity ${IDLE_BEFORE_PROMPT_SETTLE_MS}ms after idle; finalizing before prompt RPC returned`,
+            );
+            turnEndedBeforePromptReturned = true;
+            break;
+          }
+
+          logger.debug(`[${opts.agentName}] More activity arrived after idle; waiting for the next idle`);
+          turnEnded = waitForTurnEnd();
+        }
+        logger.debug(`[${opts.agentName}] Finalizing ACP turn after wait`);
         if (syncBridge && v3MapperState) {
           const endedTurn = endAcpTurn(v3MapperState, 'completed');
+          logger.debug(`[${opts.agentName}] Sending finalized v3 ACP turn with ${endedTurn.messages.length} messages`);
           sendV3Messages(endedTurn.messages);
           updateV3Message(endedTurn.currentAssistant);
         } else {

@@ -294,9 +294,9 @@ export class ApiSessionClient extends EventEmitter {
         // Wire permission decisions from the app through to the mapper
         bridge.onPermissionDecision((decision) => {
             if (decision.decision === 'reject') {
-                this.unblockToolRejectedV3(decision.permissionId, decision.reason ?? 'rejected');
+                this.unblockToolRejectedV3(decision.callId, decision.reason ?? 'rejected');
             } else {
-                this.unblockToolApprovedV3(decision.permissionId, decision.decision);
+                this.unblockToolApprovedV3(decision.callId, decision.decision);
             }
         });
 

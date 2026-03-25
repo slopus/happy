@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
 import { Session, Machine, GitStatus } from "./storageTypes";
-import { type v3 } from '@slopus/happy-sync';
+import { type v3, type SessionState as SyncNodeSessionState } from '@slopus/happy-sync';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
@@ -47,11 +47,6 @@ function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boo
 // Known entitlement IDs
 export type KnownEntitlements = 'pro';
 
-interface V3SessionMessages {
-    messages: v3.MessageWithParts[];
-    isLoaded: boolean;
-}
-
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
     | { type: 'header'; title: string }
@@ -67,7 +62,6 @@ interface StorageState {
     profile: Profile;
     sessions: Record<string, Session>;
     sessionListViewData: SessionListViewItem[] | null;
-    v3SessionMessages: Record<string, V3SessionMessages>;
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
@@ -133,7 +127,6 @@ interface StorageState {
     // Feed methods
     applyFeedItems: (items: FeedItem[]) => void;
     clearFeed: () => void;
-    applyV3Messages: (sessionId: string, messages: v3.MessageWithParts[]) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -257,7 +250,6 @@ export const storage = create<StorageState>()((set, get) => {
         feedLoaded: false,  // Initialize as false
         friendsLoaded: false,  // Initialize as false
         sessionListViewData: null,
-        v3SessionMessages: {},
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
@@ -267,9 +259,8 @@ export const storage = create<StorageState>()((set, get) => {
         isDataReady: false,
         nativeUpdateStatus: null,
         isMutableToolCall: (sessionId: string, callId: string) => {
-            const v3Session = get().v3SessionMessages[sessionId];
-            if (!v3Session) return true;
-            for (const msg of v3Session.messages) {
+            const messages = sync.appSyncStore?.getMessages(sessionId as v3.SessionID) ?? [];
+            for (const msg of messages) {
                 for (const part of msg.parts) {
                     if (part.type === 'tool' && part.callID === callId) {
                         return isMutableTool(part.tool);
@@ -653,7 +644,6 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         deleteSession: (sessionId: string) => set((state) => {
             const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;
-            const { [sessionId]: deletedV3Messages, ...remainingV3SessionMessages } = state.v3SessionMessages;
             const { [sessionId]: deletedGitStatus, ...remainingGitStatus } = state.sessionGitStatus;
 
             const drafts = loadSessionDrafts();
@@ -669,7 +659,6 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: remainingSessions,
-                v3SessionMessages: remainingV3SessionMessages,
                 sessionGitStatus: remainingGitStatus,
                 sessionListViewData
             };
@@ -797,57 +786,6 @@ export const storage = create<StorageState>()((set, get) => {
             feedLoaded: false,  // Reset loading flag
             friendsLoaded: false  // Reset loading flag
         })),
-        applyV3Messages: (sessionId: string, messages: v3.MessageWithParts[]) => {
-            // Detect EnterPlanMode tool calls in incoming messages
-            let shouldEnterPlanMode = false;
-            for (const msg of messages) {
-                if (msg.info.role === 'assistant') {
-                    for (const part of msg.parts) {
-                        if (part.type === 'tool' && (part.tool === 'EnterPlanMode' || part.tool === 'enter_plan_mode')) {
-                            shouldEnterPlanMode = true;
-                            break;
-                        }
-                    }
-                    if (shouldEnterPlanMode) break;
-                }
-            }
-
-            set((state) => {
-                const session = state.sessions[sessionId];
-                let updatedSessions = state.sessions;
-
-                if (shouldEnterPlanMode && session) {
-                    updatedSessions = {
-                        ...state.sessions,
-                        [sessionId]: {
-                            ...session,
-                            permissionMode: 'plan',
-                        },
-                    };
-
-                    // Persist plan mode change
-                    const allModes: Record<string, string> = {};
-                    Object.entries(updatedSessions).forEach(([id, sess]) => {
-                        if (sess.permissionMode && sess.permissionMode !== 'default') {
-                            allModes[id] = sess.permissionMode;
-                        }
-                    });
-                    saveSessionPermissionModes(allModes);
-                }
-
-                return {
-                    ...state,
-                    sessions: updatedSessions,
-                    v3SessionMessages: {
-                        ...state.v3SessionMessages,
-                        [sessionId]: {
-                            messages,
-                            isLoaded: true,
-                        },
-                    },
-                };
-            });
-        },
     }
 });
 
@@ -856,33 +794,157 @@ export function useSession(id: string): Session | null {
 }
 
 const emptyV3Array: v3.MessageWithParts[] = [];
+const emptyTodoArray: v3.Todo[] = [];
+
+function subscribeToAppSyncStore(onStoreChange: () => void): () => void {
+    return sync.appSyncStore?.subscribeStore(onStoreChange) ?? (() => {});
+}
 
 export function useV3SessionMessages(sessionId: string): { messages: v3.MessageWithParts[], isLoaded: boolean } {
-    return storage(useShallow((state) => {
-        const session = state.v3SessionMessages[sessionId];
-        return {
-            messages: session?.messages ?? emptyV3Array,
-            isLoaded: session?.isLoaded ?? false,
-        };
-    }));
+    const cacheRef = React.useRef<{
+        version: number;
+        messages: v3.MessageWithParts[];
+        isLoaded: boolean;
+        snapshot: { messages: v3.MessageWithParts[]; isLoaded: boolean };
+    } | null>(null);
+
+    return React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            const version = store?.getSessionMessagesVersion(sessionId as v3.SessionID) ?? 0;
+            const messages = store?.getMessages(sessionId as v3.SessionID) ?? emptyV3Array;
+            const isLoaded = store?.isSessionLoaded(sessionId as v3.SessionID) ?? false;
+            const cached = cacheRef.current;
+
+            if (cached && cached.version === version && cached.messages === messages && cached.isLoaded === isLoaded) {
+                return cached.snapshot;
+            }
+
+            const snapshot = { messages, isLoaded };
+            cacheRef.current = { version, messages, isLoaded, snapshot };
+            return snapshot;
+        },
+        () => ({ messages: emptyV3Array, isLoaded: false }),
+    );
 }
 
 export function useV3Message(sessionId: string, messageId: string): v3.MessageWithParts | null {
-    return storage(useShallow((state) => {
-        const session = state.v3SessionMessages[sessionId];
-        return session?.messages.find(m => m.info.id === messageId) ?? null;
-    }));
+    const cacheRef = React.useRef<{
+        version: number;
+        value: v3.MessageWithParts | null;
+        snapshot: { version: number; value: v3.MessageWithParts | null };
+    } | null>(null);
+
+    const snapshot = React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            const version = store?.getMessageVersion(sessionId as v3.SessionID, messageId as v3.MessageID) ?? 0;
+            const value = store?.getMessage(sessionId as v3.SessionID, messageId as v3.MessageID) ?? null;
+            const cached = cacheRef.current;
+
+            if (cached && cached.version === version && cached.value === value) {
+                return cached.snapshot;
+            }
+
+            const nextSnapshot = { version, value };
+            cacheRef.current = { version, value, snapshot: nextSnapshot };
+            return nextSnapshot;
+        },
+        () => ({ version: 0, value: null }),
+    );
+
+    return snapshot.value;
 }
 
 export function useV3ToolPart(sessionId: string, messageId: string, partId: string | undefined): v3.ToolPart | null {
-    return storage(useShallow((state) => {
-        const session = state.v3SessionMessages[sessionId];
-        const message = session?.messages.find(m => m.info.id === messageId);
-        if (!message) return null;
-        const toolParts = message.parts.filter((p): p is v3.ToolPart => p.type === 'tool');
-        if (partId) return toolParts.find(p => p.id === partId) ?? null;
-        return toolParts[0] ?? null;
-    }));
+    const cacheRef = React.useRef<{
+        version: number;
+        value: v3.ToolPart | null;
+        snapshot: { version: number; value: v3.ToolPart | null };
+    } | null>(null);
+
+    const snapshot = React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            const version = store?.getMessageVersion(sessionId as v3.SessionID, messageId as v3.MessageID) ?? 0;
+            const value = store?.getToolPart(
+                sessionId as v3.SessionID,
+                messageId as v3.MessageID,
+                partId as v3.PartID | undefined,
+            ) ?? null;
+            const cached = cacheRef.current;
+
+            if (cached && cached.version === version && cached.value === value) {
+                return cached.snapshot;
+            }
+
+            const nextSnapshot = { version, value };
+            cacheRef.current = { version, value, snapshot: nextSnapshot };
+            return nextSnapshot;
+        },
+        () => ({ version: 0, value: null }),
+    );
+
+    return snapshot.value;
+}
+
+export function useSyncSessionState(sessionId: string): SyncNodeSessionState | null {
+    const cacheRef = React.useRef<{
+        version: number;
+        value: SyncNodeSessionState | null;
+        snapshot: { version: number; value: SyncNodeSessionState | null };
+    } | null>(null);
+
+    const snapshot = React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            const version = store?.getSessionStateVersion(sessionId as v3.SessionID) ?? 0;
+            const value = store?.getSession(sessionId as v3.SessionID) ?? null;
+            const cached = cacheRef.current;
+
+            if (cached && cached.version === version && cached.value === value) {
+                return cached.snapshot;
+            }
+
+            const nextSnapshot = { version, value };
+            cacheRef.current = { version, value, snapshot: nextSnapshot };
+            return nextSnapshot;
+        },
+        () => ({ version: 0, value: null }),
+    );
+
+    return snapshot.value;
+}
+
+export function useSyncSessionTodos(sessionId: string): v3.Todo[] {
+    return useSyncSessionState(sessionId)?.todos ?? emptyTodoArray;
+}
+
+export function useSyncPendingPermissionCount(sessionId: string): number {
+    const session = useSyncSessionState(sessionId);
+    return session?.permissions.filter((permission) => !permission.resolved).length ?? 0;
+}
+
+export function useAnyOnlineSyncSessionHasPendingPermissions(sessionIds: string[]): boolean {
+    return React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            if (!store) {
+                return false;
+            }
+
+            return sessionIds.some((sessionId) => {
+                const session = store.getSession(sessionId as v3.SessionID);
+                return Boolean(session?.permissions.some((permission) => !permission.resolved));
+            });
+        },
+        () => false,
+    );
 }
 
 export function useSessionUsage(sessionId: string) {

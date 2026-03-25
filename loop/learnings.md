@@ -28,6 +28,21 @@ If you discover something non-obvious, append it here under the right section.
   soon as the write tool completes), the NEXT step must not wait for a generic
   "first terminal assistant turn" because Claude may still be flushing the
   previous request. Wait for a step-specific signal instead.
+- OpenCode can emit `status: idle` between phases of a single prompt and then
+  resume a second or two later with more tool activity. For OpenCode e2e waits,
+  add a short quiet-period check before treating an idle, no-permission turn as
+  settled.
+- OpenCode Step 13 is more reliable if the follow-up branch waits for the real
+  artifact requirement (Vitest files exist) while continuing to auto-approve
+  permissions, instead of waiting for OpenCode's `apply_patch` tool to emit a
+  terminal completion event.
+- In the widened OpenCode Steps 0-13 run, Step 13 still passed even when the
+  last tool part finished as `edit:error`. The durable proof is the created
+  files on disk, not a successful terminal edit tool.
+- In the passing OpenCode Steps 21-30 run, Steps 25-27 each spent ~150s on a
+  single `edit` / `other` tool before resolving as `error`. For these later
+  OpenCode steps, the durable proof is the artifact / family-session outcome
+  plus a terminal tool state, not specifically `completed`.
 - Real Claude Step 16 used the dedicated `TodoWrite` tool in the passing run.
   For todo-flow debugging, look for `TodoWrite` / derived `session().todos`,
   not just prose mentions of the tasks.
@@ -68,6 +83,41 @@ If you discover something non-obvious, append it here under the right section.
   base64. The app decodes `credentials.secret` with
   `decodeBase64(..., 'base64url')`; feeding it the raw base64 string from the
   e2e setup silently breaks the web session path.
+- OpenCode ACP permission requests for edit-style tools can carry the full file
+  write payload in `toolCall.rawInput` / permission metadata. Happy can
+  materialize those approved writes locally even if OpenCode never reports a
+  terminal `apply_patch` completion.
+- ACP tool-call timeouts need to emit a terminal `tool-result` error, not just
+  clear internal active-tool tracking. Silent timeout cleanup leaves the
+  transcript structurally inconsistent and can strand later waits.
+- The ACP v3 mapper must not start a new assistant turn for metadata-only
+  backend events. If it does, OpenCode produces stray empty `step-start`
+  messages after otherwise-finished turns.
+- `@slopus/happy-sync` builds without DOM libs in its tsconfig, but the build
+  still compiles its Playwright e2e files. In that package, browser callbacks
+  must not reference bare `document`; use typed `globalThis.document` access or
+  fresh installs/builds can fail before `happy-coder` can rebuild.
+- OpenCode can leave the ACP `prompt` RPC unresolved even after the transcript
+  has settled and `runAcp` has already finalized the turn locally. The NEXT
+  user prompt must not treat that stale RPC as fatal. Best fix: send a
+  best-effort `session/cancel`, wait briefly, then detach from the stale RPC
+  and continue. Otherwise Step 14+ can kill the whole OpenCode runner after a
+  successful Step 13.
+- Standalone PGlite + Prisma bytes handling does not reliably round-trip
+  `Session.dataEncryptionKey`. Because `SyncNode.createSession()` always sends
+  that key, Level 1 session create/list paths can 500 under tests unless
+  `sessionRoutes.ts` uses raw PGlite SQL (or the adapter is fixed). Re-test
+  `/v1/sessions` POST/GET with encryption enabled whenever the storage layer
+  changes.
+- The PGlite Bytes bug also affects socket CAS handlers in
+  `sessionUpdateHandler.ts`. ALL `db.session.findUnique` calls that might return
+  a session with `dataEncryptionKey` must use `select` to exclude it. Without
+  this, `update-metadata` and `update-state` silently return `{result:'error'}`
+  and the CAS update never succeeds. Also `stopSession` route's `db.session.update`
+  needs `select: { id: true }` to avoid returning the bytes column.
+- `SyncNode.createSession()` must initialize `metadataVersion`/`agentStateVersion`
+  from the server response, not hardcode 0. Otherwise immediate-after-create CAS
+  updates can version-mismatch if the server's initial version is non-zero.
 
 ## Process (what works)
 
@@ -77,6 +127,17 @@ If you discover something non-obvious, append it here under the right section.
   next iteration doesn't re-discover it.
 - After fixing code, re-run ONLY the affected step first, then the full
   passing suite (Steps 0-6+) to check for regressions.
+
+## CRITICAL: Global daemon safety
+
+- On 2026-03-24, a test run triggered `daemon start-sync` which sent SIGTERM to
+  the global daemon (PID 39581), killing ALL 5 active user sessions including
+  the human's active session. This is a **showstopper bug**.
+- The daemon version-mismatch restart logic will kill the global daemon if any
+  test or CLI invocation triggers it. Tests MUST use isolated daemon instances.
+- NEVER kill, restart, or signal the global daemon or any sessions you didn't
+  spawn. Only clean up processes YOUR tests created (identifiable by temp dirs
+  or test-specific ports).
 
 ## Process (what fails)
 
