@@ -1,3 +1,5 @@
+import { logger } from '@/ui/logger';
+
 export async function delay(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -38,4 +40,8 @@ export function createBackoff(
     };
 }
 
-export let backoff = createBackoff();
+export let backoff = createBackoff({
+    onError: (e, failuresCount) => {
+        logger.debug(`[BACKOFF] retry ${failuresCount}:`, (e as Error)?.message || e);
+    }
+});

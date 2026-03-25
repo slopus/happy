@@ -308,30 +308,32 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    private static readonly MAX_OUTBOX_BATCH_SIZE = 50;
+
     private async flushOutbox() {
-        if (this.pendingOutbox.length === 0) {
-            return;
+        // Send latest messages first so the user sees recent activity immediately,
+        // then backfill older messages in subsequent batches.
+        while (this.pendingOutbox.length > 0) {
+            const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
+            const batch = this.pendingOutbox.splice(-batchSize, batchSize);
+
+            const response = await axios.post<V3PostSessionMessagesResponse>(
+                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                {
+                    messages: batch
+                },
+                {
+                    headers: this.authHeaders(),
+                    timeout: 60000
+                }
+            );
+
+            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+            const maxSeq = messages.reduce((acc, message) => (
+                message.seq > acc ? message.seq : acc
+            ), this.lastSeq);
+            this.lastSeq = maxSeq;
         }
-
-        const batch = this.pendingOutbox.slice();
-        const response = await axios.post<V3PostSessionMessagesResponse>(
-            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-            {
-                messages: batch
-            },
-            {
-                headers: this.authHeaders(),
-                timeout: 60000
-            }
-        );
-
-        this.pendingOutbox.splice(0, batch.length);
-
-        const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-        const maxSeq = messages.reduce((acc, message) => (
-            message.seq > acc ? message.seq : acc
-        ), this.lastSeq);
-        this.lastSeq = maxSeq;
     }
 
     private enqueueMessage(content: unknown, invalidate: boolean = true) {
