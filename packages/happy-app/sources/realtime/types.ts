@@ -14,4 +14,4 @@ export interface VoiceSession {
 }
 
 export type ConversationStatus = 'disconnected' | 'connecting' | 'connected';
-export type ConversationMode = 'speaking' | 'listening';
+export type ConversationMode = 'idle' | 'agent-speaking' | 'user-speaking';
