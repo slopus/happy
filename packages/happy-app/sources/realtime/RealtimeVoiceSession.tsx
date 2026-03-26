@@ -39,7 +39,8 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                         language: elevenLabsLanguage
                     }
                 },
-                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId })
+                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId }),
+                ...(config.userId ? { userId: config.userId } : {}),
             };
             
             await conversationInstance.startSession(sessionConfig);

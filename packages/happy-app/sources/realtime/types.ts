@@ -3,6 +3,7 @@ export interface VoiceSessionConfig {
     initialContext?: string;
     token?: string;
     agentId?: string;
+    userId?: string;
 }
 
 export interface VoiceSession {
