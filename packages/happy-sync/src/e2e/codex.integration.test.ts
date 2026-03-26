@@ -644,7 +644,9 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
         expect(`${readFileSync(`${projectDir}/app.js`, 'utf-8')}\n${readFileSync(`${projectDir}/index.html`, 'utf-8')}`).toContain('filters.js');
         expect(`${readFileSync(`${projectDir}/app.js`, 'utf-8')}\n${readFileSync(`${projectDir}/index.html`, 'utf-8')}`).toContain('theme.js');
         const tools = assistantToolsSince(before);
-        expect(tools.filter(t => t.state.status === 'completed').length).toBeGreaterThanOrEqual(2);
+        // Codex may batch a multi-file refactor into a single apply_patch tool.
+        expect(tools.some(t => t.state.status === 'completed')).toBe(true);
+        expect(tools.some(t => t.state.status === 'blocked')).toBe(false);
     }, STEP_TIMEOUT);
 
     it('Step 26 — Supersede pending permissions', async () => {
