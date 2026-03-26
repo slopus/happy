@@ -358,6 +358,10 @@ export const ja: TranslationStructure = {
         deleteSessionWarning: 'この操作は取り消せません。このセッションに関連するすべてのメッセージとデータが完全に削除されます。',
         failedToDeleteSession: 'セッションの削除に失敗しました',
         sessionDeleted: 'セッションが正常に削除されました',
+        worktreeCleanupTitle: 'Worktreeを削除しますか？',
+        worktreeCleanupMessage: 'Worktreeにコミットされていない変更はありません。Worktreeのファイルを削除しますか？',
+        worktreeCleanupDelete: 'Worktreeを削除',
+        worktreeCleanupKeep: 'ファイルを保持',
 
     },
 
@@ -552,7 +556,18 @@ export const ja: TranslationStructure = {
             title: '言語',
             footer: ({ count }: { count: number }) => `${count}言語が利用可能`,
             autoDetect: '自動検出',
-        }
+        },
+        // Bring your own agent
+        byoTitle: '自分のエージェントを使う',
+        byoDescription: 'Happy のデフォルトの代わりに、独自の ElevenLabs エージェントを使用します。サブスクリプション不要 — 自分の ElevenLabs アカウントで直接接続できます。エージェントには2つのクライアントツールを定義する必要があります: messageClaudeCode（コーディングエージェントにテキストを送信）と processPermissionRequest（ツール使用を許可または拒否）。セッションコンテキストは {{initialConversationContext}} 動的変数を通じて受信されます。',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: '未設定',
+        customAgentIdDescription: 'ElevenLabs Agent ID を入力してください。空のままにすると Happy のデフォルトが使用されます。',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: '直接接続',
+        bypassTokenSubtitle: 'Happy サーバーをスキップし、ElevenLabs に直接接続',
+        promptGuideTitle: 'エージェントプロンプトガイド',
+        promptGuideDescription: 'ElevenLabs エージェントには以下が必要です:\n\n• ツール: messageClaudeCode — パラメータ: message (string)。アクティブなコーディングセッションにメッセージを送信します。\n• ツール: processPermissionRequest — パラメータ: decision ("allow" または "deny")。保留中のツール許可を承認または拒否します。\n• 動的変数: {{initialConversationContext}} — 開始時にセッション履歴とコンテキストを受信します。\n\nエージェントはユーザーとコーディングエージェント間の音声ブリッジとして機能します。簡潔に、話しかけられた時のみ応答し、コーディングエージェントが作業を完了したら報告する必要があります。',
     },
 
     settingsAccount: {

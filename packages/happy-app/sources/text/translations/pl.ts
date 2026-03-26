@@ -368,6 +368,10 @@ export const pl: TranslationStructure = {
         deleteSessionWarning: 'Ta operacja jest nieodwracalna. Wszystkie wiadomości i dane powiązane z tą sesją zostaną trwale usunięte.',
         failedToDeleteSession: 'Nie udało się usunąć sesji',
         sessionDeleted: 'Sesja została pomyślnie usunięta',
+        worktreeCleanupTitle: 'Usunąć Worktree?',
+        worktreeCleanupMessage: 'Worktree nie ma niezatwierdzonych zmian. Czy chcesz usunąć pliki Worktree?',
+        worktreeCleanupDelete: 'Usuń Worktree',
+        worktreeCleanupKeep: 'Zachowaj pliki',
     },
 
     components: {
@@ -561,7 +565,18 @@ export const pl: TranslationStructure = {
             title: 'Języki',
             footer: ({ count }: { count: number }) => `Dostępnych ${count} ${plural({ count, one: 'język', few: 'języki', many: 'języków' })}`,
             autoDetect: 'Automatyczne wykrywanie',
-        }
+        },
+        // Bring your own agent
+        byoTitle: 'Użyj własnego agenta',
+        byoDescription: 'Użyj własnego agenta ElevenLabs zamiast domyślnego Happy. Subskrypcja nie jest wymagana — połącz się bezpośrednio ze swoim kontem ElevenLabs. Twój agent musi definiować dwa narzędzia klienckie: messageClaudeCode (wysyła tekst do agenta kodującego) i processPermissionRequest (zezwala lub odmawia użycia narzędzi). Otrzymuje kontekst sesji przez zmienną dynamiczną {{initialConversationContext}}.',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: 'Nie skonfigurowano',
+        customAgentIdDescription: 'Wprowadź swój ElevenLabs Agent ID. Pozostaw puste, aby użyć domyślnego Happy.',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: 'Połączenie bezpośrednie',
+        bypassTokenSubtitle: 'Pomiń serwer Happy, połącz się bezpośrednio z ElevenLabs',
+        promptGuideTitle: 'Przewodnik po promptach agenta',
+        promptGuideDescription: 'Twój agent ElevenLabs potrzebuje:\n\n• Narzędzie: messageClaudeCode — parametr: message (string). Wysyła wiadomość do aktywnej sesji kodowania.\n• Narzędzie: processPermissionRequest — parametr: decision ("allow" lub "deny"). Zatwierdza lub odrzuca oczekujące uprawnienie narzędzia.\n• Zmienna dynamiczna: {{initialConversationContext}} — otrzymuje historię sesji i kontekst przy uruchomieniu.\n\nAgent działa jako most głosowy między użytkownikiem a agentami kodującymi. Powinien być zwięzły, odpowiadać tylko gdy jest adresowany i raportować, gdy agent kodujący zakończy pracę.',
     },
 
     settingsAccount: {

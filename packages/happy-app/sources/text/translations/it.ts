@@ -355,7 +355,11 @@ export const it: TranslationStructure = {
         deleteSessionWarning: 'Questa azione non può essere annullata. Tutti i messaggi e i dati associati a questa sessione verranno eliminati definitivamente.',
         failedToDeleteSession: 'Impossibile eliminare la sessione',
         sessionDeleted: 'Sessione eliminata con successo',
-        
+        worktreeCleanupTitle: 'Eliminare Worktree?',
+        worktreeCleanupMessage: 'Il Worktree non ha modifiche non confermate. Vuoi eliminare i file del Worktree?',
+        worktreeCleanupDelete: 'Elimina Worktree',
+        worktreeCleanupKeep: 'Conserva file',
+
     },
 
     components: {
@@ -549,7 +553,18 @@ export const it: TranslationStructure = {
             title: 'Lingue',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'lingua', plural: 'lingue' })} disponibili`,
             autoDetect: 'Rilevamento automatico',
-        }
+        },
+        // Bring your own agent
+        byoTitle: 'Porta il tuo agente',
+        byoDescription: 'Usa il tuo agente ElevenLabs al posto di quello predefinito di Happy. Nessun abbonamento richiesto — connettiti direttamente con il tuo account ElevenLabs. Il tuo agente deve definire due strumenti client: messageClaudeCode (invia testo all\'agente di codice) e processPermissionRequest (consente o nega l\'uso degli strumenti). Riceve il contesto della sessione tramite la variabile dinamica {{initialConversationContext}}.',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: 'Non configurato',
+        customAgentIdDescription: 'Inserisci il tuo ElevenLabs Agent ID. Lascia vuoto per usare quello predefinito di Happy.',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: 'Connessione diretta',
+        bypassTokenSubtitle: 'Salta il server di Happy, connettiti direttamente a ElevenLabs',
+        promptGuideTitle: 'Guida al prompt dell\'agente',
+        promptGuideDescription: 'Il tuo agente ElevenLabs necessita:\n\n• Strumento: messageClaudeCode — parametro: message (string). Invia un messaggio alla sessione di codice attiva.\n• Strumento: processPermissionRequest — parametro: decision ("allow" o "deny"). Approva o nega un permesso di strumento in sospeso.\n• Variabile dinamica: {{initialConversationContext}} — riceve la cronologia e il contesto della sessione all\'avvio.\n\nL\'agente funge da ponte vocale tra l\'utente e gli agenti di codice. Deve essere conciso, rispondere solo quando interpellato e segnalare quando un agente di codice termina il lavoro.',
     },
 
     settingsAccount: {

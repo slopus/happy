@@ -356,7 +356,11 @@ export const pt: TranslationStructure = {
         deleteSessionWarning: 'Esta ação não pode ser desfeita. Todas as mensagens e dados associados a esta sessão serão excluídos permanentemente.',
         failedToDeleteSession: 'Falha ao excluir sessão',
         sessionDeleted: 'Sessão excluída com sucesso',
-        
+        worktreeCleanupTitle: 'Excluir Worktree?',
+        worktreeCleanupMessage: 'O Worktree não tem alterações não confirmadas. Deseja excluir os arquivos do Worktree?',
+        worktreeCleanupDelete: 'Excluir Worktree',
+        worktreeCleanupKeep: 'Manter arquivos',
+
     },
 
     components: {
@@ -550,7 +554,18 @@ export const pt: TranslationStructure = {
             title: 'Idiomas',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomas' })} disponíveis`,
             autoDetect: 'Detectar automaticamente',
-        }
+        },
+        // Bring your own agent
+        byoTitle: 'Traga seu próprio agente',
+        byoDescription: 'Use seu próprio agente ElevenLabs em vez do padrão do Happy. Nenhuma assinatura necessária — conecte-se diretamente com sua própria conta ElevenLabs. Seu agente deve definir duas ferramentas de cliente: messageClaudeCode (envia texto ao agente de código) e processPermissionRequest (permite ou nega o uso de ferramentas). Recebe o contexto da sessão através da variável dinâmica {{initialConversationContext}}.',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: 'Não configurado',
+        customAgentIdDescription: 'Insira seu ElevenLabs Agent ID. Deixe vazio para usar o padrão do Happy.',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: 'Conexão direta',
+        bypassTokenSubtitle: 'Pule o servidor do Happy, conecte-se diretamente ao ElevenLabs',
+        promptGuideTitle: 'Guia de prompt do agente',
+        promptGuideDescription: 'Seu agente ElevenLabs precisa de:\n\n• Ferramenta: messageClaudeCode — parâmetro: message (string). Envia uma mensagem para a sessão de código ativa.\n• Ferramenta: processPermissionRequest — parâmetro: decision ("allow" ou "deny"). Aprova ou nega uma permissão de ferramenta pendente.\n• Variável dinâmica: {{initialConversationContext}} — recebe o histórico e contexto da sessão ao iniciar.\n\nO agente atua como ponte de voz entre o usuário e os agentes de código. Deve ser conciso, responder apenas quando abordado e informar quando um agente de código terminar o trabalho.',
     },
 
     settingsAccount: {
