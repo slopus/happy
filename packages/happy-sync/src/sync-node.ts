@@ -1717,16 +1717,53 @@ export class SyncNode {
     }
 
     private async rehydrateAllSessions(): Promise<void> {
-        if (this.token.claims.scope.type === 'account') {
-            await this.fetchSessions();
-        }
+        try {
+            let knownSessionIds: Set<string> | null = null;
 
-        for (const [sessionIdStr] of this.state.sessions) {
-            const sessionId = sessionIdStr as SessionID;
-            const session = this.state.sessions.get(sessionIdStr)!;
-            const lastSeq = this.getLastSeq(session);
-            await this.fetchMessages(sessionId, lastSeq);
+            if (this.token.claims.scope.type === 'account') {
+                const sessions = await this.fetchSessions();
+                knownSessionIds = new Set(sessions.map(session => session.id as string));
+            }
+
+            for (const [sessionIdStr] of [...this.state.sessions]) {
+                if (knownSessionIds && !knownSessionIds.has(sessionIdStr)) {
+                    this.dropLocalSession(sessionIdStr);
+                    continue;
+                }
+
+                const sessionId = sessionIdStr as SessionID;
+                const session = this.state.sessions.get(sessionIdStr);
+                if (!session) continue;
+
+                const lastSeq = this.getLastSeq(session);
+                try {
+                    await this.fetchMessages(sessionId, lastSeq);
+                } catch (error) {
+                    if (this.isNotFoundError(error)) {
+                        this.dropLocalSession(sessionIdStr);
+                        continue;
+                    }
+                    console.warn(`[SyncNode] Failed to rehydrate session ${sessionIdStr}`, error);
+                }
+            }
+        } catch (error) {
+            console.warn('[SyncNode] Failed to rehydrate sessions after reconnect', error);
         }
+    }
+
+    private dropLocalSession(sessionIdStr: string): void {
+        this.state.sessions.delete(sessionIdStr);
+        this.sessionLocalIds.delete(sessionIdStr);
+        this.sessionLastSeq.delete(sessionIdStr);
+        this.sessionKeyMaterials.delete(sessionIdStr);
+        this.sessionEncryptedDataKeys.delete(sessionIdStr);
+        this.sessionMessageListeners.delete(sessionIdStr);
+        this.notifyStateChange();
+    }
+
+    private isNotFoundError(error: unknown): boolean {
+        return error instanceof Error
+            && /HTTP GET .* failed: 404\b/.test(error.message);
     }
 
     private getLastSeq(session: SessionState): number {

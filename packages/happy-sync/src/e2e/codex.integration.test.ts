@@ -48,7 +48,7 @@ const CODEX_MODEL = { providerID: 'openai', modelID: 'codex-mini-latest' };
 
 const STEP_TIMEOUT = 180000;
 const PERM_TIMEOUT = 120000;
-const FINISH_TIMEOUT = 120000;
+const FINISH_TIMEOUT = 180000;
 const RESPONSE_QUIET_MS = 3000;
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -213,27 +213,37 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
         }, timeoutMs);
     }
 
-    async function waitForCodexTextResponseQuiet(
-        afterAssistantCount: number,
-        timeoutMs = FINISH_TIMEOUT,
-        quietMs = RESPONSE_QUIET_MS,
-    ): Promise<void> {
+    function createCodexQuietTracker(afterAssistantCount: number) {
         let lastFingerprint = '';
         let lastChangeAt = 0;
 
-        await waitForCondition(() => {
-            const msgs = assistantMessagesSince(afterAssistantCount);
-            if (msgs.length === 0) return false;
-            if (!msgs.some(message => hasPart(message, 'text'))) return false;
+        return (ready: boolean): boolean => {
+            if (!ready) return false;
 
-            const fingerprint = JSON.stringify(msgs.map(message => message.parts));
+            const fingerprint = JSON.stringify(
+                assistantMessagesSince(afterAssistantCount).map(message => message.parts),
+            );
             if (fingerprint !== lastFingerprint) {
                 lastFingerprint = fingerprint;
                 lastChangeAt = Date.now();
                 return false;
             }
 
-            return Date.now() - lastChangeAt >= quietMs;
+            return Date.now() - lastChangeAt >= RESPONSE_QUIET_MS;
+        };
+    }
+
+    async function waitForCodexTextResponseQuiet(
+        afterAssistantCount: number,
+        timeoutMs = FINISH_TIMEOUT,
+    ): Promise<void> {
+        const quietTracker = createCodexQuietTracker(afterAssistantCount);
+
+        await waitForCondition(() => {
+            const msgs = assistantMessagesSince(afterAssistantCount);
+            return quietTracker(
+                msgs.length > 0 && msgs.some(message => hasPart(message, 'text')),
+            );
         }, timeoutMs);
     }
 
@@ -613,14 +623,26 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
         await node.sendMessage(sessionId, msg('step25',
             'Refactor the app: extract the filter logic into a new file called `filters.js`, move the dark mode toggle into a new file called `theme.js`, and update app.js to import from both.'));
 
-        // Use approveUntil with the turn-settled check — this polls for permissions
-        // without throwing on timeout, unlike the Promise.race approach.
+        const refactorMaterialized = () => {
+            if (!existsSync(`${projectDir}/filters.js`) || !existsSync(`${projectDir}/theme.js`)) {
+                return false;
+            }
+
+            const references = `${readFileSync(`${projectDir}/app.js`, 'utf-8')}\n${readFileSync(`${projectDir}/index.html`, 'utf-8')}`;
+            return references.includes('filters.js') && references.includes('theme.js');
+        };
+        const quietTracker = createCodexQuietTracker(before);
+
         await approveUntil(
-            () => isCodexTurnSettled(before),
+            () => quietTracker(refactorMaterialized()),
             STEP_TIMEOUT - 10000,
-            `Timed out waiting for Codex multi-permission turn to settle`,
+            `Timed out waiting for Codex multi-permission refactor to materialize`,
         );
 
+        expect(existsSync(`${projectDir}/filters.js`)).toBe(true);
+        expect(existsSync(`${projectDir}/theme.js`)).toBe(true);
+        expect(`${readFileSync(`${projectDir}/app.js`, 'utf-8')}\n${readFileSync(`${projectDir}/index.html`, 'utf-8')}`).toContain('filters.js');
+        expect(`${readFileSync(`${projectDir}/app.js`, 'utf-8')}\n${readFileSync(`${projectDir}/index.html`, 'utf-8')}`).toContain('theme.js');
         const tools = assistantToolsSince(before);
         expect(tools.filter(t => t.state.status === 'completed').length).toBeGreaterThanOrEqual(2);
     }, STEP_TIMEOUT);
