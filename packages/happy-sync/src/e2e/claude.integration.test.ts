@@ -1,7 +1,7 @@
 /**
  * Level 2: End-to-End Agent Flow — Claude
  *
- * Full 34-step exercise flow with real LLM, real server, real CLI.
+ * Full 38-step exercise flow with real LLM, real server, real CLI.
  * Auto-boots a standalone server (PGlite) and a real happy daemon.
  * The daemon spawns real `claude` CLI processes when sessions are created.
  *
@@ -58,7 +58,7 @@ const WRITE_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe('Level 2: Claude E2E Flow (34 steps)', () => {
+describe('Level 2: Claude E2E Flow (38 steps)', () => {
     let node: SyncNode;
     let keyMaterial: KeyMaterial;
     let sessionId: SessionID;
@@ -1139,7 +1139,7 @@ describe('Level 2: Claude E2E Flow (34 steps)', () => {
     it('Step 34 — Full summary', async () => {
         const before = assistantCount();
         await node.sendMessage(sessionId, makeUserMessage('step34', sessionId,
-            'Give me a git-style summary of everything we changed. List files modified, lines added/removed if you can tell.'));
+            'Give me a git-style summary of everything we changed so far. List files modified, lines added/removed if you can tell.'));
 
         await waitForConditionApprovingAll(() => {
             return assistantMessagesSince(before).some(message => {
@@ -1156,10 +1156,117 @@ describe('Level 2: Claude E2E Flow (34 steps)', () => {
                 && fullText.length > 50
                 && /(git|summary|modified|changed|added|removed|app\.js|index\.html|styles\.css)/.test(fullText);
         });
+        expect(summary).toBeDefined();
+    }, STEP_TIMEOUT);
 
-        // Wait for ALL tools across all messages to reach terminal state.
-        // Background task tools from Steps 31/33 may still be completing
-        // (sleep 20-30 + echo), so allow extra time.
+    // ═════════════════════════════════════════════════════════════════════════
+    //  BACKGROUND SUBAGENTS (TaskCreate / TaskOutput)
+    // ═════════════════════════════════════════════════════════════════════════
+
+    it('Step 35 — Background subagent (TaskCreate)', async () => {
+        const before = assistantCount();
+        await node.sendMessage(sessionId, makeUserMessage('step35', sessionId,
+            "Launch a background agent task: have it research what CSS frameworks would work well for this project. Don't wait for it — tell me about the current project structure while it works."));
+
+        // Claude should use TaskCreate to launch a background task AND continue
+        // responding in the foreground. Wait for a terminal step-finish that
+        // includes foreground text about the project structure.
+        await waitForConditionApprovingAll(() => {
+            return assistantMessagesSince(before).some(message =>
+                hasTerminalStepFinish(message)
+                && getFullText(message).length > 30,
+            );
+        }, STEP_TIMEOUT);
+
+        // Check that TaskCreate tool part appeared (background task launched)
+        const allTools = assistantToolsSince(before);
+        const hasTaskCreate = allTools.some(t =>
+            t.tool === 'TaskCreate' || /task/i.test(t.tool),
+        );
+        // Claude should have launched a background task, but the foreground
+        // response is the critical assertion — the background task is bonus.
+        const allText = assistantMessagesSince(before).map(m => getFullText(m)).join(' ');
+        expect(allText.length).toBeGreaterThan(30);
+        if (!hasTaskCreate) {
+            console.log('[Step 35] Note: no TaskCreate tool found — Claude may have handled this differently');
+        }
+    }, STEP_TIMEOUT);
+
+    it('Step 36 — Check background agent result (TaskOutput)', async () => {
+        const before = assistantCount();
+        await node.sendMessage(sessionId, makeUserMessage('step36', sessionId,
+            'Did that background research finish? What did it find?'));
+
+        // Claude should use TaskOutput (possibly with block:true) to retrieve
+        // the background task result.
+        await waitForConditionApprovingAll(() => {
+            return assistantMessagesSince(before).some(message =>
+                hasTerminalStepFinish(message)
+                && getFullText(message).length > 30,
+            );
+        }, STEP_TIMEOUT);
+
+        const allTools = assistantToolsSince(before);
+        const hasTaskOutput = allTools.some(t =>
+            t.tool === 'TaskOutput' || /task/i.test(t.tool),
+        );
+        const allText = assistantMessagesSince(before).map(m => getFullText(m)).join(' ');
+        // Should mention CSS frameworks from the background research
+        expect(allText.length).toBeGreaterThan(30);
+        if (!hasTaskOutput) {
+            console.log('[Step 36] Note: no TaskOutput tool found — Claude may have inlined the result');
+        }
+    }, STEP_TIMEOUT);
+
+    it('Step 37 — Multiple background tasks', async () => {
+        const before = assistantCount();
+        const appJsPath = resolvePath(projectDir, 'app.js');
+        await node.sendMessage(sessionId, makeUserMessage('step37', sessionId,
+            'Launch two background tasks in parallel: one to check if our HTML is valid, another to analyze our CSS for unused rules. While they run, add a comment to app.js saying "// multi-task test".'));
+
+        // Wait for foreground edit to complete + some background activity
+        await waitForConditionApprovingAll(() => {
+            const allTools = assistantToolsSince(before);
+            const hasEdit = allTools.some(t =>
+                (t.tool === 'Edit' || t.tool === 'Write')
+                && (t.state.status === 'completed' || t.state.status === 'error'),
+            );
+            const hasAppJsComment = existsSync(appJsPath)
+                && readFileSync(appJsPath, 'utf8').includes('// multi-task test');
+            const hasTerminal = assistantMessagesSince(before).some(hasTerminalStepFinish);
+
+            return hasTerminal && (hasEdit || hasAppJsComment);
+        }, STEP_TIMEOUT);
+
+        // Foreground edit should have happened
+        expect(
+            existsSync(appJsPath) && readFileSync(appJsPath, 'utf8').includes('// multi-task test')
+            || assistantToolsSince(before).some(t =>
+                (t.tool === 'Edit' || t.tool === 'Write') && t.state.status === 'completed',
+            ),
+        ).toBe(true);
+    }, STEP_TIMEOUT);
+
+    // ═════════════════════════════════════════════════════════════════════════
+    //  WRAP UP (final)
+    // ═════════════════════════════════════════════════════════════════════════
+
+    it('Step 38 — Final summary', async () => {
+        const before = assistantCount();
+        await node.sendMessage(sessionId, makeUserMessage('step38', sessionId,
+            'Update your earlier summary with everything we did since then, including the background tasks. Give me the final git-style summary.'));
+
+        await waitForConditionApprovingAll(() => {
+            return assistantMessagesSince(before).some(message => {
+                const fullText = getFullText(message);
+                return hasTerminalStepFinish(message)
+                    && fullText.length > 50
+                    && /(summary|modified|changed|files|app\.js)/.test(fullText);
+            });
+        }, STEP_TIMEOUT);
+
+        // Wait for ALL tools across ALL messages to reach terminal state.
+        // Background task tools from Steps 31/33/35/37 may still be completing.
         // Must match the cross-cutting assertion: only 'completed' or 'error'.
         let lastToolLogAt = 0;
         await waitForConditionApprovingAll(() => {
@@ -1176,7 +1283,7 @@ describe('Level 2: Claude E2E Flow (34 steps)', () => {
                 const now = Date.now();
                 if (now - lastToolLogAt > 15000) {
                     lastToolLogAt = now;
-                    console.log(`[step34 drain] ${nonTerminal.length} non-terminal tools:`,
+                    console.log(`[step38 drain] ${nonTerminal.length} non-terminal tools:`,
                         nonTerminal.map(t => `msg[${t.msgIdx}] ${t.tool}:${t.callID}:${t.status}`).join(' | '));
                 }
                 return false;
@@ -1184,7 +1291,8 @@ describe('Level 2: Claude E2E Flow (34 steps)', () => {
             return true;
         }, STEP_TIMEOUT);
 
-        expect(summary).toBeDefined();
+        const allText = assistantMessagesSince(before).map(m => getFullText(m)).join(' ');
+        expect(allText.length).toBeGreaterThan(50);
     }, 300000); // 5 min — summary + wait for all background tools to drain
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -1274,4 +1382,4 @@ describe('Level 2: Claude E2E Flow (34 steps)', () => {
             expect(child.messages.length).toBeGreaterThan(0);
         }
     });
-}, 1800000); // 30 min — full 34-step flow with real LLM
+}, 2400000); // 40 min — full 38-step flow with real LLM

@@ -1,7 +1,7 @@
 /**
  * Level 2: End-to-End Agent Flow — Codex
  *
- * Full 34-step exercise flow with real Codex CLI, real server.
+ * Full 38-step exercise flow with real Codex CLI, real server.
  * Same structure as claude.integration.test.ts.
  *
  * Steps that don't apply to Codex (e.g., subagents) are recorded as
@@ -51,7 +51,7 @@ const FINISH_TIMEOUT = 120000;
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe('Level 2: Codex E2E Flow (34 steps)', () => {
+describe('Level 2: Codex E2E Flow (38 steps)', () => {
     let node: SyncNode;
     let keyMaterial: KeyMaterial;
     let sessionId: SessionID;
@@ -696,7 +696,35 @@ describe('Level 2: Codex E2E Flow (34 steps)', () => {
     it('Step 34 — Full summary', async () => {
         const before = assistantCount();
         await node.sendMessage(sessionId, msg('step34',
-            'Give me a git-style summary of everything we changed. List files modified, lines added/removed if you can tell.'));
+            'Give me a git-style summary of everything we changed so far. List files modified, lines added/removed if you can tell.'));
+
+        await waitForCodexTurnSettled(before, FINISH_TIMEOUT);
+
+        const last = getLastAssistantMessage(node, sessionId)!;
+        expect(hasPart(last, 'text')).toBe(true);
+        expect(getFullText(last).length).toBeGreaterThan(50);
+    }, STEP_TIMEOUT);
+
+    // ─── BACKGROUND SUBAGENTS (N/A for Codex) ────────────────────────────
+
+    it('Step 35 — Background subagent (TaskCreate) [N/A]', () => {
+        recordNotApplicable(35, 'Codex does not support TaskCreate/TaskOutput background subagent tasks.');
+    });
+
+    it('Step 36 — Check background agent result (TaskOutput) [N/A]', () => {
+        recordNotApplicable(36, 'Codex does not support TaskCreate/TaskOutput background subagent tasks.');
+    });
+
+    it('Step 37 — Multiple background tasks [N/A]', () => {
+        recordNotApplicable(37, 'Codex does not support TaskCreate/TaskOutput background subagent tasks.');
+    });
+
+    // ─── WRAP UP (final) ─────────────────────────────────────────────────
+
+    it('Step 38 — Final summary', async () => {
+        const before = assistantCount();
+        await node.sendMessage(sessionId, msg('step38',
+            'Update your earlier summary with everything we did since then, including the background tasks. Give me the final git-style summary.'));
 
         await waitForCodexTurnSettled(before, FINISH_TIMEOUT);
 
@@ -759,6 +787,18 @@ describe('Level 2: Codex E2E Flow (34 steps)', () => {
                 step: 27,
                 reason: 'Codex does not support subagents or child-session permission flows in this integration harness.',
             },
+            {
+                step: 35,
+                reason: 'Codex does not support TaskCreate/TaskOutput background subagent tasks.',
+            },
+            {
+                step: 36,
+                reason: 'Codex does not support TaskCreate/TaskOutput background subagent tasks.',
+            },
+            {
+                step: 37,
+                reason: 'Codex does not support TaskCreate/TaskOutput background subagent tasks.',
+            },
         ]);
     });
-}, 600000);
+}, 900000); // 15 min — full 38-step flow

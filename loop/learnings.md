@@ -155,6 +155,10 @@ If you discover something non-obvious, append it here under the right section.
   to "orient." Read loop-state.md, read loop-learnings.md, start working.
 - Declaring a task "done" because the code exists. It's done when a test
   run proves it. Paste the test output.
+- Updating `exercise-flow.md` without updating `loop/state.md` in the same
+  iteration. The flow is the source of truth; if the step count changes and
+  the state file still claims the old coverage target is complete, the loop
+  will falsely present itself as done.
 - Rewiring imports or moving files without checking what the previous
   iteration set up. Read git diff HEAD first to see uncommitted work.
 

@@ -1,11 +1,14 @@
 # Agent Exercise Flow
 
-34 user interactions against lab-rat-todo-project. One continuous session.
+38 user interactions against lab-rat-todo-project. One continuous session.
 Execute sequentially. Each section labels what's being tested. The flow is
 linear and realistic — each step builds on the last.
 
-The step numbering intentionally skips `24` for historical continuity, but the
-flow still contains 34 total interactions (`0-23`, `25-34`).
+The step numbering intentionally skips `24` for historical continuity. The
+flow contains 38 total interactions (`0-23`, `25-38`).
+
+Not all agents support every primitive (e.g. TaskCreate/TaskOutput may be
+Claude-only). Record what happens, document what's unsupported with evidence.
 
 Not all agents support every primitive. Record what happens, skip what
 doesn't apply, note what's missing.
@@ -417,18 +420,69 @@ completes later.
 
 ---
 
-## WRAP UP
-
-Final proof of transcript coherence.
+## WRAP UP (part 1)
 
 ### Step 34 — Full summary
 
-> Give me a git-style summary of everything we changed. List files
+> Give me a git-style summary of everything we changed so far. List files
 > modified, lines added/removed if you can tell.
 
+Agent should produce a coherent summary spanning all interactions so far.
+If it can do this accurately, the transcript held together.
+
+---
+
+## BACKGROUND SUBAGENTS (Tasks)
+
+Background agent tasks that run concurrently with the main conversation.
+Claude uses TaskCreate/TaskOutput. Availability varies by agent — document
+what works and what doesn't per agent.
+
+### Step 35 — Background subagent (TaskCreate)
+
+> Launch a background agent task: have it research what CSS frameworks
+> would work well for this project. Don't wait for it — tell me about
+> the current project structure while it works.
+
+The agent should use TaskCreate (or equivalent) to launch a background
+agent task, then continue responding in the foreground without blocking.
+
+Observe: does a background task tool part appear? Does the agent continue
+the conversation? Is the task visible as a separate running entity?
+
+### Step 36 — Check background agent result (TaskOutput)
+
+> Did that background research finish? What did it find?
+
+The agent should use TaskOutput (with block:true) to retrieve the
+background task's result, then present the findings.
+
+Observe: does the agent retrieve the completed task output? Does the
+tool part transition from running to completed? Is the result coherent?
+
+### Step 37 — Multiple background tasks
+
+> Launch two background tasks in parallel: one to check if our HTML is
+> valid, another to analyze our CSS for unused rules. While they run,
+> add a comment to app.js saying "// multi-task test".
+
+Multiple concurrent background tasks plus foreground work. Three tool
+parts should appear: two background (running), one foreground (edit).
+
+Observe: do both background tasks launch? Does the foreground edit
+happen immediately? Do background tasks complete independently?
+
+---
+
+## WRAP UP (final)
+
+### Step 38 — Final summary
+
+> Update your earlier summary with everything we did since then,
+> including the background tasks. Give me the final git-style summary.
+
 This is the capstone. Agent should produce a coherent summary spanning
-all 34 interactions. If it can do this accurately, the transcript held
-together.
+all 38 interactions.
 
 ---
 
@@ -437,19 +491,21 @@ together.
 After running all steps, check which primitives were exercised:
 
 ### Transcript
-- text response (no tools) — 1, 2, 19, 22, 29, 34
+- text response (no tools) — 1, 2, 19, 22, 29, 38
 - reasoning/thinking — 2, 3
-- streaming text — 1, 2, 34
-- multi-step turn — 1, 6, 13, 25, 30, 33
+- streaming text — 1, 2, 38
+- multi-step turn — 1, 6, 13, 25, 30, 33, 37
 
 ### Tools
-- tool completed — 1, 4, 6, 9, 13, 25, 30, 32, 33
+- tool completed — 1, 4, 6, 9, 13, 25, 30, 32, 33, 36
 - tool errored — 3, 10, 26, 28
-- tool with output — 1, 16, 32
+- tool with output — 1, 16, 32, 36
 - multi-file edit — 6, 13, 25
-- file changed on disk — 4, 5, 6, 13, 17, 30, 33
-- background task (long-running) — 31, 32, 33
-- foreground + background concurrent — 33
+- file changed on disk — 4, 5, 6, 13, 17, 30, 33, 37
+- background task (long-running) — 31, 32, 33, 35, 37
+- foreground + background concurrent — 33, 35, 37
+- background subagent (TaskCreate) — 35, 37
+- background subagent result (TaskOutput) — 36
 
 ### Permissions
 - reject → error — 3
@@ -498,12 +554,17 @@ After running all steps, check which primitives were exercised:
 ### Persistence
 - close + reopen — 20, 21
 - history intact — 21, 22
-- continuity after resume — 22, 29, 34
+- continuity after resume — 22, 29, 38
 - forced stop with pending state — 28
 - resume after forced stop — 29
 
 ### Background tasks
 - launch background tool — 31
 - background completes with output — 32
-- foreground work during background — 33
-- concurrent tool parts (running + completed) — 33
+- foreground work during background — 33, 35, 37
+- concurrent tool parts (running + completed) — 33, 37
+
+### Background subagents
+- TaskCreate — 35, 37
+- TaskOutput (retrieve result) — 36
+- multiple concurrent background tasks — 37

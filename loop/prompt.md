@@ -4,6 +4,15 @@ You are working on the happy-sync refactor. The full spec is in
 docs/plans/happy-sync-major-refactor.md — read it for context, but your
 IMMEDIATE task comes from `loop/state.md`.
 
+## NEVER BLOCK ON HUMAN INPUT
+
+NEVER declare yourself "blocked pending human confirmation." NEVER wait for
+human review. NEVER pause awaiting clarification. You are autonomous. If
+something is ambiguous, make the best judgment call and keep going. If the
+state file and another file disagree, trust the state file and proceed. If
+you're unsure about a step count or acceptance target, use whatever is in
+`exercise-flow.md` as the source of truth and keep working. DO NOT STOP.
+
 ## Workflow
 
 1. **FIRST: check for uncommitted work.** Run `git status` and `git diff --stat HEAD`.
@@ -158,28 +167,39 @@ npx @anthropic-ai/agent-browser
 
 Use it to control a real Chrome browser and LOOK at the Happy web app.
 
+**VIDEO RECORDING IS MANDATORY.** Record a SINGLE VIDEO of ONE SESSION running
+through the FULL 38-step exercise flow. The video shows the browser with the
+session page open, scrolling as each step completes — tool calls appearing,
+permissions popping up, subagents expanding, background tasks running — the
+ENTIRE experience from step 0 to step 38 in one continuous recording. Use
+Playwright's `recordVideo` or agent-browser recording. Save to
+`e2e-recordings/ux-review/`. This has been requested THREE TIMES and never done.
+
 1. Boot infrastructure (server + daemon + Expo web with BROWSER=none)
-2. Use `agent-browser` to open Chrome, navigate to the web app
+2. Use `agent-browser` to open Chrome WITH VIDEO RECORDING ENABLED
 3. Spawn a real Claude session via SyncNode
-4. Run ALL 34 exercise steps PLUS 3 new steps (35-37, see state.md).
+4. Run ALL 38 exercise steps (0-23, 25-38 from exercise-flow.md).
    For EACH step:
    a. Send the prompt via SyncNode
    b. Wait for Claude to respond
    c. Use agent-browser to LOOK at the page and TAKE A SCREENSHOT
    d. Record what components rendered and how they look
+   e. **Watch for CONTINUITY issues** — if Claude says "I don't have context"
+      or similar, FLAG IT as a bug immediately
 5. After all steps, test extended scenarios (session switching, close/reopen, etc.)
 
-**The goal is visual component coverage.** You need a screenshot proving each
-component type renders correctly: user messages, assistant text, every tool type,
-permissions (blocked/approved/denied), subagents with nested tools, questions,
-todos, background tasks (running + completed), TaskCreate/TaskOutput, cancelled
-steps, session list, empty session, completed session. See the full checklist
-in `loop/state.md`.
+**Screenshots must tell a COMPLETE STORY.** Not random scroll captures. For each
+session, capture top-to-bottom so someone can reconstruct the full conversation.
+Also capture one clean shot of each component type (subagent, permission, etc.).
+
+Save ALL screenshots and video to `e2e-recordings/ux-review/` (in-repo, gitignored).
 
 **Phase 1 acceptance:**
-- ALL 38 steps with agent-browser screenshots
-- ALL component types checked off with screenshots
+- VIDEO of the entire walkthrough saved to e2e-recordings/ux-review/
+- ALL 38 steps with agent-browser screenshots that tell a coherent story
+- ALL component types captured with clean screenshots
 - Extended scenarios tested
+- Continuity issues flagged
 - Fewer than 38 step entries = NOT DONE
 
 ### Phase 1.5: UX consistency review by Codex + Gemini (after Phase 1)

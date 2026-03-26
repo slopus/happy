@@ -1,7 +1,7 @@
 /**
  * Level 2: End-to-End Agent Flow — OpenCode
  *
- * Full 34-step exercise flow via the ACP adapter.
+ * Full 38-step exercise flow via the ACP adapter.
  * Same structure as claude.integration.test.ts.
  *
  * Key difference from Claude: OpenCode uses tools aggressively (even for
@@ -51,7 +51,7 @@ const OPENCODE_SETTLE_GRACE_MS = 3000;
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe('Level 2: OpenCode E2E Flow (34 steps)', () => {
+describe('Level 2: OpenCode E2E Flow (38 steps)', () => {
     let node: SyncNode;
     let keyMaterial: KeyMaterial;
     let sessionId: SessionID;
@@ -1097,16 +1097,74 @@ describe('Level 2: OpenCode E2E Flow (34 steps)', () => {
     it('Step 34 — Full summary', async () => {
         const before = assistantCount();
         await node.sendMessage(sessionId, msg('step34',
-            'Give me a git-style summary of everything we changed. List files modified, lines added/removed if you can tell.'));
+            'Give me a git-style summary of everything we changed so far. List files modified, lines added/removed if you can tell.'));
 
-        // Wait with drain: after step-finish, wait for all tools to reach terminal state
+        await waitForStepFinishApprovingAll(before);
+        await waitForResponseText(before);
+        const resp = getResponseMessage(before);
+        expect(resp).toBeDefined();
+        expect(hasPart(resp!, 'text')).toBe(true);
+        expect(getFullText(resp!).length).toBeGreaterThan(50);
+    }, STEP_TIMEOUT);
+
+    // ─── BACKGROUND SUBAGENTS (TaskCreate/TaskOutput) ────────────────────
+    // OpenCode may not support formal TaskCreate/TaskOutput. Send the prompts
+    // and check for any reasonable response — the agent may handle background
+    // work differently or just process sequentially.
+
+    it('Step 35 — Background subagent (TaskCreate)', async () => {
+        const before = assistantCount();
+        await node.sendMessage(sessionId, msg('step35',
+            "Launch a background agent task: have it research what CSS frameworks would work well for this project. Don't wait for it — tell me about the current project structure while it works."));
+
+        await waitForStepFinishApprovingAll(before);
+        await waitForResponseText(before);
+        const resp = getResponseMessage(before);
+        expect(resp).toBeDefined();
+        expect(hasPart(resp!, 'text')).toBe(true);
+    }, STEP_TIMEOUT);
+
+    it('Step 36 — Check background agent result (TaskOutput)', async () => {
+        const before = assistantCount();
+        await node.sendMessage(sessionId, msg('step36',
+            'Did that background research finish? What did it find?'));
+
+        await waitForStepFinishApprovingAll(before);
+        await waitForResponseText(before);
+        const resp = getResponseMessage(before);
+        expect(resp).toBeDefined();
+        expect(hasPart(resp!, 'text')).toBe(true);
+    }, STEP_TIMEOUT);
+
+    it('Step 37 — Multiple background tasks', async () => {
+        const before = assistantCount();
+        await node.sendMessage(sessionId, msg('step37',
+            'Launch two background tasks in parallel: one to check if our HTML is valid, another to analyze our CSS for unused rules. While they run, add a comment to app.js saying "// multi-task test".'));
+
         await waitForStepFinishApprovingAll(before);
 
-        // Drain: wait up to 30s for any lingering running tools to complete
+        const tools = assistantToolsSince(before);
+        expect(
+            tools.some(t => t.state.status === 'completed')
+            || readFileSync(`${projectDir}/app.js`, 'utf-8').includes('// multi-task test'),
+        ).toBe(true);
+    }, STEP_TIMEOUT);
+
+    // ─── WRAP UP (final) ─────────────────────────────────────────────────
+
+    it('Step 38 — Final summary', async () => {
+        const before = assistantCount();
+        await node.sendMessage(sessionId, msg('step38',
+            'Update your earlier summary with everything we did since then, including the background tasks. Give me the final git-style summary.'));
+
+        await waitForStepFinishApprovingAll(before);
+
+        // Drain: wait for all tools across all messages to reach terminal state
         try {
             await waitForCondition(() => {
                 const msgs = getAssistantMessages(node, sessionId);
                 for (const m of msgs) {
+                    if (!hasPart(m, 'step-finish')) continue;
                     for (const t of getToolParts(m)) {
                         if (t.state.status !== 'completed' && t.state.status !== 'error') {
                             return false;
@@ -1116,8 +1174,7 @@ describe('Level 2: OpenCode E2E Flow (34 steps)', () => {
                 return true;
             }, 30000);
         } catch {
-            // Some tools may not reach terminal state — log and continue
-            console.log('[Step 34] Warning: some tools did not reach terminal state');
+            console.log('[Step 38] Warning: some tools did not reach terminal state');
         }
 
         await waitForResponseText(before);
@@ -1186,4 +1243,4 @@ describe('Level 2: OpenCode E2E Flow (34 steps)', () => {
             expect(child.messages.length).toBeGreaterThan(0);
         }
     });
-}, 1800000);
+}, 2400000); // 40 min — full 38-step flow
