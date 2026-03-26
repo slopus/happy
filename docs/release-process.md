@@ -2,7 +2,7 @@
 
     Component   How to release                  Where it goes
     ---------   --------------                  -------------
-    CLI         yarn release happy-cli           npm (happy / happy-coder)
+    CLI         yarn release happy-cli           npm (happy)
     Mobile      yarn release (from happy-app)    App Store, Google Play, TestFlight
     Web         TeamCity (Lab_HappyWeb)          docker.korshakov.com/happy-app -> K8s
     Server      TeamCity (Lab_HappyServer)       docker.korshakov.com/handy-server -> K8s
@@ -11,7 +11,7 @@
 ## CLI
 
     Package          packages/happy-cli
-    npm name         happy (install via "npm i -g happy-coder" - migration to "happy" pending)
+    npm name         happy (install via "npm i -g happy")
     Versioning       release-it, tags v{version}, branches: main or beta
     npm dist-tag     beta
 
