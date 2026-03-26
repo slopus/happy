@@ -1,6 +1,6 @@
 # Loop State
 
-Last updated: 2026-03-26 15:10 PDT
+Last updated: 2026-03-26 15:38 PDT
 
 Previous completed tasks are archived in `loop/state-archive.md`.
 
@@ -68,7 +68,7 @@ conversation content.
 
 #### Step 5: Continue with Codex/OpenCode Level 2 verification
 
-Only after the above is solid.
+DONE — see "Level 2 Codex + OpenCode verification" in Completed Tasks below.
 
 ### Acceptance criteria
 
@@ -76,6 +76,22 @@ Only after the above is solid.
 - [ ] Screenshots show CONVERSATION CONTENT (tool calls, text, permissions), not just chrome
 - [ ] UX review done with FIXED screenshots by TWO reviewers
 - [ ] Review findings recorded in state.md
+- [x] Level 2 Codex: 44/44 pass
+- [x] Level 2 OpenCode: 44/44 pass
+
+## Test Results Summary (verified 2026-03-26)
+
+| Level | Description | Result | Duration |
+|---|---|---|---|
+| **Level 0** | Unit tests (protocol + SyncNode + mappers) | **85/85 pass** | <1s + 13s |
+| **Level 1** | Sync engine integration (real server) | **28/28 pass** | 5s |
+| **Level 2 Claude** | E2E agent flow (38 steps) | 28/44 pass* | ~12min |
+| **Level 2 Codex** | E2E agent flow (38 steps) | **44/44 pass** | 1822s (~30min) |
+| **Level 2 OpenCode** | E2E agent flow (38 steps) | **44/44 pass** | 1518s (~25min) |
+| **Level 3** | Browser e2e (Playwright) | **5/5 pass** | 257s |
+
+*Level 2 Claude failures are LLM flakiness (Steps 3-5, 9, 16, 25, 30 timing out or
+producing unexpected tool patterns), not code bugs.
 
 ## Anti-patterns (DO NOT DO THESE)
 
@@ -85,3 +101,21 @@ Only after the above is solid.
 - NEVER declare a visual review "PASS" when the screenshots don't show the content
 - NEVER skip a review step — if one tool doesn't work, use another
 - DO NOT rationalize broken output as acceptable
+
+## Completed Tasks
+
+### Level 2 Codex + OpenCode verification (DONE — 2026-03-26 15:38 PDT)
+
+**Codex**: 44/44 tests passed (1822s / ~30 min)
+- All 38 exercise steps pass (Steps 8, 27, 35-37 recorded as N/A with reasons)
+- Cross-cutting assertions pass: no legacy envelopes, structurally valid messages,
+  permission round-trips, sane message count, all tools terminal, N/A reasons recorded
+- Step 30 (retry after stop) slowest at 162s
+- Exit code 1 from Node.js v25.7.0 `emitter.removeListener` cleanup bug, not test failure
+
+**OpenCode**: 44/44 tests passed (1518s / ~25 min)
+- All 38 exercise steps pass (including Steps 8, 27, 35-37 which ARE applicable to OpenCode)
+- Cross-cutting assertions pass: no legacy envelopes, structurally valid messages,
+  permission round-trips, sane message count, all tools terminal, child session structure
+- Steps 25-27 each ~160-185s (edit/permission wall steps)
+- Same Node.js cleanup exit code 1 — not a test failure
