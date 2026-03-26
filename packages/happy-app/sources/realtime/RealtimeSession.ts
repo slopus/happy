@@ -95,13 +95,14 @@ export async function stopRealtimeSession() {
     if (!voiceSession) {
         return;
     }
-    
+
     try {
         await voiceSession.endSession();
-        currentSessionId = null;
-        voiceSessionStarted = false;
     } catch (error) {
         console.error('Failed to stop realtime session:', error);
+    } finally {
+        currentSessionId = null;
+        voiceSessionStarted = false;
     }
 }
 

@@ -58,14 +58,16 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 
     async endSession(): Promise<void> {
         if (!conversationInstance) {
+            storage.getState().setRealtimeStatus('disconnected');
             return;
         }
 
         try {
             await conversationInstance.endSession();
-            storage.getState().setRealtimeStatus('disconnected');
         } catch (error) {
             console.error('Failed to end realtime session:', error);
+        } finally {
+            storage.getState().setRealtimeStatus('disconnected');
         }
     }
 
