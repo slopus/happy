@@ -25,7 +25,8 @@ import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIn
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
 // import * as SystemUI from 'expo-system-ui';
-import { initConsoleLogging } from '@/utils/consoleLogging';
+import { initConsoleLogging, setConsoleOutputEnabled } from '@/utils/consoleLogging';
+import { useLocalSetting } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
 import { getSessionRouteFromNotificationResponse } from '@/utils/notificationRouting';
@@ -343,6 +344,12 @@ export default function RootLayout() {
 
     // Track the screens
     useTrackScreens()
+
+    // Sync console output toggle from Dev screen
+    const consoleLoggingEnabled = useLocalSetting('consoleLoggingEnabled');
+    React.useEffect(() => {
+        setConsoleOutputEnabled(consoleLoggingEnabled);
+    }, [consoleLoggingEnabled]);
 
     //
     // Not inited

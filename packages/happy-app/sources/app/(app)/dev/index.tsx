@@ -18,7 +18,8 @@ import { setLastViewedVersion, getLatestVersion } from '@/changelog';
 export default function DevScreen() {
     const router = useRouter();
     const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
-    const [verboseLogging, setVerboseLogging] = React.useState(false);
+    const [verboseLogging, setVerboseLogging] = useLocalSettingMutable('verboseLogging');
+    const [consoleLoggingEnabled, setConsoleLoggingEnabled] = useLocalSettingMutable('consoleLoggingEnabled');
     const socketStatus = useSocketStatus();
     const anonymousId = sync.encryption!.anonID;
     const { theme } = useUnistyles();
@@ -171,6 +172,17 @@ export default function DevScreen() {
                         <Switch
                             value={debugMode}
                             onValueChange={setDebugMode}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title="Console Output"
+                    subtitle="Enable console output in production builds"
+                    rightElement={
+                        <Switch
+                            value={consoleLoggingEnabled}
+                            onValueChange={setConsoleLoggingEnabled}
                         />
                     }
                     showChevron={false}

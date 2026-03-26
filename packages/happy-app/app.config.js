@@ -14,6 +14,11 @@ const elevenLabsAgentId = {
     preview: 'agent_7801k2c0r5hjfraa1kdbytpvs6yt',
     production: 'agent_6701k211syvvegba4kt7m68nxjmw',
 }[variant];
+const consoleLoggingDefault = {
+    development: true,
+    preview: true,
+    production: false,
+}[variant];
 
 export default {
     expo: {
@@ -176,6 +181,7 @@ export default {
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
                 elevenLabsAgentId,
+                consoleLoggingDefault,
             }
         },
         owner: "bulkacorp"

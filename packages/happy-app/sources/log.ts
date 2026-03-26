@@ -53,6 +53,14 @@ class Logger {
     }
 
     /**
+     * Capture a pre-formatted message (avoids double serialization)
+     */
+    captureFormatted(level: ConsoleLogLevel, formatted: string): void {
+        const message = level === 'log' ? formatted : `[${level}] ${formatted}`;
+        this.append(message);
+    }
+
+    /**
      * Log a message - writes to both console and internal array
      */
     log(message: string): void {

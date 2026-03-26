@@ -1,18 +1,36 @@
 /**
  * Console logging bootstrap for React Native
- * Patches console to feed the in-app log buffer and optionally send logs to a local log receiver server
- * Configure via Dev screen → Log Server setting
+ *
+ * Control flow:
+ *
+ * console.log("msg", obj)
+ * │
+ * ├─ consoleOutputEnabled = false? (default for prod)
+ * │  └─ return immediately ⛔  (zero cost, args untouched)
+ * │
+ * ├─ consoleOutputEnabled = true? (default for dev/preview, or toggled on)
+ * │  ├─ call original console method ✅
+ * │  ├─ capture to in-app buffer ✅
+ * │  └─ send to remote log server (if configured) ✅
+ * │
+ * └─ console.error / console.warn (always, regardless of flag)
+ *    ├─ call original console method ✅
+ *    ├─ capture to in-app buffer ✅
+ *    └─ send to remote log server (if configured) ✅
  */
 
 import { log } from '@/log';
 import { MAX_APP_LOG_ENTRIES } from '@/log';
 import { getLogServerUrl } from '@/sync/serverConfig';
+import { loadLocalSettings } from '@/sync/persistence';
+import { loadAppConfig } from '@/sync/appConfig';
 import { Platform } from 'react-native';
 
 let logBuffer: any[] = []
 const MAX_BUFFER_SIZE = MAX_APP_LOG_ENTRIES
 let isConsolePatched = false
 let remoteLogServerUrl: string | null = null
+let consoleOutputEnabled = false
 let originalConsole: {
   log: typeof console.log,
   info: typeof console.info,
@@ -21,11 +39,27 @@ let originalConsole: {
   debug: typeof console.debug,
 } | null = null
 
-export function initConsoleLogging() {
-  remoteLogServerUrl = getLogServerUrl();
+/**
+ * Toggle console output at runtime (e.g. from Dev screen toggle).
+ */
+export function setConsoleOutputEnabled(enabled: boolean) {
+  consoleOutputEnabled = enabled
+}
 
+export function initConsoleLogging() {
   if (isConsolePatched) {
     return
+  }
+
+  remoteLogServerUrl = getLogServerUrl();
+
+  // Determine initial state: user setting > build variant default > off
+  try {
+    const settings = loadLocalSettings();
+    const config = loadAppConfig();
+    consoleOutputEnabled = settings.consoleLoggingEnabled || config.consoleLoggingDefault || false;
+  } catch {
+    consoleOutputEnabled = false;
   }
 
   originalConsole = {
@@ -38,63 +72,62 @@ export function initConsoleLogging() {
 
   log.setConsoleCaptureEnabled(true)
 
-  const sendLog = async (level: string, args: any[]) => {
+  function formatArgs(args: any[]): string {
+    return args.map(a =>
+      typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
+    ).join(' ')
+  }
+
+  function sendLog(level: string, formatted: string) {
     if (!remoteLogServerUrl) {
       return
     }
 
-    try {
-      await fetch(remoteLogServerUrl + '/logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          level,
-          message: args.map(a =>
-            typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-          ).join('\n'),
-          messageRawObject: args,
-          source: 'mobile',
-          platform: Platform.OS,
-        })
+    void fetch(remoteLogServerUrl + '/logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level,
+        message: formatted,
+        source: 'mobile',
+        platform: Platform.OS,
       })
-    } catch (e) {
-      // Fail silently
-    }
+    }).catch(() => {})
   }
 
   // Patch console methods
   ;(['log', 'info', 'warn', 'error', 'debug'] as const).forEach(level => {
+    const alwaysPassThrough = level === 'error' || level === 'warn'
+
     console[level] = (...args: any[]) => {
-      // Always call original
-      originalConsole![level](...args)
+      // Full short-circuit: when off, skip everything for log/info/debug
+      if (!consoleOutputEnabled && !alwaysPassThrough) {
+        return
+      }
 
-      // Mirror console output into the in-app log buffer
-      log.captureConsole(level, args)
+      // Serialize once, reuse everywhere
+      const formatted = formatArgs(args)
 
-      // Buffer for developer settings
-      const entry = {
+      originalConsole![level](formatted)
+      log.captureFormatted(level, formatted)
+
+      logBuffer.push({
         timestamp: new Date().toISOString(),
         level,
-        message: args
-      }
-      logBuffer.push(entry)
+        message: formatted
+      })
       if (logBuffer.length > MAX_BUFFER_SIZE) {
         logBuffer.shift()
       }
 
-      // Send to remote if configured
-      void sendLog(level, args)
+      sendLog(level, formatted)
     }
   })
 
   isConsolePatched = true
 
-  if (remoteLogServerUrl) {
-    originalConsole.log('[ConsoleLogging] Initialized with log server:', remoteLogServerUrl)
-  } else {
-    originalConsole.log('[ConsoleLogging] Console capture initialized without remote log server')
-  }
+  originalConsole.log('[ConsoleLogging] Initialized', consoleOutputEnabled ? '(output enabled)' : '(output suppressed)')
 }
 
 // For developer settings UI

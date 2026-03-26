@@ -1692,7 +1692,6 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
-        console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
             console.log('❌ Sync: Invalid update received:', validatedUpdate.error);
@@ -1773,7 +1772,6 @@ class Sync {
                     const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
                     const incomingSeq = updateData.body.message.seq;
                     if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-                        console.log('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
                         this.enqueueMessages(updateData.body.sid, [lastMessage]);
                         this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
                         let hasMutableTool = false;
