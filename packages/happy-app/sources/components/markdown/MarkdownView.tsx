@@ -271,7 +271,6 @@ function RenderSpans(props: RenderSpanProps) {
                         selectable={props.selectable}
                         accessibilityRole={isExternalLink ? 'link' : undefined}
                         style={[props.baseStyle, isExternalLink && style.link, span.styles.map(s => style[s])]}
-                        {...(isExternalLink && Platform.OS === 'web' ? ({ href: span.url, target: '_blank', rel: 'noopener noreferrer', onClick: (e: any) => e.preventDefault() } as any) : {})}
                         onPress={isExternalLink
                             ? () => props.onLinkPress(span.url!)
                             : undefined}
