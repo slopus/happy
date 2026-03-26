@@ -14,6 +14,7 @@
  * Run: npx vitest run src/e2e/codex.integration.test.ts
  */
 
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { SyncNode } from '../sync-node';
 import { type KeyMaterial } from '../encryption';
@@ -48,6 +49,7 @@ const CODEX_MODEL = { providerID: 'openai', modelID: 'codex-mini-latest' };
 const STEP_TIMEOUT = 180000;
 const PERM_TIMEOUT = 120000;
 const FINISH_TIMEOUT = 120000;
+const RESPONSE_QUIET_MS = 3000;
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -73,6 +75,19 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
     function completedToolsSince(afterAssistantCount: number) {
         return assistantToolsSince(afterAssistantCount).filter(tool => tool.state.status === 'completed');
+    }
+
+    function listProjectFiles(dir: string, base = dir): string[] {
+        const files: string[] = [];
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const fullPath = `${dir}/${entry.name}`;
+            if (entry.isDirectory()) {
+                files.push(...listProjectFiles(fullPath, base));
+            } else {
+                files.push(fullPath.slice(base.length + 1));
+            }
+        }
+        return files;
     }
 
     function session() {
@@ -195,6 +210,30 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
             }
 
             return isCodexTurnSettled(afterAssistantCount);
+        }, timeoutMs);
+    }
+
+    async function waitForCodexTextResponseQuiet(
+        afterAssistantCount: number,
+        timeoutMs = FINISH_TIMEOUT,
+        quietMs = RESPONSE_QUIET_MS,
+    ): Promise<void> {
+        let lastFingerprint = '';
+        let lastChangeAt = 0;
+
+        await waitForCondition(() => {
+            const msgs = assistantMessagesSince(afterAssistantCount);
+            if (msgs.length === 0) return false;
+            if (!msgs.some(message => hasPart(message, 'text'))) return false;
+
+            const fingerprint = JSON.stringify(msgs.map(message => message.parts));
+            if (fingerprint !== lastFingerprint) {
+                lastFingerprint = fingerprint;
+                lastChangeAt = Date.now();
+                return false;
+            }
+
+            return Date.now() - lastChangeAt >= quietMs;
         }, timeoutMs);
     }
 
@@ -420,10 +459,15 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
     it('Step 13 — Act on the answer', async () => {
         const before = assistantCount();
         await node.sendMessage(sessionId, msg('step13',
-            'Set up Vitest. Add a vitest config, a package.json with the dev dependency, and one test that verifies the Done filter bug is fixed (the filter should only return items where done===true).'));
+            'Create the Vitest setup files. Write vitest.config.js, a test file (e.g. app.test.js) that verifies the Done filter only returns items where done===true, and add vitest to package.json devDependencies. Do NOT run npm install or run the tests — just create the files.'));
 
         await approveUntilDone(before, 270000);
 
+        const files = listProjectFiles(projectDir);
+        expect(files.some(file => /^vitest\.config\.(js|cjs|mjs|ts|cts|mts)$/.test(file))).toBe(true);
+        expect(files.some(file => /(^|\/).+\.(test|spec)\.(js|jsx|ts|tsx|cjs|mjs)$/.test(file))).toBe(true);
+        expect(existsSync(`${projectDir}/package.json`)).toBe(true);
+        expect(readFileSync(`${projectDir}/package.json`, 'utf-8')).toContain('vitest');
         expect(completedToolsSince(before).length).toBeGreaterThanOrEqual(1);
     }, 300000);
 
@@ -545,8 +589,8 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
         const before = assistantCount();
         await node.sendMessage(sessionId, msg('step22', 'What was the last thing we were working on?'));
 
-        await waitForCodexTurnSettled(before, FINISH_TIMEOUT);
-        expect(hasPart(getLastAssistantMessage(node, sessionId)!, 'text')).toBe(true);
+        await waitForCodexTextResponseQuiet(before, FINISH_TIMEOUT);
+        expect(assistantMessagesSince(before).some(message => hasPart(message, 'text'))).toBe(true);
     }, STEP_TIMEOUT);
 
     // ─── TODO (continued) ────────────────────────────────────────────────
