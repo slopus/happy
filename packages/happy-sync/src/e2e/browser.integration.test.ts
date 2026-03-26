@@ -571,6 +571,80 @@ describe('Level 3: Browser e2e', () => {
         }
     }, 600000);
 
+    it('Tab close/reopen preserves transcript, and completed session still renders', async () => {
+        const projectDir = await createIsolatedProjectCopy('environments/lab-rat-todo-project');
+        const sessionId = await spawnSessionViaDaemon({
+            directory: projectDir,
+            agent: 'claude',
+        }) as SessionID;
+
+        await waitForCondition(() => node.state.sessions.has(sessionId as string), 30000);
+
+        const prompt = 'Read all files, tell me what this does.';
+        const before = getAssistantMessages(node, sessionId).length;
+        await node.sendMessage(
+            sessionId,
+            makeUserMessage('tab-reopen', sessionId, prompt, 'claude', CLAUDE_MODEL),
+        );
+        await waitForStepFinish(node, sessionId, before, STEP_TIMEOUT);
+        await waitForCondition(() => {
+            const tools = getAssistantMessages(node, sessionId).slice(before).flatMap(getToolParts);
+            return tools.length > 0 && tools.every(
+                (tool) => tool.state.status === 'completed' || tool.state.status === 'error',
+            );
+        }, STEP_TIMEOUT);
+
+        const sessionUrl = makeAuthenticatedUrl(`/session/${sessionId}`);
+
+        // --- Part 1: open session, verify, close tab, reopen ---
+        const browser1 = await createRecordedBrowserPage({ viewport: { width: 1440, height: 1400 } });
+        let body1: string;
+        try {
+            body1 = await gotoHydratedPage(browser1.page, sessionUrl, [prompt, 'Completed'], 120000);
+            expect(body1).toContain(prompt);
+            expect(body1).toContain('Completed');
+            assertNoCriticalBrowserErrors(browser1.consoleMessages, browser1.pageErrors);
+        } finally {
+            await closeRecordedBrowserPage(browser1);
+        }
+
+        // Simulate tab close/reopen: new browser context, same URL
+        const browser2 = await createRecordedBrowserPage({ viewport: { width: 1440, height: 1400 } });
+        try {
+            const body2 = await gotoHydratedPage(browser2.page, sessionUrl, [prompt, 'Completed'], 120000);
+            expect(body2).toContain(prompt);
+            expect(body2).toContain('Completed');
+            // Transcript length should be the same (no content lost)
+            expect(body2.length).toBe(body1!.length);
+            assertNoCriticalBrowserErrors(browser2.consoleMessages, browser2.pageErrors);
+        } finally {
+            await closeRecordedBrowserPage(browser2);
+        }
+
+        // --- Part 2: stop the session, then reopen in browser ---
+        await node.stopSession(sessionId);
+        await waitForCondition(() => {
+            const session = node.state.sessions.get(sessionId as string);
+            return session?.status?.type === 'completed';
+        }, 15000);
+
+        const browser3 = await createRecordedBrowserPage({ viewport: { width: 1440, height: 1400 } });
+        try {
+            const body3 = await gotoHydratedPage(browser3.page, sessionUrl, [prompt, 'Completed'], 120000);
+            expect(body3).toContain(prompt);
+            expect(body3).toContain('Completed');
+            expect(body3).not.toMatch(/tool_use_id|parent_tool_use_id|call_id/);
+            assertNoCriticalBrowserErrors(browser3.consoleMessages, browser3.pageErrors);
+
+            const screenshotPath = join(tmpdir(), `happy-browser-completed-session-${Date.now()}.png`);
+            await browser3.page.screenshot({ path: screenshotPath, fullPage: true });
+            const screenshotStats = await stat(screenshotPath);
+            expect(screenshotStats.size).toBeGreaterThan(0);
+        } finally {
+            await closeRecordedBrowserPage(browser3);
+        }
+    }, 600000);
+
     it('Session B updates do not rerender the open Session A transcript', async () => {
         const projectADir = await createIsolatedProjectCopy('environments/lab-rat-todo-project');
         const projectBDir = await createIsolatedProjectCopy('environments/lab-rat-todo-project');

@@ -129,21 +129,73 @@ The SDKs handle the agent ↔ happy-cli communication underneath.
 - When in doubt, leave a process alone. It's better to leak a test process than
   to kill the human's active session.
 
-### Browser verification must be COMPLETE
+### STOP — READ THIS BEFORE TOUCHING ANY TEST FILES
 
-The Level 3 browser tests must verify ALL 34 exercise steps in the browser, not
-just a handful. After each step runs against the real agent, open the session in
-Chrome (Playwright) and assert the UX renders correctly. Additionally:
+There are TWO phases to the browser work. You MUST complete Phase 1 before
+starting Phase 2. If you skip Phase 1 and start writing Playwright tests or
+editing `browser.integration.test.ts`, you are doing it WRONG. Stop and go
+back to Phase 1.
 
-- **Multi-session switching**: Create Claude + Codex sessions, switch between them
-  in the browser, verify independent transcripts. Send to session B while viewing A.
-- **Video recording**: EVERY browser test run MUST record video via Playwright:
+DO NOT edit any test file (*.test.ts) until Phase 1 is COMPLETE and you have
+recorded the results in `loop/state.md` under a "Phase 1 Results" section.
+
+### Phase 1: Manual browser walkthrough with agent-browser (DO THIS FIRST)
+
+`agent-browser` is a CLI tool. Run it via Bash like any other CLI:
+```bash
+npx @anthropic-ai/agent-browser
+```
+
+Use it to manually control a real Chrome browser. The workflow is:
+
+1. Boot infrastructure (server + daemon) programmatically using the existing
+   e2e setup helpers (same as the existing tests do)
+2. Start the Expo web dev server with `BROWSER=none` (prevents auto-open)
+3. Use `agent-browser` to open the web app URL in Chrome
+4. Spawn a real Claude session via SyncNode
+5. Walk through the exercise flow step by step, using agent-browser to:
+   - Navigate to the session page
+   - Watch each step render in real-time
+   - Take screenshots at every significant moment
+   - Verify permissions, tool outputs, questions render correctly
+6. ALSO test these extended scenarios:
+   - Create a second session, switch between them in the browser
+   - Close the tab and reopen it — does the session restore?
+   - Reopen a completed/stopped session — does the transcript render?
+   - Navigate away from session page, come back
+
+Record EVERYTHING you see in `loop/state.md` under "Phase 1 Results":
+- What rendered correctly
+- What broke or looked wrong
+- Screenshots taken and what they show
+- Any bugs found (and fix them before moving to Phase 2)
+
+Phase 1 is DONE when you have walked through the full flow and recorded results.
+
+### Phase 2: Write the automated e2e test (ONLY after Phase 1 is recorded)
+
+ONLY start this after `loop/state.md` has a "Phase 1 Results" section with
+actual findings from the manual walkthrough.
+
+Write the Playwright e2e test covering everything you verified manually:
+- **Claude**: full 34-step exercise flow rendered in browser (primary agent)
+- **Other agents (Codex, OpenCode)**: lightweight — just prove starting a
+  session works, send one message, verify render + response. No full 34 steps.
+- **Multi-session / navigation**: switch between Claude + other-agent sessions,
+  verify independent transcripts, send to Session B while viewing A, close tab
+  and reopen, navigate away and back, reopen completed sessions, session list.
+- **Video recording**: EVERY browser test MUST record video via Playwright:
   ```typescript
   const context = await browser.newContext({
     recordVideo: { dir: 'e2e-recordings/', size: { width: 1280, height: 720 } }
   });
   ```
-  Save to `e2e-recordings/` (gitignored). We want to SEE the UX, not just assert it.
+
+### Environment: prevent Expo auto-opening browser
+
+ALWAYS set `BROWSER=none` before starting Expo web dev server. This prevents Expo
+from popping up browser windows on the human's machine. You control the browser
+via agent-browser or Playwright — Expo should NOT open anything.
 
 ### Focus
 

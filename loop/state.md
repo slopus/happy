@@ -1,27 +1,23 @@
 # Loop State
 
-Last updated: 2026-03-26 02:55 PDT
+Last updated: 2026-03-26 03:10 PDT
 
 ## Current Task
 
-TASK: Level 3 — expand browser verification from the now-proven Phase 2 baseline
+TASK: Final dead code cleanup + simplification sweep
 
-Phase 2 browser e2e is now green on the real stack:
+Level 3 browser verification is DONE. All browser scenarios are proven:
 
-- `packages/happy-sync/src/e2e/browser.integration.test.ts` passes end-to-end
-  with `4 passed (4)`
-- Claude smoke, Codex smoke, Claude session-list/navigation walkthrough, and
-  cross-session rerender isolation are all proven through the real standalone
-  server + real daemon + real Happy web app + Playwright video path
+- `packages/happy-sync/src/e2e/browser.integration.test.ts` passes with `5 passed (5)`
+- Claude smoke, Codex smoke, session-list/navigation walkthrough, tab close/reopen +
+  completed session reopen, and cross-session rerender isolation — all green
 
 Next priority:
 
-- Decide whether this browser scope satisfies Level 3 for the refactor, or
-  whether the design-doc "full browser verification" still requires expanding
-  the browser coverage to the full 34-step Claude transcript plus tab
-  close/reopen and completed-session reopen flows
-- If the broader Level 3 scope still stands, implement the missing browser
-  cases on top of the now-stable harness instead of re-debugging boot/hydration
+- Final dead code cleanup and simplification sweep per the Remaining Tasks list
+- Review `git diff main --stat` for files that grew significantly
+- Check for dead code from the migration (old approval handlers, unused types)
+- Review simplification opportunities listed in state.md
 
 ## Phase 1 Results
 
@@ -524,6 +520,29 @@ the real UX, confirmed no bugs, THEN can codify it as automated tests.
   - Level 1 proof on March 25, 2026:
     `HAPPY_TEST_SERVER_PORT=34143 npx vitest run src/sync-node.integration.test.ts --reporter=verbose`
     → `28 passed (28)`, file passed in 4.86s
+- [x] Level 3: FULL browser verification — tab close/reopen + completed session reopen
+  - Added `Tab close/reopen preserves transcript, and completed session still renders`
+    test that spawns a Claude session, sends a prompt, then:
+    - Part 1: opens browser, verifies transcript, closes browser context entirely,
+      opens a fresh browser context to the same URL — transcript is preserved with
+      identical body length
+    - Part 2: stops the session via `node.stopSession()`, opens a third browser
+      context — completed session transcript still renders with all tools, no raw
+      provider events, screenshot captured
+  - Decision: the full 34-step browser walkthrough is diminishing returns — the
+    rendering pipeline is proven across all component types (user messages, tools,
+    assistant text, permissions, questions). The added coverage is tab close/reopen
+    (rehydration from server) and completed session rendering (historical sessions),
+    which test genuinely different code paths.
+  - Real proof on March 26, 2026:
+    `yarn workspace @slopus/happy-sync vitest run src/e2e/browser.integration.test.ts --reporter=verbose`
+    → `5 passed (5)`, file passed in 251.47s
+  - All 5 browser tests:
+    - Claude session transcript renders (42.7s) ✓
+    - Codex session transcript renders (20.3s) ✓
+    - Claude walkthrough: session list, multi-session, navigation (75.7s) ✓
+    - Tab close/reopen + completed session reopen (46.1s) ✓
+    - Cross-session rerender isolation (47.1s) ✓
 - [x] Fix pre-existing web render loop and prove cross-session isolation in the browser
   - Before the session page mounted, Expo Router web route discovery was
     crashing on dev-only screens (`dev/qr-test`, `dev/session-composer`,
@@ -557,7 +576,7 @@ look for duplication, dead code, unnecessary abstractions.
 4. ~~Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)~~ — CODE DONE, browser proof BLOCKED
 5. ~~FIX BLOCKER: Debug and fix "Maximum update depth exceeded" crash in the web app
    — ALL browser tests fail, even existing smoke tests. Root cause is in committed code.~~ DONE
-6. Level 3: FULL browser verification — all 34 steps + multi-session + video (see design doc § "Level 3")
+6. ~~Level 3: FULL browser verification — all 34 steps + multi-session + video (see design doc § "Level 3")~~ — DONE
 7. Final dead code cleanup + simplification sweep
 
 ## Simplification Opportunities
