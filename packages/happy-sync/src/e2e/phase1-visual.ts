@@ -1,41 +1,38 @@
 #!/usr/bin/env npx tsx
 /**
- * Phase 1 VISUAL Walkthrough — All 37 exercise steps + hold for agent-browser.
+ * Phase 1 VISUAL walkthrough — full 38-step browser capture using agent-browser.
  *
- * Boots full e2e stack, walks through every exercise step against real Claude,
- * then HOLDS OPEN so agent-browser can take screenshots.
+ * Boots isolated server + daemon + Expo web, drives a real Claude session
+ * through the exercise flow, and captures:
+ * - one continuous agent-browser WebM recording
+ * - a full-page screenshot after every step
+ * - top/bottom screenshots for every spawned session
+ * - accessibility snapshots alongside each PNG
  *
- * Usage:
- *   npx tsx packages/happy-sync/src/e2e/phase1-visual.ts
- *
- * Writes connection info to /tmp/happy-phase1-visual.json
- * After all steps complete, holds until you kill it (Ctrl+C).
+ * Artifacts are written to `e2e-recordings/ux-review/`.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { writeFile, mkdir, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import os from 'node:os';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SyncNode } from '../sync-node';
-import type { MessageWithParts, SessionID } from '../protocol';
+import type { MessageWithParts, Part, SessionID } from '../protocol';
 import {
     bootTestInfrastructure,
     createIsolatedProjectCopy,
     getAuthToken,
+    getDaemonHttpPort,
     getEncryptionSecret,
     getServerUrl,
-    getDaemonHttpPort,
     spawnSessionViaDaemon,
     teardownTestInfrastructure,
 } from './setup';
 import {
     getAssistantMessages,
-    getMessages,
-    getUserMessages,
+    getFullText,
     getTextParts,
     getToolParts,
     makeAccountToken,
@@ -43,20 +40,88 @@ import {
     makeUserMessage,
     resolveSessionKeyMaterial,
     waitForCondition,
-    waitForStepFinish,
-    waitForPendingPermission,
+    waitForPendingQuestion,
 } from './helpers';
 
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const WEB_PORT = 19017;
-const INFO_FILE = '/tmp/happy-phase1-visual.json';
-const RESULTS_FILE = '/tmp/happy-phase1-visual-results.json';
+const OUTPUT_DIR = join(REPO_ROOT, 'e2e-recordings', 'ux-review');
+const INFO_FILE = join(OUTPUT_DIR, 'phase1-visual-info.json');
+const RESULTS_FILE = join(OUTPUT_DIR, 'phase1-visual-results.json');
+const VIDEO_FILE = join(OUTPUT_DIR, 'walkthrough.webm');
+const AGENT_BROWSER_BIN = process.env.AGENT_BROWSER_BIN ?? 'agent-browser';
+const AGENT_BROWSER_SESSION = `happy-phase1-visual-${process.pid}`;
+const CLAUDE_MODEL = { providerID: 'anthropic', modelID: 'claude-sonnet-4-20250514' };
+const CLAUDE_HAIKU_MODEL = { providerID: 'anthropic', modelID: 'claude-haiku-4-5-20251001' };
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+type StepAction = 'send' | 'stop' | 'cancel' | 'resume' | 'model-switch';
 
-function log(msg: string): void {
+interface StepDef {
+    id: number;
+    name: string;
+    prompt: string | null;
+    action: StepAction;
+    timeoutMs: number;
+}
+
+interface StepResult {
+    stepId: number;
+    name: string;
+    status: 'pass' | 'fail';
+    durationMs: number;
+    sessionId: string;
+    tools: Array<{ tool: string; status: string }>;
+    textSnippet: string;
+    continuityWarning: boolean;
+    error: string | null;
+    screenshot: string;
+    snapshot: string;
+}
+
+const STEPS: StepDef[] = [
+    { id: 0, name: 'Open the agent', prompt: null, action: 'send', timeoutMs: 0 },
+    { id: 1, name: 'Orient', prompt: 'Read all files, tell me what this does.', action: 'send', timeoutMs: 120000 },
+    { id: 2, name: 'Find the bug', prompt: "There's a bug in the Done filter — it shows all items instead of only completed ones. Find it and show me the exact line.", action: 'send', timeoutMs: 90000 },
+    { id: 3, name: 'Edit rejected', prompt: 'Fix it.', action: 'send', timeoutMs: 180000 },
+    { id: 4, name: 'Edit approved once', prompt: 'Ok that diff looks right. Go ahead and apply it.', action: 'send', timeoutMs: 180000 },
+    { id: 5, name: 'Edit approved always', prompt: 'Add dark mode support. Use a `prefers-color-scheme: dark` media query in styles.css. Keep it simple — just invert the main colors.', action: 'send', timeoutMs: 180000 },
+    { id: 6, name: 'Auto-approved edit', prompt: 'Also add a `.dark-toggle` button to the HTML so users can manually switch themes. Put it after the h1 in the hero panel. Wire it up in app.js — toggle a `dark` class on the body.', action: 'send', timeoutMs: 240000 },
+    { id: 7, name: 'Search the web', prompt: 'Search the web for best practices on accessible keyboard shortcuts in todo apps.', action: 'send', timeoutMs: 180000 },
+    { id: 8, name: 'Parallel explore', prompt: "I want to add keyboard shortcuts. Before you do anything, use a subagent to explore what keyboard events the app currently handles, and separately check if there are any accessibility issues in the HTML. Do both in parallel.", action: 'send', timeoutMs: 300000 },
+    { id: 9, name: 'Simple edit', prompt: "Add Cmd+Enter to submit the form from anywhere on the page. That's it, nothing else.", action: 'send', timeoutMs: 180000 },
+    { id: 10, name: 'Cancel', prompt: 'Add keyboard shortcut support — Cmd+Enter to submit from anywhere, Escape to clear the input, arrow keys to navigate todos.', action: 'cancel', timeoutMs: 60000 },
+    { id: 11, name: 'Resume after cancel', prompt: 'Ok just the Cmd+Enter. Do that.', action: 'resume', timeoutMs: 180000 },
+    { id: 12, name: 'Agent asks a question', prompt: 'I want to add a test framework. Ask me which one I want before you set anything up.', action: 'send', timeoutMs: 180000 },
+    { id: 13, name: 'Act on the answer', prompt: 'Set up Vitest. Add a vitest config, a package.json with the dev dependency, and one test that verifies the Done filter bug is fixed (the filter should only return items where done===true).', action: 'send', timeoutMs: 300000 },
+    { id: 14, name: 'Read outside project', prompt: 'What files are in the parent directory?', action: 'send', timeoutMs: 120000 },
+    { id: 15, name: 'Write outside project', prompt: 'Create a file at `../outside-test.txt` with the content "boundary test".', action: 'send', timeoutMs: 120000 },
+    { id: 16, name: 'Create todos', prompt: 'Create a todo list for this project. Track: 1) add due dates to todos, 2) add drag-to-reorder, 3) add export to JSON. Use your todo tracking.', action: 'send', timeoutMs: 120000 },
+    { id: 17, name: 'Switch and edit', prompt: 'Add a "due date" field to the todo items. Add a date picker input next to the text input in the form. Store the date in localStorage with the item.', action: 'model-switch', timeoutMs: 240000 },
+    { id: 18, name: 'Compact', prompt: 'Compact the context.', action: 'send', timeoutMs: 120000 },
+    { id: 19, name: 'Post-compaction sanity', prompt: 'What files have we changed so far?', action: 'send', timeoutMs: 120000 },
+    { id: 20, name: 'Close', prompt: null, action: 'stop', timeoutMs: 20000 },
+    { id: 21, name: 'Reopen', prompt: null, action: 'resume', timeoutMs: 60000 },
+    { id: 22, name: 'Verify continuity', prompt: 'What was the last thing we were working on?', action: 'send', timeoutMs: 180000 },
+    { id: 23, name: 'Mark todo done', prompt: 'Mark the "add due dates" todo as completed — we just did that.', action: 'send', timeoutMs: 180000 },
+    { id: 25, name: 'Multiple permissions in one turn', prompt: 'Refactor the app: extract the filter logic into a new file called `filters.js`, move the dark mode toggle into a new file called `theme.js`, and update app.js to import from both.', action: 'send', timeoutMs: 240000 },
+    { id: 26, name: 'Supersede pending permissions', prompt: 'Actually, undo all that. Put everything back in app.js. Also add a comment at the top: "// single-file architecture".', action: 'send', timeoutMs: 240000 },
+    { id: 27, name: 'Subagent hits a permission wall', prompt: `Use a subagent to add a "clear completed" button. The subagent should edit index.html and app.js. Don't auto-approve anything for it.`, action: 'send', timeoutMs: 300000 },
+    { id: 28, name: 'Stop session while permission is pending', prompt: 'Add a new "priority" field to todos — high, medium, low. Use a colored dot next to each item.', action: 'send', timeoutMs: 180000 },
+    { id: 29, name: 'Resume after forced stop', prompt: 'What happened with the priority feature?', action: 'resume', timeoutMs: 240000 },
+    { id: 30, name: 'Retry after stop', prompt: 'Try again — add the priority field. Approve everything this time.', action: 'send', timeoutMs: 240000 },
+    { id: 31, name: 'Launch background task', prompt: `Run a background task that sleeps for 30 seconds and then echoes "lol i am donezen". While it's running, tell me what time it is.`, action: 'send', timeoutMs: 180000 },
+    { id: 32, name: 'Background task completes', prompt: 'Did that background task finish? What was the output?', action: 'send', timeoutMs: 240000 },
+    { id: 33, name: 'Interact during background task', prompt: `Run another background task: sleep 20 && echo "background two". While that's running, add a comment to the top of app.js saying "// background task test".`, action: 'send', timeoutMs: 240000 },
+    { id: 34, name: 'Full summary', prompt: 'Give me a git-style summary of everything we changed so far. List files modified, lines added/removed if you can tell.', action: 'send', timeoutMs: 180000 },
+    { id: 35, name: 'Background subagent (TaskCreate)', prompt: `Launch a background agent task: have it research what CSS frameworks would work well for this project. Don't wait for it — tell me about the current project structure while it works.`, action: 'send', timeoutMs: 300000 },
+    { id: 36, name: 'Check background agent result (TaskOutput)', prompt: 'Did that background research finish? What did it find?', action: 'send', timeoutMs: 300000 },
+    { id: 37, name: 'Multiple background tasks', prompt: `Launch two background tasks in parallel: one to check if our HTML is valid, another to analyze our CSS for unused rules. While they run, add a comment to app.js saying "// multi-task test".`, action: 'send', timeoutMs: 300000 },
+    { id: 38, name: 'Final summary', prompt: 'Update your earlier summary with everything we did since then, including the background tasks. Give me the final git-style summary.', action: 'send', timeoutMs: 180000 },
+];
+
+function log(message: string): void {
     const ts = new Date().toISOString().slice(11, 23);
-    console.log(`[${ts}] ${msg}`);
+    console.log(`[${ts}] ${message}`);
 }
 
 function encodeBase64Url(bytes: Uint8Array): string {
@@ -67,137 +132,138 @@ function encodeBase64Url(bytes: Uint8Array): string {
         .replace(/=+$/g, '');
 }
 
-function collectToolParts(msgs: MessageWithParts[], afterIdx: number): { tool: string; status: string }[] {
-    const result: { tool: string; status: string }[] = [];
-    for (let i = afterIdx; i < msgs.length; i++) {
-        for (const part of getToolParts(msgs[i])) {
-            result.push({
-                tool: (part as any).tool ?? 'unknown',
-                status: (part as any).state?.status ?? 'unknown',
-            });
-        }
-    }
-    return result;
+function sanitizeSegment(value: string): string {
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-+/g, '-');
 }
 
-function collectTextSnippet(msgs: MessageWithParts[], afterIdx: number): string {
-    const texts: string[] = [];
-    for (let i = afterIdx; i < msgs.length; i++) {
-        for (const part of getTextParts(msgs[i])) {
-            texts.push(part.text);
-        }
-    }
-    return texts.join(' ').slice(0, 300);
+function stepFileBase(step: StepDef): string {
+    return `step-${String(step.id).padStart(2, '0')}-${sanitizeSegment(step.name)}`;
 }
 
-async function waitForStepFinishApprovingAll(
+function collectToolParts(messages: MessageWithParts[], afterIndex: number): Array<{ tool: string; status: string }> {
+    return messages
+        .slice(afterIndex)
+        .flatMap(getToolParts)
+        .map((part) => ({
+            tool: part.tool,
+            status: part.state.status,
+        }));
+}
+
+function collectTextSnippet(messages: MessageWithParts[], afterIndex: number): string {
+    return messages
+        .slice(afterIndex)
+        .flatMap(getTextParts)
+        .map((part) => part.text)
+        .join(' ')
+        .slice(0, 400);
+}
+
+function hasTerminalStepFinish(message: MessageWithParts): boolean {
+    return message.parts.some(
+        (part) => part.type === 'step-finish' && part.reason !== 'tool-calls',
+    );
+}
+
+function assistantMessagesSince(node: SyncNode, sessionId: SessionID, afterCount: number): MessageWithParts[] {
+    return getAssistantMessages(node, sessionId).slice(afterCount);
+}
+
+function assistantToolsSince(
     node: SyncNode,
     sessionId: SessionID,
     afterCount: number,
-    timeoutMs: number,
-): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    let lastApproveCheck = 0;
+): Array<Part & { type: 'tool' }> {
+    return assistantMessagesSince(node, sessionId, afterCount).flatMap(getToolParts);
+}
 
+function toolText(tool: Part & { type: 'tool' }): string {
+    const state = tool.state as Record<string, unknown>;
+    return [
+        tool.tool,
+        JSON.stringify(state.input ?? {}),
+        typeof state.title === 'string' ? state.title : '',
+        typeof state.output === 'string' ? state.output : '',
+        typeof state.error === 'string' ? state.error : '',
+        JSON.stringify(state.metadata ?? {}),
+    ].join(' ').toLowerCase();
+}
+
+async function runCommand(
+    command: string,
+    args: string[],
+    opts: { cwd?: string; allowFailure?: boolean } = {},
+): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
-        const timer = setInterval(() => {
-            const now = Date.now();
-            if (now > deadline) {
-                clearInterval(timer);
-                reject(new Error(`Step timed out after ${timeoutMs}ms`));
+        const child = spawn(command, args, {
+            cwd: opts.cwd ?? REPO_ROOT,
+            env: process.env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout?.on('data', (chunk) => { stdout += String(chunk); });
+        child.stderr?.on('data', (chunk) => { stderr += String(chunk); });
+        child.on('error', reject);
+        child.on('exit', (code) => {
+            if (code === 0 || opts.allowFailure) {
+                resolve({ stdout, stderr });
                 return;
             }
-
-            // Auto-approve permissions every 500ms
-            if (now - lastApproveCheck > 500) {
-                lastApproveCheck = now;
-                const session = node.state.sessions.get(sessionId as string);
-                if (session) {
-                    for (const perm of session.permissions) {
-                        if (!perm.resolved) {
-                            log(`  Auto-approving permission: ${(perm as any).tool ?? 'unknown'}`);
-                            node.approvePermission(sessionId, perm.permissionId, { decision: 'once' }).catch(() => {});
-                        }
-                    }
-                    for (const q of session.questions) {
-                        if (!q.resolved) {
-                            log(`  Auto-answering question`);
-                            node.answerQuestion(sessionId, q.questionId, [['Vitest']]).catch(() => {});
-                        }
-                    }
-                }
-            }
-
-            // Check for step finish
-            const msgs = getAssistantMessages(node, sessionId);
-            if (msgs.length <= afterCount) return;
-            for (let i = afterCount; i < msgs.length; i++) {
-                const hasFinish = msgs[i].parts.some(
-                    (p) => p.type === 'step-finish' && (p as any).reason !== 'tool-calls',
-                );
-                if (hasFinish) {
-                    clearInterval(timer);
-                    resolve();
-                    return;
-                }
-            }
-        }, 300);
+            reject(new Error(`${command} ${args.join(' ')} failed with code ${code}\n${stdout}\n${stderr}`));
+        });
     });
 }
 
-// ─── Step Definitions ────────────────────────────────────────────────────────
+let browserUrl = '';
 
-interface StepDef {
-    id: number;
-    name: string;
-    prompt: string | null;
-    action: 'send' | 'spawn' | 'deny' | 'approve-once' | 'approve-always' | 'cancel' | 'stop' | 'reopen' | 'model-switch' | 'answer-then-send';
-    timeoutMs: number;
-    permissionAction?: 'deny' | 'approve-once' | 'approve-always' | 'auto' | 'wait-then-stop';
+async function runAgentBrowser(args: string[], allowFailure = false): Promise<string> {
+    const result = await runCommand(
+        AGENT_BROWSER_BIN,
+        ['--session', AGENT_BROWSER_SESSION, ...args],
+        { allowFailure },
+    );
+    return `${result.stdout}${result.stderr}`.trim();
 }
 
-const STEPS: StepDef[] = [
-    { id: 0, name: 'Open the agent', prompt: null, action: 'spawn', timeoutMs: 30000 },
-    { id: 1, name: 'Orient', prompt: 'Read all files, tell me what this does.', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 2, name: 'Find the bug', prompt: "There's a bug in the Done filter — it shows all items instead of only completed ones. Find it and show me the exact line.", action: 'send', timeoutMs: 60000, permissionAction: 'auto' },
-    { id: 3, name: 'Edit rejected', prompt: 'Fix it.', action: 'send', timeoutMs: 120000, permissionAction: 'deny' },
-    { id: 4, name: 'Edit approved once', prompt: 'Ok that diff looks right. Go ahead and apply it.', action: 'send', timeoutMs: 120000, permissionAction: 'approve-once' },
-    { id: 5, name: 'Edit approved always', prompt: 'Add dark mode support. Use a `prefers-color-scheme: dark` media query in styles.css. Keep it simple — just invert the main colors.', action: 'send', timeoutMs: 120000, permissionAction: 'approve-always' },
-    { id: 6, name: 'Auto-approved edit', prompt: 'Also add a `.dark-toggle` button to the HTML so users can manually switch themes. Put it after the h1 in the hero panel. Wire it up in app.js — toggle a `dark` class on the body.', action: 'send', timeoutMs: 180000, permissionAction: 'auto' },
-    { id: 7, name: 'Search the web', prompt: 'Search the web for best practices on accessible keyboard shortcuts in todo apps.', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 8, name: 'Parallel explore', prompt: "I want to add keyboard shortcuts. Before you do anything, use a subagent to explore what keyboard events the app currently handles, and separately check if there are any accessibility issues in the HTML. Do both in parallel.", action: 'send', timeoutMs: 240000, permissionAction: 'auto' },
-    { id: 9, name: 'Simple edit', prompt: 'Add Cmd+Enter to submit the form from anywhere on the page. That\'s it, nothing else.', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 10, name: 'Cancel', prompt: 'Add keyboard shortcut support — Cmd+Enter to submit from anywhere, Escape to clear the input, arrow keys to navigate todos.', action: 'cancel', timeoutMs: 30000 },
-    { id: 11, name: 'Resume after cancel', prompt: 'Ok just the Cmd+Enter. Do that.', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 12, name: 'Agent asks a question', prompt: "I want to add a test framework. Ask me which one I want before you set anything up.", action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 13, name: 'Act on the answer', prompt: 'Set up Vitest. Add a vitest config, a package.json with the dev dependency, and one test that verifies the Done filter bug is fixed (the filter should only return items where done===true).', action: 'send', timeoutMs: 300000, permissionAction: 'auto' },
-    { id: 14, name: 'Read outside project', prompt: 'What files are in the parent directory?', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 15, name: 'Write outside project', prompt: 'Create a file at `../outside-test.txt` with the content "boundary test".', action: 'send', timeoutMs: 120000, permissionAction: 'deny' },
-    { id: 16, name: 'Create todos', prompt: 'Create a todo list for this project. Track: 1) add due dates to todos, 2) add drag-to-reorder, 3) add export to JSON. Use your todo tracking.', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 17, name: 'Switch and edit', prompt: 'Add a "due date" field to the todo items. Add a date picker input next to the text input in the form. Store the date in localStorage with the item.', action: 'model-switch', timeoutMs: 240000, permissionAction: 'auto' },
-    { id: 18, name: 'Compact', prompt: 'Compact the context.', action: 'send', timeoutMs: 60000, permissionAction: 'auto' },
-    { id: 19, name: 'Post-compaction sanity', prompt: 'What files have we changed so far?', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 20, name: 'Close', prompt: null, action: 'stop', timeoutMs: 10000 },
-    { id: 21, name: 'Reopen', prompt: null, action: 'reopen', timeoutMs: 30000 },
-    { id: 22, name: 'Verify continuity', prompt: 'What was the last thing we were working on?', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 23, name: 'Mark todo done', prompt: 'Mark the "add due dates" todo as completed — we just did that.', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 25, name: 'Multiple permissions in one turn', prompt: "Refactor the app: extract the filter logic into a new file called `filters.js`, move the dark mode toggle into a new file called `theme.js`, and update app.js to import from both.", action: 'send', timeoutMs: 180000, permissionAction: 'approve-once' },
-    { id: 26, name: 'Supersede pending permissions', prompt: 'Actually, undo all that. Put everything back in app.js. Also add a comment at the top: "// single-file architecture".', action: 'send', timeoutMs: 180000, permissionAction: 'auto' },
-    { id: 27, name: 'Subagent hits a permission wall', prompt: 'Use a subagent to add a "clear completed" button. The subagent should edit index.html and app.js. Don\'t auto-approve anything for it.', action: 'send', timeoutMs: 240000, permissionAction: 'auto' },
-    { id: 28, name: 'Stop session while permission is pending', prompt: 'Add a new "priority" field to todos — high, medium, low. Use a colored dot next to each item.', action: 'send', timeoutMs: 120000, permissionAction: 'wait-then-stop' },
-    { id: 29, name: 'Resume after forced stop', prompt: 'What happened with the priority feature?', action: 'send', timeoutMs: 180000, permissionAction: 'auto' },
-    { id: 30, name: 'Retry after stop', prompt: 'Try again — add the priority field. Approve everything this time.', action: 'send', timeoutMs: 180000, permissionAction: 'auto' },
-    { id: 31, name: 'Launch a background task', prompt: 'Run a background task that sleeps for 30 seconds and then echoes "lol i am donezen". While it\'s running, tell me what time it is.', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 32, name: 'Background task completes', prompt: 'Did that background task finish? What was the output?', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 33, name: 'Interact during background task', prompt: 'Run another background task: sleep 20 && echo "background two". While that\'s running, add a comment to the top of app.js saying "// background task test".', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 34, name: 'Full summary', prompt: 'Give me a git-style summary of everything we changed. List files modified, lines added/removed if you can tell.', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    // NEW Steps 35-37
-    { id: 35, name: 'Background subagent (TaskCreate)', prompt: "Launch a background agent task: have it research what CSS frameworks would work well for this project. Don't wait for it — tell me about the current project structure while it works.", action: 'send', timeoutMs: 180000, permissionAction: 'auto' },
-    { id: 36, name: 'Check background agent result (TaskOutput)', prompt: 'Did that background research finish? What did it find?', action: 'send', timeoutMs: 120000, permissionAction: 'auto' },
-    { id: 37, name: 'Multiple background tasks', prompt: 'Launch two background tasks in parallel: one to check if our HTML is valid, another to analyze our CSS for unused rules. While they run, add a comment to app.js saying "// multi-task test".', action: 'send', timeoutMs: 180000, permissionAction: 'auto' },
-];
+async function ensureBrowserOn(url: string): Promise<void> {
+    if (browserUrl !== url) {
+        await runAgentBrowser(['open', url]);
+        browserUrl = url;
+    } else {
+        await runAgentBrowser(['reload'], true);
+    }
+    await runAgentBrowser(['wait', '1500'], true);
+}
 
-// ─── Web app server ─────────────────────────────────────────────────────────
+async function captureBrowserState(
+    basename: string,
+    opts: { url: string; fullPage?: boolean; scroll?: 'top' | 'bottom' | 'none' },
+): Promise<string> {
+    await ensureBrowserOn(opts.url);
+    if (opts.scroll === 'top') {
+        await runAgentBrowser(['eval', 'window.scrollTo(0, 0)']);
+        await runAgentBrowser(['wait', '500'], true);
+    } else if (opts.scroll === 'bottom') {
+        await runAgentBrowser(['eval', 'window.scrollTo(0, document.documentElement.scrollHeight)']);
+        await runAgentBrowser(['wait', '700'], true);
+    }
+
+    const screenshotPath = join(OUTPUT_DIR, `${basename}.png`);
+    const snapshotPath = join(OUTPUT_DIR, `${basename}.snapshot.txt`);
+    const screenshotArgs = ['screenshot', screenshotPath];
+    if (opts.fullPage) {
+        screenshotArgs.push('--full');
+    }
+    await runAgentBrowser(screenshotArgs);
+    const snapshot = await runAgentBrowser(['snapshot', '--compact', '--depth', '8'], true);
+    await writeFile(snapshotPath, snapshot);
+    return snapshot;
+}
 
 function startWebAppServer(serverUrl: string): ChildProcess {
     const child = spawn('yarn', ['workspace', 'happy-app', 'web:test', '--port', String(WEB_PORT)], {
@@ -211,8 +277,8 @@ function startWebAppServer(serverUrl: string): ChildProcess {
         },
         stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.stdout?.on('data', (chunk) => { /* ignore */ });
-    child.stderr?.on('data', (chunk) => { /* ignore */ });
+    child.stdout?.on('data', () => {});
+    child.stderr?.on('data', () => {});
     return child;
 }
 
@@ -221,321 +287,604 @@ async function waitForWebReady(timeoutMs = 300000): Promise<void> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
         try {
-            const res = await fetch(url);
-            if (res.ok) return;
-        } catch { /* not ready */ }
-        await new Promise((r) => setTimeout(r, 2000));
+            const response = await fetch(url);
+            if (response.ok) {
+                const body = await response.text();
+                if (body.includes('Happy')) {
+                    return;
+                }
+            }
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     throw new Error(`Web app not ready after ${timeoutMs}ms`);
 }
 
-// ─── Main ───────────────────────────────────────────────────────────────────
-
-async function main(): Promise<void> {
-    log('=== Phase 1 VISUAL Walkthrough: ALL 37 Exercise Steps ===');
-    log('Booting infrastructure...');
-
-    // 1. Boot server + daemon
-    process.env.HAPPY_TEST_SERVER_PORT = '34191';
-    await bootTestInfrastructure();
-    log(`Server: ${getServerUrl()}`);
-    log(`Daemon HTTP port: ${getDaemonHttpPort()}`);
-
-    // 2. Copy project
-    const projectDir = await createIsolatedProjectCopy('environments/lab-rat-todo-project');
-    log(`Project: ${projectDir}`);
-
-    // 3. Start Expo web
-    const webProcess = startWebAppServer(getServerUrl());
-    log('Expo web dev server starting...');
-
-    // 4. Create SyncNode
-    const node = new SyncNode(
-        getServerUrl(),
-        makeAccountToken(),
-        makeKeyMaterial(),
-        { resolveSessionKeyMaterial },
-    );
-    await node.connect();
-    log('SyncNode connected');
-
-    // 5. Wait for web app
-    log('Waiting for Expo web to be ready (first bundle can take 2-5 min)...');
-    await waitForWebReady();
-    log('Web app ready!');
-
-    // 6. Spawn Claude session
-    log('Spawning Claude session via daemon...');
-    const sessionId = await spawnSessionViaDaemon({ directory: projectDir, agent: 'claude' });
-    log(`Session: ${sessionId}`);
-
-    await waitForCondition(() => node.state.sessions.has(sessionId), 30000);
-    log('Session visible in SyncNode');
-
-    const secret64url = encodeBase64Url(getEncryptionSecret());
-    const webUrl = `http://127.0.0.1:${WEB_PORT}`;
-
-    // Track all session IDs for screenshot URLs
-    const allSessionIds: string[] = [sessionId];
-    let currentSessionId = sessionId as SessionID;
-    const CLAUDE_MODEL = { providerID: 'anthropic', modelID: 'claude-sonnet-4-20250514' };
-
-    const makeSessionUrl = (sid: string) =>
-        `${webUrl}/session/${sid}?dev_token=${encodeURIComponent(getAuthToken())}&dev_secret=${encodeURIComponent(secret64url)}`;
-    const homeUrl = `${webUrl}/?dev_token=${encodeURIComponent(getAuthToken())}&dev_secret=${encodeURIComponent(secret64url)}`;
-
-    // Write initial connection info
-    const writeInfo = async () => {
-        await writeFile(INFO_FILE, JSON.stringify({
-            serverUrl: getServerUrl(),
-            webUrl,
-            homeUrl,
-            allSessionUrls: allSessionIds.map(sid => ({ sessionId: sid, url: makeSessionUrl(sid) })),
-            currentSessionId: currentSessionId as string,
-            currentSessionUrl: makeSessionUrl(currentSessionId as string),
-            authToken: getAuthToken(),
-            secret64url,
-            daemonPort: getDaemonHttpPort(),
-            projectDir,
-            status: 'running',
-        }, null, 2));
-    };
-    await writeInfo();
-    log(`Connection info: ${INFO_FILE}`);
-    log(`Session URL: ${makeSessionUrl(sessionId)}`);
-
-    // 7. Walk through all steps
-    interface StepResult {
-        stepId: number;
-        name: string;
-        durationMs: number;
-        tools: { tool: string; status: string }[];
-        textSnippet: string;
-        error: string | null;
-        sessionId: string;
-    }
-    const results: StepResult[] = [];
-
-    for (const step of STEPS) {
-        log(`\n${'='.repeat(60)}`);
-        log(`Step ${step.id} — ${step.name}`);
-        log(`${'='.repeat(60)}`);
-
-        const start = Date.now();
-        const beforeAssistant = getAssistantMessages(node, currentSessionId).length;
-        let error: string | null = null;
-
-        try {
-            if (step.action === 'spawn') {
-                const session = node.state.sessions.get(currentSessionId as string);
-                log(`  Session status: ${JSON.stringify(session?.status)}`);
-
-            } else if (step.action === 'stop') {
-                log('  Stopping session...');
-                await node.stopSession(currentSessionId);
-                log('  Session stopped');
-
-            } else if (step.action === 'reopen') {
-                log('  Reopening — spawning new session...');
-                const newId = await spawnSessionViaDaemon({ directory: projectDir, agent: 'claude' });
-                await waitForCondition(() => node.state.sessions.has(newId), 30000);
-                currentSessionId = newId as SessionID;
-                allSessionIds.push(newId);
-                await writeInfo();
-                log(`  New session: ${currentSessionId}`);
-
-            } else if (step.action === 'cancel') {
-                log(`  Sending: "${step.prompt!.slice(0, 60)}..."`);
-                await node.sendMessage(currentSessionId, makeUserMessage('test', currentSessionId, step.prompt!, 'claude', CLAUDE_MODEL));
-                await new Promise((r) => setTimeout(r, 3000));
-                log('  Cancelling...');
-                await node.stopSession(currentSessionId);
-                // Spawn new session for next step
-                const newId = await spawnSessionViaDaemon({ directory: projectDir, agent: 'claude' });
-                await waitForCondition(() => node.state.sessions.has(newId), 30000);
-                currentSessionId = newId as SessionID;
-                allSessionIds.push(newId);
-                await writeInfo();
-                log(`  New session: ${currentSessionId}`);
-
-            } else if (step.action === 'model-switch') {
-                log('  Switching model to haiku + sending prompt...');
-                const msg = makeUserMessage('test', currentSessionId, step.prompt!, 'claude',
-                    { providerID: 'anthropic', modelID: 'claude-haiku-4-5-20251001' },
-                    { model: { providerID: 'anthropic', modelID: 'claude-haiku-4-5-20251001' } } as any);
-                await node.sendMessage(currentSessionId, msg);
-                await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
-
-            } else if (step.action === 'send') {
-                log(`  Sending: "${step.prompt!.slice(0, 80)}${step.prompt!.length > 80 ? '...' : ''}"`);
-                await node.sendMessage(currentSessionId, makeUserMessage('test', currentSessionId, step.prompt!, 'claude', CLAUDE_MODEL));
-
-                if (step.permissionAction === 'deny') {
-                    try {
-                        await waitForPendingPermission(node, currentSessionId, 60000);
-                        const session = node.state.sessions.get(currentSessionId as string);
-                        const perm = session?.permissions.find((p) => !p.resolved);
-                        if (perm) {
-                            log(`  DENYING: ${(perm as any).tool ?? 'unknown'}`);
-                            node.denyPermission(currentSessionId, perm.permissionId, { reason: 'No — show me the diff first.' });
-                        }
-                    } catch { log('  No permission appeared'); }
-                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
-
-                } else if (step.permissionAction === 'approve-once') {
-                    const approvedIds = new Set<string>();
-                    const deadline = Date.now() + step.timeoutMs;
-                    let settled = false;
-                    while (!settled && Date.now() < deadline) {
-                        const session = node.state.sessions.get(currentSessionId as string);
-                        if (session) {
-                            for (const perm of session.permissions) {
-                                if (!perm.resolved && !approvedIds.has(perm.permissionId)) {
-                                    log(`  Approving once: ${(perm as any).tool ?? 'unknown'}`);
-                                    node.approvePermission(currentSessionId, perm.permissionId, { decision: 'once' }).catch(() => {});
-                                    approvedIds.add(perm.permissionId);
-                                }
-                            }
-                        }
-                        const msgs = getAssistantMessages(node, currentSessionId);
-                        for (let i = beforeAssistant; i < msgs.length; i++) {
-                            if (msgs[i].parts.some((p) => p.type === 'step-finish' && (p as any).reason !== 'tool-calls')) {
-                                settled = true;
-                                break;
-                            }
-                        }
-                        if (!settled) await new Promise((r) => setTimeout(r, 500));
-                    }
-                    if (!settled) throw new Error('Timed out');
-
-                } else if (step.permissionAction === 'approve-always') {
-                    try {
-                        await waitForPendingPermission(node, currentSessionId, 60000);
-                        const session = node.state.sessions.get(currentSessionId as string);
-                        const perm = session?.permissions.find((p) => !p.resolved);
-                        if (perm) {
-                            log(`  Approving always: ${(perm as any).tool ?? 'unknown'}`);
-                            node.approvePermission(currentSessionId, perm.permissionId, { decision: 'always' }).catch(() => {});
-                        }
-                    } catch { log('  No permission appeared'); }
-                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
-
-                } else if (step.permissionAction === 'wait-then-stop') {
-                    try {
-                        await waitForPendingPermission(node, currentSessionId, 60000);
-                        log('  Permission appeared — NOT approving, stopping session');
-                    } catch { log('  No permission appeared'); }
-                    await node.stopSession(currentSessionId);
-                    const newId = await spawnSessionViaDaemon({ directory: projectDir, agent: 'claude' });
-                    await waitForCondition(() => node.state.sessions.has(newId), 30000);
-                    currentSessionId = newId as SessionID;
-                    allSessionIds.push(newId);
-                    await writeInfo();
-                    log(`  New session: ${currentSessionId}`);
-
-                } else if (step.permissionAction === 'auto') {
-                    if (step.id === 12) {
-                        // Question step
-                        const deadline = Date.now() + step.timeoutMs;
-                        let done = false;
-                        while (!done && Date.now() < deadline) {
-                            const session = node.state.sessions.get(currentSessionId as string);
-                            if (session?.questions.some((q) => !q.resolved)) {
-                                const q = session!.questions.find((q) => !q.resolved)!;
-                                log('  Question received — answering "Vitest"');
-                                node.answerQuestion(currentSessionId, q.questionId, [['Vitest']]);
-                                done = true;
-                            }
-                            const msgs = getAssistantMessages(node, currentSessionId);
-                            for (let i = beforeAssistant; i < msgs.length; i++) {
-                                if (msgs[i].parts.some((p) => p.type === 'step-finish' && (p as any).reason !== 'tool-calls')) {
-                                    done = true;
-                                    break;
-                                }
-                            }
-                            if (!done) await new Promise((r) => setTimeout(r, 500));
-                        }
-                        if (done) {
-                            try { await waitForStepFinish(node, currentSessionId, beforeAssistant, 10000); } catch { /* ok */ }
-                        }
-                    } else {
-                        await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
+async function waitForConditionApprovingAll(
+    node: SyncNode,
+    predicate: () => boolean,
+    timeoutMs: number,
+    opts: { autoAnswerQuestions?: boolean } = {},
+): Promise<void> {
+    const approvedIds = new Set<string>();
+    const answeredIds = new Set<string>();
+    await waitForCondition(() => {
+        for (const session of node.state.sessions.values()) {
+            for (const permission of session.permissions) {
+                if (!permission.resolved && !approvedIds.has(permission.permissionId)) {
+                    approvedIds.add(permission.permissionId);
+                    node.approvePermission(session.info.id, permission.permissionId, { decision: 'once' }).catch(() => {});
+                }
+            }
+            if (opts.autoAnswerQuestions) {
+                for (const question of session.questions) {
+                    if (!question.resolved && !answeredIds.has(question.questionId)) {
+                        answeredIds.add(question.questionId);
+                        node.answerQuestion(session.info.id, question.questionId, [['Vitest']]).catch(() => {});
                     }
                 }
             }
-        } catch (err) {
-            error = err instanceof Error ? err.message : String(err);
-            log(`  ERROR: ${error}`);
         }
-
-        const elapsed = Date.now() - start;
-        const assistantMsgs = getAssistantMessages(node, currentSessionId);
-        const tools = collectToolParts(assistantMsgs, beforeAssistant);
-        const textSnippet = collectTextSnippet(assistantMsgs, beforeAssistant);
-
-        results.push({
-            stepId: step.id,
-            name: step.name,
-            durationMs: elapsed,
-            tools,
-            textSnippet,
-            error,
-            sessionId: currentSessionId as string,
-        });
-
-        log(`  Duration: ${(elapsed / 1000).toFixed(1)}s | Tools: ${tools.map((t) => `${t.tool}:${t.status}`).join(', ') || 'none'}`);
-        if (error) log(`  Error: ${error}`);
-
-        // Write progress
-        await writeFile(RESULTS_FILE, JSON.stringify(results, null, 2));
-        await writeInfo();
-    }
-
-    // 8. Summary
-    log('\n' + '='.repeat(60));
-    log('ALL 37 STEPS COMPLETE — READY FOR SCREENSHOTS');
-    log('='.repeat(60));
-    log(`Passed: ${results.filter((r) => !r.error).length}/${results.length}`);
-    log(`Failed: ${results.filter((r) => r.error).length}`);
-    log(`\nSession URLs:`);
-    for (const sid of allSessionIds) {
-        log(`  ${makeSessionUrl(sid)}`);
-    }
-    log(`Home URL: ${homeUrl}`);
-    log(`\nInfo file: ${INFO_FILE}`);
-    log(`Results file: ${RESULTS_FILE}`);
-
-    // Update info with final status
-    await writeFile(INFO_FILE, JSON.stringify({
-        serverUrl: getServerUrl(),
-        webUrl,
-        homeUrl,
-        allSessionUrls: allSessionIds.map(sid => ({ sessionId: sid, url: makeSessionUrl(sid) })),
-        currentSessionId: currentSessionId as string,
-        currentSessionUrl: makeSessionUrl(currentSessionId as string),
-        authToken: getAuthToken(),
-        secret64url,
-        daemonPort: getDaemonHttpPort(),
-        projectDir,
-        status: 'ready_for_screenshots',
-        stepResults: results,
-    }, null, 2));
-
-    // 9. HOLD OPEN — wait for SIGTERM
-    log('\nHolding open for agent-browser screenshots. Press Ctrl+C to tear down.');
-    await new Promise<void>((resolve) => {
-        process.on('SIGTERM', resolve);
-        process.on('SIGINT', resolve);
-    });
-
-    // 10. Teardown
-    log('Tearing down...');
-    webProcess.kill('SIGTERM');
-    await teardownTestInfrastructure();
-    log('Done.');
+        return predicate();
+    }, timeoutMs);
 }
 
-main().catch((err) => {
-    console.error('Fatal error:', err);
+async function waitForStepFinishApprovingAll(
+    node: SyncNode,
+    sessionId: SessionID,
+    afterCount: number,
+    timeoutMs: number,
+    opts: { autoAnswerQuestions?: boolean } = {},
+): Promise<void> {
+    await waitForConditionApprovingAll(
+        node,
+        () => assistantMessagesSince(node, sessionId, afterCount).some(hasTerminalStepFinish),
+        timeoutMs,
+        opts,
+    );
+}
+
+async function waitForPendingPermissionInAnySession(
+    node: SyncNode,
+    timeoutMs: number,
+): Promise<{ sessionId: SessionID; permission: any }> {
+    await waitForCondition(() => {
+        return Array.from(node.state.sessions.values()).some((session) =>
+            session.permissions.some((permission) => !permission.resolved),
+        );
+    }, timeoutMs);
+
+    for (const session of node.state.sessions.values()) {
+        const permission = session.permissions.find((item) => !item.resolved);
+        if (permission) {
+            return { sessionId: session.info.id, permission };
+        }
+    }
+    throw new Error('Permission appeared and disappeared before it could be captured');
+}
+
+async function main(): Promise<void> {
+    await mkdir(OUTPUT_DIR, { recursive: true });
+    process.env.HAPPY_TEST_SERVER_PORT = '34191';
+
+    let webProcess: ChildProcess | null = null;
+    let node!: SyncNode;
+    const results: StepResult[] = [];
+
+    try {
+        log('Booting isolated server + daemon...');
+        await bootTestInfrastructure();
+        const projectDir = await createIsolatedProjectCopy('environments/lab-rat-todo-project');
+        const appJsPath = resolvePath(projectDir, 'app.js');
+
+        webProcess = startWebAppServer(getServerUrl());
+        log('Waiting for Expo web...');
+        await waitForWebReady();
+
+        node = new SyncNode(
+            getServerUrl(),
+            makeAccountToken(),
+            makeKeyMaterial(),
+            { resolveSessionKeyMaterial },
+        );
+        await node.connect();
+
+        const makeSessionUrl = (sessionId: string) => {
+            const secret64url = encodeBase64Url(getEncryptionSecret());
+            return `http://127.0.0.1:${WEB_PORT}/session/${sessionId}?dev_token=${encodeURIComponent(getAuthToken())}&dev_secret=${encodeURIComponent(secret64url)}`;
+        };
+        const homeUrl = (() => {
+            const secret64url = encodeBase64Url(getEncryptionSecret());
+            return `http://127.0.0.1:${WEB_PORT}/?dev_token=${encodeURIComponent(getAuthToken())}&dev_secret=${encodeURIComponent(secret64url)}`;
+        })();
+
+        log('Spawning initial Claude session via daemon...');
+        let currentSessionId = await spawnSessionViaDaemon({ directory: projectDir, agent: 'claude' }) as SessionID;
+        await waitForCondition(() => node.state.sessions.has(currentSessionId as string), 30000);
+        let resumeSourceSessionId: SessionID | null = null;
+        const allSessionIds: string[] = [currentSessionId as string];
+
+        const writeInfo = async (status: string, currentStep?: StepDef) => {
+            await writeFile(INFO_FILE, JSON.stringify({
+                status,
+                serverUrl: getServerUrl(),
+                webUrl: `http://127.0.0.1:${WEB_PORT}`,
+                daemonPort: getDaemonHttpPort(),
+                projectDir,
+                currentSessionId,
+                currentSessionUrl: makeSessionUrl(currentSessionId as string),
+                resumeSourceSessionId,
+                allSessionUrls: allSessionIds.map((id) => ({ sessionId: id, url: makeSessionUrl(id) })),
+                currentStep: currentStep ? { id: currentStep.id, name: currentStep.name } : null,
+                resultsFile: RESULTS_FILE,
+            }, null, 2));
+        };
+
+        await writeInfo('booted');
+
+        log('Starting agent-browser recording...');
+        await runAgentBrowser(['record', 'stop'], true);
+        await runAgentBrowser(['close'], true);
+        await runAgentBrowser(['set', 'viewport', '1440', '1080']);
+        await runAgentBrowser(['record', 'start', VIDEO_FILE, makeSessionUrl(currentSessionId as string)]);
+        browserUrl = makeSessionUrl(currentSessionId as string);
+        await runAgentBrowser(['wait', '2500'], true);
+
+        const step0 = STEPS[0];
+        await captureBrowserState(stepFileBase(step0), {
+            url: makeSessionUrl(currentSessionId as string),
+            fullPage: true,
+            scroll: 'none',
+        });
+        results.push({
+            stepId: 0,
+            name: step0.name,
+            status: 'pass',
+            durationMs: 0,
+            sessionId: currentSessionId as string,
+            tools: [],
+            textSnippet: '',
+            continuityWarning: false,
+            error: null,
+            screenshot: `${stepFileBase(step0)}.png`,
+            snapshot: `${stepFileBase(step0)}.snapshot.txt`,
+        });
+        await writeFile(RESULTS_FILE, JSON.stringify(results, null, 2));
+        await writeInfo('running', step0);
+
+        for (const step of STEPS.slice(1)) {
+            const startedAt = Date.now();
+            let error: string | null = null;
+            const sessionBeforeStep = currentSessionId as string;
+            const beforeAssistant = getAssistantMessages(node, currentSessionId).length;
+            let artifactAfterCount = beforeAssistant;
+            let snapshotText = '';
+
+            log(`Step ${step.id} — ${step.name}`);
+            await writeInfo('running', step);
+
+            try {
+                const sendPrompt = async (
+                    prompt: string,
+                    msgId: string,
+                    model = CLAUDE_MODEL,
+                ) => {
+                    await node.sendMessage(currentSessionId, makeUserMessage(msgId, currentSessionId, prompt, 'claude', model));
+                };
+
+                if (step.action === 'cancel') {
+                    if (!step.prompt) throw new Error('Cancel step missing prompt');
+                    await sendPrompt(step.prompt, `step${step.id}`);
+                    await waitForCondition(
+                        () => getAssistantMessages(node, currentSessionId).length > beforeAssistant,
+                        30000,
+                    );
+                    resumeSourceSessionId = currentSessionId;
+                    await node.stopSession(currentSessionId);
+                } else if (step.action === 'stop') {
+                    resumeSourceSessionId = currentSessionId;
+                    await node.stopSession(currentSessionId);
+                } else if (step.action === 'resume') {
+                    if (!resumeSourceSessionId) {
+                        throw new Error(`No stopped session available to resume for step ${step.id}`);
+                    }
+                    currentSessionId = await spawnSessionViaDaemon({
+                        directory: projectDir,
+                        agent: 'claude',
+                        sessionId: resumeSourceSessionId,
+                    }) as SessionID;
+                    await waitForCondition(() => node.state.sessions.has(currentSessionId as string), 30000);
+                    allSessionIds.push(currentSessionId as string);
+                    await ensureBrowserOn(makeSessionUrl(currentSessionId as string));
+
+                    if (step.prompt) {
+                        const resumedBefore = getAssistantMessages(node, currentSessionId).length;
+                        artifactAfterCount = resumedBefore;
+                        await sendPrompt(step.prompt, `step${step.id}`);
+                        await waitForStepFinishApprovingAll(node, currentSessionId, resumedBefore, step.timeoutMs);
+                    } else {
+                        artifactAfterCount = 0;
+                    }
+                    resumeSourceSessionId = null;
+                } else if (step.id === 3) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    try {
+                        const pending = await waitForPendingPermissionInAnySession(node, 30000);
+                        await captureBrowserState('component-permission-prompt-denied', {
+                            url: makeSessionUrl(pending.sessionId as string),
+                            fullPage: false,
+                            scroll: 'bottom',
+                        });
+                        await node.denyPermission(pending.sessionId, pending.permission.permissionId, {
+                            reason: 'No — show me the diff first.',
+                        });
+                        await sendPrompt('No — show me the diff first.', 'step3-followup');
+                    } catch {
+                        log('  No permission prompt appeared for Step 3; accepting text-only recovery path.');
+                    }
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
+                } else if (step.id === 4) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    try {
+                        const pending = await waitForPendingPermissionInAnySession(node, 30000);
+                        await captureBrowserState('component-permission-prompt-approve-once', {
+                            url: makeSessionUrl(pending.sessionId as string),
+                            fullPage: false,
+                            scroll: 'bottom',
+                        });
+                        await node.approvePermission(pending.sessionId, pending.permission.permissionId, { decision: 'once' });
+                    } catch {
+                        log('  No permission prompt appeared for Step 4; waiting for Claude text/tool response.');
+                    }
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
+                } else if (step.id === 5) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    try {
+                        const pending = await waitForPendingPermissionInAnySession(node, 30000);
+                        await captureBrowserState('component-permission-prompt-approve-always', {
+                            url: makeSessionUrl(pending.sessionId as string),
+                            fullPage: false,
+                            scroll: 'bottom',
+                        });
+                        await node.approvePermission(pending.sessionId, pending.permission.permissionId, {
+                            decision: 'always',
+                            allowTools: [pending.permission.block.permission],
+                        });
+                    } catch {
+                        log('  No permission prompt appeared for Step 5; waiting for Claude text/tool response.');
+                    }
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
+                } else if (step.id === 12) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    let answered = false;
+                    try {
+                        await waitForPendingQuestion(node, currentSessionId, 60000);
+                        await captureBrowserState('component-question-prompt', {
+                            url: makeSessionUrl(currentSessionId as string),
+                            fullPage: false,
+                            scroll: 'bottom',
+                        });
+                        const question = node.state.sessions.get(currentSessionId as string)?.questions.find((item) => !item.resolved);
+                        if (question) {
+                            await node.answerQuestion(currentSessionId, question.questionId, [['Vitest']]);
+                            answered = true;
+                        }
+                    } catch {
+                        await waitForConditionApprovingAll(
+                            node,
+                            () => assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) => {
+                                const text = getFullText(message).toLowerCase();
+                                return text.includes('which one') || text.includes('vitest') || hasTerminalStepFinish(message);
+                            }),
+                            60000,
+                        );
+                        await captureBrowserState('component-question-prompt-text', {
+                            url: makeSessionUrl(currentSessionId as string),
+                            fullPage: false,
+                            scroll: 'bottom',
+                        });
+                    }
+
+                    if (!answered) {
+                        await sendPrompt('Vitest', 'step12-answer');
+                    }
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
+                } else if (step.id === 17) {
+                    await node.sendRuntimeConfigChange(currentSessionId, {
+                        source: 'user',
+                        model: CLAUDE_HAIKU_MODEL.modelID,
+                    });
+                    await sendPrompt(step.prompt!, `step${step.id}`, CLAUDE_HAIKU_MODEL);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
+                } else if (step.id === 25) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    try {
+                        await waitForPendingPermissionInAnySession(node, 60000);
+                        await captureBrowserState('component-multiple-permissions', {
+                            url: makeSessionUrl(currentSessionId as string),
+                            fullPage: false,
+                            scroll: 'bottom',
+                        });
+                    } catch {}
+                    await waitForConditionApprovingAll(
+                        node,
+                        () => assistantMessagesSince(node, currentSessionId, beforeAssistant).some(hasTerminalStepFinish),
+                        step.timeoutMs,
+                    );
+                } else if (step.id === 27) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    try {
+                        const pending = await waitForPendingPermissionInAnySession(node, 90000);
+                        await captureBrowserState('component-subagent-permission', {
+                            url: makeSessionUrl(pending.sessionId as string),
+                            fullPage: false,
+                            scroll: 'bottom',
+                        });
+                        await node.approvePermission(pending.sessionId, pending.permission.permissionId, { decision: 'once' });
+                    } catch {}
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
+                } else if (step.id === 28) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    const pending = await waitForPendingPermissionInAnySession(node, 90000);
+                    await captureBrowserState('component-permission-prompt-pending-stop', {
+                        url: makeSessionUrl(pending.sessionId as string),
+                        fullPage: false,
+                        scroll: 'bottom',
+                    });
+                    resumeSourceSessionId = currentSessionId;
+                    await node.stopSession(currentSessionId);
+                } else if (step.id === 31) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    await waitForConditionApprovingAll(node, () => {
+                        const assistant = assistantMessagesSince(node, currentSessionId, beforeAssistant);
+                        const fullText = assistant.map(getFullText).join(' ');
+                        const hasTimeResponse = /\btime\b|:\d{2}|\bam\b|\bpm\b/.test(fullText);
+                        const hasBackgroundTool = assistantToolsSince(node, currentSessionId, beforeAssistant).some((tool) =>
+                            (tool.tool === 'Bash' || tool.tool === 'TaskOutput')
+                            && /donezen|sleep 30/.test(toolText(tool)),
+                        );
+                        return assistant.some(hasTerminalStepFinish) && hasTimeResponse && hasBackgroundTool;
+                    }, step.timeoutMs);
+                    await captureBrowserState('component-background-running', {
+                        url: makeSessionUrl(currentSessionId as string),
+                        fullPage: false,
+                        scroll: 'bottom',
+                    });
+                } else if (step.id === 32) {
+                    let localBefore = beforeAssistant;
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+
+                    const hasCompletedBackgroundOutput = () => assistantToolsSince(node, currentSessionId, localBefore).some((tool) =>
+                        (tool.tool === 'TaskOutput' || tool.tool === 'Bash')
+                        && tool.state.status === 'completed'
+                        && 'output' in tool.state
+                        && typeof tool.state.output === 'string'
+                        && tool.state.output.includes('donezen'),
+                    );
+
+                    const hasTerminalCompletionTurn = () => assistantMessagesSince(node, currentSessionId, localBefore).some((message) =>
+                        hasTerminalStepFinish(message)
+                        && /donezen|background task (completed|finished)|it's done|output/.test(getFullText(message)),
+                    );
+
+                    const hasStillRunningTurn = () => assistantMessagesSince(node, currentSessionId, localBefore).some((message) =>
+                        hasTerminalStepFinish(message)
+                        && /still running|hasn't been 30 seconds yet|i'll be notified|not finished yet/.test(getFullText(message)),
+                    );
+
+                    await waitForConditionApprovingAll(node, () => {
+                        if (hasCompletedBackgroundOutput() && hasTerminalCompletionTurn()) {
+                            return true;
+                        }
+                        return hasStillRunningTurn();
+                    }, 45000);
+
+                    if (!hasCompletedBackgroundOutput()) {
+                        localBefore = getAssistantMessages(node, currentSessionId).length;
+                        artifactAfterCount = localBefore;
+                        await sendPrompt('Wait for that same background task to finish, then tell me the output exactly.', 'step32-retry');
+                    }
+
+                    await waitForConditionApprovingAll(node, () => {
+                        return hasCompletedBackgroundOutput() && hasTerminalCompletionTurn();
+                    }, 240000);
+                    await captureBrowserState('component-background-completed', {
+                        url: makeSessionUrl(currentSessionId as string),
+                        fullPage: false,
+                        scroll: 'bottom',
+                    });
+                } else if (step.id === 33) {
+                    let localBefore = beforeAssistant;
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+
+                    const hasStep33Work = () => {
+                        const tools = assistantToolsSince(node, currentSessionId, localBefore);
+                        const hasStepSpecificBackgroundTool = tools.some((tool) =>
+                            (tool.tool === 'Bash' || tool.tool === 'TaskOutput')
+                            && /background two|sleep 20/.test(toolText(tool)),
+                        );
+                        const hasBackgroundComment = existsSync(appJsPath)
+                            && readFileSync(appJsPath, 'utf8').includes('// background task test');
+                        const hasStepSpecificText = assistantMessagesSince(node, currentSessionId, localBefore).some((message) =>
+                            /background two|background task test/.test(getFullText(message)),
+                        );
+                        return hasStepSpecificBackgroundTool && (hasBackgroundComment || hasStepSpecificText);
+                    };
+
+                    try {
+                        await waitForConditionApprovingAll(node, () => {
+                            if (hasStep33Work()) {
+                                return true;
+                            }
+                            return assistantMessagesSince(node, currentSessionId, localBefore).some((message) =>
+                                hasTerminalStepFinish(message)
+                                && /background task completion notification|we already/.test(getFullText(message)),
+                            );
+                        }, 30000);
+                    } catch {}
+
+                    if (!hasStep33Work()) {
+                        localBefore = getAssistantMessages(node, currentSessionId).length;
+                        artifactAfterCount = localBefore;
+                        await sendPrompt('That was the previous background task. Now do this new request: start a NEW background task `sleep 20 && echo "background two"` and, while it is running, add `// background task test` to the top of app.js.', 'step33-retry');
+                    }
+
+                    await waitForConditionApprovingAll(node, () => hasStep33Work(), step.timeoutMs);
+                    await captureBrowserState('component-background-concurrent', {
+                        url: makeSessionUrl(currentSessionId as string),
+                        fullPage: false,
+                        scroll: 'bottom',
+                    });
+                } else if (step.id === 34) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    await waitForConditionApprovingAll(node, () => {
+                        return assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) => {
+                            const text = getFullText(message);
+                            return hasTerminalStepFinish(message)
+                                && text.length > 50
+                                && /(git|summary|modified|changed|added|removed|app\.js|index\.html|styles\.css)/.test(text);
+                        });
+                    }, step.timeoutMs);
+                } else if (step.id === 35) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    await waitForConditionApprovingAll(node, () => {
+                        return assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) =>
+                            hasTerminalStepFinish(message) && getFullText(message).length > 30,
+                        );
+                    }, step.timeoutMs);
+                    await captureBrowserState('component-taskcreate', {
+                        url: makeSessionUrl(currentSessionId as string),
+                        fullPage: false,
+                        scroll: 'bottom',
+                    });
+                } else if (step.id === 36) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    await waitForConditionApprovingAll(node, () => {
+                        return assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) =>
+                            hasTerminalStepFinish(message) && getFullText(message).length > 30,
+                        );
+                    }, step.timeoutMs);
+                    await captureBrowserState('component-taskoutput', {
+                        url: makeSessionUrl(currentSessionId as string),
+                        fullPage: false,
+                        scroll: 'bottom',
+                    });
+                } else if (step.id === 37) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    await waitForConditionApprovingAll(node, () => {
+                        const tools = assistantToolsSince(node, currentSessionId, beforeAssistant);
+                        const hasEdit = tools.some((tool) =>
+                            (tool.tool === 'Edit' || tool.tool === 'Write')
+                            && (tool.state.status === 'completed' || tool.state.status === 'error'),
+                        );
+                        const hasComment = existsSync(appJsPath)
+                            && readFileSync(appJsPath, 'utf8').includes('// multi-task test');
+                        const hasTerminal = assistantMessagesSince(node, currentSessionId, beforeAssistant).some(hasTerminalStepFinish);
+                        return hasTerminal && (hasEdit || hasComment);
+                    }, step.timeoutMs);
+                    await captureBrowserState('component-multiple-background-tasks', {
+                        url: makeSessionUrl(currentSessionId as string),
+                        fullPage: false,
+                        scroll: 'bottom',
+                    });
+                } else if (step.id === 38) {
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    await waitForConditionApprovingAll(node, () => {
+                        return assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) => {
+                            const text = getFullText(message);
+                            return hasTerminalStepFinish(message)
+                                && text.length > 50
+                                && /(summary|modified|changed|files|app\.js)/.test(text);
+                        });
+                    }, step.timeoutMs);
+                } else {
+                    if (!step.prompt) {
+                        throw new Error(`Step ${step.id} is missing a prompt`);
+                    }
+                    await sendPrompt(step.prompt, `step${step.id}`);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs, {
+                        autoAnswerQuestions: false,
+                    });
+                }
+            } catch (caught) {
+                error = caught instanceof Error ? caught.message : String(caught);
+                log(`  ERROR: ${error}`);
+            }
+
+            snapshotText = await captureBrowserState(stepFileBase(step), {
+                url: makeSessionUrl(currentSessionId as string),
+                fullPage: true,
+                scroll: 'none',
+            });
+
+            const assistantMessages = getAssistantMessages(node, currentSessionId);
+            const continuityWarning = /don't have (any )?context|no context from the previous session|start from scratch/i.test(snapshotText);
+            const result: StepResult = {
+                stepId: step.id,
+                name: step.name,
+                status: error ? 'fail' : 'pass',
+                durationMs: Date.now() - startedAt,
+                sessionId: currentSessionId as string,
+                tools: collectToolParts(assistantMessages, artifactAfterCount),
+                textSnippet: collectTextSnippet(assistantMessages, artifactAfterCount),
+                continuityWarning,
+                error,
+                screenshot: `${stepFileBase(step)}.png`,
+                snapshot: `${stepFileBase(step)}.snapshot.txt`,
+            };
+            results.push(result);
+
+            log(`  ${result.status.toUpperCase()} ${(result.durationMs / 1000).toFixed(1)}s (${sessionBeforeStep} -> ${result.sessionId})`);
+            if (continuityWarning) {
+                log('  Continuity warning detected in browser snapshot');
+            }
+
+            await writeFile(RESULTS_FILE, JSON.stringify(results, null, 2));
+            await writeInfo(error ? 'step_failed' : 'running', step);
+        }
+
+        for (const [index, sessionId] of allSessionIds.entries()) {
+            const prefix = `session-${String(index + 1).padStart(2, '0')}`;
+            await captureBrowserState(`${prefix}-top`, {
+                url: makeSessionUrl(sessionId),
+                fullPage: false,
+                scroll: 'top',
+            });
+            await captureBrowserState(`${prefix}-bottom`, {
+                url: makeSessionUrl(sessionId),
+                fullPage: false,
+                scroll: 'bottom',
+            });
+        }
+
+        await captureBrowserState('home-session-list', {
+            url: homeUrl,
+            fullPage: true,
+            scroll: 'none',
+        });
+
+        await runAgentBrowser(['record', 'stop'], true);
+        await runAgentBrowser(['close'], true);
+        await writeInfo('completed');
+        log(`Saved artifacts to ${OUTPUT_DIR}`);
+    } finally {
+        if (node) {
+            node.disconnect();
+        }
+        if (webProcess && !webProcess.killed) {
+            webProcess.kill('SIGTERM');
+        }
+        try {
+            await runAgentBrowser(['record', 'stop'], true);
+        } catch {}
+        try {
+            await runAgentBrowser(['close'], true);
+        } catch {}
+        await teardownTestInfrastructure();
+    }
+}
+
+main().catch((error) => {
+    console.error(error);
     process.exit(1);
 });

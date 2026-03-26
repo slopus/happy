@@ -26,11 +26,21 @@ the expected behavioral pattern within the timeout.
 
 Both `@slopus/happy-sync` and `happy-coder` typecheck clean with no errors.
 
+### Level 0 fix: runAcp mock SyncBridge (DONE)
+
+Fixed `src/agent/acp/runAcp.test.ts` — mock SyncBridge was missing 6 methods added
+during the refactor: `onPermissionDecision`, `onRuntimeConfigChange`, `onAbortRequest`,
+`sendPermissionRequest`, `sendMessage`, `updateMessage`. Also updated assertions to
+check v3 message path instead of old envelope path. All 9 runAcp tests now pass.
+
+Full happy-cli suite running — awaiting results.
+
 ### Next priorities
 
-1. Run Level 2 Codex and OpenCode tests to verify those pass
-2. Investigate Level 2 Claude flaky steps — are timeouts too aggressive?
-3. Fix pre-existing bugs: session title "unknown", raw project paths
+1. Verify full happy-cli test suite (50 files) passes with runAcp fix
+2. Run Level 2 Codex and OpenCode tests to verify those pass
+3. Investigate Level 2 Claude flaky steps — are timeouts too aggressive?
+4. Fix pre-existing bugs: session title "unknown", raw project paths
 
 ## Completed Tasks
 
