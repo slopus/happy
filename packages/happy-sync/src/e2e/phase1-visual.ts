@@ -14,7 +14,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -76,6 +76,18 @@ interface StepResult {
     error: string | null;
     screenshot: string;
     snapshot: string;
+}
+
+interface ChatScrollInfo {
+    found: boolean;
+    inverted?: boolean;
+    scrollTop?: number;
+    maxScrollTop?: number;
+    scrollHeight?: number;
+    clientHeight?: number;
+    width?: number;
+    height?: number;
+    left?: number;
 }
 
 const STEPS: StepDef[] = [
@@ -230,6 +242,99 @@ async function runAgentBrowser(args: string[], allowFailure = false): Promise<st
     return `${result.stdout}${result.stderr}`.trim();
 }
 
+function parseAgentBrowserJson<T>(raw: string): T | null {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(trimmed) as T;
+    } catch {}
+
+    try {
+        return JSON.parse(JSON.parse(trimmed) as string) as T;
+    } catch {
+        return null;
+    }
+}
+
+async function evalBrowserJson<T>(script: string): Promise<T | null> {
+    const raw = await runAgentBrowser(['eval', script], true);
+    return parseAgentBrowserJson<T>(raw);
+}
+
+function buildChatScrollScript(target: 'newest' | 'oldest' | number | null): string {
+    return `(() => {
+        const isScrollable = (style, el) => {
+            const overflowY = style.overflowY || style.overflow;
+            return (overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 80;
+        };
+        const candidates = Array.from(document.querySelectorAll('div, [role="list"]'))
+            .map((el) => {
+                const style = getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                if (!isScrollable(style, el)) return null;
+                if (rect.width < window.innerWidth * 0.28) return null;
+                if (rect.height < window.innerHeight * 0.22) return null;
+                const area = rect.width * rect.height;
+                const centerX = rect.left + rect.width / 2;
+                const rightBias = centerX > window.innerWidth * 0.45 ? 500000 : 0;
+                const widthBias = rect.width > window.innerWidth * 0.45 ? 250000 : 0;
+                const score = area + Math.min(el.scrollHeight, 50000) * 10 + rightBias + widthBias;
+                return { el, rect, score };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.score - a.score);
+        const best = candidates[0];
+        if (!best) {
+            return JSON.stringify({ found: false });
+        }
+
+        const el = best.el;
+        const rect = best.rect;
+        // The transcript DOM uses an inverted transform, but the actual scroll
+        // mapping behaves like a normal list on web: scrollTop=0 shows the
+        // oldest visible content and maxScrollTop shows the latest content.
+        const inverted = false;
+        const maxScrollTop = Math.max(el.scrollHeight - el.clientHeight, 0);
+        const target = ${target === null ? 'null' : JSON.stringify(target)};
+
+        if (target !== null) {
+            let nextScrollTop;
+            if (target === 'oldest') {
+                nextScrollTop = inverted ? maxScrollTop : 0;
+            } else if (target === 'newest') {
+                nextScrollTop = inverted ? 0 : maxScrollTop;
+            } else {
+                nextScrollTop = Number(target);
+            }
+            el.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+            el.dispatchEvent(new Event('scroll', { bubbles: true }));
+        }
+
+        return JSON.stringify({
+            found: true,
+            inverted,
+            scrollTop: el.scrollTop,
+            maxScrollTop,
+            scrollHeight: el.scrollHeight,
+            clientHeight: el.clientHeight,
+            width: rect.width,
+            height: rect.height,
+            left: rect.left,
+        });
+    })()`;
+}
+
+async function scrollChatTranscript(target: 'newest' | 'oldest' | number): Promise<ChatScrollInfo | null> {
+    return evalBrowserJson<ChatScrollInfo>(buildChatScrollScript(target));
+}
+
+async function getChatScrollInfo(): Promise<ChatScrollInfo | null> {
+    return evalBrowserJson<ChatScrollInfo>(buildChatScrollScript(null));
+}
+
 async function ensureBrowserOn(url: string): Promise<void> {
     if (browserUrl !== url) {
         await runAgentBrowser(['open', url]);
@@ -242,15 +347,19 @@ async function ensureBrowserOn(url: string): Promise<void> {
 
 async function captureBrowserState(
     basename: string,
-    opts: { url: string; fullPage?: boolean; scroll?: 'top' | 'bottom' | 'none' },
+    opts: { url: string; fullPage?: boolean; scroll?: 'top' | 'bottom' | 'none'; chatScrollTop?: number },
 ): Promise<string> {
     await ensureBrowserOn(opts.url);
-    if (opts.scroll === 'top') {
-        await runAgentBrowser(['eval', 'window.scrollTo(0, 0)']);
-        await runAgentBrowser(['wait', '500'], true);
+
+    if (typeof opts.chatScrollTop === 'number') {
+        await scrollChatTranscript(opts.chatScrollTop);
+        await runAgentBrowser(['wait', '1500'], true);
+    } else if (opts.scroll === 'top') {
+        await scrollChatTranscript('oldest');
+        await runAgentBrowser(['wait', '1500'], true);
     } else if (opts.scroll === 'bottom') {
-        await runAgentBrowser(['eval', 'window.scrollTo(0, document.documentElement.scrollHeight)']);
-        await runAgentBrowser(['wait', '700'], true);
+        await scrollChatTranscript('newest');
+        await runAgentBrowser(['wait', '1500'], true);
     }
 
     const screenshotPath = join(OUTPUT_DIR, `${basename}.png`);
@@ -263,6 +372,48 @@ async function captureBrowserState(
     const snapshot = await runAgentBrowser(['snapshot', '--compact', '--depth', '8'], true);
     await writeFile(snapshotPath, snapshot);
     return snapshot;
+}
+
+async function captureSessionTranscript(prefix: string, url: string): Promise<void> {
+    await ensureBrowserOn(url);
+    const info = await getChatScrollInfo();
+    if (!info?.found || !info.clientHeight || info.maxScrollTop === undefined) {
+        await captureBrowserState(`${prefix}-segment-01`, {
+            url,
+            fullPage: false,
+            scroll: 'bottom',
+        });
+        return;
+    }
+
+    const stepSize = Math.max(Math.floor(info.clientHeight * 0.82), 240);
+    const positions: number[] = [];
+
+    if (info.inverted) {
+        for (let pos = info.maxScrollTop; pos >= 0; pos -= stepSize) {
+            positions.push(pos);
+        }
+        if (positions[positions.length - 1] !== 0) {
+            positions.push(0);
+        }
+    } else {
+        for (let pos = 0; pos <= info.maxScrollTop; pos += stepSize) {
+            positions.push(pos);
+        }
+        if (positions[positions.length - 1] !== info.maxScrollTop) {
+            positions.push(info.maxScrollTop);
+        }
+    }
+
+    const uniquePositions = positions.filter((value, index) => index === 0 || value !== positions[index - 1]);
+    for (const [index, position] of uniquePositions.entries()) {
+        await captureBrowserState(`${prefix}-segment-${String(index + 1).padStart(2, '0')}`, {
+            url,
+            fullPage: false,
+            scroll: 'none',
+            chatScrollTop: position,
+        });
+    }
 }
 
 function startWebAppServer(serverUrl: string): ChildProcess {
@@ -365,6 +516,7 @@ async function waitForPendingPermissionInAnySession(
 
 async function main(): Promise<void> {
     await mkdir(OUTPUT_DIR, { recursive: true });
+    await rm(VIDEO_FILE, { force: true }).catch(() => {});
     process.env.HAPPY_TEST_SERVER_PORT = '34191';
 
     let webProcess: ChildProcess | null = null;
@@ -433,8 +585,8 @@ async function main(): Promise<void> {
         const step0 = STEPS[0];
         await captureBrowserState(stepFileBase(step0), {
             url: makeSessionUrl(currentSessionId as string),
-            fullPage: true,
-            scroll: 'none',
+            fullPage: false,
+            scroll: 'bottom',
         });
         results.push({
             stepId: 0,
@@ -813,8 +965,8 @@ async function main(): Promise<void> {
 
             snapshotText = await captureBrowserState(stepFileBase(step), {
                 url: makeSessionUrl(currentSessionId as string),
-                fullPage: true,
-                scroll: 'none',
+                fullPage: false,
+                scroll: 'bottom',
             });
 
             const assistantMessages = getAssistantMessages(node, currentSessionId);
@@ -845,16 +997,7 @@ async function main(): Promise<void> {
 
         for (const [index, sessionId] of allSessionIds.entries()) {
             const prefix = `session-${String(index + 1).padStart(2, '0')}`;
-            await captureBrowserState(`${prefix}-top`, {
-                url: makeSessionUrl(sessionId),
-                fullPage: false,
-                scroll: 'top',
-            });
-            await captureBrowserState(`${prefix}-bottom`, {
-                url: makeSessionUrl(sessionId),
-                fullPage: false,
-                scroll: 'bottom',
-            });
+            await captureSessionTranscript(prefix, makeSessionUrl(sessionId));
         }
 
         await captureBrowserState('home-session-list', {
