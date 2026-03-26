@@ -1,5 +1,15 @@
 const fs = require('fs');
 
+// Fix Windows Unicode rendering (box-drawing characters)
+if (process.platform === 'win32') {
+    const { execSync } = require('child_process');
+    try {
+        execSync('chcp 65001', { stdio: 'ignore' });
+    } catch (e) {
+        // chcp not available, ignore
+    }
+}
+
 // Disable autoupdater (never works really)
 process.env.DISABLE_AUTOUPDATER = '1';
 
