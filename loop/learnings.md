@@ -287,3 +287,11 @@ If you discover something non-obvious, append it here under the right section.
   - SyncNode permission API: `perm.permissionId` not `perm.id`, and
     `approvePermission(sid, pid, { decision: 'once'|'always' })` not
     `{ always: bool }`. Question API: `q.questionId` not `q.id`.
+- Phase 1.5 UX review (March 26, 2026): Codex (gpt-5.4) reviewed all 40
+  screenshots. Key finding: screenshots scroll `document.documentElement`
+  instead of the chat container element, so transcript content is above
+  viewport in all captures. This caused Codex to flag false FAIL verdicts
+  for categories 2-5 (content not visible). Visual consistency PASSED.
+  Only real issue: session titles "unknown" (pre-existing). Gemini CLI
+  had no auth configured (requires interactive browser OAuth), so only
+  Codex + manual review was done. No refactor regressions detected.
