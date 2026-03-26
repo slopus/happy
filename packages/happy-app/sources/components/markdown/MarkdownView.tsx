@@ -378,6 +378,7 @@ const style = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         fontWeight: '400',
         textDecorationLine: 'underline',
+        cursor: 'pointer',
     },
 
     // Headers
