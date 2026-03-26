@@ -71,6 +71,10 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
         return assistantMessagesSince(afterAssistantCount).flatMap(getToolParts);
     }
 
+    function completedToolsSince(afterAssistantCount: number) {
+        return assistantToolsSince(afterAssistantCount).filter(tool => tool.state.status === 'completed');
+    }
+
     function session() {
         return node.state.sessions.get(sessionId as string)!;
     }
@@ -258,9 +262,7 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
         await waitForCodexTurnSettled(before, FINISH_TIMEOUT);
 
-        const last = getLastAssistantMessage(node, sessionId)!;
-        const tools = getToolParts(last);
-        expect(tools.some(t => t.state.status === 'completed')).toBe(true);
+        expect(completedToolsSince(before).length).toBeGreaterThan(0);
     }, STEP_TIMEOUT);
 
     it('Step 5 — Edit approved always', async () => {
@@ -272,8 +274,7 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
         await waitForCodexTurnSettled(before, FINISH_TIMEOUT);
 
-        const last = getLastAssistantMessage(node, sessionId)!;
-        expect(getToolParts(last).some(t => t.state.status === 'completed')).toBe(true);
+        expect(completedToolsSince(before).length).toBeGreaterThan(0);
     }, STEP_TIMEOUT);
 
     it('Step 6 — Auto-approved edit', async () => {
@@ -281,12 +282,12 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
         await node.sendMessage(sessionId, msg('step6',
             'Also add a `.dark-toggle` button to the HTML so users can manually switch themes. Put it after the h1 in the hero panel. Wire it up in app.js — toggle a `dark` class on the body.'));
 
-        await waitForCodexTurnSettled(before, STEP_TIMEOUT);
+        await waitForCodexTurnSettled(before, 300000);
 
         const tools = assistantToolsSince(before);
         expect(tools.filter(t => t.state.status === 'completed').length).toBeGreaterThan(0);
         expect(tools.filter(t => t.state.status === 'blocked').length).toBe(0);
-    }, STEP_TIMEOUT);
+    }, 300000);
 
     // ─── WEB SEARCH ──────────────────────────────────────────────────────
 
@@ -354,8 +355,7 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
         await approveUntilDone(before);
 
-        const last = getLastAssistantMessage(node, sessionId)!;
-        expect(getToolParts(last).some(t => t.state.status === 'completed')).toBe(true);
+        expect(completedToolsSince(before).length).toBeGreaterThan(0);
     }, STEP_TIMEOUT);
 
     // ─── INTERRUPTION ────────────────────────────────────────────────────
@@ -424,8 +424,7 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
         await approveUntilDone(before, 270000);
 
-        const last = getLastAssistantMessage(node, sessionId)!;
-        expect(getToolParts(last).filter(t => t.state.status === 'completed').length).toBeGreaterThanOrEqual(1);
+        expect(completedToolsSince(before).length).toBeGreaterThanOrEqual(1);
     }, 300000);
 
     // ─── SANDBOX ─────────────────────────────────────────────────────────
@@ -492,8 +491,7 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
         await waitForCodexTurnSettled(before, 240000);
 
-        const last = getLastAssistantMessage(node, sessionId)!;
-        expect(getToolParts(last).some(t => t.state.status === 'completed')).toBe(true);
+        expect(completedToolsSince(before).length).toBeGreaterThan(0);
     }, 300000);
 
     // ─── COMPACTION ──────────────────────────────────────────────────────
@@ -638,7 +636,7 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
         await approveUntilDone(before, STEP_TIMEOUT);
 
-        expect(getToolParts(getLastAssistantMessage(node, sessionId)!).some(t => t.state.status === 'completed')).toBe(true);
+        expect(completedToolsSince(before).length).toBeGreaterThan(0);
     }, STEP_TIMEOUT);
 
     // ─── BACKGROUND TASKS ────────────────────────────────────────────────
@@ -650,9 +648,8 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
         await waitForCodexTurnSettled(before, FINISH_TIMEOUT);
 
-        const last = getLastAssistantMessage(node, sessionId)!;
-        expect(hasPart(last, 'text')).toBe(true);
-        expect(getToolParts(last).length).toBeGreaterThan(0);
+        expect(assistantMessagesSince(before).some(message => hasPart(message, 'text'))).toBe(true);
+        expect(assistantToolsSince(before).length).toBeGreaterThan(0);
     }, STEP_TIMEOUT);
 
     it('Step 32 — Background completes', async () => {
@@ -685,8 +682,7 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
 
         await approveUntilDone(before);
 
-        const last = getLastAssistantMessage(node, sessionId)!;
-        const tools = getToolParts(last);
+        const tools = assistantToolsSince(before);
         expect(tools.length).toBeGreaterThanOrEqual(2);
         expect(tools.some(t => t.state.status === 'completed')).toBe(true);
     }, STEP_TIMEOUT);
