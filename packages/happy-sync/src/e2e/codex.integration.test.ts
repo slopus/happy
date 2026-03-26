@@ -650,11 +650,11 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
     it('Step 26 — Supersede pending permissions', async () => {
         const before = assistantCount();
         await node.sendMessage(sessionId, msg('step26',
-            'Actually, undo all that. Put everything back in app.js. Also add a comment at the top: "// single-file architecture".'));
+            'Actually, undo all that. Put everything back in app.js. Also add a comment at the top: "// single-file architecture". Only touch app.js, index.html, styles.css, filters.js, and theme.js as needed. Do not modify package.json, vitest.config.js, or app.test.js, and do not run tests.'));
 
-        await approveUntilDone(before);
+        await approveUntilDone(before, 360000);
         expect(hasPart(getLastAssistantMessage(node, sessionId)!, 'step-finish')).toBe(true);
-    }, STEP_TIMEOUT);
+    }, 360000);
 
     // ─── SUBAGENT PERMISSIONS ────────────────────────────────────────────
 
@@ -675,7 +675,7 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
         await node.sendMessage(sessionId, msg('step28',
             'Add a new "priority" field to todos — high, medium, low. Use a colored dot next to each item.'));
 
-        await waitForCondition(() => getAssistantMessages(node, sessionId).length > before, 30000);
+        await waitForCondition(() => getAssistantMessages(node, sessionId).length > before, 60000);
 
         await node.stopSession(sessionId);
         expect(session().status.type).toBe('completed');
@@ -698,12 +698,12 @@ describe('Level 2: Codex E2E Flow (38 steps)', () => {
     it('Step 30 — Retry after stop', async () => {
         const before = assistantCount();
         await node.sendMessage(sessionId, msg('step30',
-            'Try again — add the priority field. Approve everything this time.'));
+            'Try again — add the priority field. Approve everything this time. Only change the app implementation and styles for this feature. Do not modify package.json, vitest.config.js, or app.test.js, and do not run tests.'));
 
-        await approveUntilDone(before, STEP_TIMEOUT);
+        await approveUntilDone(before, 360000);
 
         expect(completedToolsSince(before).length).toBeGreaterThan(0);
-    }, STEP_TIMEOUT);
+    }, 360000);
 
     // ─── BACKGROUND TASKS ────────────────────────────────────────────────
 

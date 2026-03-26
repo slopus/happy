@@ -642,9 +642,39 @@ export class SyncNode {
     async stopSession(sessionId: SessionID): Promise<void> {
         this.assertAccountScoped('stopSession');
         this.assertPermission('stopSession', 'admin');
-        await this.httpPost(`/v1/sessions/${sessionId}/stop`, {});
 
         const session = this.state.sessions.get(sessionId as string);
+        if (session) {
+            const pendingPermissionIds = session.permissions
+                .filter((request) => !request.resolved)
+                .map((request) => request.permissionId);
+
+            for (const permissionId of pendingPermissionIds) {
+                try {
+                    await this.denyPermission(sessionId, permissionId, { reason: 'Session stopped' });
+                } catch {
+                    // Best-effort: the request may already have been resolved.
+                }
+            }
+
+            try {
+                await this.sendAbortRequest(sessionId, {
+                    source: 'system',
+                    reason: 'Session stopped',
+                });
+            } catch {
+                // Best-effort: missing session key material should not block stop.
+            }
+
+            try {
+                await this.sendSessionEnd(sessionId, { reason: 'killed' });
+            } catch {
+                // Best-effort: missing session key material should not block stop.
+            }
+        }
+
+        await this.httpPost(`/v1/sessions/${sessionId}/stop`, {});
+
         if (session) {
             session.status = { type: 'completed' };
             this.notifyStateChange();
