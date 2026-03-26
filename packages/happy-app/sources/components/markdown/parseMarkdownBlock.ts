@@ -1,4 +1,4 @@
-import type { MarkdownBlock } from "./parseMarkdown";
+import type { MarkdownBlock, MarkdownSpan } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
 
 function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock | null; nextIndex: number } {
@@ -28,21 +28,23 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     const headers = headerLine
         .split('|')
         .map(cell => cell.trim())
-        .filter(cell => cell.length > 0);
+        .filter(cell => cell.length > 0)
+        .map(cell => parseMarkdownSpans(cell, false));
 
     if (headers.length === 0) {
         return { table: null, nextIndex: startIndex };
     }
 
     // Extract data rows from remaining lines (skipping the separator line), preserving valid cell content
-    const rows: string[][] = [];
+    const rows: MarkdownSpan[][][] = [];
     for (let i = 2; i < tableLines.length; i++) {
         const rowLine = tableLines[i].trim();
         if (rowLine.startsWith('|')) {
             const rowCells = rowLine
                 .split('|')
                 .map(cell => cell.trim())
-                .filter(cell => cell.length > 0);
+                .filter(cell => cell.length > 0)
+                .map(cell => parseMarkdownSpans(cell, false));
 
             // Include rows that contain actual content, filtering out empty rows
             if (rowCells.length > 0) {
