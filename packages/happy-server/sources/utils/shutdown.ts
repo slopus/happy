@@ -2,6 +2,7 @@ import { log } from "./log";
 
 const shutdownHandlers = new Map<string, Array<() => Promise<void>>>();
 const shutdownController = new AbortController();
+let shutdownPromise: Promise<void> | null = null;
 
 export const shutdownSignal = shutdownController.signal;
 
@@ -34,49 +35,69 @@ export function isShutdown() {
     return shutdownSignal.aborted;
 }
 
-export async function awaitShutdown() {
-    await new Promise<void>((resolve) => {
-        process.on('SIGINT', async () => {
-            log('Received SIGINT signal. Exiting...');
-            resolve();
-        });
-        process.on('SIGTERM', async () => {
-            log('Received SIGTERM signal. Exiting...');
-            resolve();
-        });
-    });
-    shutdownController.abort();
-    
-    // Copy handlers to avoid race conditions
-    const handlersSnapshot = new Map<string, Array<() => Promise<void>>>();
-    for (const [name, handlers] of shutdownHandlers) {
-        handlersSnapshot.set(name, [...handlers]);
+export async function runShutdownHandlers(): Promise<void> {
+    if (shutdownPromise) {
+        return shutdownPromise;
     }
-    
-    // Execute all shutdown handlers concurrently
-    const allHandlers: Promise<void>[] = [];
-    let totalHandlers = 0;
-    
-    for (const [name, handlers] of handlersSnapshot) {
-        totalHandlers += handlers.length;
-        log(`Starting ${handlers.length} shutdown handlers for: ${name}`);
-        
-        handlers.forEach((handler, index) => {
-            const handlerPromise = handler().then(
+
+    shutdownPromise = (async () => {
+        shutdownController.abort();
+
+        const handlersSnapshot = new Map<string, Array<() => Promise<void>>>();
+        for (const [name, handlers] of shutdownHandlers) {
+            handlersSnapshot.set(name, [...handlers]);
+        }
+
+        let totalHandlers = 0;
+        for (const handlers of handlersSnapshot.values()) {
+            totalHandlers += handlers.length;
+        }
+
+        if (totalHandlers === 0) {
+            return;
+        }
+
+        log(`Waiting for ${totalHandlers} shutdown handlers to complete...`);
+        const shutdownStartTime = Date.now();
+
+        const shutdownGroups = Array.from(handlersSnapshot.entries()).reverse();
+        for (const [name, handlers] of shutdownGroups) {
+            log(`Starting ${handlers.length} shutdown handlers for: ${name}`);
+            const groupStartTime = Date.now();
+
+            await Promise.all(handlers.map((handler, index) => handler().then(
                 () => {},
                 (error) => log(`Error in shutdown handler ${name}[${index}]:`, error)
-            );
-            allHandlers.push(handlerPromise);
-        });
-    }
-    
-    if (totalHandlers > 0) {
-        log(`Waiting for ${totalHandlers} shutdown handlers to complete...`);
-        const startTime = Date.now();
-        await Promise.all(allHandlers);
-        const duration = Date.now() - startTime;
-        log(`All ${totalHandlers} shutdown handlers completed in ${duration}ms`);
-    }
+            )));
+
+            const groupDuration = Date.now() - groupStartTime;
+            log(`Completed ${handlers.length} shutdown handlers for: ${name} in ${groupDuration}ms`);
+        }
+
+        const shutdownDuration = Date.now() - shutdownStartTime;
+        log(`All ${totalHandlers} shutdown handlers completed in ${shutdownDuration}ms`);
+    })();
+
+    return shutdownPromise;
+}
+
+export async function awaitShutdown() {
+    await new Promise<void>((resolve) => {
+        const handleSignal = (signal: 'SIGINT' | 'SIGTERM') => {
+            log(`Received ${signal} signal. Exiting...`);
+            process.off('SIGINT', handleSigint);
+            process.off('SIGTERM', handleSigterm);
+            resolve();
+        };
+
+        const handleSigint = () => handleSignal('SIGINT');
+        const handleSigterm = () => handleSignal('SIGTERM');
+
+        process.on('SIGINT', handleSigint);
+        process.on('SIGTERM', handleSigterm);
+    });
+
+    await runShutdownHandlers();
 }
 
 export async function keepAlive<T>(name: string, callback: () => Promise<T>): Promise<T> {
