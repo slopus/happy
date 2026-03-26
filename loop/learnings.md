@@ -235,3 +235,33 @@ If you discover something non-obvious, append it here under the right section.
   from the March 24 commit. Stashing all Amendment 4 changes reproduces it.
   The crash is in `<SessionViewLoaded>` or `<FaviconPermissionIndicator>` and
   manifests as soon as any session page is opened in Chrome via Playwright.
+- Phase 1 manual browser walkthrough (March 26, 2026): wrote a standalone boot
+  script (`phase1-boot.ts`) that replicates the e2e setup code outside Vitest.
+  Key issue encountered: setting `CLAUDE_CONFIG_DIR` to a fake config dir broke
+  Claude CLI auth ("Not logged in"). The existing e2e tests do NOT set this env
+  var — they use the real `~/.claude/` auth. The Happy CLI defaults to
+  `permissionMode: 'default'` via `currentPermissionMode || 'default'` in
+  `runClaude.ts`, regardless of the user's `~/.claude/settings.json` bypass
+  setting. But because the daemon inherits `process.env` and the real user has
+  `bypassPermissions`, the spawned Claude CLI does auto-approve in practice.
+- `agent-browser` (the CLI tool) works for page-level screenshots and text
+  extraction but has limited support for tab management. For multi-tab testing
+  (close tab and reopen, switch tabs), Playwright in e2e tests is better.
+- Vitest leaks `NODE_ENV=test` into spawned child processes unless the test
+  overrides it. Expo Router web treats that as a different transform mode and
+  can fail on `node_modules/expo-router/_ctx.web.js` with
+  `process.env.EXPO_ROUTER_APP_ROOT`. The Level 3 web server child must force
+  `NODE_ENV=development`.
+- The first Expo web `.bundle` compile in the browser e2e path can take far
+  longer than the earlier smoke runs — on March 26 it needed a 300s timeout.
+  Wait for Metro's `Waiting on http://localhost:<port>` log before requesting
+  the bundle, then give that first bundle request a long budget.
+- Browser transcript assertions against synced assistant text need Markdown
+  normalization. The raw synced text can contain `**bold**`, headings, or code
+  ticks, while the visible DOM renders plain text. Strip Markdown markers
+  before comparing snippets.
+- Repeated `page.goto()` navigation between authenticated Happy routes can emit
+  benign aborted-fetch warnings (`TypeError: Failed to fetch`,
+  `AppSyncStore fetchSession failed ... TypeError: Failed to fetch`) during
+  page teardown. Filter only this exact aborted-navigation form; do NOT filter
+  other `AppSyncStore` or `pageerror` failures.
