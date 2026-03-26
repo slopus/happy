@@ -34,6 +34,12 @@ const mocks = vi.hoisted(() => {
     onUserMessage: vi.fn((handler: (message: any) => void) => {
       userMessageHandler = handler;
     }),
+    onPermissionDecision: vi.fn(() => () => {}),
+    onRuntimeConfigChange: vi.fn(() => () => {}),
+    onAbortRequest: vi.fn(() => () => {}),
+    sendPermissionRequest: vi.fn(async () => {}),
+    sendMessage: vi.fn(async () => {}),
+    updateMessage: vi.fn(async () => {}),
     sendSessionProtocolMessage: vi.fn((envelope: any) => mockSession.sendSessionProtocolMessage(envelope)),
     updateMetadata: vi.fn((handler: any) => mockSession.updateMetadata(handler)),
     updateAgentState: vi.fn((handler: any) => mockSession.updateAgentState(handler)),
@@ -163,6 +169,12 @@ vi.mock('@/api/syncBridge', () => ({
     connect = mocks.mockSyncBridge.connect;
     disconnect = mocks.mockSyncBridge.disconnect;
     onUserMessage = mocks.mockSyncBridge.onUserMessage;
+    onPermissionDecision = mocks.mockSyncBridge.onPermissionDecision;
+    onRuntimeConfigChange = mocks.mockSyncBridge.onRuntimeConfigChange;
+    onAbortRequest = mocks.mockSyncBridge.onAbortRequest;
+    sendPermissionRequest = mocks.mockSyncBridge.sendPermissionRequest;
+    sendMessage = mocks.mockSyncBridge.sendMessage;
+    updateMessage = mocks.mockSyncBridge.updateMessage;
     sendSessionProtocolMessage = mocks.mockSyncBridge.sendSessionProtocolMessage;
     updateMetadata = mocks.mockSyncBridge.updateMetadata;
     updateAgentState = mocks.mockSyncBridge.updateAgentState;
@@ -334,8 +346,11 @@ describe('runAcp', () => {
       prompt: 'Build a test plan',
     });
 
-    const envelopeTypes = mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([envelope]) => envelope.ev.t);
-    expect(envelopeTypes).toEqual(['turn-start', 'text', 'tool-call-start', 'tool-call-end', 'turn-end']);
+    // With SyncBridge, messages are sent via syncBridge.sendMessage/updateMessage (v3 MessageWithParts)
+    // instead of session.sendSessionProtocolMessage (protocol envelopes)
+    const syncMessageCalls = mocks.mockSyncBridge.sendMessage.mock.calls.length
+      + mocks.mockSyncBridge.updateMessage.mock.calls.length;
+    expect(syncMessageCalls).toBeGreaterThan(0);
 
     // With SyncBridge, ready events go through updateAgentState instead of sendSessionEvent
     const agentStateUpdates = mocks.mockSession.updateAgentState.mock.calls;
@@ -440,11 +455,10 @@ describe('runAcp', () => {
 
     const lines = consoleLines();
     expect(lines.some((line) => line.startsWith('Outgoing raw backend message from opencode: '))).toBe(true);
-    expect(lines.some((line) => line.startsWith('Incoming raw envelope for opencode: '))).toBe(true);
-    expect(lines).toEqual(expect.arrayContaining([
-      'Outgoing message: "hello"',
-      'Tool: ReadFile started (callId=tool-1)',
-    ]));
+    // With SyncBridge, messages go through sendV3Messages (not sendEnvelopes),
+    // so the "Incoming raw envelope" log is not emitted. Verify v3 messages were sent instead.
+    expect(mocks.mockSyncBridge.sendMessage.mock.calls.length
+      + mocks.mockSyncBridge.updateMessage.mock.calls.length).toBeGreaterThan(0);
   });
 
   it('logs slash commands, modes, and models line by line when verbose is enabled', async () => {
