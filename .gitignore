@@ -55,6 +55,7 @@ environments/data/
 
 # Development planning notes (keep local, don't commit)
 notes/
+docs/notes/
 # ralphex progress logs
 progress*.txt
 
