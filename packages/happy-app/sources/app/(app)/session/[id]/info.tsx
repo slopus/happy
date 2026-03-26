@@ -12,7 +12,7 @@ import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeT
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete } from '@/sync/ops';
-import { removeWorktree, isWorktreePath } from '@/utils/worktree';
+import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -154,6 +154,9 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     // Use HappyAction for archiving - it handles errors automatically
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        // Prompt for worktree cleanup before killing (needs an active machine connection)
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
         const result = await sessionKill(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
@@ -169,6 +172,9 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     // Use HappyAction for deletion - kills session first if needed, then deletes
     const [deletingSession, performDelete] = useHappyAction(async () => {
+        // Prompt for worktree cleanup before killing (needs an active machine connection)
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
         // Navigate back optimistically
         router.back();
         router.back();
@@ -176,13 +182,6 @@ function SessionInfoContent({ session }: { session: Session }) {
         // Kill session first if it's still active (best-effort)
         if (sessionStatus.isConnected || session.active) {
             await sessionKill(session.id).catch(() => {});
-        }
-
-        // Clean up worktree if this session was in one (best-effort)
-        const sessionPath = session.metadata?.path;
-        const machineId = session.metadata?.machineId;
-        if (sessionPath && isWorktreePath(sessionPath) && machineId) {
-            await removeWorktree(machineId, sessionPath).catch(() => {});
         }
 
         const result = await sessionDelete(session.id);

@@ -3,6 +3,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
 import { machineResumeSession, sessionKill } from '@/sync/ops';
+import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -169,6 +170,8 @@ export function useSessionQuickActions(
     });
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
         const result = await sessionKill(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
