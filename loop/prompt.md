@@ -13,6 +13,27 @@ state file and another file disagree, trust the state file and proceed. If
 you're unsure about a step count or acceptance target, use whatever is in
 `exercise-flow.md` as the source of truth and keep working. DO NOT STOP.
 
+## VERIFY YOUR OWN OUTPUT — DO NOT LIE
+
+Before declaring ANY artifact "done", VERIFY IT EXISTS AND IS CORRECT:
+
+- **Files**: Run `ls -la <path>` and check it exists and is non-empty.
+  DO NOT claim a video or screenshot exists without checking.
+- **Screenshots**: Open one and verify it shows CONVERSATION CONTENT (tool calls,
+  permissions, text), not just the sidebar/header/input chrome. If your screenshots
+  only show the UI frame with no transcript visible, YOUR SCROLL CODE IS BROKEN.
+  Fix it before taking more screenshots.
+- **Reviews**: A UX review based on broken screenshots is not a review. If the
+  reviewer flags issues, investigate the root cause — don't dismiss as "false
+  positive from screenshot bug." Fix the bug, retake screenshots, re-review.
+- **Video**: Verify the .webm file exists AND is non-empty. `ls -la` the file.
+- **Tests**: "28/44 passed" with 16 failures is not "done." Investigate failures.
+
+If you catch yourself rationalizing broken output ("the screenshots don't show
+content but the text assertions prove it works"), STOP. Fix the screenshots.
+The human wants to SEE the UI. Text assertions are not a substitute for visual
+proof.
+
 ## Workflow
 
 1. **FIRST: check for uncommitted work.** Run `git status` and `git diff --stat HEAD`.
