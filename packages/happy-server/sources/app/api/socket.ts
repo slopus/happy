@@ -12,8 +12,11 @@ import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
+import { Backplane } from "@/modules/backplane/backplane";
+import { RedisBackplane } from "@/modules/backplane/redisBackplane";
+import { DistributedRpcRegistry } from "@/modules/rpc/distributedRpc";
 
-export function startSocket(app: Fastify) {
+export async function startSocket(app: Fastify, backplane?: Backplane) {
     const io = new Server(app.server, {
         cors: {
             origin: "*",
@@ -31,7 +34,11 @@ export function startSocket(app: Fastify) {
         serveClient: false // Don't serve the client files
     });
 
-    let rpcListeners = new Map<string, Map<string, Socket>>();
+    const rpcListeners = new Map<string, Map<string, Socket>>();
+    const rpcRegistry = backplane instanceof RedisBackplane
+        ? await DistributedRpcRegistry.create(backplane, rpcListeners)
+        : undefined;
+
     io.on("connection", async (socket) => {
         log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;
@@ -137,7 +144,12 @@ export function startSocket(app: Fastify) {
             userRpcListeners = new Map<string, Socket>();
             rpcListeners.set(userId, userRpcListeners);
         }
-        rpcHandler(userId, socket, userRpcListeners);
+        rpcHandler(userId, socket, userRpcListeners, rpcRegistry);
+        socket.on('disconnect', () => {
+            if (userRpcListeners.size === 0) {
+                rpcListeners.delete(userId);
+            }
+        });
         usageHandler(userId, socket);
         sessionUpdateHandler(userId, socket, connection);
         pingHandler(socket);
@@ -150,6 +162,7 @@ export function startSocket(app: Fastify) {
     });
 
     onShutdown('api', async () => {
+        await rpcRegistry?.destroy();
         await io.close();
     });
 }

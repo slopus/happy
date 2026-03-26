@@ -10,6 +10,7 @@ WORKDIR /repo
 
 COPY package.json yarn.lock ./
 COPY scripts ./scripts
+COPY patches ./patches
 
 RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-agent packages/happy-wire
 
@@ -54,4 +55,4 @@ COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 VOLUME /data
 EXPOSE 3005
 
-CMD ["sh", "-c", "node_modules/.bin/tsx packages/happy-server/sources/standalone.ts migrate && exec node_modules/.bin/tsx packages/happy-server/sources/standalone.ts serve"]
+CMD ["sh", "-c", "cd /repo/packages/happy-server && ../../node_modules/.bin/tsx ./sources/standalone.ts migrate && exec ../../node_modules/.bin/tsx ./sources/standalone.ts serve"]

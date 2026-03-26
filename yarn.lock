@@ -2574,7 +2574,7 @@
   dependencies:
     langium "3.3.1"
 
-"@modelcontextprotocol/sdk@^1.25.3":
+"@modelcontextprotocol/sdk@1.25.3":
   version "1.25.3"
   resolved "https://registry.yarnpkg.com/@modelcontextprotocol/sdk/-/sdk-1.25.3.tgz#a665ae5f983a5cdfe1a1809aafb48110b04faef1"
   integrity sha512-vsAMBMERybvYgKbg/l4L1rhS7VXV1c0CtyJg72vwxONVX0l4ZfKVAnZEWTQixJGTzKnELjQ59e4NbdFDALRiAQ==
@@ -2606,11 +2606,6 @@
     "@types/libsodium-wrappers-sumo" "^0.7.8"
     libsodium-wrappers "^0.7.13"
     libsodium-wrappers-sumo "^0.7.13"
-
-"@msgpack/msgpack@~2.8.0":
-  version "2.8.0"
-  resolved "https://registry.yarnpkg.com/@msgpack/msgpack/-/msgpack-2.8.0.tgz#4210deb771ee3912964f14a15ddfb5ff877e70b9"
-  integrity sha512-h9u4u/jiIRKbq25PM+zymTyW6bhTzELvOoUd+AvYriWOAKpLGnIamaET3pnHYoI5iYphAHBI4ayx0MehR+VVPQ==
 
 "@noble/curves@1.5.0":
   version "1.5.0"
@@ -3877,14 +3872,6 @@
   version "3.1.2"
   resolved "https://registry.yarnpkg.com/@socket.io/component-emitter/-/component-emitter-3.1.2.tgz#821f8442f4175d8f0467b9daf26e3a18e2d02af2"
   integrity sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==
-
-"@socket.io/redis-streams-adapter@^0.2.2":
-  version "0.2.3"
-  resolved "https://registry.yarnpkg.com/@socket.io/redis-streams-adapter/-/redis-streams-adapter-0.2.3.tgz#c6cf0c0d4f5e0f2dae71e029ab3696db9bbabf75"
-  integrity sha512-c8b+ZO6L10TQx7HbVwbupJQ3yj4aZOzxN1u8paIM8tFxJBJUiujdm0SryWC0xv7gIG8LbPsXIHiBHGi7TEVVqQ==
-  dependencies:
-    "@msgpack/msgpack" "~2.8.0"
-    debug "~4.3.1"
 
 "@stablelib/base64@^2.0.1":
   version "2.0.1"
@@ -6534,13 +6521,6 @@ debug@^3.1.0:
   integrity sha512-CFjzYYAi4ThfiQvizrFQevTTXHtnCqWfe7x1AhgEscTz6ZbLbfoLRLPugTQyBth6f8ZERVUSyWHFD/7Wu4t1XQ==
   dependencies:
     ms "^2.1.1"
-
-debug@~4.3.1:
-  version "4.3.7"
-  resolved "https://registry.yarnpkg.com/debug/-/debug-4.3.7.tgz#87945b4151a011d76d95a198d7111c865c360a52"
-  integrity sha512-Er2nc/H7RrMXZBFCEim6TCmMk02Z8vLC2Rbi1KEBggpo0fS6l0S1nnapwmIi3yW/+GOJap1Krg4w0Hg80oCqgQ==
-  dependencies:
-    ms "^2.1.3"
 
 decamelize@^1.2.0:
   version "1.2.0"
@@ -12799,7 +12779,7 @@ smart-buffer@^4.2.0:
   resolved "https://registry.yarnpkg.com/smart-buffer/-/smart-buffer-4.2.0.tgz#6e1d71fa4f18c05f7d0ff216dd16a481d0e8d9ae"
   integrity sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==
 
-socket.io-adapter@^2.5.5, socket.io-adapter@~2.5.2:
+socket.io-adapter@~2.5.2:
   version "2.5.6"
   resolved "https://registry.yarnpkg.com/socket.io-adapter/-/socket.io-adapter-2.5.6.tgz#c697f609d36a676a46749782274607d8df52c1d8"
   integrity sha512-DkkO/dz7MGln0dHn5bmN3pPy+JmywNICWrJqVWiVOyvXjWQFIv9c2h24JrQLLFJ2aQVQf/Cvl1vblnd4r2apLQ==
@@ -13533,7 +13513,7 @@ typed-emitter@^2.1.0:
   optionalDependencies:
     rxjs "^7.5.2"
 
-typescript@5.9.3:
+typescript@5.9.3, typescript@^5.9.3:
   version "5.9.3"
   resolved "https://registry.yarnpkg.com/typescript/-/typescript-5.9.3.tgz#5b4f59e15310ab17a216f5d6cf53ee476ede670f"
   integrity sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==

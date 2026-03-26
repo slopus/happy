@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: happy-server-test-postgres
+    command: ["postgres", "-c", "max_connections=200"]
+    environment:
+      POSTGRES_DB: handy_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d handy_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    container_name: happy-server-test-redis
+    ports:
+      - "63790:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 2s

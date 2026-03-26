@@ -85,7 +85,38 @@ export function decrementWebSocketConnection(type: 'user-scoped' | 'session-scop
     websocketConnectionsGauge.set({ type }, connectionCounts[type]);
 }
 
-// Database metrics updater
+/**
+ * Queries record counts from all major tables and updates Prometheus gauges.
+ *
+ * ## Multi-Process Safety (Read-Only and Idempotent)
+ *
+ * This function is safe to run on every server process simultaneously:
+ *
+ * 1. **All queries are read-only.** The function executes `count()` queries on four tables.
+ *    No writes, no side effects on the database. Multiple processes issuing the same counts
+ *    in parallel produce identical results (or near-identical if rows are being inserted
+ *    concurrently, which is expected and harmless).
+ *
+ * 2. **Prometheus gauges are process-local.** Each process maintains its own `prom-client`
+ *    registry. The `/metrics` endpoint on each process reports its own gauge values. When
+ *    running behind a load balancer, Prometheus scrapes each pod independently — duplicate
+ *    gauge values across pods are expected and correct for `Gauge` metrics (Prometheus
+ *    deduplicates or labels by instance).
+ *
+ * 3. **No cross-process coordination needed.** Unlike timeout sweeps, there is no state
+ *    mutation to guard against. The worst case is N× the read queries (one per process),
+ *    which is tolerable for lightweight `SELECT count(*)` index scans on a 60-second interval.
+ *
+ * ## Future Optimization: Leader Election
+ *
+ * At high replica counts, running identical count queries on every process wastes DB
+ * connections and CPU. A leader election mechanism (PostgreSQL advisory locks or Redis
+ * `SET NX PX`) could restrict this to a single process. However, the per-pod Prometheus
+ * scraping model actually expects each pod to report its own metrics, so the alternative
+ * would be a shared metrics push model — significantly more complex for minimal gain.
+ *
+ * See `docs/plans/multiprocess-architecture.md` for the full design rationale.
+ */
 export async function updateDatabaseMetrics(): Promise<void> {
     // Query counts for each table
     const [accountCount, sessionCount, messageCount, machineCount] = await Promise.all([
@@ -102,6 +133,13 @@ export async function updateDatabaseMetrics(): Promise<void> {
     databaseRecordCountGauge.set({ table: 'machines' }, machineCount);
 }
 
+/**
+ * Starts the background database metrics updater on a 60-second interval.
+ *
+ * Multi-process safe: see `updateDatabaseMetrics()` documentation above.
+ * Each process runs its own independent metrics loop — no coordination required.
+ * Leader election is deferred as an optimization for high replica counts.
+ */
 export function startDatabaseMetricsUpdater(): void {
     forever('database-metrics-updater', async () => {
         await updateDatabaseMetrics();

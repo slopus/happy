@@ -4,6 +4,7 @@ import { GitHubProfile } from "@/app/api/types";
 import { AccountProfile } from "@/types";
 import { getPublicUrl } from "@/storage/files";
 import type { SessionMessageContent } from "@slopus/happy-wire";
+import { Backplane, getUserEphemeralChannel, getUserUpdatesChannel } from "@/modules/backplane/backplane";
 
 // === CONNECTION TYPES ===
 
@@ -201,16 +202,51 @@ export interface EphemeralPayload {
 
 // === EVENT ROUTER CLASS ===
 
-class EventRouter {
+interface SkipSource {
+    processId: string;
+    socketId: string;
+}
+
+interface EventEnvelope {
+    userId: string;
+    eventName: 'update' | 'ephemeral';
+    payload: UpdatePayload | EphemeralPayload;
+    recipientFilter: RecipientFilter;
+    skipSource?: SkipSource;
+}
+
+export class EventRouter {
     private userConnections = new Map<string, Set<ClientConnection>>();
+    private backplane?: Backplane;
+    private subscribedUsers = new Set<string>();
+    private subscriptionOperations = new Map<string, Promise<void>>();
+
+    async init(backplane: Backplane): Promise<void> {
+        if (this.backplane === backplane) {
+            return;
+        }
+        if (this.backplane && this.backplane !== backplane) {
+            throw new Error('EventRouter already initialized with a different backplane');
+        }
+
+        this.backplane = backplane;
+        await Promise.all(Array.from(this.userConnections.keys()).map((userId) => this.ensureUserSubscriptions(userId)));
+    }
 
     // === CONNECTION MANAGEMENT ===
 
     addConnection(userId: string, connection: ClientConnection): void {
-        if (!this.userConnections.has(userId)) {
+        const hadConnections = this.userConnections.has(userId);
+        if (!hadConnections) {
             this.userConnections.set(userId, new Set());
         }
         this.userConnections.get(userId)!.add(connection);
+
+        if (!hadConnections && this.backplane) {
+            void this.ensureUserSubscriptions(userId).catch((error) => {
+                log({ module: 'websocket', level: 'error', error, userId }, `Failed to subscribe event router channels for user ${userId}`);
+            });
+        }
     }
 
     removeConnection(userId: string, connection: ClientConnection): void {
@@ -219,6 +255,11 @@ class EventRouter {
             connections.delete(connection);
             if (connections.size === 0) {
                 this.userConnections.delete(userId);
+                if (this.backplane) {
+                    void this.ensureUserUnsubscriptions(userId).catch((error) => {
+                        log({ module: 'websocket', level: 'error', error, userId }, `Failed to unsubscribe event router channels for user ${userId}`);
+                    });
+                }
             }
         }
     }
@@ -303,29 +344,160 @@ class EventRouter {
     private emit(params: {
         userId: string;
         eventName: 'update' | 'ephemeral';
-        payload: any;
+        payload: UpdatePayload | EphemeralPayload;
         recipientFilter: RecipientFilter;
         skipSenderConnection?: ClientConnection;
     }): void {
+        if (!this.backplane) {
+            this.deliverToLocalConnections({
+                userId: params.userId,
+                eventName: params.eventName,
+                payload: params.payload,
+                recipientFilter: params.recipientFilter,
+                skipSenderConnection: params.skipSenderConnection,
+                logIfNoConnections: true
+            });
+            return;
+        }
+
+        const envelope: EventEnvelope = {
+            userId: params.userId,
+            eventName: params.eventName,
+            payload: params.payload,
+            recipientFilter: params.recipientFilter,
+            skipSource: params.skipSenderConnection ? {
+                processId: this.backplane.getProcessId(),
+                socketId: params.skipSenderConnection.socket.id
+            } : undefined
+        };
+
+        void this.publishEnvelope(envelope).catch((error) => {
+            log({ module: 'websocket', level: 'error', error, userId: params.userId }, `Failed to publish ${params.eventName} event for user ${params.userId}`);
+        });
+    }
+
+    private async publishEnvelope(envelope: EventEnvelope): Promise<void> {
+        const operation = this.subscriptionOperations.get(envelope.userId);
+        if (operation && this.userConnections.has(envelope.userId)) {
+            await operation;
+        }
+
+        await this.backplane!.publish(
+            this.getChannelForEnvelope(envelope),
+            Buffer.from(JSON.stringify(envelope))
+        );
+    }
+
+    private deliverToLocalConnections(params: {
+        userId: string;
+        eventName: 'update' | 'ephemeral';
+        payload: UpdatePayload | EphemeralPayload;
+        recipientFilter: RecipientFilter;
+        skipSenderConnection?: ClientConnection;
+        skipSource?: SkipSource;
+        logIfNoConnections?: boolean;
+    }): void {
         const connections = this.userConnections.get(params.userId);
-        if (!connections) {
-            log({ module: 'websocket', level: 'warn' }, `No connections found for user ${params.userId}`);
+        if (!connections || connections.size === 0) {
+            if (params.logIfNoConnections) {
+                log({ module: 'websocket', level: 'warn' }, `No connections found for user ${params.userId}`);
+            }
             return;
         }
 
         for (const connection of connections) {
-            // Skip message echo
             if (params.skipSenderConnection && connection === params.skipSenderConnection) {
                 continue;
             }
-
-            // Apply recipient filter
+            if (params.skipSource && this.shouldSkipSource(connection, params.skipSource)) {
+                continue;
+            }
             if (!this.shouldSendToConnection(connection, params.recipientFilter)) {
                 continue;
             }
-
             connection.socket.emit(params.eventName, params.payload);
         }
+    }
+
+    private shouldSkipSource(connection: ClientConnection, skipSource: SkipSource): boolean {
+        if (!this.backplane) {
+            return false;
+        }
+        return this.backplane.getProcessId() === skipSource.processId && connection.socket.id === skipSource.socketId;
+    }
+
+    private async ensureUserSubscriptions(userId: string): Promise<void> {
+        await this.queueSubscriptionOperation(userId, async () => {
+            if (!this.backplane || this.subscribedUsers.has(userId) || !this.userConnections.has(userId)) {
+                return;
+            }
+
+            const subscribeUpdates = this.backplane.subscribe(getUserUpdatesChannel(userId), (payload) => {
+                this.handleBackplanePayload('update', payload);
+            });
+            const subscribeEphemeral = this.backplane.subscribe(getUserEphemeralChannel(userId), (payload) => {
+                this.handleBackplanePayload('ephemeral', payload);
+            });
+            await subscribeUpdates;
+            await subscribeEphemeral;
+            this.subscribedUsers.add(userId);
+        });
+    }
+
+    private async ensureUserUnsubscriptions(userId: string): Promise<void> {
+        await this.queueSubscriptionOperation(userId, async () => {
+            if (!this.backplane || !this.subscribedUsers.has(userId) || this.userConnections.has(userId)) {
+                return;
+            }
+
+            await this.backplane.unsubscribe(getUserUpdatesChannel(userId));
+            await this.backplane.unsubscribe(getUserEphemeralChannel(userId));
+            this.subscribedUsers.delete(userId);
+        });
+    }
+
+    private async queueSubscriptionOperation(userId: string, operation: () => Promise<void>): Promise<void> {
+        const previousOperation = this.subscriptionOperations.get(userId);
+        const nextOperation = previousOperation
+            ? previousOperation.catch(() => undefined).then(operation)
+            : operation();
+
+        this.subscriptionOperations.set(userId, nextOperation);
+
+        try {
+            await nextOperation;
+        } finally {
+            if (this.subscriptionOperations.get(userId) === nextOperation) {
+                this.subscriptionOperations.delete(userId);
+            }
+        }
+    }
+
+    private handleBackplanePayload(expectedEventName: 'update' | 'ephemeral', payload: Buffer): void {
+        try {
+            const envelope = JSON.parse(payload.toString()) as EventEnvelope;
+            if (envelope.eventName !== expectedEventName) {
+                return;
+            }
+
+            this.deliverToLocalConnections({
+                userId: envelope.userId,
+                eventName: envelope.eventName,
+                payload: envelope.payload,
+                recipientFilter: envelope.recipientFilter,
+                skipSource: envelope.skipSource,
+                logIfNoConnections: false
+            });
+        } catch (error) {
+            log({ module: 'websocket', level: 'error', error }, `Failed to deserialize ${expectedEventName} event router payload`);
+        }
+    }
+
+    private getChannelForEnvelope(envelope: EventEnvelope): string {
+        if (envelope.eventName === 'update') {
+            return getUserUpdatesChannel(envelope.userId);
+        }
+        return getUserEphemeralChannel(envelope.userId);
     }
 }
 

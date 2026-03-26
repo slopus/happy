@@ -126,9 +126,12 @@ Only two env vars are required for standalone (both already in `.env.dev`):
 
 ### Known Modules
 - **ai**: AI wrappers to interact with AI services
+- **backplane**: Cross-process pub/sub abstraction with `MemoryBackplane` (dev/single-process) and `RedisBackplane` (multi-process) implementations. Powers cross-process event delivery via `EventRouter` and cross-process RPC forwarding. See `docs/plans/multiprocess-architecture.md`.
+- **config**: Startup validation — checks deployment prerequisites (HANDY_MASTER_SECRET, Redis+S3 for multi-pod, PGlite limitations).
 - **eventbus**: Event bus to send and receive events between modules and applications
 - **lock**: Simple lock to synchronize access to resources in the whole cluster
 - **media**: Tools to work with media files
+- **rpc**: Distributed RPC registry — cross-process RPC method forwarding via Redis with per-process registration sets, heartbeat TTL, and stale entry recovery. See `docs/plans/multiprocess-architecture.md`.
 
 ## Applications
 
