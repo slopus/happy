@@ -73,10 +73,7 @@ class CodexDriver {
     }
 
     async interrupt(): Promise<void> {
-        await this.client.abortTurnWithFallback({
-            gracePeriodMs: 5_000,
-            forceRestartOnTimeout: true,
-        });
+        await this.client.abortTurnWithFallback();
     }
 
     async connect(): Promise<void> {

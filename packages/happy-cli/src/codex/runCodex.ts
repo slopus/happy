@@ -401,27 +401,8 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Abort requested - stopping current task');
         abortInProgress = (async () => {
             try {
-                // Request interruption, then force-restart Codex app-server if
-                // it doesn't settle quickly (long-running shell commands).
                 if (client) {
-                    const abortResult = await client.abortTurnWithFallback({
-                        gracePeriodMs: 3000,
-                        forceRestartOnTimeout: true,
-                    });
-                    if (abortResult.forcedRestart) {
-                        logger.warn('[Codex] Forced app-server restart after interrupt timeout');
-                        const msg = abortResult.resumedThread
-                            ? 'Force-stopped active task after interrupt timeout. Codex backend was restarted and the previous thread was resumed.'
-                            : 'Force-stopped active task after interrupt timeout. Codex backend was restarted, but the previous thread could not be resumed.';
-                        if (syncBridge) {
-                            syncBridge.updateAgentState((currentState: any) => ({
-                                ...currentState,
-                                lastEvent: { type: 'message', message: msg, time: Date.now() },
-                            }));
-                        } else {
-                            session.sendSessionEvent({ type: 'message', message: msg });
-                        }
-                    }
+                    await client.abortTurnWithFallback();
                 }
 
                 if (reasoningProcessor) {
@@ -735,12 +716,8 @@ export async function runCodex(opts: {
             messageBuffer.addMessage(message.message, 'user');
 
             try {
-                // Map permission mode to approval policy and sandbox.
-                // With app-server, these are per-turn — no restart needed on mode change.
-                const sandboxManagedByHappy = client.sandboxEnabled;
                 const executionPolicy = resolveCodexExecutionPolicy(
                     message.mode.permissionMode,
-                    sandboxManagedByHappy,
                 );
 
                 // Start thread on first turn (thread persists across mode changes)

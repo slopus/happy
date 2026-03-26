@@ -197,6 +197,11 @@ If you discover something non-obvious, append it here under the right section.
   `"on-failure"`, `"untrusted"`) which the SDK handles internally.
   The `setApprovalHandler` / `approvalHandler` in CodexAppServerClient is
   dead code that is never called.
+- After the SDK migration, Codex can no longer run inside Happy's external
+  sandbox wrapper. Any `sandboxEnabled`, forced app-server restart, or
+  JSON-RPC transport test logic in the Codex path is dead leftover code.
+  `resolveCodexExecutionPolicy()` should map directly from permission mode to
+  the SDK's native `approvalPolicy` + `sandboxMode`.
 - Approval behavior is determined by the combination of `approvalPolicy`
   and `sandboxMode`. The SDK's sandbox enforcement blocks operations at
   the OS level (e.g., `read-only` sandbox = no writes possible).

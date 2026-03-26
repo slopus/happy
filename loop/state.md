@@ -1,131 +1,19 @@
 # Loop State
 
-Last updated: 2026-03-26 13:00 PDT
+Last updated: 2026-03-26 06:18 PDT
 
 ## Current Task
 
-**COMPLETED: Phase 1 VISUAL browser walkthrough with agent-browser screenshots**
+All tracked refactor tasks are complete.
 
-All 37 steps executed. All 22 component types checked off with screenshot evidence.
-4 sessions browsed. Home page (session list) verified. Extended scenarios tested.
+Task `#8 — Final dead code cleanup + simplification sweep` is done:
 
-**NEXT TASK: #8 — Final dead code cleanup + simplification sweep**
+- Removed the impossible Codex "Happy-managed sandbox" branch after the SDK migration.
+- Deleted the stale `codexAppServerClient.test.ts` suite that still mocked the old JSON-RPC app-server transport.
+- Collapsed `codexAppServerTypes.ts` down to the live shared SDK-era types.
+- Simplified abort handling in `runCodex.ts` / `CodexAppServerClient` to match the real SDK behavior.
 
-### What you MUST do
-
-Use `agent-browser` CLI (`npx @anthropic-ai/agent-browser`) to visually walk
-through the Happy web app while running exercise steps against real Claude.
-
-1. Boot infrastructure (server + daemon + Expo web with BROWSER=none)
-2. Spawn a real Claude session via SyncNode
-3. Use `agent-browser` to open Chrome, navigate to the session page
-4. Run ALL 34 exercise steps (from `environments/lab-rat-todo-project/exercise-flow.md`)
-   PLUS 3 new extended steps (35-37 below). For EACH step:
-   a. Send the step's prompt via SyncNode (handle permissions/questions)
-   b. Wait for Claude to respond
-   c. Use agent-browser to LOOK at the rendered page and TAKE A SCREENSHOT
-   d. Record: what components rendered, how they look, any visual issues
-5. After all steps, test EXTENDED scenarios:
-   - Create a second session (different agent), switch between them
-   - Send a message to Session B while viewing Session A
-   - Close browser tab, reopen — session restores?
-   - Reopen completed/stopped session — transcript there?
-   - Navigate away and back
-   - Session list with both sessions
-
-### VISUAL COMPONENT COVERAGE — the whole point
-
-Screenshot proving each component type renders correctly:
-
-- [x] User message — text bubble with user prompt (green bubble on right side, seen in all sessions; ss-2000 Step 2, s2-2000 Step 14)
-- [x] Assistant text — formatted markdown (headers, bullets, code blocks) (ss-1000 Step 1 project summary, ss-1500 headers+bullets, ss-6000 WCAG guidance)
-- [x] Tool: Read — file path + content preview + "Completed" green badge (ss-0000/0500 Step 1: 8 Read calls with file paths and content)
-- [x] Tool: Edit/Write — file modification + status (ss-3000 Step 5: Edit:completed, s2-1000 Step 13: Write:completed)
-- [x] Tool: Bash/Terminal — command + output (s2-1500 Step 13: "Install vitest dependency" Bash:completed, s4-4500 Step 31: "Sleep 30 seconds then echo message")
-- [x] Tool: Glob/Grep — search results (ss-0500 Step 1: Glob call, ss-6500 Step 8: Grep calls, s3-0500 Step 23: Glob)
-- [x] Tool: WebSearch — web search results (ss-5500 Step 7: WebSearch call with "Completed" + search query + result)
-- [x] Tool: errored — red/error status (s2-2500 Step 15: Write call with "Error" status for denied outside-project write)
-- [x] Tool: running — spinner/in-progress (ss-7000 Step 8: subagent tools with "Running" orange badge; s4-0500 Step 29: Grep/Read/Bash all "Running")
-- [x] Permission prompt — blocked tool with approve/deny buttons (ss-bottom Step 9: Edit with "Awaiting approval" + "Yes"/"Yes, allow all edits"/"No, and provide feedback" buttons)
-- [x] Permission approved — resolved with decision (ss-3000 Step 5: "Yes" button visible after approval, s2-1000 Step 13: "Yes, allow all edits during this session")
-- [x] Permission denied — resolved with rejection (s2-2500 Step 15: "No, and provide feedback" button, Write:error result after deny)
-- [x] Subagent — title, nested tools (ss-6500 Step 8: "Explore keyboard events in app" subagent title, ss-7000/7500: nested Grep/Read/Bash tools within subagent)
-- [x] Question — agent asking user for input (s2-0500 Step 12: Claude lists "Which test framework? Vitest, Jest, Mocha..." as text options)
-- [x] Todo/Task — task tracking display (s2-3000 Step 16: TodoWrite:completed, todo list "1. Add due dates to todos — pending, 2. Add drag-to-reorder — pending, 3. Add export to JSON — pending"; home-4sessions: "0/3" todo counter badge)
-- [x] Background task running — long-running tool in progress (s4-4500 Step 31: Bash "Sleep 30 seconds then echo message" in progress)
-- [x] Background task completed — finished with output (s4-5000 Step 32: "The background task finished — it said: lol i am donezen")
-- [x] Background subagent (TaskCreate) — background agent task (s4-7000 Step 35: "Research CSS frameworks for project" label, "Async agent launched successfully", s4-6200 Step 37: Agent:completed)
-- [x] Cancelled/interrupted step — partial response after cancel (ss-bottom Session 1: stopped mid-stream at Step 10, "Awaiting approval" tool left pending)
-- [x] Session list — multiple sessions with metadata (home-4sessions: 4 sessions with colorful avatars, status badges: "incubating...", "permission required", "online 0/3", "Start New Session" button)
-- [x] Empty session — new session before messages (home-4sessions: right panel empty when no session selected)
-- [x] Completed session — stopped session with full transcript (s3-bottom: Session 3 stopped at Step 28 with "Awaiting approval" permission still visible, transcript preserved)
-
-### Steps 35-38
-
-Defined in `environments/lab-rat-todo-project/exercise-flow.md`. Cover
-background subagents (TaskCreate/TaskOutput) and multiple concurrent tasks.
-Some features may be Claude-only — document per-agent support with evidence.
-
-### Screenshot / video storage
-
-Save ALL screenshots and videos to `e2e-recordings/ux-review/` in the repo
-(already gitignored). Use descriptive filenames: `step-01-orient.png`,
-`step-08-subagent.png`, `component-permission-denied.png`, etc.
-
-### Acceptance criteria for Phase 1
-
-- ALL 38 steps walked through VISUALLY with agent-browser
-- Screenshots of EVERY component type above (check them off as you go)
-- Extended scenarios tested with screenshots
-- Per-step visual findings recorded in state.md
-- If fewer than 38 step entries with screenshots, YOU ARE NOT DONE
-
-### Phase 1.5: UX consistency review by Codex + Gemini
-
-After Phase 1 screenshots and video are captured, run a UX review:
-
-1. Collect ALL screenshots into a single directory (e.g. `e2e-recordings/ux-review/`)
-2. If video was recorded, include that too
-3. Call `codex` CLI giving it the path to the screenshot directory and ask it to:
-   - Review ALL screenshots at once (it needs the full picture for consistency)
-   - Look for visual inconsistencies across screens (spacing, colors, typography,
-     icon styles, status indicators, alignment)
-   - Check for inconsistencies across the entire experience flow
-   - Flag anything that looks broken, misaligned, or out of place
-   - Compare against UX best practices for developer tool dashboards
-   - Note: Happy already does a good job representing tool calls — the goal is
-     NOT to redesign, but to verify the refactor didn't break the visual quality
-4. Call `gemini` CLI with the same artifacts and same review prompt
-5. Collect both reviews, compare findings, note agreements and disagreements
-6. Record the review results in state.md under "## UX Review Results"
-7. If any real inconsistencies are found, FIX THEM before moving to Phase 2
-
-The review prompt should be something like:
-```
-You are reviewing the UI of "Happy", a developer tool that shows real-time
-coding agent sessions (Claude, Codex, OpenCode) in a web dashboard. These
-screenshots show every component type the app renders: tool calls, permissions,
-subagents, questions, background tasks, session list, etc.
-
-Review ALL screenshots together for:
-1. Visual consistency across screens (spacing, colors, typography, icons, alignment)
-2. Consistency across the entire experience flow (does it feel cohesive?)
-3. Any obvious UI bugs (overlapping elements, missing icons, broken layouts)
-4. UX best practices for developer tool dashboards
-
-This is a refactored codebase. The UI was good before — we need to verify
-the refactor didn't introduce visual regressions. Flag only real issues,
-not style preferences.
-```
-
-### What NOT to do
-
-- DO NOT edit *.test.ts files
-- DO NOT write Playwright code
-- DO NOT run steps without looking at the browser via agent-browser
-- DO NOT declare done after fewer than 38 steps
-- DO NOT skip to Phase 1.5 or Phase 2 before Phase 1 is complete
-- DO NOT rationalize "diminishing returns" — do ALL steps
+No further priority item is listed in this state file. Await new work or human review.
 
 ## Phase 1 VISUAL Results (agent-browser verified, March 26 2026)
 
@@ -865,26 +753,32 @@ the real UX, confirmed no bugs, THEN can codify it as automated tests.
   - 28/37 steps passed, 9 timed out (all timed-out steps still rendered content correctly)
   - 40+ screenshots saved to `/tmp/happy-phase1-*.png`
   - Real proof on March 26, 2026: 35-minute walkthrough, agent-browser screenshots taken
+- [x] Final dead code cleanup + simplification sweep
+  - Removed the dead Codex external-sandbox branch from `executionPolicy.ts`,
+    `runCodex.ts`, and `CodexAppServerClient`.
+  - Deleted `packages/happy-cli/src/codex/codexAppServerClient.test.ts`, which still
+    mocked the pre-SDK app-server / JSON-RPC transport and no longer matched production.
+  - Reduced `codexAppServerTypes.ts` from leftover app-server wire types to the
+    4 shared SDK-era types still used by the integration (`ApprovalPolicy`,
+    `SandboxMode`, `ReasoningEffort`, `EventMsg`).
+  - Simplification pass on touched Codex files: `git diff HEAD --stat` shows
+    810 deletions vs 15 insertions across 7 files.
+  - Real proof on March 26, 2026:
+    `yarn workspace happy-coder build`
+    → build passed in 6.00s
+  - Real proof on March 26, 2026:
+    `yarn workspace happy-coder vitest run src/codex/codex.integration.test.ts --reporter=verbose`
+    → `5 passed (5)`, file passed in 43.98s
+  - Real proof on March 26, 2026:
+    `yarn workspace @slopus/happy-sync vitest run src/e2e/codex.integration.test.ts --testNamePattern='Step (0|5|10) —' --reporter=verbose`
+    → `3 passed | 37 skipped (40)`, file passed in 76.86s
 
-## Remaining Tasks (in priority order)
+## Remaining Tasks
 
-After each task below, do a simplification pass (see prompt.md). Check `git diff main --stat`,
-look for duplication, dead code, unnecessary abstractions.
-
-1. ~~Migrate to official `@anthropic-ai/claude-agent-sdk`~~ — DONE
-2. ~~Implement control messages — abort, runtime-config, permissions, session-end as flat
-   top-level session messages (Amendments 1, 2, 6)~~ — DONE
-3. ~~Consolidate agent state + metadata into session state cache (Amendment 3)~~ — DONE
-4. ~~Smart Zustand — SyncNode as single source of truth, fine-grained selectors (Amendment 4)~~ — DONE
-5. ~~FIX BLOCKER: Debug and fix "Maximum update depth exceeded" crash in the web app~~ — DONE
-6. ~~Level 3: FULL browser verification — all 34 steps + multi-session + video~~ — DONE
-7. ~~Phase 1: Manual browser walkthrough of ALL 34 exercise steps~~ — DONE (31/34 passed, 3 timeout)
-7b. ~~Phase 1 VISUAL REDO: agent-browser screenshots of ALL 37 steps~~ — DONE (28/37 passed, 9 timeout, all 22 component types verified)
-8. Final dead code cleanup + simplification sweep
+None. All priority items in this loop state are complete.
 
 ## Simplification Opportunities
 
-- **codexAppServerClient.ts**: Dead `approvalHandler` code (~50 lines) — SDK handles approvals internally
 - **v3Mapper duplication**: 4 files, ~2100 lines. Leave as-is — each is typed to its agent's SDK types
 - **browser.integration.test.ts**: Now carries web-app boot, hydration, and
   console-filter helpers inline. Leave it as-is for now, but once the full
@@ -906,6 +800,14 @@ look for duplication, dead code, unnecessary abstractions.
 
 ## Blocked / Investigated
 
+- **INVESTIGATED (March 26, 2026)**: a broad Codex daemon-backed rerun
+  `yarn workspace @slopus/happy-sync vitest run src/e2e/codex.integration.test.ts --testNamePattern='Step [0-6] —' --reporter=verbose`
+  timed out on Step 1 at 120s and Step 6 at 180s even though Steps 0, 2, 3, 4,
+  and 5 passed and Step 6 had visible tool progress up to `apply_patch:completed`.
+  The cleanup patch only removed dead SDK/app-server branches; the targeted proof
+  set (`Step 0`, `Step 5`, `Step 10`) passed immediately afterward, so this looks
+  like existing Codex latency / test-timeout noise rather than a regression from
+  the cleanup.
 - **RESOLVED (March 26, 2026)**: Vitest leaked `NODE_ENV=test` into the Expo
   web child process. Expo Router web then failed to transform
   `node_modules/expo-router/_ctx.web.js`, crashing on

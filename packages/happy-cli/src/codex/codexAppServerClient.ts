@@ -54,9 +54,6 @@ export class CodexAppServerClient {
     private pendingTurn: PendingTurn | null = null;
     private threadDefaults: PendingThreadOptions | null = null;
     private startedItems = new Set<string>();
-    private sandboxCleanup: (() => Promise<void>) | null = null;
-
-    public sandboxEnabled = false;
     private _threadId: string | null = null;
     private _turnId: string | null = null;
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -96,13 +93,6 @@ export class CodexAppServerClient {
             this._threadId = null;
             this.threadDefaults = null;
         }
-        if (this.sandboxCleanup) {
-            try {
-                await this.sandboxCleanup();
-            } catch {}
-            this.sandboxCleanup = null;
-        }
-        this.sandboxEnabled = false;
     }
 
     async disconnect(): Promise<void> {
@@ -470,7 +460,7 @@ export class CodexAppServerClient {
         }
     }
 
-    private async ensureThread(opts: PendingThreadOptions): Promise<void> {
+    private async prepareTurn(opts: PendingThreadOptions): Promise<void> {
         const merged = {
             model: opts.model ?? this.threadDefaults?.model,
             cwd: opts.cwd ?? this.threadDefaults?.cwd ?? process.cwd(),
@@ -486,21 +476,19 @@ export class CodexAppServerClient {
 
         if (this._threadId) {
             this.thread = codex.resumeThread(this._threadId, threadOptions);
-        } else if (!this.thread) {
-            this.thread = codex.startThread(threadOptions);
         } else {
             this.thread = codex.startThread(threadOptions);
         }
     }
 
-    async sendTurn(prompt: string, opts?: {
+    private async sendTurn(opts?: {
         model?: string;
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
     }): Promise<void> {
-        await this.ensureThread({
+        await this.prepareTurn({
             model: opts?.model,
             cwd: opts?.cwd,
             approvalPolicy: opts?.approvalPolicy,
@@ -517,7 +505,7 @@ export class CodexAppServerClient {
         effort?: ReasoningEffort;
         turnTimeoutMs?: number;
     }): Promise<{ aborted: boolean }> {
-        await this.sendTurn(prompt, opts);
+        await this.sendTurn(opts);
 
         if (!this.thread) {
             throw new Error('No active thread. Call startThread first.');
@@ -601,13 +589,10 @@ export class CodexAppServerClient {
         this.pendingTurn?.controller.abort();
     }
 
-    async abortTurnWithFallback(_opts?: {
-        gracePeriodMs?: number;
-        forceRestartOnTimeout?: boolean;
-    }): Promise<{ hadActiveTurn: boolean; aborted: boolean; forcedRestart: boolean; resumedThread: boolean }> {
+    async abortTurnWithFallback(): Promise<{ hadActiveTurn: boolean; aborted: boolean }> {
         const pending = this.pendingTurn;
         if (!pending) {
-            return { hadActiveTurn: false, aborted: false, forcedRestart: false, resumedThread: false };
+            return { hadActiveTurn: false, aborted: false };
         }
 
         pending.controller.abort();
@@ -615,7 +600,7 @@ export class CodexAppServerClient {
             await pending.promise;
         } catch {}
 
-        return { hadActiveTurn: true, aborted: true, forcedRestart: false, resumedThread: false };
+        return { hadActiveTurn: true, aborted: true };
     }
 }
 
