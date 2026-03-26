@@ -377,16 +377,36 @@ async function main() {
                 results.push({ step: step.id, name: step.name, status: `fail: ${errMsg.slice(0, 100)}`, duration, tools: [] });
             }
 
-            // Screenshot after each step — scroll to bottom to show latest content
+            // Screenshot after each step — scroll chat container to show latest content
             try {
                 await page.waitForTimeout(2000); // Let browser sync
+                // The chat uses an inverted FlatList (scaleY(-1) on web). Find the
+                // deepest scrollable element (the FlatList container) and scroll it
+                // so the latest messages are visible. Because it's inverted,
+                // scrollTop=0 shows newest content.
                 await page.evaluate(() => {
-                    const doc = (globalThis as any).document;
-                    if (doc) doc.documentElement.scrollTop = doc.documentElement.scrollHeight;
+                    // Find all scrollable elements and pick the one with the most
+                    // scrollable content (the chat container, not document)
+                    const candidates = document.querySelectorAll('div, [role="list"]');
+                    let best: Element | null = null;
+                    let bestScrollHeight = 0;
+                    for (const el of candidates) {
+                        const style = getComputedStyle(el);
+                        const isScrollable = style.overflow === 'auto' || style.overflow === 'scroll' ||
+                            style.overflowY === 'auto' || style.overflowY === 'scroll';
+                        if (isScrollable && el.scrollHeight > el.clientHeight && el.scrollHeight > bestScrollHeight) {
+                            best = el;
+                            bestScrollHeight = el.scrollHeight;
+                        }
+                    }
+                    if (best) {
+                        // Inverted FlatList: scrollTop=0 = newest content visible
+                        best.scrollTop = 0;
+                    }
                 });
                 await page.waitForTimeout(500);
                 const filename = `step-${String(step.id).padStart(2, '0')}-${step.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.png`;
-                await page.screenshot({ path: join(OUTPUT_DIR, filename), fullPage: false });
+                await page.screenshot({ path: join(OUTPUT_DIR, filename), fullPage: true });
             } catch {}
         }
 
