@@ -21,13 +21,13 @@ while true; do
     echo "========================================="
     echo ""
 
-    # Odd iterations: Claude, even iterations: Codex — 3 hour timeout
+    # Odd iterations: Claude, even iterations: Codex — 40 min timeout
     if (( ITERATION % 2 == 1 )); then
-        timeout 10800 claude -p --dangerously-skip-permissions \
+        timeout 2400 claude -p --dangerously-skip-permissions \
             "$PROMPT" \
             2>&1 | tee "$LOGFILE" || true
     else
-        timeout 10800 codex exec -s danger-full-access \
+        timeout 2400 codex exec -s danger-full-access \
             "$PROMPT" \
             2>&1 | tee "$LOGFILE" || true
     fi
