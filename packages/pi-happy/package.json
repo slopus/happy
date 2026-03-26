@@ -1,0 +1,46 @@
+{
+  "name": "pi-happy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension package for syncing pi sessions with Happy",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "files": [
+    "extensions",
+    "vendor",
+    "README.md",
+    "AGENTS.md",
+    "package.json"
+  ],
+  "scripts": {
+    "typecheck": "yarn --cwd ../happy-agent build && yarn --cwd ../happy-wire build && tsc --noEmit",
+    "test": "yarn --cwd ../happy-agent build && yarn --cwd ../happy-wire build && vitest run"
+  },
+  "dependencies": {
+    "@paralleldrive/cuid2": "^2.2.2",
+    "@slopus/happy-wire": "^0.1.0",
+    "axios": "^1.13.2",
+    "happy-agent": "^0.1.0",
+    "socket.io-client": "^4.8.1",
+    "tweetnacl": "^1.0.3",
+    "zod": "3.25.76"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "yarn@1.22.22"
+}
