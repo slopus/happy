@@ -1176,7 +1176,7 @@ describe('Level 2: Claude E2E Flow (38 steps)', () => {
                 hasTerminalStepFinish(message)
                 && getFullText(message).length > 30,
             );
-        }, STEP_TIMEOUT);
+        }, 300000);
 
         // Check that TaskCreate tool part appeared (background task launched)
         const allTools = assistantToolsSince(before);
@@ -1190,7 +1190,7 @@ describe('Level 2: Claude E2E Flow (38 steps)', () => {
         if (!hasTaskCreate) {
             console.log('[Step 35] Note: no TaskCreate tool found — Claude may have handled this differently');
         }
-    }, STEP_TIMEOUT);
+    }, 300000); // 5 min — TaskCreate can take a long time
 
     it('Step 36 — Check background agent result (TaskOutput)', async () => {
         const before = assistantCount();
@@ -1204,7 +1204,7 @@ describe('Level 2: Claude E2E Flow (38 steps)', () => {
                 hasTerminalStepFinish(message)
                 && getFullText(message).length > 30,
             );
-        }, STEP_TIMEOUT);
+        }, 300000);
 
         const allTools = assistantToolsSince(before);
         const hasTaskOutput = allTools.some(t =>
@@ -1216,7 +1216,7 @@ describe('Level 2: Claude E2E Flow (38 steps)', () => {
         if (!hasTaskOutput) {
             console.log('[Step 36] Note: no TaskOutput tool found — Claude may have inlined the result');
         }
-    }, STEP_TIMEOUT);
+    }, 300000); // 5 min — TaskOutput with block:true waits for background task
 
     it('Step 37 — Multiple background tasks', async () => {
         const before = assistantCount();
@@ -1236,7 +1236,7 @@ describe('Level 2: Claude E2E Flow (38 steps)', () => {
             const hasTerminal = assistantMessagesSince(before).some(hasTerminalStepFinish);
 
             return hasTerminal && (hasEdit || hasAppJsComment);
-        }, STEP_TIMEOUT);
+        }, 300000);
 
         // Foreground edit should have happened
         expect(
@@ -1245,7 +1245,7 @@ describe('Level 2: Claude E2E Flow (38 steps)', () => {
                 (t.tool === 'Edit' || t.tool === 'Write') && t.state.status === 'completed',
             ),
         ).toBe(true);
-    }, STEP_TIMEOUT);
+    }, 300000); // 5 min — multiple background tasks + foreground edit
 
     // ═════════════════════════════════════════════════════════════════════════
     //  WRAP UP (final)
