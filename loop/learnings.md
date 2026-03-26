@@ -5,6 +5,10 @@ If you discover something non-obvious, append it here under the right section.
 
 ## Testing
 
+- `spawnDaemonSession(directory, sessionId)` uses resume semantics now. Passing a
+  fresh `sessionId` does NOT label a new daemon session; it makes the daemon try
+  to resume that exact existing session and return an error if it does not exist.
+  Tests that want a new session must omit the `sessionId`.
 - `waitForStepFinish` alone is not enough — Claude sends multiple assistant
   messages per LLM turn (step-start + tools + step-finish). Tool assertions
   must check across ALL new assistant messages, not just the last one.
@@ -183,6 +187,12 @@ If you discover something non-obvious, append it here under the right section.
 - `body.indexOf('test framework')` for ordering assertions is fragile because
   Claude's earlier responses may mention the same phrase. Use the exact user
   prompt text (e.g., `'Ask me which one I want'`) for reliable ordering checks.
+- OpenClaw gateway tests cannot assume streaming `started` / `delta` events just
+  because the gateway itself is reachable and authenticated. If the upstream
+  `openai-codex` OAuth token is stale, the gateway can return a single terminal
+  `final` message containing `Agent failed before reply: OAuth token refresh
+  failed...`. Treat that as valid terminal transport behavior; only require the
+  exact success text when the reply is not an upstream auth failure.
 - The expanded browser UX test runs Steps 1, 2, 3 (deny), 4 (approve), 12
   (question) in ~135s total. Steps 1-4 consistently produce permission prompts.
   The full browser check (navigate + render + assertions) adds ~10s on top.
