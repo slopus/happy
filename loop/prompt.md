@@ -6,16 +6,21 @@ IMMEDIATE task comes from `loop/state.md`.
 
 ## Workflow
 
-1. Read `loop/state.md` — this is your task assignment
-2. Read `loop/learnings.md` — hard-won knowledge from previous iterations
-3. Read `docs/plans/happy-sync-major-refactor.md` for context on the overall design
-4. Do the CURRENT TASK described in state.md. Nothing else.
-5. When done (or blocked), update `loop/state.md`:
+1. **FIRST: check for uncommitted work.** Run `git status` and `git diff --stat HEAD`.
+   If there are uncommitted changes from a previous iteration, COMMIT THEM NOW
+   with a descriptive message before doing anything else. Do not lose work.
+2. Read `loop/state.md` — this is your task assignment
+3. Read `loop/learnings.md` — hard-won knowledge from previous iterations
+4. Read `docs/plans/happy-sync-major-refactor.md` for context on the overall design
+5. Do the CURRENT TASK described in state.md. Nothing else.
+6. **COMMIT your work** before finishing. Every iteration must end with a commit.
+   Use descriptive messages: `checkpoint: Phase 1 steps 1-10 visual walkthrough`
+7. When done (or blocked), update `loop/state.md`:
    - Move completed items to "Completed Tasks"
    - Update "Current Task" to the next priority item
    - Add any blockers or findings to "Blocked / Investigated"
    - Update "Last updated" timestamp
-6. If you discover something non-obvious (a subtle bug, a surprising behavior,
+8. If you discover something non-obvious (a subtle bug, a surprising behavior,
    a technique that worked), append it to `loop/learnings.md`
 
 ## Rules
@@ -131,79 +136,76 @@ The SDKs handle the agent ↔ happy-cli communication underneath.
 
 ### STOP — READ THIS BEFORE TOUCHING ANY TEST FILES
 
-There are TWO phases to the browser work. You MUST complete Phase 1 before
-starting Phase 2.
+**PHASE 1 HAS BEEN REJECTED TWICE.** Read `loop/state.md` Current Task carefully.
 
-**THE PREVIOUS PHASE 1 ATTEMPT WAS REJECTED** because it only covered 3 out
-of 34 steps and was declared "done". That is NOT acceptable. Phase 1 means
-ALL 34 STEPS walked through manually. Not 3. Not 10. ALL 34.
+- First rejection: only 3 steps
+- Second rejection: 34 steps but NO visual verification — ran programmatically
+  without ever looking at the browser
 
-If you skip Phase 1 and start writing Playwright tests or editing
-`browser.integration.test.ts`, you are doing it WRONG. Stop and go back
-to Phase 1.
+The ENTIRE POINT is to use `agent-browser` to SEE the rendered UI components
+and take screenshots proving each one looks correct. If you're not using
+agent-browser to look at the page and screenshot it, you're doing it wrong.
 
-DO NOT edit any test file (*.test.ts) until Phase 1 is COMPLETE with ALL 34
-steps recorded in `loop/state.md`.
+DO NOT edit any *.test.ts file until Phase 1 is complete with ALL steps
+recorded AND all component types checked off in `loop/state.md`.
 
-### Phase 1: Manual browser walkthrough — ALL 34 STEPS (DO THIS FIRST)
+### Phase 1: VISUAL browser walkthrough — ALL 38 STEPS
 
-`agent-browser` is a CLI tool. Run it via Bash like any other CLI:
+`agent-browser` is a CLI tool. Run it via Bash:
 ```bash
 npx @anthropic-ai/agent-browser
 ```
 
-Use it to manually control a real Chrome browser. The workflow is:
+Use it to control a real Chrome browser and LOOK at the Happy web app.
 
-1. Boot infrastructure (server + daemon) programmatically using the existing
-   e2e setup helpers (same as the existing tests do)
-2. Start the Expo web dev server with `BROWSER=none` (prevents auto-open)
-3. Use `agent-browser` to open the web app URL in Chrome
-4. Spawn a real Claude session via SyncNode
-5. Run ALL 34 exercise steps. For EACH step:
-   a. Send the step's prompt via SyncNode
-   b. Wait for Claude to respond (handle permissions, questions, etc.)
-   c. Switch to agent-browser and LOOK at the rendered page
-   d. Take a screenshot
-   e. Note what rendered: tools, permissions, text, errors
-6. AFTER all 34 steps, test these EXTENDED scenarios:
-   - Create a SECOND session (different agent), switch between them
-   - Send a message to Session B while viewing Session A, verify isolation
-   - Close the browser tab, reopen it — does the session restore?
-   - Reopen the completed/stopped session — transcript still there?
-   - Navigate away from session page, come back
-   - Session list: both sessions show with correct metadata?
+1. Boot infrastructure (server + daemon + Expo web with BROWSER=none)
+2. Use `agent-browser` to open Chrome, navigate to the web app
+3. Spawn a real Claude session via SyncNode
+4. Run ALL 34 exercise steps PLUS 3 new steps (35-37, see state.md).
+   For EACH step:
+   a. Send the prompt via SyncNode
+   b. Wait for Claude to respond
+   c. Use agent-browser to LOOK at the page and TAKE A SCREENSHOT
+   d. Record what components rendered and how they look
+5. After all steps, test extended scenarios (session switching, close/reopen, etc.)
 
-Record EVERYTHING in `loop/state.md` under "## Phase 1 Results (Full 34 Steps)".
-For EACH step: step number, what rendered, any issues.
-Screenshots required at minimum: step 1, step 3 (deny), step 4 (approve),
-step 10 (cancel), step 12 (question), step 20 (close), step 34 (summary),
-session switching, tab close/reopen.
+**The goal is visual component coverage.** You need a screenshot proving each
+component type renders correctly: user messages, assistant text, every tool type,
+permissions (blocked/approved/denied), subagents with nested tools, questions,
+todos, background tasks (running + completed), TaskCreate/TaskOutput, cancelled
+steps, session list, empty session, completed session. See the full checklist
+in `loop/state.md`.
 
-**Phase 1 acceptance criteria:**
-- ALL 34 steps walked through and documented (check: count the step entries)
-- Extended scenarios tested and documented
-- Any bugs found are FIXED
-- If you have fewer than 34 step entries in your results, YOU ARE NOT DONE
+**Phase 1 acceptance:**
+- ALL 38 steps with agent-browser screenshots
+- ALL component types checked off with screenshots
+- Extended scenarios tested
+- Fewer than 38 step entries = NOT DONE
 
-### Phase 2: Write the automated e2e test (ONLY after ALL 34 steps recorded)
+### Phase 1.5: UX consistency review by Codex + Gemini (after Phase 1)
 
-ONLY start this after `loop/state.md` has a "Phase 1 Results (Full 34 Steps)"
-section with entries for ALL 34 steps from the manual walkthrough.
+After Phase 1 screenshots + video are captured:
 
-Write the Playwright e2e test covering everything you verified manually:
-- **Claude**: full 34-step exercise flow rendered in browser (primary agent,
-  FULL COVERAGE — this is the core path, do not skip steps)
-- **Other agents (Codex, OpenCode)**: lightweight — just prove starting a
-  session works, send one message, verify render + response. No full 34 steps.
-- **Multi-session / navigation**: switch between Claude + other-agent sessions,
-  verify independent transcripts, send to Session B while viewing A, close tab
-  and reopen, navigate away and back, reopen completed sessions, session list.
-- **Video recording**: EVERY browser test MUST record video via Playwright:
-  ```typescript
-  const context = await browser.newContext({
-    recordVideo: { dir: 'e2e-recordings/', size: { width: 1280, height: 720 } }
-  });
-  ```
+1. Collect ALL screenshots into one directory (e.g. `/tmp/happy-ux-review/`)
+2. Call `codex` CLI and `gemini` CLI, giving each the FULL set of screenshots
+   and asking for a thorough UX consistency review (see state.md for the exact
+   review prompt). They must see ALL artifacts at once to judge consistency.
+3. Compare both reviews, record in state.md under "## UX Review Results"
+4. Fix any real inconsistencies before Phase 2
+
+The goal is NOT to redesign — Happy already represents tool calls well. The
+goal is to verify the refactor didn't break visual quality or introduce
+regressions. Flag only real issues, not style preferences.
+
+### Phase 2: Automated e2e test (ONLY after Phase 1 + 1.5)
+
+ONLY after Phase 1 results (all 38 steps) AND Phase 1.5 UX review are done.
+
+Write the Playwright e2e test:
+- **Claude**: full 38-step flow in browser (primary agent, full coverage)
+- **Other agents**: lightweight — start session, send one message, verify render
+- **Multi-session / navigation**: switching, isolation, close/reopen, session list
+- **Video recording**: every test records video via Playwright
 
 ### Environment: prevent Expo auto-opening browser
 
