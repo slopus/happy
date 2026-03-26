@@ -3,18 +3,14 @@ import React from "react";
 import { ApiClient } from '@/api/api';
 import { SyncBridge } from '@/api/syncBridge';
 import { resolveSessionScopedSyncNodeToken } from '@/api/syncNodeToken';
-import type { AgentState } from '@/api/types';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers';
 import { CodexAppServerClient } from './codexAppServerClient';
-import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import {
     handleCodexEvent,
     flushV3CodexTurn,
-    unblockCodexToolApproved,
-    unblockCodexToolRejected,
     createV3CodexMapperState,
     type V3CodexMapperState,
 } from './utils/v3Mapper';
@@ -133,9 +129,6 @@ export async function runCodex(opts: {
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
-    // Permission handler declared here so it can be updated in onSessionSwap callback
-    // (assigned later after client setup)
-    let permissionHandler: CodexPermissionHandler;
     let client!: CodexAppServerClient;
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
@@ -147,18 +140,6 @@ export async function runCodex(opts: {
         response,
         onSessionSwap: (newSession) => {
             session = newSession;
-            // Update permission handler with new session deps to avoid stale reference
-            if (permissionHandler) {
-                permissionHandler.updateDeps({
-                    rpcHandlerManager: rpcHandlerManager ?? newSession.rpcHandlerManager,
-                    updateAgentState: syncBridge
-                        ? (handler) => syncBridge!.updateAgentState<AgentState>(handler)
-                        : (handler) => newSession.updateAgentState(handler),
-                    sendPermissionRequest: syncBridge
-                        ? (request) => syncBridge!.sendPermissionRequest(request)
-                        : undefined,
-                });
-            }
         }
     });
     session = initialSession;
@@ -167,7 +148,6 @@ export async function runCodex(opts: {
     const workingDirectory = process.cwd();
     let syncBridge: SyncBridge | null = null;
     let rpcHandlerManager: RpcHandlerManager | null = null;
-    let unsubscribeSyncPermissionDecisions: (() => void) | undefined;
 
     if (response) {
         const sessionScopedToken = await resolveSessionScopedSyncNodeToken({
@@ -421,11 +401,6 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Abort requested - stopping current task');
         abortInProgress = (async () => {
             try {
-                // Resolve any pending permission requests as 'abort' first.
-                if (permissionHandler) {
-                    permissionHandler.abortAll();
-                }
-
                 // Request interruption, then force-restart Codex app-server if
                 // it doesn't settle quickly (long-running shell commands).
                 if (client) {
@@ -571,68 +546,11 @@ export async function runCodex(opts: {
     //
 
     client = new CodexAppServerClient(sandboxConfig);
-
-    permissionHandler = new CodexPermissionHandler({
-      rpcHandlerManager: activeRpcManager,
-      updateAgentState: syncBridge
-          ? (handler) => syncBridge!.updateAgentState<AgentState>(handler)
-          : (handler) => session.updateAgentState(handler),
-      sendPermissionRequest: syncBridge
-          ? (request) => syncBridge!.sendPermissionRequest(request)
-          : undefined,
-    });
-    if (syncBridge) {
-        unsubscribeSyncPermissionDecisions = syncBridge.onPermissionDecision((decision) => {
-            let updatedMessage: v3.MessageWithParts | null = null;
-            if (v3CodexMapperState) {
-                updatedMessage = decision.decision === 'reject'
-                    ? unblockCodexToolRejected(
-                        v3CodexMapperState,
-                        decision.callId,
-                        decision.reason ?? 'Permission rejected',
-                    )
-                    : unblockCodexToolApproved(
-                        v3CodexMapperState,
-                        decision.callId,
-                        decision.decision === 'always' ? 'always' : 'once',
-                    );
-            }
-            if (updatedMessage) {
-                publishCodexV3Message(updatedMessage);
-            }
-            permissionHandler.handleSyncDecision({
-                id: decision.callId,
-                approved: decision.decision !== 'reject',
-                decision: decision.decision === 'always'
-                    ? 'approved_for_session'
-                    : decision.decision === 'reject'
-                        ? 'denied'
-                        : 'approved',
-            });
-        });
-    }
     reasoningProcessor = new ReasoningProcessor((message) => {
         sendCodexV3Event(message as Record<string, unknown>);
     });
     const diffProcessor = new DiffProcessor((message) => {
         sendCodexV3Event(message as Record<string, unknown>);
-    });
-
-    // Approval handler: routes server → client approval requests to our permission handler
-    client.setApprovalHandler(async (params) => {
-        const toolName = params.type === 'exec' ? 'CodexBash' : 'CodexPatch';
-        const input = params.type === 'exec'
-            ? { command: params.command, cwd: params.cwd }
-            : { fileChanges: params.fileChanges };
-
-        try {
-            const result = await permissionHandler.handleToolCall(params.callId, toolName, input);
-            logger.debug('[Codex] Permission result:', result.decision);
-            return result.decision;
-        } catch (error) {
-            logger.debug('[Codex] Error handling permission:', error);
-            return 'denied';
-        }
     });
 
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
@@ -880,8 +798,7 @@ export async function runCodex(opts: {
             } finally {
                 // Flush v3 turn before resetting processors
                 flushCodexV3TurnLocal();
-                // Reset permission handler, reasoning processor, and diff processor
-                permissionHandler.reset();
+                // Reset reasoning processor and diff processor
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
                 diffProcessor.reset();
                 thinking = false;
@@ -906,7 +823,6 @@ export async function runCodex(opts: {
             logger.debug('[codex]: Cancelling offline reconnection');
             reconnectionHandle.cancel();
         }
-        unsubscribeSyncPermissionDecisions?.();
 
         try {
             if (syncBridge) {

@@ -265,3 +265,16 @@ If you discover something non-obvious, append it here under the right section.
   `AppSyncStore fetchSession failed ... TypeError: Failed to fetch`) during
   page teardown. Filter only this exact aborted-navigation form; do NOT filter
   other `AppSyncStore` or `pageerror` failures.
+- Phase 1 full 34-step walkthrough (March 26, 2026): a standalone script
+  (`phase1-walkthrough.ts`) running outside Vitest can walk through all 34
+  exercise steps in ~34 minutes. Key findings:
+  - Permission prompts DO appear even with bypassPermissions user config (for
+    Edit, WebSearch, Bash tools) — the daemon's permission bridge works.
+  - Step 12: Claude does NOT use formal AskUserQuestion — lists options in text.
+  - Step 17: Model switch via makeUserMessage meta doesn't work — needs
+    runtime-config control message.
+  - Steps 27, 29: Subagent and resume-after-stop can take >180s and >120s
+    respectively. Budget generous timeouts.
+  - SyncNode permission API: `perm.permissionId` not `perm.id`, and
+    `approvePermission(sid, pid, { decision: 'once'|'always' })` not
+    `{ always: bool }`. Question API: `q.questionId` not `q.id`.

@@ -487,58 +487,6 @@ export function flushV3CodexTurn(state: V3CodexMapperState): MessageWithParts[] 
   return result.messages;
 }
 
-export function unblockCodexToolApproved(
-  state: V3CodexMapperState,
-  callID: string,
-  decision: 'once' | 'always',
-): MessageWithParts | null {
-  const toolPart = state.toolParts.get(callID);
-  if (!toolPart || toolPart.state.status !== 'blocked') return null;
-
-  const block = toolPart.state.block;
-  toolPart.state = {
-    status: 'running',
-    input: toolPart.state.input,
-    title: toolPart.state.title,
-    time: { start: toolPart.state.time.start },
-  };
-
-  (toolPart as any)._resolvedBlock = {
-    ...block,
-    decision,
-    decidedAt: Date.now(),
-  };
-
-  if (!state.currentAssistant) return null;
-  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
-}
-
-export function unblockCodexToolRejected(
-  state: V3CodexMapperState,
-  callID: string,
-  reason: string,
-): MessageWithParts | null {
-  const toolPart = state.toolParts.get(callID);
-  if (!toolPart || toolPart.state.status !== 'blocked') return null;
-
-  const block = toolPart.state.block;
-  toolPart.state = {
-    status: 'error',
-    input: toolPart.state.input,
-    error: reason || 'Permission rejected',
-    time: { start: toolPart.state.time.start, end: Date.now() },
-    block: {
-      ...block,
-      decision: 'reject',
-      decidedAt: Date.now(),
-    } as any,
-  };
-  state.toolParts.delete(callID);
-
-  if (!state.currentAssistant) return null;
-  return { info: state.currentAssistant.info, parts: state.currentAssistant.parts };
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function startAssistant(state: V3CodexMapperState): void {

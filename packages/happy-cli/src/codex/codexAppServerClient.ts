@@ -19,7 +19,6 @@ import type {
     ApprovalPolicy,
     EventMsg,
     ReasoningEffort,
-    ReviewDecision,
     SandboxMode,
 } from './codexAppServerTypes';
 import type { SandboxConfig } from '@/persistence';
@@ -38,15 +37,6 @@ type PendingThreadOptions = {
     mcpServers?: Record<string, unknown>;
     effort?: ReasoningEffort;
 };
-
-export type ApprovalHandler = (params: {
-    type: 'exec' | 'patch';
-    callId: string;
-    command?: string[];
-    cwd?: string;
-    fileChanges?: Record<string, unknown>;
-    reason?: string | null;
-}) => Promise<ReviewDecision>;
 
 type ResolvedModel = {
     model: string | undefined;
@@ -70,7 +60,6 @@ export class CodexAppServerClient {
     private _threadId: string | null = null;
     private _turnId: string | null = null;
     private eventHandler: ((msg: EventMsg) => void) | null = null;
-    private approvalHandler: ApprovalHandler | null = null;
 
     constructor(private readonly sandboxConfig?: SandboxConfig) {}
 
@@ -84,10 +73,6 @@ export class CodexAppServerClient {
 
     setEventHandler(handler: (msg: EventMsg) => void): void {
         this.eventHandler = handler;
-    }
-
-    setApprovalHandler(handler: ApprovalHandler): void {
-        this.approvalHandler = handler;
     }
 
     async connect(): Promise<void> {

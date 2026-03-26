@@ -1,41 +1,27 @@
 /**
- * Integration tests for Codex app-server session lifecycle.
+ * Integration tests for the Codex SDK thread lifecycle.
  *
- * Drives `codex app-server` via the CodexAppServerClient — exercises the
- * permission reject → turn_aborted flow and per-turn model changes that
- * were impossible with the legacy MCP tools.
+ * Drives the real `codex` CLI via CodexAppServerClient. The SDK manages
+ * approvals internally, so these tests assert the real read-only limitation
+ * directly and cover interruption via a real long-running shell command.
  *
  * Requirements:
  *   - `codex` CLI installed and on PATH (>= 0.100)
- *   - OPENAI_API_KEY (or equivalent) configured
  *
  * Run:
  *   npx vitest run src/codex/codex.integration.test.ts
  */
 
-import { afterEach, describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { execSync } from "child_process";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { CodexAppServerClient } from "./codexAppServerClient";
-import type { ReviewDecision, EventMsg } from "./codexAppServerTypes";
+import type { ApprovalPolicy, EventMsg, SandboxMode } from "./codexAppServerTypes";
 import { getIntegrationEnv } from "@/testing/currentIntegrationEnv";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 const DEFAULT_MODEL = "gpt-5.2-codex";
 const integrationEnv = getIntegrationEnv();
-
-type PermissionPolicy = "approve" | "deny" | "cancel" | "hold";
-
-function policyToDecision(policy: Exclude<PermissionPolicy, "hold">): ReviewDecision {
-    switch (policy) {
-        case "approve":
-            return "approved";
-        case "deny":
-            return "denied";
-        case "cancel":
-            return "abort";
-    }
-}
 
 async function isCodexAppServerAvailable(): Promise<boolean> {
     try {
@@ -49,8 +35,6 @@ async function isCodexAppServerAvailable(): Promise<boolean> {
     }
 }
 
-// ── CodexDriver ──────────────────────────────────────────────────────────────
-
 interface TurnResult {
     aborted: boolean;
     elapsed_ms: number;
@@ -58,54 +42,37 @@ interface TurnResult {
 
 interface CodexEvent {
     type: string;
-    data: any;
+    data: EventMsg;
 }
 
-/**
- * Thin wrapper around CodexAppServerClient for testing.
- * Tracks events, permissions, and provides a simple send/continue API.
- */
+type TurnOptions = {
+    approvalPolicy?: ApprovalPolicy;
+    sandbox?: SandboxMode;
+    cwd?: string;
+    model?: string;
+};
+
+function uniqueBlockedFile(name: string): string {
+    return join(
+        integrationEnv.projectPath,
+        `${name}-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`,
+    );
+}
+
 class CodexDriver {
     private client: CodexAppServerClient;
     private threadStarted = false;
-    private heldApprovals: Array<(decision: ReviewDecision) => void> = [];
 
     events: CodexEvent[] = [];
-    permissionPolicy: PermissionPolicy = "approve";
-    permissionCount = 0;
 
     constructor() {
         this.client = new CodexAppServerClient();
-
         this.client.setEventHandler((msg: EventMsg) => {
             this.events.push({ type: msg.type, data: msg });
         });
-
-        this.client.setApprovalHandler(async () => {
-            this.permissionCount++;
-            if (this.permissionPolicy === "hold") {
-                return new Promise<ReviewDecision>((resolve) => {
-                    this.heldApprovals.push(resolve);
-                });
-            }
-            return policyToDecision(this.permissionPolicy);
-        });
     }
 
-    resolveHeldApprovals(decision: ReviewDecision): void {
-        for (const resolve of this.heldApprovals) {
-            resolve(decision);
-        }
-        this.heldApprovals = [];
-    }
-
-    /**
-     * Interrupt the active turn. Unblock held approvals and send
-     * turn/interrupt concurrently — codex may be blocked on the approval
-     * callback and unable to process the interrupt until we respond.
-     */
     async interrupt(): Promise<void> {
-        this.resolveHeldApprovals("abort");
         await this.client.abortTurnWithFallback({
             gracePeriodMs: 5_000,
             forceRestartOnTimeout: true,
@@ -127,22 +94,13 @@ class CodexDriver {
         }
     }
 
-    /** Start a new thread and send the first turn. */
-    async send(
-        prompt: string,
-        opts?: {
-            approvalPolicy?: string;
-            sandbox?: string;
-            cwd?: string;
-            model?: string;
-        }
-    ): Promise<TurnResult> {
+    async send(prompt: string, opts?: TurnOptions): Promise<TurnResult> {
         if (!this.threadStarted) {
             await this.client.startThread({
                 model: opts?.model ?? DEFAULT_MODEL,
                 cwd: opts?.cwd,
-                approvalPolicy: opts?.approvalPolicy as any,
-                sandbox: opts?.sandbox as any,
+                approvalPolicy: opts?.approvalPolicy,
+                sandbox: opts?.sandbox,
             });
             this.threadStarted = true;
         }
@@ -150,8 +108,8 @@ class CodexDriver {
         const start = Date.now();
         const result = await this.client.sendTurnAndWait(prompt, {
             model: opts?.model,
-            approvalPolicy: opts?.approvalPolicy as any,
-            sandbox: opts?.sandbox as any,
+            approvalPolicy: opts?.approvalPolicy,
+            sandbox: opts?.sandbox,
             cwd: opts?.cwd,
         });
 
@@ -161,11 +119,7 @@ class CodexDriver {
         };
     }
 
-    /** Continue an existing thread with a new turn. */
-    async continue(
-        prompt: string,
-        opts?: { model?: string; timeout?: number; approvalPolicy?: string; sandbox?: string }
-    ): Promise<TurnResult> {
+    async continue(prompt: string, opts?: TurnOptions): Promise<TurnResult> {
         if (!this.threadStarted) {
             throw new Error("No active thread — call send() first");
         }
@@ -173,8 +127,9 @@ class CodexDriver {
         const start = Date.now();
         const result = await this.client.sendTurnAndWait(prompt, {
             model: opts?.model,
-            approvalPolicy: opts?.approvalPolicy as any,
-            sandbox: opts?.sandbox as any,
+            approvalPolicy: opts?.approvalPolicy,
+            sandbox: opts?.sandbox,
+            cwd: opts?.cwd,
         });
 
         return {
@@ -185,18 +140,30 @@ class CodexDriver {
 
     getMessages(): string[] {
         return this.events
-            .filter((e) => e.type === "agent_message")
-            .map((e) => e.data?.message ?? "")
-            .filter(Boolean);
+            .filter((event) => event.type === "agent_message")
+            .map((event) => event.data?.message)
+            .filter((message): message is string => typeof message === "string" && message.length > 0);
     }
 
     hasEvent(type: string): boolean {
-        return this.events.some((e) => e.type === type);
+        return this.events.some((event) => event.type === type);
     }
 
     clearEvents(): void {
         this.events = [];
-        this.permissionCount = 0;
+    }
+
+    async waitForEvent(type: string, timeoutMs = 30_000): Promise<CodexEvent> {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            const event = this.events.find((entry) => entry.type === type);
+            if (event) {
+                return event;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        throw new Error(`Timed out waiting for event ${type}`);
     }
 
     async close(): Promise<void> {
@@ -204,109 +171,97 @@ class CodexDriver {
     }
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-
 describe.skipIf(!(await isCodexAppServerAvailable()))(
-    "Codex Integration (app-server)",
+    "Codex Integration (SDK)",
     { timeout: 180_000 },
     () => {
         let driver: CodexDriver | null = null;
+        const createdFiles: string[] = [];
 
         afterEach(async () => {
             if (driver) {
                 await driver.close();
                 driver = null;
             }
+
+            for (const file of createdFiles.splice(0)) {
+                rmSync(file, { force: true });
+            }
         });
 
-        it("should complete turn gracefully after permission cancel", async () => {
+        it("should complete turn gracefully when read-only sandbox blocks a write", async () => {
             driver = new CodexDriver();
             await driver.connect();
 
-            driver.permissionPolicy = "cancel";
+            const blockedFile = uniqueBlockedFile("codex-sdk-read-only-blocked");
+            createdFiles.push(blockedFile);
+
             const result = await driver.send(
-                'create a file called /tmp/codex-cancel-test.txt with the text "hello"',
-                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
+                `Create a file called ${blockedFile} with the text "hello". Use a shell command.`,
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath },
             );
 
-            // Codex v2 (0.115+): approval cancel declines the action, model
-            // handles it gracefully and completes the turn (not aborted).
             expect(result.elapsed_ms).toBeLessThan(30_000);
-            expect(driver.permissionCount).toBeGreaterThan(0);
             expect(driver.hasEvent("task_complete")).toBe(true);
             expect(result.aborted).toBe(false);
+            expect(existsSync(blockedFile)).toBe(false);
         });
 
-        it("should preserve context when continuing after cancel", async () => {
+        it("should preserve context when continuing after a read-only write attempt", async () => {
             driver = new CodexDriver();
             await driver.connect();
 
-            // Turn 1: establish context with a mundane phrase
-            driver.permissionPolicy = "approve";
             await driver.send(
                 'The project name we are working on is "blue-falcon-42". Confirm by repeating the project name. Do NOT use any tools or run any commands.',
-                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath },
             );
             expect(driver.getMessages().join(" ").toLowerCase()).toContain("blue-falcon-42");
 
-            // Turn 2: permission cancel — model handles rejection gracefully,
-            // turn completes normally (v2 cancel ≠ abort).
             driver.clearEvents();
-            driver.permissionPolicy = "cancel";
-            const r2 = await driver.continue(
-                'Create a file called /tmp/codex-test-context.txt with the text "test". Use a shell command.',
-                { approvalPolicy: "on-request", sandbox: "read-only" }
+            const blockedFile = uniqueBlockedFile("codex-sdk-context-blocked");
+            createdFiles.push(blockedFile);
+            const blockedTurn = await driver.continue(
+                `Create a file called ${blockedFile} with the text "test". Use a shell command.`,
+                { approvalPolicy: "on-request", sandbox: "read-only" },
             );
             expect(driver.hasEvent("task_complete")).toBe(true);
-            expect(r2.aborted).toBe(false);
+            expect(blockedTurn.aborted).toBe(false);
+            expect(existsSync(blockedFile)).toBe(false);
 
-            // Turn 3: Codex must remember the project name from turn 1
             driver.clearEvents();
-            driver.permissionPolicy = "approve";
             await driver.continue(
-                "What was the project name I mentioned earlier? Reply with just the name."
+                "What was the project name I mentioned earlier? Reply with just the name.",
             );
 
             const text = driver.getMessages().join(" ").toLowerCase();
             expect(text).toContain("blue-falcon-42");
         });
 
-        it("should abort turn via interruptTurn while permission is pending", async () => {
+        it("should abort a long-running shell turn", async () => {
             driver = new CodexDriver();
             await driver.connect();
 
-            // Hold permissions — simulates user not responding to approval
-            driver.permissionPolicy = "hold";
-
             const turnPromise = driver.send(
-                'Create a file called /tmp/codex-interrupt-test.txt with the text "hello". Use a shell command.',
-                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
+                'Run this exact shell command and do not do anything else: sleep 20 && echo "interrupt-test-finished".',
+                { approvalPolicy: "never", sandbox: "danger-full-access", cwd: integrationEnv.projectPath },
             );
 
-            // Wait for a permission request to arrive
-            const deadline = Date.now() + 30_000;
-            while (driver.permissionCount === 0 && Date.now() < deadline) {
-                await new Promise((r) => setTimeout(r, 100));
-            }
-            expect(driver.permissionCount).toBeGreaterThan(0);
-
-            // Simulate the web app abort button: abort held approvals + interrupt turn.
-            // Codex v2: approval cancel = decline, model may finish before interrupt
-            // lands. The key invariant: the turn must NOT hang.
+            await driver.waitForEvent("exec_command_begin");
             await driver.interrupt();
 
             const result = await turnPromise;
             expect(result.elapsed_ms).toBeLessThan(30_000);
+            expect(result.aborted).toBe(true);
+            expect(driver.hasEvent("turn_aborted")).toBe(true);
         });
 
         it("should preserve context after backend reconnect and thread/resume", async () => {
             driver = new CodexDriver();
             await driver.connect();
 
-            driver.permissionPolicy = "approve";
             await driver.send(
                 'The project codename is "steady-orchid-19". Confirm by repeating the project codename. Do NOT use any tools or run any commands.',
-                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath },
             );
             expect(driver.getMessages().join(" ").toLowerCase()).toContain("steady-orchid-19");
 
@@ -315,7 +270,7 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
 
             driver.clearEvents();
             await driver.continue(
-                "What was the project codename I mentioned earlier? Reply with just the codename."
+                "What was the project codename I mentioned earlier? Reply with just the codename.",
             );
 
             const text = driver.getMessages().join(" ").toLowerCase();
@@ -326,44 +281,31 @@ describe.skipIf(!(await isCodexAppServerAvailable()))(
             driver = new CodexDriver();
             await driver.connect();
 
-            // Turn 1: establish context with a mundane phrase
-            driver.permissionPolicy = "approve";
             await driver.send(
                 'The project codename is "golden-phoenix-77". Confirm by repeating the project codename. Do NOT use any tools or run any commands.',
-                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath }
+                { approvalPolicy: "on-request", sandbox: "read-only", cwd: integrationEnv.projectPath },
             );
             expect(driver.getMessages().join(" ").toLowerCase()).toContain("golden-phoenix-77");
 
-            // Turn 2: hold permission, then abort via interruptTurn
             driver.clearEvents();
-            driver.permissionPolicy = "hold";
-
             const abortedTurn = driver.continue(
-                'Run this exact shell command: printf "test" > /tmp/codex-interrupt-context.txt',
-                { approvalPolicy: "on-request", sandbox: "read-only" }
+                'Run this exact shell command and do not do anything else: sleep 20 && echo "interrupt-context-finished".',
+                { approvalPolicy: "never", sandbox: "danger-full-access" },
             );
 
-            const deadline = Date.now() + 30_000;
-            while (driver.permissionCount === 0 && Date.now() < deadline) {
-                await new Promise((r) => setTimeout(r, 100));
-            }
-            expect(driver.permissionCount).toBeGreaterThan(0);
-
-            // Codex v2: cancel = decline, model may finish normally before
-            // interrupt lands. The important thing is it doesn't hang.
+            await driver.waitForEvent("exec_command_begin");
             await driver.interrupt();
-            const r2 = await abortedTurn;
-            expect(r2.elapsed_ms).toBeLessThan(30_000);
+            const result = await abortedTurn;
+            expect(result.elapsed_ms).toBeLessThan(30_000);
+            expect(result.aborted).toBe(true);
 
-            // Turn 3: context must be preserved — Codex should remember the project name
             driver.clearEvents();
-            driver.permissionPolicy = "approve";
             await driver.continue(
-                "What was the project codename I mentioned earlier? Reply with just the codename."
+                "What was the project codename I mentioned earlier? Reply with just the codename.",
             );
 
             const text = driver.getMessages().join(" ").toLowerCase();
             expect(text).toContain("golden-phoenix-77");
         });
-    }
+    },
 );
