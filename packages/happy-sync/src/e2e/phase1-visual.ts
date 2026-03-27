@@ -368,7 +368,7 @@ async function captureBrowserState(
     if (opts.fullPage) {
         screenshotArgs.push('--full');
     }
-    await runAgentBrowser(screenshotArgs);
+    await runAgentBrowser(screenshotArgs, true);
     const snapshot = await runAgentBrowser(['snapshot', '--compact', '--depth', '8'], true);
     await writeFile(snapshotPath, snapshot);
     return snapshot;
@@ -963,11 +963,15 @@ async function main(): Promise<void> {
                 log(`  ERROR: ${error}`);
             }
 
-            snapshotText = await captureBrowserState(stepFileBase(step), {
-                url: makeSessionUrl(currentSessionId as string),
-                fullPage: false,
-                scroll: 'bottom',
-            });
+            try {
+                snapshotText = await captureBrowserState(stepFileBase(step), {
+                    url: makeSessionUrl(currentSessionId as string),
+                    fullPage: false,
+                    scroll: 'bottom',
+                });
+            } catch (screenshotErr) {
+                log(`  Screenshot failed: ${screenshotErr instanceof Error ? screenshotErr.message : String(screenshotErr)}`);
+            }
 
             const assistantMessages = getAssistantMessages(node, currentSessionId);
             const continuityWarning = /don't have (any )?context|no context from the previous session|start from scratch/i.test(snapshotText);
@@ -997,14 +1001,22 @@ async function main(): Promise<void> {
 
         for (const [index, sessionId] of allSessionIds.entries()) {
             const prefix = `session-${String(index + 1).padStart(2, '0')}`;
-            await captureSessionTranscript(prefix, makeSessionUrl(sessionId));
+            try {
+                await captureSessionTranscript(prefix, makeSessionUrl(sessionId));
+            } catch (err) {
+                log(`  Session transcript capture failed for ${prefix}: ${err instanceof Error ? err.message : String(err)}`);
+            }
         }
 
-        await captureBrowserState('home-session-list', {
-            url: homeUrl,
-            fullPage: true,
-            scroll: 'none',
-        });
+        try {
+            await captureBrowserState('home-session-list', {
+                url: homeUrl,
+                fullPage: true,
+                scroll: 'none',
+            });
+        } catch (err) {
+            log(`  Home session list capture failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
 
         await runAgentBrowser(['record', 'stop'], true);
         await runAgentBrowser(['close'], true);
