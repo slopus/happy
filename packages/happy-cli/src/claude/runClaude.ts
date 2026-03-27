@@ -1,5 +1,7 @@
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { exec, ExecOptions } from 'child_process';
+import { promisify } from 'util';
 
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
@@ -28,6 +30,9 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { createEnvelope } from '@/sessionProtocol/types';
+
+const execAsync = promisify(exec);
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -338,6 +343,63 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(message.content.text);
 
+        // Handle shell command ($ or ! prefix) - execute directly without going to Claude
+        if (specialCommand.type === 'shell' && specialCommand.shellCommand) {
+            logger.debug('[start] Detected $ shell command:', specialCommand.shellCommand);
+
+            // Execute shell command asynchronously
+            (async () => {
+                try {
+                    const options: ExecOptions = {
+                        cwd: workingDirectory,
+                        timeout: 30000, // 30 seconds timeout
+                        maxBuffer: 1024 * 1024, // 1MB buffer
+                    };
+
+                    const { stdout, stderr } = await execAsync(specialCommand.shellCommand!, options);
+
+                    // Format and send result back to mobile
+                    const stdoutStr = stdout ? stdout.toString() : '';
+                    const stderrStr = stderr ? stderr.toString() : '';
+                    const output = formatShellOutput(specialCommand.shellCommand!, stdoutStr, stderrStr, 0);
+                    const envelope = createEnvelope('agent', { t: 'text', text: output });
+                    session.sendSessionProtocolMessage(envelope);
+
+                    logger.debug('[start] Shell command executed successfully');
+                } catch (error: any) {
+                    // Handle execution errors (including timeout)
+                    const execError = error as NodeJS.ErrnoException & {
+                        stdout?: string;
+                        stderr?: string;
+                        code?: number | string;
+                        killed?: boolean;
+                    };
+
+                    let errorMessage = execError.stderr || execError.message || 'Command failed';
+                    let exitCode = typeof execError.code === 'number' ? execError.code : 1;
+
+                    if (execError.killed || execError.code === 'ETIMEDOUT') {
+                        errorMessage = 'Command timed out (30s limit)';
+                        exitCode = -1;
+                    }
+
+                    const errorStdout = execError.stdout ? execError.stdout.toString() : '';
+                    const output = formatShellOutput(
+                        specialCommand.shellCommand!,
+                        errorStdout,
+                        errorMessage,
+                        exitCode
+                    );
+                    const envelope = createEnvelope('agent', { t: 'text', text: output });
+                    session.sendSessionProtocolMessage(envelope);
+
+                    logger.debug('[start] Shell command failed:', errorMessage);
+                }
+            })();
+
+            return; // Don't send to Claude
+        }
+
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
             const enhancedMode: EnhancedMode = {
@@ -507,4 +569,29 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Exit with the code from Claude
     process.exit(exitCode);
+}
+
+/**
+ * Format shell command output for display in mobile app
+ * Shows the command in a code block with stdout/stderr and exit code
+ */
+function formatShellOutput(command: string, stdout: string, stderr: string, exitCode: number): string {
+    let output = `\`\`\`bash\n$ ${command}\n`;
+    if (stdout) {
+        output += stdout;
+        if (!stdout.endsWith('\n')) {
+            output += '\n';
+        }
+    }
+    if (stderr) {
+        output += stderr;
+        if (!stderr.endsWith('\n')) {
+            output += '\n';
+        }
+    }
+    output += '```';
+    if (exitCode !== 0) {
+        output += `\n\n*Exit code: ${exitCode}*`;
+    }
+    return output;
 }
