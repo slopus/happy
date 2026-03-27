@@ -412,6 +412,20 @@ async function waitForTerminalStepFinish(
     }, timeoutMs);
 }
 
+async function waitForSessionStop(
+    node: SyncNode,
+    sessionId: SessionID,
+    timeoutMs: number,
+): Promise<void> {
+    await waitForCondition(() => {
+        const session = node.state.sessions.get(sessionId as string);
+        if (!session) {
+            return false;
+        }
+        return session.status.type === 'completed' || session.status.type === 'error';
+    }, timeoutMs);
+}
+
 async function approvePermissionsIndividuallyUntilSettled(
     node: SyncNode,
     sessionId: SessionID,
@@ -621,49 +635,6 @@ async function main(): Promise<void> {
                         makeUserMessage(msgId, currentSessionId, prompt, 'claude', model),
                     );
                 };
-                const sendPromptEnsuringAssistantStart = async (
-                    prompt: string,
-                    msgId: string,
-                    assistantCountBeforePrompt: number,
-                    model = CLAUDE_MODEL,
-                    startTimeoutMs = 30000,
-                ) => {
-                    const waitForAssistantStart = async () => {
-                        await waitForCondition(
-                            () => assistantMessagesSince(node!, currentSessionId, assistantCountBeforePrompt).length > 0,
-                            startTimeoutMs,
-                        );
-                    };
-                    const sendWithId = async (id: string) => {
-                        await sendPrompt(prompt, id, model);
-                    };
-
-                    await sendWithId(msgId);
-                    try {
-                        await waitForAssistantStart();
-                    } catch (error) {
-                        if (assistantMessagesSince(node!, currentSessionId, assistantCountBeforePrompt).length > 0) {
-                            return;
-                        }
-
-                        const session = node!.state.sessions.get(currentSessionId as string);
-                        const noPendingPrompts = !session?.permissions.some((permission) => !permission.resolved)
-                            && !session?.questions.some((question) => !question.resolved);
-                        const sessionSettled = !session
-                            || session.status.type === 'idle'
-                            || session.status.type === 'completed'
-                            || session.status.type === 'error';
-                        if (!noPendingPrompts || !sessionSettled) {
-                            throw error;
-                        }
-
-                        log(
-                            `  No assistant start for ${msgId} after ${Math.round(startTimeoutMs / 1000)}s; retrying once.`,
-                        );
-                        await sendWithId(`${msgId}-retry`);
-                        await waitForAssistantStart();
-                    }
-                };
 
                 if (step.action === 'cancel') {
                     if (!step.prompt) {
@@ -681,14 +652,19 @@ async function main(): Promise<void> {
                     }
                     await holdForCapture('mid-stream cancellation');
                     await node.stopSession(currentSessionId);
+                    await waitForSessionStop(node, currentSessionId, 30000);
                 } else if (step.action === 'stop') {
                     resumeSourceSessionId = currentSessionId;
                     await holdForCapture('session close');
                     await node.stopSession(currentSessionId);
+                    await waitForSessionStop(node, currentSessionId, 30000);
                 } else if (step.action === 'resume') {
                     if (!resumeSourceSessionId) {
                         throw new Error(`No stopped session available to resume for step ${step.id}`);
                     }
+                    await waitForSessionStop(node, resumeSourceSessionId, 30000).catch(() => {
+                        log(`  Resume source session ${resumeSourceSessionId} did not report completed before resume.`);
+                    });
                     currentSessionId = await spawnSessionViaDaemon({
                         directory: projectDir,
                         agent: 'claude',
@@ -701,14 +677,14 @@ async function main(): Promise<void> {
                     if (step.prompt) {
                         const resumedBefore = getAssistantMessages(node, currentSessionId).length;
                         artifactAfterCount = resumedBefore;
-                        await sendPromptEnsuringAssistantStart(step.prompt, `step${step.id}`, resumedBefore);
+                        await sendPrompt(step.prompt, `step${step.id}`);
                         await waitForStepFinishApprovingAll(node, currentSessionId, resumedBefore, step.timeoutMs);
                     } else {
                         artifactAfterCount = 0;
                     }
                     resumeSourceSessionId = null;
                 } else if (step.id === 3) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         const pending = await waitForPendingPermissionInAnySession(node, 30000);
                         await holdForCapture('permission prompt before denial');
@@ -723,11 +699,7 @@ async function main(): Promise<void> {
 
                         const followupAfterCount = getAssistantMessages(node, currentSessionId).length;
                         artifactAfterCount = followupAfterCount;
-                        await sendPromptEnsuringAssistantStart(
-                            'No — show me the diff first.',
-                            'step3-followup',
-                            followupAfterCount,
-                        );
+                        await sendPrompt('No — show me the diff first.', 'step3-followup');
                         await waitForConditionApprovingAll(node, () => {
                             return assistantMessagesSince(node, currentSessionId, followupAfterCount).some((message) => {
                                 if (!hasTerminalStepFinish(message)) {
@@ -743,7 +715,7 @@ async function main(): Promise<void> {
                         await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                     }
                 } else if (step.id === 4) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         const pending = await waitForPendingPermissionInAnySession(node, 30000);
                         await holdForCapture('permission prompt before single approval');
@@ -753,7 +725,7 @@ async function main(): Promise<void> {
                     }
                     await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else if (step.id === 5) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         const pending = await waitForPendingPermissionInAnySession(node, 30000);
                         await holdForCapture('permission prompt before allow-always approval');
@@ -766,7 +738,7 @@ async function main(): Promise<void> {
                     }
                     await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else if (step.id === 12) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     let answered = false;
                     let answerAfterCount = beforeAssistant;
                     try {
@@ -792,7 +764,7 @@ async function main(): Promise<void> {
 
                     if (!answered) {
                         answerAfterCount = getAssistantMessages(node, currentSessionId).length;
-                        await sendPromptEnsuringAssistantStart('Vitest', 'step12-answer', answerAfterCount);
+                        await sendPrompt('Vitest', 'step12-answer');
                     }
                     await waitForStepFinishApprovingAll(node, currentSessionId, answerAfterCount, step.timeoutMs);
                 } else if (step.id === 17) {
@@ -800,15 +772,10 @@ async function main(): Promise<void> {
                         source: 'user',
                         model: CLAUDE_HAIKU_MODEL.modelID,
                     });
-                    await sendPromptEnsuringAssistantStart(
-                        step.prompt!,
-                        `step${step.id}`,
-                        beforeAssistant,
-                        CLAUDE_HAIKU_MODEL,
-                    );
+                    await sendPrompt(step.prompt!, `step${step.id}`, CLAUDE_HAIKU_MODEL);
                     await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else if (step.id === 25) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         await waitForPendingPermissionInAnySession(node, 60000);
                         await approvePermissionsIndividuallyUntilSettled(node, currentSessionId, beforeAssistant, step.timeoutMs);
@@ -816,7 +783,7 @@ async function main(): Promise<void> {
                         await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                     }
                 } else if (step.id === 27) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         const pending = await waitForPendingPermissionInAnySession(node, 90000);
                         await holdForCapture('subagent permission prompt');
@@ -824,13 +791,14 @@ async function main(): Promise<void> {
                     } catch {}
                     await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else if (step.id === 28) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     await waitForPendingPermissionInAnySession(node, 90000);
                     await holdForCapture('pending permission before forced stop');
                     resumeSourceSessionId = currentSessionId;
                     await node.stopSession(currentSessionId);
+                    await waitForSessionStop(node, currentSessionId, 30000);
                 } else if (step.id === 31) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     await waitForConditionApprovingAll(node, () => {
                         const assistant = assistantMessagesSince(node, currentSessionId, beforeAssistant);
                         const fullText = assistant.map(getFullText).join(' ');
@@ -844,7 +812,7 @@ async function main(): Promise<void> {
                     await holdForCapture('running background task');
                 } else if (step.id === 32) {
                     let localBefore = beforeAssistant;
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, localBefore);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
 
                     const hasCompletedBackgroundOutput = () => assistantToolsSince(node, currentSessionId, localBefore).some((tool) =>
                         (tool.tool === 'TaskOutput' || tool.tool === 'Bash')
@@ -874,10 +842,9 @@ async function main(): Promise<void> {
                     if (!hasCompletedBackgroundOutput()) {
                         localBefore = getAssistantMessages(node, currentSessionId).length;
                         artifactAfterCount = localBefore;
-                        await sendPromptEnsuringAssistantStart(
+                        await sendPrompt(
                             'Wait for that same background task to finish, then tell me the output exactly.',
                             'step32-retry',
-                            localBefore,
                         );
                     }
 
@@ -886,7 +853,7 @@ async function main(): Promise<void> {
                     }, 240000);
                 } else if (step.id === 33) {
                     let localBefore = beforeAssistant;
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, localBefore);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
 
                     const hasStep33Work = () => {
                         const tools = assistantToolsSince(node, currentSessionId, localBefore);
@@ -917,22 +884,21 @@ async function main(): Promise<void> {
                     if (!hasStep33Work()) {
                         localBefore = getAssistantMessages(node, currentSessionId).length;
                         artifactAfterCount = localBefore;
-                        await sendPromptEnsuringAssistantStart(
+                        await sendPrompt(
                             'That was the previous background task. Now do this new request: start a NEW background task `sleep 20 && echo "background two"` and, while it is running, add `// background task test` to the top of app.js.',
                             'step33-retry',
-                            localBefore,
                         );
                     }
 
                     await waitForConditionApprovingAll(node, () => hasStep33Work(), step.timeoutMs);
                 } else if (step.id === 35 || step.id === 36 || step.id === 37 || step.id === 38 || step.id === 34) {
-                    await sendPromptEnsuringAssistantStart(step.prompt!, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt!, `step${step.id}`);
                     await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else {
                     if (!step.prompt) {
                         throw new Error(`Step ${step.id} is missing a prompt`);
                     }
-                    await sendPromptEnsuringAssistantStart(step.prompt, `step${step.id}`, beforeAssistant);
+                    await sendPrompt(step.prompt, `step${step.id}`);
                     await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs, {
                         autoAnswerQuestions: false,
                     });
