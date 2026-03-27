@@ -262,7 +262,9 @@ async function startDaemon(): Promise<void> {
         HAPPY_DAEMON_HEARTBEAT_INTERVAL: '600000', // 10 min — skip auto-update in tests
         HAPPY_VARIANT: 'dev',
         OPENCODE_PERMISSION: process.env.OPENCODE_PERMISSION ?? JSON.stringify({ edit: 'ask' }),
-        DEBUG: '1',
+        // E2E runs should not force verbose file logging by default; on low-disk
+        // machines it can crash the isolated daemon with ENOSPC mid-walkthrough.
+        DEBUG: process.env.HAPPY_E2E_DAEMON_DEBUG ?? '',
     };
 
     const child = spawn('node', ['--no-warnings', '--no-deprecation', CLI_DIST_ENTRYPOINT, 'daemon', 'start-sync'], {

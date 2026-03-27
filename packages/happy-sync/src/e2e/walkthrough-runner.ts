@@ -17,6 +17,7 @@ const VIDEO_FILE = join(OUTPUT_DIR, 'happy-walkthrough.mp4');
 const DRIVER_LOG_FILE = join(OUTPUT_DIR, 'walkthrough-driver.stdout.log');
 const WEBREEL_LOG_FILE = join(OUTPUT_DIR, 'webreel-record.log');
 const VERIFY_FILE = join(OUTPUT_DIR, 'walkthrough-verification.json');
+const WEBREEL_BIN = process.env.HAPPY_WEBREEL_BIN;
 
 function log(message: string): void {
     const ts = new Date().toISOString().slice(11, 23);
@@ -166,10 +167,15 @@ async function main(): Promise<void> {
         await waitForFile(SESSION_URL_FILE, 600000, driver);
         log(`Session URL ready: ${SESSION_URL_FILE}`);
 
+        const webreelCommand = WEBREEL_BIN ?? 'npx';
+        const webreelArgs = WEBREEL_BIN
+            ? []
+            : ['webreel'];
+
         log('Validating webreel config...');
         const validateResult = await runCommandCapture(
-            'npx',
-            ['webreel', 'validate', '-c', 'webreel.config.ts'],
+            webreelCommand,
+            [...webreelArgs, 'validate', '-c', 'webreel.config.ts'],
             WEBREEL_LOG_FILE,
             sharedEnv,
         );
@@ -179,8 +185,8 @@ async function main(): Promise<void> {
 
         log('Recording walkthrough with webreel...');
         const recordResult = await runCommandCapture(
-            'npx',
-            ['webreel', 'record', '-c', 'webreel.config.ts', '--verbose'],
+            webreelCommand,
+            [...webreelArgs, 'record', '-c', 'webreel.config.ts', '--verbose'],
             WEBREEL_LOG_FILE,
             sharedEnv,
         );
