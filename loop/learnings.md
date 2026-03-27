@@ -305,3 +305,13 @@ If you discover something non-obvious, append it here under the right section.
   Only real issue: session titles "unknown" (pre-existing). Gemini CLI
   had no auth configured (requires interactive browser OAuth), so only
   Codex + manual review was done. No refactor regressions detected.
+- `webreel.config.ts` needs CommonJS export shape for the real CLI.
+  `export default { ... }` loaded as `{ default: ... }` and failed validation
+  with `.default Unknown property`; `module.exports = config` fixed it.
+- The `walkthrough-runner.ts` orchestration must wipe
+  `e2e-recordings/ux-review/` before waiting on `session-url.txt`. A stale
+  URL file from a previous run can make the runner validate against a path
+  that the fresh driver deletes moments later.
+- `waitForExit(child)` in the runner must return immediately when
+  `child.exitCode !== null`. If you attach an `exit` listener after the child
+  already exited, Node can skip the post-record verification phase entirely.

@@ -65,3 +65,6 @@ loop/logs/
 
 # E2E test recordings (browser videos, screenshots)
 e2e-recordings/
+
+# webreel raw frames / timelines / cache
+.webreel/
