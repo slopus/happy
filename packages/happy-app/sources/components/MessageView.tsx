@@ -179,7 +179,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'column',
     flexGrow: 1,
     flexBasis: 0,
+    minWidth: 0,
     maxWidth: layout.maxWidth,
+    overflow: 'hidden',
   },
   userMessageContainer: {
     maxWidth: '100%',
@@ -200,7 +202,6 @@ const styles = StyleSheet.create((theme) => ({
     marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 16,
-    alignSelf: 'flex-start',
   },
   agentEventContainer: {
     marginHorizontal: 8,
