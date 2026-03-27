@@ -113,32 +113,46 @@ class ApiSocket {
      * RPC call for sessions - uses session-specific encryption
      */
     async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
-        const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
+        const socket = this.socket;
+        if (!socket) {
+            throw new Error('Socket not connected');
+        }
+        if (!this.encryption) {
+            throw new Error('Encryption not initialized');
+        }
+        const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
-        
-        const result = await this.socket!.emitWithAck('rpc-call', {
+
+        const result = await socket.emitWithAck('rpc-call', {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
-        
+
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        throw new Error(result.error || 'RPC call failed');
     }
 
     /**
      * RPC call for machines - uses legacy/global encryption (for now)
      */
     async machineRPC<R, A>(machineId: string, method: string, params: A): Promise<R> {
-        const machineEncryption = this.encryption!.getMachineEncryption(machineId);
+        const socket = this.socket;
+        if (!socket) {
+            throw new Error('Socket not connected');
+        }
+        if (!this.encryption) {
+            throw new Error('Encryption not initialized');
+        }
+        const machineEncryption = this.encryption.getMachineEncryption(machineId);
         if (!machineEncryption) {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const result = await socket.emitWithAck('rpc-call', {
             method: `${machineId}:${method}`,
             params: await machineEncryption.encryptRaw(params)
         });
@@ -150,7 +164,10 @@ class ApiSocket {
     }
 
     send(event: string, data: any) {
-        this.socket!.emit(event, data);
+        if (!this.socket) {
+            throw new Error('Socket not connected');
+        }
+        this.socket.emit(event, data);
         return true;
     }
 
