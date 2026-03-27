@@ -200,9 +200,9 @@ const config = {
     videos: {
         'happy-walkthrough': {
             url: APP_ORIGIN,
-            viewport: 'macbook-pro',
-            fps: 15,
-            quality: 45,
+            viewport: { width: 1280, height: 800 },
+            fps: 10,
+            quality: 30,
             output: 'happy-walkthrough.mp4',
             steps,
         },

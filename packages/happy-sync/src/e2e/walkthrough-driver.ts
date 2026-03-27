@@ -7,8 +7,6 @@ import { createServer, type Server } from 'node:http';
 import { join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-
 import { SyncNode } from '../sync-node';
 import type { MessageWithParts, Part, SessionID } from '../protocol';
 import {
@@ -79,12 +77,6 @@ const POST_DONE_HOLD_MS = Number.parseInt(
 
 const CLAUDE_MODEL = { providerID: 'anthropic', modelID: 'claude-sonnet-4-20250514' };
 const CLAUDE_HAIKU_MODEL = { providerID: 'anthropic', modelID: 'claude-haiku-4-5-20251001' };
-const VIDEO_FILE = join(OUTPUT_DIR, 'happy-walkthrough.webm');
-const TRANSCRIPT_SELECTOR = '[role="list"], div[style*="overflow-y: auto"], div[style*="overflow-y:auto"]';
-
-let browser: Browser | null = null;
-let browserContext: BrowserContext | null = null;
-let browserPage: Page | null = null;
 
 interface StepResult {
     stepId: number;
@@ -401,79 +393,12 @@ async function waitForPendingPermissionInAnySession(
     throw new Error('Permission appeared and disappeared before it could be captured');
 }
 
-async function holdForCapture(reason: string, ms = CAPTURE_HOLD_MS, screenshotName?: string): Promise<void> {
+async function holdForCapture(reason: string, ms = CAPTURE_HOLD_MS, _screenshotName?: string): Promise<void> {
     if (ms <= 0) {
         return;
     }
     log(`  Holding ${Math.round(ms / 1000)}s for ${reason}...`);
     await sleep(ms);
-    if (screenshotName) {
-        await takeScreenshot(screenshotName);
-    }
-}
-
-async function launchBrowser(sessionUrl: string): Promise<void> {
-    browser = await chromium.launch({ headless: true });
-    browserContext = await browser.newContext({
-        viewport: { width: 1440, height: 1080 },
-        recordVideo: { dir: OUTPUT_DIR, size: { width: 1440, height: 1080 } },
-    });
-    browserPage = await browserContext.newPage();
-    await browserPage.goto(sessionUrl, { waitUntil: 'networkidle', timeout: 120000 }).catch(() => {
-        log('  Browser: initial navigation did not reach networkidle, continuing...');
-    });
-    log('  Browser: page loaded');
-}
-
-async function scrollToBottom(): Promise<void> {
-    if (!browserPage) return;
-    await browserPage.evaluate((selector) => {
-        const el = (globalThis as any).document?.querySelector(selector);
-        if (el) el.scrollTop = el.scrollHeight;
-    }, TRANSCRIPT_SELECTOR).catch(() => {});
-}
-
-async function takeScreenshot(name: string): Promise<void> {
-    if (!browserPage) return;
-    await scrollToBottom();
-    await sleep(500);
-    const path = join(OUTPUT_DIR, `${name}.png`);
-    await browserPage.screenshot({ path, fullPage: false }).catch((err) => {
-        log(`  Screenshot failed: ${err instanceof Error ? err.message : String(err)}`);
-    });
-    log(`  Screenshot: ${name}.png`);
-}
-
-async function navigateBrowser(url: string): Promise<void> {
-    if (!browserPage) return;
-    await browserPage.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {
-        log('  Browser: navigation did not reach networkidle, continuing...');
-    });
-}
-
-async function closeBrowser(): Promise<void> {
-    if (browserPage) {
-        await browserPage.close().catch(() => {});
-    }
-    if (browserContext) {
-        await browserContext.close().catch(() => {});
-        // Playwright saves video on context close — rename it
-        try {
-            const { readdir, rename } = await import('node:fs/promises');
-            const files = await readdir(OUTPUT_DIR);
-            const webm = files.find((f) => f.endsWith('.webm') && f !== 'happy-walkthrough.webm');
-            if (webm) {
-                await rename(join(OUTPUT_DIR, webm), VIDEO_FILE);
-                log(`  Video saved: ${VIDEO_FILE}`);
-            }
-        } catch {}
-    }
-    if (browser) {
-        await browser.close().catch(() => {});
-    }
-    browser = null;
-    browserContext = null;
-    browserPage = null;
 }
 
 async function waitForTerminalStepFinish(
@@ -686,10 +611,10 @@ async function main(): Promise<void> {
 
         if (activeSteps.some((step) => step.id !== 0)) {
             log(`Session URL written to ${SESSION_URL_FILE}`);
-            log('Launching Playwright browser with video recording...');
-            await launchBrowser(makeSessionUrl(currentSessionId as string));
-            if (step0) {
-                await takeScreenshot(stepFileBase(step0));
+            log('Ready for webreel capture.');
+            if (INITIAL_RECORDING_DELAY_MS > 0) {
+                log(`Waiting ${Math.round(INITIAL_RECORDING_DELAY_MS / 1000)}s for recorder attach...`);
+                await sleep(INITIAL_RECORDING_DELAY_MS);
             }
         }
 
@@ -751,7 +676,6 @@ async function main(): Promise<void> {
                     await waitForCondition(() => node!.state.sessions.has(currentSessionId as string), 30000);
                     allSessionIds.push(currentSessionId as string);
                     await writeSessionUrl();
-                    await navigateBrowser(makeSessionUrl(currentSessionId as string));
 
                     if (step.prompt) {
                         const resumedBefore = getAssistantMessages(node, currentSessionId).length;
@@ -1016,9 +940,6 @@ async function main(): Promise<void> {
             await writeFile(RESULTS_FILE, JSON.stringify(results, null, 2));
             await writeInfo(error ? 'step_failed' : 'running', step);
 
-            // Take step completion screenshot
-            await takeScreenshot(stepFileBase(step));
-
             if (INTER_STEP_DELAY_MS > 0 && step !== activeSteps[activeSteps.length - 1]) {
                 await sleep(INTER_STEP_DELAY_MS);
             }
@@ -1026,10 +947,12 @@ async function main(): Promise<void> {
 
         await writeFile(DONE_MARKER_FILE, `${new Date().toISOString()}\n`);
         await writeInfo('completed');
-        log('Driver completed. Closing browser and saving video...');
-        await closeBrowser();
+        log('Driver completed.');
+        if (POST_DONE_HOLD_MS > 0) {
+            log(`Holding completed state for ${Math.round(POST_DONE_HOLD_MS / 1000)}s...`);
+            await sleep(POST_DONE_HOLD_MS);
+        }
     } finally {
-        await closeBrowser();
         redirectServer?.close();
         if (node) {
             node.disconnect();
