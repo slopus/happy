@@ -181,6 +181,27 @@ function hasTerminalStepFinish(message: MessageWithParts): boolean {
     );
 }
 
+function isTerminalToolStatus(status: string): boolean {
+    return status === 'completed' || status === 'error';
+}
+
+function assistantTurnSignature(messages: MessageWithParts[]): string {
+    return messages.map((message) => message.parts.map((part) => {
+        switch (part.type) {
+            case 'tool':
+                return `tool:${part.tool}:${part.callID}:${part.state.status}`;
+            case 'step-finish':
+                return `step-finish:${part.reason}`;
+            case 'text':
+                return `text:${part.text.slice(0, 120)}`;
+            case 'reasoning':
+                return `reasoning:${part.text.slice(0, 80)}`;
+            default:
+                return part.type;
+        }
+    }).join('|')).join('||');
+}
+
 function assistantMessagesSince(node: SyncNode, sessionId: SessionID, afterCount: number): MessageWithParts[] {
     return getAssistantMessages(node, sessionId).slice(afterCount);
 }
@@ -487,9 +508,44 @@ async function waitForStepFinishApprovingAll(
     timeoutMs: number,
     opts: { autoAnswerQuestions?: boolean } = {},
 ): Promise<void> {
+    let lastAssistantSignature = '';
+    let stableSince = Date.now();
     await waitForConditionApprovingAll(
         node,
-        () => assistantMessagesSince(node, sessionId, afterCount).some(hasTerminalStepFinish),
+        () => {
+            const assistant = assistantMessagesSince(node, sessionId, afterCount);
+            const signature = assistantTurnSignature(assistant);
+            if (signature !== lastAssistantSignature) {
+                lastAssistantSignature = signature;
+                stableSince = Date.now();
+            }
+
+            if (assistant.some(hasTerminalStepFinish)) {
+                return true;
+            }
+
+            if (assistant.length === 0) {
+                return false;
+            }
+
+            const session = node.state.sessions.get(sessionId as string);
+            if (!session) {
+                return false;
+            }
+
+            const tools = assistant.flatMap(getToolParts);
+            const sessionSettled = session.status.type === 'idle'
+                || session.status.type === 'completed'
+                || session.status.type === 'error';
+            const allToolsTerminal = tools.every((tool) => isTerminalToolStatus(tool.state.status));
+            const noPendingPrompts = !session.permissions.some((permission) => !permission.resolved)
+                && !session.questions.some((question) => !question.resolved);
+
+            return sessionSettled
+                && noPendingPrompts
+                && allToolsTerminal
+                && Date.now() - stableSince >= 3000;
+        },
         timeoutMs,
         opts,
     );
@@ -515,8 +571,8 @@ async function waitForPendingPermissionInAnySession(
 }
 
 async function main(): Promise<void> {
+    await rm(OUTPUT_DIR, { recursive: true, force: true }).catch(() => {});
     await mkdir(OUTPUT_DIR, { recursive: true });
-    await rm(VIDEO_FILE, { force: true }).catch(() => {});
     process.env.HAPPY_TEST_SERVER_PORT = '34191';
 
     let webProcess: ChildProcess | null = null;
