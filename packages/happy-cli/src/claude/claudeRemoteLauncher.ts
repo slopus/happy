@@ -315,6 +315,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         let pending: {
             message: string;
             mode: EnhancedMode;
+            images?: Array<{ base64: string, mediaType: string }>;
         } | null = null;
 
         // Track session ID to detect when it actually changes
@@ -379,7 +380,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             permissionHandler.handleModeChange(mode.permissionMode);
                             return {
                                 message: msg.message,
-                                mode: msg.mode
+                                mode: msg.mode,
+                                images: msg.images,
                             }
                         }
 

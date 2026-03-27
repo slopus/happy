@@ -30,7 +30,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: string, mode: EnhancedMode, images?: Array<{ base64: string, mediaType: string }> } | null>,
     onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -79,6 +79,26 @@ export async function claudeRemote(opts: {
         Object.entries(opts.claudeEnvVars).forEach(([key, value]) => {
             process.env[key] = value;
         });
+    }
+
+    // Build content for SDK message: string for text-only, content array for images+text
+    function buildContent(text: string, images?: Array<{ base64: string, mediaType: string }>): string | Array<any> {
+        if (!images || images.length === 0) {
+            return text;
+        }
+        const contentParts: Array<any> = [];
+        for (const img of images) {
+            contentParts.push({
+                type: 'image',
+                source: {
+                    type: 'base64',
+                    media_type: img.mediaType || 'image/png',
+                    data: img.base64,
+                },
+            });
+        }
+        contentParts.push({ type: 'text', text });
+        return contentParts;
     }
 
     // Get initial message
@@ -151,7 +171,7 @@ export async function claudeRemote(opts: {
         type: 'user',
         message: {
             role: 'user',
-            content: initial.message,
+            content: buildContent(initial.message, initial.images),
         },
     });
 
@@ -213,7 +233,7 @@ export async function claudeRemote(opts: {
                     return;
                 }
                 mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                messages.push({ type: 'user', message: { role: 'user', content: buildContent(next.message, next.images) } });
             }
 
             // Handle tool result

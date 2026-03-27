@@ -1,11 +1,17 @@
 import * as z from 'zod';
 import { MessageMetaSchema } from './messageMeta';
 
+export const ImageAttachmentSchema = z.object({
+  base64: z.string(),
+  mediaType: z.string(),
+});
+
 export const UserMessageSchema = z.object({
   role: z.literal('user'),
   content: z.object({
     type: z.literal('text'),
     text: z.string(),
+    images: z.array(ImageAttachmentSchema).optional(),
   }),
   localKey: z.string().optional(),
   meta: MessageMetaSchema.optional(),
