@@ -96,15 +96,19 @@ if (step0) {
 }
 
 for (const [index, step] of runSteps.entries()) {
-    // Wait for the driver to start this step — use previous step's timeout + buffer
-    const prevStep = runSteps[index - 1];
-    const startWaitTimeout = prevStep ? prevStep.timeoutMs + 120000 : Math.max(step.timeoutMs, 120000);
-    steps.push({
-        action: 'wait',
-        text: stepSyncText(step),
-        timeout: startWaitTimeout,
-        description: `Wait for Step ${step.id} to start`,
-    });
+    // The previous step's completion-wait already looked for stepSyncText(step),
+    // so only emit an explicit start-wait for the very first step.  For all later
+    // steps the label may have already transitioned away by the time we get here
+    // (fast steps like "resume" complete in <3 s), causing a spurious timeout.
+    if (index === 0) {
+        const startWaitTimeout = Math.max(step.timeoutMs, 120000);
+        steps.push({
+            action: 'wait',
+            text: stepSyncText(step),
+            timeout: startWaitTimeout,
+            description: `Wait for Step ${step.id} to start`,
+        });
+    }
 
     // Session change: navigate to redirect server for the new session URL
     if (SESSION_CHANGE_STEP_IDS.has(step.id)) {
