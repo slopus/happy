@@ -7,6 +7,8 @@ import { createServer, type Server } from 'node:http';
 import { join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+
 import { SyncNode } from '../sync-node';
 import type { MessageWithParts, Part, SessionID } from '../protocol';
 import {
@@ -77,6 +79,12 @@ const POST_DONE_HOLD_MS = Number.parseInt(
 
 const CLAUDE_MODEL = { providerID: 'anthropic', modelID: 'claude-sonnet-4-20250514' };
 const CLAUDE_HAIKU_MODEL = { providerID: 'anthropic', modelID: 'claude-haiku-4-5-20251001' };
+const VIDEO_FILE = join(OUTPUT_DIR, 'happy-walkthrough.webm');
+const TRANSCRIPT_SELECTOR = '[role="list"], div[style*="overflow-y: auto"], div[style*="overflow-y:auto"]';
+
+let browser: Browser | null = null;
+let browserContext: BrowserContext | null = null;
+let browserPage: Page | null = null;
 
 interface StepResult {
     stepId: number;
@@ -393,12 +401,79 @@ async function waitForPendingPermissionInAnySession(
     throw new Error('Permission appeared and disappeared before it could be captured');
 }
 
-async function holdForCapture(reason: string, ms = CAPTURE_HOLD_MS): Promise<void> {
+async function holdForCapture(reason: string, ms = CAPTURE_HOLD_MS, screenshotName?: string): Promise<void> {
     if (ms <= 0) {
         return;
     }
     log(`  Holding ${Math.round(ms / 1000)}s for ${reason}...`);
     await sleep(ms);
+    if (screenshotName) {
+        await takeScreenshot(screenshotName);
+    }
+}
+
+async function launchBrowser(sessionUrl: string): Promise<void> {
+    browser = await chromium.launch({ headless: true });
+    browserContext = await browser.newContext({
+        viewport: { width: 1440, height: 1080 },
+        recordVideo: { dir: OUTPUT_DIR, size: { width: 1440, height: 1080 } },
+    });
+    browserPage = await browserContext.newPage();
+    await browserPage.goto(sessionUrl, { waitUntil: 'networkidle', timeout: 120000 }).catch(() => {
+        log('  Browser: initial navigation did not reach networkidle, continuing...');
+    });
+    log('  Browser: page loaded');
+}
+
+async function scrollToBottom(): Promise<void> {
+    if (!browserPage) return;
+    await browserPage.evaluate((selector) => {
+        const el = (globalThis as any).document?.querySelector(selector);
+        if (el) el.scrollTop = el.scrollHeight;
+    }, TRANSCRIPT_SELECTOR).catch(() => {});
+}
+
+async function takeScreenshot(name: string): Promise<void> {
+    if (!browserPage) return;
+    await scrollToBottom();
+    await sleep(500);
+    const path = join(OUTPUT_DIR, `${name}.png`);
+    await browserPage.screenshot({ path, fullPage: false }).catch((err) => {
+        log(`  Screenshot failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    log(`  Screenshot: ${name}.png`);
+}
+
+async function navigateBrowser(url: string): Promise<void> {
+    if (!browserPage) return;
+    await browserPage.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {
+        log('  Browser: navigation did not reach networkidle, continuing...');
+    });
+}
+
+async function closeBrowser(): Promise<void> {
+    if (browserPage) {
+        await browserPage.close().catch(() => {});
+    }
+    if (browserContext) {
+        await browserContext.close().catch(() => {});
+        // Playwright saves video on context close — rename it
+        try {
+            const { readdir, rename } = await import('node:fs/promises');
+            const files = await readdir(OUTPUT_DIR);
+            const webm = files.find((f) => f.endsWith('.webm') && f !== 'happy-walkthrough.webm');
+            if (webm) {
+                await rename(join(OUTPUT_DIR, webm), VIDEO_FILE);
+                log(`  Video saved: ${VIDEO_FILE}`);
+            }
+        } catch {}
+    }
+    if (browser) {
+        await browser.close().catch(() => {});
+    }
+    browser = null;
+    browserContext = null;
+    browserPage = null;
 }
 
 async function waitForTerminalStepFinish(
@@ -449,7 +524,7 @@ async function approvePermissionsIndividuallyUntilSettled(
         if (pending.length > 0) {
             if (!heldCapture) {
                 heldCapture = true;
-                await holdForCapture('multiple permission prompts');
+                await holdForCapture('multiple permission prompts', CAPTURE_HOLD_MS, 'component-multiple-permissions');
             }
             const next = pending[0];
             approvedIds.add(next.permission.permissionId);
@@ -611,8 +686,11 @@ async function main(): Promise<void> {
 
         if (activeSteps.some((step) => step.id !== 0)) {
             log(`Session URL written to ${SESSION_URL_FILE}`);
-            log(`Waiting ${Math.round(INITIAL_RECORDING_DELAY_MS / 1000)}s for recorder attach...`);
-            await sleep(INITIAL_RECORDING_DELAY_MS);
+            log('Launching Playwright browser with video recording...');
+            await launchBrowser(makeSessionUrl(currentSessionId as string));
+            if (step0) {
+                await takeScreenshot(stepFileBase(step0));
+            }
         }
 
         for (const step of activeSteps.filter((item) => item.id !== 0)) {
@@ -673,6 +751,7 @@ async function main(): Promise<void> {
                     await waitForCondition(() => node!.state.sessions.has(currentSessionId as string), 30000);
                     allSessionIds.push(currentSessionId as string);
                     await writeSessionUrl();
+                    await navigateBrowser(makeSessionUrl(currentSessionId as string));
 
                     if (step.prompt) {
                         const resumedBefore = getAssistantMessages(node, currentSessionId).length;
@@ -687,7 +766,7 @@ async function main(): Promise<void> {
                     await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         const pending = await waitForPendingPermissionInAnySession(node, 30000);
-                        await holdForCapture('permission prompt before denial');
+                        await holdForCapture('permission prompt before denial', CAPTURE_HOLD_MS, 'component-permission-prompt-denied');
                         await node.denyPermission(pending.sessionId, pending.permission.permissionId, {
                             reason: 'No — show me the diff first.',
                         });
@@ -718,7 +797,7 @@ async function main(): Promise<void> {
                     await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         const pending = await waitForPendingPermissionInAnySession(node, 30000);
-                        await holdForCapture('permission prompt before single approval');
+                        await holdForCapture('permission prompt before single approval', CAPTURE_HOLD_MS, 'component-permission-prompt-approve-once');
                         await node.approvePermission(pending.sessionId, pending.permission.permissionId, { decision: 'once' });
                     } catch {
                         log('  No permission prompt appeared for Step 4; waiting for Claude response.');
@@ -728,7 +807,7 @@ async function main(): Promise<void> {
                     await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         const pending = await waitForPendingPermissionInAnySession(node, 30000);
-                        await holdForCapture('permission prompt before allow-always approval');
+                        await holdForCapture('permission prompt before allow-always approval', CAPTURE_HOLD_MS, 'component-permission-prompt-approve-always');
                         await node.approvePermission(pending.sessionId, pending.permission.permissionId, {
                             decision: 'always',
                             allowTools: pending.permission.block.permission ? [pending.permission.block.permission] : undefined,
@@ -743,7 +822,7 @@ async function main(): Promise<void> {
                     let answerAfterCount = beforeAssistant;
                     try {
                         await waitForPendingQuestion(node, currentSessionId, 60000);
-                        await holdForCapture('question prompt');
+                        await holdForCapture('question prompt', CAPTURE_HOLD_MS, 'component-question-prompt');
                         const question = node.state.sessions.get(currentSessionId as string)?.questions.find((item) => !item.resolved);
                         if (question) {
                             answerAfterCount = getAssistantMessages(node, currentSessionId).length;
@@ -786,14 +865,14 @@ async function main(): Promise<void> {
                     await sendPrompt(step.prompt!, `step${step.id}`);
                     try {
                         const pending = await waitForPendingPermissionInAnySession(node, 90000);
-                        await holdForCapture('subagent permission prompt');
+                        await holdForCapture('subagent permission prompt', CAPTURE_HOLD_MS, 'component-subagent-permission');
                         await node.approvePermission(pending.sessionId, pending.permission.permissionId, { decision: 'once' });
                     } catch {}
                     await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else if (step.id === 28) {
                     await sendPrompt(step.prompt!, `step${step.id}`);
                     await waitForPendingPermissionInAnySession(node, 90000);
-                    await holdForCapture('pending permission before forced stop');
+                    await holdForCapture('pending permission before forced stop', CAPTURE_HOLD_MS, 'component-permission-prompt-pending-stop');
                     resumeSourceSessionId = currentSessionId;
                     await node.stopSession(currentSessionId);
                     await waitForSessionStop(node, currentSessionId, 30000);
@@ -809,7 +888,7 @@ async function main(): Promise<void> {
                         );
                         return assistant.some(hasTerminalStepFinish) && hasTimeResponse && hasBackgroundTool;
                     }, step.timeoutMs);
-                    await holdForCapture('running background task');
+                    await holdForCapture('running background task', CAPTURE_HOLD_MS, 'component-background-running');
                 } else if (step.id === 32) {
                     let localBefore = beforeAssistant;
                     await sendPrompt(step.prompt!, `step${step.id}`);
@@ -937,6 +1016,9 @@ async function main(): Promise<void> {
             await writeFile(RESULTS_FILE, JSON.stringify(results, null, 2));
             await writeInfo(error ? 'step_failed' : 'running', step);
 
+            // Take step completion screenshot
+            await takeScreenshot(stepFileBase(step));
+
             if (INTER_STEP_DELAY_MS > 0 && step !== activeSteps[activeSteps.length - 1]) {
                 await sleep(INTER_STEP_DELAY_MS);
             }
@@ -944,9 +1026,10 @@ async function main(): Promise<void> {
 
         await writeFile(DONE_MARKER_FILE, `${new Date().toISOString()}\n`);
         await writeInfo('completed');
-        log(`Driver completed. Holding infrastructure for ${Math.round(POST_DONE_HOLD_MS / 1000)}s so webreel can finish.`);
-        await sleep(POST_DONE_HOLD_MS);
+        log('Driver completed. Closing browser and saving video...');
+        await closeBrowser();
     } finally {
+        await closeBrowser();
         redirectServer?.close();
         if (node) {
             node.disconnect();

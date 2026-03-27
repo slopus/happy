@@ -35,6 +35,7 @@
     "test:integration": "vitest run src/sync-node.integration.test.ts",
     "test:e2e": "vitest run src/e2e/*.integration.test.ts",
     "walkthrough:webreel": "tsx src/e2e/walkthrough-runner.ts",
+    "walkthrough:direct": "tsx src/e2e/walkthrough-driver.ts",
     "test": "$npm_execpath run build && $npm_execpath run test:unit && $npm_execpath run test:integration",
     "prepublishOnly": "$npm_execpath run build && $npm_execpath run test",
     "release": "npx --no-install release-it"
