@@ -1,6 +1,6 @@
 # Loop State
 
-Last updated: 2026-03-26 21:27 PDT
+Last updated: 2026-03-27 04:00 PDT
 
 Previous completed tasks are archived in `loop/state-archive.md`.
 
@@ -46,15 +46,60 @@ Phase 1.5 UX review on the real screenshot set.
     - `ffprobe` duration: `27.400000` seconds
     - Screenshot count: `3` (`happy-walkthrough.png`, step 0, step 1)
 
+### Full Run Attempt (2026-03-27)
+
+First full 38-step attempt ran via `yarn workspace @slopus/happy-sync walkthrough:webreel`.
+Infrastructure booted successfully. Steps 0-7 completed before ENOSPC killed the webreel recorder.
+
+**Results:**
+| Step | Name | Status | Duration |
+|------|------|--------|----------|
+| 0 | Open the agent | pass | 0.0s |
+| 1 | Orient | fail | 125.9s (stale Read tool, see fix below) |
+| 2 | Find the bug | pass | 14.1s |
+| 3 | Edit rejected | pass | 23.1s |
+| 4 | Edit approved once | pass | 30.1s |
+| 5 | Edit approved always | pass | 41.6s |
+| 6 | Auto-approved edit | pass | 47.1s |
+| 7 | Search the web | pass | 46.7s |
+| 8 | Parallel explore | in progress when killed |
+
+Step 8 was running (subagent parallel explore) when the disk ran out of space.
+The webreel recorder crashed at Step 7 screenshot write: `ENOSPC: no space left on device`.
+The driver was killed with SIGTERM (code 143).
+
+**Screenshots captured:** Steps 0-6 plus component captures for permission-denied,
+permission-approve-once, permission-approve-always.
+
+**Step 1 fix applied:** Added `sessionDoneWithStaleTools` fallback to
+`waitForStepFinishApprovingAll`. When the session is idle with a terminal step-finish
+and text, but some tool parts remain `running` (stale sync state), accept after 15s.
+This fixes the Step 1 timeout caused by a Read tool stuck at `running`.
+
+### BLOCKER: Disk space
+
+The machine has only ~460GB total, and stale worktrees + Metro cache consumed nearly
+all available space. The walkthrough needs ~10GB free to run the full 38-step flow
+(Metro bundler cache, Chromium browser profile, video recording, etc.).
+
+**To unblock:**
+1. Run `rm -rf /var/folders/yf/nvph5n_n7_n8j_llhb95rczr0000gn/T/metro-cache` (Metro cache, safe to delete)
+2. Run `rm -rf /Users/kirilldubovitskiy/projects/happy/.dev/worktree/{bold-island,brave-mountain,bright-valley,clever-harbor,fresh-harbor,fresh-valley-2,quiet-garden,sharp-beacon,sharp-beacon-2,sharp-forest}/` (stale worktrees, ~1.5GB total)
+3. Or run `npm cache clean --force` (freed ~1.3GB last time)
+4. Verify `df -h /` shows at least 10GB free before retrying
+
+**Then retry:** `yarn workspace @slopus/happy-sync walkthrough:webreel`
+Use `nohup ... &` if running from a context with timeout limits.
+
 ### Next Actions
 
-1. Run the same harness with the full default 38-step range and default capture
-   timings. Do not use reduced start/end bounds.
-2. Verify the resulting MP4 is actually long-form (`>10 min`) and that the
-   per-step screenshots show transcript content, not blank/trimmed chrome.
-3. If the full run is good, feed the entire screenshot directory to Codex CLI
+1. **Free disk space** (see BLOCKER above).
+2. Re-run the full 38-step walkthrough with the Step 1 fix.
+3. Verify the resulting MP4 is long-form (`>10 min`) and per-step screenshots
+   show transcript content, not blank/trimmed chrome.
+4. If the full run is good, feed the screenshot directory to Codex CLI
    and `claude -p` for Phase 1.5 UX review and record findings below.
-4. If the full run is not good, fix the harness. Do not rationalize the output.
+5. If the full run is not good, fix the harness. Do not rationalize the output.
 
 ### Acceptance Criteria
 

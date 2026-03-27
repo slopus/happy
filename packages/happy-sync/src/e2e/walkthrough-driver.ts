@@ -358,7 +358,14 @@ async function waitForStepFinishApprovingAll(
                 && allToolsTerminal
                 && hasText
                 && stableForMs >= 8000;
-            return settledTurn || quietTextTurn;
+            // Fallback: session is done and has a terminal step-finish with text,
+            // but some tool parts remain running (stale sync state). Accept after 15s.
+            const sessionDoneWithStaleTools = sessionSettled
+                && noPendingPrompts
+                && hasTerminalFinish
+                && hasText
+                && stableForMs >= 15000;
+            return settledTurn || quietTextTurn || sessionDoneWithStaleTools;
         },
         timeoutMs,
         opts,

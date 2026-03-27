@@ -315,3 +315,23 @@ If you discover something non-obvious, append it here under the right section.
 - `waitForExit(child)` in the runner must return immediately when
   `child.exitCode !== null`. If you attach an `exit` listener after the child
   already exited, Node can skip the post-record verification phase entirely.
+- The full walkthrough run needs ~10GB of free disk space. The Metro bundler
+  cache alone (`/var/folders/.../T/metro-cache/`) can consume 3-5GB. Combined
+  with Expo web bundle compilation, Chromium browser profile, and video
+  recording temp files, the total can exceed 7GB. Always check `df -h /`
+  before starting and ensure at least 10GB free. If the machine has stale git
+  worktrees, clear them first with `rm -rf` + `git worktree prune`.
+- Step 1 (Orient) had a stale `Read,status=running` tool part in the v3 mapper
+  that never transitioned to `completed`. This caused
+  `waitForStepFinishApprovingAll` to time out because `allToolsTerminal` was
+  false. Fixed by adding a `sessionDoneWithStaleTools` fallback that accepts
+  after 15s when the session is idle with terminal step-finish and text,
+  regardless of tool state.
+- The walkthrough driver continues past step failures (catches errors and
+  records them in the results JSON). Steps 2-7 all passed despite Step 1's
+  timeout. This is by design — don't abort the whole walkthrough on one
+  failure.
+- When the walkthrough runner is invoked via `Bash` tool with `run_in_background`,
+  the 10-minute Bash timeout will kill the process. The full walkthrough takes
+  30-45 minutes. Use `nohup ... &` to decouple from timeout limits, or run the
+  walkthrough-runner directly from a persistent shell.
