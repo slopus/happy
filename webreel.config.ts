@@ -5,6 +5,7 @@ import {
     DEFAULT_CAPTURE_HOLD_MS,
     DEFAULT_FINAL_CAPTURE_MS,
     UX_REVIEW_OUTPUT_DIR,
+    WALKTHROUGH_REDIRECT_PORT,
     filterWalkthroughSteps,
     getNextPromptStep,
     parseStepBoundary,
@@ -35,6 +36,26 @@ const activeSteps = filterWalkthroughSteps(WALKTHROUGH_STEPS, STEP_START, STEP_E
 
 if (!sessionUrl) {
     throw new Error(`Session URL file is empty: ${SESSION_URL_FILE}`);
+}
+
+const REDIRECT_URL = `http://127.0.0.1:${WALKTHROUGH_REDIRECT_PORT}/`;
+
+// Steps that create a new session (resume/reopen) — webreel must navigate
+// to the redirect server to pick up the new session URL.
+const SESSION_CHANGE_STEP_IDS = new Set([11, 21, 29]);
+
+/**
+ * Extract a short fragment from a prompt for reliable text matching.
+ * React Native Web splits text across nested DOM elements, and Markdown
+ * rendering strips backticks. Truncate before the first non-ASCII char
+ * or backtick, keep under ~50 chars at a word boundary.
+ */
+function waitFragment(prompt: string): string {
+    // Cut at first non-ASCII character or backtick (Markdown strips backticks)
+    const safe = prompt.replace(/[^\x20-\x5F\x61-\x7E].*$/, '').trimEnd(); // excludes ` (0x60)
+    const base = safe || prompt.slice(0, 50);
+    const truncated = base.length <= 50 ? base : base.slice(0, 50).replace(/\s\S*$/, '');
+    return truncated.trim();
 }
 
 const steps: Array<Record<string, unknown>> = [
@@ -74,11 +95,32 @@ if (step0) {
 
 const runSteps = activeSteps.filter((step) => step.id !== 0);
 for (const [index, step] of runSteps.entries()) {
+    // Session change: navigate to redirect server for the new session URL
+    if (SESSION_CHANGE_STEP_IDS.has(step.id)) {
+        steps.push(
+            {
+                action: 'pause',
+                ms: 5000,
+                description: `Wait for session ${step.id} to be ready`,
+            },
+            {
+                action: 'navigate',
+                url: REDIRECT_URL,
+                description: `Navigate to new session for Step ${step.id}`,
+            },
+            {
+                action: 'pause',
+                ms: 3000,
+                description: `Let new session page hydrate after Step ${step.id}`,
+            },
+        );
+    }
+
     if (step.prompt) {
         steps.push(
             {
                 action: 'wait',
-                text: step.prompt,
+                text: waitFragment(step.prompt),
                 timeout: Math.max(step.timeoutMs, 120000),
                 description: `Wait for Step ${step.id} prompt`,
             },
@@ -109,18 +151,43 @@ for (const [index, step] of runSteps.entries()) {
 
     const nextPromptStep = getNextPromptStep(runSteps, index);
     if (nextPromptStep?.prompt) {
-        steps.push({
-            action: 'wait',
-            text: nextPromptStep.prompt,
-            timeout: Math.max(step.timeoutMs, 120000),
-            description: `Wait for Step ${nextPromptStep.id} prompt before capturing Step ${step.id}`,
-        });
+        // If the next step is a session change, don't wait for its text (it's on a different page)
+        if (SESSION_CHANGE_STEP_IDS.has(nextPromptStep.id)) {
+            steps.push({
+                action: 'pause',
+                ms: Math.min(step.timeoutMs, 30000),
+                description: `Pause before session change at Step ${nextPromptStep.id}`,
+            });
+        } else {
+            steps.push({
+                action: 'wait',
+                text: waitFragment(nextPromptStep.prompt),
+                timeout: Math.max(step.timeoutMs, 120000),
+                description: `Wait for Step ${nextPromptStep.id} prompt before capturing Step ${step.id}`,
+            });
+        }
     } else {
-        steps.push({
-            action: 'pause',
-            ms: FINAL_CAPTURE_MS,
-            description: `Allow Step ${step.id} to finish before the final capture`,
-        });
+        // If the next step has no prompt (stop/reopen with no prompt), use a pause
+        const nextStep = runSteps[index + 1];
+        if (nextStep && SESSION_CHANGE_STEP_IDS.has(nextStep.id)) {
+            steps.push({
+                action: 'pause',
+                ms: Math.min(step.timeoutMs, 30000),
+                description: `Pause before session change at Step ${nextStep.id}`,
+            });
+        } else if (!nextPromptStep) {
+            steps.push({
+                action: 'pause',
+                ms: FINAL_CAPTURE_MS,
+                description: `Allow Step ${step.id} to finish before the final capture`,
+            });
+        } else {
+            steps.push({
+                action: 'pause',
+                ms: Math.min(step.timeoutMs, 30000),
+                description: `Pause for Step ${step.id} (next step has no prompt)`,
+            });
+        }
     }
 
     steps.push(

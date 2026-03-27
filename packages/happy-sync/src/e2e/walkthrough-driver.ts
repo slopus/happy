@@ -3,6 +3,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
 import { join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +37,7 @@ import {
     DEFAULT_INITIAL_RECORDING_DELAY_MS,
     DEFAULT_INTER_STEP_DELAY_MS,
     UX_REVIEW_OUTPUT_DIR,
+    WALKTHROUGH_REDIRECT_PORT,
     filterWalkthroughSteps,
     parseStepBoundary,
     stepFileBase,
@@ -422,6 +424,7 @@ async function main(): Promise<void> {
 
     let webProcess: ChildProcess | null = null;
     let node!: SyncNode;
+    let redirectServer: Server | null = null;
     const results: StepResult[] = [];
 
     try {
@@ -447,14 +450,30 @@ async function main(): Promise<void> {
             return `http://127.0.0.1:${WEB_PORT}/session/${sessionId}?dev_token=${encodeURIComponent(getAuthToken())}&dev_secret=${encodeURIComponent(secret64url)}`;
         };
 
+        // Redirect server: webreel navigates here after session changes
+        let currentRedirectUrl = '';
+        redirectServer = createServer((req, res) => {
+            if (currentRedirectUrl) {
+                res.writeHead(302, { Location: currentRedirectUrl });
+            } else {
+                res.writeHead(503);
+            }
+            res.end();
+        });
+        await new Promise<void>((resolve) => redirectServer!.listen(WALKTHROUGH_REDIRECT_PORT, '127.0.0.1', resolve));
+        log(`Redirect server on http://127.0.0.1:${WALKTHROUGH_REDIRECT_PORT}`);
+
         log('Spawning initial Claude session via daemon...');
         let currentSessionId = await spawnSessionViaDaemon({ directory: projectDir, agent: 'claude' }) as SessionID;
         await waitForCondition(() => node!.state.sessions.has(currentSessionId as string), 30000);
         let resumeSourceSessionId: SessionID | null = null;
         const allSessionIds: string[] = [currentSessionId as string];
+        currentRedirectUrl = makeSessionUrl(currentSessionId as string);
 
         const writeSessionUrl = async (): Promise<void> => {
-            await writeFile(SESSION_URL_FILE, `${makeSessionUrl(currentSessionId as string)}\n`);
+            const url = makeSessionUrl(currentSessionId as string);
+            currentRedirectUrl = url;
+            await writeFile(SESSION_URL_FILE, `${url}\n`);
         };
 
         const writeInfo = async (status: string, currentStep?: WalkthroughStep): Promise<void> => {
@@ -812,6 +831,7 @@ async function main(): Promise<void> {
         log(`Driver completed. Holding infrastructure for ${Math.round(POST_DONE_HOLD_MS / 1000)}s so webreel can finish.`);
         await sleep(POST_DONE_HOLD_MS);
     } finally {
+        redirectServer?.close();
         if (node) {
             node.disconnect();
         }

@@ -20,6 +20,7 @@ export const DEFAULT_INITIAL_RECORDING_DELAY_MS = 10_000;
 export const DEFAULT_INTER_STEP_DELAY_MS = 2_000;
 export const DEFAULT_CAPTURE_HOLD_MS = 6_000;
 export const DEFAULT_FINAL_CAPTURE_MS = 120_000;
+export const WALKTHROUGH_REDIRECT_PORT = 19020;
 
 export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     { id: 0, name: 'Open the agent', prompt: null, action: 'send', timeoutMs: 0 },
