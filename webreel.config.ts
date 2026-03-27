@@ -25,6 +25,22 @@ const REDIRECT_PORT = Number.parseInt(
     process.env.HAPPY_WALKTHROUGH_REDIRECT_PORT ?? `${WALKTHROUGH_REDIRECT_PORT}`,
     10,
 );
+const VIEWPORT_WIDTH = Number.parseInt(
+    process.env.HAPPY_WALKTHROUGH_VIEWPORT_WIDTH ?? '1280',
+    10,
+);
+const VIEWPORT_HEIGHT = Number.parseInt(
+    process.env.HAPPY_WALKTHROUGH_VIEWPORT_HEIGHT ?? '800',
+    10,
+);
+const VIDEO_FPS = Number.parseInt(
+    process.env.HAPPY_WALKTHROUGH_VIDEO_FPS ?? '10',
+    10,
+);
+const VIDEO_QUALITY = Number.parseInt(
+    process.env.HAPPY_WALKTHROUGH_VIDEO_QUALITY ?? '30',
+    10,
+);
 
 if (!existsSync(SESSION_URL_FILE)) {
     throw new Error(`Missing session URL file: ${SESSION_URL_FILE}`);
@@ -200,9 +216,9 @@ const config = {
     videos: {
         'happy-walkthrough': {
             url: APP_ORIGIN,
-            viewport: { width: 1280, height: 800 },
-            fps: 10,
-            quality: 30,
+            viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+            fps: VIDEO_FPS,
+            quality: VIDEO_QUALITY,
             output: 'happy-walkthrough.mp4',
             steps,
         },

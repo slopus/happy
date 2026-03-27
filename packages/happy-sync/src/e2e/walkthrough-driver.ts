@@ -742,34 +742,43 @@ async function main(): Promise<void> {
                     await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else if (step.id === 12) {
                     await sendPrompt(step.prompt!, `step${step.id}`);
-                    let answered = false;
-                    let answerAfterCount = beforeAssistant;
                     try {
                         await waitForPendingQuestion(node, currentSessionId, 60000);
                         await holdForCapture('question prompt', CAPTURE_HOLD_MS, 'component-question-prompt');
-                        const question = node.state.sessions.get(currentSessionId as string)?.questions.find((item) => !item.resolved);
-                        if (question) {
-                            answerAfterCount = getAssistantMessages(node, currentSessionId).length;
-                            await node.answerQuestion(currentSessionId, question.questionId, [['Vitest']]);
-                            answered = true;
-                        }
                     } catch {
                         await waitForConditionApprovingAll(
                             node,
                             () => assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) => {
                                 const text = getFullText(message).toLowerCase();
-                                return text.includes('which one') || text.includes('vitest') || hasTerminalStepFinish(message);
+                                return hasTerminalStepFinish(message)
+                                    && (
+                                        text.includes('which one')
+                                        || text.includes('which framework')
+                                        || text.includes('what framework')
+                                        || text.includes('vitest')
+                                        || text.includes('jest')
+                                    );
                             }),
                             60000,
                         );
                         await holdForCapture('text-based question prompt');
                     }
-
-                    if (!answered) {
-                        answerAfterCount = getAssistantMessages(node, currentSessionId).length;
-                        await sendPrompt('Vitest', 'step12-answer');
+                } else if (step.id === 13) {
+                    const question = node.state.sessions.get(currentSessionId as string)?.questions.find((item) => !item.resolved);
+                    if (question) {
+                        await node.answerQuestion(currentSessionId, question.questionId, [['Vitest']]);
+                        await waitForConditionApprovingAll(
+                            node,
+                            () => {
+                                const session = node.state.sessions.get(currentSessionId as string);
+                                return !session?.questions.some((item) => !item.resolved);
+                            },
+                            30000,
+                        ).catch(() => {});
                     }
-                    await waitForStepFinishApprovingAll(node, currentSessionId, answerAfterCount, step.timeoutMs);
+                    artifactAfterCount = getAssistantMessages(node, currentSessionId).length;
+                    await sendPrompt(step.prompt!, `step${step.id}`);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, artifactAfterCount, step.timeoutMs);
                 } else if (step.id === 17) {
                     await node.sendRuntimeConfigChange(currentSessionId, {
                         source: 'user',
