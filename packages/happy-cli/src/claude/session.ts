@@ -146,43 +146,51 @@ export class Session {
 
     /**
      * Consume one-time Claude flags from claudeArgs after Claude spawn
-     * Handles: --resume (with or without session ID), --continue
+     * Handles: --resume/-r (with or without session ID), --continue/-c, --session-id
      */
     consumeOneTimeFlags = (): void => {
         if (!this.claudeArgs) return;
-        
+
         const filteredArgs: string[] = [];
         for (let i = 0; i < this.claudeArgs.length; i++) {
             const arg = this.claudeArgs[i];
-            
-            if (arg === '--continue') {
-                logger.debug('[Session] Consumed --continue flag');
+
+            if (arg === '--continue' || arg === '-c') {
+                logger.debug(`[Session] Consumed ${arg} flag`);
                 continue;
             }
-            
-            if (arg === '--resume') {
-                // Check if next arg looks like a UUID (contains dashes and alphanumeric)
+
+            if (arg === '--resume' || arg === '-r') {
+                // Check if next arg looks like a value (not another flag)
                 if (i + 1 < this.claudeArgs.length) {
                     const nextArg = this.claudeArgs[i + 1];
-                    // Simple UUID pattern check - contains dashes and is not another flag
-                    if (!nextArg.startsWith('-') && nextArg.includes('-')) {
-                        // Skip both --resume and the UUID
-                        i++; // Skip the UUID
-                        logger.debug(`[Session] Consumed --resume flag with session ID: ${nextArg}`);
+                    if (!nextArg.startsWith('-')) {
+                        // Skip both flag and value
+                        i++;
+                        logger.debug(`[Session] Consumed ${arg} flag with session ID: ${nextArg}`);
                     } else {
-                        // Just --resume without UUID
-                        logger.debug('[Session] Consumed --resume flag (no session ID)');
+                        logger.debug(`[Session] Consumed ${arg} flag (no session ID)`);
                     }
                 } else {
-                    // --resume at the end of args
-                    logger.debug('[Session] Consumed --resume flag (no session ID)');
+                    logger.debug(`[Session] Consumed ${arg} flag (no session ID)`);
                 }
                 continue;
             }
-            
+
+            if (arg === '--session-id') {
+                // Skip --session-id and its value
+                if (i + 1 < this.claudeArgs.length && !this.claudeArgs[i + 1].startsWith('-')) {
+                    i++;
+                    logger.debug(`[Session] Consumed --session-id flag with value`);
+                } else {
+                    logger.debug(`[Session] Consumed --session-id flag (no value)`);
+                }
+                continue;
+            }
+
             filteredArgs.push(arg);
         }
-        
+
         this.claudeArgs = filteredArgs.length > 0 ? filteredArgs : undefined;
         logger.debug(`[Session] Consumed one-time flags, remaining args:`, this.claudeArgs);
     }
