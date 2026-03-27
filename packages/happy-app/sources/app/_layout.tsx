@@ -231,7 +231,15 @@ export default function RootLayout() {
                     }
 
                     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-                        window.history.replaceState({}, '', window.location.pathname);
+                        const params = new URLSearchParams(window.location.search);
+                        params.delete('dev_token');
+                        params.delete('dev_secret');
+                        const nextSearch = params.toString();
+                        window.history.replaceState(
+                            {},
+                            '',
+                            `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`,
+                        );
                     }
                 }
 

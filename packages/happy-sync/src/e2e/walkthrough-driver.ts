@@ -54,6 +54,10 @@ const RESULTS_FILE = join(OUTPUT_DIR, 'walkthrough-driver-results.json');
 const DRIVER_LOG_FILE = join(OUTPUT_DIR, 'walkthrough-driver.log');
 const WEB_PORT = Number.parseInt(process.env.HAPPY_WALKTHROUGH_WEB_PORT ?? '19019', 10);
 const SERVER_PORT = process.env.HAPPY_TEST_SERVER_PORT ?? '34193';
+const REDIRECT_PORT = Number.parseInt(
+    process.env.HAPPY_WALKTHROUGH_REDIRECT_PORT ?? `${WALKTHROUGH_REDIRECT_PORT}`,
+    10,
+);
 const INITIAL_RECORDING_DELAY_MS = Number.parseInt(
     process.env.HAPPY_WALKTHROUGH_INITIAL_DELAY_MS ?? `${DEFAULT_INITIAL_RECORDING_DELAY_MS}`,
     10,
@@ -85,6 +89,12 @@ interface StepResult {
     continuityWarning: boolean;
     error: string | null;
     artifactBase: string;
+}
+
+interface WalkthroughStatePayload {
+    status: string;
+    label: string;
+    currentStep: { id: number; name: string } | null;
 }
 
 function log(message: string): void {
@@ -149,6 +159,10 @@ function assistantTurnSignature(messages: MessageWithParts[]): string {
                 return part.type;
         }
     }).join('|')).join('||');
+}
+
+function hasTextContent(messages: MessageWithParts[]): boolean {
+    return messages.some((message) => getTextParts(message).length > 0);
 }
 
 function assistantMessagesSince(node: SyncNode, sessionId: SessionID, afterCount: number): MessageWithParts[] {
@@ -312,15 +326,18 @@ async function waitForStepFinishApprovingAll(
             const sessionSettled = session.status.type === 'idle'
                 || session.status.type === 'completed'
                 || session.status.type === 'error';
-            const hasVisibleContent = assistant.some((message) =>
-                getTextParts(message).length > 0 || getToolParts(message).length > 0,
-            );
-
-            return sessionSettled
+            const stableForMs = Date.now() - stableSince;
+            const hasText = hasTextContent(assistant);
+            const settledTurn = sessionSettled
                 && noPendingPrompts
                 && allToolsTerminal
-                && hasVisibleContent
-                && Date.now() - stableSince >= 3000;
+                && hasText
+                && stableForMs >= 3000;
+            const quietTextTurn = noPendingPrompts
+                && allToolsTerminal
+                && hasText
+                && stableForMs >= 8000;
+            return settledTurn || quietTextTurn;
         },
         timeoutMs,
         opts,
@@ -447,12 +464,28 @@ async function main(): Promise<void> {
 
         const makeSessionUrl = (sessionId: string) => {
             const secret64url = encodeBase64Url(getEncryptionSecret());
-            return `http://127.0.0.1:${WEB_PORT}/session/${sessionId}?dev_token=${encodeURIComponent(getAuthToken())}&dev_secret=${encodeURIComponent(secret64url)}`;
+            const stateUrl = `http://127.0.0.1:${REDIRECT_PORT}/state`;
+            return `http://127.0.0.1:${WEB_PORT}/session/${sessionId}?dev_token=${encodeURIComponent(getAuthToken())}&dev_secret=${encodeURIComponent(secret64url)}&walkthrough_state_url=${encodeURIComponent(stateUrl)}`;
+        };
+
+        let currentWalkthroughState: WalkthroughStatePayload = {
+            status: 'booting',
+            label: 'Walkthrough Booting',
+            currentStep: null,
         };
 
         // Redirect server: webreel navigates here after session changes
         let currentRedirectUrl = '';
         redirectServer = createServer((req, res) => {
+            if (req.url?.startsWith('/state')) {
+                res.writeHead(200, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Cache-Control': 'no-store',
+                    'Access-Control-Allow-Origin': '*',
+                });
+                res.end(JSON.stringify(currentWalkthroughState));
+                return;
+            }
             if (currentRedirectUrl) {
                 res.writeHead(302, { Location: currentRedirectUrl });
             } else {
@@ -460,8 +493,8 @@ async function main(): Promise<void> {
             }
             res.end();
         });
-        await new Promise<void>((resolve) => redirectServer!.listen(WALKTHROUGH_REDIRECT_PORT, '127.0.0.1', resolve));
-        log(`Redirect server on http://127.0.0.1:${WALKTHROUGH_REDIRECT_PORT}`);
+        await new Promise<void>((resolve) => redirectServer!.listen(REDIRECT_PORT, '127.0.0.1', resolve));
+        log(`Redirect server on http://127.0.0.1:${REDIRECT_PORT}`);
 
         log('Spawning initial Claude session via daemon...');
         let currentSessionId = await spawnSessionViaDaemon({ directory: projectDir, agent: 'claude' }) as SessionID;
@@ -477,8 +510,20 @@ async function main(): Promise<void> {
         };
 
         const writeInfo = async (status: string, currentStep?: WalkthroughStep): Promise<void> => {
+            currentWalkthroughState = {
+                status,
+                label: status === 'completed'
+                    ? 'Walkthrough Completed'
+                    : status === 'step_failed' && currentStep
+                        ? `Walkthrough Failed Step ${currentStep.id}: ${currentStep.name}`
+                        : currentStep
+                            ? `Walkthrough Step ${currentStep.id}: ${currentStep.name}`
+                            : 'Walkthrough Booted',
+                currentStep: currentStep ? { id: currentStep.id, name: currentStep.name } : null,
+            };
             await writeFile(INFO_FILE, JSON.stringify({
                 status,
+                walkthroughState: currentWalkthroughState,
                 serverUrl: getServerUrl(),
                 webUrl: `http://127.0.0.1:${WEB_PORT}`,
                 daemonPort: getDaemonHttpPort(),

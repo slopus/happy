@@ -3,6 +3,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +21,29 @@ const VERIFY_FILE = join(OUTPUT_DIR, 'walkthrough-verification.json');
 function log(message: string): void {
     const ts = new Date().toISOString().slice(11, 23);
     console.log(`[${ts}] ${message}`);
+}
+
+async function reserveFreePort(): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const server = createServer();
+        server.unref();
+        server.on('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+            const address = server.address();
+            if (!address || typeof address === 'string') {
+                server.close(() => reject(new Error('Failed to reserve a TCP port')));
+                return;
+            }
+            const { port } = address;
+            server.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve(port);
+            });
+        });
+    });
 }
 
 async function appendLogLine(path: string, chunk: string): Promise<void> {
@@ -116,12 +140,19 @@ async function runCommandCapture(
 }
 
 async function main(): Promise<void> {
+    const serverPort = process.env.HAPPY_TEST_SERVER_PORT ?? `${await reserveFreePort()}`;
+    const webPort = process.env.HAPPY_WALKTHROUGH_WEB_PORT ?? `${await reserveFreePort()}`;
+    const redirectPort = process.env.HAPPY_WALKTHROUGH_REDIRECT_PORT ?? `${await reserveFreePort()}`;
     const sharedEnv: NodeJS.ProcessEnv = {
         ...process.env,
+        HAPPY_TEST_SERVER_PORT: serverPort,
+        HAPPY_WALKTHROUGH_WEB_PORT: webPort,
+        HAPPY_WALKTHROUGH_REDIRECT_PORT: redirectPort,
     };
 
     await rm(OUTPUT_DIR, { recursive: true, force: true }).catch(() => {});
 
+    log(`Reserved ports: server=${serverPort} web=${webPort} redirect=${redirectPort}`);
     log('Starting walkthrough driver...');
     const driver = spawnLoggedProcess({
         command: 'npx',
