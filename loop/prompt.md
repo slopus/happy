@@ -188,13 +188,28 @@ npx @anthropic-ai/agent-browser
 
 Use it to control a real Chrome browser and LOOK at the Happy web app.
 
-**VIDEO RECORDING IS MANDATORY.** Record a SINGLE VIDEO of ONE SESSION running
-through the FULL 38-step exercise flow. The video shows the browser with the
-session page open, scrolling as each step completes — tool calls appearing,
-permissions popping up, subagents expanding, background tasks running — the
-ENTIRE experience from step 0 to step 38 in one continuous recording. Use
-Playwright's `recordVideo` or agent-browser recording. Save to
-`e2e-recordings/ux-review/`. This has been requested THREE TIMES and never done.
+**VIDEO RECORDING IS MANDATORY — USE WEBREEL, NOT PLAYWRIGHT.**
+
+DO NOT USE Playwright `recordVideo`. It's hardcoded to VP8, 1Mbps, single thread.
+The output is unwatchable garbage. Use `webreel` by Vercel (`npx webreel`):
+
+- H.264 MP4 output at configurable CRF (use `quality: 65` = CRF 18)
+- 30fps, macbook-pro viewport (1512x982)
+- Captures frames via CDP and encodes with ffmpeg
+- Produces actual watchable video
+
+**Architecture**: two parts running in parallel:
+1. **Driver script**: boots infra + sends all 38 exercise prompts via SyncNode
+2. **webreel config**: records the browser page, using `wait`/`scroll`/`pause`/`screenshot`
+   steps to follow the transcript as content appears
+
+See `loop/state.md` for the full implementation plan with webreel config examples.
+
+The video MUST be > 10 minutes long showing the full 38-step flow. Verify with:
+```bash
+ls -la e2e-recordings/ux-review/happy-walkthrough.mp4
+ffprobe e2e-recordings/ux-review/happy-walkthrough.mp4
+```
 
 1. Boot infrastructure (server + daemon + Expo web with BROWSER=none)
 2. Use `agent-browser` to open Chrome WITH VIDEO RECORDING ENABLED

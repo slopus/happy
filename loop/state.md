@@ -1,121 +1,141 @@
 # Loop State
 
-Last updated: 2026-03-26 15:38 PDT
+Last updated: 2026-03-26 20:00 PDT
 
 Previous completed tasks are archived in `loop/state-archive.md`.
 
 ## Current Task
 
-TASK: REDO Phase 1 visual + Phase 1.5 UX review — PREVIOUS WORK IS INVALID
+TASK: Record a proper walkthrough video using webreel + take proper screenshots
 
-### Why the previous work is invalid
+### Architecture: webreel + background SyncNode driver
 
-1. **Screenshots are BROKEN** — the walkthrough script scrolls
-   `document.documentElement.scrollTop` instead of the chat container's scroll
-   element. ALL screenshots show the sidebar/header/input area but NOT the
-   actual conversation content. They are USELESS for visual verification.
+Use `webreel` (by Vercel, `npx webreel`) to record a HIGH QUALITY video of the
+Happy web app while exercise steps run. webreel produces H.264 MP4 at configurable
+CRF (not Playwright's garbage 1Mbps VP8). DO NOT USE Playwright recordVideo.
 
-2. **Video doesn't exist** — state.md claimed `walkthrough.webm` (30MB) exists
-   in `e2e-recordings/ux-review/`. It does NOT. `ls *.webm *.mp4` returns nothing.
+**Two-part setup:**
 
-3. **UX review is circular** — Codex reviewed broken screenshots, flagged failures,
-   and then those failures were dismissed as "false positives from the screenshot
-   bug." That's not a review, that's rationalizing broken output.
+**Part 1: Background driver script** (`packages/happy-sync/src/e2e/walkthrough-driver.ts`)
+- Boots infrastructure: PGlite server + isolated daemon + Expo web (BROWSER=none)
+- Creates a SyncNode, spawns a Claude session
+- Writes session URL to a file (e.g. `e2e-recordings/ux-review/session-url.txt`)
+- Sends all 38 exercise step prompts via SyncNode with appropriate waits
+- Handles permissions, questions, stop/resume as needed
+- Runs for the full duration (~30-40 min)
 
-4. **Gemini review was skipped** — claimed "no auth configured." Figure it out or
-   use a different model. Do not skip.
+**Part 2: webreel config** (`webreel.config.ts` or `webreel.config.json`)
+- Reads the session URL from the file
+- Opens Chrome at the session page
+- Uses `wait` steps to sync with content appearing
+- Uses `scroll` steps to follow the transcript as it grows
+- Uses `screenshot` steps at key moments (every component type)
+- Uses `pause` steps between interactions
+- Records everything as a continuous H.264 MP4 video
 
-### What to do NOW
-
-#### Step 1: Fix the screenshot scrolling bug
-
-The Playwright screenshot script scrolls the WRONG element. The chat transcript
-is inside a scrollable container (not `document.documentElement`). Find the
-actual scrollable chat element in the web app DOM and scroll THAT.
-
-Test your fix by taking ONE screenshot of a session with visible tool calls.
-If you can see tool calls, permissions, and assistant text in the screenshot,
-the scroll is fixed. If you only see the sidebar and input box, it's still broken.
-
-#### Step 2: Record the video FOR REAL
-
-Record a SINGLE CONTINUOUS VIDEO of ONE SESSION page in Chrome while all 38
-exercise steps run. The video must show:
-- Tool calls appearing in real-time
-- Permissions popping up
-- Subagents expanding with nested tools
-- Background tasks running and completing
-- The transcript growing as steps complete
-
-Use Playwright `recordVideo` on the browser context. Verify the .webm file
-EXISTS and is non-empty before declaring done:
-```bash
-ls -la e2e-recordings/ux-review/*.webm
+**webreel config settings:**
+```json
+{
+  "viewport": "macbook-pro",
+  "fps": 30,
+  "quality": 65,
+  "output": "e2e-recordings/ux-review/happy-walkthrough.mp4"
+}
 ```
 
-#### Step 3: Take proper screenshots with the fixed scroll
+**webreel step pattern for each exercise step:**
+```json
+{ "action": "wait", "text": "Step N prompt text or tool name", "timeout": 120000 },
+{ "action": "scroll", "y": 300, "selector": "<chat-scroll-container>" },
+{ "action": "pause", "ms": 3000 },
+{ "action": "screenshot", "output": "e2e-recordings/ux-review/step-N-name.png" }
+```
 
-For each session (top to bottom), capture the FULL conversation. Someone looking
-at the screenshots should be able to read the entire chat. Also capture one clean
-shot of each component type.
+**webreel docs reference:**
+- Config: https://webreel.dev/configuration
+- Actions: pause, click, key, type, scroll, wait, screenshot, navigate, hover, drag, moveTo, select
+- NO eval/js action — use `wait` to sync with app state, driver script handles SyncNode
+- `wait` polls every 200ms for text or selector, up to timeout
+- `scroll` supports targeting specific elements via `selector`
+- Quality 65 = CRF 18 (visually excellent). Quality 80 = CRF 10 (overkill).
+- Supports .mp4, .webm, .gif output
+- Install: `npx webreel` (auto-downloads Chrome + ffmpeg to ~/.webreel)
 
-#### Step 4: Phase 1.5 UX review with REAL screenshots
+### Implementation steps
 
-Feed the FIXED screenshots to Codex. If Gemini auth doesn't work, use Claude
-itself (`claude -p "review these screenshots..."`) as the second reviewer. Do NOT
-skip the second review. Do NOT declare "PASS" if the screenshots don't show
-conversation content.
+1. **Write the driver script** — reuse existing `phase1-visual.ts` infrastructure
+   boot code. The driver should:
+   - Boot server + daemon + Expo web
+   - Create session, write URL to file
+   - Send all 38 prompts with waits between each
+   - Signal completion when done (write a done-marker file)
 
-#### Step 5: Continue with Codex/OpenCode Level 2 verification
+2. **Write the webreel config** — create `webreel.config.ts` with:
+   - Navigate to session URL (read from file)
+   - For each of the 38 steps: wait for new content, scroll down, pause, screenshot
+   - Wait for done-marker at the end
+   - Output to `e2e-recordings/ux-review/happy-walkthrough.mp4`
 
-DONE — see "Level 2 Codex + OpenCode verification" in Completed Tasks below.
+3. **Write a runner script** that:
+   - Starts driver in background
+   - Waits for session URL file to appear
+   - Runs `npx webreel record --verbose`
+   - Verifies output: `ls -la e2e-recordings/ux-review/happy-walkthrough.mp4`
+
+4. **Verify output quality**:
+   - MP4 file must be > 10MB (real video, not a 3-second clip)
+   - Screenshots must show conversation content (tool calls, text, permissions)
+   - Run `ffprobe` on the MP4 to check duration is > 10 minutes
+
+5. **Phase 1.5 UX review** with the good screenshots:
+   - Feed ALL screenshots to `codex` CLI
+   - Feed ALL screenshots to `claude -p` as second reviewer
+   - Record findings in state.md
+
+### Finding the chat scroll container
+
+The chat transcript is NOT `document.documentElement`. You need to find the actual
+scrollable element in the Happy web app DOM. Inspect the app:
+- Look for the element with `overflow-y: auto` or `overflow-y: scroll`
+- It's likely a div wrapping the message list
+- Use Chrome DevTools or `page.evaluate` to find it
+- The webreel `scroll` action accepts a `selector` param — use it
 
 ### Acceptance criteria
 
-- [ ] Video file EXISTS: `ls -la e2e-recordings/ux-review/*.webm` shows a non-empty file
-- [ ] Screenshots show CONVERSATION CONTENT (tool calls, text, permissions), not just chrome
-- [ ] UX review done with FIXED screenshots by TWO reviewers
-- [ ] Review findings recorded in state.md
+- [ ] MP4 video exists at `e2e-recordings/ux-review/happy-walkthrough.mp4`
+- [ ] Video is > 10 minutes long (verify with `ffprobe`)
+- [ ] Video shows conversation content scrolling as steps complete
+- [ ] Per-step screenshots show conversation content
+- [ ] UX review done by TWO reviewers (Codex + Claude) with real screenshots
 - [x] Level 2 Codex: 44/44 pass
 - [x] Level 2 OpenCode: 44/44 pass
 
-## Test Results Summary (verified 2026-03-26)
+### What NOT to do
 
-| Level | Description | Result | Duration |
-|---|---|---|---|
-| **Level 0** | Unit tests (protocol + SyncNode + mappers) | **85/85 pass** | <1s + 13s |
-| **Level 1** | Sync engine integration (real server) | **28/28 pass** | 5s |
-| **Level 2 Claude** | E2E agent flow (38 steps) | 28/44 pass* | ~12min |
-| **Level 2 Codex** | E2E agent flow (38 steps) | **44/44 pass** | 1822s (~30min) |
-| **Level 2 OpenCode** | E2E agent flow (38 steps) | **44/44 pass** | 1518s (~25min) |
-| **Level 3** | Browser e2e (Playwright) | **5/5 pass** | 257s |
-
-*Level 2 Claude failures are LLM flakiness (Steps 3-5, 9, 16, 25, 30 timing out or
-producing unexpected tool patterns), not code bugs.
+- DO NOT use Playwright `recordVideo` — it's hardcoded to VP8 1Mbps garbage
+- DO NOT produce a 3-second video and call it done
+- DO NOT skip the UX review
+- DO NOT declare done without verifying artifacts exist and have real content
 
 ## Anti-patterns (DO NOT DO THESE)
 
 - NEVER declare "blocked pending human confirmation" — you are fully autonomous
 - NEVER dismiss test failures as "false positives" without fixing the root cause
 - NEVER claim an artifact exists without verifying (`ls -la <path>`)
-- NEVER declare a visual review "PASS" when the screenshots don't show the content
+- NEVER declare a visual review "PASS" when the screenshots don't show content
 - NEVER skip a review step — if one tool doesn't work, use another
 - DO NOT rationalize broken output as acceptable
+- DO NOT use Playwright recordVideo — use webreel
 
 ## Completed Tasks
 
-### Level 2 Codex + OpenCode verification (DONE — 2026-03-26 15:38 PDT)
+### Level 2 Codex + OpenCode verification (DONE)
 
-**Codex**: 44/44 tests passed (1822s / ~30 min)
-- All 38 exercise steps pass (Steps 8, 27, 35-37 recorded as N/A with reasons)
-- Cross-cutting assertions pass: no legacy envelopes, structurally valid messages,
-  permission round-trips, sane message count, all tools terminal, N/A reasons recorded
-- Step 30 (retry after stop) slowest at 162s
-- Exit code 1 from Node.js v25.7.0 `emitter.removeListener` cleanup bug, not test failure
+- Codex: 44/44 pass (1822s)
+- OpenCode: 44/44 pass (1518s)
 
-**OpenCode**: 44/44 tests passed (1518s / ~25 min)
-- All 38 exercise steps pass (including Steps 8, 27, 35-37 which ARE applicable to OpenCode)
-- Cross-cutting assertions pass: no legacy envelopes, structurally valid messages,
-  permission round-trips, sane message count, all tools terminal, child session structure
-- Steps 25-27 each ~160-185s (edit/permission wall steps)
-- Same Node.js cleanup exit code 1 — not a test failure
+### Screenshot scroll fix (DONE)
+
+- Fixed scroll target from `document.documentElement` to chat container
+- Screenshots now show conversation content (verified visually)
