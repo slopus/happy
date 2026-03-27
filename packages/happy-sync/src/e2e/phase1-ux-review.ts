@@ -384,11 +384,9 @@ async function main() {
                 // deepest scrollable element (the FlatList container) and scroll it
                 // so the latest messages are visible. Because it's inverted,
                 // scrollTop=0 shows newest content.
-                await page.evaluate(() => {
-                    // Find all scrollable elements and pick the one with the most
-                    // scrollable content (the chat container, not document)
+                await page.evaluate(`(() => {
                     const candidates = document.querySelectorAll('div, [role="list"]');
-                    let best: Element | null = null;
+                    let best = null;
                     let bestScrollHeight = 0;
                     for (const el of candidates) {
                         const style = getComputedStyle(el);
@@ -400,10 +398,9 @@ async function main() {
                         }
                     }
                     if (best) {
-                        // Inverted FlatList: scrollTop=0 = newest content visible
                         best.scrollTop = 0;
                     }
-                });
+                })()`);
                 await page.waitForTimeout(500);
                 const filename = `step-${String(step.id).padStart(2, '0')}-${step.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.png`;
                 await page.screenshot({ path: join(OUTPUT_DIR, filename), fullPage: true });
