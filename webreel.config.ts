@@ -115,8 +115,8 @@ for (const [index, step] of runSteps.entries()) {
         steps.push(
             {
                 action: 'pause',
-                ms: 5000,
-                description: `Wait for session ${step.id} to be ready`,
+                ms: 1000,
+                description: `Allow session ${step.id} URL to settle`,
             },
             {
                 action: 'navigate',
@@ -124,8 +124,14 @@ for (const [index, step] of runSteps.entries()) {
                 description: `Navigate to new session for Step ${step.id}`,
             },
             {
+                action: 'wait',
+                text: stepSyncText(step),
+                timeout: Math.max(step.timeoutMs, 30000),
+                description: `Wait for Step ${step.id} after session redirect`,
+            },
+            {
                 action: 'pause',
-                ms: 3000,
+                ms: 1500,
                 description: `Let new session page hydrate after Step ${step.id}`,
             },
         );
