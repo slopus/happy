@@ -155,6 +155,18 @@ function stepFileBase(step: StepDef): string {
     return `step-${String(step.id).padStart(2, '0')}-${sanitizeSegment(step.name)}`;
 }
 
+function parseStepBoundary(value: string | undefined): number | null {
+    if (!value) {
+        return null;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+const START_STEP_ID = parseStepBoundary(process.env.HAPPY_PHASE1_START_STEP);
+const END_STEP_ID = parseStepBoundary(process.env.HAPPY_PHASE1_END_STEP);
+
 function collectToolParts(messages: MessageWithParts[], afterIndex: number): Array<{ tool: string; status: string }> {
     return messages
         .slice(afterIndex)
@@ -284,6 +296,13 @@ function buildChatScrollScript(target: 'newest' | 'oldest' | number | null): str
             const overflowY = style.overflowY || style.overflow;
             return (overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 80;
         };
+        const composer = Array.from(document.querySelectorAll('textarea, input'))
+            .find((el) => {
+                const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
+                const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+                return placeholder.includes('type a message') || ariaLabel.includes('type a message');
+            });
+        const composerRect = composer ? composer.getBoundingClientRect() : null;
         const candidates = Array.from(document.querySelectorAll('div, [role="list"]'))
             .map((el) => {
                 const style = getComputedStyle(el);
@@ -295,7 +314,22 @@ function buildChatScrollScript(target: 'newest' | 'oldest' | number | null): str
                 const centerX = rect.left + rect.width / 2;
                 const rightBias = centerX > window.innerWidth * 0.45 ? 500000 : 0;
                 const widthBias = rect.width > window.innerWidth * 0.45 ? 250000 : 0;
-                const score = area + Math.min(el.scrollHeight, 50000) * 10 + rightBias + widthBias;
+                let score = area + Math.min(el.scrollHeight, 50000) * 10 + rightBias + widthBias;
+
+                if (composerRect) {
+                    const overlapWidth = Math.max(0, Math.min(rect.right, composerRect.right) - Math.max(rect.left, composerRect.left));
+                    const overlapRatio = composerRect.width > 0 ? overlapWidth / composerRect.width : 0;
+                    const verticalGap = composerRect.top - rect.bottom;
+                    const centerDelta = Math.abs(centerX - (composerRect.left + composerRect.width / 2));
+
+                    if (rect.bottom > composerRect.top + 24) return null;
+                    if (overlapRatio < 0.45) return null;
+
+                    score += overlapRatio * 1_500_000;
+                    score += verticalGap >= -16 && verticalGap <= 220 ? 400_000 : 0;
+                    score -= centerDelta * 1_500;
+                }
+
                 return { el, rect, score };
             })
             .filter(Boolean)
@@ -518,24 +552,48 @@ async function waitForStepFinishApprovingAll(
     timeoutMs: number,
     opts: { autoAnswerQuestions?: boolean } = {},
 ): Promise<void> {
+    let lastLogAt = 0;
     let lastAssistantSignature = '';
     let stableSince = Date.now();
     await waitForConditionApprovingAll(
         node,
         () => {
             const assistant = assistantMessagesSince(node, sessionId, afterCount);
+            if (assistant.length === 0) {
+                return false;
+            }
+
             const signature = assistantTurnSignature(assistant);
             if (signature !== lastAssistantSignature) {
                 lastAssistantSignature = signature;
                 stableSince = Date.now();
             }
 
-            if (assistant.some(hasTerminalStepFinish)) {
-                return true;
+            const now = Date.now();
+            if (now - lastLogAt > 10000) {
+                lastLogAt = now;
+                for (const [offset, message] of assistant.entries()) {
+                    const partTypes = message.parts.map((part) => {
+                        if (part.type === 'step-finish') {
+                            return `step-finish(reason=${part.reason})`;
+                        }
+                        if (part.type === 'tool') {
+                            return `tool(${part.tool},status=${part.state.status})`;
+                        }
+                        if (part.type === 'text') {
+                            return `text(${part.text.slice(0, 40)}...)`;
+                        }
+                        if (part.type === 'reasoning') {
+                            return `reasoning(${part.text.slice(0, 40)}...)`;
+                        }
+                        return part.type;
+                    });
+                    log(`  wait msg[${afterCount + offset}] (${message.parts.length} parts): ${partTypes.join(', ')}`);
+                }
             }
 
-            if (assistant.length === 0) {
-                return false;
+            if (assistant.some(hasTerminalStepFinish)) {
+                return true;
             }
 
             const session = node.state.sessions.get(sessionId as string);
@@ -544,16 +602,20 @@ async function waitForStepFinishApprovingAll(
             }
 
             const tools = assistant.flatMap(getToolParts);
-            const sessionSettled = session.status.type === 'idle'
-                || session.status.type === 'completed'
-                || session.status.type === 'error';
             const allToolsTerminal = tools.every((tool) => isTerminalToolStatus(tool.state.status));
             const noPendingPrompts = !session.permissions.some((permission) => !permission.resolved)
                 && !session.questions.some((question) => !question.resolved);
+            const sessionSettled = session.status.type === 'idle'
+                || session.status.type === 'completed'
+                || session.status.type === 'error';
+            const lastMessageHasVisibleContent = assistant.some((message) =>
+                getTextParts(message).length > 0 || getToolParts(message).length > 0,
+            );
 
             return sessionSettled
                 && noPendingPrompts
                 && allToolsTerminal
+                && lastMessageHasVisibleContent
                 && Date.now() - stableSince >= 3000;
         },
         timeoutMs,
@@ -667,7 +729,17 @@ async function main(): Promise<void> {
         await writeFile(RESULTS_FILE, JSON.stringify(results, null, 2));
         await writeInfo('running', step0);
 
-        for (const step of STEPS.slice(1)) {
+        const activeSteps = STEPS.slice(1).filter((step) => {
+            if (START_STEP_ID !== null && step.id < START_STEP_ID) {
+                return false;
+            }
+            if (END_STEP_ID !== null && step.id > END_STEP_ID) {
+                return false;
+            }
+            return true;
+        });
+
+        for (const step of activeSteps) {
             const startedAt = Date.now();
             let error: string | null = null;
             const sessionBeforeStep = currentSessionId as string;
