@@ -65,19 +65,35 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
     }, [processAuthUrl]);
 
     // Set up barcode scanner listener
+    const isProcessingRef = React.useRef(false);
     React.useEffect(() => {
         if (CameraView.isModernBarcodeScannerAvailable) {
             const subscription = CameraView.onModernBarcodeScanned(async (event) => {
+                if (isProcessingRef.current) return;
                 if (event.data.startsWith('happy:///account?')) {
-                    // Dismiss scanner on Android is called automatically when barcode is scanned
-                    if (Platform.OS === 'ios') {
-                        await CameraView.dismissScanner();
+                    isProcessingRef.current = true;
+                    try {
+                        if (Platform.OS === 'ios') {
+                            try {
+                                await CameraView.dismissScanner();
+                            } catch (e) {
+                                console.warn('Failed to dismiss scanner', e);
+                            }
+                        }
+                        await processAuthUrl(event.data);
+                    } finally {
+                        isProcessingRef.current = false;
                     }
-                    await processAuthUrl(event.data);
                 }
             });
             return () => {
                 subscription.remove();
+                isProcessingRef.current = false;
+                if (Platform.OS === 'ios') {
+                    CameraView.dismissScanner().catch((e: unknown) => {
+                        console.warn('Failed to dismiss scanner during cleanup', e);
+                    });
+                }
             };
         }
     }, [processAuthUrl]);
