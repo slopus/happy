@@ -278,6 +278,13 @@ async function waitForStepFinishApprovingAll(
         () => {
             const assistant = assistantMessagesSince(node, sessionId, afterCount);
             if (assistant.length === 0) {
+                const now = Date.now();
+                if (now - lastLogAt > 15000) {
+                    lastLogAt = now;
+                    const session = node.state.sessions.get(sessionId as string);
+                    const totalMsgs = getAssistantMessages(node, sessionId).length;
+                    log(`  wait: no new messages (afterCount=${afterCount}, total=${totalMsgs}, session=${session?.status.type ?? 'missing'})`);
+                }
                 return false;
             }
 

@@ -96,10 +96,13 @@ if (step0) {
 }
 
 for (const [index, step] of runSteps.entries()) {
+    // Wait for the driver to start this step — use previous step's timeout + buffer
+    const prevStep = runSteps[index - 1];
+    const startWaitTimeout = prevStep ? prevStep.timeoutMs + 120000 : Math.max(step.timeoutMs, 120000);
     steps.push({
         action: 'wait',
         text: stepSyncText(step),
-        timeout: Math.max(step.timeoutMs, 120000),
+        timeout: startWaitTimeout,
         description: `Wait for Step ${step.id} to start`,
     });
 
@@ -148,10 +151,13 @@ for (const [index, step] of runSteps.entries()) {
     }
 
     const nextStep = runSteps[index + 1];
+    // Use step timeout + 120s buffer to account for driver overhead
+    // (permission waits, capture holds, inter-step delays, SyncNode propagation)
+    const completionTimeout = step.timeoutMs + 120000;
     steps.push({
         action: 'wait',
         text: nextStep ? stepSyncText(nextStep) : WALKTHROUGH_COMPLETED_TEXT,
-        timeout: Math.max(step.timeoutMs, 120000),
+        timeout: completionTimeout,
         description: nextStep
             ? `Wait for Step ${nextStep.id} before capturing Step ${step.id}`
             : `Wait for walkthrough completion before capturing Step ${step.id}`,
