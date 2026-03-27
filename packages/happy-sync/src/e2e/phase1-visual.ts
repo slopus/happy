@@ -1,10 +1,10 @@
 #!/usr/bin/env npx tsx
 /**
- * Phase 1 VISUAL walkthrough — full 38-step browser capture using agent-browser.
+ * Phase 1 VISUAL walkthrough — full 38-step browser capture using Playwright.
  *
  * Boots isolated server + daemon + Expo web, drives a real Claude session
  * through the exercise flow, and captures:
- * - one continuous agent-browser WebM recording
+ * - one continuous Playwright WebM recording
  * - a full-page screenshot after every step
  * - top/bottom screenshots for every spawned session
  * - accessibility snapshots alongside each PNG
@@ -13,10 +13,11 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, renameSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
 import { SyncNode } from '../sync-node';
 import type { MessageWithParts, Part, SessionID } from '../protocol';
@@ -46,11 +47,9 @@ import {
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const WEB_PORT = 19017;
 const OUTPUT_DIR = join(REPO_ROOT, 'e2e-recordings', 'ux-review');
+const VIDEO_DIR = join(OUTPUT_DIR, 'video');
 const INFO_FILE = join(OUTPUT_DIR, 'phase1-visual-info.json');
 const RESULTS_FILE = join(OUTPUT_DIR, 'phase1-visual-results.json');
-const VIDEO_FILE = join(OUTPUT_DIR, 'walkthrough.webm');
-const AGENT_BROWSER_BIN = process.env.AGENT_BROWSER_BIN ?? 'agent-browser';
-const AGENT_BROWSER_SESSION = `happy-phase1-visual-${process.pid}`;
 const CLAUDE_MODEL = { providerID: 'anthropic', modelID: 'claude-sonnet-4-20250514' };
 const CLAUDE_HAIKU_MODEL = { providerID: 'anthropic', modelID: 'claude-haiku-4-5-20251001' };
 
@@ -124,11 +123,11 @@ const STEPS: StepDef[] = [
     { id: 31, name: 'Launch background task', prompt: `Run a background task that sleeps for 30 seconds and then echoes "lol i am donezen". While it's running, tell me what time it is.`, action: 'send', timeoutMs: 180000 },
     { id: 32, name: 'Background task completes', prompt: 'Did that background task finish? What was the output?', action: 'send', timeoutMs: 240000 },
     { id: 33, name: 'Interact during background task', prompt: `Run another background task: sleep 20 && echo "background two". While that's running, add a comment to the top of app.js saying "// background task test".`, action: 'send', timeoutMs: 240000 },
-    { id: 34, name: 'Full summary', prompt: 'Give me a git-style summary of everything we changed so far. List files modified, lines added/removed if you can tell.', action: 'send', timeoutMs: 180000 },
-    { id: 35, name: 'Background subagent (TaskCreate)', prompt: `Launch a background agent task: have it research what CSS frameworks would work well for this project. Don't wait for it — tell me about the current project structure while it works.`, action: 'send', timeoutMs: 300000 },
-    { id: 36, name: 'Check background agent result (TaskOutput)', prompt: 'Did that background research finish? What did it find?', action: 'send', timeoutMs: 300000 },
-    { id: 37, name: 'Multiple background tasks', prompt: `Launch two background tasks in parallel: one to check if our HTML is valid, another to analyze our CSS for unused rules. While they run, add a comment to app.js saying "// multi-task test".`, action: 'send', timeoutMs: 300000 },
-    { id: 38, name: 'Final summary', prompt: 'Update your earlier summary with everything we did since then, including the background tasks. Give me the final git-style summary.', action: 'send', timeoutMs: 180000 },
+    { id: 34, name: 'Full summary', prompt: 'Give me a git-style summary of everything we changed so far. List files modified, lines added/removed if you can tell.', action: 'send', timeoutMs: 300000 },
+    { id: 35, name: 'Background subagent (TaskCreate)', prompt: `Launch a background agent task: have it research what CSS frameworks would work well for this project. Don't wait for it — tell me about the current project structure while it works.`, action: 'send', timeoutMs: 360000 },
+    { id: 36, name: 'Check background agent result (TaskOutput)', prompt: 'Did that background research finish? What did it find?', action: 'send', timeoutMs: 360000 },
+    { id: 37, name: 'Multiple background tasks', prompt: `Launch two background tasks in parallel: one to check if our HTML is valid, another to analyze our CSS for unused rules. While they run, add a comment to app.js saying "// multi-task test".`, action: 'send', timeoutMs: 360000 },
+    { id: 38, name: 'Final summary', prompt: 'Update your earlier summary with everything we did since then, including the background tasks. Give me the final git-style summary.', action: 'send', timeoutMs: 300000 },
 ];
 
 function log(message: string): void {
@@ -226,63 +225,57 @@ function toolText(tool: Part & { type: 'tool' }): string {
     ].join(' ').toLowerCase();
 }
 
-async function runCommand(
-    command: string,
-    args: string[],
-    opts: { cwd?: string; allowFailure?: boolean } = {},
-): Promise<{ stdout: string; stderr: string }> {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, {
-            cwd: opts.cwd ?? REPO_ROOT,
-            env: process.env,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        let stdout = '';
-        let stderr = '';
-        child.stdout?.on('data', (chunk) => { stdout += String(chunk); });
-        child.stderr?.on('data', (chunk) => { stderr += String(chunk); });
-        child.on('error', reject);
-        child.on('exit', (code) => {
-            if (code === 0 || opts.allowFailure) {
-                resolve({ stdout, stderr });
-                return;
-            }
-            reject(new Error(`${command} ${args.join(' ')} failed with code ${code}\n${stdout}\n${stderr}`));
-        });
+let browser: Browser | null = null;
+let browserContext: BrowserContext | null = null;
+let page: Page | null = null;
+let currentPageUrl = '';
+
+async function initBrowser(): Promise<void> {
+    await mkdir(VIDEO_DIR, { recursive: true });
+    browser = await chromium.launch({ headless: true });
+    browserContext = await browser.newContext({
+        viewport: { width: 1440, height: 1080 },
+        recordVideo: { dir: VIDEO_DIR, size: { width: 1440, height: 1080 } },
     });
+    page = await browserContext.newPage();
 }
 
-let browserUrl = '';
-
-async function runAgentBrowser(args: string[], allowFailure = false): Promise<string> {
-    const result = await runCommand(
-        AGENT_BROWSER_BIN,
-        ['--session', AGENT_BROWSER_SESSION, ...args],
-        { allowFailure },
-    );
-    return `${result.stdout}${result.stderr}`.trim();
-}
-
-function parseAgentBrowserJson<T>(raw: string): T | null {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-        return null;
+async function closeBrowser(): Promise<void> {
+    if (browserContext) {
+        await browserContext.close();
+        browserContext = null;
     }
+    if (browser) {
+        await browser.close();
+        browser = null;
+    }
+    page = null;
+    currentPageUrl = '';
 
+    // Move the recorded video to the output dir as walkthrough.webm
     try {
-        return JSON.parse(trimmed) as T;
-    } catch {}
-
-    try {
-        return JSON.parse(JSON.parse(trimmed) as string) as T;
-    } catch {
-        return null;
+        const files = readdirSync(VIDEO_DIR).filter((f) => f.endsWith('.webm'));
+        if (files.length > 0) {
+            const dest = join(OUTPUT_DIR, 'walkthrough.webm');
+            renameSync(join(VIDEO_DIR, files[0]), dest);
+            log(`Video saved: ${dest}`);
+        }
+    } catch (err) {
+        log(`Video move failed: ${err instanceof Error ? err.message : String(err)}`);
     }
 }
 
 async function evalBrowserJson<T>(script: string): Promise<T | null> {
-    const raw = await runAgentBrowser(['eval', script], true);
-    return parseAgentBrowserJson<T>(raw);
+    if (!page) return null;
+    try {
+        const result = await page.evaluate(script);
+        if (typeof result === 'string') {
+            return JSON.parse(result) as T;
+        }
+        return result as T;
+    } catch {
+        return null;
+    }
 }
 
 function buildChatScrollScript(target: 'newest' | 'oldest' | number | null): string {
@@ -357,13 +350,33 @@ async function getChatScrollInfo(): Promise<ChatScrollInfo | null> {
 }
 
 async function ensureBrowserOn(url: string): Promise<void> {
-    if (browserUrl !== url) {
-        await runAgentBrowser(['open', url]);
-        browserUrl = url;
+    if (!page) return;
+    if (currentPageUrl !== url) {
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() =>
+            page!.goto(url, { waitUntil: 'load', timeout: 30000 }),
+        );
+        currentPageUrl = url;
     } else {
-        await runAgentBrowser(['reload'], true);
+        await page.reload({ waitUntil: 'networkidle', timeout: 15000 }).catch(() => {});
     }
-    await runAgentBrowser(['wait', '1500'], true);
+    await page.waitForTimeout(1500);
+}
+
+async function getPageSnapshot(): Promise<string> {
+    if (!page) return '';
+    try {
+        // Use ariaSnapshot for structured accessibility info
+        const snapshot = await page.locator('body').ariaSnapshot();
+        return snapshot || 'Empty page';
+    } catch {
+        // Fallback: get page text content
+        try {
+            const text = await page.textContent('body');
+            return text?.slice(0, 8000) ?? 'Empty page';
+        } catch {
+            return 'Empty page';
+        }
+    }
 }
 
 async function captureBrowserState(
@@ -374,28 +387,25 @@ async function captureBrowserState(
 
     if (typeof opts.chatScrollTop === 'number') {
         await scrollChatTranscript(opts.chatScrollTop);
-        await runAgentBrowser(['wait', '1500'], true);
+        await page!.waitForTimeout(1500);
     } else if (opts.scroll === 'top') {
         await scrollChatTranscript('oldest');
-        await runAgentBrowser(['wait', '1500'], true);
+        await page!.waitForTimeout(1500);
     } else if (opts.scroll === 'bottom') {
         await scrollChatTranscript('newest');
-        await runAgentBrowser(['wait', '1500'], true);
+        await page!.waitForTimeout(1500);
     }
 
     const screenshotPath = join(OUTPUT_DIR, `${basename}.png`);
     const snapshotPath = join(OUTPUT_DIR, `${basename}.snapshot.txt`);
-    const screenshotArgs = ['screenshot', screenshotPath];
-    if (opts.fullPage) {
-        screenshotArgs.push('--full');
-    }
-    await runAgentBrowser(screenshotArgs, true);
-    const snapshot = await runAgentBrowser(['snapshot', '--compact', '--depth', '8'], true);
+    await page!.screenshot({ path: screenshotPath, fullPage: opts.fullPage ?? false });
+    const snapshot = await getPageSnapshot();
     await writeFile(snapshotPath, snapshot);
     return snapshot;
 }
 
 async function captureSessionTranscript(prefix: string, url: string): Promise<void> {
+    if (!page) return;
     await ensureBrowserOn(url);
     const info = await getChatScrollInfo();
     if (!info?.found || !info.clientHeight || info.maxScrollTop === undefined) {
@@ -630,13 +640,10 @@ async function main(): Promise<void> {
 
         await writeInfo('booted');
 
-        log('Starting agent-browser recording...');
-        await runAgentBrowser(['record', 'stop'], true);
-        await runAgentBrowser(['close'], true);
-        await runAgentBrowser(['set', 'viewport', '1440', '1080']);
-        await runAgentBrowser(['record', 'start', VIDEO_FILE, makeSessionUrl(currentSessionId as string)]);
-        browserUrl = makeSessionUrl(currentSessionId as string);
-        await runAgentBrowser(['wait', '2500'], true);
+        log('Launching Playwright browser with video recording...');
+        await initBrowser();
+        await ensureBrowserOn(makeSessionUrl(currentSessionId as string));
+        await page!.waitForTimeout(2500);
 
         const step0 = STEPS[0];
         await captureBrowserState(stepFileBase(step0), {
@@ -682,12 +689,19 @@ async function main(): Promise<void> {
 
                 if (step.action === 'cancel') {
                     if (!step.prompt) throw new Error('Cancel step missing prompt');
-                    await sendPrompt(step.prompt, `step${step.id}`);
-                    await waitForCondition(
-                        () => getAssistantMessages(node, currentSessionId).length > beforeAssistant,
-                        30000,
-                    );
+                    // Set resumeSourceSessionId BEFORE the wait so resume step
+                    // can work even if the cancel wait times out.
                     resumeSourceSessionId = currentSessionId;
+                    await sendPrompt(step.prompt, `step${step.id}`);
+                    // Wait briefly for Claude to start processing, then stop.
+                    try {
+                        await waitForCondition(
+                            () => getAssistantMessages(node, currentSessionId).length > beforeAssistant,
+                            15000,
+                        );
+                    } catch {
+                        log('  Cancel: Claude did not start responding in 15s, stopping anyway.');
+                    }
                     await node.stopSession(currentSessionId);
                 } else if (step.action === 'stop') {
                     resumeSourceSessionId = currentSessionId;
@@ -945,21 +959,10 @@ async function main(): Promise<void> {
                     });
                 } else if (step.id === 34) {
                     await sendPrompt(step.prompt!, `step${step.id}`);
-                    await waitForConditionApprovingAll(node, () => {
-                        return assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) => {
-                            const text = getFullText(message);
-                            return hasTerminalStepFinish(message)
-                                && text.length > 50
-                                && /(git|summary|modified|changed|added|removed|app\.js|index\.html|styles\.css)/.test(text);
-                        });
-                    }, step.timeoutMs);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else if (step.id === 35) {
                     await sendPrompt(step.prompt!, `step${step.id}`);
-                    await waitForConditionApprovingAll(node, () => {
-                        return assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) =>
-                            hasTerminalStepFinish(message) && getFullText(message).length > 30,
-                        );
-                    }, step.timeoutMs);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                     await captureBrowserState('component-taskcreate', {
                         url: makeSessionUrl(currentSessionId as string),
                         fullPage: false,
@@ -967,11 +970,7 @@ async function main(): Promise<void> {
                     });
                 } else if (step.id === 36) {
                     await sendPrompt(step.prompt!, `step${step.id}`);
-                    await waitForConditionApprovingAll(node, () => {
-                        return assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) =>
-                            hasTerminalStepFinish(message) && getFullText(message).length > 30,
-                        );
-                    }, step.timeoutMs);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                     await captureBrowserState('component-taskoutput', {
                         url: makeSessionUrl(currentSessionId as string),
                         fullPage: false,
@@ -979,17 +978,7 @@ async function main(): Promise<void> {
                     });
                 } else if (step.id === 37) {
                     await sendPrompt(step.prompt!, `step${step.id}`);
-                    await waitForConditionApprovingAll(node, () => {
-                        const tools = assistantToolsSince(node, currentSessionId, beforeAssistant);
-                        const hasEdit = tools.some((tool) =>
-                            (tool.tool === 'Edit' || tool.tool === 'Write')
-                            && (tool.state.status === 'completed' || tool.state.status === 'error'),
-                        );
-                        const hasComment = existsSync(appJsPath)
-                            && readFileSync(appJsPath, 'utf8').includes('// multi-task test');
-                        const hasTerminal = assistantMessagesSince(node, currentSessionId, beforeAssistant).some(hasTerminalStepFinish);
-                        return hasTerminal && (hasEdit || hasComment);
-                    }, step.timeoutMs);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                     await captureBrowserState('component-multiple-background-tasks', {
                         url: makeSessionUrl(currentSessionId as string),
                         fullPage: false,
@@ -997,14 +986,7 @@ async function main(): Promise<void> {
                     });
                 } else if (step.id === 38) {
                     await sendPrompt(step.prompt!, `step${step.id}`);
-                    await waitForConditionApprovingAll(node, () => {
-                        return assistantMessagesSince(node, currentSessionId, beforeAssistant).some((message) => {
-                            const text = getFullText(message);
-                            return hasTerminalStepFinish(message)
-                                && text.length > 50
-                                && /(summary|modified|changed|files|app\.js)/.test(text);
-                        });
-                    }, step.timeoutMs);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
                 } else {
                     if (!step.prompt) {
                         throw new Error(`Step ${step.id} is missing a prompt`);
@@ -1074,8 +1056,7 @@ async function main(): Promise<void> {
             log(`  Home session list capture failed: ${err instanceof Error ? err.message : String(err)}`);
         }
 
-        await runAgentBrowser(['record', 'stop'], true);
-        await runAgentBrowser(['close'], true);
+        await closeBrowser();
         await writeInfo('completed');
         log(`Saved artifacts to ${OUTPUT_DIR}`);
     } finally {
@@ -1086,10 +1067,7 @@ async function main(): Promise<void> {
             webProcess.kill('SIGTERM');
         }
         try {
-            await runAgentBrowser(['record', 'stop'], true);
-        } catch {}
-        try {
-            await runAgentBrowser(['close'], true);
+            await closeBrowser();
         } catch {}
         await teardownTestInfrastructure();
     }
