@@ -124,10 +124,9 @@ for (const [index, step] of runSteps.entries()) {
                 description: `Navigate to new session for Step ${step.id}`,
             },
             {
-                action: 'wait',
-                text: stepSyncText(step),
-                timeout: Math.max(step.timeoutMs, 30000),
-                description: `Wait for Step ${step.id} after session redirect`,
+                action: 'pause',
+                ms: 2500,
+                description: `Allow redirect to resolve for Step ${step.id}`,
             },
             {
                 action: 'pause',

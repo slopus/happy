@@ -358,14 +358,13 @@ async function waitForStepFinishApprovingAll(
                 && allToolsTerminal
                 && hasText
                 && stableForMs >= 8000;
-            // Fallback: session is done and has a terminal step-finish with text,
-            // but some tool parts remain running (stale sync state). Accept after 15s.
-            const sessionDoneWithStaleTools = sessionSettled
-                && noPendingPrompts
+            // Fallback: some Claude turns (subagents/background work) leave stale
+            // tool/session status behind even after the final text turn is stable.
+            const stableTerminalTextTurn = noPendingPrompts
                 && hasTerminalFinish
                 && hasText
                 && stableForMs >= 15000;
-            return settledTurn || quietTextTurn || sessionDoneWithStaleTools;
+            return settledTurn || quietTextTurn || stableTerminalTextTurn;
         },
         timeoutMs,
         opts,
