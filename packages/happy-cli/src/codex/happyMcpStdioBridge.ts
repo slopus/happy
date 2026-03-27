@@ -43,18 +43,42 @@ async function main() {
   }
 
   let httpClient: Client | null = null;
+  let connectPromise: Promise<Client> | null = null;
 
   async function ensureHttpClient(): Promise<Client> {
     if (httpClient) return httpClient;
-    const client = new Client(
-      { name: 'happy-stdio-bridge', version: '1.0.0' },
-      { capabilities: {} }
-    );
+    if (connectPromise) return connectPromise;
 
-    const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
-    await client.connect(transport);
-    httpClient = client;
-    return client;
+    connectPromise = (async () => {
+      const client = new Client(
+        { name: 'happy-stdio-bridge', version: '1.0.0' },
+        { capabilities: {} }
+      );
+      const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
+      try {
+        transport.onclose = () => {
+          if (httpClient === client) {
+            httpClient = null;
+          }
+        };
+        await client.connect(transport);
+        client.onclose = () => {
+          if (httpClient === client) {
+            httpClient = null;
+          }
+        };
+        httpClient = client;
+        return client;
+      } catch (error) {
+        // Clean up on connect failure to avoid leaking SSE streams/timers
+        try { await client.close(); } catch { /* ignore */ }
+        throw error;
+      } finally {
+        connectPromise = null;
+      }
+    })();
+
+    return connectPromise;
   }
 
   // Create STDIO MCP server
@@ -77,9 +101,12 @@ async function main() {
       try {
         const client = await ensureHttpClient();
         const response = await client.callTool({ name: 'change_title', arguments: args });
-        // Pass-through response from HTTP server
         return response as any;
       } catch (error) {
+        // Clean up stale client so the next invocation reconnects
+        const staleClient = httpClient;
+        httpClient = null;
+        try { await staleClient?.close(); } catch { /* ignore close errors */ }
         return {
           content: [
             { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
