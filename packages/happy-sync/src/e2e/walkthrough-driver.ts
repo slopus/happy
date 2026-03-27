@@ -683,11 +683,13 @@ async function main(): Promise<void> {
                 } else if (step.id === 12) {
                     await sendPrompt(step.prompt!, `step${step.id}`);
                     let answered = false;
+                    let answerAfterCount = beforeAssistant;
                     try {
                         await waitForPendingQuestion(node, currentSessionId, 60000);
                         await holdForCapture('question prompt');
                         const question = node.state.sessions.get(currentSessionId as string)?.questions.find((item) => !item.resolved);
                         if (question) {
+                            answerAfterCount = getAssistantMessages(node, currentSessionId).length;
                             await node.answerQuestion(currentSessionId, question.questionId, [['Vitest']]);
                             answered = true;
                         }
@@ -704,9 +706,10 @@ async function main(): Promise<void> {
                     }
 
                     if (!answered) {
+                        answerAfterCount = getAssistantMessages(node, currentSessionId).length;
                         await sendPrompt('Vitest', 'step12-answer');
                     }
-                    await waitForStepFinishApprovingAll(node, currentSessionId, beforeAssistant, step.timeoutMs);
+                    await waitForStepFinishApprovingAll(node, currentSessionId, answerAfterCount, step.timeoutMs);
                 } else if (step.id === 17) {
                     await node.sendRuntimeConfigChange(currentSessionId, {
                         source: 'user',
