@@ -1,0 +1,133 @@
+name: Update Homebrew tap formula
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "happy-coder version (without leading v)"
+        required: false
+        type: string
+
+jobs:
+  update-homebrew-tap:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DEFAULT_TAP_REPO: russellbrenner/homebrew-happy
+      FORMULA_PATH: Formula/happy.rb
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${{ inputs.version || '' }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ -n "${{ github.event.release.tag_name || '' }}" ]]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          else
+            echo "Unable to determine version. Provide workflow_dispatch input 'version' or release tag."
+            exit 1
+          fi
+
+          TAP_REPO="${{ vars.HOMEBREW_TAP_REPO }}"
+          if [[ -z "${TAP_REPO}" ]]; then
+            TAP_REPO="${DEFAULT_TAP_REPO}"
+          fi
+
+          TARBALL_URL="https://registry.npmjs.org/happy-coder/-/happy-coder-${VERSION}.tgz"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tap_repo=${TAP_REPO}" >> "$GITHUB_OUTPUT"
+          echo "tarball_url=${TARBALL_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tap token availability
+        shell: bash
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          TAP_REPO: ${{ steps.meta.outputs.tap_repo }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${HOMEBREW_TAP_GITHUB_TOKEN}" ]]; then
+            echo "Missing required secret HOMEBREW_TAP_GITHUB_TOKEN."
+            echo "Set this secret in slopus/happy with write access to ${TAP_REPO}."
+            exit 1
+          fi
+
+      - name: Compute tarball SHA256
+        id: shasum
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "${{ steps.meta.outputs.tarball_url }}" -o happy-coder.tgz
+          SHA256="$(sha256sum happy-coder.tgz | awk '{print $1}')"
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.meta.outputs.tap_repo }}
+          token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          path: tap
+
+      - name: Update formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          FORMULA_FILE="tap/${FORMULA_PATH}"
+          if [[ ! -f "${FORMULA_FILE}" ]]; then
+            echo "Formula file not found at ${FORMULA_FILE}"
+            exit 1
+          fi
+
+          perl -pi -e 's#^  url "https://registry\.npmjs\.org/happy-coder/-/happy-coder-[^"]+\.tgz"$#  url "'"${{ steps.meta.outputs.tarball_url }}"'"#' "${FORMULA_FILE}"
+          perl -pi -e 's#^  sha256 "[0-9a-f]{64}"$#  sha256 "'"${{ steps.shasum.outputs.sha256 }}"'"#' "${FORMULA_FILE}"
+
+          echo "Updated formula:"
+          grep -E '^  (url|sha256) "' "${FORMULA_FILE}"
+
+      - name: Open or update tap pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd tap
+          if git diff --quiet; then
+            echo "No formula changes to commit."
+            exit 0
+          fi
+
+          git config user.name "happy-bot"
+          git config user.email "actions@users.noreply.github.com"
+          VERSION="${{ steps.meta.outputs.version }}"
+          BRANCH="chore/happy-homebrew-${VERSION}"
+          TITLE="chore(homebrew): bump happy to ${VERSION}"
+          printf -v BODY "Automated formula bump for happy-coder %s.\n\n- updates npm tarball URL\n- updates SHA256 checksum\n- ready for bottle publish via \`pr-pull\` label" "${VERSION}"
+
+          git checkout -B "${BRANCH}"
+          git add "${FORMULA_PATH}"
+          git commit -m "${TITLE}"
+          git push --force-with-lease origin "${BRANCH}"
+
+          if ! gh label list --repo "${{ steps.meta.outputs.tap_repo }}" | grep -q '^pr-pull[[:space:]]'; then
+            gh label create pr-pull --repo "${{ steps.meta.outputs.tap_repo }}" --color "5319e7" --description "Trigger brew pr-pull bottle publish workflow"
+          fi
+
+          PR_NUMBER="$(gh pr list --repo "${{ steps.meta.outputs.tap_repo }}" --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          if [[ -z "${PR_NUMBER}" ]]; then
+            gh pr create \
+              --repo "${{ steps.meta.outputs.tap_repo }}" \
+              --base main \
+              --head "${BRANCH}" \
+              --title "${TITLE}" \
+              --body "${BODY}"
+            PR_NUMBER="$(gh pr list --repo "${{ steps.meta.outputs.tap_repo }}" --head "${BRANCH}" --state open --json number --jq '.[0].number')"
+          fi
+
+          gh pr edit "${PR_NUMBER}" --repo "${{ steps.meta.outputs.tap_repo }}" --add-label pr-pull
