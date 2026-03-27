@@ -2,21 +2,23 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { UX_REVIEW_OUTPUT_DIR } from './walkthrough-flow';
 
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
-const OUTPUT_DIR = join(REPO_ROOT, UX_REVIEW_OUTPUT_DIR);
+const REPO_OUTPUT_DIR = join(REPO_ROOT, UX_REVIEW_OUTPUT_DIR);
+const OUTPUT_DIR = process.env.HAPPY_WALKTHROUGH_OUTPUT_DIR
+    ? resolvePath(REPO_ROOT, process.env.HAPPY_WALKTHROUGH_OUTPUT_DIR)
+    : REPO_OUTPUT_DIR;
 const SESSION_URL_FILE = join(OUTPUT_DIR, 'session-url.txt');
 const DONE_MARKER_FILE = join(OUTPUT_DIR, 'walkthrough-driver.done');
-const VIDEO_FILE = join(OUTPUT_DIR, 'happy-walkthrough.mp4');
 const DRIVER_LOG_FILE = join(OUTPUT_DIR, 'walkthrough-driver.stdout.log');
 const WEBREEL_LOG_FILE = join(OUTPUT_DIR, 'webreel-record.log');
-const VERIFY_FILE = join(OUTPUT_DIR, 'walkthrough-verification.json');
+const VERIFY_FILE = join(REPO_OUTPUT_DIR, 'walkthrough-verification.json');
 const WEBREEL_BIN = process.env.HAPPY_WEBREEL_BIN;
 
 function log(message: string): void {
@@ -50,6 +52,17 @@ async function reserveFreePort(): Promise<number> {
 async function appendLogLine(path: string, chunk: string): Promise<void> {
     await mkdir(OUTPUT_DIR, { recursive: true });
     await appendFile(path, chunk).catch(() => {});
+}
+
+async function syncArtifactsToRepo(): Promise<string> {
+    if (OUTPUT_DIR === REPO_OUTPUT_DIR) {
+        return REPO_OUTPUT_DIR;
+    }
+
+    await rm(REPO_OUTPUT_DIR, { recursive: true, force: true }).catch(() => {});
+    await mkdir(dirname(REPO_OUTPUT_DIR), { recursive: true });
+    await cp(OUTPUT_DIR, REPO_OUTPUT_DIR, { recursive: true });
+    return REPO_OUTPUT_DIR;
 }
 
 function spawnLoggedProcess(opts: {
@@ -152,6 +165,9 @@ async function main(): Promise<void> {
     };
 
     await rm(OUTPUT_DIR, { recursive: true, force: true }).catch(() => {});
+    if (OUTPUT_DIR !== REPO_OUTPUT_DIR) {
+        await rm(REPO_OUTPUT_DIR, { recursive: true, force: true }).catch(() => {});
+    }
 
     log(`Reserved ports: server=${serverPort} web=${webPort} redirect=${redirectPort}`);
     log('Starting walkthrough driver...');
@@ -200,17 +216,19 @@ async function main(): Promise<void> {
             throw new Error(`walkthrough driver exited with code ${driverExitCode}`);
         }
 
-        const videoStats = await stat(VIDEO_FILE);
-        const lsResult = await runCommandCapture('ls', ['-la', VIDEO_FILE], WEBREEL_LOG_FILE, sharedEnv);
+        const finalOutputDir = await syncArtifactsToRepo();
+        const finalVideoFile = join(finalOutputDir, 'happy-walkthrough.mp4');
+        const videoStats = await stat(finalVideoFile);
+        const lsResult = await runCommandCapture('ls', ['-la', finalVideoFile], WEBREEL_LOG_FILE, sharedEnv);
         if (lsResult.code !== 0) {
-            throw new Error(`ls failed for ${VIDEO_FILE}`);
+            throw new Error(`ls failed for ${finalVideoFile}`);
         }
 
         let ffprobe: { code: number; stdout: string; stderr: string } | null = null;
         try {
             ffprobe = await runCommandCapture(
                 'ffprobe',
-                ['-v', 'error', '-show_entries', 'format=duration,size', '-of', 'json', VIDEO_FILE],
+                ['-v', 'error', '-show_entries', 'format=duration,size', '-of', 'json', finalVideoFile],
                 WEBREEL_LOG_FILE,
                 sharedEnv,
             );
@@ -218,20 +236,20 @@ async function main(): Promise<void> {
             log(`ffprobe unavailable: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        const screenshotFiles = (await readdir(OUTPUT_DIR))
+        const screenshotFiles = (await readdir(finalOutputDir))
             .filter((file) => file.endsWith('.png'))
             .sort();
 
         await writeFile(VERIFY_FILE, JSON.stringify({
             recordedAt: new Date().toISOString(),
-            videoFile: VIDEO_FILE,
+            videoFile: finalVideoFile,
             videoSizeBytes: videoStats.size,
             screenshotCount: screenshotFiles.length,
             screenshots: screenshotFiles,
             ffprobe: ffprobe?.stdout ? JSON.parse(ffprobe.stdout) : null,
         }, null, 2));
 
-        log(`Video: ${VIDEO_FILE} (${videoStats.size} bytes)`);
+        log(`Video: ${finalVideoFile} (${videoStats.size} bytes)`);
         log(`Screenshots: ${screenshotFiles.length}`);
         if (ffprobe?.stdout) {
             log(`ffprobe: ${ffprobe.stdout.trim()}`);

@@ -46,7 +46,9 @@ import {
 } from './walkthrough-flow';
 
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
-const OUTPUT_DIR = join(REPO_ROOT, UX_REVIEW_OUTPUT_DIR);
+const OUTPUT_DIR = process.env.HAPPY_WALKTHROUGH_OUTPUT_DIR
+    ? resolvePath(REPO_ROOT, process.env.HAPPY_WALKTHROUGH_OUTPUT_DIR)
+    : join(REPO_ROOT, UX_REVIEW_OUTPUT_DIR);
 const SESSION_URL_FILE = join(OUTPUT_DIR, 'session-url.txt');
 const DONE_MARKER_FILE = join(OUTPUT_DIR, 'walkthrough-driver.done');
 const INFO_FILE = join(OUTPUT_DIR, 'walkthrough-driver-state.json');
@@ -212,6 +214,8 @@ function startWebAppServer(serverUrl: string): ChildProcess {
             CI: '1',
             NODE_ENV: 'development',
             EXPO_PUBLIC_HAPPY_SERVER_URL: serverUrl,
+            EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: '',
+            DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: '',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -358,13 +362,19 @@ async function waitForStepFinishApprovingAll(
                 && allToolsTerminal
                 && hasText
                 && stableForMs >= 8000;
+            const stableToolOnlyTurn = noPendingPrompts
+                && allToolsTerminal
+                && lastMessageToolsTerminal
+                && tools.length > 0
+                && !hasText
+                && stableForMs >= 15000;
             // Fallback: some Claude turns (subagents/background work) leave stale
             // tool/session status behind even after the final text turn is stable.
             const stableTerminalTextTurn = noPendingPrompts
                 && hasTerminalFinish
                 && hasText
                 && stableForMs >= 15000;
-            return settledTurn || quietTextTurn || stableTerminalTextTurn;
+            return settledTurn || quietTextTurn || stableToolOnlyTurn || stableTerminalTextTurn;
         },
         timeoutMs,
         opts,

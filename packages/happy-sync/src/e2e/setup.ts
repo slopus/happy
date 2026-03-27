@@ -144,6 +144,7 @@ async function startServer(port: string): Promise<void> {
         DATA_DIR: testDataDir,
         PGLITE_DIR: join(testDataDir, 'pglite'),
         METRICS_ENABLED: 'false',
+        DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: '',
     };
 
     // Run migrations
@@ -158,6 +159,12 @@ async function startServer(port: string): Promise<void> {
     serverProcess = child;
     child.stdout?.on('data', (chunk) => { serverLog = appendLogTail(serverLog, chunk); });
     child.stderr?.on('data', (chunk) => { serverLog = appendLogTail(serverLog, chunk); });
+    child.on('exit', (code, signal) => {
+        if (code !== 0 || signal) {
+            console.error(`[E2E SETUP] Server exited with code ${code}, signal ${signal}`);
+            console.error(`[E2E SETUP] Server log:\n${serverLog}`);
+        }
+    });
 
     _serverUrl = `http://127.0.0.1:${port}`;
     await waitForServerReady(_serverUrl);
@@ -262,6 +269,7 @@ async function startDaemon(): Promise<void> {
         HAPPY_DAEMON_HEARTBEAT_INTERVAL: '600000', // 10 min — skip auto-update in tests
         HAPPY_VARIANT: 'dev',
         OPENCODE_PERMISSION: process.env.OPENCODE_PERMISSION ?? JSON.stringify({ edit: 'ask' }),
+        DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: '',
         // E2E runs should not force verbose file logging by default; on low-disk
         // machines it can crash the isolated daemon with ENOSPC mid-walkthrough.
         DEBUG: process.env.HAPPY_E2E_DAEMON_DEBUG ?? '',

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import {
     DEFAULT_CAPTURE_HOLD_MS,
@@ -13,7 +13,9 @@ import {
     type WalkthroughStep,
 } from './packages/happy-sync/src/e2e/walkthrough-flow.ts';
 
-const OUTPUT_DIR = resolve(process.cwd(), UX_REVIEW_OUTPUT_DIR);
+const OUTPUT_DIR = process.env.HAPPY_WALKTHROUGH_OUTPUT_DIR
+    ? resolve(process.cwd(), process.env.HAPPY_WALKTHROUGH_OUTPUT_DIR)
+    : resolve(process.cwd(), UX_REVIEW_OUTPUT_DIR);
 const SESSION_URL_FILE = resolve(OUTPUT_DIR, 'session-url.txt');
 const STEP_START = parseStepBoundary(process.env.HAPPY_WALKTHROUGH_START_STEP);
 const STEP_END = parseStepBoundary(process.env.HAPPY_WALKTHROUGH_END_STEP);
@@ -66,6 +68,10 @@ function stepSyncText(step: WalkthroughStep): string {
     return `Walkthrough Step ${step.id}: ${step.name}`;
 }
 
+function screenshotPath(fileName: string): string {
+    return join(OUTPUT_DIR, fileName);
+}
+
 const steps: Array<Record<string, unknown>> = [
     {
         action: 'navigate',
@@ -105,7 +111,7 @@ if (step0) {
         },
         {
             action: 'screenshot',
-            output: `${UX_REVIEW_OUTPUT_DIR}/${stepFileBase(step0)}.png`,
+            output: screenshotPath(`${stepFileBase(step0)}.png`),
             description: 'Initial session screenshot',
         },
     );
@@ -169,7 +175,7 @@ for (const [index, step] of runSteps.entries()) {
             },
             {
                 action: 'screenshot',
-                output: `${UX_REVIEW_OUTPUT_DIR}/${capture.outputBase}.png`,
+                output: screenshotPath(`${capture.outputBase}.png`),
                 description: `Capture ${capture.outputBase}`,
             },
         );
@@ -203,7 +209,7 @@ for (const [index, step] of runSteps.entries()) {
         },
         {
             action: 'screenshot',
-            output: `${UX_REVIEW_OUTPUT_DIR}/${stepFileBase(step)}.png`,
+            output: screenshotPath(`${stepFileBase(step)}.png`),
             description: `Capture Step ${step.id}`,
         },
     );
@@ -211,7 +217,7 @@ for (const [index, step] of runSteps.entries()) {
 
 const config = {
     $schema: 'https://webreel.dev/schema/v1.json',
-    outDir: './e2e-recordings/ux-review',
+    outDir: OUTPUT_DIR,
     defaultDelay: 500,
     videos: {
         'happy-walkthrough': {
