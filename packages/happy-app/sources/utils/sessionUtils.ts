@@ -150,7 +150,11 @@ export function formatPathRelativeToHome(path: string, homeDir?: string): string
  */
 export function getSessionSubtitle(session: Session): string {
     if (session.metadata) {
-        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+        const path = formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+        if (session.metadata.startedBy === 'daemon') {
+            return `${path} · ${t('sessionInfo.startedByDaemon').toLowerCase()}`;
+        }
+        return path;
     }
     return t('status.unknown');
 }
