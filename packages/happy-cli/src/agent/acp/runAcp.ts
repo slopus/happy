@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -454,7 +453,6 @@ export async function runAcp(opts: {
   verbose?: boolean;
 }): Promise<void> {
   const verbose = opts.verbose === true;
-  const sessionTag = randomUUID();
   connectionState.setBackend(opts.agentName);
 
   const api = await ApiClient.create(opts.credentials);
@@ -467,6 +465,9 @@ export async function runAcp(opts: {
     machineId: settings.machineId,
     metadata: initialMachineMetadata,
   });
+
+  // Deterministic session tag: same machine + directory + flavor = same session
+  const sessionTag = hashObject({ machineId: settings.machineId, path: process.cwd(), flavor: resolveSessionFlavor(opts.agentName) });
 
   const { state, metadata } = createSessionMetadata({
     flavor: resolveSessionFlavor(opts.agentName),
