@@ -23,6 +23,7 @@ interface PermissionResponse {
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
     allowTools?: string[];
     receivedAt?: number;
+    answers?: Record<string, string>;
 }
 
 
@@ -98,12 +99,17 @@ export class PermissionHandler {
                 }
                 pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
             } else {
-                pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' });
+                pending.resolve({ behavior: 'deny', message: response.reason || '' });
             }
         } else {
             // Handle default case for all other tools
+            const baseInput = (pending.input as Record<string, unknown>) || {};
+            const updatedInput = response.answers
+                ? { ...baseInput, answers: response.answers }
+                : baseInput;
+
             const result: PermissionResult = response.approved
-                ? { behavior: 'allow', updatedInput: (pending.input as Record<string, unknown>) || {} }
+                ? { behavior: 'allow', updatedInput }
                 : { behavior: 'deny', message: response.reason || `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.` };
 
             pending.resolve(result);
@@ -318,15 +324,23 @@ export class PermissionHandler {
      * Checks if a tool call is rejected
      */
     isAborted(toolCallId: string): boolean {
+        const response = this.responses.get(toolCallId);
+        const toolCall = this.toolCalls.find(tc => tc.id === toolCallId);
+        const isExitPlan = toolCall && (toolCall.name === 'exit_plan_mode' || toolCall.name === 'ExitPlanMode');
 
-        // If tool not approved, it's aborted
-        if (this.responses.get(toolCallId)?.approved === false) {
+        if (isExitPlan) {
+            if (response?.approved === false) {
+                // Reject with feedback: don't abort, let Claude continue with the feedback
+                if (response.reason?.trim()) return false;
+                // Reject without feedback: abort, wait for new user input
+                return true;
+            }
+            // Approve: abort (needs process restart with PLAN_FAKE_RESTART)
             return true;
         }
 
-        // Always abort exit_plan_mode
-        const toolCall = this.toolCalls.find(tc => tc.id === toolCallId);
-        if (toolCall && (toolCall.name === 'exit_plan_mode' || toolCall.name === 'ExitPlanMode')) {
+        // All other tools: abort if not approved
+        if (response?.approved === false) {
             return true;
         }
 
