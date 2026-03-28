@@ -28,6 +28,8 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { exportSession } from '@/claude/utils/exportSession';
+import { createEnvelope } from '@/sessionProtocol/types';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -368,6 +370,56 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
+        }
+
+        // Handle /export command - export session history
+        if (specialCommand.type === 'export' && specialCommand.exportOptions) {
+            logger.debug('[start] Detected /export command');
+
+            // Execute export asynchronously
+            (async () => {
+                try {
+                    const sessionId = currentSession?.sessionId || '';
+                    const result = await exportSession(
+                        workingDirectory,
+                        sessionId,
+                        specialCommand.exportOptions!
+                    );
+
+                    if (result.success) {
+                        let responseText: string;
+                        if (result.filePath) {
+                            // Saved to CLI
+                            responseText = `Session exported to: \`${result.filePath}\``;
+                        } else if (result.content) {
+                            // Return content to mobile
+                            responseText = result.content;
+                        } else {
+                            responseText = 'Export completed';
+                        }
+
+                        const envelope = createEnvelope('agent', { t: 'text', text: responseText });
+                        session.sendSessionProtocolMessage(envelope);
+                        logger.debug('[start] Export completed successfully');
+                    } else {
+                        const envelope = createEnvelope('agent', {
+                            t: 'text',
+                            text: `Export failed: ${result.error || 'Unknown error'}`
+                        });
+                        session.sendSessionProtocolMessage(envelope);
+                        logger.debug('[start] Export failed:', result.error);
+                    }
+                } catch (error: any) {
+                    const envelope = createEnvelope('agent', {
+                        t: 'text',
+                        text: `Export error: ${error.message}`
+                    });
+                    session.sendSessionProtocolMessage(envelope);
+                    logger.debug('[start] Export error:', error.message);
+                }
+            })();
+
+            return; // Don't send to Claude
         }
 
         // Push with resolved permission mode, model, system prompts, and tools
