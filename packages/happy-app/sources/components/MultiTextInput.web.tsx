@@ -13,6 +13,9 @@ export interface KeyPressEvent {
 
 export type OnKeyPressCallback = (event: KeyPressEvent) => boolean;
 
+export const MULTI_TEXT_INPUT_FONT_SIZE = 16;
+export const MULTI_TEXT_INPUT_LINE_HEIGHT = 22;
+
 export interface TextInputState {
     text: string;
     selection: {
@@ -32,6 +35,7 @@ interface MultiTextInputProps {
     onChangeText: (text: string) => void;
     placeholder?: string;
     maxHeight?: number;
+    lineHeight?: number;
     paddingTop?: number;
     paddingBottom?: number;
     paddingLeft?: number;
@@ -47,6 +51,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         onChangeText,
         placeholder,
         maxHeight = 120,
+        lineHeight = MULTI_TEXT_INPUT_LINE_HEIGHT,
         onKeyPress,
         onSelectionChange,
         onStateChange
@@ -55,8 +60,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     const { theme } = useUnistyles();
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-    // Convert maxHeight to approximate maxRows (assuming ~24px line height)
-    const maxRows = Math.floor(maxHeight / 24);
+    const maxRows = Math.floor(maxHeight / lineHeight);
 
     const handleKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (!onKeyPress) return;
@@ -177,14 +181,14 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 style={{
                     width: '100%',
                     padding: '0',
-                    fontSize: '16px',
+                    fontSize: `${MULTI_TEXT_INPUT_FONT_SIZE}px`,
                     color: theme.colors.input.text,
                     border: 'none',
                     outline: 'none',
                     resize: 'none' as const,
                     backgroundColor: 'transparent',
                     fontFamily: Typography.default().fontFamily,
-                    lineHeight: '1.4',
+                    lineHeight: `${lineHeight}px`,
                     scrollbarWidth: 'none',
                     paddingTop: props.paddingTop,
                     paddingBottom: props.paddingBottom,

@@ -1,7 +1,7 @@
 import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
-import { CodexMcpClient } from './codexMcpClient';
+import { CodexAppServerClient } from './codexAppServerClient';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
@@ -11,28 +11,25 @@ import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
-import os from 'node:os';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
-import fs from 'node:fs';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
-import type { CodexSessionConfig } from './types';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
-import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
+import { resumeExistingThread } from './resumeExistingThread';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -69,6 +66,7 @@ export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
+    resumeThreadId?: string;
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
@@ -125,6 +123,9 @@ export async function runCodex(opts: {
     // Permission handler declared here so it can be updated in onSessionSwap callback
     // (assigned later at line ~385 after client setup)
     let permissionHandler: CodexPermissionHandler;
+    let client!: CodexAppServerClient;
+    let reasoningProcessor!: ReasoningProcessor;
+    let abortInProgress: Promise<void> | null = null;
     const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
         api,
         sessionTag,
@@ -207,11 +208,15 @@ export async function runCodex(opts: {
     const sendReady = () => {
         session.sendSessionEvent({ type: 'ready' });
         try {
-            api.push().sendToAllDevices(
-                "It's ready!",
-                'Codex is waiting for your command',
-                { sessionId: session.sessionId }
-            );
+            api.push().sendSessionNotification({
+                kind: 'done',
+                metadata: session.getMetadata(),
+                data: {
+                    sessionId: session.sessionId,
+                    type: 'ready',
+                    provider: 'codex',
+                }
+            });
         } catch (pushError) {
             logger.debug('[Codex] Failed to send ready push', pushError);
         }
@@ -242,9 +247,10 @@ export async function runCodex(opts: {
     //    - Completely exits the CLI process
     //
 
+    // AbortController is used ONLY to wake messageQueue.waitForMessages when idle.
+    // Turn cancellation uses client.interruptTurn() — no AbortController hack needed.
     let abortController = new AbortController();
     let shouldExit = false;
-    let storedSessionIdForResume: string | null = null;
 
     /**
      * Handles aborting the current task/inference without exiting the process.
@@ -252,22 +258,52 @@ export async function runCodex(opts: {
      * happening but keeps the session alive for new prompts.
      */
     async function handleAbort() {
-        logger.debug('[Codex] Abort requested - stopping current task');
-        try {
-            // Store the current session ID before aborting for potential resume
-            if (client.hasActiveSession()) {
-                storedSessionIdForResume = client.storeSessionForResume();
-                logger.debug('[Codex] Stored session for resume:', storedSessionIdForResume);
-            }
-            
-            abortController.abort();
-            reasoningProcessor.abort();
-            logger.debug('[Codex] Abort completed - session remains active');
-        } catch (error) {
-            logger.debug('[Codex] Error during abort:', error);
-        } finally {
-            abortController = new AbortController();
+        if (abortInProgress) {
+            await abortInProgress;
+            return;
         }
+
+        logger.debug('[Codex] Abort requested - stopping current task');
+        abortInProgress = (async () => {
+            try {
+                // Resolve any pending permission requests as 'abort' first.
+                if (permissionHandler) {
+                    permissionHandler.abortAll();
+                }
+
+                // Request interruption, then force-restart Codex app-server if
+                // it doesn't settle quickly (long-running shell commands).
+                if (client) {
+                    const abortResult = await client.abortTurnWithFallback({
+                        gracePeriodMs: 3000,
+                        forceRestartOnTimeout: true,
+                    });
+                    if (abortResult.forcedRestart) {
+                        logger.warn('[Codex] Forced app-server restart after interrupt timeout');
+                        session.sendSessionEvent({
+                            type: 'message',
+                            message: abortResult.resumedThread
+                                ? 'Force-stopped active task after interrupt timeout. Codex backend was restarted and the previous thread was resumed.'
+                                : 'Force-stopped active task after interrupt timeout. Codex backend was restarted, but the previous thread could not be resumed.',
+                        });
+                    }
+                }
+
+                if (reasoningProcessor) {
+                    reasoningProcessor.abort();
+                }
+                logger.debug('[Codex] Abort completed - session remains active');
+            } catch (error) {
+                logger.debug('[Codex] Error during abort:', error);
+            } finally {
+                // Wake up message queue wait if idle
+                abortController.abort();
+                abortController = new AbortController();
+            }
+        })();
+
+        await abortInProgress;
+        abortInProgress = null;
     }
 
     /**
@@ -300,9 +336,9 @@ export async function runCodex(opts: {
 
             // Force close Codex transport (best-effort) so we don't leave stray processes
             try {
-                await client.forceCloseSession();
+                await client.disconnect();
             } catch (e) {
-                logger.debug('[Codex] Error while force closing Codex session during termination', e);
+                logger.debug('[Codex] Error disconnecting Codex during termination', e);
             }
 
             // Stop caffeinate
@@ -361,51 +397,10 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
-    const client = new CodexMcpClient(sandboxConfig);
+    client = new CodexAppServerClient(sandboxConfig);
 
-    // Helper: find Codex session transcript for a given sessionId
-    function findCodexResumeFile(sessionId: string | null): string | null {
-        if (!sessionId) return null;
-        try {
-            const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
-            const rootDir = join(codexHomeDir, 'sessions');
-
-            // Recursively collect all files under the sessions directory
-            function collectFilesRecursive(dir: string, acc: string[] = []): string[] {
-                let entries: fs.Dirent[];
-                try {
-                    entries = fs.readdirSync(dir, { withFileTypes: true });
-                } catch {
-                    return acc;
-                }
-                for (const entry of entries) {
-                    const full = join(dir, entry.name);
-                    if (entry.isDirectory()) {
-                        collectFilesRecursive(full, acc);
-                    } else if (entry.isFile()) {
-                        acc.push(full);
-                    }
-                }
-                return acc;
-            }
-
-            const candidates = collectFilesRecursive(rootDir)
-                .filter(full => full.endsWith(`-${sessionId}.jsonl`))
-                .filter(full => {
-                    try { return fs.statSync(full).isFile(); } catch { return false; }
-                })
-                .sort((a, b) => {
-                    const sa = fs.statSync(a).mtimeMs;
-                    const sb = fs.statSync(b).mtimeMs;
-                    return sb - sa; // newest first
-                });
-            return candidates[0] || null;
-        } catch {
-            return null;
-        }
-    }
     permissionHandler = new CodexPermissionHandler(session);
-    const reasoningProcessor = new ReasoningProcessor((message) => {
+    reasoningProcessor = new ReasoningProcessor((message) => {
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
         for (const envelope of envelopes) {
             session.sendSessionProtocolMessage(envelope);
@@ -417,21 +412,39 @@ export async function runCodex(opts: {
             session.sendSessionProtocolMessage(envelope);
         }
     });
-    client.setPermissionHandler(permissionHandler);
-    client.setHandler((msg) => {
-        logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
+
+    // Approval handler: routes server → client approval requests to our permission handler
+    client.setApprovalHandler(async (params) => {
+        const toolName = params.type === 'exec' ? 'CodexBash' : 'CodexPatch';
+        const input = params.type === 'exec'
+            ? { command: params.command, cwd: params.cwd }
+            : { changes: params.fileChanges };
+
+        try {
+            const result = await permissionHandler.handleToolCall(params.callId, toolName, input);
+            logger.debug('[Codex] Permission result:', result.decision);
+            return result.decision;
+        } catch (error) {
+            logger.debug('[Codex] Error handling permission:', error);
+            return 'denied';
+        }
+    });
+
+    // Event handler: same EventMsg types as the legacy MCP server — no changes needed
+    client.setEventHandler((msg) => {
+        logger.debug(`[Codex] Event: ${JSON.stringify(msg)}`);
 
         // Add messages to the ink UI buffer based on message type
         if (msg.type === 'agent_message') {
-            messageBuffer.addMessage(msg.message, 'assistant');
+            messageBuffer.addMessage((msg as any).message, 'assistant');
         } else if (msg.type === 'agent_reasoning_delta') {
             // Skip reasoning deltas in the UI to reduce noise
         } else if (msg.type === 'agent_reasoning') {
-            messageBuffer.addMessage(`[Thinking] ${msg.text.substring(0, 100)}...`, 'system');
+            messageBuffer.addMessage(`[Thinking] ${(msg as any).text.substring(0, 100)}...`, 'system');
         } else if (msg.type === 'exec_command_begin') {
-            messageBuffer.addMessage(`Executing: ${msg.command}`, 'tool');
+            messageBuffer.addMessage(`Executing: ${(msg as any).command}`, 'tool');
         } else if (msg.type === 'exec_command_end') {
-            const output = msg.output || msg.error || 'Command completed';
+            const output = (msg as any).output || (msg as any).error || 'Command completed';
             const truncatedOutput = output.substring(0, 200);
             messageBuffer.addMessage(
                 `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`,
@@ -440,11 +453,11 @@ export async function runCodex(opts: {
         } else if (msg.type === 'task_started') {
             messageBuffer.addMessage('Starting task...', 'status');
         } else if (msg.type === 'task_complete') {
+            // Ready is emitted from the main loop's idle check so pushes only fire once
+            // after the queue is actually drained.
             messageBuffer.addMessage('Task completed', 'status');
-            sendReady();
         } else if (msg.type === 'turn_aborted') {
             messageBuffer.addMessage('Turn aborted', 'status');
-            sendReady();
         }
 
         if (msg.type === 'task_started') {
@@ -464,31 +477,22 @@ export async function runCodex(opts: {
             diffProcessor.reset();
         }
         if (msg.type === 'agent_reasoning_section_break') {
-            // Reset reasoning processor for new section
             reasoningProcessor.handleSectionBreak();
         }
         if (msg.type === 'agent_reasoning_delta') {
-            // Process reasoning delta - tool calls are sent automatically via callback
-            reasoningProcessor.processDelta(msg.delta);
+            reasoningProcessor.processDelta((msg as any).delta);
         }
         if (msg.type === 'agent_reasoning') {
-            // Complete the reasoning section - tool results or reasoning messages sent via callback
-            reasoningProcessor.complete(msg.text);
+            reasoningProcessor.complete((msg as any).text);
         }
         if (msg.type === 'patch_apply_begin') {
-            // Handle the start of a patch operation
-            let { auto_approved, changes } = msg;
-
-            // Add UI feedback for patch operation
+            const { changes } = msg as any;
             const changeCount = Object.keys(changes).length;
             const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
             messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
         }
         if (msg.type === 'patch_apply_end') {
-            // Handle the end of a patch operation
-            let { stdout, stderr, success } = msg;
-
-            // Add UI feedback for completion
+            const { stdout, stderr, success } = msg as any;
             if (success) {
                 const message = stdout || 'Files modified successfully';
                 messageBuffer.addMessage(message.substring(0, 200), 'result');
@@ -498,13 +502,12 @@ export async function runCodex(opts: {
             }
         }
         if (msg.type === 'turn_diff') {
-            // Handle turn_diff messages and track unified_diff changes
-            if (msg.unified_diff) {
-                diffProcessor.processDiff(msg.unified_diff);
+            if ((msg as any).unified_diff) {
+                diffProcessor.processDiff((msg as any).unified_diff);
             }
         }
 
-        // Convert Codex MCP events into the unified session-protocol envelope stream.
+        // Convert events into the unified session-protocol envelope stream.
         // Reasoning deltas are handled by ReasoningProcessor to avoid duplicate text output.
         if (msg.type !== 'agent_reasoning_delta' && msg.type !== 'agent_reasoning' && msg.type !== 'agent_reasoning_section_break' && msg.type !== 'turn_diff') {
             const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, {
@@ -538,15 +541,23 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect begin');
         await client.connect();
         logger.debug('[codex]: client.connect done');
-        let wasCreated = false;
-        let currentModeHash: string | null = null;
+
+        if (opts.resumeThreadId) {
+            await resumeExistingThread({
+                client,
+                session,
+                messageBuffer,
+                threadId: opts.resumeThreadId,
+                cwd: process.cwd(),
+                mcpServers,
+            });
+            first = false;
+        }
+
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
-        // If we restart (e.g., mode change), use this to carry a resume file
-        let nextExperimentalResume: string | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            // Get next batch; respect mode boundaries like Claude
             let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
             pending = null;
             if (!message) {
@@ -570,117 +581,54 @@ export async function runCodex(opts: {
                 break;
             }
 
-            // If a session exists and mode changed, restart on next iteration
-            if (wasCreated && currentModeHash && message.hash !== currentModeHash) {
-                logger.debug('[Codex] Mode changed – restarting Codex session');
-                messageBuffer.addMessage('═'.repeat(40), 'status');
-                messageBuffer.addMessage('Starting new Codex session (mode changed)...', 'status');
-                // Capture previous sessionId and try to find its transcript to resume
-                try {
-                    const prevSessionId = client.getSessionId();
-                    nextExperimentalResume = findCodexResumeFile(prevSessionId);
-                    if (nextExperimentalResume) {
-                        logger.debug(`[Codex] Found resume file for session ${prevSessionId}: ${nextExperimentalResume}`);
-                        messageBuffer.addMessage('Resuming previous context…', 'status');
-                    } else {
-                        logger.debug('[Codex] No resume file found for previous session');
-                    }
-                } catch (e) {
-                    logger.debug('[Codex] Error while searching resume file', e);
-                }
-                client.clearSession();
-                wasCreated = false;
-                currentModeHash = null;
-                pending = message;
-                // Reset processors/permissions like end-of-turn cleanup
-                permissionHandler.reset();
-                reasoningProcessor.abort();
-                diffProcessor.reset();
-                thinking = false;
-                session.keepAlive(thinking, 'remote');
-                continue;
-            }
-
             // Display user messages in the UI
             messageBuffer.addMessage(message.message, 'user');
-            currentModeHash = message.hash;
 
             try {
-                // Map permission mode to approval policy and sandbox for startSession
+                // Map permission mode to approval policy and sandbox.
+                // With app-server, these are per-turn — no restart needed on mode change.
                 const sandboxManagedByHappy = client.sandboxEnabled;
                 const executionPolicy = resolveCodexExecutionPolicy(
                     message.mode.permissionMode,
                     sandboxManagedByHappy,
                 );
 
-                if (!wasCreated) {
-                    const startConfig: CodexSessionConfig = {
-                        prompt: first ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION : message.message,
+                // Start thread on first turn (thread persists across mode changes)
+                if (!client.hasActiveThread()) {
+                    const startedThread = await client.startThread({
+                        model: message.mode.model,
+                        cwd: process.cwd(),
+                        approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
-                        'approval-policy': executionPolicy.approvalPolicy,
-                        config: { mcp_servers: mcpServers }
-                    };
-                    if (message.mode.model) {
-                        startConfig.model = message.mode.model;
-                    }
-                    
-                    // Check for resume file from multiple sources
-                    let resumeFile: string | null = null;
-                    
-                    // Priority 1: Explicit resume file from mode change
-                    if (nextExperimentalResume) {
-                        resumeFile = nextExperimentalResume;
-                        nextExperimentalResume = null; // consume once
-                        logger.debug('[Codex] Using resume file from mode change:', resumeFile);
-                    }
-                    // Priority 2: Resume from stored abort session
-                    else if (storedSessionIdForResume) {
-                        const abortResumeFile = findCodexResumeFile(storedSessionIdForResume);
-                        if (abortResumeFile) {
-                            resumeFile = abortResumeFile;
-                            logger.debug('[Codex] Using resume file from aborted session:', resumeFile);
-                            messageBuffer.addMessage('Resuming from aborted session...', 'status');
-                        }
-                        storedSessionIdForResume = null; // consume once
-                    }
-                    
-                    // Apply resume file if found
-                    if (resumeFile) {
-                        (startConfig.config as any).experimental_resume = resumeFile;
-                    }
-                    
-                    await client.startSession(
-                        startConfig,
-                        { signal: abortController.signal }
-                    );
-                    wasCreated = true;
-                    first = false;
-                } else {
-                    const response = await client.continueSession(
-                        message.message,
-                        { signal: abortController.signal }
-                    );
-                    logger.debug('[Codex] continueSession response:', response);
+                        mcpServers,
+                    });
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        codexThreadId: startedThread.threadId,
+                    }));
+                }
+
+                const turnPrompt = first
+                    ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
+                    : message.message;
+
+                const result = await client.sendTurnAndWait(turnPrompt, {
+                    model: message.mode.model,
+                    approvalPolicy: executionPolicy.approvalPolicy,
+                    sandbox: executionPolicy.sandbox,
+                });
+                first = false;
+
+                if (result.aborted) {
+                    // Turn was aborted (user abort or permission cancel).
+                    // UI handling already done by the event handler (turn_aborted).
+                    logger.debug('[Codex] Turn aborted');
                 }
             } catch (error) {
+                // Only actual errors reach here (process crash, connection failure, etc.)
                 logger.warn('Error in codex session:', error);
-                const isAbortError = error instanceof Error && error.name === 'AbortError';
-                
-                if (isAbortError) {
-                    messageBuffer.addMessage('Aborted by user', 'status');
-                    session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
-                    // Abort cancels the current task/inference but keeps the Codex session alive.
-                    // Do not clear session state here; the next user message should continue on the
-                    // existing session if possible.
-                } else {
-                    messageBuffer.addMessage('Process exited unexpectedly', 'status');
-                    session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
-                    // For unexpected exits, try to store session for potential recovery
-                    if (client.hasActiveSession()) {
-                        storedSessionIdForResume = client.storeSessionForResume();
-                        logger.debug('[Codex] Stored session after unexpected error:', storedSessionIdForResume);
-                    }
-                }
+                messageBuffer.addMessage('Process exited unexpectedly', 'status');
+                session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
             } finally {
                 // Reset permission handler, reasoning processor, and diff processor
                 permissionHandler.reset();
@@ -721,9 +669,9 @@ export async function runCodex(opts: {
         } catch (e) {
             logger.debug('[codex]: Error while closing session', e);
         }
-        logger.debug('[codex]: client.forceCloseSession begin');
-        await client.forceCloseSession();
-        logger.debug('[codex]: client.forceCloseSession done');
+        logger.debug('[codex]: client.disconnect begin');
+        await client.disconnect();
+        logger.debug('[codex]: client.disconnect done');
         // Stop Happy MCP server
         logger.debug('[codex]: happyServer.stop');
         happyServer.stop();

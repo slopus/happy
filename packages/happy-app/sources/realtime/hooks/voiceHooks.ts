@@ -1,7 +1,6 @@
-import { getCurrentRealtimeSessionId, getVoiceSession, isVoiceSessionStarted } from '../RealtimeSession';
+import { getCurrentRealtimeSessionId, getVoiceSession, isVoiceSessionStarted, setCurrentRealtimeSessionId } from '../RealtimeSession';
 import {
     formatNewMessages,
-    formatNewSingleMessage,
     formatPermissionRequest,
     formatReadyEvent,
     formatSessionFocus,
@@ -15,7 +14,12 @@ import { VOICE_CONFIG } from '../voiceConfig';
 
 /**
  * Centralized voice assistant hooks for multi-session context updates.
- * These hooks route app events to the voice assistant with formatted context updates.
+ *
+ * Two update channels:
+ * - sendContext()  → silent background injection (sendContextualUpdate), always immediate
+ * - sendPrompt()  → triggers agent response (sendTextMessage), queued while anyone is speaking
+ *
+ * Prompt queue flushes automatically when realtimeMode transitions to 'idle'.
  */
 
 interface SessionMetadata {
@@ -26,42 +30,98 @@ interface SessionMetadata {
 }
 
 let shownSessions = new Set<string>();
-let lastFocusSession: string | null = null;
 
-function reportContextualUpdate(update: string | null | undefined) {
+// Prompt queue — batched text messages that trigger agent responses
+let pendingPrompts: string[] = [];
+
+// Subscribe to realtimeMode changes to flush when idle
+let unsubscribeMode: (() => void) | null = null;
+let lastRealtimeMode: string | null = null;
+
+function ensureModeSubscription() {
+    if (unsubscribeMode) return;
+    lastRealtimeMode = storage.getState().realtimeMode;
+    unsubscribeMode = storage.subscribe((state) => {
+        const mode = state.realtimeMode;
+        if (mode !== lastRealtimeMode) {
+            lastRealtimeMode = mode;
+            if (mode === 'idle') {
+                flushPendingPrompts();
+            }
+        }
+    });
+}
+
+function flushPendingPrompts() {
+    if (pendingPrompts.length === 0) return;
+    const voice = getVoiceSession();
+    if (!voice || !isVoiceSessionStarted()) {
+        pendingPrompts = [];
+        return;
+    }
+    const batched = pendingPrompts.join('\n\n');
+    pendingPrompts = [];
+    voice.sendTextMessage(batched);
+}
+
+/**
+ * Send silent background context — always immediate, never queued.
+ */
+function sendContext(update: string | null | undefined) {
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-        console.log('🎤 Voice: Reporting contextual update:', update);
+        console.log('🎤 Voice: sendContext:', update);
     }
     if (!update) return;
     const voice = getVoiceSession();
-    if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-        console.log('🎤 Voice: Voice session:', voice);
-    }
     if (!voice || !isVoiceSessionStarted()) return;
     voice.sendContextualUpdate(update);
 }
 
-function reportTextUpdate(update: string | null | undefined) {
+/**
+ * Send a prompt that triggers an agent response.
+ * Queued while anyone (user or agent) is speaking, flushed on idle.
+ */
+function sendPrompt(update: string | null | undefined) {
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-        console.log('🎤 Voice: Reporting text update:', update);
+        console.log('🎤 Voice: sendPrompt:', update);
     }
     if (!update) return;
     const voice = getVoiceSession();
-    if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-        console.log('🎤 Voice: Voice session:', voice);
-    }
     if (!voice || !isVoiceSessionStarted()) return;
-    voice.sendTextMessage(update);
+
+    const mode = storage.getState().realtimeMode;
+    if (mode === 'idle') {
+        voice.sendTextMessage(update);
+    } else {
+        pendingPrompts.push(update);
+    }
 }
 
-function reportSession(sessionId: string) {
-    if (shownSessions.has(sessionId)) return;
+/**
+ * Inject full context for a session if not already shown.
+ * Shared code path for both voice start and session focus.
+ * Returns the formatted string (for initial prompt building) or null if already shown.
+ */
+function injectSessionContext(sessionId: string): string | null {
+    if (shownSessions.has(sessionId)) return null;
     shownSessions.add(sessionId);
     const session = storage.getState().sessions[sessionId];
-    if (!session) return;
+    if (!session) return null;
     const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
-    const contextUpdate = formatSessionFull(session, messages);
-    reportContextualUpdate(contextUpdate);
+    return formatSessionFull(session, messages);
+}
+
+/**
+ * Build a one-line directory of all active sessions (id + summary).
+ */
+function formatSessionDirectory(): string {
+    const activeSessions = storage.getState().getActiveSessions();
+    if (activeSessions.length === 0) return 'No active sessions.';
+    const lines = activeSessions.map(s => {
+        const summary = s.metadata?.summary?.text ?? 'No summary';
+        return `- ${s.id}: "${summary}"`;
+    });
+    return 'Available sessions:\n' + lines.join('\n');
 }
 
 export const voiceHooks = {
@@ -71,10 +131,10 @@ export const voiceHooks = {
      */
     onSessionOnline(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
-        
-        reportSession(sessionId);
-        const contextUpdate = formatSessionOnline(sessionId, metadata);
-        reportContextualUpdate(contextUpdate);
+
+        const ctx = injectSessionContext(sessionId);
+        if (ctx) sendContext(ctx);
+        sendContext(formatSessionOnline(sessionId, metadata));
     },
 
     /**
@@ -82,22 +142,22 @@ export const voiceHooks = {
      */
     onSessionOffline(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
-        
-        reportSession(sessionId);
-        const contextUpdate = formatSessionOffline(sessionId, metadata);
-        reportContextualUpdate(contextUpdate);
-    },
 
+        const ctx = injectSessionContext(sessionId);
+        if (ctx) sendContext(ctx);
+        sendContext(formatSessionOffline(sessionId, metadata));
+    },
 
     /**
      * Called when user navigates to/views a session
      */
     onSessionFocus(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_FOCUS) return;
-        if (lastFocusSession === sessionId) return;
-        lastFocusSession = sessionId;
-        reportSession(sessionId);
-        reportContextualUpdate(formatSessionFocus(sessionId, metadata));
+        if (getCurrentRealtimeSessionId() === sessionId) return;
+        setCurrentRealtimeSessionId(sessionId);
+        const ctx = injectSessionContext(sessionId);
+        if (ctx) sendContext(ctx);
+        sendContext(formatSessionFocus(sessionId, metadata));
     },
 
     /**
@@ -105,9 +165,10 @@ export const voiceHooks = {
      */
     onPermissionRequested(sessionId: string, requestId: string, toolName: string, toolArgs: any) {
         if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
-        
-        reportSession(sessionId);
-        reportTextUpdate(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
+
+        const ctx = injectSessionContext(sessionId);
+        if (ctx) sendContext(ctx);
+        sendPrompt(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
     },
 
     /**
@@ -115,27 +176,35 @@ export const voiceHooks = {
      */
     onMessages(sessionId: string, messages: Message[]) {
         if (VOICE_CONFIG.DISABLE_MESSAGES) return;
-        
-        reportSession(sessionId);
-        reportContextualUpdate(formatNewMessages(sessionId, messages));
+
+        const ctx = injectSessionContext(sessionId);
+        if (ctx) sendContext(ctx);
+        sendContext(formatNewMessages(sessionId, messages));
     },
 
     /**
-     * Called when voice session starts
+     * Called when voice session starts.
+     * Builds initial prompt with session directory + full current session context.
      */
     onVoiceStarted(sessionId: string): string {
         if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
             console.log('🎤 Voice session started for:', sessionId);
         }
         shownSessions.clear();
+        pendingPrompts = [];
+        ensureModeSubscription();
+
         let prompt = '';
-        prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
-        shownSessions.add(sessionId);
-        // prompt += 'Another active sessions: \n\n';
-        // for (let s of storage.getState().getActiveSessions()) {
-        //     if (s.id === sessionId) continue;
-        //     prompt += formatSessionFull(s, storage.getState().sessionMessages[s.id]?.messages ?? []);
-        // }
+
+        // Session directory — all active sessions with titles
+        prompt += formatSessionDirectory() + '\n\n';
+
+        // Full context for the current session
+        const ctx = injectSessionContext(sessionId);
+        if (ctx) {
+            prompt += 'CURRENT SESSION:\n\n' + ctx;
+        }
+
         return prompt;
     },
 
@@ -144,9 +213,10 @@ export const voiceHooks = {
      */
     onReady(sessionId: string) {
         if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;
-        
-        reportSession(sessionId);
-        reportTextUpdate(formatReadyEvent(sessionId));
+
+        const ctx = injectSessionContext(sessionId);
+        if (ctx) sendContext(ctx);
+        sendPrompt(formatReadyEvent(sessionId));
     },
 
     /**
@@ -157,5 +227,6 @@ export const voiceHooks = {
             console.log('🎤 Voice session stopped');
         }
         shownSessions.clear();
+        pendingPrompts = [];
     }
 };

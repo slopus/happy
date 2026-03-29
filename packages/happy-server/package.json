@@ -11,6 +11,7 @@
     "build:standalone": "bun build ./sources/standalone.ts --compile --outfile dist/happy-server --target bun && find ../../node_modules/@electric-sql/pglite/dist -name 'pglite.wasm' -exec cp {} dist/ \\; && find ../../node_modules/@electric-sql/pglite/dist -name 'pglite.data' -exec cp {} dist/ \\; && cp -r prisma/migrations dist/prisma/migrations",
     "start": "tsx ./sources/main.ts",
     "standalone": "tsx ./sources/standalone.ts",
+    "standalone:dev": "tsx --env-file=.env.dev ./sources/standalone.ts migrate && tsx --env-file=.env.dev ./sources/standalone.ts serve",
     "dev": "lsof -ti tcp:3005 | xargs kill -9 && tsx --env-file=.env --env-file=.env.dev ./sources/main.ts",
     "test": "vitest run",
     "migrate": "dotenv -e .env.dev -- prisma migrate dev",

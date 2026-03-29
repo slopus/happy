@@ -44,6 +44,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
+    // Internal Claude Code tools (e.g. ToolSearch) are completely hidden from the UI
+    if (knownTool?.hidden) {
+        return null;
+    }
+
     let description: string | null = null;
     let status: string | null = null;
     let minimal = false;

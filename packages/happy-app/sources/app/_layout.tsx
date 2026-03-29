@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Fonts from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import { FontAwesome } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -24,9 +25,12 @@ import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIn
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
 // import * as SystemUI from 'expo-system-ui';
-import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
+import { initConsoleLogging, setConsoleOutputEnabled } from '@/utils/consoleLogging';
+import { useLocalSetting } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
+import { getSessionRouteFromNotificationResponse } from '@/utils/notificationRouting';
+import { navigateToSession } from '@/hooks/useNavigateToSession';
 
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
@@ -64,12 +68,8 @@ SplashScreen.preventAutoHideAsync();
 // Set window background color - now handled by Unistyles
 // SystemUI.setBackgroundColorAsync('white');
 
-// NEVER ENABLE REMOTE LOGGING IN PRODUCTION
-// This is for local debugging with AI only
-// So AI will have all the logs easily accessible in one file for analysis
-if (!!process.env.PUBLIC_EXPO_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
-    monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds()
-}
+// Remote logging to local log server (configured via Dev > Log Server setting)
+initConsoleLogging()
 
 // Component to apply horizontal safe area padding
 function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) {
@@ -87,6 +87,16 @@ function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) 
 
 let lock = new AsyncLock();
 let loaded = false;
+
+function stringifyNotificationPayload(value: unknown): string {
+    try {
+        const serialized = JSON.stringify(value, null, 2);
+        return serialized ?? String(value);
+    } catch (error) {
+        return `[unserializable notification payload: ${error instanceof Error ? error.message : 'Unknown error'}]`;
+    }
+}
+
 async function loadFonts() {
     await lock.inLock(async () => {
         if (loaded) {
@@ -151,7 +161,37 @@ async function loadFonts() {
     });
 }
 
+function getDevEnvironmentCredentials(): AuthCredentials | null {
+    if (!__DEV__) {
+        return null;
+    }
+
+    const token = process.env.EXPO_PUBLIC_DEV_TOKEN;
+    const secret = process.env.EXPO_PUBLIC_DEV_SECRET;
+    if (!token || !secret) {
+        return null;
+    }
+
+    return { token, secret };
+}
+
+function getDevWebQueryCredentials(): AuthCredentials | null {
+    if (!__DEV__ || Platform.OS !== 'web' || typeof window === 'undefined') {
+        return null;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('dev_token');
+    const secret = params.get('dev_secret');
+    if (!token || !secret) {
+        return null;
+    }
+
+    return { token, secret };
+}
+
 export default function RootLayout() {
+    const router = useRouter();
     const { theme } = useUnistyles();
     const navigationTheme = React.useMemo(() => {
         if (theme.dark) {
@@ -181,7 +221,26 @@ export default function RootLayout() {
             try {
                 await loadFonts();
                 await sodium.ready;
-                const credentials = await TokenStorage.getCredentials();
+
+                let credentials = await TokenStorage.getCredentials();
+                const devCredentials = getDevWebQueryCredentials() ?? getDevEnvironmentCredentials();
+
+                if (devCredentials) {
+                    const credentialsChanged = credentials?.token !== devCredentials.token
+                        || credentials?.secret !== devCredentials.secret;
+
+                    if (credentialsChanged) {
+                        const saved = await TokenStorage.setCredentials(devCredentials);
+                        if (saved) {
+                            credentials = devCredentials;
+                        }
+                    }
+
+                    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                        window.history.replaceState({}, '', window.location.pathname);
+                    }
+                }
+
                 console.log('credentials', credentials);
                 if (credentials) {
                     await syncRestore(credentials);
@@ -202,9 +261,95 @@ export default function RootLayout() {
         }
     }, [initState]);
 
+    const handledNotificationIds = React.useRef<Set<string>>(new Set());
+    const handleNotificationResponse = React.useCallback(async (response: Notifications.NotificationResponse | null) => {
+        if (!response) {
+            console.log('[PUSH ROUTING] Notification response is null');
+            return;
+        }
+
+        console.log('[PUSH ROUTING] Full notification response:\n' + stringifyNotificationPayload(response));
+
+        const responseId = response.notification.request.identifier;
+        if (handledNotificationIds.current.has(responseId)) {
+            console.log(`[PUSH ROUTING] Duplicate notification response ignored: ${responseId}`);
+            return;
+        }
+
+        handledNotificationIds.current.add(responseId);
+
+        try {
+            if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+                console.log(`[PUSH ROUTING] Ignoring non-default action: ${response.actionIdentifier}`);
+                return;
+            }
+
+            console.log(
+                '[PUSH ROUTING] notification.request.content.data:\n' +
+                stringifyNotificationPayload(response.notification.request.content.data)
+            );
+            const route = getSessionRouteFromNotificationResponse(response);
+            console.log(`[PUSH ROUTING] Computed route: ${route ?? 'null'}`);
+            if (!route) {
+                console.log('[PUSH ROUTING] No session route found in notification.request.content.data');
+                return;
+            }
+
+            const encodedSessionId = route.replace(/^\/session\//, '');
+            const sessionId = (() => {
+                try {
+                    return decodeURIComponent(encodedSessionId);
+                } catch {
+                    return encodedSessionId;
+                }
+            })();
+            console.log(`[PUSH ROUTING] Navigating to session: ${sessionId}`);
+            navigateToSession(router, sessionId);
+        } finally {
+            try {
+                await Notifications.clearLastNotificationResponseAsync();
+            } catch (error) {
+                console.log('Failed to clear last notification response:', error);
+            }
+        }
+    }, [router]);
+
+    React.useEffect(() => {
+        if (!initState) {
+            return;
+        }
+
+        let active = true;
+        const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+            void handleNotificationResponse(response);
+        });
+
+        void (async () => {
+            try {
+                const response = await Notifications.getLastNotificationResponseAsync();
+                if (active) {
+                    await handleNotificationResponse(response);
+                }
+            } catch (error) {
+                console.log('Failed to read last notification response:', error);
+            }
+        })();
+
+        return () => {
+            active = false;
+            subscription.remove();
+        };
+    }, [handleNotificationResponse, initState]);
+
 
     // Track the screens
     useTrackScreens()
+
+    // Sync console output toggle from Dev screen
+    const consoleLoggingEnabled = useLocalSetting('consoleLoggingEnabled');
+    React.useEffect(() => {
+        setConsoleOutputEnabled(consoleLoggingEnabled);
+    }, [consoleLoggingEnabled]);
 
     //
     // Not inited

@@ -10,7 +10,8 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "APP_ENV": "development"
+        "APP_ENV": "development",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
     "development-store": {
@@ -19,7 +20,8 @@
       "distribution": "store",
       "channel": "development",
       "env": {
-        "APP_ENV": "development"
+        "APP_ENV": "development",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
     "preview": {
@@ -27,7 +29,8 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
     "preview-store": {
@@ -35,14 +38,16 @@
       "distribution": "store",
       "channel": "preview",
       "env": {
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
       "env": {
-        "APP_ENV": "production"
+        "APP_ENV": "production",
+        "SHARP_IGNORE_GLOBAL_LIBVIPS": "1"
       }
     }
   },
@@ -50,7 +55,7 @@
     "production": {
       "ios": {
         "appleId": "steve@bulkovo.com",
-        "ascAppId": "126165711",
+        "ascAppId": "6748571505",
         "appleTeamId": "466DQWDR8C"
       }
     }

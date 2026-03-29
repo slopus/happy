@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -101,6 +102,18 @@ export function getSessionAvatarId(session: Session): string {
     }
     // Fallback to session ID if metadata is missing
     return session.id;
+}
+
+/**
+ * Returns the CLI command to resume a disconnected session, or null if not resumable.
+ * Uses flavor-specific commands which work without happy-agent auth.
+ */
+export function getResumeCommand(session: Session): string | null {
+    return buildResumeCommand(session.metadata ?? {});
+}
+
+export function getResumeCommandBlock(session: Session): ResumeCommandBlock | null {
+    return buildResumeCommandBlock(session.metadata ?? {});
 }
 
 /**

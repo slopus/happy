@@ -1,7 +1,6 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
-import { Link } from 'expo-router';
 import * as React from 'react';
-import { Pressable, ScrollView, View, Platform } from 'react-native';
+import { Image, Pressable, ScrollView, View, Platform } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
@@ -12,8 +11,10 @@ import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
+import { isHttpMarkdownLink } from './linkUtils';
 
 // Option type for callback
 export type Option = {
@@ -23,6 +24,7 @@ export type Option = {
 export const MarkdownView = React.memo((props: { 
     markdown: string;
     onOptionPress?: (option: Option) => void;
+    sessionId?: string;
 }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
     
@@ -34,6 +36,21 @@ export const MarkdownView = React.memo((props: {
     const markdownCopyV2 = useLocalSetting('markdownCopyV2');
     const selectable = Platform.OS === 'web' || !markdownCopyV2;
     const router = useRouter();
+
+    const handleLinkPress = React.useCallback((url: string) => {
+        if (!isHttpMarkdownLink(url)) {
+            return;
+        }
+
+        if (Platform.OS === 'web') {
+            if (typeof window !== 'undefined') {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            }
+            return;
+        }
+
+        void WebBrowser.openBrowserAsync(url);
+    }, []);
 
     const handleLongPress = React.useCallback(() => {
         try {
@@ -49,15 +66,15 @@ export const MarkdownView = React.memo((props: {
             <View style={{ width: '100%' }}>
                 {blocks.map((block, index) => {
                     if (block.type === 'text') {
-                        return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'header') {
-                        return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'horizontal-rule') {
                         return <View style={style.horizontalRule} key={index} />;
                     } else if (block.type === 'list') {
-                        return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'numbered-list') {
-                        return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'code-block') {
                         return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
                     } else if (block.type === 'mermaid') {
@@ -65,7 +82,9 @@ export const MarkdownView = React.memo((props: {
                     } else if (block.type === 'options') {
                         return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} />;
                     } else if (block.type === 'table') {
-                        return <RenderTableBlock headers={block.headers} rows={block.rows} key={index} first={index === 0} last={index === blocks.length - 1} />;
+                        return <RenderTableBlock headers={block.headers} rows={block.rows} onLinkPress={handleLinkPress} selectable={selectable} key={index} first={index === 0} last={index === blocks.length - 1} />;
+                    } else if (block.type === 'image') {
+                        return <RenderImageBlock url={block.url} alt={block.alt} key={index} first={index === 0} last={index === blocks.length - 1} />;
                     } else {
                         return null;
                     }
@@ -100,33 +119,40 @@ export const MarkdownView = React.memo((props: {
     );
 });
 
-function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
-    return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
+type RenderSpanProps = {
+    spans: MarkdownSpan[];
+    baseStyle?: any;
+    selectable: boolean;
+    onLinkPress: (url: string) => void;
+};
+
+function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
+    return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>;
 }
 
-function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
+function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
     const s = (style as any)[`header${props.level}`];
     const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
-    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
+    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>;
 }
 
-function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean }) {
+function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
     const listStyle = [style.text, style.list];
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
+                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
             ))}
         </View>
     );
 }
 
-function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean }) {
+function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean, onLinkPress: (url: string) => void }) {
     const listStyle = [style.text, style.list];
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} /></Text>
+                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>
             ))}
         </View>
     );
@@ -181,6 +207,24 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
+function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
+    const accessibleLabel = props.alt || 'Markdown image';
+
+    return (
+        <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
+            <Image
+                source={{ uri: props.url }}
+                style={style.image}
+                accessibilityLabel={accessibleLabel}
+                resizeMode="contain"
+            />
+            {props.alt ? (
+                <Text style={style.imageCaption}>{props.alt}</Text>
+            ) : null}
+        </View>
+    );
+}
+
 function RenderOptionsBlock(props: { 
     items: string[], 
     first: boolean, 
@@ -216,13 +260,27 @@ function RenderOptionsBlock(props: {
     );
 }
 
-function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
+function RenderSpans(props: RenderSpanProps) {
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
+                const isExternalLink = isHttpMarkdownLink(span.url);
+                return (
+                    <Text
+                        key={index}
+                        selectable={props.selectable}
+                        accessibilityRole={isExternalLink ? 'link' : undefined}
+                        style={[props.baseStyle, isExternalLink && style.link, span.styles.map(s => style[s])]}
+                        {...(isExternalLink && Platform.OS === 'web' ? { onClick: () => { if (typeof window !== 'undefined') window.open(span.url!, '_blank', 'noopener,noreferrer'); } } as any : {})}
+                        onPress={isExternalLink && Platform.OS !== 'web'
+                            ? () => props.onLinkPress(span.url!)
+                            : undefined}
+                    >
+                        {span.text}
+                    </Text>
+                );
             } else {
-                return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
+                return <Text key={index} selectable={props.selectable} style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }
         })}
     </>)
@@ -232,8 +290,10 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
 // Each column is rendered as a vertical container with all its cells (header + data).
 // This ensures that cells in the same column have the same width, determined by the widest content.
 function RenderTableBlock(props: {
-    headers: string[],
-    rows: string[][],
+    headers: MarkdownSpan[][],
+    rows: MarkdownSpan[][][],
+    onLinkPress: (url: string) => void,
+    selectable: boolean,
     first: boolean,
     last: boolean
 }) {
@@ -261,7 +321,7 @@ function RenderTableBlock(props: {
                         >
                             {/* Header cell for this column */}
                             <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
-                                <Text style={style.tableHeaderText}>{header}</Text>
+                                <Text style={style.tableHeaderText}><RenderSpans spans={header} baseStyle={style.tableHeaderText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
                             </View>
                             {/* Data cells for this column */}
                             {props.rows.map((row, rowIndex) => (
@@ -272,7 +332,7 @@ function RenderTableBlock(props: {
                                         isLastRow(rowIndex) && style.tableCellLast
                                     ]}
                                 >
-                                    <Text style={style.tableCellText}>{row[colIndex] ?? ''}</Text>
+                                    <Text style={style.tableCellText}><RenderSpans spans={row[colIndex] ?? []} baseStyle={style.tableCellText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
                                 </View>
                             ))}
                         </View>
@@ -310,14 +370,15 @@ const style = StyleSheet.create((theme) => ({
     code: {
         ...Typography.mono(),
         fontSize: 16,
-        lineHeight: 21,  // Reduced from 24 to 21
-        backgroundColor: theme.colors.surfaceHighest,
+        lineHeight: 24,
         color: theme.colors.text,
     },
     link: {
         ...Typography.default(),
-        color: theme.colors.textLink,
+        color: theme.colors.text,
         fontWeight: '400',
+        textDecorationLine: 'underline',
+        cursor: 'pointer',
     },
 
     // Headers
@@ -430,6 +491,26 @@ const style = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.divider,
         marginTop: 8,
         marginBottom: 8,
+    },
+    imageBlock: {
+        width: '100%',
+        maxWidth: 520,
+        marginVertical: 8,
+        alignSelf: 'flex-start',
+        gap: 8,
+    },
+    image: {
+        width: '100%',
+        minHeight: 160,
+        height: 240,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surfaceHighest,
+    },
+    imageCaption: {
+        ...Typography.default(),
+        fontSize: 14,
+        lineHeight: 20,
+        color: theme.colors.textSecondary,
     },
     copyButtonContainer: {
         position: 'absolute',

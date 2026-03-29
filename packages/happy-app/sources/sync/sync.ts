@@ -11,7 +11,7 @@ import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
-import { registerPushToken } from './apiPush';
+import { syncCurrentPushToken } from './pushRegistration';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
@@ -1652,37 +1652,16 @@ class Sync {
 
     private registerPushToken = async () => {
         log.log('registerPushToken');
-        // Only register on mobile platforms
-        if (Platform.OS === 'web') {
-            return;
-        }
-
-        // Request permission
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        log.log('existingStatus: ' + JSON.stringify(existingStatus));
-
-        if (existingStatus !== 'granted') {
-            const { status } = await Notifications.requestPermissionsAsync();
-            finalStatus = status;
-        }
-        log.log('finalStatus: ' + JSON.stringify(finalStatus));
-
-        if (finalStatus !== 'granted') {
-            console.log('Failed to get push token for push notification!');
-            return;
-        }
-
-        // Get push token
-        const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
-
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-        log.log('tokenData: ' + JSON.stringify(tokenData));
-
-        // Register with server
         try {
-            await registerPushToken(this.credentials, tokenData.data);
-            log.log('Push token registered successfully');
+            const result = await syncCurrentPushToken(this.credentials);
+            log.log('Push token sync result: ' + JSON.stringify({
+                registered: result.registered,
+                hasToken: !!result.token,
+                permission: result.permission.status,
+            }));
+            if (!result.permission.granted) {
+                console.log('Failed to get push token for push notification!');
+            }
         } catch (error) {
             log.log('Failed to register push token: ' + JSON.stringify(error));
         }
@@ -1703,16 +1682,9 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
-            const sessionsData = storage.getState().sessionsData;
-            if (sessionsData) {
-                for (const item of sessionsData) {
-                    if (typeof item !== 'string') {
-                        this.getMessagesSync(item.id).invalidate();
-                        // Also invalidate git status on reconnection
-                        gitStatusSync.invalidate(item.id);
-                    }
-                }
-            }
+            // Messages are fetched lazily per-session via onSessionVisible (called by SessionView
+            // when realtimeStatus changes). Session metadata + agentState (including permission
+            // requests) are already refreshed by sessionsSync.invalidate() above.
             for (const sync of this.sendSync.values()) {
                 sync.invalidate();
             }
@@ -1720,7 +1692,6 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
-        console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
             console.log('❌ Sync: Invalid update received:', validatedUpdate.error);
@@ -1801,7 +1772,6 @@ class Sync {
                     const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
                     const incomingSeq = updateData.body.message.seq;
                     if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-                        console.log('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
                         this.enqueueMessages(updateData.body.sid, [lastMessage]);
                         this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
                         let hasMutableTool = false;

@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem } from '@/sync/storage';
@@ -15,20 +14,13 @@ import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListView
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { t } from '@/text';
-import { useRouter } from 'expo-router';
-import { Item } from './Item';
-import { ItemGroup } from './ItemGroup';
-import { useHappyAction } from '@/hooks/useHappyAction';
-import { sessionDelete } from '@/sync/ops';
-import { HappyError } from '@/utils/errors';
-import { Modal } from '@/modal';
+import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -178,20 +170,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingBottom: 12,
         backgroundColor: theme.colors.groupped.background,
     },
-    swipeAction: {
-        width: 112,
-        height: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.status.error,
-    },
-    swipeActionText: {
-        marginTop: 4,
-        fontSize: 12,
-        color: '#FFFFFF',
-        textAlign: 'center',
-        ...Typography.default('semiBold'),
-    },
 }));
 
 export function SessionsList() {
@@ -200,11 +178,8 @@ export function SessionsList() {
     const data = useVisibleSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
-    const navigateToSession = useNavigateToSession();
     const compactSessionView = useSetting('compactSessionView');
-    const router = useRouter();
     const selectable = isTablet;
-    const experiments = useSetting('experiments');
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
             ...item,
@@ -316,6 +291,9 @@ export function SessionsList() {
                     keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
+                    windowSize={5}
+                    maxToRenderPerBatch={8}
+                    initialNumToRender={12}
                 />
             </View>
         </View>
@@ -335,38 +313,37 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
-    const isTablet = useIsTablet();
-    const swipeableRef = React.useRef<Swipeable | null>(null);
-    const swipeEnabled = Platform.OS !== 'web';
-
-    const [deletingSession, performDelete] = useHappyAction(async () => {
-        const result = await sessionDelete(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
-        }
-    });
-
-    const handleDelete = React.useCallback(() => {
-        swipeableRef.current?.close();
-        Modal.alert(
-            t('sessionInfo.deleteSession'),
-            t('sessionInfo.deleteSessionWarning'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.deleteSession'),
-                    style: 'destructive',
-                    onPress: performDelete
-                }
-            ]
-        );
-    }, [performDelete]);
+    const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
 
-    const itemContent = (
+    const handlePress = React.useCallback(() => {
+        navigateToSession(session.id);
+    }, [navigateToSession, session.id]);
+
+    const handleContextMenu = React.useCallback((event: any) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        setActionsAnchor({
+            type: 'point',
+            x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,
+            y: event.nativeEvent.clientY ?? event.nativeEvent.pageY ?? 0,
+        });
+    }, []);
+
+    const webMenuProps = Platform.OS === 'web' ? {
+        onContextMenu: handleContextMenu,
+    } as any : {};
+
+    return (
+        <View style={[
+            styles.sessionItemContainer,
+            isSingle ? styles.sessionItemContainerSingle :
+                isFirst ? styles.sessionItemContainerFirst :
+                    isLast ? styles.sessionItemContainerLast : {}
+        ]}>
         <Pressable
             style={[
                 styles.sessionItem,
@@ -375,16 +352,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
             ]}
-            onPressIn={() => {
-                if (isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
-            onPress={() => {
-                if (!isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
+            onPress={handlePress}
+            {...webMenuProps}
         >
             <View style={styles.avatarContainer}>
                 <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
@@ -428,46 +397,14 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 </View>
             </View>
         </Pressable>
-    );
-
-    const containerStyles = [
-        styles.sessionItemContainer,
-        isSingle ? styles.sessionItemContainerSingle :
-            isFirst ? styles.sessionItemContainerFirst :
-                isLast ? styles.sessionItemContainerLast : {}
-    ];
-
-    if (!swipeEnabled) {
-        return (
-            <View style={containerStyles}>
-                {itemContent}
-            </View>
-        );
-    }
-
-    const renderRightActions = () => (
-        <Pressable
-            style={styles.swipeAction}
-            onPress={handleDelete}
-            disabled={deletingSession}
-        >
-            <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.swipeActionText} numberOfLines={2}>
-                {t('sessionInfo.deleteSession')}
-            </Text>
-        </Pressable>
-    );
-
-    return (
-        <View style={containerStyles}>
-            <Swipeable
-                ref={swipeableRef}
-                renderRightActions={renderRightActions}
-                overshootRight={false}
-                enabled={!deletingSession}
-            >
-                {itemContent}
-            </Swipeable>
+        {Platform.OS === 'web' && (
+            <SessionActionsPopover
+                anchor={actionsAnchor}
+                onClose={() => setActionsAnchor(null)}
+                session={session}
+                visible={!!actionsAnchor}
+            />
+        )}
         </View>
     );
 });

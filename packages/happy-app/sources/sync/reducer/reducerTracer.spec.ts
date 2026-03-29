@@ -76,6 +76,36 @@ describe('reducerTracer', () => {
             expect(state.promptToTaskId.get('Search for files')).toBe('msg1');
         });
 
+        it('should identify and track Agent tools', () => {
+            const state = createTracer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'msg-agent',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'agent-tool',
+                        name: 'Agent',
+                        input: { prompt: 'Inspect translations' },
+                        description: null,
+                        uuid: 'uuid-agent',
+                        parentUUID: null
+                    }]
+                }
+            ];
+
+            traceMessages(state, messages);
+
+            expect(state.taskTools.get('msg-agent')).toEqual({
+                messageId: 'msg-agent',
+                prompt: 'Inspect translations'
+            });
+            expect(state.promptToTaskId.get('Inspect translations')).toBe('msg-agent');
+        });
+
         it('should assign sidechainId to sidechain root messages', () => {
             const state = createTracer();
             
@@ -218,6 +248,50 @@ describe('reducerTracer', () => {
             const traced = traceMessages(state, [subagentMessage]);
             expect(traced).toHaveLength(1);
             expect(traced[0].sidechainId).toBe('parent-msg');
+        });
+
+        it('should link session subagent ids from tool input to the parent tool call message', () => {
+            const state = createTracer();
+
+            const parentToolMessage: NormalizedMessage = {
+                id: 'parent-agent-msg',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-agent-1',
+                    name: 'Agent',
+                    input: {
+                        prompt: 'Inspect translations',
+                        sessionSubagent: 'session-subagent-1',
+                    },
+                    description: null,
+                    uuid: 'parent-agent-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            traceMessages(state, [parentToolMessage]);
+
+            const subagentMessage: NormalizedMessage = {
+                id: 'child-agent-msg',
+                localId: null,
+                createdAt: 2000,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'text',
+                    text: 'subagent output',
+                    uuid: 'child-agent-uuid',
+                    parentUUID: 'session-subagent-1'
+                }]
+            };
+
+            const traced = traceMessages(state, [subagentMessage]);
+            expect(traced).toHaveLength(1);
+            expect(traced[0].sidechainId).toBe('parent-agent-msg');
         });
 
         it('should buffer orphan messages until parent arrives', () => {

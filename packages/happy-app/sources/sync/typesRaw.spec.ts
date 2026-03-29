@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { createId } from '@paralleldrive/cuid2';
 import { normalizeRawMessage } from './typesRaw';
 
@@ -1492,28 +1492,6 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
     });
 
     describe('Session protocol normalization', () => {
-        let originalEnableSessionProtocolSend: string | undefined;
-        let originalExpoEnableSessionProtocolSend: string | undefined;
-
-        beforeEach(() => {
-            originalEnableSessionProtocolSend = process.env.ENABLE_SESSION_PROTOCOL_SEND;
-            originalExpoEnableSessionProtocolSend = process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND;
-            delete process.env.ENABLE_SESSION_PROTOCOL_SEND;
-            delete process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND;
-        });
-
-        afterEach(() => {
-            if (originalEnableSessionProtocolSend === undefined) {
-                delete process.env.ENABLE_SESSION_PROTOCOL_SEND;
-            } else {
-                process.env.ENABLE_SESSION_PROTOCOL_SEND = originalEnableSessionProtocolSend;
-            }
-            if (originalExpoEnableSessionProtocolSend === undefined) {
-                delete process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND;
-            } else {
-                process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND = originalExpoEnableSessionProtocolSend;
-            }
-        });
 
         const base = {
             role: 'agent' as const,
@@ -1603,30 +1581,14 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
-        it('drops modern user session envelopes when send flag is disabled', () => {
-            const normalized = normalizeRawMessage('db-modern-user-flag-off-1', null, 1, {
+        it('renders session protocol user text envelopes', () => {
+            const normalized = normalizeRawMessage('db-modern-user-1', null, 1, {
                 role: 'session',
                 content: {
-                    id: 'env-modern-user-flag-off-1',
+                    id: 'env-modern-user-1',
                     time: 1,
                     role: 'user',
                     ev: { t: 'text', text: 'modern user envelope' }
-                }
-            } as any);
-
-            expect(normalized).toBeNull();
-        });
-
-        it('uses modern user session envelopes for user content when send flag is enabled', () => {
-            process.env.ENABLE_SESSION_PROTOCOL_SEND = 'true';
-
-            const normalized = normalizeRawMessage('db-modern-user-flag-on', null, 1, {
-                role: 'session',
-                content: {
-                    id: 'env-modern-user-flag-on',
-                    time: 1,
-                    role: 'user',
-                    ev: { t: 'text', text: 'new user protocol' }
                 }
             } as any);
 
@@ -1635,23 +1597,28 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             if (normalized && normalized.role === 'user') {
                 expect(normalized.content).toEqual({
                     type: 'text',
-                    text: 'new user protocol'
+                    text: 'modern user envelope'
                 });
             }
         });
 
-        it('drops legacy user text envelopes when send flag is enabled', () => {
-            process.env.ENABLE_SESSION_PROTOCOL_SEND = 'true';
-
-            const normalized = normalizeRawMessage('db-user-legacy-flag-on', null, 1, {
+        it('renders legacy user text messages', () => {
+            const normalized = normalizeRawMessage('db-legacy-user-1', null, 1, {
                 role: 'user',
                 content: {
                     type: 'text',
-                    text: 'legacy user protocol'
+                    text: 'legacy user message'
                 }
             } as any);
 
-            expect(normalized).toBeNull();
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('user');
+            if (normalized && normalized.role === 'user') {
+                expect(normalized.content).toEqual({
+                    type: 'text',
+                    text: 'legacy user message'
+                });
+            }
         });
 
         it('normalizes service events to visible agent text', () => {

@@ -10,8 +10,8 @@
 ## Getting Started
 
 ```bash
-git clone https://github.com/slopus/happy-cli.git
-cd happy-cli
+git clone https://github.com/slopus/happy.git
+cd happy/packages/happy-cli
 yarn install
 yarn build
 ```
@@ -31,7 +31,7 @@ This creates a `happy-dev` command in your PATH pointing to your local build, wh
 
 | Command | Runs |
 |---------|------|
-| `happy` | Stable npm version (from `npm install -g happy-coder`) |
+| `happy` | Stable npm version (from `npm install -g happy`) |
 | `happy-dev` | Local development version (from this repo) |
 
 **Note:** Run `yarn build` before `yarn link:dev` to ensure the binary exists.
@@ -73,8 +73,7 @@ npm run dev:daemon:start
 
 ## Visual Indicators
 
-You'll always see which version you're using:
-- `✅ STABLE MODE - Data: ~/.happy`
+When running in dev mode, you'll see:
 - `🔧 DEV MODE - Data: ~/.happy-dev`
 
 ## Common Tasks
@@ -184,7 +183,6 @@ Check port conflicts - each daemon needs its own port. The dev daemon will autom
 
 ### How do I check which version is running?
 Look for the visual indicator:
-- `✅ STABLE MODE` = stable version
 - `🔧 DEV MODE` = development version
 
 Or check the daemon status:
@@ -325,7 +323,7 @@ Maintainers can publish new versions:
 ```bash
 yarn release       # From repo root: choose library to release
 # or directly:
-yarn workspace happy-coder release
+yarn workspace happy release
 ```
 
 This runs tests, builds, and publishes to npm. The published package includes:

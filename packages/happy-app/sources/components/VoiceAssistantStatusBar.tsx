@@ -24,8 +24,8 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
         return null;
     }
     
-    // Check if voice assistant is speaking
-    const isVoiceSpeaking = realtimeMode === 'speaking';
+    // Check if voice assistant or user is speaking (show voice bars for either)
+    const isVoiceSpeaking = realtimeMode === 'agent-speaking' || realtimeMode === 'user-speaking';
 
     const getStatusInfo = () => {
         switch (realtimeStatus) {

@@ -1,6 +1,25 @@
 {
   "entries": [
     {
+      "version": 6,
+      "date": "2026-03-19",
+      "summary": "This is the biggest update since launch — a redesigned session creation experience, Git worktree management, expanded agent support.",
+      "changes": [
+        "New session composer screen with machine selection, worktree picker, draft persistence, and offline machine visibility.",
+        "Git worktree management — list, create, and select worktrees from the app. Worktrees auto-cleanup on session delete.",
+        "Automatic plan mode switching when your agent enters planning mode.",
+        "OpenClaw added as a selectable AI agent alongside Claude Code and Codex.",
+        "Session quick actions for faster interaction with active sessions.",
+        "Session resume support — pick up where you left off.",
+        "Delete sessions directly from the session info screen.",
+        "Renamed \"bypass\" permission mode to \"yolo\" with updated styling.",
+        "Improved markdown rendering and message formatting.",
+        "Improved message sync reliability with edge case fixes.",
+        "Various UI polish: send spinner, hidden internal tool calls, improved spacing."
+      ],
+      "rawMarkdown": "## Version 6 - 2026-03-19\n\n\nThis is the biggest update since launch — a redesigned session creation experience, Git worktree management, expanded agent support.\n\n- New session composer screen with machine selection, worktree picker, draft persistence, and offline machine visibility.\n- Git worktree management — list, create, and select worktrees from the app. Worktrees auto-cleanup on session delete.\n- Automatic plan mode switching when your agent enters planning mode.\n- OpenClaw added as a selectable AI agent alongside Claude Code and Codex.\n- Session quick actions for faster interaction with active sessions.\n- Session resume support — pick up where you left off.\n- Delete sessions directly from the session info screen.\n- Renamed \"bypass\" permission mode to \"yolo\" with updated styling.\n- Improved markdown rendering and message formatting.\n- Improved message sync reliability with edge case fixes.\n- Various UI polish: send spinner, hidden internal tool calls, improved spacing."
+    },
+    {
       "version": 5,
       "date": "2025-12-22",
       "summary": "This release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.",
@@ -65,5 +84,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 5
+  "latestVersion": 6
 }

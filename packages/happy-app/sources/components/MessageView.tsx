@@ -10,7 +10,7 @@ import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
-import { useSetting } from "@/sync/storage";
+
 
 export const MessageView = (props: {
   message: Message;
@@ -76,7 +76,7 @@ function UserTextBlock(props: {
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
         {/* {__DEV__ && (
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
@@ -89,19 +89,18 @@ function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
 }) {
-  const experiments = useSetting('experiments');
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title);
   }, [props.sessionId]);
 
-  // Hide thinking messages unless experiments is enabled
-  if (props.message.isThinking && !experiments) {
+  // Hide thinking messages
+  if (props.message.isThinking) {
     return null;
   }
 
   return (
-    <View style={[styles.agentMessageContainer, props.message.isThinking && { opacity: 0.3 }]}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+    <View style={styles.agentMessageContainer}>
+      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
     </View>
   );
 }

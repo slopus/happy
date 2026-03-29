@@ -14,14 +14,13 @@ import { StyleSheet } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
 import { storage } from '@/sync/storage';
-import { Modal } from '@/modal';
 import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { useIsTablet } from '@/utils/responsive';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -340,9 +339,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
-    const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
+    const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(session.id);
@@ -353,23 +352,30 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
-        Modal.alert(
-            t('sessionInfo.archiveSession'),
-            t('sessionInfo.archiveSessionConfirm'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.archiveSession'),
-                    style: 'destructive',
-                    onPress: performArchive
-                }
-            ]
-        );
+        performArchive();
     }, [performArchive]);
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
+
+    const handlePress = React.useCallback(() => {
+        navigateToSession(session.id);
+    }, [navigateToSession, session.id]);
+
+    const handleContextMenu = React.useCallback((event: any) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        setActionsAnchor({
+            type: 'point',
+            x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,
+            y: event.nativeEvent.clientY ?? event.nativeEvent.pageY ?? 0,
+        });
+    }, []);
+
+    const webMenuProps = Platform.OS === 'web' ? {
+        onContextMenu: handleContextMenu,
+    } as any : {};
 
     const itemContent = (
         <Pressable
@@ -378,16 +384,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 showBorder && styles.sessionRowWithBorder,
                 selected && styles.sessionRowSelected
             ]}
-            onPressIn={() => {
-                if (isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
-            onPress={() => {
-                if (!isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
+            onPress={handlePress}
+            {...webMenuProps}
         >
             <View style={styles.avatarContainer}>
                 <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
@@ -466,7 +464,17 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     );
 
     if (!swipeEnabled) {
-        return itemContent;
+        return (
+            <>
+                {itemContent}
+                <SessionActionsPopover
+                    anchor={actionsAnchor}
+                    onClose={() => setActionsAnchor(null)}
+                    session={session}
+                    visible={!!actionsAnchor}
+                />
+            </>
+        );
     }
 
     const renderRightActions = () => (
