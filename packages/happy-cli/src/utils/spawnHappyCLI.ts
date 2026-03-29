@@ -101,5 +101,5 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
   }
   
   const runtime = isBun() ? 'bun' : 'node';
-  return spawn(runtime, nodeArgs, options);
+  return spawn(runtime, nodeArgs, { ...options, windowsHide: true });
 }
