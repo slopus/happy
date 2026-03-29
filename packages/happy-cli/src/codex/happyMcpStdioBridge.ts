@@ -43,18 +43,37 @@ async function main() {
   }
 
   let httpClient: Client | null = null;
+  let connectPromise: Promise<Client> | null = null;
 
   async function ensureHttpClient(): Promise<Client> {
     if (httpClient) return httpClient;
-    const client = new Client(
-      { name: 'happy-stdio-bridge', version: '1.0.0' },
-      { capabilities: {} }
-    );
+    if (connectPromise) return connectPromise;
 
-    const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
-    await client.connect(transport);
-    httpClient = client;
-    return client;
+    connectPromise = (async () => {
+      const client = new Client(
+        { name: 'happy-stdio-bridge', version: '1.0.0' },
+        { capabilities: {} }
+      );
+
+      const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
+
+      transport.onclose = () => {
+        httpClient = null;
+        connectPromise = null;
+      };
+
+      client.onclose = () => {
+        httpClient = null;
+        connectPromise = null;
+      };
+
+      await client.connect(transport);
+      httpClient = client;
+      connectPromise = null;
+      return client;
+    })();
+
+    return connectPromise;
   }
 
   // Create STDIO MCP server
@@ -80,6 +99,11 @@ async function main() {
         // Pass-through response from HTTP server
         return response as any;
       } catch (error) {
+        // Close stale client so next call reconnects
+        if (httpClient) {
+          try { await httpClient.close(); } catch {}
+          httpClient = null;
+        }
         return {
           content: [
             { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },

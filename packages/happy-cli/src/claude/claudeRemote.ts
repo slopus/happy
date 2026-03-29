@@ -162,6 +162,7 @@ export async function claudeRemote(opts: {
     });
 
     updateThinking(true);
+    let waitingForInput = false;
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
@@ -192,7 +193,7 @@ export async function claudeRemote(opts: {
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                logger.debug('[claudeRemote] Result received');
 
                 // Send completion messages
                 if (isCompactCommand) {
@@ -206,14 +207,23 @@ export async function claudeRemote(opts: {
                 // Send ready event
                 opts.onReady();
 
-                // Push next message
-                const next = await opts.nextMessage();
-                if (!next) {
-                    messages.end();
-                    return;
+                // Push next message (non-blocking so SDK messages keep flowing)
+                if (!waitingForInput) {
+                    waitingForInput = true;
+                    opts.nextMessage().then(next => {
+                        waitingForInput = false;
+                        if (!next) {
+                            messages.end();
+                        } else {
+                            mode = next.mode;
+                            messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                        }
+                    }).catch(err => {
+                        waitingForInput = false;
+                        logger.debug('[claudeRemote] nextMessage() error, ending', err);
+                        messages.end();
+                    });
                 }
-                mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
             }
 
             // Handle tool result

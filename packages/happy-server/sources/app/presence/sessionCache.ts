@@ -210,10 +210,10 @@ class ActivityCache {
                                 id: update.id
                             }
                         },
-                        data: { lastActiveAt: new Date(update.timestamp) }
+                        data: { lastActiveAt: new Date(update.timestamp), active: true }
                     })
                 ));
-                
+
                 log({ module: 'session-cache' }, `Flushed ${machineUpdates.length} machine updates`);
             } catch (error) {
                 log({ module: 'session-cache', level: 'error' }, `Error updating machines: ${error}`);

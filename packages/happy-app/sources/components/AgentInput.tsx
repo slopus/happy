@@ -75,7 +75,8 @@ interface AgentInputProps {
     minHeight?: number;
 }
 
-const MAX_CONTEXT_SIZE = 190000;
+const MAX_CONTEXT_SIZE_200K = 190000;
+const MAX_CONTEXT_SIZE_1M = 1000000;
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -283,7 +284,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 }));
 
 const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
-    const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
+    const maxContext = contextSize > MAX_CONTEXT_SIZE_200K ? MAX_CONTEXT_SIZE_1M : MAX_CONTEXT_SIZE_200K;
+    const percentageUsed = (contextSize / maxContext) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 
     if (percentageRemaining <= 5) {

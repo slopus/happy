@@ -77,11 +77,28 @@ export async function startHappyServer(client: ApiSessionClient) {
     const server = createServer(async (req, res) => {
         const mcp = createMcpServer(handler);
         try {
+            // Pre-parse body to avoid @hono/node-server stream conversion issues
+            let parsedBody: unknown;
+            if (req.method === 'POST') {
+                const chunks: Buffer[] = [];
+                for await (const chunk of req) {
+                    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+                }
+                try {
+                    parsedBody = JSON.parse(Buffer.concat(chunks).toString());
+                } catch {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null }));
+                    mcp.close();
+                    return;
+                }
+            }
+
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
             });
             await mcp.connect(transport);
-            await transport.handleRequest(req, res);
+            await transport.handleRequest(req, res, parsedBody);
             res.on('close', () => {
                 transport.close();
                 mcp.close();
@@ -93,6 +110,10 @@ export async function startHappyServer(client: ApiSessionClient) {
             }
             mcp.close();
         }
+    });
+
+    server.on('error', (error) => {
+        logger.debug('[happyMCP] Server error:', error);
     });
 
     const baseUrl = await new Promise<URL>((resolve) => {
