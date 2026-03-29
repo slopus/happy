@@ -91,7 +91,8 @@ function createRipgrepWrapper(binaryPath) {
             const { spawnSync } = require('child_process');
             const result = spawnSync(binaryPath, args, {
                 stdio: 'inherit',
-                cwd: process.cwd()
+                cwd: process.cwd(),
+                windowsHide: true
             });
             return result.status || 0;
         }

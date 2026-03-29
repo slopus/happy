@@ -73,7 +73,8 @@ const binPath = path.join(__dirname, '..', 'bin', 'happy.mjs');
 const proc = spawn('node', [binPath, command, ...args], {
   env,
   stdio: 'inherit',
-  shell: process.platform === 'win32'
+  shell: process.platform === 'win32',
+  windowsHide: true
 });
 
 proc.on('exit', (code) => process.exit(code || 0));

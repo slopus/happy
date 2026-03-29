@@ -38,7 +38,7 @@ function resolvePathSafe(filePath) {
  */
 function findNpmGlobalCliPath() {
     try {
-        const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
+        const globalRoot = execSync('npm root -g', { encoding: 'utf8', windowsHide: true }).trim();
         const globalCliPath = path.join(globalRoot, '@anthropic-ai', 'claude-code', 'cli.js');
         if (fs.existsSync(globalCliPath)) {
             return globalCliPath;
@@ -187,7 +187,7 @@ function findBunGlobalCliPath() {
     // First check if bun command exists (cross-platform)
     try {
         const bunCheckCommand = process.platform === 'win32' ? 'where bun' : 'which bun';
-        execSync(bunCheckCommand, { encoding: 'utf8' });
+        execSync(bunCheckCommand, { encoding: 'utf8', windowsHide: true });
     } catch (e) {
         return null; // bun not installed
     }
@@ -495,7 +495,8 @@ function runClaudeCli(cliPath) {
         const args = process.argv.slice(2);
         const child = spawn(cliPath, args, {
             stdio: 'inherit',
-            env: process.env
+            env: process.env,
+            windowsHide: true
         });
         child.on('exit', (code) => {
             process.exit(code || 0);
