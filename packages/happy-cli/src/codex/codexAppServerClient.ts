@@ -350,9 +350,17 @@ export class CodexAppServerClient {
                 });
             }
 
-            if (item.phase === 'final_answer' && this.pendingTurnCompletion?.started) {
+            const turnId = this.extractTurnId(params) ?? this._turnId;
+            if (item.phase === 'final_answer' && this.pendingTurnCompletion) {
+                // Some app-server builds emit the final answer item but omit the
+                // corresponding task_started/turn/started lifecycle event. If we
+                // already know the turn id from turn/start, treat final_answer as
+                // sufficient evidence that the active turn completed.
+                if (turnId) {
+                    this.markPendingTurnStarted(turnId);
+                }
                 this.emitRawTurnCompletion(
-                    this.extractTurnId(params),
+                    turnId,
                     'completed',
                     null,
                     `${method}:final_answer`,
@@ -1024,9 +1032,10 @@ export class CodexAppServerClient {
         // Command execution approval
         if (method === 'item/commandExecution/requestApproval' || method === 'execCommandApproval') {
             const legacy = method === 'execCommandApproval';
+            const callId = params.itemId ?? params.callId ?? String(id);
             const decision = await this.handleApproval({
                 type: 'exec',
-                callId: params.itemId ?? String(id),
+                callId,
                 command: params.command != null ? [params.command] : [],
                 cwd: params.cwd,
                 reason: params.reason,

@@ -41,6 +41,7 @@ type MockRpcMessage = {
     id?: number;
     method?: string;
     params?: any;
+    result?: any;
 };
 
 function pushJsonLine(stdout: NodeJS.ReadableStream & { push: (chunk: string) => void }, payload: unknown) {
@@ -709,6 +710,161 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('uses itemId for command approvals and maps approved_for_session to v2 wire responses', async () => {
+        const approvals: Array<Record<string, unknown>> = [];
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3005,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-5', path: '/tmp/thread-raw-5' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite', writableRoots: [], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+                                reasoningEffort: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 99,
+                            method: 'item/commandExecution/requestApproval',
+                            params: {
+                                threadId: 'thread-raw-5',
+                                turnId: 'turn-raw-5',
+                                itemId: 'exec-approval-1',
+                                command: 'gh --version',
+                                cwd: '/tmp/project',
+                                reason: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setApprovalHandler(async (params) => {
+            approvals.push(params as Record<string, unknown>);
+            return 'approved_for_session';
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+
+        await waitFor(() => approvals.length === 1);
+        await waitFor(() => requests.some((msg) => msg.id === 99 && msg.result?.decision === 'acceptForSession'));
+
+        expect(approvals[0]).toEqual(expect.objectContaining({
+            type: 'exec',
+            callId: 'exec-approval-1',
+            command: ['gh --version'],
+            cwd: '/tmp/project',
+            reason: null,
+        }));
+        expect(requests).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 99,
+                result: expect.objectContaining({
+                    decision: 'acceptForSession',
+                }),
+            }),
+        ]));
+
+        await client.disconnect();
+    });
+
+    it('falls back to legacy exec callId when itemId is unavailable', async () => {
+        const approvals: Array<Record<string, unknown>> = [];
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3006,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-6', path: '/tmp/thread-raw-6' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite', writableRoots: [], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+                                reasoningEffort: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 41,
+                            method: 'execCommandApproval',
+                            params: {
+                                conversationId: 'thread-raw-6',
+                                callId: 'legacy-exec-1',
+                                approvalId: null,
+                                command: 'git status',
+                                cwd: '/tmp/project',
+                                reason: 'needs approval',
+                                parsedCmd: [],
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setApprovalHandler(async (params) => {
+            approvals.push(params as Record<string, unknown>);
+            return 'approved_for_session';
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+
+        await waitFor(() => approvals.length === 1);
+        await waitFor(() => requests.some((msg) => msg.id === 41 && msg.result?.decision === 'approved_for_session'));
+
+        expect(approvals[0]).toEqual(expect.objectContaining({
+            type: 'exec',
+            callId: 'legacy-exec-1',
+            command: ['git status'],
+            cwd: '/tmp/project',
+            reason: 'needs approval',
+        }));
+        expect(requests).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 41,
+                result: expect.objectContaining({
+                    decision: 'approved_for_session',
+                }),
+            }),
+        ]));
+
+        await client.disconnect();
+    });
+
     it('falls back to final answer completion when raw turn/completed is missing', async () => {
         const proc = createMockProcess({
             pid: 3002,
@@ -785,6 +941,79 @@ describe('CodexAppServerClient sandbox integration', () => {
             expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-2' }),
             expect.objectContaining({ type: 'agent_message', message: 'still works' }),
             expect.objectContaining({ type: 'task_complete', turn_id: 'turn-raw-2' }),
+        ]));
+
+        await client.disconnect();
+    });
+
+    it('falls back to final answer completion when turn/started is also missing', async () => {
+        const proc = createMockProcess({
+            pid: 3003,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-3', path: '/tmp/thread-raw-3' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-raw-3', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-3',
+                                turnId: 'turn-raw-3',
+                                item: {
+                                    type: 'agentMessage',
+                                    id: 'msg-3',
+                                    text: 'still completes',
+                                    phase: 'final_answer',
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('say hi again')).resolves.toEqual({ aborted: false });
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'agent_message', message: 'still completes' }),
+            expect.objectContaining({ type: 'task_complete', turn_id: 'turn-raw-3' }),
         ]));
 
         await client.disconnect();
