@@ -21,13 +21,15 @@ while true; do
     echo "========================================="
     echo ""
 
-    # Odd iterations: Claude, even iterations: Codex — 40 min timeout
+    # Odd iterations: Claude, even iterations: Codex — 2 hour timeout
+    # The full 38-step walkthrough takes 30-40 min just for Claude steps,
+    # plus webreel overhead. 40 min was too short and killed iterations mid-run.
     if (( ITERATION % 2 == 1 )); then
-        timeout 2400 claude -p --dangerously-skip-permissions \
+        timeout 7200 claude -p --dangerously-skip-permissions \
             "$PROMPT" \
             2>&1 | tee "$LOGFILE" || true
     else
-        timeout 2400 codex exec -s danger-full-access \
+        timeout 7200 codex exec -s danger-full-access \
             "$PROMPT" \
             2>&1 | tee "$LOGFILE" || true
     fi
