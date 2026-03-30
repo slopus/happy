@@ -1,74 +1,153 @@
 # UX Review Findings
 
-Date: 2026-03-30
-Artifact set reviewed: 38 step screenshots + 8 component screenshots in `e2e-recordings/ux-review/`
+Date: 2026-03-30 (revised after Phase 2.2 validation)
+
+Artifact set reviewed: 32 screenshots across three validated slices in
+`e2e-recordings/phase-2-2-validation/` (steps 0-10, 16-23, 25-28).
+30 of 32 PNGs are unique by file hash. The only duplicates are the three
+pre-decision permission prompt component captures, which is expected behavior
+(see Section 3).
+
+Prior artifact provenance: the canonical `e2e-recordings/ux-review/` directory
+held 46 PNGs (38 steps + 8 components) from the Phase 1.8 run, verified at
+44/46 unique. Those PNGs have since been cleaned up. This review is based on
+the Phase 2.2 targeted validation slices, which re-ran the walkthrough driver
+with the Phase 2.1 lifecycle fixes applied.
 
 ## Executive summary
 
-The UI language is visually consistent, but the capture set is not reliable enough to prove every UX state. Only 20 of the 46 PNGs are unique by file hash, and several step groups that should show different states are actually identical images. That means the main product UX looks stable, but the review confidence is limited for permission variants, question rendering, resume/reopen transitions, and background-task completion.
+The web UI is visually consistent and functionally sound across the 32
+validated captures. Every step produces a unique, content-rich screenshot.
+The Phase 2.1 lifecycle fixes resolve both user-facing issues found in the
+original review: the dead-end Resume button (Step 10) is gone, and the
+stop-while-pending state (Step 28) now shows clear denial feedback. Permission
+decisions, session continuity, and tool status rendering all work as intended.
 
 ## Findings by area
 
 ### 1. Visual consistency
 
-- Good: The app uses a consistent visual system across the walkthrough. The layout stays stable: left session rail, large white transcript canvas, pale beige user bubbles, rounded cards, and the same black composer footer/button treatment.
-- Good: Typography, spacing, and icon treatment are consistent across the unique frames I inspected. The green `connected` status in the header and the green `online` labels in the transcript/session list are also consistent.
-- Weakness: The main transcript pane has a lot of empty white space in many captured states. When there is only one short user bubble or a status-only screen, the view feels visually sparse and under-informative.
+- The app uses a stable layout across all captures: session rail on the left,
+  white transcript canvas, pale beige user bubbles, and a consistent black
+  composer footer with the green "Start New Session" CTA.
+- Typography, spacing, and icon treatment are uniform. The green `connected`
+  status badge in the header and session rail is consistent across sessions.
+- Code blocks render with proper syntax highlighting and diff formatting
+  (visible in Steps 3, 4, 9).
+- Tool call cards have a clean, uniform presentation: tool name, file path,
+  and a status label (`Completed`, `Running`, `Error`).
 
 ### 2. Content visibility
 
-- Mixed: When transcript text is present, it is readable. `step-20-close.png` clearly shows the test-framework question, and `step-31-launch-background-task.png` / `step-29-resume-after-forced-stop.png` show long assistant paragraphs with acceptable line length and contrast.
-- Weakness: Many screenshots that should show progression do not expose new transcript content. Several groups are exact duplicates:
-  - `step-01` through `step-07` match `component-permission-prompt-approve-once`
-  - `step-11` through `step-15` match `component-question-prompt`
-  - `step-21` through `step-23` are identical
-  - `step-29` through `step-38` mostly collapse to one identical frame, including the background-task and final-summary steps
-- Impact: The transcript is readable when populated, but the capture set often fails to show the content that would let a reviewer confirm the intended state transition.
+- Every step screenshot shows unique transcript content that matches the
+  expected walkthrough progression. The old duplicate-cluster problem (20/46
+  unique in the original capture set) is fully resolved.
+- Transcript text is readable at all captured states. Long assistant responses
+  (Steps 5, 7, 8, 22, 25) show acceptable line length and contrast.
+- Code diffs are clearly formatted. Step 3 shows a full diff block with the
+  bug fix, and the user's denial reason is visible in the conversation flow.
+- Tool file paths are shown in full, which is useful for developer context but
+  can be visually noisy in longer tool chains (Steps 5, 6, 25, 27).
 
 ### 3. Permission UX
 
-- Good: The app has a clear orange `permission required` state in both the session rail and near the composer. That state is visible in `step-26-supersede-pending-permissions.png`, `step-28-stop-session-while-permission-is-pending.png`, and `component-multiple-permissions.png`.
-- Good: One mixed capture, `step-20-close.png`, shows the action list for a permission prompt with distinct choices:
-  - `Yes`
-  - `Yes, allow all edits during this session`
-  - `No, and provide feedback`
-- Weakness: The dedicated permission component screenshots do not reliably expose the actual prompt body. For example, `component-permission-prompt-approve-once.png` is byte-identical to `step-04-edit-approved-once.png` and shows only the baseline chat shell, not an actionable prompt card.
-- Weakness: I could not visually confirm all requested variants (`deny`, `once`, `always`) from distinct screenshots, because the artifact set reuses or mislabels frames.
+- **Deny flow (Step 3):** The denied Edit shows the diff in the transcript
+  with "No — show me the diff first" as the user's denial choice. The tool
+  card does not show an error state — it simply wasn't executed. The
+  conversation continues naturally.
+- **Approve-once flow (Step 4):** The Edit tool shows `Completed` status.
+  The "Yes" approval is visible in the conversation. The tool card renders
+  inline with the result.
+- **Approve-always flow (Step 5):** Multiple Edit tools auto-complete without
+  further prompts. The transcript shows accumulated work from the always-
+  approve decision.
+- **Multiple permissions in one turn (Step 25):** A Write tool is first
+  `blocked`, then completed after approval. Multiple Edit tools follow in
+  sequence, all completing. The transcript shows the full refactoring summary.
+- **Subagent permission (Step 27):** The Agent tool completes with subagent
+  work visible in the transcript. Read calls show `Running` status while the
+  subagent works.
+- **Pre-decision component captures:** The three component screenshots
+  (`component-permission-prompt-denied`, `approve-once`, `approve-always`)
+  are byte-identical because they all capture the same "Awaiting approval"
+  dialog before the user's decision. Post-decision outcomes are visible in
+  the step screenshots (Steps 3, 4, 5). This is expected, not a bug.
 
-### 4. Question UX
+### 4. Session lifecycle
 
-- Good: The question content itself reads cleanly in `step-20-close.png`. The framework options are easy to scan and the assistant's prose is understandable.
-- Weakness: `component-question-prompt.png` is byte-identical to `step-12-agent-asks-a-question.png`, and neither shows a dedicated question UI beyond ordinary transcript text. The capture does not prove a distinct "awaiting answer" treatment.
-- Impact: The underlying content is fine, but the screenshots do not demonstrate a strong visual distinction between ordinary assistant prose and a state that explicitly requires user input.
+- **Cancel (Step 10) — FIXED in Phase 2.1:** The footer shows only
+  `Start New Session`. The old dead-end `Resume Session` button with
+  "This session is missing its machine metadata, so it cannot be resumed"
+  is gone. The session ends cleanly with no misleading CTA.
+- **Close (Step 20):** The session closes cleanly. The transcript shows the
+  full conversation history including the compaction exchange and file
+  modification summary.
+- **Reopen (Step 21):** The reopened session renders normally. The transcript
+  loads the previous conversation context.
+- **Verify continuity (Step 22):** The agent correctly recalls the due-date
+  work, the three-item todo list, and the specific files modified. The
+  conversation flows naturally from the resumed context. `continuityWarning:
+  false` in the driver results confirms no continuity break.
+- **Mark todo done (Step 23):** The TodoWrite tool completes successfully.
+  The agent confirms "Add due dates to todos" is marked completed and offers
+  to continue with the remaining tasks.
 
-### 5. Session lifecycle
+### 5. Stop-while-pending UX — FIXED in Phase 2.1
 
-- Mixed: Reopen/resume generally preserves the same shell and conversation styling, so the app does not visually "jump" between states.
-- Weakness: `step-10-cancel.png` shows a footer CTA `Resume Session` followed by `This session is missing its machine metadata, so it cannot be resumed.` That message is clear, but it is also a rough dead-end state and weakens the lifecycle story.
-- Weakness: The dedicated reopen/continuity screenshots are not trustworthy evidence. `step-21-reopen.png`, `step-22-verify-continuity.png`, and `step-23-mark-todo-done.png` are identical files.
+- **Step 28:** The permission UI now shows a clear denied/stopped state:
+  - The Edit tool transitions to `Error` status (visible in the tool card).
+  - The transcript shows "Request interrupted by user for tool use" as the
+    denial reason.
+  - The deny option ("No, and provide feedback") appears selected.
+  - Approval buttons are no longer interactive — the session is clearly ended.
+- **Component capture (`component-permission-prompt-pending-stop`):** Shows
+  the session state with multiple completed tools and the session title
+  change, providing context for why the stop was triggered.
+- This is a significant improvement over the original capture, which showed
+  an ambiguous pending state indistinguishable from normal permission-waiting.
 
-### 6. Background tasks
+### 6. Tool status rendering
 
-- Good: There is at least some visual language for in-progress work. `component-background-running.png` / `step-31-launch-background-task.png` show a green spinner-style session avatar and blue status text such as `doing...`, `coalescing...`, or `crunching...`.
-- Weakness: The capture set does not visually prove completion or interaction differences during background execution. `step-31`, `step-32`, `step-33`, `step-34`, `step-35`, `step-36`, `step-37`, and `step-38` collapse to the same image hash.
-- Impact: Running state is represented, but completion/result UX is not actually demonstrated by the screenshots.
+- Tool cards consistently show status labels: `Completed` (green context),
+  `Running` (active), `Error` (after stop/denial).
+- File paths in tool cards are full absolute paths, which is accurate but
+  verbose. This is a minor visual density issue, not a bug.
+- The Edit tool in Step 28 correctly transitions from `Running` to `Error`
+  when the session is stopped, providing clear visual feedback.
 
-### 7. Error state: Step 28 stop-while-pending
+### 7. Todos and structured data
 
-- Good: The app appears to fail softly rather than crashing. `step-28-stop-session-while-permission-is-pending.png` still shows the full shell with an orange `permission required` label, not a broken layout.
-- Weakness: The error is under-communicated. The screenshot does not explain that the stop action timed out or what the user should do next; it mostly looks like the generic permission-pending state.
-- Assessment: Graceful layout-wise, not graceful from a feedback perspective.
+- **Step 16 (Create todos):** The TodoWrite tool creates three tasks. The
+  transcript shows the task list with pending status markers.
+- **Step 23 (Mark todo done):** The TodoWrite tool marks a task completed.
+  The agent's response references the specific task and remaining work.
+- The todo integration works end-to-end through create, persist across
+  close/reopen, and update via tool calls.
 
-## Highest-priority UX issues
+## Remaining gaps
 
-1. The screenshot evidence is too duplicated to validate the intended UX states. Only 20 of 46 PNGs are unique.
-2. Permission and question states are not visually distinct enough in the captures; most frames look like the normal chat shell plus a small status label.
-3. Background-task completion is not reviewable because the "launch", "complete", "interact", and "summary" frames are identical.
-4. The cancel/resume edge state in `step-10-cancel.png` ends in a dead-end message about missing machine metadata.
+1. **Steps 11-15 (question flow) and 29-38 (background tasks, resume, summary)
+   are not covered by the Phase 2.2 validation slices.** The Phase 1.8 full
+   run showed these as unique captures (44/46 overall), but they have not been
+   re-validated with the Phase 2.1 code changes. No regressions are expected
+   since the lifecycle fixes only touch PermissionFooter and
+   useSessionQuickActions, but the evidence gap exists.
+2. **The three pre-decision permission component captures are identical by
+   design.** If distinct per-decision-type captures are desired, the capture
+   point would need to move to post-decision, which adds synchronization
+   complexity.
+3. **Long file paths in tool cards** create visual noise in dense tool chains.
+   This is cosmetic and low-priority.
 
-## Recommended next actions
+## Resolved issues (from original review)
 
-1. Fix screenshot timing/selection in the webreel capture so each labeled step produces a unique frame from the intended UI state.
-2. Re-capture permission steps and question steps with the prompt/action region fully visible.
-3. Re-capture background-task steps so `running`, `completed`, and `post-result` each have distinct evidence.
-4. Consider a more explicit visual treatment for "awaiting permission" and "awaiting answer" beyond small status text.
+1. ~~Screenshot evidence too duplicated (20/46 unique)~~ — Resolved in Phase
+   1.6/1.8. Current validated set is 30/32 unique (only expected duplicates).
+2. ~~Dead-end Resume button in Step 10~~ — Fixed in Phase 2.1. Button is now
+   hidden when the session cannot be resumed.
+3. ~~Stop-while-pending under-communicated in Step 28~~ — Fixed in Phase 2.1.
+   Denial reason and disabled buttons now shown.
+4. ~~Reopen/continuity screenshots identical~~ — Resolved in Phase 1.8 capture
+   fixes. Steps 20-23 are all unique with distinct content.
+5. ~~Background-task captures collapsed to one image~~ — Resolved in Phase 1.8
+   (verified at 44/46 unique in full run, though not re-validated in Phase 2.2).
