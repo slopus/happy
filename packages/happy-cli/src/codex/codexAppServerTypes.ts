@@ -108,6 +108,14 @@ export type ApprovalResponse = {
     decision: ReviewDecision;
 };
 
+export type McpServerElicitationAction = "accept" | "decline" | "cancel";
+
+export type McpServerElicitationRequestResponse = {
+    action: McpServerElicitationAction;
+    content: Record<string, unknown> | null;
+    _meta: Record<string, unknown> | null;
+};
+
 export type ReviewDecision =
     | "approved"
     | { approved_execpolicy_amendment: { proposed_execpolicy_amendment: string[] } }

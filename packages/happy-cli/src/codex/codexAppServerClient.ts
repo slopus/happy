@@ -25,6 +25,7 @@ import type {
     SandboxMode,
     InputItem,
     ReasoningEffort,
+    McpServerElicitationRequestResponse,
 } from './codexAppServerTypes';
 import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
@@ -40,12 +41,16 @@ type PendingRequest = {
 type LegacyPatchChanges = Record<string, Record<string, unknown>>;
 
 export type ApprovalHandler = (params: {
-    type: 'exec' | 'patch';
+    type: 'exec' | 'patch' | 'mcp';
     callId: string;
     command?: string[];
     cwd?: string;
     fileChanges?: Record<string, unknown>;
     reason?: string | null;
+    toolName?: string;
+    input?: unknown;
+    serverName?: string;
+    message?: string;
 }) => Promise<ReviewDecision>;
 
 /**
@@ -1020,13 +1025,72 @@ export class CodexAppServerClient {
         return legacy ? 'denied' : 'decline';
     }
 
+    private parseToolNameFromElicitationMessage(message: unknown): string | null {
+        if (typeof message !== 'string') {
+            return null;
+        }
+        const match = message.match(/tool "([^"]+)"/i);
+        return match?.[1] ?? null;
+    }
+
+    private mapDecisionToMcpElicitationResponse(
+        decision: ReviewDecision,
+        params: any,
+    ): McpServerElicitationRequestResponse {
+        if (typeof decision === 'string') {
+            switch (decision) {
+                case 'approved':
+                case 'approved_for_session':
+                    return {
+                        action: 'accept',
+                        content: params?.mode === 'form' ? {} : null,
+                        _meta: null,
+                    };
+                case 'abort':
+                    return {
+                        action: 'cancel',
+                        content: null,
+                        _meta: null,
+                    };
+                case 'denied':
+                default:
+                    return {
+                        action: 'decline',
+                        content: null,
+                        _meta: null,
+                    };
+            }
+        }
+
+        return {
+            action: 'decline',
+            content: null,
+            _meta: null,
+        };
+    }
+
     private async handleServerRequest(id: number, method: string, params: any): Promise<void> {
+        if (method === 'mcpServer/elicitation/request') {
+            const toolName = this.parseToolNameFromElicitationMessage(params?.message) ?? params?.serverName ?? 'McpTool';
+            const decision = await this.handleApproval({
+                type: 'mcp',
+                callId: `${params?.serverName ?? 'mcp'}:${id}`,
+                toolName,
+                input: params?._meta?.tool_params ?? {},
+                serverName: params?.serverName,
+                message: params?.message,
+            });
+            this.respond(id, this.mapDecisionToMcpElicitationResponse(decision, params));
+            return;
+        }
+
         // Command execution approval
         if (method === 'item/commandExecution/requestApproval' || method === 'execCommandApproval') {
             const legacy = method === 'execCommandApproval';
+            const callId = params.itemId ?? params.callId ?? String(id);
             const decision = await this.handleApproval({
                 type: 'exec',
-                callId: params.itemId ?? String(id),
+                callId,
                 command: params.command != null ? [params.command] : [],
                 cwd: params.cwd,
                 reason: params.reason,

@@ -7,6 +7,7 @@
 
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
+import type { AgentState } from "@/api/types";
 import {
     BasePermissionHandler,
     PermissionResult,
@@ -20,12 +21,32 @@ export type { PermissionResult, PendingRequest };
  * Codex-specific permission handler.
  */
 export class CodexPermissionHandler extends BasePermissionHandler {
+    private static readonly ALWAYS_AUTO_APPROVE_NAMES = [
+        'change_title',
+    ];
+
+    private static readonly ALWAYS_AUTO_APPROVE_IDS = [
+        'change_title',
+    ];
+
     constructor(session: ApiSessionClient) {
         super(session);
     }
 
     protected getLogPrefix(): string {
         return '[Codex]';
+    }
+
+    private shouldAutoApprove(toolName: string, toolCallId: string): boolean {
+        if (CodexPermissionHandler.ALWAYS_AUTO_APPROVE_NAMES.some((name) => toolName.toLowerCase().includes(name.toLowerCase()))) {
+            return true;
+        }
+
+        if (CodexPermissionHandler.ALWAYS_AUTO_APPROVE_IDS.some((id) => toolCallId.toLowerCase().includes(id.toLowerCase()))) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -40,6 +61,27 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         toolName: string,
         input: unknown
     ): Promise<PermissionResult> {
+        if (this.shouldAutoApprove(toolName, toolCallId)) {
+            logger.debug(`${this.getLogPrefix()} Auto-approving tool ${toolName} (${toolCallId})`);
+
+            this.session.updateAgentState((currentState) => ({
+                ...currentState,
+                completedRequests: {
+                    ...currentState.completedRequests,
+                    [toolCallId]: {
+                        tool: toolName,
+                        arguments: input,
+                        createdAt: Date.now(),
+                        completedAt: Date.now(),
+                        status: 'approved',
+                        decision: 'approved',
+                    },
+                },
+            } satisfies AgentState));
+
+            return { decision: 'approved' };
+        }
+
         return new Promise<PermissionResult>((resolve, reject) => {
             // Store the pending request
             this.pendingRequests.set(toolCallId, {
