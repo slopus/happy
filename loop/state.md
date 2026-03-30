@@ -446,17 +446,57 @@ Driver results:
 3. Steps 20-23 show no visible lifecycle/continuity regression from the
    Phase 2.1 changes.
 
+## Phase 2.3: DONE
+
+Refreshed `e2e-recordings/ux-review/ux-review-findings.md` to match the
+current validated artifact set. Committed in `babb043f`.
+
+### What changed
+
+The review was fully rewritten. Old text described a 20/46-unique
+duplicate-heavy capture set with two open lifecycle bugs. New text is based
+on the Phase 2.2 validated slices (32 PNGs, 30/32 unique) and reflects the
+Phase 2.1 fixes.
+
+### Key sections in the updated review
+
+1. **Visual consistency** — confirmed stable layout, typography, code block
+   rendering across all 32 captures.
+2. **Content visibility** — every step now produces unique content-rich
+   screenshots. Old duplicate clusters are resolved.
+3. **Permission UX** — documented deny, approve-once, approve-always,
+   multiple-permissions, subagent, and stop-while-pending flows with specific
+   step references.
+4. **Session lifecycle** — Step 10 fix validated (no Resume button), Steps
+   20-23 continuity confirmed with distinct screenshots.
+5. **Stop-while-pending** — Step 28 fix validated (denial reason visible,
+   buttons disabled).
+6. **Remaining gaps** — Steps 11-15 and 29-38 not re-validated in Phase 2.2
+   (were 44/46 unique in Phase 1.8 full run); pre-decision permission
+   captures identical by design; long file paths in tool cards are cosmetic.
+7. **Resolved issues** — all five original findings now tracked as resolved
+   with phase references.
+
+### Verification
+
+- `wc -l ux-review-findings.md` → 153 lines
+- `git diff --stat` → 137 insertions, 58 deletions
+- Review visually inspected against 10 Phase 2.2 screenshots read during
+  this iteration
+
 ## Current Task
 
-TASK: Phase 2.3 — Refresh the stale UX review narrative to match the current
-validated artifact set.
+TASK: Awaiting next task definition.
 
-Update `e2e-recordings/ux-review/ux-review-findings.md` so it no longer
-describes the old duplicate-heavy capture set or the now-fixed lifecycle
-issues from Steps 10 and 28. Base the rewrite on:
+All planned phases (1.0 through 2.3) are complete:
+- Phase 1.x: Full 38-step walkthrough captured, capture pipeline stabilized,
+  44/46 unique screenshots verified.
+- Phase 2.0: Lifecycle/control-flow hardening selected as next work item.
+- Phase 2.1: Dead-end Resume button and stop-while-pending UX fixed.
+- Phase 2.2: Fixes validated on real web stack with targeted capture slices.
+- Phase 2.3: UX review narrative refreshed to match current state.
 
-1. The verified Phase 1.8/1.9 artifact reliability proof in this file.
-2. The validated Phase 2.2 lifecycle screenshots in
-   `e2e-recordings/phase-2-2-validation/`.
-3. The current `walkthrough-verification.json`, not the stale earlier review
-   text.
+The remaining evidence gaps from the review (Steps 11-15 question flow and
+Steps 29-38 background tasks not re-validated post-Phase 2.1) are low risk
+since those code paths were not touched by the lifecycle fixes. A full
+walkthrough re-run would close the gap but is not blocking.
