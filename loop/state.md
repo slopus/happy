@@ -290,18 +290,75 @@ hardening on web**.
   unique. Use `loop/state.md` and `walkthrough-verification.json` as the
   source of truth for artifact reliability.
 
+## Phase 2.1: DONE
+
+Fixed session lifecycle UX issues from walkthrough Steps 10 and 28.
+Committed in `f6b93992`.
+
+### Fix 1: Step 10 — Dead-end Resume button
+
+**Root cause:** `getResumeAvailability()` in `useSessionQuickActions.ts` showed
+a disabled "Resume Session" button (`canShowResume: true, canResume: false`)
+when `session.metadata?.machineId` was missing or when no backend resume ID
+(claudeSessionId/codexThreadId) existed. These sessions can never be resumed,
+so the button was a permanent dead-end.
+
+**Fix:** Changed both conditions to `canShowResume: false` — the button is now
+hidden entirely instead of shown disabled with an error message.
+
+**Root cause investigation:** `machineId` is set at session creation time via
+`createSessionMetadata()` in the CLI. For a session that was actively running
+and then cancelled (Step 10), the machineId SHOULD exist. The missing metadata
+likely occurs when the session was created through a non-standard path or the
+metadata sync was interrupted. Regardless, hiding the button is correct since
+a session without machineId can never be resumed.
+
+### Fix 2: Step 28 — Stop-while-permission-pending feedback
+
+**Root cause:** When `stopSession()` auto-denies pending permissions with
+`reason: 'Session stopped'`, the denial reason was sent in the
+`permission-response` message but never surfaced in the UI. Two sub-cases:
+
+1. **Tool transitions to error state (normal):** The denial reason goes into
+   `part.state.error` via the v3 mapper's `unblockToolRejected()`. The
+   PermissionFooter showed the deny button as selected but no reason text.
+2. **Tool stays blocked (CLI dies before processing):** The permission appeared
+   pending with interactive buttons, but the session was already stopped.
+
+**Fix (PermissionFooter.tsx):**
+- Added `useSyncSessionState(sessionId)` to detect ended sessions.
+- When `sessionEnded && permission.status === 'pending'`, overrides `isDenied`
+  to true and `isPending` to false — buttons show as denied, not interactive.
+- Shows `denialReason` text below the deny button when available (from tool
+  error state or the "Session stopped" fallback).
+
+**Fix (toolPartMeta.ts):**
+- Added `reason` to `ToolPermissionState` interface.
+- `getToolPermissionState()` now extracts `part.state.error` as the reason
+  when the resolved permission decision is `'reject'` and the tool is in error
+  state.
+
+**Translations:** Added `permissions.sessionStopped` key to `_default.ts` and
+all 10 translation files.
+
+### Typecheck
+
+`yarn typecheck` passes cleanly.
+
+### Validation needed
+
+Full web stack validation on lifecycle steps (`step-10`, `step-20..23`,
+`step-28`) to confirm the visible behavior changes.
+
 ## Current Task
 
-TASK: Phase 2.1 — Reproduce and fix the session lifecycle/control-flow issues
-surfaced by the walkthrough.
+TASK: Phase 2.2 — Validate the Phase 2.1 fixes on the real web stack.
 
-Priority order:
+Run the walkthrough lifecycle/control steps (`step-10`, `step-20..23`,
+`step-28`) and verify:
 
-1. Fix the Step 10 cancel/resume dead-end where the UI offers `Resume Session`
-   but the session cannot resume because machine metadata is missing.
-2. Fix or clarify Step 28 stop-while-permission-pending behavior so the user
-   gets explicit feedback about whether stop succeeded, is blocked, or timed
-   out, plus what to do next.
-3. Validate on the real web stack using the lifecycle/control steps
-   (`step-10`, `step-20..23`, `step-28`) and update the UX review text if the
-   visible behavior changes.
+1. Step 10 (cancel): No "Resume Session" button visible after cancellation.
+2. Step 28 (stop while pending): Permission prompt shows denial reason
+   ("Session stopped") and buttons are disabled.
+3. Steps 20-23 (close/reopen/continuity): Verify no regressions from the
+   changes.
