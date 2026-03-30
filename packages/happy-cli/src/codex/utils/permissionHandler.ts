@@ -23,16 +23,10 @@ export type { PermissionResult, PendingRequest };
 export class CodexPermissionHandler extends BasePermissionHandler {
     private static readonly ALWAYS_AUTO_APPROVE_NAMES = [
         'change_title',
-        'happy__change_title',
-        'GeminiReasoning',
-        'CodexReasoning',
-        'think',
-        'save_memory',
     ];
 
     private static readonly ALWAYS_AUTO_APPROVE_IDS = [
         'change_title',
-        'save_memory',
     ];
 
     constructor(session: ApiSessionClient) {
