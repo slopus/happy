@@ -1,5 +1,5 @@
 import * as React from "react";
-import { View, Text } from "react-native";
+import { View, Text, Image as RNImage, Pressable, Modal, Platform } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
@@ -8,7 +8,7 @@ import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
-import { sync } from '@/sync/sync';
+import { sync, messageImageStore } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 
 
@@ -73,14 +73,39 @@ function UserTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
+  // Get images from ephemeral store (keyed by localId)
+  const images = props.message.images || (props.message.localId ? messageImageStore.get(props.message.localId) : undefined);
+  const [expandedImage, setExpandedImage] = React.useState<string | null>(null);
+
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
+        {images && images.length > 0 && (
+          <View style={styles.messageImagesContainer}>
+            {images.map((img, index) => (
+              <Pressable key={index} onPress={() => setExpandedImage(`data:${img.mediaType};base64,${img.base64}`)}>
+                <RNImage
+                  source={{ uri: `data:${img.mediaType};base64,${img.base64}` }}
+                  style={{ width: 120, height: 120, borderRadius: 8 }}
+                />
+              </Pressable>
+            ))}
+          </View>
+        )}
         <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-        {/* {__DEV__ && (
-          <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
-        )} */}
       </View>
+      {Platform.OS === 'web' && expandedImage && (
+        <Pressable
+          style={styles.imageOverlay}
+          onPress={() => setExpandedImage(null)}
+        >
+          <RNImage
+            source={{ uri: expandedImage }}
+            style={styles.expandedImage}
+            resizeMode="contain"
+          />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -221,5 +246,26 @@ const styles = StyleSheet.create((theme) => ({
   debugText: {
     color: theme.colors.agentEventText,
     fontSize: 12,
+  },
+  messageImagesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  imageOverlay: {
+    position: 'fixed' as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  expandedImage: {
+    width: '90%',
+    height: '90%',
   },
 }));
