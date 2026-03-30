@@ -73,9 +73,10 @@ export function initConsoleLogging() {
   log.setConsoleCaptureEnabled(true)
 
   function formatArgs(args: any[]): string {
-    return args.map(a =>
-      typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-    ).join(' ')
+    return args.map(a => {
+      if (typeof a !== 'object' || a === null) return String(a)
+      try { return JSON.stringify(a, null, 2) } catch { return String(a) }
+    }).join(' ')
   }
 
   function sendLog(level: string, formatted: string) {
@@ -106,10 +107,12 @@ export function initConsoleLogging() {
         return
       }
 
-      // Serialize once, reuse everywhere
-      const formatted = formatArgs(args)
+      // Pass raw args to native console (preserves interactive object inspection,
+      // clickable stack traces, and multi-arg formatting in dev tools)
+      originalConsole![level](...args)
 
-      originalConsole![level](formatted)
+      // Serialize once for buffer + remote (but NOT for native console)
+      const formatted = formatArgs(args)
       log.captureFormatted(level, formatted)
 
       logBuffer.push({
