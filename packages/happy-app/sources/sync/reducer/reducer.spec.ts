@@ -3043,4 +3043,127 @@ describe('reducer', () => {
             }
         });
     });
+
+    describe('TodoWrite latestTodos handling', () => {
+        it('does not update todos from a running TodoWrite input', () => {
+            const state = createReducer();
+            const result = reducer(state, [{
+                id: 'todo-call-only',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-todos',
+                    name: 'TodoWrite',
+                    input: {
+                        todos: [{
+                            content: 'Do the thing',
+                            status: 'pending'
+                        }]
+                    },
+                    description: null,
+                    uuid: 'tool-uuid',
+                    parentUUID: null
+                }]
+            }]);
+
+            expect(result.todos).toBeUndefined();
+        });
+
+        it('updates todos from successful TodoWrite result newTodos', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'todo-call',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-success',
+                        name: 'TodoWrite',
+                        input: {
+                            todos: [{
+                                content: 'Old task state',
+                                status: 'pending'
+                            }]
+                        },
+                        description: null,
+                        uuid: 'tool-uuid-success',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'todo-result',
+                    localId: null,
+                    createdAt: 1010,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-success',
+                        content: {
+                            oldTodos: [],
+                            newTodos: [{
+                                content: 'New authoritative task state',
+                                status: 'completed'
+                            }]
+                        },
+                        is_error: false,
+                        uuid: 'tool-uuid-success',
+                        parentUUID: null
+                    }]
+                }
+            ]);
+
+            expect(result.todos).toEqual([{
+                content: 'New authoritative task state',
+                status: 'completed'
+            }]);
+        });
+
+        it('ignores malformed TodoWrite input that later fails validation', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'bad-todo-call',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-bad',
+                        name: 'TodoWrite',
+                        input: {
+                            todos: '[{"content":"Broken","status":"pending"}]'
+                        },
+                        description: null,
+                        uuid: 'tool-uuid-bad',
+                        parentUUID: null
+                    }]
+                },
+                {
+                    id: 'bad-todo-result',
+                    localId: null,
+                    createdAt: 1010,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-bad',
+                        content: 'InputValidationError',
+                        is_error: true,
+                        uuid: 'tool-uuid-bad',
+                        parentUUID: null
+                    }]
+                }
+            ]);
+
+            expect(result.todos).toBeUndefined();
+        });
+    });
 });

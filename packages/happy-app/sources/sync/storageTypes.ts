@@ -73,6 +73,17 @@ export const AgentStateSchema = z.object({
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
+export const TodoItemSchema = z.object({
+    content: z.string(),
+    status: z.enum(['pending', 'in_progress', 'completed']),
+    priority: z.enum(['high', 'medium', 'low']).optional(),
+    id: z.string().optional(),
+});
+
+export const TodoItemsSchema = z.array(TodoItemSchema);
+
+export type TodoItem = z.infer<typeof TodoItemSchema>;
+
 export interface Session {
     id: string,
     seq: number,
@@ -87,12 +98,7 @@ export interface Session {
     thinking: boolean,
     thinkingAt: number,
     presence: "online" | number, // "online" when active, timestamp when last seen
-    todos?: Array<{
-        content: string;
-        status: 'pending' | 'in_progress' | 'completed';
-        priority: 'high' | 'medium' | 'low';
-        id: string;
-    }>;
+    todos?: TodoItem[];
     draft?: string | null; // Local draft message, not synced to server
     permissionMode?: string | null; // Local permission mode key, not synced to server
     modelMode?: string | null; // Local model key, not synced to server

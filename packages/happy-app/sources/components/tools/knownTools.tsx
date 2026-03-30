@@ -1,4 +1,4 @@
-import { Metadata } from '@/sync/storageTypes';
+import { Metadata, TodoItemsSchema } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
 import { stringifyToolCommand } from '@/utils/toolCommand';
@@ -396,26 +396,11 @@ export const knownTools = {
             return true; // No todos, render as minimal
         },
         input: z.object({
-            todos: z.array(z.object({
-                content: z.string().describe('The todo item content'),
-                status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
-                id: z.string().optional().describe('Unique identifier for the todo')
-            }).passthrough()).describe('The updated todo list')
+            todos: TodoItemsSchema.describe('The updated todo list')
         }).partial().passthrough(),
         result: z.object({
-            oldTodos: z.array(z.object({
-                content: z.string().describe('The todo item content'),
-                status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
-                id: z.string().describe('Unique identifier for the todo')
-            }).passthrough()).describe('The old todo list'),
-            newTodos: z.array(z.object({
-                content: z.string().describe('The todo item content'),
-                status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
-                id: z.string().describe('Unique identifier for the todo')
-            }).passthrough()).describe('The new todo list')
+            oldTodos: TodoItemsSchema.describe('The old todo list'),
+            newTodos: TodoItemsSchema.describe('The new todo list')
         }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (Array.isArray(opts.tool.input.todos)) {
