@@ -52,6 +52,8 @@ model Account {
     AccessKey           AccessKey[]
     UserFeedItem        UserFeedItem[]
     UserKVStore         UserKVStore[]
+    Agent               Agent[]
+    Project             Project[]
 }
 
 model TerminalAuthRequest {
@@ -342,6 +344,86 @@ model UserFeedItem {
     @@unique([userId, counter])
     @@unique([userId, repeatKey])
     @@index([userId, counter(sort: Desc)])
+}
+
+//
+// Agents
+//
+
+enum TaskStatus {
+    running
+    waiting_for_permission
+    done
+    failed
+}
+
+model Agent {
+    id                   String         @id @default(cuid())
+    accountId            String
+    account              Account        @relation(fields: [accountId], references: [id])
+    name                 String
+    avatar               String?
+    agentType            String         // claude-code, codex, gemini, openclaw
+    systemPrompt         String?
+    model                String?
+    permissionMode       String?
+    allowedTools         Json?          // String[]
+    disallowedTools      Json?          // String[]
+    mcpServers           Json?          // MCP server config
+    environmentVariables Json?          // Record<string, string>
+    maxTurns             Int?
+    autoTerminate        Boolean        @default(false)
+    createdAt            DateTime       @default(now())
+    updatedAt            DateTime       @updatedAt
+    projectAgents        ProjectAgent[]
+    tasks                Task[]
+
+    @@index([accountId])
+}
+
+model Project {
+    id               String         @id @default(cuid())
+    accountId        String
+    account          Account        @relation(fields: [accountId], references: [id])
+    name             String
+    description      String?
+    workingDirectory String?
+    machineId        String?
+    createdAt        DateTime       @default(now())
+    updatedAt        DateTime       @updatedAt
+    projectAgents    ProjectAgent[]
+    tasks            Task[]
+
+    @@index([accountId])
+}
+
+model ProjectAgent {
+    projectId String
+    project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    agentId   String
+    agent     Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+    @@id([projectId, agentId])
+    @@index([projectId])
+    @@index([agentId])
+}
+
+model Task {
+    id              String     @id @default(cuid())
+    projectId       String
+    project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    agentId         String
+    agent           Agent      @relation(fields: [agentId], references: [id])
+    title           String
+    description     String?
+    status          TaskStatus @default(running)
+    happySessionId  String?
+    createdAt       DateTime   @default(now())
+    updatedAt       DateTime   @updatedAt
+    finishedAt      DateTime?
+
+    @@index([projectId])
+    @@index([agentId])
 }
 
 //
