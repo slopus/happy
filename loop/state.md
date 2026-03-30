@@ -242,12 +242,66 @@ The three identical captures are:
 - File structure: balanced braces/parens, no `require()` calls, ESM-clean
 - Config unchanged (no webreel.config.ts edits needed)
 
+## Phase 2.0: DONE
+
+Defined the next major work item after reviewing the current product context,
+pending walkthrough/exercise TODOs, and the roadmap's stabilization priorities.
+
+### Signals reviewed
+
+- `roadmap.md`: current push is explicitly "NO NEW SCOPE"; web is the primary
+  validation surface; P1 is control-flow, permission, and protocol reliability.
+- `product.md`: the manual product check still treats resume/history/stop as
+  core validation for every agent.
+- `environments/lab-rat-todo-project/exercise-flow.md`: Steps 20-28 are the
+  main lifecycle/control-flow segment (`close`, `reopen`, `verify continuity`,
+  `mark todo done`, `multiple permissions`, `supersede`, `stop while pending`).
+- `packages/happy-sync/src/e2e/{claude,codex,opencode}.integration.test.ts`:
+  those same lifecycle/control-flow steps are already first-class coverage
+  targets across providers.
+- The current walkthrough findings still surface two concrete user-facing
+  problems after the capture-path stabilization:
+  - `step-10-cancel.png` shows `Resume Session` plus `This session is missing
+    its machine metadata, so it cannot be resumed.`
+  - `step-28-stop-session-while-permission-is-pending.png` remains visually
+    under-explained even when the shell stays stable.
+
+### Decision
+
+The next major work item is **Phase 2.1 — Session lifecycle/control-flow
+hardening on web**.
+
+### Why this is the highest-impact next task
+
+1. It directly matches the roadmap's current "stabilize, no new scope" rule
+   and P1 bug bucket.
+2. It targets the most obvious remaining user-visible failure from the
+   walkthrough: resume/stop lifecycle states that look broken or ambiguous.
+3. It improves a core product promise already called out in `product.md`:
+   users must be able to leave, reopen, continue, and stop sessions reliably.
+4. It is narrower and more shippable than broader composer/orchestration work,
+   while still improving multiple providers through shared lifecycle plumbing.
+
+### Notes
+
+- `e2e-recordings/ux-review/ux-review-findings.md` is stale relative to the
+  verified Phase 1.8/1.9 artifact set: it still references the earlier 20/46
+  duplicate-heavy captures, while the current proof in this file is 44/46
+  unique. Use `loop/state.md` and `walkthrough-verification.json` as the
+  source of truth for artifact reliability.
+
 ## Current Task
 
-Phase 1 UX walkthrough is complete (Phases 1.0–1.9). All remaining work is
-polish — the screenshot set has 44/46 unique captures, the runner is resilient
-to webreel compositing failures, and the permission prompt capture design is
-documented.
+TASK: Phase 2.1 — Reproduce and fix the session lifecycle/control-flow issues
+surfaced by the walkthrough.
 
-TASK: Phase 2.0 — Define the next major work item. Read the project context
-and any pending issues/TODOs to determine what the most impactful next task is.
+Priority order:
+
+1. Fix the Step 10 cancel/resume dead-end where the UI offers `Resume Session`
+   but the session cannot resume because machine metadata is missing.
+2. Fix or clarify Step 28 stop-while-permission-pending behavior so the user
+   gets explicit feedback about whether stop succeeded, is blocked, or timed
+   out, plus what to do next.
+3. Validate on the real web stack using the lifecycle/control steps
+   (`step-10`, `step-20..23`, `step-28`) and update the UX review text if the
+   visible behavior changes.

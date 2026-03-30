@@ -393,3 +393,9 @@ If you discover something non-obvious, append it here under the right section.
   always) are intentionally byte-identical: they all capture the pre-decision
   dialog. Post-decision outcomes appear in step-03/04/05 screenshots. This is
   documented and accepted, not a bug.
+- The narrative UX review file can become stale after capture fixes. On
+  March 30, `e2e-recordings/ux-review/ux-review-findings.md` still described
+  the old 20/46-unique artifact set even after Phase 1.8/1.9 verified 44/46
+  unique screenshots. Before using the review text to choose product work,
+  compare it against the latest `loop/state.md` proof and
+  `walkthrough-verification.json`.
