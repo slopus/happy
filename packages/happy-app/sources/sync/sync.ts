@@ -524,6 +524,11 @@ class Sync {
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
+        // Store images for UI display (keyed by message localId)
+        if (images && images.length > 0) {
+            messageImageStore.set(localId, images);
+        }
+
         // Add to messages - normalize the raw record (show text message in UI)
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
@@ -2257,6 +2262,9 @@ class Sync {
 
 // Global singleton instance
 export const sync = new Sync();
+
+// Ephemeral store for message images (keyed by message localId, used for UI rendering)
+export const messageImageStore = new Map<string, Array<{ base64: string; mediaType: string }>>();
 
 //
 // Init sequence
