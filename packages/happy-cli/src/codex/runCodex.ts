@@ -415,10 +415,16 @@ export async function runCodex(opts: {
 
     // Approval handler: routes server → client approval requests to our permission handler
     client.setApprovalHandler(async (params) => {
-        const toolName = params.type === 'exec' ? 'CodexBash' : 'CodexPatch';
+        const toolName = params.type === 'exec'
+            ? 'CodexBash'
+            : params.type === 'patch'
+                ? 'CodexPatch'
+                : (params.toolName ?? 'McpTool');
         const input = params.type === 'exec'
             ? { command: params.command, cwd: params.cwd }
-            : { changes: params.fileChanges };
+            : params.type === 'patch'
+                ? { changes: params.fileChanges }
+                : (params.input ?? {});
 
         try {
             const result = await permissionHandler.handleToolCall(params.callId, toolName, input);

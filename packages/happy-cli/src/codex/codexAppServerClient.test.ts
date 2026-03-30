@@ -41,6 +41,7 @@ type MockRpcMessage = {
     id?: number;
     method?: string;
     params?: any;
+    result?: any;
 };
 
 function pushJsonLine(stdout: NodeJS.ReadableStream & { push: (chunk: string) => void }, payload: unknown) {
@@ -785,6 +786,94 @@ describe('CodexAppServerClient sandbox integration', () => {
             expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-2' }),
             expect.objectContaining({ type: 'agent_message', message: 'still works' }),
             expect.objectContaining({ type: 'task_complete', turn_id: 'turn-raw-2' }),
+        ]));
+
+        await client.disconnect();
+    });
+
+    it('responds to MCP elicitation requests with an action payload', async () => {
+        const approvals: Array<Record<string, unknown>> = [];
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3007,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-raw-7', path: '/tmp/thread-raw-7' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite', writableRoots: [], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+                                reasoningEffort: null,
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 77,
+                            method: 'mcpServer/elicitation/request',
+                            params: {
+                                threadId: 'thread-raw-7',
+                                turnId: 'turn-raw-7',
+                                serverName: 'happy',
+                                mode: 'form',
+                                _meta: {
+                                    codex_approval_kind: 'mcp_tool_call',
+                                    tool_title: 'Change Chat Title',
+                                    tool_description: 'Change the title of the current chat session',
+                                    tool_params: { title: 'Casual Greeting' },
+                                },
+                                message: 'Allow the happy MCP server to run tool "change_title"?',
+                                requestedSchema: {
+                                    type: 'object',
+                                    properties: {},
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setApprovalHandler(async (params) => {
+            approvals.push(params as Record<string, unknown>);
+            return 'approved';
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+
+        await waitFor(() => approvals.length === 1);
+        await waitFor(() => requests.some((msg) => msg.id === 77 && msg.result?.action === 'accept'));
+
+        expect(approvals[0]).toEqual(expect.objectContaining({
+            type: 'mcp',
+            callId: 'happy:77',
+            toolName: 'change_title',
+            input: { title: 'Casual Greeting' },
+            serverName: 'happy',
+        }));
+        expect(requests).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 77,
+                result: {
+                    action: 'accept',
+                    content: {},
+                    _meta: null,
+                },
+            }),
         ]));
 
         await client.disconnect();
