@@ -68,12 +68,16 @@ export const AgentStateSchema = z.object({
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
-export type TodoItem = {
-    content: string;
-    status: 'pending' | 'in_progress' | 'completed';
-    priority?: 'high' | 'medium' | 'low';
-    id?: string;
-};
+export const TodoItemSchema = z.object({
+    content: z.string(),
+    status: z.enum(['pending', 'in_progress', 'completed']),
+    priority: z.enum(['high', 'medium', 'low']).optional(),
+    id: z.string().optional(),
+});
+
+export const TodoItemsSchema = z.array(TodoItemSchema);
+
+export type TodoItem = z.infer<typeof TodoItemSchema>;
 
 export interface Session {
     id: string,
