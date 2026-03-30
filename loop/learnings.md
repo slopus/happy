@@ -168,6 +168,11 @@ If you discover something non-obvious, append it here under the right section.
 
 ## Browser UX Testing
 
+- Before trusting screenshot-based UX reviews, hash the captured PNGs. In the
+  March 30 UX review set, only 20 of 46 screenshots were unique; several
+  supposedly different step/component captures were byte-identical, which made
+  permission, question, lifecycle, and background-task review evidence
+  unreliable.
 - `AppSyncStore.getMessages()` must return a shared empty array when a session
   has not hydrated yet. `useV3SessionMessages()` is backed by
   `useSyncExternalStore`; if `getSnapshot()` sees a fresh `[]` on each read,
