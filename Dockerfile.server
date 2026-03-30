@@ -63,4 +63,4 @@ COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 EXPOSE 3000
 
 # Command to run the application
-CMD ["node_modules/.bin/tsx", "packages/happy-server/sources/main.ts"]
+CMD ["yarn", "--cwd", "packages/happy-server", "start"]
