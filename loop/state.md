@@ -345,20 +345,118 @@ all 10 translation files.
 
 `yarn typecheck` passes cleanly.
 
-### Validation needed
+## Phase 2.2: DONE
 
-Full web stack validation on lifecycle steps (`step-10`, `step-20..23`,
-`step-28`) to confirm the visible behavior changes.
+Validated the Phase 2.1 lifecycle fixes on the real web stack.
+
+### Artifacts
+
+Targeted validation slices were recorded into:
+
+- `e2e-recordings/phase-2-2-validation/steps-00-10`
+- `e2e-recordings/phase-2-2-validation/steps-16-23`
+- `e2e-recordings/phase-2-2-validation/steps-25-28`
+
+Each slice was run with the real walkthrough driver + Expo web + webreel, then
+re-encoded to MP4 via ffmpeg and verified with `ffprobe`.
+
+### Proof
+
+**Step 10 slice (`0..10`):**
+
+```
+-rw-r--r--  1 kirilldubovitskiy  staff  114304 Mar 30 16:18 e2e-recordings/phase-2-2-validation/steps-00-10/step-10-cancel.png
+-rw-r--r--  1 kirilldubovitskiy  staff  741389 Mar 30 16:18 e2e-recordings/phase-2-2-validation/steps-00-10/happy-walkthrough.mp4
+{
+  "format": {
+    "duration": "15.000000",
+    "size": "741389"
+  }
+}
+```
+
+Visual verification:
+- `step-10-cancel.png` shows **no `Resume Session` button**.
+- The only footer CTA is `Start New Session`, so the old dead-end resume state
+  is gone.
+
+Driver results:
+- `walkthrough-driver-results.json` reports **Step 10 PASS** in `12.084s`.
+
+**Continuity slice (`16..23`):**
+
+```
+-rw-r--r--  1 kirilldubovitskiy  staff  472945 Mar 30 16:22 e2e-recordings/phase-2-2-validation/steps-16-23/happy-walkthrough.mp4
+-rw-r--r--  1 kirilldubovitskiy  staff  109724 Mar 30 16:21 e2e-recordings/phase-2-2-validation/steps-16-23/step-20-close.png
+-rw-r--r--  1 kirilldubovitskiy  staff   81219 Mar 30 16:21 e2e-recordings/phase-2-2-validation/steps-16-23/step-21-reopen.png
+-rw-r--r--  1 kirilldubovitskiy  staff  100640 Mar 30 16:21 e2e-recordings/phase-2-2-validation/steps-16-23/step-22-verify-continuity.png
+-rw-r--r--  1 kirilldubovitskiy  staff  108070 Mar 30 16:22 e2e-recordings/phase-2-2-validation/steps-16-23/step-23-mark-todo-done.png
+{
+  "format": {
+    "duration": "9.000000",
+    "size": "472945"
+  }
+}
+```
+
+Visual verification:
+- `step-20-close.png` shows the session closed cleanly with no broken shell.
+- `step-21-reopen.png` shows the reopened/resumed session path rendering
+  normally.
+- `step-22-verify-continuity.png` shows the agent correctly recalling the
+  due-date work and the three-item todo list.
+- `step-23-mark-todo-done.png` shows the `TodoWrite` completion and the agent
+  confirming `Add due dates to todos` is marked completed.
+
+Driver results:
+- `walkthrough-driver-results.json` reports **Steps 20, 21, 22, 23 all PASS**.
+- Step 22 reused continuity correctly (`continuityWarning: false`).
+- Step 23 completed with `TodoWrite,status=completed`.
+
+**Step 28 slice (`25..28`):**
+
+```
+-rw-r--r--  1 kirilldubovitskiy  staff  136218 Mar 30 16:26 e2e-recordings/phase-2-2-validation/steps-25-28/component-permission-prompt-pending-stop.png
+-rw-r--r--  1 kirilldubovitskiy  staff   93160 Mar 30 16:26 e2e-recordings/phase-2-2-validation/steps-25-28/step-28-stop-session-while-permission-is-pending.png
+-rw-r--r--  1 kirilldubovitskiy  staff  374683 Mar 30 16:26 e2e-recordings/phase-2-2-validation/steps-25-28/happy-walkthrough.mp4
+{
+  "format": {
+    "duration": "8.000000",
+    "size": "374683"
+  }
+}
+```
+
+Visual verification:
+- `step-28-stop-session-while-permission-is-pending.png` shows the permission
+  UI in a denied/stopped state, not an interactive pending state.
+- The two approval buttons are greyed out/disabled.
+- The deny path is selected and the denial reason `Session stopped` is visible.
+
+Driver results:
+- `walkthrough-driver-results.json` reports **Step 28 PASS** in `28.154s`.
+- The terminal tool evidence is `Edit,status=running` followed by
+  `Edit,status=error`, which matches the intended stop-while-pending flow.
+
+### Verdict
+
+1. Step 10 fix is validated: the dead-end `Resume Session` button is gone.
+2. Step 28 fix is validated: the stopped permission state shows
+   `Session stopped` and disabled approval buttons.
+3. Steps 20-23 show no visible lifecycle/continuity regression from the
+   Phase 2.1 changes.
 
 ## Current Task
 
-TASK: Phase 2.2 — Validate the Phase 2.1 fixes on the real web stack.
+TASK: Phase 2.3 — Refresh the stale UX review narrative to match the current
+validated artifact set.
 
-Run the walkthrough lifecycle/control steps (`step-10`, `step-20..23`,
-`step-28`) and verify:
+Update `e2e-recordings/ux-review/ux-review-findings.md` so it no longer
+describes the old duplicate-heavy capture set or the now-fixed lifecycle
+issues from Steps 10 and 28. Base the rewrite on:
 
-1. Step 10 (cancel): No "Resume Session" button visible after cancellation.
-2. Step 28 (stop while pending): Permission prompt shows denial reason
-   ("Session stopped") and buttons are disabled.
-3. Steps 20-23 (close/reopen/continuity): Verify no regressions from the
-   changes.
+1. The verified Phase 1.8/1.9 artifact reliability proof in this file.
+2. The validated Phase 2.2 lifecycle screenshots in
+   `e2e-recordings/phase-2-2-validation/`.
+3. The current `walkthrough-verification.json`, not the stale earlier review
+   text.

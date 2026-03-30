@@ -389,6 +389,12 @@ If you discover something non-obvious, append it here under the right section.
   The `walkthrough-verification.json` records `videoSource` and
   `webreelExitCode` for traceability. A single `walkthrough-runner.ts` run
   can now finish end-to-end without slice merge workarounds.
+- `walkthrough-runner.ts` always syncs its output back into
+  `e2e-recordings/ux-review/` via `syncArtifactsToRepo()`, even when
+  `HAPPY_WALKTHROUGH_OUTPUT_DIR` points somewhere else. For targeted
+  validation slices that must not overwrite the canonical UX-review artifact
+  set, run `walkthrough-driver.ts` and `webreel` directly against the custom
+  output directory instead of using the runner wrapper.
 - The three permission prompt component captures (denied/approve-once/approve-
   always) are intentionally byte-identical: they all capture the pre-decision
   dialog. Post-decision outcomes appear in step-03/04/05 screenshots. This is
