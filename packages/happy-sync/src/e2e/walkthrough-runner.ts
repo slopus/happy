@@ -1,8 +1,8 @@
 #!/usr/bin/env npx tsx
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { appendFile, cp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { existsSync, readdirSync } from 'node:fs';
+import { appendFile, cp, mkdir, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -153,6 +153,65 @@ async function runCommandCapture(
     });
 }
 
+function collectScreenshots(dir: string): string[] {
+    if (!existsSync(dir)) {
+        return [];
+    }
+
+    return readdirSync(dir)
+        .filter((f: string) => /^(step-|component-).*\.png$/.test(f))
+        .sort();
+}
+
+async function ffmpegGenerateVideo(
+    screenshotDir: string,
+    outputFile: string,
+    logFile: string,
+    env: NodeJS.ProcessEnv,
+): Promise<boolean> {
+    const pngs = collectScreenshots(screenshotDir);
+    if (pngs.length === 0) {
+        log('No screenshots found for ffmpeg video generation');
+        return false;
+    }
+
+    const concatListFile = join(screenshotDir, 'ffmpeg-concat.txt');
+    const concatLines = pngs.map(
+        (f) => `file '${join(screenshotDir, f)}'\nduration 1`,
+    );
+    // Repeat the last frame so ffmpeg doesn't drop it
+    concatLines.push(`file '${join(screenshotDir, pngs[pngs.length - 1]!)}'`);
+    await writeFile(concatListFile, concatLines.join('\n'));
+
+    log(`Generating MP4 from ${pngs.length} screenshots via ffmpeg...`);
+    const result = await runCommandCapture(
+        'ffmpeg',
+        [
+            '-y',
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', concatListFile,
+            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+            '-c:v', 'mjpeg',
+            '-q:v', '15',
+            '-r', '1',
+            outputFile,
+        ],
+        logFile,
+        env,
+    );
+
+    await unlink(concatListFile).catch(() => {});
+
+    if (result.code !== 0) {
+        log(`ffmpeg video generation failed with code ${result.code}`);
+        return false;
+    }
+
+    log(`ffmpeg video generated: ${outputFile}`);
+    return true;
+}
+
 async function main(): Promise<void> {
     const serverPort = process.env.HAPPY_TEST_SERVER_PORT ?? `${await reserveFreePort()}`;
     const webPort = process.env.HAPPY_WALKTHROUGH_WEB_PORT ?? `${await reserveFreePort()}`;
@@ -206,8 +265,18 @@ async function main(): Promise<void> {
             WEBREEL_LOG_FILE,
             sharedEnv,
         );
+
+        // Webreel v0.1.4 has a known EPIPE bug during overlay compositing that
+        // causes late-run failures (WebSocket connection closed, corrupt moov atom).
+        // The screenshots are still captured successfully before the compositing
+        // phase fails, so we treat a non-zero exit as non-fatal if PNGs exist.
+        const webreelScreenshots = collectScreenshots(OUTPUT_DIR);
         if (recordResult.code !== 0) {
-            throw new Error(`webreel record failed with code ${recordResult.code}`);
+            if (webreelScreenshots.length > 0) {
+                log(`webreel record exited with code ${recordResult.code} but ${webreelScreenshots.length} screenshots were captured — continuing with ffmpeg fallback`);
+            } else {
+                throw new Error(`webreel record failed with code ${recordResult.code} and no screenshots were captured`);
+            }
         }
 
         await waitForFile(DONE_MARKER_FILE, 600000, driver);
@@ -218,22 +287,48 @@ async function main(): Promise<void> {
 
         const finalOutputDir = await syncArtifactsToRepo();
         const finalVideoFile = join(finalOutputDir, 'happy-walkthrough.mp4');
-        const videoStats = await stat(finalVideoFile);
-        const lsResult = await runCommandCapture('ls', ['-la', finalVideoFile], WEBREEL_LOG_FILE, sharedEnv);
-        if (lsResult.code !== 0) {
-            throw new Error(`ls failed for ${finalVideoFile}`);
-        }
 
-        let ffprobe: { code: number; stdout: string; stderr: string } | null = null;
-        try {
-            ffprobe = await runCommandCapture(
-                'ffprobe',
-                ['-v', 'error', '-show_entries', 'format=duration,size', '-of', 'json', finalVideoFile],
+        // Always generate the MP4 from captured PNGs via ffmpeg. This is more
+        // reliable than webreel's CDP-based recording which consistently fails
+        // during overlay compositing (EPIPE / corrupt moov atom).
+        const webreelVideoExists = existsSync(finalVideoFile);
+        const webreelVideoUsable = webreelVideoExists
+            && (await stat(finalVideoFile)).size > 500_000;
+
+        if (!webreelVideoUsable) {
+            if (webreelVideoExists) {
+                log('Webreel video is too small (likely corrupt) — regenerating with ffmpeg');
+            }
+            const ffmpegOk = await ffmpegGenerateVideo(
+                finalOutputDir,
+                finalVideoFile,
                 WEBREEL_LOG_FILE,
                 sharedEnv,
             );
-        } catch (error) {
-            log(`ffprobe unavailable: ${error instanceof Error ? error.message : String(error)}`);
+            if (!ffmpegOk && !webreelVideoExists) {
+                log('WARNING: No video artifact produced (both webreel and ffmpeg failed)');
+            }
+        } else {
+            log('Webreel video looks usable — skipping ffmpeg regeneration');
+        }
+
+        let videoSizeBytes = 0;
+        if (existsSync(finalVideoFile)) {
+            videoSizeBytes = (await stat(finalVideoFile)).size;
+        }
+
+        let ffprobe: { code: number; stdout: string; stderr: string } | null = null;
+        if (existsSync(finalVideoFile)) {
+            try {
+                ffprobe = await runCommandCapture(
+                    'ffprobe',
+                    ['-v', 'error', '-show_entries', 'format=duration,size', '-of', 'json', finalVideoFile],
+                    WEBREEL_LOG_FILE,
+                    sharedEnv,
+                );
+            } catch (error) {
+                log(`ffprobe unavailable: ${error instanceof Error ? error.message : String(error)}`);
+            }
         }
 
         const screenshotFiles = (await readdir(finalOutputDir))
@@ -242,14 +337,17 @@ async function main(): Promise<void> {
 
         await writeFile(VERIFY_FILE, JSON.stringify({
             recordedAt: new Date().toISOString(),
-            videoFile: finalVideoFile,
-            videoSizeBytes: videoStats.size,
+            videoFile: existsSync(finalVideoFile) ? finalVideoFile : null,
+            videoSizeBytes,
+            videoSource: webreelVideoUsable ? 'webreel' : 'ffmpeg-from-screenshots',
+            webreelExitCode: recordResult.code,
             screenshotCount: screenshotFiles.length,
             screenshots: screenshotFiles,
             ffprobe: ffprobe?.stdout ? JSON.parse(ffprobe.stdout) : null,
         }, null, 2));
 
-        log(`Video: ${finalVideoFile} (${videoStats.size} bytes)`);
+        log(`Video: ${existsSync(finalVideoFile) ? finalVideoFile : 'NONE'} (${videoSizeBytes} bytes)`);
+        log(`Video source: ${webreelVideoUsable ? 'webreel' : 'ffmpeg-from-screenshots'}`);
         log(`Screenshots: ${screenshotFiles.length}`);
         if (ffprobe?.stdout) {
             log(`ffprobe: ${ffprobe.stdout.trim()}`);

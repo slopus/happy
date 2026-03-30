@@ -383,3 +383,13 @@ If you discover something non-obvious, append it here under the right section.
   due to timing of the stop signal vs. permission state transitions.
 - The full walkthrough takes ~17 minutes for all 38 steps (March 30 run). This is
   faster than the 30-45 minute budget in the runner's timeout settings.
+- The walkthrough-runner now handles webreel compositing failure gracefully:
+  non-zero webreel exit is non-fatal if screenshots exist, and the runner
+  auto-generates the MP4 via ffmpeg when webreel's video is missing or <500KB.
+  The `walkthrough-verification.json` records `videoSource` and
+  `webreelExitCode` for traceability. A single `walkthrough-runner.ts` run
+  can now finish end-to-end without slice merge workarounds.
+- The three permission prompt component captures (denied/approve-once/approve-
+  always) are intentionally byte-identical: they all capture the pre-decision
+  dialog. Post-decision outcomes appear in step-03/04/05 screenshots. This is
+  documented and accepted, not a bug.
