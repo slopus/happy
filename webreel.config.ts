@@ -100,9 +100,9 @@ if (step0) {
     steps.push(
         {
             action: 'scroll',
-            y: 99999,
+            y: 0,
             selector: WALKTHROUGH_TRANSCRIPT_SELECTOR,
-            description: 'Jump to the newest transcript content',
+            description: 'Jump to the newest transcript content (scrollTop=0 for inverted FlatList)',
         },
         {
             action: 'pause',
@@ -160,7 +160,7 @@ for (const [index, step] of runSteps.entries()) {
 
     steps.push({
         action: 'scroll',
-        y: 99999,
+        y: 0,
         selector: WALKTHROUGH_TRANSCRIPT_SELECTOR,
         description: `Follow transcript for Step ${step.id}`,
         delay: 500,
@@ -197,7 +197,7 @@ for (const [index, step] of runSteps.entries()) {
     steps.push(
         {
             action: 'scroll',
-            y: 99999,
+            y: 0,
             selector: WALKTHROUGH_TRANSCRIPT_SELECTOR,
             description: `Scroll to the newest content after Step ${step.id}`,
             delay: 500,

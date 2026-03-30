@@ -15,7 +15,7 @@ export interface WalkthroughStep {
 }
 
 export const UX_REVIEW_OUTPUT_DIR = 'e2e-recordings/ux-review';
-export const WALKTHROUGH_TRANSCRIPT_SELECTOR = '[role="list"], div[style*="overflow-y: auto"], div[style*="overflow-y:auto"]';
+export const WALKTHROUGH_TRANSCRIPT_SELECTOR = '[data-testid="chat-transcript"]';
 export const DEFAULT_INITIAL_RECORDING_DELAY_MS = 10_000;
 export const DEFAULT_INTER_STEP_DELAY_MS = 2_000;
 export const DEFAULT_CAPTURE_HOLD_MS = 6_000;

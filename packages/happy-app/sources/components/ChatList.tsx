@@ -57,6 +57,7 @@ const V3ChatListInternal = React.memo((props: {
     ), [props.sessionId]);
     return (
         <FlatList
+            testID="chat-transcript"
             data={props.messages}
             inverted={true}
             keyExtractor={keyExtractor}
