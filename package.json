@@ -30,7 +30,8 @@
             "packages/happy-cli",
             "packages/happy-server",
             "packages/happy-wire",
-            "packages/happy-app-logs"
+            "packages/happy-app-logs",
+            "packages/pi-happy"
         ],
         "nohoist": [
             "**/zod",
