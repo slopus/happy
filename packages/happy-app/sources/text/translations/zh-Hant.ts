@@ -737,6 +737,10 @@ export const zhHant: TranslationStructure = {
         subtask: '子任務',
     },
 
+    permissions: {
+        sessionStopped: '工作階段已停止',
+    },
+
     codex: {
         // Codex permission dialog buttons
         permissions: {

@@ -738,6 +738,10 @@ export const zhHans: TranslationStructure = {
         subtask: '子任务',
     },
 
+    permissions: {
+        sessionStopped: '会话已停止',
+    },
+
     codex: {
         // Codex permission dialog buttons
         permissions: {

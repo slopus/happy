@@ -734,6 +734,10 @@ export const ru: TranslationStructure = {
         subtask: 'Подзадача',
     },
 
+    permissions: {
+        sessionStopped: 'Сессия остановлена',
+    },
+
     codex: {
         // Codex permission dialog buttons
         permissions: {

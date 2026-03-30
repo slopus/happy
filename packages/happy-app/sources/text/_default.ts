@@ -735,6 +735,10 @@ export const en = {
         subtask: 'Subtask',
     },
 
+    permissions: {
+        sessionStopped: 'Session stopped',
+    },
+
     codex: {
         // Codex permission dialog buttons
         permissions: {

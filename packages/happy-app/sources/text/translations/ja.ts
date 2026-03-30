@@ -738,6 +738,10 @@ export const ja: TranslationStructure = {
         subtask: 'サブタスク',
     },
 
+    permissions: {
+        sessionStopped: 'セッションが停止しました',
+    },
+
     codex: {
         // Codex permission dialog buttons
         permissions: {

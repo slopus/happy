@@ -3,6 +3,7 @@ import { type v3 } from '@slopus/happy-sync';
 export interface ToolPermissionState {
     id: string;
     status: 'pending' | 'approved' | 'denied';
+    reason?: string;
     allowedTools?: string[];
     decision?: 'approved' | 'approved_for_session' | 'denied';
 }
@@ -154,6 +155,7 @@ export function getToolPermissionState(part: v3.ToolPart): ToolPermissionState |
             id: resolved.id,
             status: 'denied',
             decision: 'denied',
+            reason: part.state.status === 'error' ? part.state.error : undefined,
         };
     }
 

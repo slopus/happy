@@ -751,6 +751,10 @@ export const en: TranslationStructure = {
         subtask: 'Subtask',
     },
 
+    permissions: {
+        sessionStopped: 'Session stopped',
+    },
+
     codex: {
         // Codex permission dialog buttons
         permissions: {

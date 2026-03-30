@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform }
 import { Ionicons } from '@expo/vector-icons';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
-import { storage } from '@/sync/storage';
+import { storage, useSyncSessionState } from '@/sync/storage';
 import { t } from '@/text';
 
 interface PermissionFooterProps {
@@ -26,7 +26,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | 'abort' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
     const [loadingForSession, setLoadingForSession] = useState(false);
-    
+
+    // Detect if the session has ended while a permission is still pending.
+    // This happens when stopSession auto-denies permissions but the CLI dies
+    // before syncing the tool state update back.
+    const syncSession = useSyncSessionState(sessionId);
+    const sessionEnded = syncSession?.status.type === 'completed' || syncSession?.status.type === 'error';
+
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
 
@@ -132,8 +138,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const isApproved = permission.status === 'approved';
-    const isDenied = permission.status === 'denied';
-    const isPending = permission.status === 'pending';
+    // Treat pending permissions in ended sessions as denied (auto-denied by stopSession)
+    const isDenied = permission.status === 'denied' || (permission.status === 'pending' && sessionEnded);
+    const isPending = permission.status === 'pending' && !sessionEnded;
+    const denialReason = permission.reason || (permission.status === 'pending' && sessionEnded ? t('permissions.sessionStopped') : undefined);
 
     // Helper function to check if tool matches allowed pattern
     const isToolAllowed = (toolName: string, toolInput: any, allowedTools: string[] | undefined): boolean => {
@@ -255,6 +263,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         iconDenied: {
             color: theme.colors.permissionButton.deny.background,
         },
+        denialReason: {
+            fontSize: 12,
+            color: theme.colors.textSecondary,
+            paddingHorizontal: 12,
+            paddingTop: 2,
+            fontStyle: 'italic' as const,
+        },
     });
 
     // Render Codex buttons if this is a Codex session
@@ -348,6 +363,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             </View>
                         )}
                     </TouchableOpacity>
+
+                    {isDenied && denialReason ? (
+                        <Text style={styles.denialReason}>{denialReason}</Text>
+                    ) : null}
                 </View>
             </View>
         );
@@ -474,6 +493,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         </View>
                     )}
                 </TouchableOpacity>
+
+                {isDenied && denialReason ? (
+                    <Text style={styles.denialReason}>{denialReason}</Text>
+                ) : null}
             </View>
         </View>
     );
