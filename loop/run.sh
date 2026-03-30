@@ -7,11 +7,13 @@ mkdir -p loop/logs
 export BROWSER=none
 
 ITERATION=0
-PROMPT="$(cat loop/prompt.md)"
 
 while true; do
     ITERATION=$((ITERATION + 1))
     LOGFILE="loop/logs/iteration-$(printf '%02d' $ITERATION)-$(date +%Y%m%d-%H%M%S).log"
+
+    # Re-read prompt each iteration so changes are picked up
+    PROMPT="$(cat loop/prompt.md)"
 
     echo ""
     echo "========================================="
@@ -21,9 +23,7 @@ while true; do
     echo "========================================="
     echo ""
 
-    # Odd iterations: Claude, even iterations: Codex — 2 hour timeout
-    # The full 38-step walkthrough takes 30-40 min just for Claude steps,
-    # plus webreel overhead. 40 min was too short and killed iterations mid-run.
+    # 2 hour timeout per iteration
     if (( ITERATION % 2 == 1 )); then
         timeout 7200 claude -p --dangerously-skip-permissions \
             "$PROMPT" \
