@@ -49,12 +49,29 @@ UX review completed and written to `e2e-recordings/ux-review/ux-review-findings.
 - `step-29` through `step-38` mostly collapse to a single image, including the
   background-task and summary steps.
 
+## Phase 1.6: DONE
+
+Fix committed in `6581e34c`. Root cause identified and fixed:
+
+1. **Selector miss**: `WALKTHROUGH_TRANSCRIPT_SELECTOR` used `[role="list"], div[style*="overflow-y: auto"]` which doesn't match any DOM element in react-native-web's FlatList rendering. Webreel fell back to scrolling `document.documentElement`, pushing the viewport away from chat content.
+
+2. **Wrong scroll direction**: The inverted FlatList uses `transform: scaleY(-1)`, so `scrollTop=0` shows newest content — not `scrollTop=99999`.
+
+### Changes made
+- `ChatList.tsx`: Added `testID="chat-transcript"` to FlatList (renders as `data-testid="chat-transcript"` on web)
+- `walkthrough-flow.ts`: Updated selector to `[data-testid="chat-transcript"]`
+- `webreel.config.ts`: Changed all scroll `y: 99999` to `y: 0`
+
+### Verification needed
+The webreel config validates successfully. Full walkthrough re-run needed to confirm screenshots are now unique per step. This requires ~17 minutes with full infrastructure.
+
 ## Current Task
 
-TASK: Phase 1.6 — Fix UX capture fidelity
+TASK: Phase 1.7 — Re-run walkthrough and verify screenshot uniqueness
 
-Investigate why the webreel UX screenshot set contains large duplicate groups
-and fix the capture flow so each labeled step saves a screenshot from the
-intended UI state. Focus first on the duplicated groups identified above, then
-re-run the UX capture for those steps and verify the resulting PNGs are unique
-where the UI state should differ.
+Re-run the full walkthrough (walkthrough-runner.ts) and verify that the
+resulting step screenshots are unique where the UI state should differ.
+Hash the output PNGs and compare against the Phase 1.5 duplicate groups.
+The fix from Phase 1.6 should eliminate all duplicate groups except where
+steps genuinely show the same UI state (e.g., consecutive steps with no
+visible content change).

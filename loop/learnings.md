@@ -173,6 +173,14 @@ If you discover something non-obvious, append it here under the right section.
   supposedly different step/component captures were byte-identical, which made
   permission, question, lifecycle, and background-task review evidence
   unreliable.
+- React Native Web FlatList does NOT add `role="list"` or explicit
+  `overflow-y` CSS styles. The only reliable way to target it in the DOM is
+  via `testID` → `data-testid`. Added `testID="chat-transcript"` to ChatList
+  FlatList. Use `[data-testid="chat-transcript"]` as the scroll selector.
+- Inverted FlatList (react-native-web) uses `transform: scaleY(-1)` on the
+  scroll container, NOT `flex-direction: column-reverse`. This means
+  `scrollTop=0` shows the newest messages (DOM top = visual bottom). To
+  scroll to newest content in webreel, use `y: 0`, not `y: 99999`.
 - `AppSyncStore.getMessages()` must return a shared empty array when a session
   has not hydrated yet. `useV3SessionMessages()` is backed by
   `useSyncExternalStore`; if `getSnapshot()` sees a fresh `[]` on each read,
