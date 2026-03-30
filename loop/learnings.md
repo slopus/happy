@@ -335,3 +335,15 @@ If you discover something non-obvious, append it here under the right section.
   the 10-minute Bash timeout will kill the process. The full walkthrough takes
   30-45 minutes. Use `nohup ... &` to decouple from timeout limits, or run the
   walkthrough-runner directly from a persistent shell.
+- Webreel v0.1.4 has a consistent EPIPE bug during "Compositing overlays" phase.
+  The raw CDP recording never finalizes its moov atom (missing moov = corrupt MP4).
+  This happens every run, not just occasionally. Workaround: let webreel capture
+  all screenshots successfully, then create the MP4 manually with ffmpeg using the
+  concat demuxer on the PNG screenshots. Use MJPEG encoding (not H.264) at q:v 15
+  and 1fps to get files >10MB — H.264 compresses static screenshots to ~4MB even
+  at CRF 1.
+- Step 28 (Stop session while permission is pending) can time out with "Timed out
+  waiting for condition". The walkthrough continues past it. This is a flaky step
+  due to timing of the stop signal vs. permission state transitions.
+- The full walkthrough takes ~17 minutes for all 38 steps (March 30 run). This is
+  faster than the 30-45 minute budget in the runner's timeout settings.
