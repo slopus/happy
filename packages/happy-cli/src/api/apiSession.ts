@@ -197,6 +197,12 @@ export class ApiSessionClient extends EventEmitter {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
                         this.metadataVersion = data.body.metadata.version;
+                        // Check if session was archived from web/mobile
+                        const meta = this.metadata as any;
+                        if (meta?.lifecycleState === 'archiveRequested' || meta?.lifecycleState === 'archived') {
+                            logger.debug(`[SOCKET] Session archived (${meta.lifecycleState}), exiting...`);
+                            this.emit('archived');
+                        }
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
                         this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value)) : null;

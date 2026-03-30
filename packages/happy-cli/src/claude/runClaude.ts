@@ -263,6 +263,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    // Exit when session is archived from web/mobile
+    session.on('archived', () => {
+        logger.debug('[loop] Session archived from web/mobile, cleaning up...');
+        cleanup();
+    });
+
     session.onUserMessage((message) => {
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
