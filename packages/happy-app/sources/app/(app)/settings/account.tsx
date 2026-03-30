@@ -3,6 +3,7 @@ import { View, Text, Pressable, Platform } from 'react-native';
 import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
 import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
@@ -23,6 +24,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { fetchPushTokens, type PushToken } from '@/sync/apiPush';
+import { uploadAvatar } from '@/sync/apiUpload';
 import {
     getCurrentExpoPushToken,
     getCurrentPushDeviceMetadata,
@@ -162,6 +164,49 @@ export default React.memo(() => {
             void loadPushSettings();
         }, [loadPushSettings])
     );
+
+    // Avatar upload
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const handleUploadAvatar = useCallback(async () => {
+        if (!auth.credentials) {
+            return;
+        }
+
+        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permissionResult.granted) {
+            Modal.alert(
+                t('common.error'),
+                'Photo library access is required to upload an avatar. Please enable it in your device settings.'
+            );
+            return;
+        }
+
+        const pickerResult = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.85,
+        });
+
+        if (pickerResult.canceled || !pickerResult.assets[0]) {
+            return;
+        }
+
+        const asset = pickerResult.assets[0];
+        setUploadingAvatar(true);
+        try {
+            await uploadAvatar(auth.credentials, asset);
+            await sync.refreshProfile();
+        } catch (error) {
+            console.error('Avatar upload failed:', error);
+            Modal.alert(
+                t('common.error'),
+                error instanceof Error ? error.message : 'Failed to upload avatar. Please try again.'
+            );
+        } finally {
+            setUploadingAvatar(false);
+        }
+    }, [auth.credentials]);
 
     // GitHub disconnection
     const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
@@ -343,39 +388,46 @@ export default React.memo(() => {
                 </ItemGroup>
 
                 {/* Profile Section */}
-                {(displayName || githubUsername || profile.avatar) && (
-                    <ItemGroup title={t('settingsAccount.profile')}>
-                        {displayName && (
-                            <Item
-                                title={t('settingsAccount.name')}
-                                detail={displayName}
-                                showChevron={false}
+                <ItemGroup title={t('settingsAccount.profile')}>
+                    {displayName && (
+                        <Item
+                            title={t('settingsAccount.name')}
+                            detail={displayName}
+                            showChevron={false}
+                        />
+                    )}
+                    <Item
+                        title="Avatar"
+                        subtitle={uploadingAvatar ? 'Uploading…' : 'Tap to upload a photo from your library'}
+                        onPress={handleUploadAvatar}
+                        loading={uploadingAvatar}
+                        disabled={uploadingAvatar}
+                        showChevron={false}
+                        icon={profile.avatar?.url ? (
+                            <Image
+                                source={{ uri: profile.avatar.url }}
+                                style={{ width: 29, height: 29, borderRadius: 14.5 }}
+                                placeholder={{ thumbhash: profile.avatar.thumbhash }}
+                                contentFit="cover"
+                                transition={200}
+                                cachePolicy="memory-disk"
                             />
+                        ) : (
+                            <Ionicons name="person-circle-outline" size={29} color={theme.colors.textSecondary} />
                         )}
-                        {githubUsername && (
-                            <Item
-                                title={t('settingsAccount.github')}
-                                detail={`@${githubUsername}`}
-                                subtitle={t('settingsAccount.tapToDisconnect')}
-                                onPress={handleDisconnectGitHub}
-                                loading={disconnecting}
-                                showChevron={false}
-                                icon={profile.avatar?.url ? (
-                                    <Image
-                                        source={{ uri: profile.avatar.url }}
-                                        style={{ width: 29, height: 29, borderRadius: 14.5 }}
-                                        placeholder={{ thumbhash: profile.avatar.thumbhash }}
-                                        contentFit="cover"
-                                        transition={200}
-                                        cachePolicy="memory-disk"
-                                    />
-                                ) : (
-                                    <Ionicons name="logo-github" size={29} color={theme.colors.textSecondary} />
-                                )}
-                            />
-                        )}
-                    </ItemGroup>
-                )}
+                    />
+                    {githubUsername && (
+                        <Item
+                            title={t('settingsAccount.github')}
+                            detail={`@${githubUsername}`}
+                            subtitle={t('settingsAccount.tapToDisconnect')}
+                            onPress={handleDisconnectGitHub}
+                            loading={disconnecting}
+                            showChevron={false}
+                            icon={<Ionicons name="logo-github" size={29} color={theme.colors.textSecondary} />}
+                        />
+                    )}
+                </ItemGroup>
 
                 {/* Connected Services Section */}
                 {profile.connectedServices && profile.connectedServices.length > 0 && (() => {
