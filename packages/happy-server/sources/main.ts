@@ -42,6 +42,22 @@ async function main() {
     startDatabaseMetricsUpdater();
     startTimeout();
 
+    // TTL cleanup: delete expired messages every 5 minutes
+    const ttlCleanup = async () => {
+        try {
+            const result = await db.sessionMessage.deleteMany({
+                where: { expiresAt: { lt: new Date() } }
+            });
+            if (result.count > 0) {
+                log({ module: 'ttl-cleanup' }, `Deleted ${result.count} expired messages`);
+            }
+        } catch (error) {
+            log({ module: 'ttl-cleanup', level: 'error' }, `TTL cleanup failed: ${error}`);
+        }
+    };
+    ttlCleanup();
+    setInterval(ttlCleanup, 5 * 60 * 1000);
+
     //
     // Ready
     //
