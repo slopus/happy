@@ -65,13 +65,77 @@ Fix committed in `6581e34c`. Root cause identified and fixed:
 ### Verification needed
 The webreel config validates successfully. Full walkthrough re-run needed to confirm screenshots are now unique per step. This requires ~17 minutes with full infrastructure.
 
+## Phase 1.7: DONE
+
+Re-ran the full walkthrough with `walkthrough-runner.ts` and re-hashed the
+captured PNGs.
+
+### Proof
+
+**Artifacts on disk:**
+```
+-rw-r--r--  1 kirilldubovitskiy  staff   93380 Mar 30 01:57 e2e-recordings/ux-review/happy-walkthrough.mp4
+```
+
+**ffprobe:**
+```json
+{
+  "format": {
+    "duration": "1.200000",
+    "size": "93380"
+  }
+}
+```
+
+**PNG counts:**
+- `walkthrough-verification.json` reports 47 PNGs because it includes the
+  webreel thumbnail `happy-walkthrough.png`.
+- The actual UX-review capture set is still 46 PNGs: 38 step captures + 8
+  component captures.
+
+### Driver results
+
+- 35/38 steps passed.
+- Step 28 (`Stop session while permission is pending`) timed out again.
+- Step 31 (`Launch background task`) timed out after 180s.
+- Step 32 (`Background task completes`) timed out after 45s.
+
+### Hash comparison vs Phase 1.5
+
+- Improved from **20 unique of 46** to **31 unique of 46**.
+- The old `step-01` through `step-07` collapse is fully fixed.
+- The old `step-29` through `step-38` collapse is partially fixed:
+  `step-29` is unique, `step-35` through `step-38` are unique.
+- Remaining duplicate clusters are:
+  - `component-question-prompt` + `step-11` through `step-15`
+  - `step-17` through `step-19`
+  - `step-22`, `step-23`, `step-25`, `step-26`
+  - `component-background-running` + `step-30` through `step-34`
+
+### Verification notes
+
+- These remaining duplicates are **not** all legitimate steady states.
+- Spot-checking the images shows stale transcript content:
+  - `step-11` through `step-15` all show the old Cmd+Enter conversation,
+    not the question / outside-project flow.
+  - `step-30` through `step-34` all show the pre-background-task todo
+    transcript, not the expected running/completed/summary progression.
+- Conclusion: the Phase 1.6 selector/scroll fix improved early capture
+  coverage, but later session-switch / background-task states still freeze on
+  stale visible transcript content.
+
 ## Current Task
 
-TASK: Phase 1.7 — Re-run walkthrough and verify screenshot uniqueness
+TASK: Phase 1.8 — Diagnose stale screenshots after resume/question/background-task transitions
 
-Re-run the full walkthrough (walkthrough-runner.ts) and verify that the
-resulting step screenshots are unique where the UI state should differ.
-Hash the output PNGs and compare against the Phase 1.5 duplicate groups.
-The fix from Phase 1.6 should eliminate all duplicate groups except where
-steps genuinely show the same UI state (e.g., consecutive steps with no
-visible content change).
+Identify why the later capture phases still reuse stale visible transcript
+content even though the walkthrough driver advances and records new step
+results. Focus on the remaining duplicate clusters from Phase 1.7:
+
+- `step-11` through `step-15`
+- `step-17` through `step-19`
+- `step-22`, `step-23`, `step-25`, `step-26`
+- `step-30` through `step-34`
+
+The next fix should make those groups visually distinct, then re-run the full
+walkthrough and re-hash the PNGs.

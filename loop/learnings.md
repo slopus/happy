@@ -355,6 +355,16 @@ If you discover something non-obvious, append it here under the right section.
   concat demuxer on the PNG screenshots. Use MJPEG encoding (not H.264) at q:v 15
   and 1fps to get files >10MB — H.264 compresses static screenshots to ~4MB even
   at CRF 1.
+- `walkthrough-verification.json` counts `happy-walkthrough.png` in its
+  `screenshots` array. That is the webreel thumbnail, not a UX-review capture.
+  For Phase 1 screenshot comparisons, use only `step-*.png` and
+  `component-*.png` (46 files in the March 30 rerun), not the raw JSON count
+  of 47 PNGs.
+- A successful `webreel record` can still emit a uselessly short MP4. On the
+  March 30 rerun, `happy-walkthrough.mp4` existed and `ffprobe` succeeded, but
+  the file was only 93,380 bytes with duration `1.200000`. Do not treat
+  "valid mp4 exists" as proof of a good walkthrough video; verify duration and
+  rely on the PNG set as the source of truth.
 - Step 28 (Stop session while permission is pending) can time out with "Timed out
   waiting for condition". The walkthrough continues past it. This is a flaky step
   due to timing of the stop signal vs. permission state transitions.
