@@ -79,7 +79,7 @@ We're engineers scattered across Bay Area coffee shops and hacker houses, consta
 ## 📚 Documentation & Contributing
 
 - **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development setup including iOS, Android, and macOS desktop variant builds
+- **[Contributing Guide](docs/CONTRIBUTING.md)** - How to contribute, PR guidelines, and development setup
 - **[Edit docs at github.com/slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)** - Help improve our documentation and guides
 
 ## License
