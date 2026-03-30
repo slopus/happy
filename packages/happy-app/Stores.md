@@ -62,7 +62,7 @@ Your code. Your privacy. Your Claude Code companion.
 ## URLs
 
 ### Privacy Policy
-https://github.com/slopus/happy/blob/main/packages/happy-app/PRIVACY.md
+https://github.com/slopus/happy/blob/main/PRIVACY.md
 
 ### Support / Contact
 https://github.com/slopus/happy/issues
