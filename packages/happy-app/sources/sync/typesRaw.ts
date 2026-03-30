@@ -433,7 +433,11 @@ const rawRecordSchema = z.preprocess(
             role: z.literal('user'),
             content: z.object({
                 type: z.literal('text'),
-                text: z.string()
+                text: z.string(),
+                images: z.array(z.object({
+                    base64: z.string(),
+                    mediaType: z.string(),
+                })).optional(),
             }),
             meta: MessageMetaSchema.optional()
         }),
@@ -505,6 +509,7 @@ export type NormalizedMessage = ({
     content: {
         type: 'text';
         text: string;
+        images?: Array<{ base64: string; mediaType: string }>;
     }
 } | {
     role: 'agent'

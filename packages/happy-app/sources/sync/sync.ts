@@ -454,7 +454,7 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
-    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
+    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions, images?: Array<{ base64: string; mediaType: string }>) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -500,7 +500,8 @@ class Sync {
             role: 'user',
             content: {
                 type: 'text',
-                text
+                text,
+                ...(images && images.length > 0 && { images }),
             },
             meta: {
                 sentFrom,
