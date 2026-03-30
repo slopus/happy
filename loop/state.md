@@ -124,18 +124,78 @@ captured PNGs.
   coverage, but later session-switch / background-task states still freeze on
   stale visible transcript content.
 
+## Phase 1.8: DONE
+
+Diagnosed the remaining stale screenshot clusters and fixed the capture path in
+`webreel.config.ts`.
+
+### Root cause
+
+1. **Wrong transcript scroll target**: for the web transcript container,
+   scrolling to `0` kept landing on the oldest visible content once the session
+   got long. The practical fix is to scroll to a very large `y` value and let
+   the container clamp to max scroll.
+2. **Long-lived page state drift**: keeping one hydrated page open for the
+   entire run let later captures reuse stale visible transcript state. Refreshing
+   through the redirect server before each component/final screenshot forces a
+   fresh session reload before the capture.
+
+### Changes made
+
+- `webreel.config.ts`
+  - added `refreshCurrentSessionSteps(...)` and reloads through `REDIRECT_URL`
+    before each component capture and step-final capture
+  - changed all transcript scroll actions from `y: 0` to `y: 999999`
+
+### Verification
+
+Targeted reruns:
+
+- Steps `10..15`: all six files are unique by SHA1
+- Steps `28..34`: all six files are unique by SHA1
+
+Full artifact set:
+
+- Combined a verified early/mid rerun (`0..26`) with a verified late rerun
+  (`27..38`) because the single-shot full webreel run still died late with
+  `WebSocket connection closed` / the known webreel compositing instability.
+- Final merged capture set in `e2e-recordings/ux-review` contains **46 PNGs**
+  (`38` steps + `8` components).
+- `walkthrough-verification.json` reports **44 unique of 46**.
+- The only remaining duplicate group is:
+  - `component-permission-prompt-denied.png`
+  - `component-permission-prompt-approve-once.png`
+  - `component-permission-prompt-approve-always.png`
+
+Those three are the same pre-decision permission dialog state, so they now
+look like an expected duplicate rather than a stale-session bug.
+
+### Proof
+
+**Merged MP4:**
+```
+-rw-r--r--  1 kirilldubovitskiy  staff  1554264 Mar 30 15:40 e2e-recordings/ux-review/happy-walkthrough.mp4
+{
+  "format": {
+    "duration": "46.000000",
+    "size": "1554264"
+  }
+}
+```
+
+**Verification JSON:**
+```
+-rw-r--r--  1 kirilldubovitskiy  staff  2160 Mar 30 15:40 e2e-recordings/ux-review/walkthrough-verification.json
+```
+
 ## Current Task
 
-TASK: Phase 1.8 — Diagnose stale screenshots after resume/question/background-task transitions
+TASK: Phase 1.9 — Stabilize one-shot full webreel recording and decide what to
+do about the identical pre-decision permission prompt captures
 
-Identify why the later capture phases still reuse stale visible transcript
-content even though the walkthrough driver advances and records new step
-results. Focus on the remaining duplicate clusters from Phase 1.7:
-
-- `step-11` through `step-15`
-- `step-17` through `step-19`
-- `step-22`, `step-23`, `step-25`, `step-26`
-- `step-30` through `step-34`
-
-The next fix should make those groups visually distinct, then re-run the full
-walkthrough and re-hash the PNGs.
+1. Reproduce and fix the late-run `WebSocket connection closed` /
+   compositing-instability failure so a single `walkthrough-runner.ts` run can
+   finish end-to-end without needing slice merge workarounds.
+2. Decide whether the three identical permission prompt component captures are
+   acceptable proof or whether those captures should move to a post-decision /
+   decision-specific moment so each artifact is intentionally distinct.

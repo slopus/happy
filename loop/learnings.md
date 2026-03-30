@@ -177,10 +177,23 @@ If you discover something non-obvious, append it here under the right section.
   `overflow-y` CSS styles. The only reliable way to target it in the DOM is
   via `testID` → `data-testid`. Added `testID="chat-transcript"` to ChatList
   FlatList. Use `[data-testid="chat-transcript"]` as the scroll selector.
-- Inverted FlatList (react-native-web) uses `transform: scaleY(-1)` on the
-  scroll container, NOT `flex-direction: column-reverse`. This means
-  `scrollTop=0` shows the newest messages (DOM top = visual bottom). To
-  scroll to newest content in webreel, use `y: 0`, not `y: 99999`.
+- Inverted FlatList (react-native-web) still uses `transform: scaleY(-1)` on
+  the transcript container, but the real web capture path behaves like a normal
+  scroll box once messages are rendered: clamping to max scroll shows the
+  latest visible content. In `webreel.config.ts`, use a very large positive `y`
+  value (`999999`) against `[data-testid="chat-transcript"]`.
+- Webreel captures are more reliable if each screenshot reloads through the
+  redirect server first. A single long-lived hydrated session page can keep
+  showing stale visible transcript content after resume/question/background-task
+  transitions even though the driver has advanced.
+- The three early permission-prompt component captures can be byte-identical
+  even in a good run because they all capture the same pre-decision dialog
+  state. Treat that as expected unless the capture point is moved to a
+  decision-specific moment.
+- When the one-shot full webreel run dies late with `WebSocket connection
+  closed` / overlay compositing instability, the PNGs already written in temp
+  slice outputs are usable. Step-range reruns merge cleanly because the step
+  screenshot filenames are disjoint across ranges.
 - `AppSyncStore.getMessages()` must return a shared empty array when a session
   has not hydrated yet. `useV3SessionMessages()` is backed by
   `useSyncExternalStore`; if `getSnapshot()` sees a fresh `[]` on each read,

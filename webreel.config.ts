@@ -59,6 +59,8 @@ const APP_ORIGIN = new URL(sessionUrl).origin;
 const REDIRECT_URL = `http://127.0.0.1:${REDIRECT_PORT}/`;
 const WALKTHROUGH_COMPLETED_TEXT = 'Walkthrough Completed';
 const runSteps = activeSteps.filter((step) => step.id !== 0);
+const REFRESH_AFTER_NAVIGATE_MS = 2500;
+const LATEST_TRANSCRIPT_SCROLL_Y = 999999;
 
 // Steps that create a new session (resume/reopen) — webreel must navigate
 // to the redirect server to pick up the new session URL.
@@ -70,6 +72,21 @@ function stepSyncText(step: WalkthroughStep): string {
 
 function screenshotPath(fileName: string): string {
     return join(OUTPUT_DIR, fileName);
+}
+
+function refreshCurrentSessionSteps(description: string): Array<Record<string, unknown>> {
+    return [
+        {
+            action: 'navigate',
+            url: REDIRECT_URL,
+            description: `${description}: reload current session route`,
+        },
+        {
+            action: 'pause',
+            ms: REFRESH_AFTER_NAVIGATE_MS,
+            description: `${description}: allow session page to hydrate`,
+        },
+    ];
 }
 
 const steps: Array<Record<string, unknown>> = [
@@ -100,9 +117,9 @@ if (step0) {
     steps.push(
         {
             action: 'scroll',
-            y: 0,
+            y: LATEST_TRANSCRIPT_SCROLL_Y,
             selector: WALKTHROUGH_TRANSCRIPT_SELECTOR,
-            description: 'Jump to the newest transcript content (scrollTop=0 for inverted FlatList)',
+            description: 'Jump to the newest transcript content',
         },
         {
             action: 'pause',
@@ -160,7 +177,7 @@ for (const [index, step] of runSteps.entries()) {
 
     steps.push({
         action: 'scroll',
-        y: 0,
+        y: LATEST_TRANSCRIPT_SCROLL_Y,
         selector: WALKTHROUGH_TRANSCRIPT_SELECTOR,
         description: `Follow transcript for Step ${step.id}`,
         delay: 500,
@@ -168,6 +185,7 @@ for (const [index, step] of runSteps.entries()) {
 
     for (const capture of step.componentCaptures ?? []) {
         steps.push(
+            ...refreshCurrentSessionSteps(`Refresh before ${capture.outputBase}`),
             {
                 action: 'pause',
                 ms: capture.afterPromptMs ?? CAPTURE_HOLD_MS,
@@ -195,9 +213,10 @@ for (const [index, step] of runSteps.entries()) {
     });
 
     steps.push(
+        ...refreshCurrentSessionSteps(`Refresh before Step ${step.id} capture`),
         {
             action: 'scroll',
-            y: 0,
+            y: LATEST_TRANSCRIPT_SCROLL_Y,
             selector: WALKTHROUGH_TRANSCRIPT_SELECTOR,
             description: `Scroll to the newest content after Step ${step.id}`,
             delay: 500,
