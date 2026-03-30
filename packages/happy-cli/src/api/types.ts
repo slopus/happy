@@ -222,7 +222,11 @@ export const UserMessageSchema = z.object({
   role: z.literal('user'),
   content: z.object({
     type: z.literal('text'),
-    text: z.string()
+    text: z.string(),
+    images: z.array(z.object({
+      base64: z.string(),
+      mediaType: z.string(),
+    })).optional(),
   }),
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()
