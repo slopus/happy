@@ -750,16 +750,156 @@ http://localhost:50372/session/cmndwh245001sy7hsqbhlp38o?dev_token=…&dev_secre
 The base `happy-agent` spawn/send/monitor/stop flow works end-to-end. The
 three issues above are the blockers before scaling to multi-agent fan-out.
 
+## Phase 3.1: DONE
+
+Restored `packages/happy-agent` into this worktree and implemented the Phase
+3.1 CLI/auth/session changes there.
+
+### Changes made
+
+1. **`happy-agent approve` command**
+   - Added `happy-agent approve <session-id> [request-id]`.
+   - Supports `--always` and `--json`.
+   - Reads session history, finds unresolved permission requests, and sends a
+     `permission-response` control message back through the session Socket.IO
+     channel.
+   - Falls back to older `agentState.requests` data when v3 history does not
+     expose a pending request cleanly.
+
+2. **Local-daemon stop path**
+   - `happy-agent stop` now detects when the target machine is local and the
+     daemon HTTP port is known.
+   - In that case it calls local daemon HTTP `POST /stop-session`.
+   - If the machine is remote or the local daemon path is unavailable, it
+     falls back to the prior Socket.IO `session-end` path.
+
+3. **Daemon-local auth seeding investigation**
+   - Added local credential seeding from `access.key` for same-machine use.
+   - This works when `access.key` contains the legacy raw `{ token, secret }`
+     shape.
+   - Current data-key-based `access.key` files still cannot seed
+     `happy-agent` directly because they do not contain the raw account
+     secret; the CLI now reports that limitation explicitly instead of
+     silently forcing a QR flow with no explanation.
+
+### Files changed
+
+- `packages/happy-agent/package.json`
+- `packages/happy-agent/src/api.ts`
+- `packages/happy-agent/src/auth.ts`
+- `packages/happy-agent/src/session.ts`
+- `packages/happy-agent/src/index.ts`
+- `packages/happy-agent/src/session.test.ts`
+- `packages/happy-agent/src/auth.test.ts`
+- `packages/happy-agent/src/index.test.ts`
+- `packages/happy-agent/src/cli-smoke.test.ts`
+
+### Verification
+
+#### Static/test verification
+
+- `yarn --cwd packages/happy-agent typecheck` → PASS
+- `yarn --cwd packages/happy-agent build` → PASS
+- `./node_modules/.bin/vitest run packages/happy-agent/src/auth.test.ts packages/happy-agent/src/session.test.ts packages/happy-agent/src/index.test.ts packages/happy-agent/src/cli-smoke.test.ts` → PASS (`120` tests in `4` files)
+
+#### Real-stack auth seeding proof
+
+Fresh current-branch env: `snug-reef`
+
+- server: `http://localhost:52168`
+- web: `http://localhost:52169`
+- CLI home: `.../environments/data/envs/snug-reef/cli/home`
+
+Command:
+
+```
+HAPPY_SERVER_URL=http://localhost:52168 \
+HAPPY_HOME_DIR=/Users/kirilldubovitskiy/projects/happy/.dev/worktree/happy-sync-refactor/environments/data/envs/snug-reef/cli/home \
+node packages/happy-agent/bin/happy-agent.mjs auth login
+```
+
+Result:
+
+- `Status: Authenticated`
+- `Source: Seeded from local Happy CLI credentials`
+
+Proof file:
+
+```
+-rw-------  1 kirilldubovitskiy  staff  121 Mar 30 18:05 environments/data/envs/snug-reef/cli/home/agent.key
+```
+
+#### Real-stack approve proof
+
+Preserved env: `eager-summit`
+
+- server: `http://localhost:50371`
+- session: `cmndx3epf002qy7hs2umnzk8x`
+
+Command:
+
+```
+HAPPY_SERVER_URL=http://localhost:50371 \
+HAPPY_HOME_DIR=/Users/kirilldubovitskiy/projects/happy/environments/data/envs/eager-summit/agent-home \
+node packages/happy-agent/bin/happy-agent.mjs approve cmndx3epf002qy7hs2umnzk8x --always --json
+```
+
+Result:
+
+- request/call id: `toolu_01MoE388QD5mw4SJ5pHDEgVn`
+- decision: `always`
+
+History proof:
+
+- session history now contains a control message:
+  - `type: "permission-response"`
+  - `requestID: "toolu_01MoE388QD5mw4SJ5pHDEgVn"`
+  - `callID: "toolu_01MoE388QD5mw4SJ5pHDEgVn"`
+  - `decision: "always"`
+
+#### Real-stack stop proof
+
+Fresh current-branch env: `snug-reef`
+
+- machine id: `e84feb4b-1729-4e33-80bf-64cfe2238fc9`
+- daemon HTTP port: `52365`
+- spawned session: `dq8cpHP16vSa96XbRpM9bYBq`
+
+Command:
+
+```
+HAPPY_SERVER_URL=http://localhost:52168 \
+HAPPY_HOME_DIR=/Users/kirilldubovitskiy/projects/happy/.dev/worktree/happy-sync-refactor/environments/data/envs/snug-reef/cli/home \
+node packages/happy-agent/bin/happy-agent.mjs stop dq8cpHP16vSa96XbRpM9bYBq
+```
+
+Result:
+
+- `Session Stopped`
+- `Method: local-daemon-http`
+
+### Caveats found during validation
+
+1. The CLI now definitely selects the daemon HTTP stop path for a local
+   machine, but the spawned `happy ... claude --happy-starting-mode remote`
+   process still appeared alive immediately after the stop command. This
+   suggests a deeper daemon stop/cleanup issue beyond the CLI routing fix.
+2. The current-branch `snug-reef` env did not yield a clean end-to-end
+   approve-unblocks-write proof because the spawned remote session did not
+   visibly consume the sent user prompt during the validation window.
+3. The `eager-summit` env accepted and stored the approve decision in history,
+   but that older runtime did not consume the permission response to unblock
+   the write. That looks like legacy runtime behavior, not CLI emit failure.
+
 ## Current Task
 
-TASK: Phase 3.1 — add `happy-agent approve` command and fix stop behavior.
+TASK: Phase 3.2 — finish real-stack validation of approve consumption and
+daemon stop cleanup.
 
-Address the three blockers found in Phase 3.0:
-1. Add `happy-agent approve <session-id> [request-id]` that sends a permission
-   decision via the session's Socket.IO connection. Support `--always` for
-   session-scoped approval.
-2. Fix `happy-agent stop` to use the daemon HTTP `/stop-session` endpoint when
-   the machine is local (daemon reachable), falling back to Socket.IO
-   `session-end` for remote machines.
-3. Investigate daemon-local credential seeding so `happy-agent` can auth
-   without QR scan when running on the same machine as the daemon.
+Use the current-branch environment and focus narrowly on the remaining two
+real-stack gaps:
+1. prove that a pending write permission can be approved end-to-end by the new
+   `happy-agent approve` command and that the running session actually consumes
+   the permission response
+2. determine whether local daemon HTTP stop needs a follow-up daemon-side fix
+   to terminate spawned CLI processes cleanly after `POST /stop-session`

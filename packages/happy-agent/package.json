@@ -1,0 +1,65 @@
+{
+  "name": "happy-agent",
+  "version": "0.1.0",
+  "description": "CLI client for controlling Happy Coder agents remotely",
+  "author": "Kirill Dubovitskiy",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/slopus/happy/tree/main/packages/happy-agent",
+  "bugs": "https://github.com/slopus/happy/issues",
+  "repository": "slopus/happy",
+  "bin": {
+    "happy-agent": "./bin/happy-agent.mjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "package.json"
+  ],
+  "scripts": {
+    "typecheck": "../../node_modules/.bin/tsc --noEmit",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && ../../node_modules/.bin/tsc --noEmit && ../../node_modules/.bin/pkgroll",
+    "test": "$npm_execpath run build && ../../node_modules/.bin/vitest run",
+    "test:integration": "$npm_execpath run build && ../../node_modules/.bin/vitest run --config vitest.integration.config.ts",
+    "dev": "../../node_modules/.bin/tsx src/index.ts",
+    "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
+    "release": "npx --no-install release-it"
+  },
+  "dependencies": {
+    "@slopus/happy-sync": "^0.1.0",
+    "axios": "^1.13.2",
+    "chalk": "^5.6.2",
+    "commander": "^13.1.0",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io-client": "^4.8.1",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "@types/qrcode-terminal": "^0.12.2",
+    "pkgroll": "^2.14.2",
+    "release-it": "^19.0.6",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "packageManager": "yarn@1.22.22"
+}

@@ -1,0 +1,19 @@
+{
+  "git": {
+    "commitMessage": "Release happy-agent ${version}",
+    "tagName": "happy-agent-v${version}",
+    "push": true,
+    "requireCleanWorkingDir": true,
+    "requireBranch": "main",
+    "addUntrackedFiles": false
+  },
+  "github": {
+    "release": true,
+    "releaseName": "happy-agent-v${version}",
+    "releaseNotes": "node .release-it.notes.js ${version}"
+  },
+  "npm": {
+    "publish": true
+  },
+  "hooks": {}
+}
