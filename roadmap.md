@@ -755,6 +755,46 @@ sessions before dispatching another P2.5 batch or moving to P3.**
 4. **No worktree/agent selection during fork:** Fork reuses the parent's
    directory and agent — no UI for choosing a different target.
 
+### Post-Phase 5.9 priority decision (2026-03-30)
+
+**Next highest-impact work item: Phase 6.1 — fix the machine-store blocker,
+then re-validate fork/resume on the real web stack.**
+
+Do not move to P3 yet. Do not start a broader P2.5 design/build batch first.
+
+**Why this is next:**
+
+1. The Phase 5.9 run proved the current P2.5 surface is blocked by a concrete
+   functional failure, not by missing polish. Fork from the primary control bar
+   is still dead because the web app cannot resolve the session's machine record.
+2. That blocker sits on the critical path for the rest of P2.5. Until machine
+   lookup works, fork, resume, and other machine-dependent quick actions cannot
+   be validated from the real web UI.
+3. Moving to P3 now would bake session-list and tool-row decisions around an
+   unproven control surface. The roadmap already says P3 should follow after the
+   control/fork/resume model settles.
+4. A broad new P2.5 batch would be premature. The right move is to unblock the
+   one failed dependency first, then use the proof from that rerun to decide the
+   next P2.5 build batch.
+
+**Scope of Phase 6.1:**
+
+1. Fix the web machine-store path so `useMachine(machineId)` resolves the live
+   machine for sessions spawned through `happy-agent`.
+2. Re-run the real-stack web fork/resume validation from the active control bar.
+3. Verify that a forked session is actually created and that
+   `SessionOriginBadge` renders with real attribution evidence.
+4. Use that rerun to decide whether the next follow-up is:
+   - stop-button visibility cleanup
+   - worktree/agent selection during fork
+   - or a move to P3 if the control surface is finally stable
+
+**Explicitly not next:**
+
+- Moving to P3 session-list/tool-row polish before fork works end-to-end
+- Another design-heavy P2.5 batch before the blocker is removed
+- Returning to standalone P2 composer polish
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.

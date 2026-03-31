@@ -1903,11 +1903,45 @@ candidates:
 3. **Stop button visibility:** Currently shows even when session is idle.
 4. **Worktree/agent selection during fork:** Not yet implemented.
 
+## Phase 6.0: DONE
+
+Reviewed the Phase 5.9 validation gaps against the remaining roadmap and chose
+the next highest-impact work item.
+
+### Decision
+
+The next work item is **Phase 6.1 — fix the machine-store blocker first, then
+re-validate fork/resume on the real web stack**.
+
+### Why this is next
+
+1. Phase 5.9 exposed a concrete functional blocker, not a polish problem:
+   the active-chat fork control is wired but dead because the web machine store
+   does not resolve the session's machine record.
+2. That blocker is on the critical path for the rest of P2.5. Until it is
+   fixed, fork/resume and other machine-dependent quick actions cannot be
+   proven from the real web UI.
+3. Moving to P3 now would lock in session-list/tool-row decisions around an
+   unvalidated control surface.
+4. A broader new P2.5 batch would be premature. The right sequencing is to
+   remove the blocker, rerun the real-stack proof, and then decide the next
+   follow-up from that evidence.
+
+### Roadmap update
+
+Updated `roadmap.md` with the Phase 6.0 priority decision and the scoped next
+task.
+
 ## Current Task
 
-TASK: Phase 6.0 — choose the next highest-impact work item.
+TASK: Phase 6.1 — fix the machine-store blocker and re-validate fork/resume.
 
-Review the Phase 5.9 gaps and the remaining roadmap to decide whether to:
-- Fix the machine-store blocker first (unblocks fork/resume from web)
-- Move to P3 session-list/tool-row polish
-- Dispatch another P2.5 build batch
+Scope:
+- Fix the web machine-store path so `useMachine(machineId)` resolves live
+  machines for sessions spawned via `happy-agent`.
+- Re-run the real-stack web control/fork/resume validation from the active
+  composer controls.
+- Verify a real forked child session is created and `SessionOriginBadge`
+  renders with real attribution.
+- Use that proof to decide whether the next follow-up is stop-button
+  visibility cleanup, worktree/agent selection during fork, or a move to P3.
