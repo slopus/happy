@@ -2113,7 +2113,60 @@ Fork Session pills only, no Stop button.
 3. P3 session-list/tool-row polish can now build on a stable, proven control
    surface.
 
+## Phase 7.0: DONE
+
+Reviewed `roadmap.md` P3 items and selected the first dispatch batch.
+
+### Decision
+
+The next work item is **Phase 7.1 — dispatch the first P3 scanability/safety
+batch via `happy-agent`**.
+
+### Why this is first
+
+1. The highest-frequency P3 pain is still in the everyday scan surface:
+   archive safety, bulky/noisy tool rows, and unclear nested/subagent
+   presentation.
+2. Those three threads are independent enough to dispatch in parallel and
+   validate on web without first designing the drag-ordering system.
+3. Drag ordering should come after the row/list surface is cleaner; otherwise
+   the interaction work lands on top of unstable visuals.
+4. Markdown image preview and broader file-link review work are important, but
+   they are not the first list/tool-row cleanup batch.
+
+### Scope of Phase 7.1
+
+1. **Session-list archive safety**
+   - add archive confirmation in the list/popover flow
+   - preserve right-click archive and related quick actions on web
+   - make archive feel safe/reversible
+2. **Tool-row compaction and cleanup**
+   - reduce tool action button bulk/layering
+   - group completed-tool actions more cleanly
+   - fix the black stripe artifact in file edit rendering
+   - keep long worktree/file paths from overlapping adjacent row content
+3. **Subagent + plan presentation cleanup**
+   - group nested work more clearly
+   - avoid flattening provider tool calls in a way that hides subagent
+     structure
+   - eliminate duplicated plan presentation where plan/edit content is shown
+     twice
+
+### Explicitly not next
+
+- worktree/project drag ordering
+- markdown image absolute-path preview rendering
+- broader P4 file-link / changed-files review work
+
+### Roadmap update
+
+Updated `roadmap.md` with the Phase 7.0 priority decision and the scoped first
+P3 batch.
+
 ## Current Task
 
-TASK: Phase 7.0 — review `roadmap.md` P3 items, select and scope the first P3
-dispatch batch targeting session-list and tool-row improvements.
+TASK: Phase 7.1 — dispatch the first P3 scanability/safety batch via
+`happy-agent` targeting:
+1. session-list archive confirmation / quick-action safety
+2. tool-row compaction + black-stripe / long-path cleanup
+3. subagent / plan presentation cleanup

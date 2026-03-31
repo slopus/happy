@@ -1006,6 +1006,53 @@ Goal: reduce visual bloat, improve scanability, and make high-priority work easi
 - Confirm that session grouping and archive actions still work after the layout changes.
 - Verify that markdown image syntax using local absolute paths renders an actual inline preview in a real web session.
 
+### Post-Phase 6.4 priority decision (2026-03-30)
+
+**Next highest-impact work item: Phase 7.1 — dispatch the first P3
+scanability/safety batch via `happy-agent`.**
+
+The control/fork/resume surface is now stable enough to let P3 start, but the
+first P3 batch should stay focused on the highest-frequency web pain instead of
+jumping immediately to drag ordering or broader message/file work.
+
+**Why this is first:**
+
+1. The most obvious remaining P3 problems are the ones users hit constantly
+   while scanning active work: archive still does not feel explicitly safe,
+   tool rows are visually heavy, and nested/subagent work is still harder to
+   parse than it should be.
+2. These items are independent enough to dispatch in parallel and validate on
+   web without first designing a full ordering system.
+3. Dragging worktree/project groups should come after the rows themselves are
+   visually stable; otherwise the interaction work gets built on top of a noisy
+   list surface.
+4. Markdown image preview and broader file-link/file-review behavior are real,
+   but they are better handled after the first list/tool-row cleanup pass.
+
+**Scope of Phase 7.1:**
+
+1. **Session-list archive safety**
+   - add archive confirmation in the list/popover flow
+   - preserve right-click archive and related quick actions on web
+   - make the archive action feel explicitly safe/reversible
+2. **Tool-row compaction and cleanup**
+   - reduce tool action button bulk/layering
+   - group completed-tool actions more cleanly
+   - fix the black stripe artifact in file edit rendering
+   - ensure long worktree/file paths do not overlap adjacent row content
+3. **Subagent + plan presentation cleanup**
+   - make nested work clearly attributed and grouped
+   - avoid flattening provider tool calls in a way that hides subagent
+     structure
+   - eliminate duplicated plan presentation where plan/edit content is shown
+     twice
+
+**Explicitly not first in P3:**
+
+- worktree/project drag ordering
+- markdown image absolute-path preview rendering
+- broader P4 file-link or changed-files review work
+
 ## P4. File links, changed-files review, and attachments
 
 Goal: make file references in chat actually useful and make file review/attachment flows feel complete.
