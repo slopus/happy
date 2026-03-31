@@ -2002,13 +2002,44 @@ Fixed the machine-store resolution blocker. Committed in `ed056626`.
 
 ## Current Task
 
-TASK: Phase 6.2 — exercise fork on real web, verify SessionOriginBadge,
-decide next follow-up.
+## Phase 6.2: DONE
 
-Scope:
-- Click fork on the validated session in the web browser.
-- Verify a real forked child session is created.
-- Verify `SessionOriginBadge` renders "Forked from X" with correct
-  attribution.
-- Use the evidence to decide whether the next step is stop-button
-  visibility cleanup, worktree/agent selection during fork, or move to P3.
+Exercised fork on the real web stack and verified SessionOriginBadge.
+
+### Proof
+
+**Parent session:** `RNOD4V2mOR5DAZYuApYnl3Zn`
+**Forked child:** `LfZ7ygfDGFKgAaATNIPGWXTB`
+
+**Playwright results:**
+- Fork button visible: **true**
+- Click Fork Session → navigated to child session URL
+- "Forked from" text in body: **true**
+- `SessionOriginBadge` renders correctly
+
+### What works end-to-end now
+
+1. Machine store resolves for sessions with machineId in v3 metadata
+2. `canFork` evaluates to true (machineId + machine + active)
+3. Fork button is enabled in the active-chat control bar
+4. Clicking fork creates a real child session via `machineSpawnNewSession`
+5. Navigation to the child session works
+6. `SessionOriginBadge` renders "Forked from X"
+
+### Remaining P2.5 gaps
+
+1. **Stop button visibility**: Still shows when session is idle
+2. **Worktree/agent selection during fork**: Not implemented
+3. **Existing sessions backfill**: Pre-fix sessions lack machineId
+
+### Decision
+
+The P2.5 control/fork/resume flow is now functionally validated. The
+remaining gaps are polish. The next highest-impact step is to move to P3
+(session-list/tool-row polish) or address the stop-button visibility as a
+quick cleanup before P3.
+
+## Current Task
+
+TASK: Phase 6.3 — review roadmap and decide next priority (P2.5 polish
+vs P3).
