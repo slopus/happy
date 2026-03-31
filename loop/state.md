@@ -1268,10 +1268,25 @@ All 3 worktrees removed. Branches deleted.
 
 All sessions were accessible at `http://localhost:58036/session/<id>?dev_token=...&dev_secret=...`
 
+## Phase 4.4: DONE
+
+Updated `roadmap.md` with Phase 4.3 results and Codex task decomposition plan.
+
+### Decision
+
+The remaining P1 Codex task should be decomposed into 3 targeted sub-tasks
+(A: permission handlers, B: stuck-thinking mapper fix, C: stop path) and
+dispatched as the next batch.
+
 ## Current Task
 
-TASK: Phase 4.4 — commit the Phase 4.3 results to `happy-sync-refactor` and
-select the next work item.
+TASK: Phase 4.5 — dispatch decomposed Codex sub-tasks via `happy-agent`.
 
-The cherry-picked commits are already on the branch. Commit this state update,
-then decide whether to decompose the failed Codex task or move to other P1 work.
+Use the `quiet-fjord` environment (server `:58035`, web `:58036`). Spawn 2-3
+sessions for:
+- Sub-task A: Fix Codex `PermissionFooter` handlers + `ops.ts` decision mapping
+- Sub-task B: Fix Codex v3-mapper `step-finish` emission for stuck-thinking
+- Sub-task C: Fix Codex `stop` path reliability
+
+Each sub-task should target specific files and make targeted changes.
+Require typecheck + commit from each.

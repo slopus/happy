@@ -368,6 +368,32 @@ paths that still make non-`yolo` remote agent management unreliable.
   permission/control regressions
 - P2/P3 UI polish while P1 non-`yolo` control paths are still broken
 
+### Phase 4.3 results — P1 permission/plan batch dispatched (2026-03-31)
+
+Dispatched 3 tasks via `happy-agent` in `quiet-fjord` environment.
+
+| Task | Session | Result |
+|------|---------|--------|
+| Claude permission state | `cJUmxwx6oN8U0R7NbudZ1vbJ` | PASS — 2 commits, 12 files |
+| Plan approval UI | `ulL1KoV39CqO0bcnJZ73Ge2g` | PASS — 2 commits, 3 files |
+| Codex non-yolo control | `3onyuUQK5dRy9WMt4H86gsy9` | FAIL — 63 msgs, 0 commits |
+
+**What was delivered:**
+
+1. **Permission state** — simplified PermissionFooter.tsx decision detection,
+   added denial reason display, updated all 11 translation files.
+2. **Plan approval** — ExitPlanToolView now shows approve/deny controls via
+   PermissionFooter when the tool has a pending permission.
+3. **Codex control** — agent spent entire session reading Codex runner,
+   v3-mapper, and sync-node code without making changes. Task too broad for
+   a single agent session.
+
+**Codex task needs decomposition.** The remaining P1 Codex blocker should be
+broken into 2-3 targeted sub-tasks:
+- Sub-task A: Fix Codex PermissionFooter handlers + ops.ts decision mapping
+- Sub-task B: Fix Codex v3-mapper step-finish emission for stuck-thinking
+- Sub-task C: Fix Codex stop path reliability
+
 ## P1. Control-flow, permissions, and protocol bugs
 
 Goal: remove the broken session-control paths that currently make remote agent management unreliable.
