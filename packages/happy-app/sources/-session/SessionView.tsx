@@ -5,7 +5,10 @@ import {
     getAvailablePermissionModes,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
+    getEffortLevelsForModel,
+    getDefaultEffortKeyForModel,
     resolveCurrentOption,
+    EffortLevel,
 } from '@/components/modelModeOptions';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
@@ -277,6 +280,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             getDefaultModelKey(flavor),
         ])
     ), [availableModels, session.modelMode, session.metadata?.currentModelCode, flavor]);
+
+    // Effort level state
+    const modelKey = modelMode?.key ?? 'default';
+    const availableEffortLevels = React.useMemo<EffortLevel[]>(() => (
+        getEffortLevelsForModel(flavor, modelKey)
+    ), [flavor, modelKey]);
+    const effortLevel = React.useMemo<EffortLevel | null>(() => (
+        resolveCurrentOption(availableEffortLevels, [
+            session.effortLevel,
+            getDefaultEffortKeyForModel(flavor, modelKey),
+        ])
+    ), [availableEffortLevels, session.effortLevel, flavor, modelKey]);
+
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
@@ -312,6 +328,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     const updateModelMode = React.useCallback((mode: ModelMode) => {
         storage.getState().updateSessionModelMode(sessionId, mode.key);
+    }, [sessionId]);
+
+    const updateEffortLevel = React.useCallback((level: EffortLevel) => {
+        storage.getState().updateSessionEffortLevel(sessionId, level.key);
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
@@ -397,6 +417,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             modelMode={modelMode}
             availableModels={availableModels}
             onModelModeChange={updateModelMode}
+            effortLevel={effortLevel}
+            availableEffortLevels={availableEffortLevels}
+            onEffortLevelChange={updateEffortLevel}
             metadata={session.metadata}
             connectionStatus={{
                 text: sessionStatus.statusText,

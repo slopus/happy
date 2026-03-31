@@ -6,6 +6,7 @@ import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
+import { EffortLevel } from './modelModeOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -38,6 +39,9 @@ interface AgentInputProps {
     modelMode?: ModelMode | null;
     availableModels?: ModelMode[];
     onModelModeChange?: (mode: ModelMode) => void;
+    effortLevel?: EffortLevel | null;
+    availableEffortLevels?: EffortLevel[];
+    onEffortLevelChange?: (level: EffortLevel) => void;
     metadata?: Metadata | null;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
@@ -274,7 +278,57 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
     },
+
+    // Compact control pills
+    controlPillsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 4,
+        paddingTop: 4,
+        paddingBottom: 2,
+        flexWrap: 'wrap',
+    },
+    controlPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 10,
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    controlPillPressed: {
+        opacity: 0.6,
+    },
+    controlPillText: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
 }));
+
+const getPermissionPillColor = (key: string, isSandboxed: boolean, theme: Theme): string => {
+    if (isSandboxed) return '#4169E1';
+    switch (key) {
+        case 'acceptEdits':
+        case 'auto_edit':
+            return '#A78BFA';
+        case 'plan':
+            return '#5EABA4';
+        case 'dontAsk':
+        case 'safe-yolo':
+            return '#FBBF24';
+        case 'bypassPermissions':
+        case 'yolo':
+            return '#F87171';
+        case 'read-only':
+            return '#60A5FA';
+        default:
+            return theme.colors.textSecondary;
+    }
+};
 
 const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
     const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
@@ -311,6 +365,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         hackModes(props.availableModes ?? [])
     ), [props.availableModes]);
     const availableModels = props.availableModels ?? [];
+    const availableEffortLevels = props.availableEffortLevels ?? [];
+    const showEffortPill = availableEffortLevels.length > 0 && !!props.onEffortLevelChange;
     const isSandboxEnabled = React.useMemo(() => {
         const sandbox = props.metadata?.sandbox as unknown;
         if (!sandbox) {
@@ -423,6 +479,33 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         props.onPermissionModeChange?.(mode);
         // Don't close the settings overlay - let users see the change and potentially switch again
     }, [props.onPermissionModeChange]);
+
+    // Cycle model pill
+    const handleCycleModel = React.useCallback(() => {
+        if (availableModels.length === 0 || !props.onModelModeChange) return;
+        hapticsLight();
+        const currentIndex = availableModels.findIndex(m => m.key === props.modelMode?.key);
+        const nextIndex = ((currentIndex >= 0 ? currentIndex : 0) + 1) % availableModels.length;
+        props.onModelModeChange(availableModels[nextIndex]);
+    }, [availableModels, props.modelMode?.key, props.onModelModeChange]);
+
+    // Cycle permission pill
+    const handleCyclePermission = React.useCallback(() => {
+        if (availableModes.length === 0 || !props.onPermissionModeChange) return;
+        hapticsLight();
+        const currentIndex = availableModes.findIndex(m => m.key === permissionModeKey);
+        const nextIndex = ((currentIndex >= 0 ? currentIndex : 0) + 1) % availableModes.length;
+        props.onPermissionModeChange(availableModes[nextIndex]);
+    }, [availableModes, permissionModeKey, props.onPermissionModeChange]);
+
+    // Cycle effort pill
+    const handleCycleEffort = React.useCallback(() => {
+        if (availableEffortLevels.length === 0 || !props.onEffortLevelChange) return;
+        hapticsLight();
+        const currentIndex = availableEffortLevels.findIndex(e => e.key === props.effortLevel?.key);
+        const nextIndex = ((currentIndex >= 0 ? currentIndex : 0) + 1) % availableEffortLevels.length;
+        props.onEffortLevelChange(availableEffortLevels[nextIndex]);
+    }, [availableEffortLevels, props.effortLevel?.key, props.onEffortLevelChange]);
 
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
@@ -937,10 +1020,64 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         />
                     </View>
 
+                    {/* Compact control pills row */}
+                    {(props.onModelModeChange || props.onPermissionModeChange || showEffortPill) && (
+                        <View style={stylesheet.controlPillsRow}>
+                            {/* Model pill */}
+                            {props.modelMode && props.onModelModeChange && availableModels.length > 1 && (
+                                <Pressable
+                                    onPress={handleCycleModel}
+                                    style={(p) => [stylesheet.controlPill, p.pressed && stylesheet.controlPillPressed]}
+                                >
+                                    <Text style={stylesheet.controlPillText} numberOfLines={1}>
+                                        {props.modelMode.name}
+                                    </Text>
+                                </Pressable>
+                            )}
+
+                            {/* Permission pill */}
+                            {displayPermissionMode && props.onPermissionModeChange && availableModes.length > 1 && (
+                                <Pressable
+                                    onPress={handleCyclePermission}
+                                    style={(p) => [stylesheet.controlPill, p.pressed && stylesheet.controlPillPressed]}
+                                >
+                                    {(() => {
+                                        const pillColor = getPermissionPillColor(permissionModeKey, isSandboxedYoloMode, theme);
+                                        return (
+                                            <>
+                                                <Ionicons
+                                                    name={permissionModeKey === 'plan' || permissionModeKey === 'read-only' ? 'pause' : 'shield-outline'}
+                                                    size={11}
+                                                    color={pillColor}
+                                                />
+                                                <Text style={[stylesheet.controlPillText, { color: pillColor }]} numberOfLines={1}>
+                                                    {withSandboxSuffix(displayPermissionMode.name, permissionModeKey)}
+                                                </Text>
+                                            </>
+                                        );
+                                    })()}
+                                </Pressable>
+                            )}
+
+                            {/* Effort pill */}
+                            {showEffortPill && props.effortLevel && (
+                                <Pressable
+                                    onPress={handleCycleEffort}
+                                    style={(p) => [stylesheet.controlPill, p.pressed && stylesheet.controlPillPressed]}
+                                >
+                                    <Ionicons name="speedometer-outline" size={11} color={theme.colors.textSecondary} />
+                                    <Text style={stylesheet.controlPillText} numberOfLines={1}>
+                                        {props.effortLevel.name}
+                                    </Text>
+                                </Pressable>
+                            )}
+                        </View>
+                    )}
+
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
-                            {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
+                            {/* Row 1: Settings, Agent, Abort, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <View style={styles.actionButtonsLeft}>
 
