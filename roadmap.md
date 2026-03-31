@@ -1053,6 +1053,56 @@ jumping immediately to drag ordering or broader message/file work.
 - markdown image absolute-path preview rendering
 - broader P4 file-link or changed-files review work
 
+### Post-Phase 7.1 priority decision (2026-03-30)
+
+**Next highest-impact work item: Phase 7.3 — real-stack validation of the
+Phase 7.1 P3 scanability/safety batch on web.**
+
+Phase 7.1 landed the first P3 implementation batch, but those changes are not
+proven on the real web stack yet. The roadmap's P3 validation requirements are
+still unmet for the exact surfaces that just changed: archive safety, tool-row
+scanability, and nested/subagent presentation.
+
+**Why this is next:**
+
+1. The merged Phase 7.1 work is directly user-facing and structurally broad:
+   it changed archive actions, tool rows, and nested-work rendering. Validation
+   should come before another build batch compounds those changes.
+2. The roadmap already requires web validation for these surfaces. In
+   particular, archive actions and session grouping need confirmation after the
+   layout changes, and the new subagent/plan presentation needs proof on real
+   transcripts rather than synthetic assumptions.
+3. Drag ordering should still wait until the session rows and tool cards are
+   visually stable in the real product. Building drag interactions first would
+   put interaction work on top of an unverified list surface.
+4. Markdown image absolute-path preview is important, but it is narrower and
+   lower-frequency than validating the broader scanability/safety batch that
+   just landed.
+
+**Scope of Phase 7.3:**
+
+1. **Archive safety on real web**
+   - validate archive confirmation in the list/popover flow
+   - confirm right-click archive and related quick actions still work on web
+   - confirm archive still feels reversible and does not regress session
+     grouping behavior
+2. **Tool-row compaction on real transcripts**
+   - validate the slimmer tool rows against real Bash/Edit/plan/subagent
+     output
+   - confirm the black-stripe diff artifact is gone
+   - confirm long worktree/file paths do not overlap adjacent row content
+3. **Subagent + plan presentation on real nested work**
+   - validate nested work attribution and grouping on web
+   - confirm provider tool calls do not flatten the subagent structure
+   - confirm duplicated plan presentation is actually gone in the rendered UI
+
+**Explicitly not next:**
+
+- worktree/project drag ordering before Phase 7.1 is validated
+- markdown image absolute-path preview before the broader P3 batch is proven
+- a second P3 implementation batch before the first one is validated
+- broader P4 file-link or changed-files review work
+
 ## P4. File links, changed-files review, and attachments
 
 Goal: make file references in chat actually useful and make file review/attachment flows feel complete.

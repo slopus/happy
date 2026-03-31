@@ -2226,8 +2226,54 @@ Post-merge fix: `theme.colors.error` → `theme.colors.warning` in SubtaskPartVi
 
 All 3 worktrees removed. Branches deleted. Sessions stopped.
 
+## Phase 7.2: DONE
+
+Reviewed `roadmap.md` against the completed Phase 7.1 batch and selected the
+next highest-impact work item.
+
+### Decision
+
+The next work item is **Phase 7.3 — real-stack validation of the Phase 7.1 P3
+scanability/safety batch on web**.
+
+### Why this is next
+
+1. Phase 7.1 changed three broad user-facing surfaces at once: archive safety,
+   tool-row density, and nested/subagent presentation. Those changes should be
+   proven on the real web stack before more P3 implementation work lands on
+   top of them.
+2. The roadmap's P3 validation requirements are still directly applicable to
+   what just changed: archive actions need confirmation after the layout work,
+   and the updated subagent/plan presentation needs proof on real transcripts.
+3. Worktree/project drag ordering should still wait until the underlying row
+   and tool-card surfaces are visually stable in production-like usage.
+4. Markdown image absolute-path preview is valuable, but it is narrower and
+   lower-frequency than validating the broader scanability/safety batch that
+   already shipped to this branch.
+
+### Scope of Phase 7.3
+
+1. **Archive safety on real web**
+   - validate archive confirmation in the list/popover flow
+   - confirm right-click archive and related quick actions still work
+   - confirm grouping/archive behavior did not regress
+2. **Tool-row compaction on real transcripts**
+   - validate the slimmer tool rows against real Bash/Edit/plan/subagent output
+   - confirm the black-stripe diff artifact is gone
+   - confirm long worktree/file paths do not overlap adjacent row content
+3. **Subagent + plan presentation on real nested work**
+   - validate nested work attribution/grouping on web
+   - confirm provider tool calls do not flatten subagent structure
+   - confirm duplicated plan presentation is actually gone in the rendered UI
+
+### Roadmap update
+
+Updated `roadmap.md` with the Phase 7.2 priority decision and scoped next
+validation batch.
+
 ## Current Task
 
-TASK: Phase 7.2 — review `roadmap.md` and select the next highest-impact work
-item. Consider whether more P3 work (drag ordering, markdown image preview) or
-validation of the Phase 7.1 batch on the real web stack is the right next step.
+TASK: Phase 7.3 — validate the Phase 7.1 P3 scanability/safety batch on the
+real web stack. Capture concrete evidence for archive confirmation, tool-row
+compaction, and subagent/plan presentation, then write the results back into
+`roadmap.md` and `loop/state.md`.
