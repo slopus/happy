@@ -748,6 +748,7 @@ export const zhHans: TranslationStructure = {
 
     permissions: {
         sessionStopped: '会话已停止',
+        denied: '请求被拒绝',
     },
 
     codex: {

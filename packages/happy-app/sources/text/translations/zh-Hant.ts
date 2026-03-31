@@ -747,6 +747,7 @@ export const zhHant: TranslationStructure = {
 
     permissions: {
         sessionStopped: '工作階段已停止',
+        denied: '請求被拒絕',
     },
 
     codex: {

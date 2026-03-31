@@ -11,7 +11,6 @@ interface PermissionFooterProps {
         id: string;
         status: "pending" | "approved" | "denied" | "canceled";
         reason?: string;
-        mode?: string;
         allowedTools?: string[];
         decision?: 'approved' | 'approved_for_session' | 'approved_all_edits' | 'denied' | 'abort';
     };
@@ -141,38 +140,14 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     // Treat pending permissions in ended sessions as denied (auto-denied by stopSession)
     const isDenied = permission.status === 'denied' || (permission.status === 'pending' && sessionEnded);
     const isPending = permission.status === 'pending' && !sessionEnded;
-    const denialReason = permission.reason || (permission.status === 'pending' && sessionEnded ? t('permissions.sessionStopped') : undefined);
+    const denialReason = permission.reason
+        || (permission.status === 'pending' && sessionEnded ? t('permissions.sessionStopped') : undefined)
+        || (isDenied ? t('permissions.denied') : undefined);
 
-    // Helper function to check if tool matches allowed pattern
-    const isToolAllowed = (toolName: string, toolInput: any, allowedTools: string[] | undefined): boolean => {
-        if (!allowedTools) return false;
-        
-        // Direct match for non-Bash tools
-        if (allowedTools.includes(toolName)) return true;
-        
-        // For Bash, check exact command match
-        if (toolName === 'Bash' && toolInput?.command) {
-            const command = toolInput.command;
-            return allowedTools.includes(`Bash(${command})`);
-        }
-        
-        return false;
-    };
-
-    // Detect which button was used from the resolved decision field.
-    // v3 path sets decision via getToolPermissionState; legacy path may use mode as fallback.
-    const isApprovedViaAllow = isApproved && (
-        permission.decision === 'approved'
-        || (!permission.decision && !permission.mode && !isToolAllowed(toolName, toolInput, permission.allowedTools))
-    );
-    const isApprovedViaAllEdits = isApproved && (
-        permission.decision === 'approved_all_edits'
-        || (!permission.decision && permission.mode === 'acceptEdits')
-    );
-    const isApprovedForSession = isApproved && (
-        permission.decision === 'approved_for_session'
-        || (!permission.decision && !permission.mode && isToolAllowed(toolName, toolInput, permission.allowedTools))
-    );
+    // Derive which button was selected from the resolved decision field.
+    const isApprovedViaAllow = isApproved && permission.decision === 'approved';
+    const isApprovedViaAllEdits = isApproved && permission.decision === 'approved_all_edits';
+    const isApprovedForSession = isApproved && permission.decision === 'approved_for_session';
     
     // Codex-specific status detection with fallback
     const isCodexApproved = isCodex && isApproved && (permission.decision === 'approved' || !permission.decision);

@@ -745,6 +745,7 @@ export const en = {
 
     permissions: {
         sessionStopped: 'Session stopped',
+        denied: 'Request denied',
     },
 
     codex: {

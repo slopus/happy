@@ -748,6 +748,7 @@ export const ja: TranslationStructure = {
 
     permissions: {
         sessionStopped: 'セッションが停止しました',
+        denied: 'リクエストが拒否されました',
     },
 
     codex: {

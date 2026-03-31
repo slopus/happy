@@ -747,6 +747,7 @@ export const ca: TranslationStructure = {
 
     permissions: {
         sessionStopped: 'Sessió aturada',
+        denied: 'Sol·licitud denegada',
     },
 
     codex: {

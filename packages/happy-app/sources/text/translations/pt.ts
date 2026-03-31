@@ -746,6 +746,7 @@ export const pt: TranslationStructure = {
 
     permissions: {
         sessionStopped: 'Sessão interrompida',
+        denied: 'Solicitação negada',
     },
 
     codex: {

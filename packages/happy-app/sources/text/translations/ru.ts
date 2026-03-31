@@ -744,6 +744,7 @@ export const ru: TranslationStructure = {
 
     permissions: {
         sessionStopped: 'Сессия остановлена',
+        denied: 'Запрос отклонён',
     },
 
     codex: {
