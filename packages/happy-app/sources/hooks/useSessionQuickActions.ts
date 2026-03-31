@@ -258,7 +258,14 @@ export function useSessionQuickActions(
     });
 
     const archiveSession = React.useCallback(() => {
-        performArchive();
+        Modal.alert(
+            t('session.archiveConfirmTitle'),
+            t('session.archiveConfirmMessage'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                { text: t('session.archive'), style: 'destructive', onPress: performArchive },
+            ]
+        );
     }, [performArchive]);
 
     const resumeSession = React.useCallback(() => {
