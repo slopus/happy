@@ -503,6 +503,54 @@ All 3 composer tasks dispatched via `happy-agent` and completed successfully.
 
 **Typecheck:** `npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes with all 3 merged.
 
+### Post-Phase 5.1 priority decision (2026-03-30)
+
+**Decision: the next work item is Phase 5.3 — the composer attachments + project-context batch.**
+
+Phase 5.1 closed most of the highest-value structural P2 gaps:
+
+- the new-session composer is now much closer to the regular chat input
+- the input is the main visual focus
+- the header hierarchy is simplified
+- active-chat controls are integrated
+- direct custom-path entry and desktop picker autofocus now exist
+- worktree selection remains first-class
+
+The biggest remaining unmet P2 requirements are now functional rather than structural:
+
+- image support is still missing
+- there is still no lower-left `+` attachment entry point wired into the real encrypted file flow
+- project/worktree continuity still needs cleanup so matching worktrees feel like part of the same project and the project picker stays scoped to empty/new-thread flow
+
+**Why this is next:**
+
+1. It directly targets the largest remaining composer workflows that a real user still cannot do after Phase 5.1.
+2. It stays inside the P2 composer surface instead of jumping early to P2.5 control-surface work or P3 polish.
+3. It fits the existing real-stack validation model: attachment/image behavior and project/worktree continuity both need web validation against the real spawn path, not just local component state.
+
+**Scope of Phase 5.3:**
+
+1. **Attachment entry point + encrypted file wiring**
+   - add the lower-left `+` entry point in both new-session and active-chat composers
+   - route selected files through the existing encrypted attachment path where the product already supports it
+   - keep pending attachments visible in the composer before send
+
+2. **Image support**
+   - support image selection through the composer attachment flow
+   - show appropriate composer-side preview state on web
+   - keep behavior aligned between new-session and active-chat composition
+
+3. **Project/worktree continuity cleanup**
+   - keep the project picker on empty/new thread only
+   - treat matching worktrees as part of the same project context instead of unrelated entries
+   - preserve first-class no-worktree / existing-worktree / create-worktree choices after the grouping cleanup
+
+**Explicitly not next:**
+
+- P2.5 fork/resume or PI-style control-surface work
+- P3 session-list or tool-UI polish
+- broader P4 file-review/link-resolution work beyond the composer attachment send path
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.

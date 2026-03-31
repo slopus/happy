@@ -1471,9 +1471,50 @@ merged.
 - Web URLs: all sessions accessible at
   `http://localhost:58036/session/<id>?dev_token=...&dev_secret=...`
 
+## Phase 5.2: DONE
+
+Reviewed the remaining P2 composer requirements against what Phase 5.1
+delivered and selected the next highest-impact dispatch batch.
+
+### What Phase 5.1 already closed
+
+- New-session composer layout is now much closer to the regular chat composer.
+- The input is the main visual focus with less chrome above it.
+- Active-chat controls are integrated next to the input instead of feeling
+  detached.
+- Direct custom-path entry exists.
+- Desktop machine/folder/worktree pickers auto-focus their search/input fields.
+- Basic worktree choices remain first-class.
+
+### Remaining highest-impact P2 gaps
+
+1. Attachment/image workflows are still missing from the composer.
+2. There is still no lower-left `+` attachment entry point wired into the real
+   encrypted file flow.
+3. Project/worktree continuity still needs cleanup so matching worktrees feel
+   like part of the same project and the project picker stays scoped to the
+   empty/new-thread flow.
+
+### Decision
+
+The next work item is **Phase 5.3 — the composer attachments +
+project-context batch**.
+
+### Scope of Phase 5.3
+
+1. Attachment entry point + encrypted file wiring
+2. Image support in the composer flow
+3. Project/worktree continuity cleanup
+
 ## Current Task
 
-TASK: Phase 5.2 — select the next P2 work batch.
+TASK: Phase 5.3 — dispatch the next P2 composer batch via `happy-agent`.
 
-Review the P2 roadmap section's remaining concrete requirements against what
-Phase 5.1 delivered and decide the next highest-impact dispatch batch.
+Dispatch `2-3` independent tasks covering:
+
+1. lower-left `+` attachment entry point + encrypted file wiring
+2. image support in the composer flow
+3. project/worktree continuity cleanup
+
+Require real web validation and write the per-task results back into
+`roadmap.md`.
