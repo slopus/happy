@@ -2436,7 +2436,92 @@ The ordering feature needs real-stack web validation to confirm:
 3. Order persists across page reloads
 4. Archive/grouping still works after reordering
 
+## Phase 7.6: DONE
+
+Validated the Phase 7.5 drag-to-reorder work on the real web stack. The
+validation task is complete, but the feature itself failed real-stack proof.
+
+### Environment
+
+`wise-mountain` — server `:58271`, web `:58272`, daemon PID 6643.
+
+### Deterministic validation dataset
+
+Created 3 fresh project-group sessions:
+
+| Group | Path | Session ID |
+|------|------|------------|
+| Alpha | `/tmp/happy-p3-alpha` | `DTqlGSEHEuZxEQkA5SnsnZiM` |
+| Beta | `/tmp/happy-p3-beta` | `FVYUz1WtXN0zxPmrjp7nfq2Y` |
+| Gamma | `/tmp/happy-p3-gamma` | `jxUOKYEe7KpjcIDbFdl9pfjE` |
+
+### Validation results
+
+1. **Handle visibility:** PASS
+   - `01-session-list-initial.png` shows the reorder glyph next to each
+     project path in the sidebar.
+
+2. **Actual drag interaction:** FAIL
+   - `validation-results.json` reports `draggableCount: 0`.
+   - The visible order before and after the pointer drag attempt is identical:
+     - `/private/tmp/happy-p3-alpha`
+     - `/private/tmp/happy-p3-beta`
+     - `/private/tmp/happy-p3-gamma`
+   - A second drag attempt from the handle area also left the order unchanged.
+
+3. **Persistence across reload:** FAIL / blocked
+   - Because no drag action took effect, reload shows the same order.
+
+4. **Archive/grouping behavior:** PASS
+   - `04-right-click-popover.png` shows `Details`, `Archive`,
+     `Fork Session`, and `Bug Report`.
+   - Grouping remained intact for all 3 project groups after the attempted
+     reorder.
+
+### Artifacts
+
+```
+-rw-r--r--   1 kirilldubovitskiy  staff   49244 Mar 31 00:03 e2e-recordings/phase-7-6-validation/01-session-list-initial.png
+-rw-r--r--   1 kirilldubovitskiy  staff   49244 Mar 31 00:03 e2e-recordings/phase-7-6-validation/02-after-drag-attempt.png
+-rw-r--r--   1 kirilldubovitskiy  staff   49262 Mar 31 00:03 e2e-recordings/phase-7-6-validation/03-after-reload.png
+-rw-r--r--   1 kirilldubovitskiy  staff   55162 Mar 31 00:03 e2e-recordings/phase-7-6-validation/04-right-click-popover.png
+-rw-r--r--   1 kirilldubovitskiy  staff  538235 Mar 31 00:03 e2e-recordings/phase-7-6-validation/drag-reorder-validation.webm
+-rw-r--r--   1 kirilldubovitskiy  staff    1299 Mar 31 00:03 e2e-recordings/phase-7-6-validation/validation-results.json
+{
+  "format": {
+    "duration": "24.280000",
+    "size": "538235"
+  }
+}
+```
+
+### Root cause evidence
+
+The real web DOM exposes the visual reorder affordance but not the underlying
+drag target:
+
+- `validation-results.json` shows `draggableCount: 0`
+- The rendered screenshots show the handle glyph, but no drag attempt changes
+  order
+
+Inference: the current web implementation is not forwarding the HTML5 drag/drop
+props into real draggable DOM nodes.
+
+### Roadmap update
+
+Updated `roadmap.md` with:
+
+- the failed Phase 7.6 validation report
+- the concrete blocker evidence
+- the next priority decision to fix drag delivery before moving on to the
+  remaining P3 items
+
 ## Current Task
 
-TASK: Phase 7.6 — real-stack validation of Phase 7.5 drag-to-reorder on web,
-then update `roadmap.md` and choose the next P3 item.
+TASK: Phase 7.7 — fix web drag-to-reorder delivery so project groups become
+real drag targets on web, then re-validate the full flow:
+1. handle visible
+2. drag changes order
+3. reload preserves order
+4. archive/grouping still work
+5. video + screenshots attached

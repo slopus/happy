@@ -1177,6 +1177,100 @@ stable enough to build interaction on top of them.
 - broader P4 file-link or changed-files review work
 - returning to another P2/P2.5 control-surface batch
 
+### Phase 7.6 validation report (2026-03-31)
+
+**Result: FAIL — the sidebar shows the reorder affordance, but real web
+drag-to-reorder is not interactive yet.**
+
+Environment: `wise-mountain` — server `:58271`, web `:58272`, daemon PID 6643.
+
+**Deterministic validation dataset**
+
+Three fresh project groups were created in the same authenticated env:
+
+| Group | Path | Session ID |
+|------|------|------------|
+| Alpha | `/tmp/happy-p3-alpha` | `DTqlGSEHEuZxEQkA5SnsnZiM` |
+| Beta | `/tmp/happy-p3-beta` | `FVYUz1WtXN0zxPmrjp7nfq2Y` |
+| Gamma | `/tmp/happy-p3-gamma` | `jxUOKYEe7KpjcIDbFdl9pfjE` |
+
+**What was validated**
+
+1. **Handle visibility — PASS**
+   - The sidebar renders the reorder glyph next to each project path.
+   - Evidence: `01-session-list-initial.png`
+
+2. **Actual drag interaction — FAIL**
+   - The rendered DOM contains **zero** `[draggable="true"]` elements.
+   - Pointer drag attempts from Alpha to Gamma do not change the visible order.
+   - The order remains:
+     - `/private/tmp/happy-p3-alpha`
+     - `/private/tmp/happy-p3-beta`
+     - `/private/tmp/happy-p3-gamma`
+   - Evidence: `validation-results.json`, `02-after-drag-attempt.png`,
+     `drag-reorder-validation.webm`
+
+3. **Persistence across reload — FAIL / blocked by no reorder**
+   - After reload, the order is still unchanged because no drag action took effect.
+   - Evidence: `03-after-reload.png`, `validation-results.json`
+
+4. **Archive/grouping safety after the attempted reorder — PASS**
+   - Grouping remains intact for all three project groups.
+   - Right-click on the session row still shows `Details`, `Archive`,
+     `Fork Session`, and `Bug Report`.
+   - Evidence: `04-right-click-popover.png`
+
+**Artifacts**
+
+- Screenshots + JSON: `e2e-recordings/phase-7-6-validation/`
+- Video: `e2e-recordings/phase-7-6-validation/drag-reorder-validation.webm`
+- `ffprobe`:
+  - duration: `24.28s`
+  - size: `538235`
+
+**What this means**
+
+The Phase 7.5 persistence/sort logic is not proven broken, but the web drag
+delivery is not actually reaching the DOM. The current implementation ships a
+visible reorder affordance without a working drag target, so the main P3
+ordering requirement is still unmet on the real product.
+
+### Post-Phase 7.6 priority decision (2026-03-31)
+
+**Next highest-impact work item: Phase 7.7 — fix web drag-to-reorder delivery,
+then re-validate it before moving on.**
+
+Phase 7.6 did not clear the P3 ordering requirement. The app now hints that
+project groups can be dragged, but the real web surface does not expose any
+draggable project-group wrappers and user drag attempts have no effect.
+
+**Why this is next:**
+
+1. Worktree/project ordering is still an unfinished core P3 outcome.
+2. The validation failure is narrow and concrete: the web drag interaction is
+   not live, even though the handle glyph is visible.
+3. Archive actions and grouping stayed intact, so the next fix can stay scoped
+   to the drag/drop delivery path instead of reopening broader list behavior.
+4. Markdown image absolute-path preview and P4 file-link work should wait until
+   the ordering feature actually works on the real web surface.
+
+**Scope of Phase 7.7:**
+
+1. Make project-group drag/drop real on web, not just visually implied.
+2. Preserve the existing ordering-state persistence and current group sorting.
+3. Re-run the same real-stack proof:
+   - handle visible
+   - drag changes order
+   - reload preserves order
+   - archive/grouping still work
+   - video + screenshots attached
+
+**Explicitly not next:**
+
+- markdown image absolute-path preview before ordering is truly working
+- P4 file-link / changed-files review work
+- broader session-list redesign beyond the drag-delivery fix
+
 ## P4. File links, changed-files review, and attachments
 
 Goal: make file references in chat actually useful and make file review/attachment flows feel complete.

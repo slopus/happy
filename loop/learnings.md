@@ -443,3 +443,8 @@ If you discover something non-obvious, append it here under the right section.
   message via SyncNode and survives page reloads, unlike `blob:` URLs from
   `URL.createObjectURL()`. The 5 MB per-file limit keeps encrypted message
   payloads manageable.
+- In Phase 7.6 web validation, a react-native-web `View` with web-only
+  `draggable` / `onDrag*` props did not produce any `[draggable="true"]` nodes
+  in the live DOM. The sidebar showed the reorder glyph, but pointer dragging
+  had no effect. For web drag/drop work, inspect the rendered DOM directly and
+  do not trust the visual handle alone.
