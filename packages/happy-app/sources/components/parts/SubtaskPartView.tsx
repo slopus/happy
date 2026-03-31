@@ -27,7 +27,7 @@ export const SubtaskPartView = React.memo((props: {
     const statusIcon = status === 'running'
         ? <ActivityIndicator size={14} color={theme.colors.textSecondary} />
         : status === 'error'
-            ? <Ionicons name="close-circle" size={16} color={theme.colors.error} />
+            ? <Ionicons name="close-circle" size={16} color={theme.colors.warning} />
             : <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />;
 
     const agentLabel = part.agent
