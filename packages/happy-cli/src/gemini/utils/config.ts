@@ -89,10 +89,11 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
   // Gemini CLI might use gcloud auth application-default print-access-token
   if (!token) {
     try {
-      const gcloudToken = execSync('gcloud auth application-default print-access-token', { 
+      const gcloudToken = execSync('gcloud auth application-default print-access-token', {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 5000
+        timeout: 5000,
+        windowsHide: true,
       }).trim();
       if (gcloudToken && gcloudToken.length > 0) {
         token = gcloudToken;

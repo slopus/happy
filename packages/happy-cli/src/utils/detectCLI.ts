@@ -50,7 +50,7 @@ function detectPosix(): CLIAvailability {
 function detectWindows(): CLIAvailability {
   const checkCommand = (name: string): boolean => {
     try {
-      execSync(`powershell -NoProfile -Command "Get-Command ${name} -ErrorAction SilentlyContinue"`, { stdio: 'ignore' });
+      execSync(`powershell -NoProfile -Command "Get-Command ${name} -ErrorAction SilentlyContinue"`, { stdio: 'ignore', windowsHide: true });
       return true;
     } catch {
       return false;
