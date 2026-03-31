@@ -706,6 +706,55 @@ sessions before dispatching another P2.5 batch or moving to P3.**
 - A new PI-style variant batch before the current flow is validated
 - Returning to standalone P2 attachment/image polish
 
+### Phase 5.9 results
+
+**Environment:** `quiet-fjord` — server `:58035`, web `:58036`.
+**Session:** `sgVoMmd4fPKSrUykUvvTVvGu` (claude, control-test worktree).
+
+**What was validated:**
+
+1. **Control bar rendering — PASS.** Stop (red), Archive, and Fork Session pill
+   buttons render correctly above the composer in a horizontal row. Stop is
+   visible during active thinking; Archive and Fork are always visible.
+2. **Fork button wired — DONE.** The Phase 5.7 placeholder `onPress={() => {}}`
+   was replaced with the real `forkSession()` from `useSessionQuickActions`.
+   Button shows disabled (50% opacity) when `canFork` is false, enabled when true.
+3. **Fork action exercised — BLOCKED.** `canFork` evaluates to false because
+   `session.metadata?.machineId` or the machine store lookup fails in the web
+   app. The machine IS online (happy-agent communicates with it), but the web
+   app's Zustand machine store does not resolve the session's machineId to a
+   live machine record. This blocks the fork, resume, and any machine-dependent
+   quick action from the web control bar.
+4. **SessionOriginBadge — NOT TESTED.** Cannot be validated without a successful
+   fork. The component exists and is wired in SessionView, but no forked session
+   was produced.
+5. **Transcript rendering — PASS.** Tool cards (Write, Read, ToolSearch,
+   mcp_happy_change_title) render with correct status labels (Completed/Error).
+   The session title "Create CONTROL-TEST.md" is visible.
+
+**Artifacts:**
+
+- `e2e-recordings/phase-5-9-validation/step-2-control-bar.png` — control bar visible
+- `e2e-recordings/phase-5-9-validation/validation-results.json` — structured results
+- `e2e-recordings/phase-5-9-validation/92d1f8ec*.webm` — 16s Playwright video
+
+**Code change:** Wired fork button in `SessionView.tsx` — destructured
+`forkSession` + `canFork` from `useSessionQuickActions`, replaced placeholder
+`onPress` with real action, added disabled state + opacity.
+
+**Concrete gaps for next P2.5 sub-batch:**
+
+1. **Machine store gap (blocker):** The web app's `useMachine(machineId)` returns
+   null for sessions spawned via `happy-agent`. Until the machine store reliably
+   resolves session machineIds, fork/resume from the web control bar is dead.
+   Root cause candidates: metadata decryption timing, machine data not synced to
+   the web SyncNode, or machineId not present in decrypted metadata.
+2. **SessionOriginBadge unproven:** Needs a successful fork to validate.
+3. **Stop button visibility:** Shows even when session is idle (may need tighter
+   state gating or is intentional for the "stop session" use case).
+4. **No worktree/agent selection during fork:** Fork reuses the parent's
+   directory and agent — no UI for choosing a different target.
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.

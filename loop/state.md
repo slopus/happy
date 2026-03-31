@@ -1837,21 +1837,77 @@ first. The next work item is **Phase 5.9 — real-stack validation of the Phase
 
 Updated `roadmap.md` with the Phase 5.8 review and the Phase 5.9 decision.
 
+## Phase 5.9: DONE
+
+Validated the Phase 5.7 control/fork/resume flow on the real web stack and
+identified the machine-store gap that blocks fork from working end-to-end.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510,
+machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
+
+### Session
+
+`sgVoMmd4fPKSrUykUvvTVvGu` (claude, control-test worktree, 4+ messages with
+Write/Read/ToolSearch/mcp_happy_change_title tool activity).
+
+### Validation results
+
+| Check | Result | Details |
+|-------|--------|---------|
+| Control bar rendering | PASS | Stop (red), Archive, Fork Session pills visible above composer |
+| Fork button wired | DONE | Replaced `onPress={() => {}}` with real `forkSession()` |
+| Fork action exercised | BLOCKED | `canFork` is false — machine store lookup fails |
+| SessionOriginBadge | NOT TESTED | Needs successful fork |
+| Transcript rendering | PASS | Tool cards render correctly with status labels |
+
+### Code change
+
+Wired fork button in `SessionView.tsx`:
+- Destructured `forkSession` + `canFork` from `useSessionQuickActions`
+- Replaced placeholder `onPress` with real action
+- Added `disabled={!canFork}` with 50% opacity visual feedback
+
+### Artifacts
+
+```
+-rw-r--r--  156059 Mar 30 22:11 e2e-recordings/phase-5-9-validation/step-1-session-loaded.png
+-rw-r--r--  156035 Mar 30 22:11 e2e-recordings/phase-5-9-validation/step-2-control-bar.png
+-rw-r--r--  156037 Mar 30 22:11 e2e-recordings/phase-5-9-validation/step-4-after-fork.png
+-rw-r--r--  156027 Mar 30 22:11 e2e-recordings/phase-5-9-validation/step-6-transcript.png
+-rw-r--r--     768 Mar 30 22:11 e2e-recordings/phase-5-9-validation/validation-results.json
+-rw-r--r-- 1029416 Mar 30 22:11 e2e-recordings/phase-5-9-validation/92d1f8ec*.webm (16s)
+```
+
+### Root cause of fork block
+
+`canFork` requires all three:
+1. `session.metadata?.machineId` — truthy
+2. `useMachine(machineId)` — returns a machine record
+3. `isMachineOnline(machine)` — machine daemonState.status === 'running'
+
+The machine IS online (happy-agent communicates with it), but the web app's
+Zustand `machines` store does not resolve the session's machineId. Root cause
+candidates:
+- Metadata decryption timing or missing field after decryption
+- Machine data not synced to the web SyncNode store
+- The `machines` store not being populated from the REST `/v1/machines` endpoint
+
+### Concrete gaps for next P2.5 sub-batch
+
+1. **Machine store gap (blocker):** Fix `useMachine()` to resolve machineId
+   for sessions spawned via `happy-agent`. This unblocks fork, resume, and all
+   machine-dependent quick actions from the web control bar.
+2. **SessionOriginBadge:** Validate after machine store fix enables fork.
+3. **Stop button visibility:** Currently shows even when session is idle.
+4. **Worktree/agent selection during fork:** Not yet implemented.
+
 ## Current Task
 
-TASK: Phase 5.9 — validate the Phase 5.7 control/fork/resume flow on the real web stack.
+TASK: Phase 6.0 — choose the next highest-impact work item.
 
-Run a real-stack validation pass for the Phase 5.7 changes and capture evidence.
-
-Required validation:
-1. Use a real long-running web session, not a toy transcript.
-2. Verify the active-session control surface in-context near the composer.
-3. Exercise the fork path from the real UI and confirm the resulting child
-   session is clearly attributable to the parent.
-4. Record a web video and capture checkpoint screenshots for:
-   - before control change
-   - after control change
-   - fork/resume state
-   - branched child session state
-5. Write the results back into `roadmap.md` and `loop/state.md`, including any
-   concrete gaps that should define the next P2.5 sub-batch.
+Review the Phase 5.9 gaps and the remaining roadmap to decide whether to:
+- Fix the machine-store blocker first (unblocks fork/resume from web)
+- Move to P3 session-list/tool-row polish
+- Dispatch another P2.5 build batch

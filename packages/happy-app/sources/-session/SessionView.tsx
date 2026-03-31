@@ -302,8 +302,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const walkthroughSyncLabel = useWalkthroughSyncLabel();
     const {
         archiveSession,
+        canFork,
         canResume,
         canShowResume,
+        forkSession,
         resumeSession,
         resumeSessionSubtitle,
         resumingSession,
@@ -467,7 +469,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 <Text style={{ fontSize: 12, fontWeight: '500', color: theme.colors.textSecondary }}>{t('session.archiveSession')}</Text>
             </Pressable>
             <Pressable
-                onPress={() => {}}
+                onPress={forkSession}
+                disabled={!canFork}
                 style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -476,6 +479,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     paddingHorizontal: 10,
                     paddingVertical: 5,
                     borderRadius: 12,
+                    opacity: canFork ? 1 : 0.5,
                 }}
             >
                 <Ionicons name="git-branch-outline" size={14} color={theme.colors.textSecondary} />
