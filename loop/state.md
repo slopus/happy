@@ -2163,10 +2163,71 @@ batch via `happy-agent`**.
 Updated `roadmap.md` with the Phase 7.0 priority decision and the scoped first
 P3 batch.
 
+## Phase 7.1: DONE
+
+Dispatched the first P3 scanability/safety batch via `happy-agent`. All 3 tasks
+completed after follow-up prompts. Merged and committed in `a5b928ef`.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510,
+machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
+
+### Sessions
+
+| Task | Session ID | Commits | Files | Result |
+|------|-----------|---------|-------|--------|
+| Archive confirmation | `poPcUEBvoKlMuOX89M8vJYdo` | `98319fe2`, `cbf5f63e` | 13 (+55/-3) | PASS (2nd prompt) |
+| Tool compaction | `WPZoJaglrNIDljhViiAlWvLk` | `b7c9246d` | 4 (+15/-9) | PASS |
+| Subagent/plan cleanup | `e4ImUUaAjVZXNrhxtD2zjOEA` | `e15acb5a` | 14 (+108/-14) | PASS (2nd prompt) |
+
+### What each agent delivered
+
+1. **Archive confirmation** (13 files, +55/-3):
+   - `Modal.alert` confirmation dialog before archive with cancel/destructive buttons
+   - Fixed hardcoded `'Archive'` and `'Bug report'` strings → `t('session.archive')`,
+     `t('session.bugReport')`
+   - Archive action marked `destructive: true` (renders red in popover)
+   - 4 new translation keys across all 11 language files
+
+2. **Tool-row compaction** (4 files, +15/-9):
+   - Reduced tool header padding 12→10, content padding 12/8→8/4
+   - DiffView: added `borderRadius: 6` to clip black-stripe edge artifacts
+   - toolPartMeta: truncate long bash commands to 80 chars in subtitle
+   - ToolPartView: tighter header/container padding (12→10, 8→6)
+
+3. **Subagent/plan presentation** (14 files, +108/-14):
+   - SubtaskPartView: status icon (spinner while running, checkmark on complete,
+     error icon on failure), agent label in header row, collapsed result preview
+   - ExitPlanToolView: removed `marginTop: -10` hack, added "Proposed Plan"
+     header label with `theme.colors.textSecondary`
+   - knownTools Agent entry: dynamic title showing `subagent_type`, description
+     subtitle (truncated to 60 chars), `git-branch-outline` icon
+   - Added `tools.names.proposedPlan` translation to all 11 language files
+
+### Typecheck
+
+`npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes.
+Post-merge fix: `theme.colors.error` → `theme.colors.warning` in SubtaskPartView
+(theme does not have `colors.error`, uses `colors.warning` for error-like states).
+
+### Observations
+
+- Agents 1 and 3 failed silently on first prompt (0 changes, 0 commits). The
+  follow-up prompts with exact code changes and explicit commit commands succeeded.
+- Agent 2 committed on first attempt.
+- The CWD was shifted to an agent worktree during the session, breaking later
+  `happy-agent` commands until the CWD was restored.
+- Cherry-pick produced one conflict in `useSessionQuickActions.ts` (both agent
+  commits touched the same `archiveSession` callback). Resolved by keeping the
+  Modal.alert version from the second commit.
+
+### Cleanup
+
+All 3 worktrees removed. Branches deleted. Sessions stopped.
+
 ## Current Task
 
-TASK: Phase 7.1 — dispatch the first P3 scanability/safety batch via
-`happy-agent` targeting:
-1. session-list archive confirmation / quick-action safety
-2. tool-row compaction + black-stripe / long-path cleanup
-3. subagent / plan presentation cleanup
+TASK: Phase 7.2 — review `roadmap.md` and select the next highest-impact work
+item. Consider whether more P3 work (drag ordering, markdown image preview) or
+validation of the Phase 7.1 batch on the real web stack is the right next step.
