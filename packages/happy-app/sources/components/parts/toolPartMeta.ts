@@ -57,9 +57,13 @@ export function getToolPartSubtitle(part: v3.ToolPart): string | null {
 
     const filePath = readString(input, 'file_path') ?? readString(input, 'path') ?? readString(input, 'notebook_path');
 
+    const command = readString(input, 'command');
+    if (command && command !== title) {
+        return command.length > 80 ? command.slice(0, 77) + '...' : command;
+    }
+
     const directCandidate =
-        readString(input, 'command')
-        ?? (filePath ? shortenFilePath(filePath) : null)
+        (filePath ? shortenFilePath(filePath) : null)
         ?? readString(input, 'url')
         ?? readString(input, 'query')
         ?? readString(input, 'pattern')

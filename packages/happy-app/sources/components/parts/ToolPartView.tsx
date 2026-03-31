@@ -343,8 +343,8 @@ export const ToolPartView = React.memo((props: {
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        marginHorizontal: 8,
-        marginBottom: 8,
+        marginHorizontal: 6,
+        marginBottom: 6,
         borderWidth: 1,
         borderColor: theme.colors.divider,
         borderRadius: 12,
@@ -357,8 +357,8 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: 'transparent',
     },
     header: {
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
         flexDirection: 'row',
         justifyContent: 'space-between',
         gap: 12,

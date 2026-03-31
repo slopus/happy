@@ -288,7 +288,7 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: 12,
+        padding: 10,
         backgroundColor: theme.colors.surfaceHighest,
     },
     headerLeft: {
@@ -330,8 +330,8 @@ const styles = StyleSheet.create((theme) => ({
         marginTop: 2,
     },
     content: {
-        paddingHorizontal: 12,
-        paddingTop: 8,
+        paddingHorizontal: 8,
+        paddingTop: 4,
         overflow: 'visible'
     },
 }));

@@ -49,6 +49,8 @@ export const DiffView: React.FC<DiffViewProps> = ({
         backgroundColor: theme.colors.surface,
         borderWidth: 0,
         flex: 1,
+        overflow: 'hidden',
+        borderRadius: 6,
         ...style,
     };
 
