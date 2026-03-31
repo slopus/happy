@@ -8,6 +8,7 @@ import { sessionAnswerQuestion } from '@/sync/ops';
 import { CodeView } from '../CodeView';
 import { ToolSectionView } from '../tools/ToolSectionView';
 import { PermissionFooter } from '../tools/PermissionFooter';
+import { MarkdownView } from '../markdown/MarkdownView';
 import {
     getPendingQuestionBlock,
     getToolPartStatusLabel,
@@ -223,6 +224,11 @@ export const ToolPartView = React.memo((props: {
     const resolvedQuestionBlock = getResolvedQuestionBlock(props.part);
     const permission = getToolPermissionState(props.part);
 
+    const isPlanTool = props.part.tool === 'ExitPlanMode' || props.part.tool === 'exit_plan_mode';
+    const planText = isPlanTool && typeof props.part.state.input.plan === 'string'
+        ? props.part.state.input.plan
+        : null;
+
     const openDetail = React.useCallback(() => {
         if (expanded) {
             return;
@@ -258,11 +264,17 @@ export const ToolPartView = React.memo((props: {
                 </View>
             </View>
 
-            {preview && !expanded ? (
+            {preview && !expanded && !planText ? (
                 <Text style={styles.preview}>{preview}</Text>
             ) : null}
         </>
     );
+
+    const planContent = planText ? (
+        <View style={styles.planContent}>
+            <MarkdownView markdown={planText} sessionId={props.sessionId} />
+        </View>
+    ) : null;
 
     const interactiveContent = (
         <>
@@ -313,6 +325,7 @@ export const ToolPartView = React.memo((props: {
             {expanded ? (
                 <>
                     {summary}
+                    {planContent}
                     {interactiveContent}
                 </>
             ) : (
@@ -320,6 +333,7 @@ export const ToolPartView = React.memo((props: {
                     <TouchableOpacity activeOpacity={0.85} onPress={openDetail}>
                         {summary}
                     </TouchableOpacity>
+                    {planContent}
                     {interactiveContent}
                 </>
             )}
@@ -392,6 +406,10 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         lineHeight: 18,
         color: theme.colors.textSecondary,
+    },
+    planContent: {
+        paddingHorizontal: 12,
+        paddingBottom: 4,
     },
     emptyState: {
         marginHorizontal: 12,
