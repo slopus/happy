@@ -2566,6 +2566,44 @@ Created 3 active sessions via daemon API:
 
 `npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes cleanly.
 
+## Phase 7.8: DONE
+
+Reviewed `roadmap.md` after the successful Phase 7.7 drag validation and chose
+the next highest-impact work item.
+
+### Decision
+
+The next work item is **Phase 7.9 — fix markdown image absolute-path preview
+on web and validate it on the real stack**.
+
+### Why this is next
+
+1. Phase 7.7 closes the broad P3 ordering requirement, so the last explicit
+   remaining P3 gap is now the markdown image preview failure called out in the
+   roadmap.
+2. This is still squarely inside the current "NO NEW SCOPE" push: it finishes
+   the remaining session/review scanability work before moving to broader P4
+   file-link and changed-files review behavior.
+3. The roadmap already has a concrete validation requirement for this exact
+   path: prove that `![](/absolute/path.png)` renders inline in a real web
+   session.
+4. Moving to P4 immediately would skip a narrower unfinished P3 requirement
+   even though the larger ordering work is now validated.
+
+### Scope of Phase 7.9
+
+1. Make markdown image syntax with local absolute paths render inline on web in
+   real chat/session messages.
+2. Validate the behavior on the real stack with a real session plus screenshot
+   evidence.
+3. Confirm the fix does not regress existing attachment/file-part rendering.
+
+### Explicitly not next
+
+- broader P4 file-link resolution/open-on-click work
+- changed-files review/input mismatch
+- another session-list redesign batch now that ordering is working
+
 ## Current Task
 
-TASK: Choose next work item from the roadmap.
+TASK: Fix markdown image absolute-path preview on web and validate it on the real stack.

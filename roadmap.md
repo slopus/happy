@@ -1271,6 +1271,78 @@ draggable project-group wrappers and user drag attempts have no effect.
 - P4 file-link / changed-files review work
 - broader session-list redesign beyond the drag-delivery fix
 
+### Phase 7.7 results (2026-03-31)
+
+**Result: PASS — web drag-to-reorder now works end-to-end on the real stack.**
+
+Environment: worktree web server `:54931` against `eager-summit` server
+`:50371`, daemon PID `90416`.
+
+**What was fixed**
+
+- Replaced the React Native Web `View` wrapper in
+  `DraggableProjectGroup.tsx` with a raw HTML `<div>` so the real DOM receives
+  `draggable` and the native HTML5 drag/drop handlers.
+- Kept the existing ordering persistence and grouping logic unchanged.
+
+**Validation results**
+
+1. **Handle visibility — PASS**
+   - Real DOM now exposes draggable wrappers.
+   - `validation-results.json` reports `draggableCount: 4` (was `0`).
+2. **Drag changes order — PASS**
+   - Visible order changed from `alpha,beta,gamma` to `beta,alpha,gamma`.
+3. **Reload preserves order — PASS**
+   - Reload kept `beta,alpha,gamma`.
+4. **Archive/grouping safety — PASS**
+   - Archive still appears in the right-click popover and grouping stayed intact.
+
+**Artifacts**
+
+- `e2e-recordings/phase-7-7-validation/01-session-list-initial.png`
+- `e2e-recordings/phase-7-7-validation/02-after-drag.png`
+- `e2e-recordings/phase-7-7-validation/03-after-reload.png`
+- `e2e-recordings/phase-7-7-validation/04-right-click-popover.png`
+- `e2e-recordings/phase-7-7-validation/validation-results.json`
+
+### Post-Phase 7.7 priority decision (2026-03-31)
+
+**Next highest-impact work item: Phase 7.9 — fix markdown image
+absolute-path preview on web, then validate it on the real stack.**
+
+Phase 7.7 closes the broad P3 ordering requirement. The remaining explicit P3
+gap is narrower but still user-visible: markdown image syntax using local
+absolute paths still does not render inline during manager/review workflows.
+
+**Why this is next:**
+
+1. It is the last concrete P3 requirement still open after archive safety,
+   tool-row cleanup, subagent presentation, and worktree/project ordering are
+   now all validated.
+2. It directly matches the roadmap's existing P3 validation rule: prove that
+   `![](/absolute/path.png)` renders an actual inline preview in a real web
+   session.
+3. It stays inside the current "no new scope" push by finishing the remaining
+   scanability/review gap before broadening into the larger P4 file-link and
+   changed-files review work.
+4. P4 should start only after this narrower remaining P3 requirement is either
+   fixed or explicitly proven not worth doing.
+
+**Scope of Phase 7.9:**
+
+1. Make markdown image syntax with local absolute paths render inline on web in
+   real chat/session messages.
+2. Validate the behavior on the real stack with a real session and concrete
+   screenshot evidence.
+3. Confirm this does not regress the existing attachment/file-part rendering
+   added in P2.
+
+**Explicitly not next:**
+
+- broader P4 file-link resolution/open-on-click work
+- changed-files review/input mismatch
+- another session-list redesign batch now that ordering is working
+
 ## P4. File links, changed-files review, and attachments
 
 Goal: make file references in chat actually useful and make file review/attachment flows feel complete.
