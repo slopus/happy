@@ -2705,7 +2705,73 @@ resolution + file-viewer batch via `happy-agent`**.
 Updated `roadmap.md` with the Phase 8.0 priority decision and scoped next
 batch.
 
+## Phase 8.1: DONE
+
+Dispatched the first P4 file-link resolution + file-viewer batch via
+`happy-agent`. Both tasks completed on first attempt.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510,
+machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
+
+### Sessions
+
+| Task | Session ID | Commit | Files | Result |
+|------|-----------|--------|-------|--------|
+| Ungate markdown file links | `9U2wYHZjqk7Umyd2TXTwjVKd` | `518d2125` | 1 (+25/-29) | PASS |
+| Tool card file path click | `kgUJiK8dD2PVi6jzXE2XlFhQ` | `a918aba4` | 1 (+22/-4) | PASS |
+
+### What each agent delivered
+
+1. **Ungate markdown file links** (1 file, +25/-29):
+   - Removed `experiments` feature flag gate from `MarkdownView.tsx`.
+   - `openSessionFileLink` no longer checks `experiments` — always tries to
+     resolve file links when `sessionId` is available.
+   - `handleLinkPress` always parses URLs as potential file links before
+     falling through to external browser open.
+   - `RenderSpans` always parses inline file paths and splits text into
+     linkable segments (no longer gated).
+   - Removed `experiments` prop from `RenderSpanProps`, `RenderTextBlock`,
+     `RenderHeaderBlock`, `RenderListBlock`, `RenderNumberedListBlock`, and
+     all callsites.
+   - Removed `useSetting('experiments')` and the `useSetting` import.
+
+2. **Tool card file path click** (1 file, +22/-4):
+   - Added file path detection for `Read`, `read`, `Edit`, `MultiEdit`,
+     `Write`, `apply_patch` tools in `ToolView.tsx`.
+   - When a file-based tool has `file_path` input (or Gemini `locations`),
+     clicking the tool header navigates to `/session/[id]/file?path=<base64>`.
+   - Added `toolNameClickable` style with `textDecorationLine: 'underline'`
+     for visual affordance.
+   - Made non-pressable tool headers pressable when `filePath` is set.
+
+### Typecheck
+
+`npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes cleanly.
+
+### Validation
+
+**Environment:** `quiet-fjord` — server `:58035`, web `:58036`.
+
+**Session:** `xXpVmVj5Af459LXo5xqvjnoz` (claude, `/tmp/happy-filelink-test`
+worktree with Write + Read tool activity on `hello.txt`).
+
+**Playwright results:**
+- File path in page: **true**
+- Underlined hello.txt elements: **1** (tool card title has underline)
+- File path click navigates to file viewer: **true**
+- File viewer URL: `/session/.../file?path=L3RtcC9oYXBweS1maWxlbGluay10ZXN0...`
+- File viewer shows file content: **true** ("Hello from file link test")
+
+**Screenshots:**
+- `/tmp/filelink-validation.png` (130KB) — session page with tool cards
+- `/tmp/filelink-viewer.png` (85KB) — file viewer showing file content
+
+### Cleanup
+
+Both worktrees removed. Branches deleted. All 3 sessions stopped.
+
 ## Current Task
 
-TASK: Dispatch the first P4 file-link resolution + file-viewer batch via
-`happy-agent`.
+TASK: Review `roadmap.md` and select the next highest-impact P4 work item.
