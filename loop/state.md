@@ -1088,21 +1088,67 @@ dispatch the first real roadmap work batch**.
 - Treat the stale daemon-port bug as a candidate task inside that first batch,
   not as the prerequisite before starting it.
 
+## Phase 4.0: DONE
+
+Dispatched the first real roadmap work batch through `happy-agent`. 3 independent
+P1 tasks, each in its own git worktree and Claude session.
+
+### Environment
+
+`snug-reef` — server `:52168`, web `:52169`, daemon PID 30480,
+machine `e84feb4b-1729-4e33-80bf-64cfe2238fc9`.
+
+### Sessions
+
+| Task | Session ID | Worktree | Commit | Result |
+|------|-----------|----------|--------|--------|
+| TaskOutput/TaskStop rendering | `OnVK4yUUp8qSb7c8QuHXz3pF` | `agent-task-rendering` | `ebd8130f` | PASS |
+| Edit rendering fixes | `HYvEcNu751SXvNY2r1DXLsEH` | `agent-edit-rendering` | `34c3c5ba` | PASS |
+| Stale daemon httpPort | `hY1taIsRCSjCroWojnTCrExj` | `agent-daemon-port` | `f8aaabac` | PASS |
+
+### What each agent delivered
+
+1. **TaskOutput/TaskStop rendering** — New `TaskOutputView.tsx` and
+   `TaskStopView.tsx` components registered in the tool view registry. Updated
+   `knownTools.tsx`, `toolPartMeta.ts`, and all 10 translation files.
+   16 files changed, +235/-1. Needed a follow-up prompt to finish translations
+   and commit (72 messages total across 2 prompts).
+
+2. **Edit rendering fixes** — Shortened absolute file paths to last 2 segments
+   in tool subtitles. Resolved `file_path` for MultiEdit via `resolvePath()`.
+   Added empty diff handling in `DiffView`. 4 files changed, +49/-13. First
+   session stalled after 2 messages and needed a fresh spawn (44 messages in
+   the successful session).
+
+3. **Stale daemon httpPort** — Override `machine.daemonState` with
+   `initialDaemonState` after `getOrCreateMachine()` returns. 1 file, +4 lines.
+   Cleanest delivery: single session, 26 messages, committed on first attempt.
+
+### Typecheck
+
+All 3 branches pass `yarn typecheck`.
+
+### Observations
+
+- Agent reliability varies: daemon-port was flawless, task-rendering needed a
+  follow-up, edit-rendering needed a fresh session.
+- All sessions used yolo mode — no permission blocks.
+- Stop method was session-socket for all (stale httpPort existed at dispatch).
+- Total time: ~15 minutes from dispatch to all 3 commits.
+
+### What remains
+
+The 3 commits are in separate worktree branches (`agent-task-rendering`,
+`agent-edit-rendering`, `agent-daemon-port`). They need to be merged into the
+main `happy-sync-refactor` branch and validated together.
+
 ## Current Task
 
-TASK: Phase 4.0 — dispatch the first real roadmap work batch through
-`happy-agent`.
+TASK: Phase 4.1 — merge the Phase 4.0 agent work into happy-sync-refactor.
 
 Requirements:
-1. Choose `2-3` independent real roadmap tasks, biased toward P1 items with
-   clear reproduction and web validation.
-2. Spawn one `happy-agent` session per task in its own worktree.
-3. Monitor each session and collect:
-   - active vs idle / blocked state
-   - pending permission/tool requests
-   - last meaningful output
-   - artifact or test evidence
-   - web URL
-4. Write per-session status/results back into `roadmap.md`.
-5. If one of the chosen tasks is the stale daemon-port bug, treat it as one
-   dispatched task in the batch, not the gating task before the batch starts.
+1. Cherry-pick or merge the 3 agent commits into happy-sync-refactor.
+2. Run `yarn typecheck` on the merged result.
+3. Resolve any conflicts between the 3 branches.
+4. Commit the merged result.
+5. Clean up the agent worktrees.

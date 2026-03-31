@@ -258,6 +258,67 @@ control-plane-only validation.
 - broad P2 composer/session-list implementation
 - deeper daemon restart debugging unless it blocks the first dispatched batch
 
+### Phase 4.0 results — first real roadmap batch dispatched (2026-03-31)
+
+**Environment:** `snug-reef` — server `:52168`, web `:52169`, daemon PID 30480,
+machine `e84feb4b-1729-4e33-80bf-64cfe2238fc9`.
+
+**3 P1 tasks dispatched via `happy-agent`, each in its own git worktree:**
+
+| Task | Session ID | Worktree | Commit | Files changed | Result |
+|------|-----------|----------|--------|---------------|--------|
+| TaskOutput/TaskStop rendering | `OnVK4yUUp8qSb7c8QuHXz3pF` | `agent-task-rendering` | `ebd8130f` | 16 files, +235/-1 | PASS |
+| Edit rendering fixes | `HYvEcNu751SXvNY2r1DXLsEH` | `agent-edit-rendering` | `34c3c5ba` | 4 files, +49/-13 | PASS |
+| Stale daemon httpPort | `hY1taIsRCSjCroWojnTCrExj` | `agent-daemon-port` | `f8aaabac` | 1 file, +4 | PASS |
+
+**Per-task details:**
+
+**1. TaskOutput/TaskStop rendering (P1 — task rendering)**
+- Scope: Created custom tool views for `TaskOutput` and `TaskStop` tool calls
+- Changes: New `TaskOutputView.tsx` and `TaskStopView.tsx` components, registered
+  in `_all.tsx` view registry, updated `knownTools.tsx` with input parsers,
+  added `toolPartMeta.ts` subtitle extraction, updated all 10 translation files
+- Typecheck: passed via `yarn typecheck`
+- Caveats: Required a follow-up prompt to finish translation file updates and
+  commit. Initial session explored the codebase extensively (28 msgs) before
+  writing. Total: 72 messages across 2 prompts.
+
+**2. Edit rendering fixes (P1 — multi-file edit rendering)**
+- Scope: Fixed file path resolution and display for MultiEdit tool, shortened
+  absolute paths in subtitles, added empty diff handling
+- Changes: `toolPartMeta.ts` (shorten absolute paths to last 2 segments),
+  `MultiEditView.tsx` and `MultiEditViewFull.tsx` (resolve file_path via
+  `resolvePath`), `DiffView.tsx` (return null for empty diffs)
+- Typecheck: passed
+- Caveats: First session stalled after 2 messages (ToolSearch only). Required
+  stopping and re-spawning a fresh session. Second session completed in 44
+  messages. Root cause of stall unclear — may be a transient Claude session issue.
+
+**3. Stale daemon httpPort (P1 — control-flow bug)**
+- Scope: Fixed `daemonState.httpPort` not updating after daemon restarts
+- Root cause: `getOrCreateMachine()` returns the server's existing machine record
+  with the old daemon's httpPort. The connect handler then pushes this stale port
+  back to the server.
+- Fix: Override `machine.daemonState` with `initialDaemonState` immediately after
+  `getOrCreateMachine()` returns (4 lines in `run.ts`). The `daemonStateVersion`
+  is preserved for correct CAS updates.
+- Typecheck: passed
+- Caveats: None. Cleanest delivery of the three — single session, 26 messages,
+  committed on first attempt.
+
+**Web URLs (all accessible during env lifetime):**
+- Task Rendering: `http://localhost:52169/session/OnVK4yUUp8qSb7c8QuHXz3pF?dev_token=...&dev_secret=...`
+- Edit Rendering: `http://localhost:52169/session/HYvEcNu751SXvNY2r1DXLsEH?dev_token=...&dev_secret=...`
+- Daemon Port: `http://localhost:52169/session/hY1taIsRCSjCroWojnTCrExj?dev_token=...&dev_secret=...`
+
+**Observations:**
+1. All 3 sessions ran in yolo mode — no permission blocks.
+2. Stop method was session-socket for all (stale httpPort bug existed at dispatch
+   time; the daemon-port fix was committed within this batch).
+3. Agent reliability varied: daemon-port agent was flawless (1 session, 1 commit),
+   task-rendering needed a follow-up prompt, edit-rendering needed a fresh session.
+4. Total dispatch-to-completion time: ~15 minutes across all 3 tasks.
+
 ## P1. Control-flow, permissions, and protocol bugs
 
 Goal: remove the broken session-control paths that currently make remote agent management unreliable.
