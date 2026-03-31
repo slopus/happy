@@ -122,6 +122,15 @@ If you discover something non-obvious, append it here under the right section.
 - `SyncNode.createSession()` must initialize `metadataVersion`/`agentStateVersion`
   from the server response, not hardcode 0. Otherwise immediate-after-create CAS
   updates can version-mismatch if the server's initial version is non-zero.
+- `SyncNode.registerRpcMethods(methods)` sends `{ methods: string[] }` (plural)
+  but the server's `rpcHandler.ts` originally only accepted `{ method: string }`
+  (singular). This caused ALL session-level RPC handlers (`readFile`, `writeFile`,
+  `bash`, etc.) to be silently unregistered for SyncNode-connected sessions.
+  The `ApiSession` direct-socket path sent individual `rpc-register` events per
+  method (via `RpcHandlerManager.onSocketConnect`) and worked fine. The mismatch
+  only affected the `SyncBridge` → `SyncNode` path used by `runClaude.ts`,
+  `runCodex.ts`, and other sync-refactored runners. Fixed in Phase 7.9 by
+  updating `rpcHandler.ts` to accept both `{ method }` and `{ methods }`.
 
 ## happy-agent protocol
 
