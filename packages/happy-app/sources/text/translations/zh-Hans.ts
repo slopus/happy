@@ -288,6 +288,7 @@ export const zhHans: TranslationStructure = {
         archiveConfirmTitle: '归档会话',
         archiveConfirmMessage: '确定要归档此会话吗？您可以稍后在已归档的会话中找到它。',
         bugReport: '错误报告',
+        dragToReorder: '拖动以重新排序',
     },
 
     commandPalette: {

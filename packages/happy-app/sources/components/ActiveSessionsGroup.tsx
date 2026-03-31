@@ -23,6 +23,8 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { DraggableProjectGroup } from './DraggableProjectGroup';
+import { useProjectGroupReorder } from '@/hooks/useProjectGroupReorder';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -217,6 +219,7 @@ interface ActiveSessionsGroupProps {
 
 export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const machines = useAllMachines();
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
@@ -286,16 +289,28 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         return groups;
     }, [sessions, machinesMap]);
 
-    // Sort project groups by display path
+    // Sort project groups by custom order, then alphabetically
+    const projectGroupOrder = useSetting('projectGroupOrder');
     const sortedProjectGroups = React.useMemo(() => {
-        return Array.from(projectGroups.entries()).sort(([, groupA], [, groupB]) => {
+        return Array.from(projectGroups.entries()).sort(([pathA, groupA], [pathB, groupB]) => {
+            const indexA = projectGroupOrder.indexOf(pathA);
+            const indexB = projectGroupOrder.indexOf(pathB);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
             return groupA.displayPath.localeCompare(groupB.displayPath);
         });
-    }, [projectGroups]);
+    }, [projectGroups, projectGroupOrder]);
+
+    const { reorderGroups } = useProjectGroupReorder();
+    const allPaths = React.useMemo(() => sortedProjectGroups.map(([path]) => path), [sortedProjectGroups]);
+    const handleReorder = React.useCallback((fromIndex: number, toIndex: number) => {
+        reorderGroups(fromIndex, toIndex, allPaths);
+    }, [reorderGroups, allPaths]);
 
     return (
         <View style={styles.container}>
-            {sortedProjectGroups.map(([projectPath, projectGroup]) => {
+            {sortedProjectGroups.map(([projectPath, projectGroup], index) => {
                 // Get the first machine name from this project's machines
                 const firstMachine = Array.from(projectGroup.machines.values())[0];
                 const machineName = projectGroup.machines.size === 1
@@ -303,10 +318,18 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                     : `${projectGroup.machines.size} machines`;
 
                 return (
-                    <View key={projectPath}>
+                    <DraggableProjectGroup key={projectPath} projectPath={projectPath} index={index} onReorder={handleReorder}>
                         {/* Section header on grouped background */}
                         <View style={styles.sectionHeader}>
                             <View style={styles.sectionHeaderLeft}>
+                                {Platform.OS === 'web' && (
+                                    <Ionicons
+                                        name="reorder-two"
+                                        size={16}
+                                        color={theme.colors.textSecondary}
+                                        style={{ marginRight: 6, cursor: 'grab' } as any}
+                                    />
+                                )}
                                 <Text style={styles.sectionHeaderPath}>
                                     {projectGroup.displayPath}
                                 </Text>
@@ -345,7 +368,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                     </View>
                                 ))}
                         </View>
-                    </View>
+                    </DraggableProjectGroup>
                 );
             })}
         </View>

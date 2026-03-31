@@ -23,6 +23,8 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { DraggableProjectGroup } from './DraggableProjectGroup';
+import { useProjectGroupReorder } from '@/hooks/useProjectGroupReorder';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -173,6 +175,7 @@ interface ActiveSessionsGroupProps {
 
 export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const machines = useAllMachines();
 
     const machinesMap = React.useMemo(() => {
@@ -244,26 +247,46 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
         return groups;
     }, [sessions, machinesMap]);
 
-    // Sort project groups by display path
+    // Sort project groups by custom order, then alphabetically
+    const projectGroupOrder = useSetting('projectGroupOrder');
     const sortedProjectGroups = React.useMemo(() => {
-        return Array.from(projectGroups.entries()).sort(([, groupA], [, groupB]) => {
+        return Array.from(projectGroups.entries()).sort(([pathA, groupA], [pathB, groupB]) => {
+            const indexA = projectGroupOrder.indexOf(pathA);
+            const indexB = projectGroupOrder.indexOf(pathB);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
             return groupA.displayPath.localeCompare(groupB.displayPath);
         });
-    }, [projectGroups]);
+    }, [projectGroups, projectGroupOrder]);
+
+    const { reorderGroups } = useProjectGroupReorder();
+    const allPaths = React.useMemo(() => sortedProjectGroups.map(([path]) => path), [sortedProjectGroups]);
+    const handleReorder = React.useCallback((fromIndex: number, toIndex: number) => {
+        reorderGroups(fromIndex, toIndex, allPaths);
+    }, [reorderGroups, allPaths]);
 
     return (
         <View style={styles.container}>
-            {sortedProjectGroups.map(([projectPath, projectGroup]) => {
+            {sortedProjectGroups.map(([projectPath, projectGroup], index) => {
 
                 // Get the avatar ID from the first session
                 const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
                 const avatarId = firstSession ? getSessionAvatarId(firstSession) : undefined;
 
                 return (
-                    <View key={projectPath}>
+                    <DraggableProjectGroup key={projectPath} projectPath={projectPath} index={index} onReorder={handleReorder}>
                         {/* Section header on grouped background */}
                         <View style={styles.sectionHeader}>
                             <View style={styles.sectionHeaderLeft}>
+                                {Platform.OS === 'web' && (
+                                    <Ionicons
+                                        name="reorder-two"
+                                        size={16}
+                                        color={theme.colors.textSecondary}
+                                        style={{ marginRight: 6, cursor: 'grab' } as any}
+                                    />
+                                )}
                                 {avatarId && (
                                     <View style={styles.sectionHeaderAvatar}>
                                         <Avatar id={avatarId} size={24} flavor={firstSession?.metadata?.flavor} />
@@ -299,7 +322,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                     </View>
                                 ))}
                         </View>
-                    </View>
+                    </DraggableProjectGroup>
                 );
             })}
         </View>

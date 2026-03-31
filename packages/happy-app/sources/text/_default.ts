@@ -285,6 +285,7 @@ export const en = {
         archiveConfirmTitle: 'Archive Session',
         archiveConfirmMessage: 'Are you sure you want to archive this session? You can find it in archived sessions later.',
         bugReport: 'Bug Report',
+        dragToReorder: 'Drag to reorder',
     },
 
     commandPalette: {

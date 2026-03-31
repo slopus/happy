@@ -288,6 +288,7 @@ export const ja: TranslationStructure = {
         archiveConfirmTitle: 'セッションをアーカイブ',
         archiveConfirmMessage: 'このセッションをアーカイブしますか？アーカイブされたセッションから後で見つけることができます。',
         bugReport: 'バグ報告',
+        dragToReorder: 'ドラッグして並べ替え',
     },
 
     commandPalette: {

@@ -298,6 +298,7 @@ export const pl: TranslationStructure = {
         archiveConfirmTitle: 'Archiwizuj sesję',
         archiveConfirmMessage: 'Czy na pewno chcesz zarchiwizować tę sesję? Możesz ją później znaleźć w zarchiwizowanych sesjach.',
         bugReport: 'Zgłoś błąd',
+        dragToReorder: 'Przeciągnij, aby zmienić kolejność',
     },
 
     commandPalette: {

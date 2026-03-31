@@ -389,6 +389,7 @@ export const ru: TranslationStructure = {
         archiveConfirmTitle: 'Архивировать сессию',
         archiveConfirmMessage: 'Вы уверены, что хотите архивировать эту сессию? Вы сможете найти её в архивированных сессиях позже.',
         bugReport: 'Сообщить об ошибке',
+        dragToReorder: 'Перетащите для изменения порядка',
     },
 
     commandPalette: {

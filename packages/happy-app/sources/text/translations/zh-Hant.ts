@@ -287,6 +287,7 @@ export const zhHant: TranslationStructure = {
         archiveConfirmTitle: '封存對話',
         archiveConfirmMessage: '確定要封存此對話嗎？您可以稍後在已封存的對話中找到它。',
         bugReport: '錯誤報告',
+        dragToReorder: '拖曳以重新排序',
     },
 
     commandPalette: {

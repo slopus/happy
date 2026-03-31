@@ -286,6 +286,7 @@ export const pt: TranslationStructure = {
         archiveConfirmTitle: 'Arquivar sessão',
         archiveConfirmMessage: 'Tem certeza de que deseja arquivar esta sessão? Você poderá encontrá-la nas sessões arquivadas depois.',
         bugReport: 'Relatório de bug',
+        dragToReorder: 'Arraste para reordenar',
     },
 
     commandPalette: {
