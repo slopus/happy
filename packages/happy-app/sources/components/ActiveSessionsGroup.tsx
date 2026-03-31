@@ -4,13 +4,13 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useAllMachines, useSetting, useSyncSessionTodos } from '@/sync/storage';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
 import { storage } from '@/sync/storage';
@@ -18,6 +18,7 @@ import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { getProjectRoot, getWorktreeName } from '@/utils/worktree';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
@@ -191,6 +192,21 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         textAlign: 'center',
         ...Typography.default('semiBold'),
     },
+    worktreeBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 8,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        marginLeft: 6,
+        gap: 3,
+    },
+    worktreeBadgeText: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+    },
 }));
 
 interface ActiveSessionsGroupProps {
@@ -223,7 +239,8 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         }>();
 
         sessions.forEach(session => {
-            const projectPath = session.metadata?.path || '';
+            const rawPath = session.metadata?.path || '';
+            const projectPath = getProjectRoot(rawPath);
             const machineId = session.metadata?.machineId || 'unknown';
 
             // Get machine info
@@ -322,6 +339,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                                 selected={selectedSessionId === session.id}
                                                 showBorder={index < machineGroup.sessions.length - 1 ||
                                                     Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
+                                                worktreeName={getWorktreeName(session.metadata?.path || '')}
                                             />
                                         ))}
                                     </View>
@@ -335,8 +353,9 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 }
 
 // Compact session row component with status line
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
+const CompactSessionRow = React.memo(({ session, selected, showBorder, worktreeName }: { session: Session; selected?: boolean; showBorder?: boolean; worktreeName?: string | null }) => {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const sessionStatus = useSessionStatus(session);
     const sessionTodos = useSyncSessionTodos(session.id);
     const sessionName = getSessionName(session);
@@ -445,6 +464,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {sessionName}
                     </Text>
+                    {worktreeName ? (
+                        <View style={styles.worktreeBadge}>
+                            <Octicons name="git-branch" size={10} color={theme.colors.textSecondary} />
+                            <Text style={styles.worktreeBadgeText} numberOfLines={1}>
+                                {worktreeName}
+                            </Text>
+                        </View>
+                    ) : null}
                 </View>
 
                 {/* Status line with dot */}

@@ -274,6 +274,7 @@ export const zhHant: TranslationStructure = {
 
     session: {
         inputPlaceholder: '輸入訊息...',
+        worktree: '工作樹',
     },
 
     commandPalette: {
@@ -433,6 +434,9 @@ export const zhHant: TranslationStructure = {
             folderLabel: '資料夾',
         },
         noMachinesAvailable: '無裝置',
+        attachFile: '附加檔案',
+        removeAttachment: '移除',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '已附加1個檔案' : `已附加${count}個檔案`,
     },
 
     machineLauncher: {
@@ -888,5 +892,10 @@ export const zhHant: TranslationStructure = {
         friendRequestGeneric: '新的好友請求',
         friendAccepted: ({ name }: { name: string }) => `您現在與 ${name} 成為了好友`,
         friendAcceptedGeneric: '好友請求已接受',
+    },
+
+    parts: {
+        unknownFile: '附件',
+        imageAttachment: '圖片',
     },
 } as const;

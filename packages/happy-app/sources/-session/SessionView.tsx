@@ -247,6 +247,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
+    const [pendingFiles, setPendingFiles] = React.useState<Array<{ id: string; name: string; mime: string; uri: string; size?: number }>>([]);
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useV3SessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
@@ -427,11 +428,24 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing
             }}
+            pendingFiles={pendingFiles}
+            onFilesSelected={(files) => {
+                const withIds = files.map(f => ({
+                    ...f,
+                    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+                }));
+                setPendingFiles(prev => [...prev, ...withIds]);
+            }}
+            onRemoveFile={(id) => setPendingFiles(prev => prev.filter(f => f.id !== id))}
             onSend={() => {
-                if (message.trim()) {
+                if (message.trim() || pendingFiles.length > 0) {
+                    const filesToSend = pendingFiles.length > 0
+                        ? pendingFiles.map(f => ({ name: f.name, mime: f.mime, uri: f.uri }))
+                        : undefined;
                     setMessage('');
+                    setPendingFiles([]);
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
+                    sync.sendMessage(sessionId, message, undefined, filesToSend);
                     trackMessageSent();
                 }
             }}

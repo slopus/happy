@@ -288,6 +288,7 @@ export const en: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        worktree: 'Worktree',
     },
 
     commandPalette: {
@@ -447,6 +448,9 @@ export const en: TranslationStructure = {
             folderLabel: 'FOLDER',
         },
         noMachinesAvailable: 'No machines',
+        attachFile: 'Attach file',
+        removeAttachment: 'Remove',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '1 file attached' : `${count} files attached`,
     },
 
     machineLauncher: {
@@ -903,6 +907,11 @@ export const en: TranslationStructure = {
         friendRequestGeneric: 'New friend request',
         friendAccepted: ({ name }: { name: string }) => `You are now friends with ${name}`,
         friendAcceptedGeneric: 'Friend request accepted',
+    },
+
+    parts: {
+        unknownFile: 'Attached file',
+        imageAttachment: 'Image',
     },
 
 } as const;

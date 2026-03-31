@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
@@ -23,6 +23,14 @@ import { hackMode, hackModes } from '@/sync/modeHacks';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+
+export interface PendingFile {
+    id: string;
+    name: string;
+    mime: string;
+    uri: string;
+    size?: number;
+}
 
 interface AgentInputProps {
     value: string;
@@ -76,6 +84,9 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    pendingFiles?: PendingFile[];
+    onFilesSelected?: (files: Array<{ name: string; mime: string; uri: string; size?: number }>) => void;
+    onRemoveFile?: (id: string) => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -307,6 +318,31 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default(),
         ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
     },
+
+    // Pending file attachment styles
+    pendingFilesRow: {
+        paddingVertical: 4,
+        maxHeight: 48,
+    },
+    fileChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    fileChipThumbnail: {
+        width: 24,
+        height: 24,
+        borderRadius: 4,
+    },
+    fileChipText: {
+        fontSize: 12,
+        maxWidth: 120,
+        ...Typography.default(),
+    },
 }));
 
 const getPermissionPillColor = (key: string, isSandboxed: boolean, theme: Theme): string => {
@@ -403,9 +439,54 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [isAborting, setIsAborting] = React.useState(false);
     const shakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
+
+    // File attachment handler
+    const handleAttachPress = React.useCallback(async () => {
+        if (!props.onFilesSelected) return;
+        hapticsLight();
+
+        if (Platform.OS === 'web') {
+            fileInputRef.current?.click();
+        } else {
+            try {
+                const DocumentPicker = await import('expo-document-picker');
+                const result = await DocumentPicker.getDocumentAsync({
+                    type: ['image/*', 'text/*', 'application/*'],
+                    multiple: true,
+                });
+                if (!result.canceled && result.assets) {
+                    props.onFilesSelected(result.assets.map(asset => ({
+                        name: asset.name,
+                        mime: asset.mimeType || 'application/octet-stream',
+                        uri: asset.uri,
+                        size: asset.size,
+                    })));
+                }
+            } catch (err) {
+                console.error('Document picker error:', err);
+            }
+        }
+    }, [props.onFilesSelected]);
+
+    // Web file input change handler
+    const handleWebFileChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        if (!props.onFilesSelected) return;
+        const fileList = event.target.files;
+        if (!fileList || fileList.length === 0) return;
+        const files = Array.from(fileList).map(file => ({
+            name: file.name,
+            mime: file.type || 'application/octet-stream',
+            uri: URL.createObjectURL(file),
+            size: file.size,
+        }));
+        props.onFilesSelected(files);
+        // Reset input so same file can be re-selected
+        event.target.value = '';
+    }, [props.onFilesSelected]);
 
     // Autocomplete state - track text and selection together
     const [inputState, setInputState] = React.useState<TextInputState>({
@@ -1020,6 +1101,49 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         />
                     </View>
 
+                    {/* Pending file attachments */}
+                    {props.pendingFiles && props.pendingFiles.length > 0 && (
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={stylesheet.pendingFilesRow}
+                            contentContainerStyle={{ gap: 6, paddingHorizontal: 4 }}
+                        >
+                            {props.pendingFiles.map(file => {
+                                const isImage = file.mime.startsWith('image/');
+                                const truncatedName = file.name.length > 20
+                                    ? file.name.slice(0, 17) + '...'
+                                    : file.name;
+                                return (
+                                    <View key={file.id} style={stylesheet.fileChip}>
+                                        {isImage ? (
+                                            <Image
+                                                source={{ uri: file.uri }}
+                                                style={stylesheet.fileChipThumbnail}
+                                                contentFit="cover"
+                                            />
+                                        ) : (
+                                            <Ionicons name="document-outline" size={14} color={theme.colors.textSecondary} />
+                                        )}
+                                        <Text style={[stylesheet.fileChipText, { color: theme.colors.text }]} numberOfLines={1}>
+                                            {truncatedName}
+                                        </Text>
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onRemoveFile?.(file.id);
+                                            }}
+                                            hitSlop={8}
+                                            accessibilityLabel={t('agentInput.removeAttachment')}
+                                        >
+                                            <Ionicons name="close-circle" size={16} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    </View>
+                                );
+                            })}
+                        </ScrollView>
+                    )}
+
                     {/* Compact control pills row */}
                     {(props.onModelModeChange || props.onPermissionModeChange || showEffortPill) && (
                         <View style={stylesheet.controlPillsRow}>
@@ -1080,6 +1204,43 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             {/* Row 1: Settings, Agent, Abort, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <View style={styles.actionButtonsLeft}>
+
+                                {/* Attach file button */}
+                                {props.onFilesSelected && (
+                                    <>
+                                        <Pressable
+                                            onPress={handleAttachPress}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            accessibilityLabel={t('agentInput.attachFile')}
+                                            style={(p) => ({
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                borderRadius: Platform.select({ default: 16, android: 20 }),
+                                                paddingHorizontal: 8,
+                                                paddingVertical: 6,
+                                                justifyContent: 'center',
+                                                height: 32,
+                                                opacity: p.pressed ? 0.7 : 1,
+                                            })}
+                                        >
+                                            <Ionicons
+                                                name="add"
+                                                size={18}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                        </Pressable>
+                                        {Platform.OS === 'web' && (
+                                            <input
+                                                ref={fileInputRef as any}
+                                                type="file"
+                                                multiple
+                                                accept="image/*,.txt,.md,.json,.ts,.tsx,.js,.jsx,.py,.rs,.go,.c,.cpp,.h,.yaml,.yml,.toml"
+                                                style={{ display: 'none' }}
+                                                onChange={handleWebFileChange as any}
+                                            />
+                                        )}
+                                    </>
+                                )}
 
                                 {/* Settings button */}
                                 {props.onPermissionModeChange && (

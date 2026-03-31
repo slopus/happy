@@ -17,6 +17,7 @@ import { ReasoningPartView } from './ReasoningPartView';
 import { ToolPartView } from './ToolPartView';
 import { SubtaskPartView } from './SubtaskPartView';
 import { CompactionPartView } from './CompactionPartView';
+import { FilePartView } from './FilePartView';
 
 export const PartView = React.memo((props: {
     part: v3.Part;
@@ -41,6 +42,9 @@ export const PartView = React.memo((props: {
         case 'compaction':
             return <CompactionPartView part={part} />;
 
+        case 'file':
+            return <FilePartView part={part} sessionId={props.sessionId} />;
+
         // System / lifecycle parts — not rendered
         case 'step-start':
         case 'step-finish':
@@ -50,7 +54,6 @@ export const PartView = React.memo((props: {
         case 'patch':
         case 'retry':
         case 'agent':
-        case 'file':
             return null;
 
         default:

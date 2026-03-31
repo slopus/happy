@@ -275,6 +275,7 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        worktree: '工作树',
     },
 
     commandPalette: {
@@ -434,6 +435,9 @@ export const zhHans: TranslationStructure = {
             folderLabel: '文件夹',
         },
         noMachinesAvailable: '无设备',
+        attachFile: '附加文件',
+        removeAttachment: '移除',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '已附加1个文件' : `已附加${count}个文件`,
     },
 
     machineLauncher: {
@@ -889,5 +893,10 @@ export const zhHans: TranslationStructure = {
         friendRequestGeneric: '新的好友请求',
         friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
         friendAcceptedGeneric: '好友请求已接受',
-    }
+    },
+
+    parts: {
+        unknownFile: '附件',
+        imageAttachment: '图片',
+    },
 } as const;

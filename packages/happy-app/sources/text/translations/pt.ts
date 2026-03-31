@@ -273,6 +273,7 @@ export const pt: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Digite uma mensagem ...',
+        worktree: 'Árvore de trabalho',
     },
 
     commandPalette: {
@@ -432,6 +433,9 @@ export const pt: TranslationStructure = {
             folderLabel: 'PASTA',
         },
         noMachinesAvailable: 'Sem máquinas',
+        attachFile: 'Anexar arquivo',
+        removeAttachment: 'Remover',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '1 arquivo anexado' : `${count} arquivos anexados`,
     },
 
     machineLauncher: {
@@ -887,7 +891,12 @@ export const pt: TranslationStructure = {
         friendRequestGeneric: 'Novo pedido de amizade',
         friendAccepted: ({ name }: { name: string }) => `Agora você é amigo de ${name}`,
         friendAcceptedGeneric: 'Pedido de amizade aceito',
-    }
+    },
+
+    parts: {
+        unknownFile: 'Arquivo anexado',
+        imageAttachment: 'Imagem',
+    },
 } as const;
 
 export type TranslationsPt = typeof pt;

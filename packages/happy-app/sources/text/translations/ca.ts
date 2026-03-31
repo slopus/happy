@@ -274,6 +274,7 @@ export const ca: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Escriu un missatge...',
+        worktree: 'Arbre de treball',
     },
 
     commandPalette: {
@@ -433,6 +434,9 @@ export const ca: TranslationStructure = {
             folderLabel: 'CARPETA',
         },
         noMachinesAvailable: 'Sense màquines',
+        attachFile: 'Adjuntar fitxer',
+        removeAttachment: 'Eliminar',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '1 fitxer adjunt' : `${count} fitxers adjunts`,
     },
 
     machineLauncher: {
@@ -888,7 +892,12 @@ export const ca: TranslationStructure = {
         friendRequestGeneric: 'Nova sol·licitud d\'amistat',
         friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
         friendAcceptedGeneric: 'Sol·licitud d\'amistat acceptada',
-    }
+    },
+
+    parts: {
+        unknownFile: 'Fitxer adjunt',
+        imageAttachment: 'Imatge',
+    },
 } as const;
 
 export type TranslationsCa = typeof ca;

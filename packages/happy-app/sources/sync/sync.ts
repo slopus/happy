@@ -264,7 +264,7 @@ class Sync {
         });
     }
 
-    async sendMessage(sessionId: string, text: string, displayText?: string) {
+    async sendMessage(sessionId: string, text: string, displayText?: string, files?: Array<{ name: string; mime: string; uri: string }>) {
         const session = storage.getState().sessions[sessionId];
         if (!session) {
             console.error(`Session ${sessionId} not found in storage`);
@@ -307,6 +307,7 @@ class Sync {
                 appendSystemPrompt: systemPrompt,
                 ...(displayText ? { displayText } : {}),
             },
+            files,
         });
     }
 

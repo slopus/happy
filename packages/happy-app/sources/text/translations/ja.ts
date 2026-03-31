@@ -275,6 +275,7 @@ export const ja: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'メッセージを入力...',
+        worktree: 'ワークツリー',
     },
 
     commandPalette: {
@@ -434,6 +435,9 @@ export const ja: TranslationStructure = {
             folderLabel: 'フォルダ',
         },
         noMachinesAvailable: 'マシンなし',
+        attachFile: 'ファイルを添付',
+        removeAttachment: '削除',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '1件のファイルを添付' : `${count}件のファイルを添付`,
     },
 
     machineLauncher: {
@@ -890,5 +894,10 @@ export const ja: TranslationStructure = {
         friendRequestGeneric: '新しい友達リクエスト',
         friendAccepted: ({ name }: { name: string }) => `${name}さんと友達になりました`,
         friendAcceptedGeneric: '友達リクエストが承認されました',
-    }
+    },
+
+    parts: {
+        unknownFile: '添付ファイル',
+        imageAttachment: '画像',
+    },
 } as const;

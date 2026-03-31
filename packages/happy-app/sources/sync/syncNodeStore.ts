@@ -63,6 +63,7 @@ export interface AppSyncUserMessageOpts {
         modelID: string;
     };
     meta?: AppSyncUserMessageMeta;
+    files?: Array<{ name: string; mime: string; uri: string }>;
 }
 
 export interface AppSyncNodeOpts {
@@ -277,6 +278,28 @@ export class AppSyncStore {
         const { createId } = await import('@paralleldrive/cuid2');
         const msgId = `msg_${createId()}` as v3.MessageID;
 
+        const parts: Part[] = [{
+            id: `prt_${createId()}` as v3.PartID,
+            sessionID: sessionId,
+            messageID: msgId,
+            type: 'text' as const,
+            text,
+        }];
+
+        if (opts.files && opts.files.length > 0) {
+            for (const file of opts.files) {
+                parts.push({
+                    id: `prt_${createId()}` as v3.PartID,
+                    sessionID: sessionId,
+                    messageID: msgId,
+                    type: 'file' as const,
+                    mime: file.mime,
+                    filename: file.name,
+                    url: file.uri,
+                } as Part);
+            }
+        }
+
         const message: MessageWithParts = {
             info: {
                 id: msgId,
@@ -287,13 +310,7 @@ export class AppSyncStore {
                 model: opts.model ?? { providerID: 'user', modelID: 'user' },
                 meta: opts.meta,
             },
-            parts: [{
-                id: `prt_${createId()}` as v3.PartID,
-                sessionID: sessionId,
-                messageID: msgId,
-                type: 'text' as const,
-                text,
-            }],
+            parts,
         };
 
         await this.node.sendMessage(sessionId, message);

@@ -285,6 +285,7 @@ export const pl: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Wpisz wiadomość...',
+        worktree: 'Drzewo robocze',
     },
 
     commandPalette: {
@@ -443,6 +444,9 @@ export const pl: TranslationStructure = {
             folderLabel: 'FOLDER',
         },
         noMachinesAvailable: 'Brak maszyn',
+        attachFile: 'Dołącz plik',
+        removeAttachment: 'Usuń',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '1 plik dołączony' : `${count} plików dołączonych`,
     },
 
     machineLauncher: {
@@ -912,6 +916,11 @@ export const pl: TranslationStructure = {
         friendRequestGeneric: 'Nowe zaproszenie do znajomych',
         friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
+    },
+
+    parts: {
+        unknownFile: 'Załączony plik',
+        imageAttachment: 'Obraz',
     },
 
 } as const;

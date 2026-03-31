@@ -4,7 +4,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { router, useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
@@ -18,6 +18,7 @@ import { storage } from '@/sync/storage';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { ProjectGitStatus } from './ProjectGitStatus';
+import { getProjectRoot, getWorktreeName } from '@/utils/worktree';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
@@ -147,6 +148,21 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         textAlign: 'center',
         ...Typography.default('semiBold'),
     },
+    worktreeBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 8,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        marginLeft: 6,
+        gap: 3,
+    },
+    worktreeBadgeText: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+    },
 }));
 
 interface ActiveSessionsGroupProps {
@@ -180,7 +196,8 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
         }>();
 
         sessions.forEach(session => {
-            const projectPath = session.metadata?.path || '';
+            const rawPath = session.metadata?.path || '';
+            const projectPath = getProjectRoot(rawPath);
             const unknownText = t('status.unknown');
             const machineId = session.metadata?.machineId || unknownText;
 
@@ -276,6 +293,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                                 selected={selectedSessionId === session.id}
                                                 showBorder={index < machineGroup.sessions.length - 1 ||
                                                     Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
+                                                worktreeName={getWorktreeName(session.metadata?.path || '')}
                                             />
                                         ))}
                                     </View>
@@ -289,7 +307,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 }
 
 // Compact session row component with status line
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
+const CompactSessionRow = React.memo(({ session, selected, showBorder, worktreeName }: { session: Session; selected?: boolean; showBorder?: boolean; worktreeName?: string | null }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const sessionStatus = useSessionStatus(session);
@@ -433,6 +451,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {sessionName}
                     </Text>
+                    {worktreeName ? (
+                        <View style={styles.worktreeBadge}>
+                            <Octicons name="git-branch" size={10} color={theme.colors.textSecondary} />
+                            <Text style={styles.worktreeBadgeText} numberOfLines={1}>
+                                {worktreeName}
+                            </Text>
+                        </View>
+                    ) : null}
                 </View>
             </View>
         </Pressable>

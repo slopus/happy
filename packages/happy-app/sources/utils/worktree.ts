@@ -171,3 +171,25 @@ export async function removeWorktree(
 export function isWorktreePath(path: string): boolean {
     return path.includes(WORKTREE_PATH_MARKER);
 }
+
+/**
+ * Extract the parent project root from a path.
+ * If the path contains /.dev/worktree/X, returns everything before /.dev/worktree/.
+ * Otherwise returns the path as-is.
+ */
+export function getProjectRoot(path: string): string {
+    const idx = path.indexOf(WORKTREE_PATH_MARKER);
+    if (idx === -1) return path;
+    return path.substring(0, idx);
+}
+
+/**
+ * Extract the worktree name from a worktree path.
+ * Returns null if not a worktree path.
+ */
+export function getWorktreeName(path: string): string | null {
+    const idx = path.indexOf(WORKTREE_PATH_MARKER);
+    if (idx === -1) return null;
+    const afterMarker = path.substring(idx + WORKTREE_PATH_MARKER.length);
+    return afterMarker.replace(/\/$/, '') || null;
+}

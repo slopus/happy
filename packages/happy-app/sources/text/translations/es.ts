@@ -274,6 +274,7 @@ export const es: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Escriba un mensaje ...',
+        worktree: 'Árbol de trabajo',
     },
 
     commandPalette: {
@@ -433,6 +434,9 @@ export const es: TranslationStructure = {
             folderLabel: 'CARPETA',
         },
         noMachinesAvailable: 'Sin máquinas',
+        attachFile: 'Adjuntar archivo',
+        removeAttachment: 'Eliminar',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '1 archivo adjunto' : `${count} archivos adjuntos`,
     },
 
     machineLauncher: {
@@ -889,6 +893,11 @@ export const es: TranslationStructure = {
         friendRequestGeneric: 'Nueva solicitud de amistad',
         friendAccepted: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
+    },
+
+    parts: {
+        unknownFile: 'Archivo adjunto',
+        imageAttachment: 'Imagen',
     },
 
 } as const;

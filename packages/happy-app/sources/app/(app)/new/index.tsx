@@ -11,9 +11,11 @@ import {
     ScrollView,
     LayoutAnimation,
     ActivityIndicator,
+    Image as RNImage,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons, Octicons } from '@expo/vector-icons';
+import type { PendingFile } from '@/components/AgentInput';
 import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
@@ -317,6 +319,56 @@ function NewSessionScreen() {
     const [effortIndex, setEffortIndex] = React.useState(0);
     const [isSpawning, setIsSpawning] = React.useState(false);
     const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
+    const [pendingFiles, setPendingFiles] = React.useState<Array<{ id: string; name: string; mime: string; uri: string; size?: number }>>([]);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleFilesSelected = React.useCallback((files: Array<{ name: string; mime: string; uri: string; size?: number }>) => {
+        const withIds = files.map(f => ({
+            ...f,
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        }));
+        setPendingFiles(prev => [...prev, ...withIds]);
+    }, []);
+
+    const handleRemoveFile = React.useCallback((id: string) => {
+        setPendingFiles(prev => prev.filter(f => f.id !== id));
+    }, []);
+
+    const handleAttachPress = React.useCallback(async () => {
+        if (Platform.OS === 'web') {
+            fileInputRef.current?.click();
+        } else {
+            try {
+                const DocumentPicker = await import('expo-document-picker');
+                const result = await DocumentPicker.getDocumentAsync({
+                    type: ['image/*', 'text/*', 'application/*'],
+                    multiple: true,
+                });
+                if (!result.canceled && result.assets) {
+                    handleFilesSelected(result.assets.map(asset => ({
+                        name: asset.name,
+                        mime: asset.mimeType || 'application/octet-stream',
+                        uri: asset.uri,
+                        size: asset.size,
+                    })));
+                }
+            } catch (err) {
+                console.error('Document picker error:', err);
+            }
+        }
+    }, [handleFilesSelected]);
+
+    const handleWebFileChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        const fileList = event.target.files;
+        if (!fileList || fileList.length === 0) return;
+        handleFilesSelected(Array.from(fileList).map(file => ({
+            name: file.name,
+            mime: file.type || 'application/octet-stream',
+            uri: URL.createObjectURL(file),
+            size: file.size,
+        })));
+        event.target.value = '';
+    }, [handleFilesSelected]);
 
     // Config collapse — auto-collapses when typing, expands when empty
     const [isConfigExpanded, setIsConfigExpanded] = React.useState(true);
@@ -612,9 +664,13 @@ function NewSessionScreen() {
                     setPrompt('');
 
                     // Send initial message if provided
-                    if (prompt.trim()) {
-                        await sync.sendMessage(result.sessionId, prompt.trim());
+                    if (prompt.trim() || pendingFiles.length > 0) {
+                        const filesToSend = pendingFiles.length > 0
+                            ? pendingFiles.map(f => ({ name: f.name, mime: f.mime, uri: f.uri }))
+                            : undefined;
+                        await sync.sendMessage(result.sessionId, prompt.trim(), undefined, filesToSend);
                     }
+                    setPendingFiles([]);
 
                     router.back();
                     navigateToSession(result.sessionId);
@@ -839,6 +895,72 @@ function NewSessionScreen() {
                                 </Pressable>
                             </View>
                         </View>
+                        {/* Pending file attachments */}
+                        {pendingFiles.length > 0 && (
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                style={{ paddingVertical: 4, maxHeight: 48 }}
+                                contentContainerStyle={{ gap: 6, paddingHorizontal: 4 }}
+                            >
+                                {pendingFiles.map(file => {
+                                    const isImage = file.mime.startsWith('image/');
+                                    const truncatedName = file.name.length > 20
+                                        ? file.name.slice(0, 17) + '...'
+                                        : file.name;
+                                    return (
+                                        <View key={file.id} style={styles.fileChip}>
+                                            {isImage ? (
+                                                <Image
+                                                    source={{ uri: file.uri }}
+                                                    style={{ width: 24, height: 24, borderRadius: 4 }}
+                                                    contentFit="cover"
+                                                />
+                                            ) : (
+                                                <Ionicons name="document-outline" size={14} color={theme.colors.textSecondary} />
+                                            )}
+                                            <Text style={{ fontSize: 12, color: theme.colors.text }} numberOfLines={1}>
+                                                {truncatedName}
+                                            </Text>
+                                            <Pressable
+                                                onPress={() => handleRemoveFile(file.id)}
+                                                hitSlop={8}
+                                                accessibilityLabel={t('agentInput.removeAttachment')}
+                                            >
+                                                <Ionicons name="close-circle" size={16} color={theme.colors.textSecondary} />
+                                            </Pressable>
+                                        </View>
+                                    );
+                                })}
+                            </ScrollView>
+                        )}
+                        {/* Attach + button row */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, paddingTop: 2 }}>
+                            <Pressable
+                                onPress={handleAttachPress}
+                                accessibilityLabel={t('agentInput.attachFile')}
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 4,
+                                    borderRadius: 16,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                })}
+                            >
+                                <Ionicons name="add" size={18} color={theme.colors.button.secondary.tint} />
+                            </Pressable>
+                            {Platform.OS === 'web' && (
+                                <input
+                                    ref={fileInputRef as any}
+                                    type="file"
+                                    multiple
+                                    accept="image/*,.txt,.md,.json,.ts,.tsx,.js,.jsx,.py,.rs,.go,.c,.cpp,.h,.yaml,.yml,.toml"
+                                    style={{ display: 'none' }}
+                                    onChange={handleWebFileChange as any}
+                                />
+                            )}
+                        </View>
                     </View>
                 </View>
 
@@ -1021,6 +1143,15 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 11,
         lineHeight: 16,
         ...Typography.default(),
+    },
+    fileChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: theme.colors.surfacePressed,
     },
 }));
 

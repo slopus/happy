@@ -376,6 +376,7 @@ export const ru: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
+        worktree: 'Рабочее дерево',
     },
 
     commandPalette: {
@@ -442,6 +443,9 @@ export const ru: TranslationStructure = {
             folderLabel: 'ПАПКА',
         },
         noMachinesAvailable: 'Нет машин',
+        attachFile: 'Прикрепить файл',
+        removeAttachment: 'Удалить',
+        filesAttached: ({ count }: { count: number }) => count === 1 ? '1 файл прикреплён' : `${count} файлов прикреплено`,
     },
 
     machineLauncher: {
@@ -910,6 +914,11 @@ export const ru: TranslationStructure = {
         friendRequestGeneric: 'Новый запрос в друзья',
         friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
         friendAcceptedGeneric: 'Запрос в друзья принят',
+    },
+
+    parts: {
+        unknownFile: 'Прикреплённый файл',
+        imageAttachment: 'Изображение',
     },
 
 } as const;
