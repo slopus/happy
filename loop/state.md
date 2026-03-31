@@ -691,15 +691,75 @@ Validate the existing `happy-agent` base flow end-to-end on the real stack:
 Those remain valid roadmap items, but they are lower priority than the `P0`
 orchestration proof now that the web lifecycle/control-flow path is stable.
 
+## Phase 3.0: DONE
+
+Validated `happy-agent` spawn flow end-to-end on the real stack. Report
+written to `roadmap.md` under P0.
+
+### Environment
+
+`eager-summit` — local real stack created via `yarn env:up:authenticated`.
+Server on `:50371`, Expo web on `:50372`, daemon PID 90416.
+
+### Commands executed (all via `happy-agent` CLI from main repo)
+
+```
+happy-agent auth status         → Authenticated
+happy-agent machines --json     → 1 active machine (0cf073cd…)
+happy-agent spawn --machine … --path …/agent-test --agent claude
+                                → session cmndwh245001sy7hsqbhlp38o
+happy-agent list --active       → session visible
+happy-agent send <id> "…" --yolo --wait → turn completed
+happy-agent wait <id>           → Session Idle
+happy-agent history <id>        → 11 messages, Write tool used, turn-end completed
+happy-agent stop <id>           → Session Stopped
+```
+
+### Proof
+
+**Artifact:**
+```
+-rw-r--r--  52 Mar 30 17:50 …/agent-test/VALIDATION.md
+Contents: happy-agent spawn validation successful - 2026-03-30
+```
+
+**Web URL:**
+```
+http://localhost:50372/session/cmndwh245001sy7hsqbhlp38o?dev_token=…&dev_secret=…
+```
+
+**Session metadata confirms:**
+- machine: `0cf073cd-8945-4d10-9fd1-b2b61c341ea0`
+- worktree path: `…/eager-summit/project/.dev/worktree/agent-test`
+- flavor: `claude`
+- session id: `cmndwh245001sy7hsqbhlp38o`
+- claude session id: `a670ba05-68ba-4289-b085-9270806be049`
+
+### Issues found
+
+1. **No `happy-agent approve` command.** Default permission mode blocks on
+   Write with no way to approve remotely. `--yolo` works around this.
+2. **Auth requires QR scan.** Production `access.key` (dataKey format) has no
+   raw account secret. Automated orchestration needs a daemon-local credential
+   seeding path.
+3. **`happy-agent stop` (Socket.IO) doesn't kill the CLI process.** Daemon
+   HTTP `/stop-session` is needed for hard stop.
+
+### Verdict
+
+The base `happy-agent` spawn/send/monitor/stop flow works end-to-end. The
+three issues above are the blockers before scaling to multi-agent fan-out.
+
 ## Current Task
 
-TASK: Phase 3.0 — validate `happy-agent` spawn on the real web stack.
+TASK: Phase 3.1 — add `happy-agent approve` command and fix stop behavior.
 
-Do the roadmap `P0` proof in the current environment:
-- reuse the current authenticated env
-- spawn a real agent into a new worktree with `happy-agent`
-- confirm the spawned chat is visible in the same Happy web account/env
-- send it follow-up work
-- monitor it until idle/settled
-- collect a real session URL plus verification evidence
-- write the outcome back into `roadmap.md`
+Address the three blockers found in Phase 3.0:
+1. Add `happy-agent approve <session-id> [request-id]` that sends a permission
+   decision via the session's Socket.IO connection. Support `--always` for
+   session-scoped approval.
+2. Fix `happy-agent stop` to use the daemon HTTP `/stop-session` endpoint when
+   the machine is local (daemon reachable), falling back to Socket.IO
+   `session-end` for remote machines.
+3. Investigate daemon-local credential seeding so `happy-agent` can auth
+   without QR scan when running on the same machine as the daemon.

@@ -83,6 +83,42 @@ Goal: make `happy-agent` the reliable control plane for dispatching and monitori
   7. write the report back into this roadmap
 - Only after this passes should the other roadmap items be delegated through `happy-agent`.
 
+### Phase 3.0 validation report (2026-03-30)
+
+**Result: PASS — base happy-agent spawn flow validated end-to-end.**
+
+Environment: `eager-summit` (local real stack — real server on `:50371`, real CLI daemon, real Expo web on `:50372`).
+
+| Step | Outcome |
+|------|---------|
+| 1. Auth | Reused seeded account secret from `eager-summit` env. `happy-agent auth status` → Authenticated. |
+| 2. Machines | `happy-agent machines --json` → 1 active machine (`0cf073cd…`), daemon PID 90416, all 4 CLI flavors available. |
+| 3. Worktree | Created `agent-test-branch` worktree at `.dev/worktree/agent-test` inside the env project. |
+| 4. Spawn | `happy-agent spawn --machine 0cf073cd --path …/agent-test --agent claude` → session `cmndwh245001sy7hsqbhlp38o`, type `success`. |
+| 5. Visible | `happy-agent list --active` shows the session. Server REST `/v2/sessions/active` confirms encrypted session record. |
+| 6. Send work | `happy-agent send <id> "Create VALIDATION.md…" --yolo --wait` → message delivered, Claude used Write tool, turn completed. |
+| 7. Monitor idle | `happy-agent wait <id> --timeout 10` → "Session Idle" immediately. |
+| 8. Artifact | `VALIDATION.md` on disk: `happy-agent spawn validation successful - 2026-03-30`. |
+| 9. Web URL | `http://localhost:50372/session/cmndwh245001sy7hsqbhlp38o?dev_token=…&dev_secret=…` |
+
+**Session metadata retained:**
+- machine: `0cf073cd-8945-4d10-9fd1-b2b61c341ea0`
+- path: `…/eager-summit/project/.dev/worktree/agent-test`
+- flavor: `claude`
+- session id: `cmndwh245001sy7hsqbhlp38o`
+- claude session id: `a670ba05-68ba-4289-b085-9270806be049`
+
+**Issues found:**
+1. **Permission blocking without `--yolo`:** Default permission mode blocks on Write tool with no happy-agent command to approve. First attempt required stopping and re-spawning. Need `happy-agent approve <session-id> <request-id>` command.
+2. **Auth requires account secret:** Production `access.key` uses dataKey format (no raw secret). `happy-agent auth login` needs interactive QR scan. For automated orchestration, either: (a) add a daemon-local auth seeding path, or (b) derive agent credentials from the daemon's existing auth.
+3. **`happy-agent stop` via Socket.IO doesn't kill the CLI process.** The daemon's HTTP `/stop-session` is needed for hard stop.
+
+**Next steps:**
+- Add `happy-agent approve` command for permission management
+- Add daemon-local credential seeding for `happy-agent` to avoid QR requirement in automated flows
+- Verify same flow against production server once auth seeding is available
+- Scale to 2-3 concurrent spawns before attempting full fan-out
+
 ## P1. Control-flow, permissions, and protocol bugs
 
 Goal: remove the broken session-control paths that currently make remote agent management unreliable.
