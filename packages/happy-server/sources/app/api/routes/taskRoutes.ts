@@ -422,7 +422,7 @@ export function taskRoutes(app: Fastify) {
             role: 'user' as const,
             content: { type: 'text' as const, text: request.body.text },
             meta: {
-                sentFrom: 'happy-web',
+                sentFrom: 'happy-app',
                 permissionMode: request.body.permissionMode || 'default'
             }
         };

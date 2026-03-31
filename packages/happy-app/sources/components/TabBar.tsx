@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Pressable, Text } from 'react-native';
+import { View, Pressable, Text, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Image } from 'expo-image';
@@ -8,7 +8,7 @@ import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
-export type TabType = 'inbox' | 'sessions' | 'settings';
+export type TabType = 'inbox' | 'sessions' | 'settings' | 'tasks';
 
 interface TabBarProps {
     activeTab: TabType;
@@ -86,12 +86,15 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
     const inboxHasContent = useInboxHasContent();
 
     const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
-        // NOTE: Zen tab removed - the feature never got to a useful state
-        return [
+        const base: { key: TabType; icon: any; label: string }[] = [
             { key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism-27.png'), label: t('tabs.inbox') },
             { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism-15.png'), label: t('tabs.sessions') },
-            { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism-9.png'), label: t('tabs.settings') },
         ];
+        if (Platform.OS === 'web') {
+            base.push({ key: 'tasks', icon: require('@/assets/images/brutalist/Brutalism-15.png'), label: t('tabs.tasks') });
+        }
+        base.push({ key: 'settings', icon: require('@/assets/images/brutalist/Brutalism-9.png'), label: t('tabs.settings') });
+        return base;
     }, []);
 
     return (

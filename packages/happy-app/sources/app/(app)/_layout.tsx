@@ -184,6 +184,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="tasks/index"
+                options={{
+                    headerShown: false,
+                }}
+            />
+            <Stack.Screen
                 name="text-selection"
                 options={{
                     headerShown: true,

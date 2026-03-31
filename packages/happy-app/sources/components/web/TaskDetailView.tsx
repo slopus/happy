@@ -1,7 +1,10 @@
 import React, { memo, useMemo, useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Pressable } from 'react-native';
-import { useStore } from '@/store/store';
-import { ChatMessage, AgentStatus, fetchChat, sendChat } from '@/api/tasks';
+import { View, Text, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useAuth } from '@/auth/AuthContext';
+import { useTaskManagerStore, useTaskManagerActions } from '@/hooks/useTaskManager';
+import { ChatMessage, AgentStatus, fetchChatApi, sendChatApi } from '@/sync/apiTasks';
+import { t } from '@/text';
 
 interface Props {
     taskId: string;
@@ -11,12 +14,13 @@ function slugify(text: string): string {
     return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 }
 
-export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
-    const tasks = useStore(s => s.tasks);
-    const projects = useStore(s => s.projects);
-    const machines = useStore(s => s.machines);
-    const setTaskStatus = useStore(s => s.setTaskStatus);
-    const removeTask = useStore(s => s.removeTask);
+export const TaskDetailView = memo(function TaskDetailView({ taskId }: Props) {
+    const { theme } = useUnistyles();
+    const { credentials } = useAuth();
+    const tasks = useTaskManagerStore(s => s.tasks);
+    const projects = useTaskManagerStore(s => s.projects);
+    const machines = useTaskManagerStore(s => s.machines);
+    const { setTaskStatus, removeTask, loadTasks } = useTaskManagerActions();
     const task = useMemo(() => tasks.find(t => t.id === taskId), [tasks, taskId]);
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -26,12 +30,11 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
     const lastSeqRef = useRef(0);
     const scrollRef = useRef<ScrollView>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const loadTasks = useStore(s => s.loadTasks);
 
     const pollMessages = useCallback(async () => {
-        if (!task?.happySessionId) return;
+        if (!task?.happySessionId || !credentials) return;
         try {
-            const resp = await fetchChat(task.id, lastSeqRef.current);
+            const resp = await fetchChatApi(credentials, task.id, lastSeqRef.current);
             if (resp.messages.length > 0) {
                 lastSeqRef.current = resp.messages[resp.messages.length - 1].seq;
                 setMessages(prev => [...prev, ...resp.messages]);
@@ -41,8 +44,8 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
             if (resp.agentStatus === 'done' && task.status === 'running') {
                 loadTasks(task.projectId);
             }
-        } catch {}
-    }, [task?.id, task?.happySessionId, task?.status, task?.projectId]);
+        } catch { /* retry on next poll */ }
+    }, [task?.id, task?.happySessionId, task?.status, task?.projectId, credentials]);
 
     useEffect(() => {
         setMessages([]);
@@ -55,33 +58,33 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
     }, [taskId, task?.happySessionId]);
 
     const handleSend = useCallback(async () => {
-        if (!input.trim() || sending || !task) return;
+        if (!input.trim() || sending || !task || !credentials) return;
         const text = input.trim();
         setInput('');
         setSending(true);
         try {
-            await sendChat(task.id, text);
+            await sendChatApi(credentials, task.id, text);
             await pollMessages();
         } catch (e: any) {
             console.warn('Send failed:', e.message);
         } finally {
             setSending(false);
         }
-    }, [input, sending, task?.id, pollMessages]);
+    }, [input, sending, task?.id, pollMessages, credentials]);
 
     if (!task) {
         return (
             <View style={styles.empty}>
-                <Text style={styles.emptyText}>Task not found</Text>
+                <Text style={styles.emptyText}>{t('taskManager.taskNotFound')}</Text>
             </View>
         );
     }
 
     const statusColors: Record<string, string> = {
-        running: '#4caf50',
-        waiting_for_permission: '#ff9800',
-        done: '#9e9e9e',
-        failed: '#f44336',
+        running: theme.colors.status.connected,
+        waiting_for_permission: theme.colors.status.connecting,
+        done: theme.colors.textSecondary,
+        failed: theme.colors.status.error,
     };
 
     const isActive = task.status === 'running' || task.status === 'waiting_for_permission';
@@ -102,7 +105,7 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
                                 <Text style={[styles.agentStatusText, {
                                     color: agentStatus === 'working' ? '#1565c0' : agentStatus === 'done' ? '#2e7d32' : '#e65100'
                                 }]}>
-                                    {agentStatus === 'working' ? 'Agent working...' : agentStatus === 'done' ? 'Agent done' : 'Waiting'}
+                                    {agentStatus === 'working' ? t('taskManager.agentWorking') : agentStatus === 'done' ? t('taskManager.agentDone') : t('taskManager.agentWaiting')}
                                 </Text>
                             </View>
                         )}
@@ -122,7 +125,7 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
                         return (hi || workspacePath) ? (
                             <View style={styles.workspaceInfo}>
                                 {hi?.ip && (
-                                    <Text style={styles.workspaceText}>Machine: {machine?.displayName || hi.hostname || '?'} ({hi.ip})</Text>
+                                    <Text style={styles.workspaceText}>{t('taskManager.machine')}: {machine?.displayName || hi.hostname || '?'} ({hi.ip})</Text>
                                 )}
                                 {workspacePath && (
                                     <Text style={styles.workspaceText} selectable>Path: {workspacePath}</Text>
@@ -139,16 +142,16 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
                 <View style={styles.headerActions}>
                     {isActive && (
                         <TouchableOpacity style={styles.actionButton} onPress={() => setTaskStatus(task.id, 'done')}>
-                            <Text style={styles.actionButtonText}>Complete</Text>
+                            <Text style={styles.actionButtonText}>{t('taskManager.complete')}</Text>
                         </TouchableOpacity>
                     )}
                     {isActive && (
                         <TouchableOpacity style={[styles.actionButton, styles.dangerButton]} onPress={() => setTaskStatus(task.id, 'failed')}>
-                            <Text style={[styles.actionButtonText, styles.dangerText]}>Cancel</Text>
+                            <Text style={styles.dangerText}>{t('common.cancel')}</Text>
                         </TouchableOpacity>
                     )}
                     <TouchableOpacity style={[styles.actionButton, styles.dangerButton]} onPress={() => removeTask(task.id)}>
-                        <Text style={[styles.actionButtonText, styles.dangerText]}>Delete</Text>
+                        <Text style={styles.dangerText}>{t('common.delete')}</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -157,12 +160,12 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
             <ScrollView ref={scrollRef} style={styles.chatArea} contentContainerStyle={styles.chatContent}>
                 {!task.happySessionId && (
                     <View style={styles.placeholder}>
-                        <Text style={styles.placeholderText}>No session yet. Waiting for agent to start...</Text>
+                        <Text style={styles.placeholderText}>{t('taskManager.noSession')}</Text>
                     </View>
                 )}
                 {task.happySessionId && messages.length === 0 && (
                     <View style={styles.placeholder}>
-                        <Text style={styles.placeholderText}>Waiting for messages...</Text>
+                        <Text style={styles.placeholderText}>{t('taskManager.waitingMessages')}</Text>
                     </View>
                 )}
                 {messages.map((msg, i) => (
@@ -177,7 +180,7 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
                         style={styles.inputField}
                         value={input}
                         onChangeText={setInput}
-                        placeholder="Send a message to the agent... (Cmd+Enter to send)"
+                        placeholder={t('taskManager.chatPlaceholder')}
                         onSubmitEditing={handleSend}
                         onKeyPress={(e: any) => {
                             if (e.nativeEvent.key === 'Enter' && (e.nativeEvent.metaKey || e.nativeEvent.ctrlKey)) {
@@ -193,7 +196,7 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
                         onPress={handleSend}
                         disabled={!input.trim() || sending}
                     >
-                        <Text style={styles.sendButtonText}>{sending ? '...' : 'Send'}</Text>
+                        <Text style={styles.sendButtonText}>{sending ? '...' : t('taskManager.send')}</Text>
                     </TouchableOpacity>
                 </View>
             )}
@@ -202,6 +205,7 @@ export const TaskDetail = memo(function TaskDetail({ taskId }: Props) {
 });
 
 const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMessage }) {
+    const { theme } = useUnistyles();
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system';
 
@@ -216,7 +220,7 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMe
     return (
         <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
             <View style={[styles.msgBubble, isUser ? styles.msgBubbleUser : styles.msgBubbleAgent]}>
-                <Text style={styles.msgRole}>{isUser ? 'You' : 'Agent'}</Text>
+                <Text style={styles.msgRole}>{isUser ? t('taskManager.you') : t('taskManager.agentLabel')}</Text>
                 <Text style={[styles.msgText, !isUser && styles.msgTextAgent]} selectable>{message.text}</Text>
                 <Text style={styles.msgTime}>{new Date(message.createdAt).toLocaleTimeString()}</Text>
             </View>
@@ -224,15 +228,15 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMe
     );
 });
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     container: { flex: 1, flexDirection: 'column' },
     empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    emptyText: { fontSize: 14, color: '#999' },
+    emptyText: { fontSize: 14, color: theme.colors.textSecondary },
 
     header: {
         padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
+        borderBottomColor: theme.colors.divider,
         flexDirection: 'row',
         justifyContent: 'space-between',
     },
@@ -240,63 +244,59 @@ const styles = StyleSheet.create({
     headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
     statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
     statusBadgeText: { fontSize: 11, color: '#fff', fontWeight: '600', textTransform: 'capitalize' },
-    agentStatusBadge: {
-        paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
-    },
-    agentStatusText: {
-        fontSize: 11, fontWeight: '600',
-    },
+    agentStatusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+    agentStatusText: { fontSize: 11, fontWeight: '600' },
     agentBadge: {
-        fontSize: 12, color: '#1a73e8', fontWeight: '600',
-        backgroundColor: '#e8f0fe', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+        fontSize: 12, color: theme.colors.textLink, fontWeight: '600',
+        backgroundColor: theme.colors.groupped.background, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
     },
-    title: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 2 },
-    description: { fontSize: 13, color: '#666', marginBottom: 2 },
-    workspaceInfo: { marginTop: 6, padding: 8, backgroundColor: '#f5f5f5', borderRadius: 6 },
-    workspaceText: { fontSize: 12, color: '#666', fontFamily: 'monospace' as any, lineHeight: 18 },
+    title: { fontSize: 16, fontWeight: '700', color: theme.colors.text, marginBottom: 2 },
+    description: { fontSize: 13, color: theme.colors.textSecondary, marginBottom: 2 },
+    workspaceInfo: { marginTop: 6, padding: 8, backgroundColor: theme.colors.groupped.background, borderRadius: 6 },
+    workspaceText: { fontSize: 12, color: theme.colors.textSecondary, fontFamily: 'monospace' as any, lineHeight: 18 },
     errorBox: { marginTop: 6, padding: 8, backgroundColor: '#fce8e6', borderRadius: 6 },
-    errorText: { fontSize: 12, color: '#d93025' },
+    errorText: { fontSize: 12, color: theme.colors.status.error },
     headerActions: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
-    actionButton: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: '#e8f0fe' },
-    actionButtonText: { fontSize: 12, color: '#1a73e8', fontWeight: '500' },
+    actionButton: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: theme.colors.groupped.background },
+    actionButtonText: { fontSize: 12, color: theme.colors.textLink, fontWeight: '500' },
     dangerButton: { backgroundColor: '#fce8e6' },
-    dangerText: { color: '#d93025' },
+    dangerText: { fontSize: 12, color: theme.colors.status.error, fontWeight: '500' },
 
     chatArea: { flex: 1 },
     chatContent: { padding: 16, flexGrow: 1 },
     placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
-    placeholderText: { fontSize: 14, color: '#bbb', textAlign: 'center' },
+    placeholderText: { fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center' },
 
     systemMsgRow: { alignItems: 'center', marginVertical: 8 },
-    systemMsgText: { fontSize: 12, color: '#999', fontStyle: 'italic', backgroundColor: '#f5f5f5', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+    systemMsgText: { fontSize: 12, color: theme.colors.textSecondary, fontStyle: 'italic', backgroundColor: theme.colors.groupped.background, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
     msgRow: { marginBottom: 12, alignItems: 'flex-start' },
     msgRowUser: { alignItems: 'flex-end' },
     msgBubble: { maxWidth: '80%' as any, padding: 12, borderRadius: 12 },
-    msgBubbleUser: { backgroundColor: '#1a73e8', borderBottomRightRadius: 4 },
-    msgBubbleAgent: { backgroundColor: '#f0f0f0', borderBottomLeftRadius: 4 },
-    msgRole: { fontSize: 10, fontWeight: '600', color: '#999', marginBottom: 4 },
+    msgBubbleUser: { backgroundColor: theme.colors.textLink, borderBottomRightRadius: 4 },
+    msgBubbleAgent: { backgroundColor: theme.colors.groupped.background, borderBottomLeftRadius: 4 },
+    msgRole: { fontSize: 10, fontWeight: '600', color: theme.colors.textSecondary, marginBottom: 4 },
     msgText: { fontSize: 14, color: '#fff', lineHeight: 20 },
-    msgTextAgent: { color: '#333', fontFamily: 'monospace' as any, fontSize: 13 },
+    msgTextAgent: { color: theme.colors.text, fontFamily: 'monospace' as any, fontSize: 13 },
     msgTime: { fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 4, alignSelf: 'flex-end' as any },
 
     inputArea: {
         flexDirection: 'row',
         padding: 12,
         borderTopWidth: 1,
-        borderTopColor: '#e0e0e0',
-        backgroundColor: '#fff',
+        borderTopColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
         alignItems: 'flex-end',
     },
     inputField: {
         flex: 1,
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: theme.colors.divider,
         borderRadius: 20,
         paddingHorizontal: 16,
         paddingVertical: 10,
         fontSize: 14,
-        color: '#333',
-        backgroundColor: '#fafafa',
+        color: theme.colors.text,
+        backgroundColor: theme.colors.groupped.background,
         maxHeight: 100,
     },
     sendButton: {
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 20,
-        backgroundColor: '#1a73e8',
+        backgroundColor: theme.colors.textLink,
     },
     sendButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-});
+}));

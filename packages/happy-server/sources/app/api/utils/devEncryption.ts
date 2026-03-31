@@ -11,8 +11,6 @@ function ensureKey(): Uint8Array | null {
     if (initialized) return secretKey;
     initialized = true;
 
-    if (process.env.DEV_AUTH_ENABLED !== 'true') return null;
-
     const happyHome = (process.env.HAPPY_HOME_DIR || '~/.happy').replace(/^~/, os.homedir());
     const keyFile = path.join(happyHome, 'access.key');
 
