@@ -1609,9 +1609,77 @@ The next work item is **Phase 5.5 — real encrypted attachment flow**.
 - P3 session-list or tool UI polish
 - Drag-and-drop as a standalone batch ahead of the encrypted upload fix
 
+## Phase 5.5: DONE
+
+Wired composer attachments to the real encrypted file transport and validated
+end-to-end on the web stack. Committed in `d0f7e743`.
+
+### What changed
+
+1. **AgentInput.tsx — base64 data URI conversion** (web + native):
+   - Web: `handleWebFileChange` now uses `FileReader.readAsDataURL()` instead
+     of `URL.createObjectURL()`. Files are read as `data:<mime>;base64,...`
+     strings that are self-contained and survive page reloads.
+   - Native: `handleAttachPress` now reads picked files via
+     `expo-file-system.readAsStringAsync(uri, { encoding: 'base64' })` and
+     constructs data URIs.
+   - Both paths enforce a 5 MB per-file limit with `Modal.alert()` feedback.
+
+2. **V3MessageView.tsx — user message file part rendering**:
+   - `UserMessageView` previously only extracted `text` parts and ignored
+     `file` parts. Now renders `FilePartView` for each file part above the
+     text bubble.
+
+3. **encryption.ts — browser-safe `getRandomBytes`**:
+   - `getRandomBytes()` now falls back to `globalThis.crypto.getRandomValues()`
+     when `node:crypto.randomBytes` is unavailable. Fixes `(0, require(...)).
+     randomBytes is not a function` error that blocked all message sends from
+     the web browser.
+
+4. **Translations**: Added `fileTooLargeTitle` and `fileTooLarge` to all 11
+   language files (en, ru, pl, es, ca, it, pt, ja, zh-Hans, zh-Hant) plus
+   `_default.ts`.
+
+### Verification
+
+**Environment:** `quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510.
+
+**Session:** `YEKbPvXIj8iAXehsOGOjgne6` (claude, attachment-test worktree).
+
+**Playwright validation results (all PASS):**
+- File input exists: PASS
+- Text file chip visible: PASS
+- Message sent: PASS
+- File in transcript: PASS
+- Image chip visible: PASS
+- Image message sent: PASS
+
+**History API proof** — file parts stored as base64 data URIs in encrypted
+message history:
+- Text file: `"url": "data:text/plain;base64,SGVsbG8gZnJvbSBQ..."` → decodes
+  to `Hello from Phase 5.5 attachment validation! 2026-03-31T04:19:04.985Z`
+- Image: `"url": "data:image/png;base64,iVBORw0KGgo..."` (1×1 red pixel PNG)
+
+**Rendering verified:**
+- Text file renders as a file card with filename and MIME badge
+- Image renders inline with the `<Image source={{ uri: dataUri }}>` component
+- Both survive page reload (data URIs are part of the encrypted message, not
+  local blob URLs)
+
+**Typecheck:** `npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes.
+
+### Pre-existing issue found and fixed
+
+The `getRandomBytes()` function in `happy-sync/src/encryption.ts` used
+`node:crypto.randomBytes` which is unavailable in browsers. This caused ALL
+web message sends to fail with `randomBytes is not a function`. Fixed with
+Web Crypto API fallback. This was not caused by Phase 5.5 changes — it existed
+before and blocked the entire web → SyncNode → server message path.
+
 ## Current Task
 
-TASK: Phase 5.5 — wire composer attachments to the real encrypted file flow and
-validate it end-to-end on web.
+TASK: Phase 5.6 — review roadmap and select the next highest-impact work item.
 
-Focus on the actual attachment transport first, not drag-and-drop polish.
+Read `roadmap.md`, evaluate what the completed Phase 5.5 unlocks, and decide
+whether the next batch should target remaining P2 polish (drag-and-drop, image
+expand), P2.5 (control/fork/resume), or P3 (session-list/tool UI).

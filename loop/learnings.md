@@ -428,3 +428,18 @@ If you discover something non-obvious, append it here under the right section.
   unique screenshots. Before using the review text to choose product work,
   compare it against the latest `loop/state.md` proof and
   `walkthrough-verification.json`.
+- `getRandomBytes()` in `happy-sync/src/encryption.ts` uses
+  `node:crypto.randomBytes` which is unavailable in browsers. This blocks ALL
+  web message sends (not just attachments). Fixed with Web Crypto
+  `globalThis.crypto.getRandomValues()` fallback. The DataKey encryption path
+  (`createCipheriv`/`createDecipheriv`) may also fail in browsers but wasn't
+  hit because sessions use Legacy (tweetnacl) encryption.
+- `V3MessageView.tsx` `UserMessageView` only renders text parts. File parts
+  in user messages must be extracted and rendered separately via
+  `FilePartView`. This was invisible before Phase 5.5 because no user
+  messages contained file parts.
+- Composer file attachments are best transported as base64 data URIs in the
+  `FilePart.url` field. The data URI gets encrypted with the rest of the
+  message via SyncNode and survives page reloads, unlike `blob:` URLs from
+  `URL.createObjectURL()`. The 5 MB per-file limit keeps encrypted message
+  payloads manageable.
