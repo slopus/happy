@@ -494,6 +494,8 @@ export const ru: TranslationStructure = {
             applyChanges: 'Обновить файл',
             viewDiff: 'Текущие изменения файла',
             question: 'Вопрос',
+            taskOutput: 'Вывод задачи',
+            taskStop: 'Остановить задачу',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Терминал(команда: ${cmd})`,
@@ -511,6 +513,12 @@ export const ru: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `Изменение ${count} ${plural({ count, one: 'файла', few: 'файлов', many: 'файлов' })}`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} и ещё ${count}`,
             showingDiff: 'Показ изменений',
+        },
+        taskOutput: {
+            waiting: 'Ожидание вывода…',
+        },
+        taskStop: {
+            stopped: 'Задача остановлена',
         },
         askUserQuestion: {
             submit: 'Отправить ответ',

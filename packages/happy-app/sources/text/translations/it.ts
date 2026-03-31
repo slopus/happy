@@ -459,6 +459,12 @@ export const it: TranslationStructure = {
             initializing: 'Inizializzazione agente...',
             moreTools: ({ count }: { count: number }) => `+${count} altri ${plural({ count, singular: 'strumento', plural: 'strumenti' })}`,
         },
+        taskOutput: {
+            waiting: 'In attesa dell\'output…',
+        },
+        taskStop: {
+            stopped: 'Attività fermata',
+        },
         askUserQuestion: {
             submit: 'Invia risposta',
             multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'domanda', plural: 'domande' })}`,
@@ -490,6 +496,8 @@ export const it: TranslationStructure = {
             applyChanges: 'Aggiorna file',
             viewDiff: 'Modifiche file attuali',
             question: 'Domanda',
+            taskOutput: 'Output attività',
+            taskStop: 'Ferma attività',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminale(cmd: ${cmd})`,

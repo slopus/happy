@@ -462,6 +462,12 @@ export const ja: TranslationStructure = {
             initializing: 'エージェントを初期化中...',
             moreTools: ({ count }: { count: number }) => `+${count} 個のツール`,
         },
+        taskOutput: {
+            waiting: '出力を待機中…',
+        },
+        taskStop: {
+            stopped: 'タスクを停止しました',
+        },
         askUserQuestion: {
             submit: '回答を送信',
             multipleQuestions: ({ count }: { count: number }) => `${count}件の質問`,
@@ -493,6 +499,8 @@ export const ja: TranslationStructure = {
             applyChanges: 'ファイルを更新',
             viewDiff: '現在のファイル変更',
             question: '質問',
+            taskOutput: 'タスク出力',
+            taskStop: 'タスク停止',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `ターミナル(cmd: ${cmd})`,

@@ -486,6 +486,8 @@ export const zhHans: TranslationStructure = {
             applyChanges: '更新文件',
             viewDiff: '当前文件更改',
             question: '问题',
+            taskOutput: '任务输出',
+            taskStop: '停止任务',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `终端(命令: ${cmd})`,
@@ -503,6 +505,12 @@ export const zhHans: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `正在修改 ${count} 个文件`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} 和其他 ${count} 个`,
             showingDiff: '显示更改',
+        },
+        taskOutput: {
+            waiting: '等待输出…',
+        },
+        taskStop: {
+            stopped: '任务已停止',
         },
         askUserQuestion: {
             submit: '提交答案',

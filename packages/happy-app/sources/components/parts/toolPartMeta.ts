@@ -55,7 +55,9 @@ export function getToolPartSubtitle(part: v3.ToolPart): string | null {
         ?? readString(input, 'query')
         ?? readString(input, 'pattern')
         ?? readString(input, 'prompt')
-        ?? readString(input, 'notebook_path');
+        ?? readString(input, 'notebook_path')
+        ?? readString(input, 'description')
+        ?? readString(input, 'task_id');
 
     if (directCandidate && directCandidate !== title) {
         return directCandidate;

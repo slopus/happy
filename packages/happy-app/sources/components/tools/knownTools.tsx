@@ -45,6 +45,45 @@ export const knownTools = {
             subagent_type: z.string().optional().describe('The type of specialized agent to use')
         }).partial().passthrough()
     },
+    'TaskOutput': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (opts.tool.input?.description && typeof opts.tool.input.description === 'string') {
+                return opts.tool.input.description;
+            }
+            return t('tools.names.taskOutput');
+        },
+        icon: ICON_TASK,
+        input: z.object({
+            task_id: z.string().optional().describe('The task to read output from'),
+            description: z.string().optional().describe('Description of the task'),
+            block: z.boolean().optional().describe('Whether to block waiting for output'),
+        }).partial().passthrough(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input?.task_id === 'string') {
+                return opts.tool.input.task_id;
+            }
+            return null;
+        },
+    },
+    'TaskStop': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (opts.tool.input?.description && typeof opts.tool.input.description === 'string') {
+                return opts.tool.input.description;
+            }
+            return t('tools.names.taskStop');
+        },
+        icon: ICON_TASK,
+        input: z.object({
+            task_id: z.string().optional().describe('The task to stop'),
+            description: z.string().optional().describe('Description of the task'),
+        }).partial().passthrough(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input?.task_id === 'string') {
+                return opts.tool.input.task_id;
+            }
+            return null;
+        },
+    },
     'Bash': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.description) {

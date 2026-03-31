@@ -485,6 +485,8 @@ export const ca: TranslationStructure = {
             applyChanges: 'Actualitza fitxer',
             viewDiff: 'Canvis del fitxer actual',
             question: 'Pregunta',
+            taskOutput: 'Sortida de tasca',
+            taskStop: 'Aturar tasca',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -502,6 +504,12 @@ export const ca: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `Modificant ${count} fitxers`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} i ${count} més`,
             showingDiff: 'Mostrant canvis',
+        },
+        taskOutput: {
+            waiting: 'Esperant sortida…',
+        },
+        taskStop: {
+            stopped: 'Tasca aturada',
         },
         askUserQuestion: {
             submit: 'Envia resposta',

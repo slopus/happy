@@ -484,6 +484,8 @@ export const pt: TranslationStructure = {
             applyChanges: 'Atualizar arquivo',
             viewDiff: 'Alterações do arquivo atual',
             question: 'Pergunta',
+            taskOutput: 'Saída da tarefa',
+            taskStop: 'Parar tarefa',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -501,6 +503,12 @@ export const pt: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `Modificando ${count} arquivos`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} e ${count} mais`,
             showingDiff: 'Mostrando alterações',
+        },
+        taskOutput: {
+            waiting: 'Aguardando saída…',
+        },
+        taskStop: {
+            stopped: 'Tarefa parada',
         },
         askUserQuestion: {
             submit: 'Enviar resposta',

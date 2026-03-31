@@ -483,6 +483,14 @@ export const en = {
             applyChanges: 'Update file',
             viewDiff: 'Current file changes',
             question: 'Question',
+            taskOutput: 'Task Output',
+            taskStop: 'Stop Task',
+        },
+        taskOutput: {
+            waiting: 'Waiting for output…',
+        },
+        taskStop: {
+            stopped: 'Task stopped',
         },
         askUserQuestion: {
             submit: 'Submit Answer',

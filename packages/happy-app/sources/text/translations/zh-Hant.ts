@@ -485,6 +485,14 @@ export const zhHant: TranslationStructure = {
             applyChanges: '更新檔案',
             viewDiff: '目前檔案更改',
             question: '問題',
+            taskOutput: '任務輸出',
+            taskStop: '停止任務',
+        },
+        taskOutput: {
+            waiting: '等待輸出…',
+        },
+        taskStop: {
+            stopped: '任務已停止',
         },
         askUserQuestion: {
             submit: '提交答案',
