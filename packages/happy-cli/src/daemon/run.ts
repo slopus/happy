@@ -698,6 +698,10 @@ export async function startDaemon(): Promise<void> {
       metadata: initialMachineMetadata,
       daemonState: initialDaemonState
     });
+    // Always override with this daemon's state - the server may have returned a stale
+    // daemonState (old httpPort) from a previous daemon instance. The daemonStateVersion
+    // is preserved for correct CAS updates; the connect handler will push the fresh state.
+    machine.daemonState = initialDaemonState;
     logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);
 
     // Create account-scoped DaemonSyncNode for session lifecycle
