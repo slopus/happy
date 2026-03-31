@@ -209,6 +209,55 @@ dispatching 2-3+ concurrent agent tasks with monitoring. The next step is either
 fixing the P1 stale-port bug for reliable hard-stop, or beginning to use
 `happy-agent` to dispatch real roadmap work items.
 
+### Post-Phase 3.4 priority decision (2026-03-30)
+
+**Next highest-impact work item: Phase 4.0 — use `happy-agent` to dispatch the
+first real roadmap work batch.**
+
+Phase 3.4 cleared the gating P0 requirement: `happy-agent` can now spawn,
+monitor, report on, and stop multiple real sessions in the same authenticated
+Happy environment. The highest-leverage next move is to start using that
+validated control plane on actual roadmap work instead of doing another round of
+control-plane-only validation.
+
+**Why this is next:**
+
+1. It is the direct payoff from the completed P0 work. The roadmap explicitly
+   says other roadmap items should be delegated only after real-stack spawn +
+   monitoring + reporting are proven. That condition is now met.
+2. It has higher leverage than fixing the stale daemon-port bug first. The
+   stale-port issue is real, but it is a narrower P1 hard-stop reliability bug
+   that only shows up after daemon restarts. It does not block the already
+   validated spawn/send/monitor flow in stable runs.
+3. It outranks standalone P2 UI work because the main unresolved product value
+   right now is parallel execution against real roadmap tasks, not more control
+   plane rehearsal.
+4. It creates real delivery pressure on the reporting format, monitoring
+   surface, and evidence requirements that were just validated in synthetic
+   multi-session runs.
+
+**Scope of Phase 4.0:**
+
+- dispatch 2-3 independent real roadmap tasks through `happy-agent`, each in
+  its own worktree/session
+- bias the first batch toward P1 items with clear reproduction and web
+  validation, not P2 polish
+- require each spawned session to report back:
+  - exact scope completed
+  - tests or validation performed
+  - web URL
+  - caveats / skipped items
+- monitor those sessions to idle or a clear blocked state and write the results
+  back into this roadmap
+- treat the stale daemon-port bug as a candidate task inside that batch, not as
+  the gating prerequisite for starting the batch
+
+**Explicitly not next:**
+
+- another standalone `happy-agent` validation phase with no real roadmap work
+- broad P2 composer/session-list implementation
+- deeper daemon restart debugging unless it blocks the first dispatched batch
+
 ## P1. Control-flow, permissions, and protocol bugs
 
 Goal: remove the broken session-control paths that currently make remote agent management unreliable.

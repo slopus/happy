@@ -1050,16 +1050,59 @@ Multi-session spawn/send/monitor/stop is validated end-to-end with 3 concurrent
 sessions. `happy-agent` is ready to serve as a control plane for dispatching
 parallel roadmap work.
 
+## Phase 3.5: DONE
+
+Reviewed `roadmap.md`, the remaining P0/P1/P2 roadmap buckets, and what the
+validated Phase 3.4 multi-session flow now unlocks.
+
+### Decision
+
+The next highest-impact work item is **Phase 4.0 — use `happy-agent` to
+dispatch the first real roadmap work batch**.
+
+### Why this is next
+
+1. Phase 3.4 completed the gating P0 requirement: spawn/send/monitor/report is
+   proven on the real stack with 3 concurrent sessions in the same Happy
+   environment.
+2. The stale daemon-port bug is real but narrower. It is a P1 hard-stop
+   reliability issue after daemon restarts, not the main blocker for beginning
+   real roadmap delegation in stable runs.
+3. Starting real delegated roadmap work has higher leverage than doing another
+   control-plane-only validation pass or jumping straight to P2 UI work.
+4. It will exercise the reporting/evidence contract under real delivery
+   conditions instead of synthetic validation tasks.
+
+### Scope of Phase 4.0
+
+- Dispatch `2-3` independent real roadmap tasks via `happy-agent`, each in its
+  own worktree/session.
+- Prefer P1 tasks with clear reproduction + real web validation over P2 polish.
+- Require each spawned session to report:
+  - exact scope completed
+  - tests/validation run
+  - web URL
+  - caveats or skipped items
+- Monitor the sessions to idle or a clear blocked state and write the results
+  back into `roadmap.md`.
+- Treat the stale daemon-port bug as a candidate task inside that first batch,
+  not as the prerequisite before starting it.
+
 ## Current Task
 
-TASK: Phase 3.5 — decide next highest-impact work item.
+TASK: Phase 4.0 — dispatch the first real roadmap work batch through
+`happy-agent`.
 
-Review:
-- `roadmap.md` (updated with Phase 3.4 results)
-- remaining P0/P1/P2 items
-- what Phase 3.4 validation unlocks
-
-Then choose and scope the next task. Candidates:
-1. Fix the P1 stale daemon-port bug for reliable hard-stop
-2. Begin using `happy-agent` to dispatch real roadmap work items
-3. Other P1/P2 items from the roadmap
+Requirements:
+1. Choose `2-3` independent real roadmap tasks, biased toward P1 items with
+   clear reproduction and web validation.
+2. Spawn one `happy-agent` session per task in its own worktree.
+3. Monitor each session and collect:
+   - active vs idle / blocked state
+   - pending permission/tool requests
+   - last meaningful output
+   - artifact or test evidence
+   - web URL
+4. Write per-session status/results back into `roadmap.md`.
+5. If one of the chosen tasks is the stale daemon-port bug, treat it as one
+   dispatched task in the batch, not the gating task before the batch starts.
