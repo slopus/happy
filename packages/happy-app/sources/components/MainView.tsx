@@ -103,10 +103,11 @@ const TAB_TITLES = {
     sessions: 'tabs.sessions',
     inbox: 'tabs.inbox',
     settings: 'tabs.settings',
+    tasks: 'tabs.tasks',
 } as const;
 
 // Active tabs
-type ActiveTabType = 'sessions' | 'inbox' | 'settings';
+type ActiveTabType = 'sessions' | 'inbox' | 'settings' | 'tasks';
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -240,8 +241,12 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }, [router]);
 
     const handleTabPress = React.useCallback((tab: TabType) => {
+        if (tab === 'tasks') {
+            router.push('/tasks');
+            return;
+        }
         setActiveTab(tab);
-    }, []);
+    }, [router]);
 
     // Regular phone mode with tabs - define this before any conditional returns
     const renderTabContent = React.useCallback(() => {
