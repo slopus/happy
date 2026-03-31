@@ -105,7 +105,6 @@ export default function FileScreen() {
     }
     const resolvedPath = resolveSessionFilePath(rawPath, sessionPath);
     const filePath = resolvedPath?.absolutePath ?? rawPath;
-    const gitDiffPath = resolvedPath?.withinSessionRoot ? resolvedPath.relativePath : null;
     
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
     const [diffContent, setDiffContent] = React.useState<string | null>(null);
@@ -213,13 +212,15 @@ export default function FileScreen() {
                 }
                 
                 // Fetch git diff for the file (if in git repo)
-                if (sessionPath && sessionId && gitDiffPath && gitDiffPath !== '.') {
+                if (sessionPath && sessionId && filePath) {
                     try {
                         const diffResponse = await sessionBash(sessionId, {
                             // If someone is using a custom diff tool like
                             // difftastic, the parser would break. So instead
                             // force git to use the built in diff tool.
-                            command: `git diff --no-ext-diff -- "${gitDiffPath}"`,
+                            // Use absolute path so diff works regardless of
+                            // whether sessionPath equals the git root.
+                            command: `git diff --no-ext-diff -- "${filePath}"`,
                             cwd: sessionPath,
                             timeout: 5000
                         });
@@ -287,7 +288,7 @@ export default function FileScreen() {
         return () => {
             isCancelled = true;
         };
-    }, [filePath, gitDiffPath, isBinaryFile, sessionId, sessionPath]);
+    }, [filePath, isBinaryFile, sessionId, sessionPath]);
 
     // Show error modal if there's an error
     React.useEffect(() => {

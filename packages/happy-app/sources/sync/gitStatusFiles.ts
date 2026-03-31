@@ -51,18 +51,27 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
             return null;
         }
 
-        // Get combined diff statistics for both staged and unstaged changes
-        const diffStatResult = await sessionBash(sessionId, {
-            command: 'git diff --numstat HEAD && echo "---STAGED---" && git diff --cached --numstat',
-            cwd: session.metadata.path,
-            timeout: 10000
-        });
+        // Get git root path and diff statistics in parallel
+        const [gitRootResult, diffStatResult] = await Promise.all([
+            sessionBash(sessionId, {
+                command: 'git rev-parse --show-toplevel',
+                cwd: session.metadata.path,
+                timeout: 5000
+            }),
+            sessionBash(sessionId, {
+                command: 'git diff --numstat HEAD && echo "---STAGED---" && git diff --cached --numstat',
+                cwd: session.metadata.path,
+                timeout: 10000
+            })
+        ]);
+
+        const gitRoot = gitRootResult.success ? gitRootResult.stdout.trim() : null;
 
         // Parse the results using v2 parser
         const statusOutput = statusResult.stdout;
         const diffOutput = diffStatResult.success ? diffStatResult.stdout : '';
 
-        return parseGitStatusFilesV2(statusOutput, diffOutput);
+        return parseGitStatusFilesV2(statusOutput, diffOutput, gitRoot);
 
     } catch (error) {
         console.error('Error fetching git status files for session', sessionId, ':', error);
@@ -75,7 +84,8 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
  */
 function parseGitStatusFilesV2(
     statusOutput: string,
-    combinedDiffOutput: string
+    combinedDiffOutput: string,
+    gitRoot: string | null
 ): GitStatusFiles {
     // Parse status using v2 parser
     const statusSummary = parseStatusSummaryV2(statusOutput);
@@ -104,7 +114,7 @@ function parseGitStatusFilesV2(
             stagedFiles.push({
                 fileName: fileNameOnly,
                 filePath: filePathOnly,
-                fullPath: file.path,
+                fullPath: gitRoot ? `${gitRoot}/${file.path}` : file.path,
                 status,
                 isStaged: true,
                 linesAdded: stats.added,
@@ -121,7 +131,7 @@ function parseGitStatusFilesV2(
             unstagedFiles.push({
                 fileName: fileNameOnly,
                 filePath: filePathOnly,
-                fullPath: file.path,
+                fullPath: gitRoot ? `${gitRoot}/${file.path}` : file.path,
                 status,
                 isStaged: false,
                 linesAdded: stats.added,
@@ -150,7 +160,7 @@ function parseGitStatusFilesV2(
         unstagedFiles.push({
             fileName: fileNameOnly,
             filePath: filePathOnly,
-            fullPath: cleanPath,
+            fullPath: gitRoot ? `${gitRoot}/${cleanPath}` : cleanPath,
             status: 'untracked',
             isStaged: false,
             linesAdded: 0,
