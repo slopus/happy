@@ -284,6 +284,10 @@ export const zhHans: TranslationStructure = {
         forkedFrom: ({ name }: { name: string }) => `从 ${name} 分叉`,
         resumedSession: '已恢复的会话',
         forkedSession: '已分叉的会话',
+        archive: '归档',
+        archiveConfirmTitle: '归档会话',
+        archiveConfirmMessage: '确定要归档此会话吗？您可以稍后在已归档的会话中找到它。',
+        bugReport: '错误报告',
     },
 
     commandPalette: {

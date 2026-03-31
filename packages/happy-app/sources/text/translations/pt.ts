@@ -282,6 +282,10 @@ export const pt: TranslationStructure = {
         forkedFrom: ({ name }: { name: string }) => `Bifurcada de ${name}`,
         resumedSession: 'Sessão retomada',
         forkedSession: 'Sessão bifurcada',
+        archive: 'Arquivar',
+        archiveConfirmTitle: 'Arquivar sessão',
+        archiveConfirmMessage: 'Tem certeza de que deseja arquivar esta sessão? Você poderá encontrá-la nas sessões arquivadas depois.',
+        bugReport: 'Relatório de bug',
     },
 
     commandPalette: {

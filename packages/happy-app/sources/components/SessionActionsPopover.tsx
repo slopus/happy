@@ -153,7 +153,8 @@ export function SessionActionsPopover({
             items.push({
                 id: 'archive',
                 icon: 'archive-outline',
-                label: 'Archive',
+                label: t('session.archive'),
+                destructive: true,
                 onPress: archiveSession,
             });
         }
@@ -180,7 +181,7 @@ export function SessionActionsPopover({
             items.push({
                 id: 'bug-report',
                 icon: 'bug-outline',
-                label: 'Bug report',
+                label: t('session.bugReport'),
                 onPress: reportBug,
             });
         }

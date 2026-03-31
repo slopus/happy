@@ -281,6 +281,10 @@ export const en = {
         forkedFrom: ({ name }: { name: string }) => `Forked from ${name}`,
         resumedSession: 'Resumed session',
         forkedSession: 'Forked session',
+        archive: 'Archive',
+        archiveConfirmTitle: 'Archive Session',
+        archiveConfirmMessage: 'Are you sure you want to archive this session? You can find it in archived sessions later.',
+        bugReport: 'Bug Report',
     },
 
     commandPalette: {

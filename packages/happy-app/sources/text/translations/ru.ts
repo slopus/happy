@@ -385,6 +385,10 @@ export const ru: TranslationStructure = {
         forkedFrom: ({ name }: { name: string }) => `Ответвлено от ${name}`,
         resumedSession: 'Возобновлённая сессия',
         forkedSession: 'Ответвлённая сессия',
+        archive: 'Архивировать',
+        archiveConfirmTitle: 'Архивировать сессию',
+        archiveConfirmMessage: 'Вы уверены, что хотите архивировать эту сессию? Вы сможете найти её в архивированных сессиях позже.',
+        bugReport: 'Сообщить об ошибке',
     },
 
     commandPalette: {

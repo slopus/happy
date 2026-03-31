@@ -283,6 +283,10 @@ export const es: TranslationStructure = {
         forkedFrom: ({ name }: { name: string }) => `Bifurcada desde ${name}`,
         resumedSession: 'Sesión reanudada',
         forkedSession: 'Sesión bifurcada',
+        archive: 'Archivar',
+        archiveConfirmTitle: 'Archivar sesión',
+        archiveConfirmMessage: '¿Estás seguro de que quieres archivar esta sesión? Podrás encontrarla en las sesiones archivadas más tarde.',
+        bugReport: 'Informe de error',
     },
 
     commandPalette: {

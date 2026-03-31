@@ -294,6 +294,10 @@ export const pl: TranslationStructure = {
         forkedFrom: ({ name }: { name: string }) => `Rozgałęziono z ${name}`,
         resumedSession: 'Wznowiona sesja',
         forkedSession: 'Rozgałęziona sesja',
+        archive: 'Archiwizuj',
+        archiveConfirmTitle: 'Archiwizuj sesję',
+        archiveConfirmMessage: 'Czy na pewno chcesz zarchiwizować tę sesję? Możesz ją później znaleźć w zarchiwizowanych sesjach.',
+        bugReport: 'Zgłoś błąd',
     },
 
     commandPalette: {

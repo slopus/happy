@@ -284,6 +284,10 @@ export const ja: TranslationStructure = {
         forkedFrom: ({ name }: { name: string }) => `${name}からフォーク`,
         resumedSession: '再開されたセッション',
         forkedSession: 'フォークされたセッション',
+        archive: 'アーカイブ',
+        archiveConfirmTitle: 'セッションをアーカイブ',
+        archiveConfirmMessage: 'このセッションをアーカイブしますか？アーカイブされたセッションから後で見つけることができます。',
+        bugReport: 'バグ報告',
     },
 
     commandPalette: {

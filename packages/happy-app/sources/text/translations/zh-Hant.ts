@@ -283,6 +283,10 @@ export const zhHant: TranslationStructure = {
         forkedFrom: ({ name }: { name: string }) => `從 ${name} 分叉`,
         resumedSession: '已恢復的對話',
         forkedSession: '已分叉的對話',
+        archive: '封存',
+        archiveConfirmTitle: '封存對話',
+        archiveConfirmMessage: '確定要封存此對話嗎？您可以稍後在已封存的對話中找到它。',
+        bugReport: '錯誤報告',
     },
 
     commandPalette: {

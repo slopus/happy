@@ -283,6 +283,10 @@ export const ca: TranslationStructure = {
         forkedFrom: ({ name }: { name: string }) => `Bifurcada des de ${name}`,
         resumedSession: 'Sessió represa',
         forkedSession: 'Sessió bifurcada',
+        archive: 'Arxiva',
+        archiveConfirmTitle: 'Arxiva sessió',
+        archiveConfirmMessage: 'Esteu segur que voleu arxivar aquesta sessió? Podreu trobar-la a les sessions arxivades més tard.',
+        bugReport: "Informe d'error",
     },
 
     commandPalette: {
