@@ -511,6 +511,7 @@ export const zhHans: TranslationStructure = {
             question: '问题',
             taskOutput: '任务输出',
             taskStop: '停止任务',
+            proposedPlan: '建议方案',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `终端(命令: ${cmd})`,

@@ -510,6 +510,7 @@ export const zhHant: TranslationStructure = {
             question: '問題',
             taskOutput: '任務輸出',
             taskStop: '停止任務',
+            proposedPlan: '建議方案',
         },
         taskOutput: {
             waiting: '等待輸出…',

@@ -4,7 +4,9 @@ import { ToolSectionView } from '../../tools/ToolSectionView';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { PermissionFooter } from '../../tools/PermissionFooter';
 import { knownTools } from '../../tools/knownTools';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
+import { t } from '@/text';
 
 export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool, sessionId, metadata }) => {
     let plan = '<empty>'
@@ -15,7 +17,8 @@ export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool, sessionId, me
     return (
         <>
             <ToolSectionView>
-                <View style={{ paddingHorizontal: 8, marginTop: -10 }}>
+                <View style={styles.planContainer}>
+                    <Text style={styles.planLabel}>{t('tools.names.proposedPlan')}</Text>
                     <MarkdownView markdown={plan} sessionId={sessionId} />
                 </View>
             </ToolSectionView>
@@ -31,3 +34,15 @@ export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool, sessionId, me
         </>
     );
 });
+
+const styles = StyleSheet.create((theme) => ({
+    planContainer: {
+        paddingHorizontal: 8,
+    },
+    planLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.textSecondary,
+        marginBottom: 4,
+    },
+}));

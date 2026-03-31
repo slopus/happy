@@ -17,8 +17,35 @@ const ICON_EXIT = (size: number = 24, color: string = '#000') => <Ionicons name=
 const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name="bulb-outline" size={size} color={color} />;
 const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
 const ICON_QUESTION = (size: number = 24, color: string = '#000') => <Ionicons name="help-circle-outline" size={size} color={color} />;
+const ICON_AGENT = (size: number = 24, color: string = '#000') => <Ionicons name="git-branch-outline" size={size} color={color} />;
 
 export const knownTools = {
+    'Agent': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (opts.tool.input?.subagent_type && typeof opts.tool.input.subagent_type === 'string') {
+                return `Agent: ${opts.tool.input.subagent_type}`;
+            }
+            return 'Agent';
+        },
+        icon: ICON_AGENT,
+        minimal: true,
+        input: z.object({
+            prompt: z.string().describe('The task for the agent to perform'),
+            description: z.string().optional().describe('Short description of the task'),
+            subagent_type: z.string().optional().describe('The type of specialized agent to use'),
+        }).partial().passthrough(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const desc = opts.tool.input?.description;
+            if (typeof desc === 'string') {
+                return desc.length > 60 ? desc.substring(0, 60) + '...' : desc;
+            }
+            const prompt = opts.tool.input?.prompt;
+            if (typeof prompt === 'string') {
+                return prompt.length > 60 ? prompt.substring(0, 60) + '...' : prompt;
+            }
+            return null;
+        },
+    },
     'Task': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Check for description field at runtime

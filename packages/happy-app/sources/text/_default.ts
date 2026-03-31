@@ -508,6 +508,7 @@ export const en = {
             question: 'Question',
             taskOutput: 'Task Output',
             taskStop: 'Stop Task',
+            proposedPlan: 'Proposed Plan',
         },
         taskOutput: {
             waiting: 'Waiting for output…',

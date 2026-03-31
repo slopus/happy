@@ -509,6 +509,7 @@ export const pt: TranslationStructure = {
             question: 'Pergunta',
             taskOutput: 'Saída da tarefa',
             taskStop: 'Parar tarefa',
+            proposedPlan: 'Plano proposto',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,

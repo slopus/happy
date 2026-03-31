@@ -510,6 +510,7 @@ export const es: TranslationStructure = {
             question: 'Pregunta',
             taskOutput: 'Salida de tarea',
             taskStop: 'Detener tarea',
+            proposedPlan: 'Plan propuesto',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,

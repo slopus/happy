@@ -519,6 +519,7 @@ export const ru: TranslationStructure = {
             question: 'Вопрос',
             taskOutput: 'Вывод задачи',
             taskStop: 'Остановить задачу',
+            proposedPlan: 'Предложенный план',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Терминал(команда: ${cmd})`,

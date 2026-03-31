@@ -524,6 +524,7 @@ export const ja: TranslationStructure = {
             question: '質問',
             taskOutput: 'タスク出力',
             taskStop: 'タスク停止',
+            proposedPlan: '提案されたプラン',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `ターミナル(cmd: ${cmd})`,
