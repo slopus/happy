@@ -1172,9 +1172,51 @@ All 4 workspace packages pass: `happy-app`, `happy-coder`, `happy-server`,
 All 3 agent worktrees removed. Branches `agent-task-rendering`,
 `agent-edit-rendering`, `agent-daemon-port` deleted.
 
+## Phase 4.2: DONE
+
+Reviewed the remaining P1 roadmap items after the Phase 4.0/4.1 batch was
+merged into `happy-sync-refactor`, then selected the next highest-impact
+independent tasks to dispatch.
+
+### What was just completed and therefore deprioritized
+
+- `TaskOutput` / `TaskStop` rendering is done on the current branch.
+- Multi-file / regular edit rendering fixes are done on the current branch.
+- The stale daemon `httpPort` sync bug is fixed on the current branch.
+
+Those are no longer the best next dispatch targets.
+
+### Next dispatch batch
+
+1. **Claude permission state correctness**
+   - Fix session-scoped approval (`Yes, don't ask again`) and make the UI
+     persist/show the real decision that was made.
+   - Eliminate duplicated/dropped/wrong-button permission states for Claude.
+   - Validate approve, deny, approve-for-session, allow-all-edits, and
+     stop/abort on real web sessions.
+
+2. **Claude plan approval UI**
+   - Fix the missing approve/deny controls for plan proposals.
+   - Validate both approve and deny end-to-end on web.
+   - Prefer the known `wise-river` repro session if still usable; otherwise
+     recreate the same flow on the current branch.
+
+3. **Codex non-`yolo` control-flow reliability**
+   - Fix Codex permission/sandbox behavior for non-`yolo` modes.
+   - Fix Codex `stop` unreliability and the stuck-`thinking` / no-update path.
+   - Validate the repaired flow on real web Codex sessions.
+
+### Why these are next
+
+1. They are the remaining P1 blockers that still force operators toward
+   `--yolo` or manual cleanup.
+2. They are independent enough to dispatch in parallel.
+3. They have clearer real-stack validation paths than the broader
+   protocol-level read-receipt work or lower-priority P2/P3 UI tasks.
+
 ## Current Task
 
-TASK: Phase 4.2 — select next batch of roadmap tasks to dispatch.
+TASK: Phase 4.3 — dispatch the selected P1 batch via `happy-agent`.
 
-Start by reviewing the remaining P1 items in `roadmap.md` and what was just
-completed, then pick the next 2-3 highest-impact independent tasks.
+Use the Phase 4.2 selection above. Spawn 2-3 independent sessions and require
+each one to report exact scope completed, validation run, web URL, and caveats.

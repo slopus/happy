@@ -319,6 +319,55 @@ machine `e84feb4b-1729-4e33-80bf-64cfe2238fc9`.
    task-rendering needed a follow-up prompt, edit-rendering needed a fresh session.
 4. Total dispatch-to-completion time: ~15 minutes across all 3 tasks.
 
+### Post-Phase 4.1 priority decision (2026-03-31)
+
+The first dispatched batch is now merged onto `happy-sync-refactor`, so the
+task-rendering, edit-rendering, and stale-daemon-port items are no longer the
+highest-leverage P1 work. The remaining P1 blockers are the permission/control
+paths that still make non-`yolo` remote agent management unreliable.
+
+**Next dispatch batch:**
+
+1. **Claude permission state correctness**
+   - Scope: fix session-scoped approval (`Yes, don't ask again`), persist the
+     real decision that was made, and remove duplicated/dropped/wrong-button
+     permission states in the Claude UI.
+   - Why now: this is the most direct blocker to using Claude-managed sessions
+     without `--yolo`, and it overlaps the most user-visible broken P1 flows.
+   - Validation: real web Claude session, verify approve, deny, approve for
+     session, allow-all-edits, and stop/abort all produce the right UI state
+     and the right downstream agent behavior.
+
+2. **Claude plan approval UI**
+   - Scope: fix the missing approve/deny controls for plan proposals and verify
+     both decisions work end-to-end.
+   - Why now: it is a distinct broken control path with a concrete repro and
+     blocks a core non-`yolo` workflow even if ordinary tool permissions work.
+   - Validation: reproduce from the `wise-river` session if still available,
+     otherwise recreate the same flow on the current branch and prove both plan
+     approve and plan deny from web.
+
+3. **Codex non-`yolo` control-flow reliability**
+   - Scope: fix Codex permission/sandbox behavior for non-`yolo` modes and the
+     session lifecycle failures that make Codex hard to manage remotely
+     (`stop` unreliability and sessions stuck in `thinking` with no visible
+     updates).
+   - Why now: once Claude permission flows are repaired, Codex becomes the
+     remaining major provider path still forcing operators back to `yolo` or
+     manual cleanup.
+   - Validation: real web Codex session in a non-`yolo` permission mode, prove
+     allowed work proceeds, blocked work surfaces correctly, stop works, and
+     the session view settles instead of hanging in `thinking`.
+
+**Explicitly not next:**
+
+- provider/session metadata cleanup unless it directly blocks one of the three
+  tasks above
+- protocol-level read receipts / message-consumption acknowledgments, which are
+  broader than the current dispatch batch and less actionable than the concrete
+  permission/control regressions
+- P2/P3 UI polish while P1 non-`yolo` control paths are still broken
+
 ## P1. Control-flow, permissions, and protocol bugs
 
 Goal: remove the broken session-control paths that currently make remote agent management unreliable.
@@ -341,10 +390,10 @@ Goal: remove the broken session-control paths that currently make remote agent m
 - Fix Codex sandbox behavior where work is still blocked in non-`yolo` modes when it should be allowed by the selected permission mode.
 - Fix Codex session stopping — currently unreliable / painful.
 - Fix Codex sessions appearing stuck in "thinking" indefinitely with no updates — may be a frontend rendering issue where updates aren't being pushed to the session view.
-- Fix task rendering for tool calls like:
+- DONE in Phase 4.0/4.1: Fix task rendering for tool calls like:
   - `TaskOutput`
   - `TaskStop`
-- Fix multi-file and regular edit rendering/resolution so file diffs and file targets resolve correctly instead of producing broken or misleading output.
+- DONE in Phase 4.0/4.1: Fix multi-file and regular edit rendering/resolution so file diffs and file targets resolve correctly instead of producing broken or misleading output.
 - Ensure permission UI correctly handles and persists the real decision that was made:
   - approve
   - deny
