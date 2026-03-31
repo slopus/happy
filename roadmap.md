@@ -640,6 +640,33 @@ control/fork/resume batch.**
 - P3 session-list or tool-UI polish
 - broader P4 file-link/review work
 
+### Phase 5.7 results (2026-03-31)
+
+**Result: PASS — session control bar, fork flow, and attribution badge all
+delivered and typecheck-clean.**
+
+Committed as `f4ce7686` (15 files, +276/-2).
+
+**What Phase 5.7 closed:**
+
+- Active-session control bar with compact stop/archive/fork pills above the
+  composer input
+- Fork session action in quick actions hook and popover menu — spawns a new
+  session in the same directory with same agent and copies settings
+- SessionOriginBadge component for resume/fork attribution display — tappable
+  pill showing parent session context
+- Translations for all new strings across 11 languages
+
+**Remaining P2.5 gaps after Phase 5.7:**
+
+- Real-stack web validation of the fork flow (targeted walkthrough or
+  Playwright)
+- Fork currently uses placeholder onPress in the control bar (needs wiring to
+  the forkSession action)
+- PI-style control surface exploration (5 competing variants)
+- Worktree/agent selection during fork
+- Real video recording of the control/fork/resume flow
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.

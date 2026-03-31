@@ -1728,12 +1728,85 @@ control/fork/resume batch via `happy-agent`**.
 - P3 session-list or tool UI polish
 - Broader P4 file-link/review work
 
+## Phase 5.7: DONE
+
+Dispatched the first P2.5 control/fork/resume batch via `happy-agent`. All 3
+tasks completed after follow-up prompts. Merged and committed in `f4ce7686`.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510,
+machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
+
+### Sessions
+
+| Task | Session ID | Result |
+|------|-----------|--------|
+| Session control bar | `G6bfA1za9ENTUQckF2WlVfW9` | PASS (2nd prompt) |
+| Fork session flow | `LfZ7ygfDGFKgAaATNIPGWXTB` | PASS (3rd prompt) |
+| Fork/resume attribution | `sQGi6Y0fEA93PUc45kEpSahF` | PASS (2nd prompt) |
+
+### What was delivered
+
+1. **Session control bar** (12 files, +95/-1):
+   - Compact stop/archive/fork pill buttons above the active chat composer
+   - Stop button only shown during thinking/waiting states (calls sessionAbort)
+   - Archive button always shown for connected sessions
+   - Fork button (placeholder onPress, wired in task 2)
+   - Translations added to all 11 language files
+
+2. **Fork session flow** (13 files, +93/-2):
+   - `forkSession` action in `useSessionQuickActions` — spawns a new session
+     in the same directory with the same agent via `machineSpawnNewSession`
+   - Copies `permissionMode` and `modelMode` from parent to forked session
+   - `canFork` flag gated on machine online status
+   - Fork action added to `SessionActionsPopover` with `git-branch-outline` icon
+   - Translations for fork-related strings
+
+3. **Fork/resume attribution badge** (13 files, +86):
+   - New `SessionOriginBadge` component — compact pill showing "Resumed from X"
+     or "Forked from X" with tappable navigation to parent session
+   - Wired into `SessionViewLoaded` — checks `metadata.resumedFromSessionId`
+     and `localMeta.parentSessionId` for attribution context
+   - Different icons: `play-circle-outline` for resumed, `git-branch-outline`
+     for forked
+   - Translations for all 4 attribution strings
+
+### Merged commit
+
+```
+f4ce7686 Phase 5.7: add session control bar, fork flow, and attribution badge
+15 files changed, 276 insertions(+), 2 deletions(-)
+```
+
+### Typecheck
+
+`npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes cleanly.
+
+### Observations
+
+- All 3 agents needed follow-up prompts. First prompts produced partial or no
+  output (agent 1: translations only; agents 2/3: 0 changes). Second prompts
+  with explicit step-by-step instructions succeeded.
+- Agent 2 reverted its own first commit before the follow-up redo succeeded.
+- The manual merge was needed because cherry-pick had conflicts in
+  SessionView.tsx due to structural differences between agent worktree code
+  and the current branch. Applied all changes by hand and typechecked.
+
+### Cleanup
+
+All 3 worktrees removed. Branches deleted. Sessions stopped.
+
 ## Current Task
 
-TASK: Phase 5.7 — dispatch the first P2.5 control/fork/resume batch via
-`happy-agent`.
+TASK: Phase 5.8 — review remaining P2.5 requirements, determine what's next.
 
-Break the broad P2.5 work into 2-3 independent tasks that can be run in
-parallel, biasing toward the highest-value active-session controls and the
-first real fork/resume flow. Update `roadmap.md` and `loop/state.md` with the
-dispatch results and concrete validation evidence.
+Review the P2.5 concrete requirements from `roadmap.md` against what Phase 5.7
+delivered. Decide whether to:
+1. Validate the Phase 5.7 changes on real web sessions (targeted walkthrough
+   slice or manual Playwright check)
+2. Dispatch the next P2.5 sub-batch (e.g., real-stack fork validation,
+   PI-style control surface exploration)
+3. Move to P3 if P2.5 is sufficiently covered
+
+Update `roadmap.md` and `loop/state.md` with the decision.
