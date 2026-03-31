@@ -1676,10 +1676,64 @@ web message sends to fail with `randomBytes is not a function`. Fixed with
 Web Crypto API fallback. This was not caused by Phase 5.5 changes — it existed
 before and blocked the entire web → SyncNode → server message path.
 
+## Phase 5.6: DONE
+
+Reviewed `roadmap.md` after the Phase 5.5 attachment transport fix and updated
+the roadmap to reflect the current product state.
+
+### Decision
+
+The next highest-impact work item is **Phase 5.7 — dispatch the first P2.5
+control/fork/resume batch via `happy-agent`**.
+
+### Why this is next
+
+1. Phase 5.5 closed the last major functional P2 composer gap: attachments now
+   work end-to-end on the real encrypted transport and survive reload/history.
+2. The remaining P2 items are now polish, not core missing workflows:
+   drag-and-drop attachment entry and image preview expansion on tap.
+3. P2.5 directly builds on the converged active-chat/new-session composer
+   surface from Phases 5.1-5.5.
+4. P2.5 outranks P3 because active control, branching, and clear
+   resume/fork attribution are more central to the product loop than
+   session-list/tool-row polish.
+
+### Roadmap updates made
+
+- Added a Phase 5.5 results section to `roadmap.md`
+- Replaced the stale "encrypted upload still missing" note
+- Added the post-Phase-5.5 priority decision choosing P2.5 next
+
+### Scope of Phase 5.7
+
+1. **Active-session control surface**
+   - bring stop / archive / resume / fork together with model / permissions /
+     effort in or immediately adjacent to the active composer
+   - keep machine / path / worktree context clearly visible
+
+2. **Fork/resume flow**
+   - make fork/resume a first-class composer path with clear resuming/forking
+     context
+   - allow different worktree / agent selection where supported
+   - reuse the machine resume-session path
+
+3. **Real-stack validation**
+   - validate on web against a real long-running session
+   - capture a web video and checkpoint screenshots of the control and
+     branched-session flow
+
+### Explicitly not next
+
+- Standalone drag-and-drop or image-expand polish
+- P3 session-list or tool UI polish
+- Broader P4 file-link/review work
+
 ## Current Task
 
-TASK: Phase 5.6 — review roadmap and select the next highest-impact work item.
+TASK: Phase 5.7 — dispatch the first P2.5 control/fork/resume batch via
+`happy-agent`.
 
-Read `roadmap.md`, evaluate what the completed Phase 5.5 unlocks, and decide
-whether the next batch should target remaining P2 polish (drag-and-drop, image
-expand), P2.5 (control/fork/resume), or P3 (session-list/tool UI).
+Break the broad P2.5 work into 2-3 independent tasks that can be run in
+parallel, biasing toward the highest-value active-session controls and the
+first real fork/resume flow. Update `roadmap.md` and `loop/state.md` with the
+dispatch results and concrete validation evidence.

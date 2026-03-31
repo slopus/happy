@@ -574,11 +574,71 @@ Committed as `060dc9de`. Typecheck passes. 21 files changed, +639/-26 total.
 - Session list groups worktree sessions under parent project with git-branch badge.
 - Translations added to all 11 locale files for all three features.
 
-**Remaining P2 gaps after Phase 5.3:**
+### Phase 5.5 results (2026-03-30)
 
-- Drag-and-drop attachment flow (mentioned in P2 validation requirements)
-- Image preview expansion on tap (currently tappable but no-op)
-- Encrypted file upload to server (currently files are local URIs / object URLs)
+**Result: PASS — the real encrypted attachment flow now works end-to-end on web.**
+
+Committed as `d0f7e743`.
+
+**What Phase 5.5 closed:**
+
+- attachments now send as encrypted base64 data URIs instead of local
+  `blob:`/device-only references
+- user-message file parts render in the real transcript on web
+- attachment history survives reload because the file payload is inside the
+  encrypted message, not a local object URL
+- the browser message-send path is repaired via Web Crypto fallback for
+  `getRandomBytes()`
+
+**Remaining P2 gaps after Phase 5.5:**
+
+- Drag-and-drop attachment flow
+- Image preview expansion on tap
+
+Those are now polish items, not the main missing composer workflow.
+
+### Post-Phase 5.5 priority decision (2026-03-30)
+
+**Next highest-impact work item: Phase 5.7 — begin P2.5 with the first
+control/fork/resume batch.**
+
+**Why this is next:**
+
+1. Phase 5.5 closes the last major functional P2 composer gap. The remaining
+   P2 items are incremental polish, not missing core product capability.
+2. P2.5 directly builds on the now-unified composer surface from Phases
+   5.1-5.5 instead of jumping to a disconnected area.
+3. First-class control/fork/resume flows are higher leverage than P3 list/tool
+   polish because they affect active agent control, branching, and attribution
+   in the core product loop.
+4. P3 should follow after the control surface settles, so session-list and
+   tool-row design can reflect the real fork/resume model instead of being
+   reworked twice.
+
+**Scope of Phase 5.7:**
+
+1. **Active-session control surface**
+   - surface model / permissions / effort alongside stop / archive / resume /
+     fork in or immediately adjacent to the active composer
+   - keep machine / project path / worktree context clearly visible
+
+2. **Fork/resume flow**
+   - make fork/resume a first-class composer path with a clear resuming/forking
+     context pill
+   - allow choosing a different worktree and agent where supported
+   - reuse the machine resume-session path instead of inventing a second
+     branching mechanism
+
+3. **Real-stack validation**
+   - validate on web against a real long-running session
+   - record a web video plus checkpoint screenshots for control change,
+     fork/resume compose state, and resulting branched session state
+
+**Explicitly not next:**
+
+- standalone drag-and-drop or image-expand polish
+- P3 session-list or tool-UI polish
+- broader P4 file-link/review work
 
 ## P2. Composer overhaul
 
