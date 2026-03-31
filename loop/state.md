@@ -1142,13 +1142,39 @@ The 3 commits are in separate worktree branches (`agent-task-rendering`,
 `agent-edit-rendering`, `agent-daemon-port`). They need to be merged into the
 main `happy-sync-refactor` branch and validated together.
 
+## Phase 4.1: DONE
+
+Merged all 3 Phase 4.0 agent commits into `happy-sync-refactor` via cherry-pick.
+
+### Commits on happy-sync-refactor
+
+```
+7e2974c9 Fix edit rendering: shorten file paths in subtitles, resolve MultiEdit file_path, handle empty diffs
+6143042f Add custom tool views for TaskOutput and TaskStop
+94adca5e Fix stale daemonState.httpPort after daemon restart
+7d46b283 Phase 4.0: dispatch first real roadmap batch via happy-agent
+```
+
+### Conflict resolution
+
+One conflict in `toolPartMeta.ts` — both the task-rendering and edit-rendering
+agents added lines to `getToolPartSubtitle()`. Resolution: kept both additions
+(task-rendering's `description`/`task_id` fields + edit-rendering's
+`shortenFilePath` logic).
+
+### Typecheck
+
+All 4 workspace packages pass: `happy-app`, `happy-coder`, `happy-server`,
+`@slopus/happy-sync`. Total time: 14.37s.
+
+### Cleanup
+
+All 3 agent worktrees removed. Branches `agent-task-rendering`,
+`agent-edit-rendering`, `agent-daemon-port` deleted.
+
 ## Current Task
 
-TASK: Phase 4.1 — merge the Phase 4.0 agent work into happy-sync-refactor.
+TASK: Phase 4.2 — select next batch of roadmap tasks to dispatch.
 
-Requirements:
-1. Cherry-pick or merge the 3 agent commits into happy-sync-refactor.
-2. Run `yarn typecheck` on the merged result.
-3. Resolve any conflicts between the 3 branches.
-4. Commit the merged result.
-5. Clean up the agent worktrees.
+Start by reviewing the remaining P1 items in `roadmap.md` and what was just
+completed, then pick the next 2-3 highest-impact independent tasks.
