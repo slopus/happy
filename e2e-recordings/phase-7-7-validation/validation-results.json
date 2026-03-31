@@ -1,0 +1,25 @@
+{
+  "draggableCount": 4,
+  "groupCount": 4,
+  "initialOrder": [
+    "/private/tmp/happy-p7-alphahappy-p7-alphaonline",
+    "/private/tmp/happy-p7-betahappy-p7-betaonline",
+    "/private/tmp/happy-p7-gammahappy-p7-gammaonline",
+    "~/projects/happy/environments/data/envs/eager-summit/projectCreate"
+  ],
+  "afterDragOrder": [
+    "/private/tmp/happy-p7-betahappy-p7-betaonline",
+    "/private/tmp/happy-p7-alphahappy-p7-alphaonline",
+    "/private/tmp/happy-p7-gammahappy-p7-gammaonline",
+    "~/projects/happy/environments/data/envs/eager-summit/projectCreate"
+  ],
+  "afterReloadOrder": [
+    "/private/tmp/happy-p7-betahappy-p7-betaonline",
+    "/private/tmp/happy-p7-alphahappy-p7-alphaonline",
+    "/private/tmp/happy-p7-gammahappy-p7-gammaonline",
+    "~/projects/happy/environments/data/envs/eager-summit/projectCreate"
+  ],
+  "rightClickArchiveVisible": true,
+  "reorderWorked": true,
+  "notes": []
+}
