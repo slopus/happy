@@ -31,8 +31,23 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const router = useRouter();
     const { theme } = useUnistyles();
 
+    // Detect file path for file-based tools
+    const FILE_TOOL_NAMES = ['Read', 'read', 'Edit', 'MultiEdit', 'Write', 'apply_patch'];
+    let filePath: string | null = null;
+    if (FILE_TOOL_NAMES.includes(tool.name) && sessionId) {
+        if (typeof tool.input?.file_path === 'string') {
+            filePath = tool.input.file_path;
+        } else if (tool.input?.locations && Array.isArray(tool.input.locations) && tool.input.locations[0]?.path) {
+            filePath = tool.input.locations[0].path;
+        }
+    }
+
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
+        if (filePath && sessionId) {
+            router.push(('/session/' + sessionId + '/file?path=' + btoa(filePath)) as any);
+            return;
+        }
         if (onPress) {
             onPress();
         } else if (sessionId && messageId) {
@@ -41,10 +56,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 params: { id: sessionId, messageId, ...(partId ? { partId } : {}) },
             });
         }
-    }, [onPress, sessionId, messageId, partId, router]);
+    }, [onPress, sessionId, messageId, partId, router, filePath]);
 
     // Enable pressable if either onPress is provided or we have navigation params
-    const isPressable = !!(onPress || (sessionId && messageId));
+    const isPressable = !!(onPress || (sessionId && messageId) || (filePath && sessionId));
 
     let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
@@ -169,7 +184,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                             {icon}
                         </View>
                         <View style={styles.titleContainer}>
-                            <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
+                            <Text style={[styles.toolName, filePath && styles.toolNameClickable]} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
                             {description && (
                                 <Text style={styles.toolDescription} numberOfLines={1}>
                                     {description}
@@ -191,7 +206,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                             {icon}
                         </View>
                         <View style={styles.titleContainer}>
-                            <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
+                            <Text style={[styles.toolName, filePath && styles.toolNameClickable]} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
                             {description && (
                                 <Text style={styles.toolDescription} numberOfLines={1}>
                                     {description}
@@ -318,6 +333,9 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 14,
         fontWeight: '500',
         color: theme.colors.text,
+    },
+    toolNameClickable: {
+        textDecorationLine: 'underline',
     },
     status: {
         fontWeight: '400',
