@@ -2604,6 +2604,69 @@ on web and validate it on the real stack**.
 - changed-files review/input mismatch
 - another session-list redesign batch now that ordering is working
 
+## Phase 7.9: DONE
+
+Fixed markdown image absolute-path preview on web and validated on the real
+stack. Committed in `0a182d10`.
+
+### Root causes (2 layers)
+
+1. **Server RPC registration mismatch**: `SyncNode.registerRpcMethods()` sends
+   `{ methods: string[] }` (plural) but the server's `rpcHandler.ts` only
+   accepted `{ method: string }` (singular). This meant daemon session RPC
+   handlers (`readFile`, `writeFile`, `bash`, etc.) were **never registered**
+   with the server for SyncNode-connected sessions. The file viewer page and
+   all session-level RPC calls were silently broken.
+
+2. **No local file path handling in markdown images**: `RenderImageBlock`
+   passed the raw URL to `<Image source={{ uri }} />`. For local paths like
+   `test-image.png` or `/path/to/img.png`, the web browser can't fetch from
+   the daemon's filesystem.
+
+### Fixes (2 files)
+
+1. **`rpcHandler.ts`** — Updated `rpc-register` handler to accept both
+   `{ method: string }` (legacy `ApiSession` format) and
+   `{ methods: string[] }` (`SyncNode` format). Registers all methods in the
+   array and responds with `{ methods }`.
+
+2. **`MarkdownView.tsx`** — `RenderImageBlock` now:
+   - Detects local file paths (anything not `http://`, `https://`, `data:`,
+     or `blob:`)
+   - Fetches file content via `sessionReadFile` RPC as base64
+   - Converts to a `data:<mime>;base64,...` URI for display
+   - Shows `ActivityIndicator` during fetch
+   - Falls back to showing the path as text on error
+   - Passes `sessionId` through from `MarkdownView` props
+
+### Validation
+
+**Environment:** `quiet-fjord` — server `:58035`, web `:58036`.
+
+**Session:** `NRNzN52MXM7vkVQmjGW6Wvgo` (claude, `/tmp/happy-image-test2`
+worktree with `test-image.png` — a 100×100 red PNG).
+
+**Playwright results:**
+- Test Image found in DOM: **true**
+- Test Image displayed: **true**
+- Test Image dimensions: **100×100** (correct)
+- Test Image src: `data:image/png;base64,iVBORw0KGgo...` (RPC-fetched)
+- Data URI images in page: **2** (test image + existing)
+
+**Screenshot:** `11-after-rpc.png` shows the red square rendered inline in the
+chat transcript with "Test Image" caption below it.
+
+**Typecheck:** `happy-app` and `happy-server` both pass.
+
+### Bonus fix: SyncNode RPC registration
+
+The server-side RPC registration fix is broader than just image preview. It
+unblocks ALL session-level RPC calls for SyncNode-connected sessions:
+`readFile`, `writeFile`, `listDirectory`, `getDirectoryTree`, `bash`,
+`ripgrep`, `difftastic`. The file viewer page (`/session/[id]/file.tsx`) and
+any future RPC-based features now work correctly.
+
 ## Current Task
 
-TASK: Fix markdown image absolute-path preview on web and validate it on the real stack.
+TASK: Review roadmap.md and select the next highest-impact work item after
+the completed P3 batch.
