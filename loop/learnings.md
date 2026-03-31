@@ -123,6 +123,29 @@ If you discover something non-obvious, append it here under the right section.
   from the server response, not hardcode 0. Otherwise immediate-after-create CAS
   updates can version-mismatch if the server's initial version is non-zero.
 
+## happy-agent protocol
+
+- `happy-agent` `SessionClient.sendMessage()` and `sendPermissionDecision()`
+  must wrap payloads in the v3 protocol envelope `{ v: 3, message }` before
+  encrypting. The CLI's SyncNode `processServerMessage()` decrypts and then
+  runs `ProtocolEnvelopeSchema.safeParse()` which silently rejects anything
+  without `v: 3`. Without the envelope, messages are stored in the server DB
+  and appear in REST history but are invisible to the running CLI session.
+- User messages must use the `MessageWithParts` format (`info` with
+  `id/sessionID/role/time/agent/model`, `parts` array with typed entries).
+  The `SessionStreamMessageSchema` union discriminates on these fields; a
+  plain `{ role, content }` object fails the Zod union check.
+- Permission responses must use the control-message format (`type:
+  'permission-response'`, `id`, `sessionID`, `time`, etc.) wrapped in the
+  same `{ v: 3, message }` envelope.
+- Include `localId` in the Socket.IO `'message'` emit for deduplication.
+  Format: `msg:<messageId>` for user messages,
+  `ctl:permission-response:<messageId>` for control messages.
+- The `happy-agent stop` command resolves `daemonState.httpPort` from the
+  server-side machine record. After daemon restarts, this can be stale if
+  the CAS update race loses. The actual `POST /stop-session` mechanism works
+  correctly when pointed at the live daemon port.
+
 ## Process (what works)
 
 - Break "get Steps N-M passing" into individual steps. One step per iteration

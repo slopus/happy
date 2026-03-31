@@ -191,21 +191,35 @@ export class SessionClient extends EventEmitter {
     }
 
     sendMessage(text: string, meta?: Record<string, unknown>): void {
-        const content = {
-            role: 'user',
-            content: {
-                type: 'text',
+        const msgId = `msg_${randomUUID()}`;
+        const partId = `prt_${randomUUID()}`;
+        const message = {
+            info: {
+                id: msgId,
+                sessionID: this.sessionId,
+                role: 'user' as const,
+                time: { created: Date.now() },
+                agent: 'claude',
+                model: { providerID: 'anthropic', modelID: 'claude-sonnet-4-20250514' },
+                meta: {
+                    sentFrom: 'happy-agent',
+                    ...meta,
+                },
+            },
+            parts: [{
+                id: partId,
+                sessionID: this.sessionId,
+                messageID: msgId,
+                type: 'text' as const,
                 text,
-            },
-            meta: {
-                sentFrom: 'happy-agent',
-                ...meta,
-            },
+            }],
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        const envelope = { v: 3 as const, message };
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, envelope));
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted,
+            localId: `msg:${msgId}`,
         });
     }
 
@@ -216,8 +230,8 @@ export class SessionClient extends EventEmitter {
         reason?: string;
         allowTools?: string[];
     }): void {
-        const content = {
-            type: 'permission-response',
+        const message = {
+            type: 'permission-response' as const,
             id: `msg_${randomUUID()}`,
             sessionID: this.sessionId,
             time: { created: Date.now() },
@@ -227,10 +241,12 @@ export class SessionClient extends EventEmitter {
             allowTools: opts.allowTools,
             reason: opts.reason,
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        const envelope = { v: 3 as const, message };
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, envelope));
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted,
+            localId: `ctl:permission-response:${message.id}`,
         });
     }
 
