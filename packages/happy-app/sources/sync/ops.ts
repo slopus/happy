@@ -359,12 +359,11 @@ export async function sessionAllow(sessionId: string, id: string, mode?: 'defaul
     }
 
     await sync.appSyncStore!.approvePermission(sessionId as SessionID, id, {
-        decision:
+        decision: (
             decision === 'approved_for_session'
             || mode === 'acceptEdits'
             || (allowedTools?.length ?? 0) > 0
-                ? 'always'
-                : 'once',
+        ) ? 'always' : 'once',
         allowTools: allowedTools,
     });
 }

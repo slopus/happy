@@ -13,7 +13,7 @@ interface PermissionFooterProps {
         reason?: string;
         mode?: string;
         allowedTools?: string[];
-        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+        decision?: 'approved' | 'approved_for_session' | 'approved_all_edits' | 'denied' | 'abort';
     };
     sessionId: string;
     toolName: string;
@@ -159,10 +159,20 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         return false;
     };
 
-    // Detect which button was used based on mode (for Claude) or decision (for Codex)
-    const isApprovedViaAllow = isApproved && permission.mode !== 'acceptEdits' && !isToolAllowed(toolName, toolInput, permission.allowedTools);
-    const isApprovedViaAllEdits = isApproved && permission.mode === 'acceptEdits';
-    const isApprovedForSession = isApproved && isToolAllowed(toolName, toolInput, permission.allowedTools);
+    // Detect which button was used from the resolved decision field.
+    // v3 path sets decision via getToolPermissionState; legacy path may use mode as fallback.
+    const isApprovedViaAllow = isApproved && (
+        permission.decision === 'approved'
+        || (!permission.decision && !permission.mode && !isToolAllowed(toolName, toolInput, permission.allowedTools))
+    );
+    const isApprovedViaAllEdits = isApproved && (
+        permission.decision === 'approved_all_edits'
+        || (!permission.decision && permission.mode === 'acceptEdits')
+    );
+    const isApprovedForSession = isApproved && (
+        permission.decision === 'approved_for_session'
+        || (!permission.decision && !permission.mode && isToolAllowed(toolName, toolInput, permission.allowedTools))
+    );
     
     // Codex-specific status detection with fallback
     const isCodexApproved = isCodex && isApproved && (permission.decision === 'approved' || !permission.decision);

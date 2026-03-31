@@ -5,7 +5,7 @@ export interface ToolPermissionState {
     status: 'pending' | 'approved' | 'denied';
     reason?: string;
     allowedTools?: string[];
-    decision?: 'approved' | 'approved_for_session' | 'denied';
+    decision?: 'approved' | 'approved_for_session' | 'approved_all_edits' | 'denied';
 }
 
 function prettifyToolName(toolName: string): string {
@@ -170,11 +170,23 @@ export function getToolPermissionState(part: v3.ToolPart): ToolPermissionState |
         };
     }
 
+    if (resolved.decision === 'always') {
+        // Distinguish "approve for session" (tool added to always list) from
+        // "approve all edits" (blanket always with no tool-specific entry).
+        const toolInAlways = resolved.always.includes(part.tool)
+            || (part.tool === 'Bash' && resolved.always.some(t => t.startsWith('Bash(')));
+        return {
+            id: resolved.id,
+            status: 'approved',
+            allowedTools: resolved.always,
+            decision: toolInAlways ? 'approved_for_session' : 'approved_all_edits',
+        };
+    }
+
     return {
         id: resolved.id,
         status: 'approved',
-        allowedTools: resolved.decision === 'always' ? resolved.always : undefined,
-        decision: resolved.decision === 'always' ? 'approved_for_session' : 'approved',
+        decision: 'approved',
     };
 }
 
