@@ -1370,6 +1370,49 @@ Goal: make file references in chat actually useful and make file review/attachme
 - Validate on web against a real remote session.
 - Verify both initial resolution and refetch-on-open behavior.
 
+### Post-Phase 7.9 priority decision (2026-03-31)
+
+**Next highest-impact work item: Phase 8.1 — dispatch the first P4 file-link
+resolution + file-viewer batch via `happy-agent`.**
+
+Phase 7.9 completes the remaining explicit P3 requirement, so the roadmap can
+move to P4. Inside P4, the highest-impact unmet work is still the core
+file-reference path: links in chat should resolve against the real session,
+open something useful, and re-fetch current contents instead of acting like
+dead or stale references.
+
+**Why this is next:**
+
+1. It is the most central unfinished P4 workflow. File references appear across
+   manager/review conversations and remain less useful than they should be
+   until resolution and open-on-click are real.
+2. It unlocks the rest of P4. A correct resolve + refetch + full-screen viewer
+   path is foundational for changed-files review and later review/file-link
+   improvements.
+3. It has higher user impact than drag-and-drop attachment polish because
+   attachments already work end-to-end after Phase 5.5, while file-link
+   behavior is still incomplete.
+4. It stays within the current "no new scope" push by finishing an existing
+   roadmap bucket rather than introducing another surface.
+
+**Scope of Phase 8.1:**
+
+1. Resolve chat file references against the active session / machine context
+   before rendering them as clickable links.
+2. On click, refetch the file from the remote session and open it in the
+   existing full-screen file viewer path.
+3. Validate the flow on web against a real remote session with concrete proof:
+   initial resolution, open-on-click, and refetch-on-open behavior.
+4. Only pull in the smallest necessary viewer plumbing needed to make this path
+   real end-to-end.
+
+**Explicitly not next:**
+
+- a standalone drag-and-drop attachment batch
+- the changed-files review/input mismatch as a separate first step unless it
+  blocks file-link resolution directly
+- another session-list/tool-row polish pass
+
 ## User Research
 
 Goal: talk to users regularly to understand why they use Happy, what their day-to-day problems are, and what to build next.

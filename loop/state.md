@@ -2668,5 +2668,44 @@ any future RPC-based features now work correctly.
 
 ## Current Task
 
-TASK: Review roadmap.md and select the next highest-impact work item after
-the completed P3 batch.
+## Phase 8.0: DONE
+
+Reviewed `roadmap.md` after the completed P3 batch and selected the next
+highest-impact work item.
+
+### Decision
+
+The next work item is **Phase 8.1 — dispatch the first P4 file-link
+resolution + file-viewer batch via `happy-agent`**.
+
+### Why this is next
+
+1. Phase 7.9 completed the final explicit P3 requirement, so the roadmap can
+   now move into P4.
+2. The highest-impact unfinished P4 work is the core file-reference flow:
+   chat file paths should resolve against the active session, open something
+   useful, and refetch current contents instead of behaving like dead/stale
+   links.
+3. This is more important than attachment drag-and-drop polish because the
+   core attachment transport already works end-to-end after Phase 5.5.
+4. It is also a better first P4 step than a standalone changed-files review
+   fix because resolve + refetch + full-screen viewer plumbing is likely a
+   prerequisite for the broader review flow anyway.
+
+### Scope of Phase 8.1
+
+1. Resolve chat file references against the active session / machine context.
+2. Open resolved files through the existing full-screen file viewer flow.
+3. Refetch file contents on open so the view matches the current remote state.
+4. Validate the full path on web against a real remote session with concrete
+   evidence.
+
+### Roadmap update
+
+Updated `roadmap.md` with the Phase 8.0 priority decision and scoped next
+batch.
+
+## Current Task
+
+TASK: Dispatch the first P4 file-link resolution + file-viewer batch via
+`happy-agent`.
