@@ -956,11 +956,67 @@ The daemon's `POST /stop-session` → SIGTERM → process death path works
 correctly. The stale-port issue is in the daemon's server-side state
 synchronization, not in the CLI stop routing or process lifecycle.
 
+## Phase 3.3: DONE
+
+Reviewed `roadmap.md` plus the validated Phase 3.0-3.2 results and selected
+the next highest-impact work item.
+
+### Decision
+
+The next major work item is **Phase 3.4 — multi-session monitoring and
+roadmap-backed reporting for `happy-agent`**.
+
+### Why this is next
+
+1. The base `happy-agent` control path is now proven on the real stack:
+   spawn works, send/approve is consumed, and local-daemon stop works when the
+   daemon HTTP port is current.
+2. The roadmap's largest remaining unmet `P0` requirement is not another
+   single-session plumbing fix; it is reliable monitoring/reporting across more
+   than one spawned session.
+3. This is the gating capability before using `happy-agent` to dispatch the
+   rest of the roadmap with confidence.
+4. The stale `daemonState.httpPort` after daemon restarts is real, but it is a
+   narrower `P1` control-flow bug and does not block the already-proven approve
+   flow when the daemon is not restarted mid-run.
+
+### Scope of Phase 3.4
+
+- Prove `happy-agent` can manage **2-3 concurrent spawned sessions** in the
+  same authenticated Happy environment.
+- Surface/report for each spawned session:
+  - active vs idle state
+  - pending permission/tool requests
+  - last meaningful output
+  - attached verification evidence / web URL
+- Write those per-session results back into `roadmap.md`.
+- Validate the monitoring/reporting flow on web with the real server + real CLI.
+
+### Explicitly not next
+
+- Deeper daemon restart/CAS debugging unless it blocks the multi-session flow
+  directly
+- Composer/session-list work
+- Broader new-scope orchestration features
+
+### Result
+
+- Updated `roadmap.md` under `P0` with the Phase 3.3 priority decision and the
+  concrete Phase 3.4 scope.
+
 ## Current Task
 
-TASK: Phase 3.3 — choose the next highest-impact work item.
+TASK: Phase 3.4 — validate multi-session monitoring/reporting with real
+`happy-agent` spawns.
 
-Review the roadmap, Phase 3.0-3.2 results, and decide what to do next.
-The approve/send/stop infrastructure is now proven. The remaining issue
-is stale daemon state after restarts (a known CAS race, not a blocker
-for the approve flow).
+Using the current authenticated real stack:
+
+1. spawn **2-3 real agent sessions** into distinct worktrees
+2. confirm they all appear in the same Happy web environment
+3. send work to each session and drive/approve any required permissions
+4. monitor them to active/idle states with concrete per-session status evidence
+5. capture a real web URL / artifact for each session
+6. write a per-session monitoring/reporting summary back into `roadmap.md`
+
+The stale daemon-state-after-restart bug is NOT the main task unless it
+directly blocks this multi-session validation.

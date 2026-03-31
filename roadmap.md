@@ -119,6 +119,51 @@ Environment: `eager-summit` (local real stack — real server on `:50371`, real 
 - Verify same flow against production server once auth seeding is available
 - Scale to 2-3 concurrent spawns before attempting full fan-out
 
+### Post-Phase 3.2 priority decision (2026-03-30)
+
+**Next highest-impact work item: Phase 3.4 — multi-session monitoring and roadmap-backed reporting.**
+
+The base `happy-agent` control path is now proven on the real stack:
+
+- spawn works in a new worktree
+- send/approve is consumed by the running session
+- local-daemon stop works when the daemon HTTP port is current
+
+The remaining stale `daemonState.httpPort` race is real, but it is a narrower
+P1 reliability issue, not the main blocker for using `happy-agent` as the
+roadmap control plane. The bigger missing P0 capability is still the one the
+roadmap explicitly called out after base-flow validation: reliable monitoring
+and reporting across more than one spawned session.
+
+**Why this is next:**
+
+1. Monitoring/reporting is the largest unmet P0 requirement after Phases 3.0-3.2.
+2. It is the gating capability before delegating the rest of the roadmap
+   through `happy-agent`.
+3. It naturally exercises the already-fixed send/approve/stop plumbing under a
+   more realistic 2-3 agent workload.
+4. The stale daemon-state bug can be carried as a parallel P1 control-flow fix
+   unless it blocks the multi-session validation directly.
+
+**Scope of Phase 3.4:**
+
+- prove `happy-agent` can manage **2-3 concurrent spawned sessions** in the
+  same authenticated Happy environment
+- expose/report, at minimum, for each spawned session:
+  - active vs idle state
+  - pending permission/tool requests
+  - last meaningful output
+  - attached verification evidence / web URL
+- write those per-session results back into this roadmap instead of leaving
+  them only in chat or shell history
+- validate the monitoring/reporting flow on web with the real server + real CLI
+
+**Explicitly not next:**
+
+- deeper daemon restart/CAS debugging unless it blocks Phase 3.4 directly
+- composer/session-list polish
+- broader new-scope orchestration features
+
 ## P1. Control-flow, permissions, and protocol bugs
 
 Goal: remove the broken session-control paths that currently make remote agent management unreliable.
