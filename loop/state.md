@@ -1004,19 +1004,62 @@ roadmap-backed reporting for `happy-agent`**.
 - Updated `roadmap.md` under `P0` with the Phase 3.3 priority decision and the
   concrete Phase 3.4 scope.
 
+## Phase 3.4: DONE
+
+Validated multi-session monitoring with 3 concurrent agent sessions on the real
+stack. Committed in `9364ace0`.
+
+### Environment
+
+`snug-reef` — server `:52168`, web `:52169`, daemon PID 30480,
+machine `e84feb4b-1729-4e33-80bf-64cfe2238fc9`.
+
+### Sessions
+
+| Session | ID | Worktree | Messages | Artifact | State |
+|---------|----|----------|----------|----------|-------|
+| Alpha | `CorD57qW4kiYQNjVdXJFX4Gb` | `agent-alpha` | 6 | `ALPHA.md` (69B) | idle→stopped |
+| Beta | `MqYPdxEb23uR1nZ9Uz5kPUam` | `agent-beta` | 5 | `BETA.md` (77B) | idle→stopped |
+| Gamma | `PdWMnez3ek0HPHSErO8WKer3` | `agent-gamma` | 5 | `GAMMA.md` (77B) | idle→stopped |
+
+### Flow
+
+1. `happy-agent spawn` → 3 sessions created in distinct worktrees
+2. `happy-agent list --active` → all 3 visible
+3. `happy-agent send --yolo --wait` → all 3 received work
+4. `happy-agent wait` → all 3 reached `Session Idle`
+5. `happy-agent history` → full v3 transcripts with Write tool, step-finish(stop)
+6. Artifacts verified on disk: all 3 files exist with correct content
+7. `happy-agent stop` → all 3 stopped (socket method; stale httpPort is known P1)
+
+### Web URLs
+
+All 3 sessions accessible at `http://localhost:52169/session/<id>?dev_token=...&dev_secret=...`
+
+### Findings
+
+- No permissions required (yolo mode). All Write tools completed without blocks.
+- Stop used session-socket method (not local-daemon-http) because httpPort was
+  stale from previous daemon restarts — known P1 from Phase 3.2.
+- All sessions used `claude-opus-4-6` model and `mcp__happy__change_title` tool
+  for auto-titling.
+
+### Verdict
+
+Multi-session spawn/send/monitor/stop is validated end-to-end with 3 concurrent
+sessions. `happy-agent` is ready to serve as a control plane for dispatching
+parallel roadmap work.
+
 ## Current Task
 
-TASK: Phase 3.4 — validate multi-session monitoring/reporting with real
-`happy-agent` spawns.
+TASK: Phase 3.5 — decide next highest-impact work item.
 
-Using the current authenticated real stack:
+Review:
+- `roadmap.md` (updated with Phase 3.4 results)
+- remaining P0/P1/P2 items
+- what Phase 3.4 validation unlocks
 
-1. spawn **2-3 real agent sessions** into distinct worktrees
-2. confirm they all appear in the same Happy web environment
-3. send work to each session and drive/approve any required permissions
-4. monitor them to active/idle states with concrete per-session status evidence
-5. capture a real web URL / artifact for each session
-6. write a per-session monitoring/reporting summary back into `roadmap.md`
-
-The stale daemon-state-after-restart bug is NOT the main task unless it
-directly blocks this multi-session validation.
+Then choose and scope the next task. Candidates:
+1. Fix the P1 stale daemon-port bug for reliable hard-stop
+2. Begin using `happy-agent` to dispatch real roadmap work items
+3. Other P1/P2 items from the roadmap
