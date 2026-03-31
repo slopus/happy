@@ -1214,9 +1214,64 @@ Those are no longer the best next dispatch targets.
 3. They have clearer real-stack validation paths than the broader
    protocol-level read-receipt work or lower-priority P2/P3 UI tasks.
 
+## Phase 4.3: DONE
+
+Dispatched the P1 batch via `happy-agent`. 2 of 3 tasks completed successfully.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510,
+machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
+
+### Sessions
+
+| Task | Session ID | Worktree | Commits | Result |
+|------|-----------|----------|---------|--------|
+| Claude permission state | `cJUmxwx6oN8U0R7NbudZ1vbJ` | `agent-permission-state` | `9984ebb0`, `36e8f311` | PASS |
+| Plan approval UI | `ulL1KoV39CqO0bcnJZ73Ge2g` | `agent-plan-approval` | `9f672cff`, `cfd8ed26` | PASS |
+| Codex non-yolo control | `3onyuUQK5dRy9WMt4H86gsy9` | `agent-codex-control` | none | FAIL |
+
+### What each agent delivered
+
+1. **Claude permission state** (2 commits, 12 files, +18/-32):
+   - Simplified permission state detection in `PermissionFooter.tsx` — replaced
+     multiple boolean flags with direct `permission.decision` field check.
+   - Distinguished approve-all-edits from approve-for-session in the UI.
+   - Added denial reason display (`permissions.deniedReason` translation key)
+     across all 11 translation files.
+   - `yarn typecheck` passes.
+
+2. **Plan approval UI** (2 commits, 3 files, +38/-8):
+   - Updated `ExitPlanToolView.tsx` to show approve/deny controls via
+     `PermissionFooter` when the tool has a pending permission.
+   - Updated `ToolPartView.tsx` to pass plan tool permission objects through.
+   - `ToolView.tsx` adjusted to not exclude plan tool from permission footer.
+   - `yarn typecheck` passes.
+
+3. **Codex non-yolo control** (0 commits, FAILED):
+   - Agent spent 63 messages reading Codex runner code (`runCodex.ts`,
+     `v3-mapper`, `sync-node.ts`) without making any changes.
+   - The task spans too many packages (happy-app, happy-cli, happy-sync) and
+     requires understanding the full Codex SDK integration, approval callbacks,
+     and session lifecycle.
+   - This task needs a more targeted decomposition or manual implementation.
+
+### Typecheck
+
+All cherry-picked commits pass `npx tsc --noEmit -p packages/happy-app/tsconfig.json`.
+
+### Cleanup
+
+All 3 worktrees removed. Branches deleted.
+
+### Web URLs
+
+All sessions were accessible at `http://localhost:58036/session/<id>?dev_token=...&dev_secret=...`
+
 ## Current Task
 
-TASK: Phase 4.3 — dispatch the selected P1 batch via `happy-agent`.
+TASK: Phase 4.4 — commit the Phase 4.3 results to `happy-sync-refactor` and
+select the next work item.
 
-Use the Phase 4.2 selection above. Spawn 2-3 independent sessions and require
-each one to report exact scope completed, validation run, web URL, and caveats.
+The cherry-picked commits are already on the branch. Commit this state update,
+then decide whether to decompose the failed Codex task or move to other P1 work.
