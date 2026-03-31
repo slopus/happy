@@ -5,7 +5,7 @@
     "private": true,
     "scripts": {
         "start": "expo start --web",
-        "web": "expo start --web",
+        "web": "expo start --web --port 8082",
         "build": "expo export --platform web",
         "typecheck": "tsc --noEmit"
     },
