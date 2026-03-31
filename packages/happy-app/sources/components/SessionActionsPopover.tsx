@@ -127,7 +127,9 @@ export function SessionActionsPopover({
         archiveSession,
         canArchive,
         canBugReport,
+        canFork,
         canShowResume,
+        forkSession,
         openDetails,
         reportBug,
         resumeSession,
@@ -165,6 +167,15 @@ export function SessionActionsPopover({
             });
         }
 
+        if (canFork) {
+            items.push({
+                id: 'fork',
+                icon: 'git-branch-outline',
+                label: t('session.forkSession'),
+                onPress: forkSession,
+            });
+        }
+
         if (canBugReport) {
             items.push({
                 id: 'bug-report',
@@ -179,7 +190,9 @@ export function SessionActionsPopover({
         archiveSession,
         canArchive,
         canBugReport,
+        canFork,
         canShowResume,
+        forkSession,
         openDetails,
         reportBug,
         resumeSession,

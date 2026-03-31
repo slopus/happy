@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import { SessionOriginBadge } from '@/components/SessionOriginBadge';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
@@ -300,12 +301,23 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const experiments = useSetting('experiments');
     const walkthroughSyncLabel = useWalkthroughSyncLabel();
     const {
+        archiveSession,
         canResume,
         canShowResume,
         resumeSession,
         resumeSessionSubtitle,
         resumingSession,
     } = useSessionQuickActions(session);
+
+    // Fork/resume attribution
+    const resumedFromId = (session.metadata as any)?.resumedFromSessionId as string | undefined;
+    const parentSessionId = resumedFromId ?? (session as any).localMeta?.parentSessionId;
+    const parentSessionName = (session as any).localMeta?.parentSessionTitle ?? '';
+    const originType: 'resumed' | 'forked' | null = resumedFromId
+        ? 'resumed'
+        : (session as any).localMeta?.parentSessionId
+            ? 'forked'
+            : null;
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -389,6 +401,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     let content = (
         <>
+            {originType && (
+                <SessionOriginBadge
+                    type={originType}
+                    parentSessionName={parentSessionName}
+                    onPress={() => parentSessionId && router.push(`/session/${parentSessionId}` as any)}
+                />
+            )}
             <Deferred>
                 {messages.length > 0 && (
                     <ChatList session={session} />
@@ -404,6 +423,65 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             )}
         </>
+    ) : null;
+
+    const sessionControlBar = sessionStatus.isConnected ? (
+        <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            paddingHorizontal: 16,
+            paddingVertical: 6,
+        }}>
+            {(sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting') && (
+                <Pressable
+                    onPress={() => sessionAbort(sessionId)}
+                    style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        backgroundColor: theme.colors.status.error + '18',
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 12,
+                    }}
+                >
+                    <Ionicons name="stop-circle-outline" size={14} color={theme.colors.status.error} />
+                    <Text style={{ fontSize: 12, fontWeight: '500', color: theme.colors.status.error }}>{t('session.stopSession')}</Text>
+                </Pressable>
+            )}
+            <Pressable
+                onPress={archiveSession}
+                style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: theme.colors.surfaceHigh,
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 12,
+                }}
+            >
+                <Ionicons name="archive-outline" size={14} color={theme.colors.textSecondary} />
+                <Text style={{ fontSize: 12, fontWeight: '500', color: theme.colors.textSecondary }}>{t('session.archiveSession')}</Text>
+            </Pressable>
+            <Pressable
+                onPress={() => {}}
+                style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: theme.colors.surfaceHigh,
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 12,
+                }}
+            >
+                <Ionicons name="git-branch-outline" size={14} color={theme.colors.textSecondary} />
+                <Text style={{ fontSize: 12, fontWeight: '500', color: theme.colors.textSecondary }}>{t('session.forkSession')}</Text>
+            </Pressable>
+        </View>
     ) : null;
 
     const input = sessionStatus.isConnected ? (
@@ -574,7 +652,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 8 : 0) }}>
                 <AgentContentView
                     content={content}
-                    input={input}
+                    input={<>{sessionControlBar}{input}</>}
                     placeholder={placeholder}
                 />
             </View >

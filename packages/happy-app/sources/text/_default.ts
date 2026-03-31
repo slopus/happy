@@ -273,6 +273,14 @@ export const en = {
     session: {
         inputPlaceholder: 'Type a message ...',
         worktree: 'Worktree',
+        stopSession: 'Stop',
+        archiveSession: 'Archive',
+        forkSession: 'Fork Session',
+        forkingSession: 'Forking session...',
+        resumedFrom: ({ name }: { name: string }) => `Resumed from ${name}`,
+        forkedFrom: ({ name }: { name: string }) => `Forked from ${name}`,
+        resumedSession: 'Resumed session',
+        forkedSession: 'Forked session',
     },
 
     commandPalette: {

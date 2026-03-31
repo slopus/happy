@@ -377,6 +377,14 @@ export const ru: TranslationStructure = {
     session: {
         inputPlaceholder: 'Введите сообщение...',
         worktree: 'Рабочее дерево',
+        stopSession: 'Стоп',
+        archiveSession: 'Архив',
+        forkSession: 'Ответвить сессию',
+        forkingSession: 'Создание ответвления...',
+        resumedFrom: ({ name }: { name: string }) => `Возобновлено из ${name}`,
+        forkedFrom: ({ name }: { name: string }) => `Ответвлено от ${name}`,
+        resumedSession: 'Возобновлённая сессия',
+        forkedSession: 'Ответвлённая сессия',
     },
 
     commandPalette: {

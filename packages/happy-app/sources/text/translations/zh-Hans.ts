@@ -276,6 +276,14 @@ export const zhHans: TranslationStructure = {
     session: {
         inputPlaceholder: '输入消息...',
         worktree: '工作树',
+        stopSession: '停止',
+        archiveSession: '归档',
+        forkSession: '分叉会话',
+        forkingSession: '正在分叉会话...',
+        resumedFrom: ({ name }: { name: string }) => `从 ${name} 恢复`,
+        forkedFrom: ({ name }: { name: string }) => `从 ${name} 分叉`,
+        resumedSession: '已恢复的会话',
+        forkedSession: '已分叉的会话',
     },
 
     commandPalette: {

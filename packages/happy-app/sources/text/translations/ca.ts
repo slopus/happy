@@ -275,6 +275,14 @@ export const ca: TranslationStructure = {
     session: {
         inputPlaceholder: 'Escriu un missatge...',
         worktree: 'Arbre de treball',
+        stopSession: 'Atura',
+        archiveSession: 'Arxiva',
+        forkSession: 'Bifurca sessió',
+        forkingSession: 'Bifurcant sessió...',
+        resumedFrom: ({ name }: { name: string }) => `Represa des de ${name}`,
+        forkedFrom: ({ name }: { name: string }) => `Bifurcada des de ${name}`,
+        resumedSession: 'Sessió represa',
+        forkedSession: 'Sessió bifurcada',
     },
 
     commandPalette: {

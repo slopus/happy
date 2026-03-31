@@ -8,7 +8,7 @@ import { Machine, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
-import { useSessionStatus } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useRouter } from 'expo-router';
 
@@ -265,13 +265,61 @@ export function useSessionQuickActions(
         performResume();
     }, [performResume]);
 
+    const [forkingSession, performFork] = useHappyAction(async () => {
+        const machId = session.metadata?.machineId;
+        const directory = session.metadata?.path;
+        if (!machId || !directory) {
+            throw new HappyError('Session is missing machine or directory metadata.', false);
+        }
+        if (machine && !isMachineOnline(machine)) {
+            throw new HappyError(t('machineLauncher.offlineUnableToSpawn'), false);
+        }
+
+        const result = await machineSpawnNewSession({
+            machineId: machId,
+            directory,
+            agent: toSpawnAgent(session.metadata?.flavor),
+        });
+
+        switch (result.type) {
+            case 'success': {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    await sync.refreshSessions();
+                    if (storage.getState().sessions[result.sessionId]) break;
+                    await new Promise(r => setTimeout(r, 150));
+                }
+                if (session.permissionMode) {
+                    storage.getState().updateSessionPermissionMode(result.sessionId, session.permissionMode);
+                }
+                if (session.modelMode) {
+                    storage.getState().updateSessionModelMode(result.sessionId, session.modelMode);
+                }
+                navigateToSession(result.sessionId);
+                return;
+            }
+            case 'requestToApproveDirectoryCreation':
+                throw new HappyError('Unexpected directory creation prompt during fork.', false);
+            case 'error':
+                throw new HappyError(result.errorMessage, false);
+        }
+    });
+
+    const canFork = Boolean(session.metadata?.machineId) && Boolean(machine) && isMachineOnline(machine!);
+
+    const forkSession = React.useCallback(() => {
+        performFork();
+    }, [performFork]);
+
     return {
         archiveSession,
         archivingSession,
         canArchive: sessionStatus.isConnected,
         canBugReport: __DEV__ || devModeEnabled,
+        canFork,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
+        forkSession,
+        forkingSession,
         openDetails,
         reportBug: performBugReport,
         reportingBug,

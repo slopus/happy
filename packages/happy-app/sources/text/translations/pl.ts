@@ -286,6 +286,14 @@ export const pl: TranslationStructure = {
     session: {
         inputPlaceholder: 'Wpisz wiadomość...',
         worktree: 'Drzewo robocze',
+        stopSession: 'Stop',
+        archiveSession: 'Archiwum',
+        forkSession: 'Rozgałęź sesję',
+        forkingSession: 'Rozgałęzianie sesji...',
+        resumedFrom: ({ name }: { name: string }) => `Wznowiono z ${name}`,
+        forkedFrom: ({ name }: { name: string }) => `Rozgałęziono z ${name}`,
+        resumedSession: 'Wznowiona sesja',
+        forkedSession: 'Rozgałęziona sesja',
     },
 
     commandPalette: {

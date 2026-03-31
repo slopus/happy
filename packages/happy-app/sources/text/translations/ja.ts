@@ -276,6 +276,14 @@ export const ja: TranslationStructure = {
     session: {
         inputPlaceholder: 'メッセージを入力...',
         worktree: 'ワークツリー',
+        stopSession: '停止',
+        archiveSession: 'アーカイブ',
+        forkSession: 'セッションをフォーク',
+        forkingSession: 'セッションをフォーク中...',
+        resumedFrom: ({ name }: { name: string }) => `${name}から再開`,
+        forkedFrom: ({ name }: { name: string }) => `${name}からフォーク`,
+        resumedSession: '再開されたセッション',
+        forkedSession: 'フォークされたセッション',
     },
 
     commandPalette: {

@@ -275,6 +275,14 @@ export const es: TranslationStructure = {
     session: {
         inputPlaceholder: 'Escriba un mensaje ...',
         worktree: 'Árbol de trabajo',
+        stopSession: 'Detener',
+        archiveSession: 'Archivar',
+        forkSession: 'Bifurcar sesión',
+        forkingSession: 'Bifurcando sesión...',
+        resumedFrom: ({ name }: { name: string }) => `Reanudada desde ${name}`,
+        forkedFrom: ({ name }: { name: string }) => `Bifurcada desde ${name}`,
+        resumedSession: 'Sesión reanudada',
+        forkedSession: 'Sesión bifurcada',
     },
 
     commandPalette: {
