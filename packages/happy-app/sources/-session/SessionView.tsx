@@ -436,7 +436,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             paddingHorizontal: 16,
             paddingVertical: 6,
         }}>
-            {(sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting') && (
+            {sessionStatus.state === 'thinking' && (
                 <Pressable
                     onPress={() => sessionAbort(sessionId)}
                     style={{
@@ -534,7 +534,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onMicPress={micButtonState.onMicPress}
             isMicActive={micButtonState.isMicActive}
             onAbort={() => sessionAbort(sessionId)}
-            showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+            showAbortButton={sessionStatus.state === 'thinking'}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
