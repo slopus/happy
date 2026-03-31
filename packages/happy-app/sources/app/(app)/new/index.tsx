@@ -664,113 +664,95 @@ function NewSessionScreen() {
             style={styles.container}
         >
             <View style={styles.inner}>
-                <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center', paddingHorizontal: 12, gap: 8, paddingTop: 12 }}>
-
-                    {/* Config box */}
-                    <View style={styles.configBox}>
+                <View style={styles.contentArea}>
+                    {/* Compact config header */}
+                    <View style={styles.configHeader}>
                         {isConfigExpanded ? (
                             <>
-                                {/* Machine row */}
-                                <Pressable
-                                    style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                    onPress={() => togglePicker('machine')}
-                                >
-                                    <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
-                                    <Text style={styles.configLabel} numberOfLines={1}>
-                                        {machineName}
-                                    </Text>
-                                    {selectedMachine && isOffline && (
-                                        <Text style={{ fontSize: 12, color: theme.colors.status.disconnected }}>
-                                            {t('status.lastSeen', { time: formatLastSeen(selectedMachine.activeAt, false) })}
-                                        </Text>
-                                    )}
-                                </Pressable>
-
-                                {/* Config rows below machine — grayed out when offline */}
-                                <View style={{ opacity: isOffline ? 0.4 : 1 }} pointerEvents={isOffline ? 'none' : 'auto'}>
-                                    {/* Path row */}
+                                {/* Row 1: Machine (left) + Path (right) */}
+                                <View style={styles.headerRow}>
                                     <Pressable
-                                        style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                        onPress={() => togglePicker('path')}
+                                        style={(p) => [styles.headerTapTarget, p.pressed && styles.pressedFade]}
+                                        onPress={() => togglePicker('machine')}
                                     >
-                                        <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
-                                        <Text style={styles.configLabel} numberOfLines={1}>
+                                        <Ionicons name="desktop-outline" size={14} color={theme.colors.textSecondary} />
+                                        <Text style={styles.headerLabel} numberOfLines={1}>
+                                            {machineName}
+                                        </Text>
+                                        {selectedMachine && isOffline && (
+                                            <Text style={{ fontSize: 11, color: theme.colors.status.disconnected }}>
+                                                {t('status.lastSeen', { time: formatLastSeen(selectedMachine.activeAt, false) })}
+                                            </Text>
+                                        )}
+                                    </Pressable>
+                                    <Pressable
+                                        style={(p) => [styles.headerTapTarget, p.pressed && styles.pressedFade]}
+                                        onPress={() => togglePicker('path')}
+                                        disabled={isOffline}
+                                    >
+                                        <Ionicons name="folder-outline" size={14} color={theme.colors.textSecondary} />
+                                        <Text style={styles.headerLabelSecondary} numberOfLines={1}>
                                             {pathName}
                                         </Text>
                                     </Pressable>
-
-                                    {/* Agent + model + effort row */}
-                                    <View style={styles.configRow}>
-                                        <Pressable
-                                            onPress={cycleAgent}
-                                            style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 8 }, p.pressed && styles.configRowPressed]}
-                                        >
-                                            <Image
-                                                source={agentIcons[agent.key]}
-                                                style={{ width: 15, height: 15 }}
-                                                contentFit="contain"
-                                                tintColor={theme.colors.textSecondary}
-                                            />
-                                            <Text style={styles.configLabel} numberOfLines={1}>
-                                                {agent.label}
-                                            </Text>
-                                        </Pressable>
-
-                                        {showModel && (
-                                            <>
-                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                                <Pressable onPress={cycleModel} style={(p) => [p.pressed && styles.configRowPressed]}>
-                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                                        {currentModel.name}
-                                                    </Text>
-                                                </Pressable>
-                                            </>
-                                        )}
-
-                                        {showEffort && (
-                                            <>
-                                                <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
-                                                <Pressable onPress={cycleEffort} style={(p) => [p.pressed && styles.configRowPressed]}>
-                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                                        {currentEffort?.name}
-                                                    </Text>
-                                                </Pressable>
-                                            </>
-                                        )}
-                                    </View>
-
-                                    {/* Permission row */}
-                                    {showPermission && (
-                                        <Pressable
-                                            style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                            onPress={cyclePermission}
-                                        >
-                                            <Ionicons
-                                                name={permissionStyle?.icon ?? 'shield-outline'}
-                                                size={15}
-                                                color={theme.colors.textSecondary}
-                                            />
-                                            <Text style={styles.configLabel} numberOfLines={1}>
-                                                {currentPermission?.name}
-                                            </Text>
-                                        </Pressable>
-                                    )}
-
-                                    {/* Worktree row */}
-                                    {supportsWorktree && (
-                                        <Pressable
-                                            style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                            onPress={() => togglePicker('worktree')}
-                                        >
-                                            <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
-                                            <Text style={styles.configLabel} numberOfLines={1}>
-                                                {worktreeLabel}
-                                            </Text>
-                                        </Pressable>
-                                    )}
                                 </View>
 
-                                {/* Offline help section */}
+                                {/* Row 2: Agent + inline pills for model/effort/permission/worktree */}
+                                <View style={[styles.headerRow, { opacity: isOffline ? 0.4 : 1 }]} pointerEvents={isOffline ? 'none' : 'auto'}>
+                                    <Pressable
+                                        onPress={cycleAgent}
+                                        style={(p) => [styles.headerTapTarget, p.pressed && styles.pressedFade]}
+                                    >
+                                        <Image
+                                            source={agentIcons[agent.key]}
+                                            style={{ width: 14, height: 14 }}
+                                            contentFit="contain"
+                                            tintColor={theme.colors.textSecondary}
+                                        />
+                                        <Text style={styles.headerLabel} numberOfLines={1}>
+                                            {agent.label}
+                                        </Text>
+                                    </Pressable>
+
+                                    <View style={styles.pillRow}>
+                                        {showModel && (
+                                            <Pressable onPress={cycleModel} style={(p) => [styles.pill, p.pressed && styles.pressedFade]}>
+                                                <Text style={styles.pillText} numberOfLines={1}>
+                                                    {currentModel.name}
+                                                </Text>
+                                            </Pressable>
+                                        )}
+                                        {showEffort && (
+                                            <Pressable onPress={cycleEffort} style={(p) => [styles.pill, p.pressed && styles.pressedFade]}>
+                                                <Text style={styles.pillText} numberOfLines={1}>
+                                                    {currentEffort?.name}
+                                                </Text>
+                                            </Pressable>
+                                        )}
+                                        {showPermission && (
+                                            <Pressable onPress={cyclePermission} style={(p) => [styles.pill, p.pressed && styles.pressedFade]}>
+                                                <Ionicons
+                                                    name={permissionStyle?.icon ?? 'shield-outline'}
+                                                    size={11}
+                                                    color={permissionStyle?.color ?? theme.colors.textSecondary}
+                                                />
+                                                <Text style={[styles.pillText, permissionStyle && { color: permissionStyle.color }]} numberOfLines={1}>
+                                                    {currentPermission?.name}
+                                                </Text>
+                                            </Pressable>
+                                        )}
+                                        {supportsWorktree && (
+                                            <Pressable onPress={() => togglePicker('worktree')} style={(p) => [styles.pill, p.pressed && styles.pressedFade]}>
+                                                <Octicons name="git-branch" size={11} color={theme.colors.textSecondary} />
+                                                <Text style={styles.pillText} numberOfLines={1}>
+                                                    {worktreeLabel}
+                                                </Text>
+                                            </Pressable>
+                                        )}
+                                    </View>
+                                </View>
+
+                                {/* Offline help */}
                                 {isOffline && (
                                     <View style={styles.offlineHelp}>
                                         <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
@@ -786,16 +768,21 @@ function NewSessionScreen() {
                                 )}
                             </>
                         ) : (
-                            /* Collapsed: path + chevron to re-expand */
+                            /* Collapsed: compact summary to re-expand */
                             <Pressable
-                                style={(p) => [styles.collapsedRow, p.pressed && styles.configRowPressed]}
+                                style={(p) => [styles.collapsedRow, p.pressed && styles.pressedFade]}
                                 onPress={toggleConfig}
                             >
-                                <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
-                                <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
+                                <Image
+                                    source={agentIcons[agent.key]}
+                                    style={{ width: 14, height: 14 }}
+                                    contentFit="contain"
+                                    tintColor={theme.colors.textSecondary}
+                                />
+                                <Text style={[styles.headerLabel, { flex: 1 }]} numberOfLines={1}>
                                     {pathName}
                                 </Text>
-                                <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+                                <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} />
                             </Pressable>
                         )}
                     </View>
@@ -806,20 +793,7 @@ function NewSessionScreen() {
                             <PickerContent {...pickerData} onSelect={handlePickerSelect} />
                         </View>
                     )}
-                </View>
 
-                {/* Web: click-away backdrop */}
-                {Platform.OS === 'web' && activePicker && (
-                    <Pressable
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 }}
-                        onPress={() => setActivePicker(null)}
-                    />
-                )}
-
-                {/* Spacer */}
-                <View style={{ flex: 1 }} />
-
-                <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center', paddingHorizontal: 12, gap: 8 }}>
                     {/* Input box */}
                     <View style={styles.inputBox}>
                         <View style={styles.inputField}>
@@ -868,6 +842,15 @@ function NewSessionScreen() {
                     </View>
                 </View>
 
+                {/* Web: click-away backdrop */}
+                {Platform.OS === 'web' && activePicker && (
+                    <Pressable
+                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 }}
+                        onPress={() => setActivePicker(null)}
+                    />
+                )}
+
+                <View style={{ flex: 1 }} />
                 <View style={{ height: Math.max(16, safeArea.bottom) }} />
             </View>
 
@@ -897,12 +880,79 @@ const styles = StyleSheet.create((theme) => ({
     inner: {
         flex: 1,
     },
-    configBox: {
+    contentArea: {
+        maxWidth: layout.maxWidth,
+        width: '100%',
+        alignSelf: 'center' as const,
+        paddingHorizontal: 12,
+        gap: 8,
+        paddingTop: 12,
+    },
+    configHeader: {
         backgroundColor: theme.colors.input.background,
-        borderRadius: Platform.select({ default: 16, android: 20 }),
-        paddingVertical: 4,
-        paddingHorizontal: 4,
+        borderRadius: Platform.select({ default: 12, android: 16 }),
+        paddingVertical: 2,
+        paddingHorizontal: 2,
         overflow: 'hidden',
+    },
+    headerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        gap: 8,
+    },
+    headerTapTarget: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        borderRadius: 8,
+        flexShrink: 1,
+    },
+    headerLabel: {
+        fontSize: 13,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    headerLabelSecondary: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    pillRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        flexShrink: 0,
+    },
+    pill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: theme.colors.header.background,
+        borderRadius: 8,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+    },
+    pillText: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    pressedFade: {
+        opacity: 0.6,
+    },
+    collapsedRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 10,
     },
     popover: {
         borderRadius: 12,
@@ -923,45 +973,21 @@ const styles = StyleSheet.create((theme) => ({
             },
         }),
     },
-    configRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        borderRadius: 12,
-    },
-    collapsedRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        borderRadius: 12,
-    },
-    configRowPressed: {
-        opacity: 0.6,
-    },
-    configLabel: {
-        fontSize: 14,
-        color: theme.colors.text,
-        ...Typography.default('semiBold'),
-        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
-    },
     inputBox: {
         backgroundColor: theme.colors.input.background,
         borderRadius: Platform.select({ default: 16, android: 20 }),
         overflow: 'hidden',
         paddingVertical: 2,
+        paddingBottom: 8,
         paddingHorizontal: 8,
     },
     inputField: {
         flexDirection: 'row',
         alignItems: 'flex-end',
         paddingLeft: 8,
-        paddingRight: 4,
+        paddingRight: 8,
         paddingVertical: 4,
-        minHeight: 40,
+        minHeight: 44,
         gap: 8,
     },
     sendButton: {
@@ -983,18 +1009,17 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'flex-start',
         gap: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
     },
     offlineHelpTitle: {
-        fontSize: 13,
+        fontSize: 12,
         ...Typography.default('semiBold'),
-        marginBottom: 4,
+        marginBottom: 2,
     },
     offlineHelpText: {
-        fontSize: 12,
-        lineHeight: 18,
+        fontSize: 11,
+        lineHeight: 16,
         ...Typography.default(),
     },
 }));
