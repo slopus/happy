@@ -1573,9 +1573,45 @@ machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
 
 All 3 worktrees removed. Branches deleted. Sessions stopped.
 
+## Phase 5.4: DONE
+
+Reviewed `roadmap.md` P2 and the completed Phase 5.1-5.3 results. Selected the
+next highest-impact batch.
+
+### Decision
+
+The next work item is **Phase 5.5 — real encrypted attachment flow**.
+
+### Why this is next
+
+1. The biggest remaining gap is that attachments are still sent as local
+   URIs/object URLs. That means the new `+` composer flow is not yet a real
+   end-to-end product workflow even though the UI now exists.
+2. Image preview expansion is useful, but it is secondary until attachments
+   survive real server/CLI/session boundaries.
+3. Drag-and-drop is mentioned only as a later validation item in P2; it should
+   not outrank finishing the core encrypted attachment path.
+
+### Scope of Phase 5.5
+
+1. Wire composer attachments to the real encrypted file upload/send path the
+   product already supports where possible.
+2. Validate the flow end-to-end on web with the real server + CLI integration:
+   select file, send message, receive/render the file part, and confirm the
+   attachment survives reload/history.
+3. If the same plumbing naturally unlocks it, include the smallest necessary
+   follow-up for web usability (image preview expansion and/or drag-and-drop),
+   but do not let those polish items replace the transport fix.
+
+### Explicitly not next
+
+- P2.5 PI-style control/fork/resume work
+- P3 session-list or tool UI polish
+- Drag-and-drop as a standalone batch ahead of the encrypted upload fix
+
 ## Current Task
 
-TASK: Phase 5.4 — review what P2 gaps remain and select the next batch.
+TASK: Phase 5.5 — wire composer attachments to the real encrypted file flow and
+validate it end-to-end on web.
 
-Read `roadmap.md` P2 section and the Phase 5.1-5.3 results to determine
-what the highest-impact next work item is.
+Focus on the actual attachment transport first, not drag-and-drop polish.
