@@ -7,6 +7,7 @@ const {
     approvePermission,
     denyPermission,
     answerQuestion,
+    sendAbortRequest,
 } = vi.hoisted(() => ({
     sessionRPC: vi.fn(),
     getSession: vi.fn(),
@@ -14,6 +15,7 @@ const {
     approvePermission: vi.fn(),
     denyPermission: vi.fn(),
     answerQuestion: vi.fn(),
+    sendAbortRequest: vi.fn(),
 }));
 
 vi.mock('./apiSocket', () => ({
@@ -33,6 +35,9 @@ vi.mock('./sync', () => ({
             approvePermission,
             denyPermission,
             answerQuestion,
+            node: {
+                sendAbortRequest,
+            },
         },
         encryption: {
             getMachineEncryption: vi.fn(),
@@ -105,6 +110,10 @@ describe('ops v3 routing', () => {
             'perm_1',
             'request aborted by user',
         );
+        expect(sendAbortRequest).toHaveBeenCalledWith('ses_1', {
+            source: 'user',
+            reason: expect.stringContaining('STOP what you are doing'),
+        });
         expect(sessionRPC).not.toHaveBeenCalled();
     });
 

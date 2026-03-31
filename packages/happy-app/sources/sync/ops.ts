@@ -359,11 +359,9 @@ export async function sessionAllow(sessionId: string, id: string, mode?: 'defaul
     }
 
     await sync.appSyncStore!.approvePermission(sessionId as SessionID, id, {
-        decision: (
-            decision === 'approved_for_session'
-            || mode === 'acceptEdits'
-            || (allowedTools?.length ?? 0) > 0
-        ) ? 'always' : 'once',
+        decision: decision
+            ? (decision === 'approved_for_session' ? 'always' : 'once')
+            : ((mode === 'acceptEdits' || (allowedTools?.length ?? 0) > 0) ? 'always' : 'once'),
         allowTools: allowedTools,
     });
 }
@@ -383,6 +381,13 @@ export async function sessionDeny(sessionId: string, id: string, mode?: 'default
         id,
         decision === 'abort' ? 'request aborted by user' : 'request denied by user',
     );
+
+    if (decision === 'abort') {
+        await sync.appSyncStore!.node.sendAbortRequest(sessionId as SessionID, {
+            source: 'user',
+            reason: `The user doesn't want to proceed with this tool use. The tool use was rejected. STOP what you are doing and wait for the user to tell you how to proceed.`,
+        });
+    }
 }
 
 /**
