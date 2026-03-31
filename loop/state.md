@@ -1932,16 +1932,83 @@ re-validate fork/resume on the real web stack**.
 Updated `roadmap.md` with the Phase 6.0 priority decision and the scoped next
 task.
 
+## Phase 6.1: DONE
+
+Fixed the machine-store resolution blocker. Committed in `ed056626`.
+
+### Root cause (3 layers)
+
+1. **Web app `MetadataSchema.safeParse()` failed on v3 format**: The SyncNode
+   stores metadata as `{ session: { directory, title }, metadata: { ... } }`.
+   `MetadataSchema` requires flat `path` and `host` fields. Parse failure →
+   `session.metadata = null` → `machineId` undefined → `canFork` false.
+
+2. **CLI metadata seeding dropped silently**: Session-scoped SyncNode
+   connections don't call `fetchSessions()` during `connect()`. The session
+   state doesn't exist in the local map. `updateMetadata()` threw
+   `Session not found` which the fire-and-forget call swallowed.
+
+3. **`machineId` never in SyncNode metadata**: Even after the seeding
+   worked, the old code never included `machineId` in the inner metadata
+   blob. Only `claudeSessionId` and `summary` were stored.
+
+### Fixes (3 files, 7 total changed)
+
+1. **`sessionEncryption.ts`**: When decrypted data has `{ session, metadata }`
+   shape, extract inner `metadata` and map `session.directory → path`.
+2. **All 5 agent runners** (claude, codex, gemini, openclaw, acp): Seed
+   `machineId`, `path`, `host`, `flavor`, `lifecycleState` into SyncNode
+   metadata immediately after `syncBridge.connect()`.
+3. **`sync-node.ts`**: `updateMetadata()` uses `ensureSession()` instead of
+   throwing when session state doesn't exist (fixes session-scoped token race).
+
+### Validation
+
+**Environment:** `quiet-fjord` — server `:58035`, web `:58036`.
+
+**Session:** `RNOD4V2mOR5DAZYuApYnl3Zn` (claude, machine-store-test2 worktree).
+
+**Server metadata proof** — inner metadata now contains:
+```json
+{
+  "machineId": "264b1d9a-42d2-4886-ab1c-19f98f46d9bf",
+  "path": ".../machine-store-test2",
+  "host": "Kirills-MacBook-Pro-9.local",
+  "flavor": "claude",
+  "version": "0.15.0-beta.0",
+  "os": "darwin",
+  "tools": ["Task", "Bash", "Read", ...],
+  "claudeSessionId": "6cf6e9f7-...",
+  "summary": { "text": "Quick chat", ... }
+}
+```
+
+**Playwright proof:**
+- Fork Session button: **visible**
+- Fork button count: **2** (control bar + actions popover)
+- Fork button opacity: **1** (enabled, not 0.5/disabled)
+
+**Typecheck:** happy-app, happy-cli, happy-sync all pass.
+
+### Concrete gaps for next phase
+
+1. **Fork action exercised**: Button is enabled but fork hasn't been clicked
+   to verify a real child session is created and `SessionOriginBadge` renders.
+2. **Stop button visibility**: Still shows even when session is idle.
+3. **Worktree/agent selection during fork**: Not yet implemented.
+4. **Existing sessions**: Sessions created before this fix still have no
+   `machineId` in their v3 metadata (the CLI fix only applies to new
+   sessions). A backfill or graceful fallback would help.
+
 ## Current Task
 
-TASK: Phase 6.1 — fix the machine-store blocker and re-validate fork/resume.
+TASK: Phase 6.2 — exercise fork on real web, verify SessionOriginBadge,
+decide next follow-up.
 
 Scope:
-- Fix the web machine-store path so `useMachine(machineId)` resolves live
-  machines for sessions spawned via `happy-agent`.
-- Re-run the real-stack web control/fork/resume validation from the active
-  composer controls.
-- Verify a real forked child session is created and `SessionOriginBadge`
-  renders with real attribution.
-- Use that proof to decide whether the next follow-up is stop-button
-  visibility cleanup, worktree/agent selection during fork, or a move to P3.
+- Click fork on the validated session in the web browser.
+- Verify a real forked child session is created.
+- Verify `SessionOriginBadge` renders "Forked from X" with correct
+  attribution.
+- Use the evidence to decide whether the next step is stop-button
+  visibility cleanup, worktree/agent selection during fork, or move to P3.
