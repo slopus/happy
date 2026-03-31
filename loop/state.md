@@ -641,19 +641,65 @@ No webreel was run alongside, so `component-background-running.png` scroll fix
 is not visually verified yet — it's a mechanical addition matching the existing
 step-completion capture pattern.
 
+## Phase 2.6: DONE
+
+Determined the next highest-impact work item after reviewing:
+
+- `roadmap.md`
+- `e2e-recordings/ux-review/ux-review-findings.md`
+- the completed Phase 2.1-2.5 validation state in this file
+
+### Decision
+
+The next major work item is **Phase 3.0 — real-stack `happy-agent` spawn
+validation on web**.
+
+### Why this wins now
+
+1. **Roadmap priority:** `roadmap.md` puts `happy-agent` orchestration at `P0`,
+   above the remaining `P1`/`P2` UX work.
+2. **Current walkthrough evidence is no longer the main blocker:** the old
+   review gaps for Steps `11..15` and `29..38` were closed by Phases 2.4 and
+   2.5. The review file is now partially stale relative to those later phases.
+3. **Remaining walkthrough issues are lower-impact:** the only unresolved
+   capture concern is visual re-verification of
+   `component-background-running.png` after the Phase 2.5 scroll fix, plus the
+   cosmetic long-path-density note in the review. Neither is more important
+   than proving the roadmap's orchestration control plane.
+4. **This unlocks the rest of the roadmap:** the roadmap explicitly says to
+   prove `happy-agent` in the current real environment before delegating other
+   roadmap work through it.
+
+### Scope of the next task
+
+Validate the existing `happy-agent` base flow end-to-end on the real stack:
+
+1. authenticate or reuse the current authenticated environment
+2. spawn a real agent into a new worktree via `happy-agent`
+3. confirm the spawned session appears in the same Happy web environment
+4. send follow-up work to that spawned session
+5. monitor it to an idle/settled state
+6. capture a real Happy web URL and concrete verification evidence
+7. write the result back into `roadmap.md`
+
+### Explicitly not next
+
+- More walkthrough-capture cleanup
+- Composer overhaul
+- Session-list polish
+
+Those remain valid roadmap items, but they are lower priority than the `P0`
+orchestration proof now that the web lifecycle/control-flow path is stable.
+
 ## Current Task
 
-TASK: Phase 2.6 — determine next work item.
+TASK: Phase 3.0 — validate `happy-agent` spawn on the real web stack.
 
-Review the current state of all walkthrough validation and product roadmap.
-All Phase 2.x lifecycle/control-flow tasks are complete:
-- Phase 2.1: Step 10 + Step 28 UX fixes
-- Phase 2.2: Targeted validation of 2.1 fixes
-- Phase 2.3: UX review refresh
-- Phase 2.4: Remaining gap validation (steps 10-15, 28-38)
-- Phase 2.5: Background-task wait stabilization (steps 31/32)
-
-Decide the next highest-impact task based on:
-- `roadmap.md` priorities
-- Remaining walkthrough gaps or product issues
-- `e2e-recordings/ux-review/ux-review-findings.md` open items
+Do the roadmap `P0` proof in the current environment:
+- reuse the current authenticated env
+- spawn a real agent into a new worktree with `happy-agent`
+- confirm the spawned chat is visible in the same Happy web account/env
+- send it follow-up work
+- monitor it until idle/settled
+- collect a real session URL plus verification evidence
+- write the outcome back into `roadmap.md`
