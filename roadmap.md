@@ -667,6 +667,45 @@ Committed as `f4ce7686` (15 files, +276/-2).
 - Worktree/agent selection during fork
 - Real video recording of the control/fork/resume flow
 
+### Phase 5.8 review
+
+**Decision: validate the Phase 5.7 control/fork/resume flow on real web
+sessions before dispatching another P2.5 batch or moving to P3.**
+
+**Why this is next:**
+
+1. The Phase 5.7 delivery closes some of the P2.5 build work, but the roadmap's
+   explicit validation requirements are still unmet: real long-running session,
+   real fork flow, web video, and checkpoint screenshots.
+2. The remaining known gaps are still about proving and tightening the current
+   control path, not inventing the next one. The control bar still has a
+   placeholder fork onPress, and the current fork flow has not yet been proven
+   against a real web session from control surface to attributed child session.
+3. Dispatching another design-heavy P2.5 batch before validating the first
+   batch would risk building on the wrong interaction model.
+4. Moving to P3 now would freeze session-list/tool-row decisions around an
+   unvalidated fork/resume surface.
+
+**Next highest-impact work item: Phase 5.9 — real-stack P2.5 validation.**
+
+**Scope of Phase 5.9:**
+
+1. Validate the current active-session control surface on a real long-running
+   web session.
+2. Exercise the fork path end-to-end from the real UI and confirm the child
+   session remains clearly attributable.
+3. Capture the required evidence: web video plus checkpoint screenshots for the
+   before/after control state, fork/resume state, and branched session state.
+4. Use that validation to decide the next P2.5 sub-batch, likely focusing on
+   the gaps that remain after proof rather than pre-emptively exploring more
+   variants.
+
+**Explicitly not next:**
+
+- Moving to P3 session-list/tool-row polish
+- A new PI-style variant batch before the current flow is validated
+- Returning to standalone P2 attachment/image polish
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.

@@ -1797,16 +1797,61 @@ f4ce7686 Phase 5.7: add session control bar, fork flow, and attribution badge
 
 All 3 worktrees removed. Branches deleted. Sessions stopped.
 
+## Phase 5.8: DONE
+
+Reviewed the P2.5 concrete requirements in `roadmap.md` against what Phase 5.7
+actually delivered and selected the next highest-impact step.
+
+### Comparison summary
+
+Phase 5.7 closed part of the build work:
+
+- active-session control bar adjacent to the composer
+- fork quick action plumbing
+- resume/fork attribution badge
+
+But several P2.5 requirements are still open or unproven:
+
+- no real-stack web validation yet for the new control/fork/resume flow
+- no recorded web video or checkpoint screenshots for the full flow
+- control-bar fork action is still a placeholder, so the new surface is not yet
+  proven end-to-end from the primary active-chat controls
+- fork does not yet expose different worktree / agent selection
+- PI-style control exploration has not started
+
+### Decision
+
+Do **not** move to P3 yet, and do **not** dispatch another P2.5 build batch
+first. The next work item is **Phase 5.9 — real-stack validation of the Phase
+5.7 control/fork/resume flow**.
+
+### Why this is next
+
+1. The roadmap's P2.5 validation requirements are still unmet.
+2. The current control/fork model needs proof before more design/delegation
+   work builds on top of it.
+3. Moving to P3 now would lock in session-list/tool-row decisions around an
+   unvalidated control surface.
+
+### Roadmap update
+
+Updated `roadmap.md` with the Phase 5.8 review and the Phase 5.9 decision.
+
 ## Current Task
 
-TASK: Phase 5.8 — review remaining P2.5 requirements, determine what's next.
+TASK: Phase 5.9 — validate the Phase 5.7 control/fork/resume flow on the real web stack.
 
-Review the P2.5 concrete requirements from `roadmap.md` against what Phase 5.7
-delivered. Decide whether to:
-1. Validate the Phase 5.7 changes on real web sessions (targeted walkthrough
-   slice or manual Playwright check)
-2. Dispatch the next P2.5 sub-batch (e.g., real-stack fork validation,
-   PI-style control surface exploration)
-3. Move to P3 if P2.5 is sufficiently covered
+Run a real-stack validation pass for the Phase 5.7 changes and capture evidence.
 
-Update `roadmap.md` and `loop/state.md` with the decision.
+Required validation:
+1. Use a real long-running web session, not a toy transcript.
+2. Verify the active-session control surface in-context near the composer.
+3. Exercise the fork path from the real UI and confirm the resulting child
+   session is clearly attributable to the parent.
+4. Record a web video and capture checkpoint screenshots for:
+   - before control change
+   - after control change
+   - fork/resume state
+   - branched child session state
+5. Write the results back into `roadmap.md` and `loop/state.md`, including any
+   concrete gaps that should define the next P2.5 sub-batch.
