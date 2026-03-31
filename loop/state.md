@@ -1365,11 +1365,64 @@ The next work item is **Phase 5.0 — select and dispatch the next P1 dispatch
 batch** targeting the remaining P1 protocol/metadata items, OR move to P2
 (Composer overhaul) if the remaining P1 items are deemed secondary enough.
 
+## Phase 5.0: DONE
+
+Reviewed the remaining P1 items against the roadmap's next user-visible priority
+and selected the next dispatch direction.
+
+### Decision
+
+Begin **P2**. The next work item is **Phase 5.1 — dispatch the first composer
+overhaul batch via `happy-agent`**.
+
+### Why this wins now
+
+1. The acute P1 blockers are already fixed: permission/control-flow/rendering
+   problems no longer force operators into `--yolo` or manual cleanup.
+2. The remaining P1 items are real but secondary:
+   - read receipts are cross-cutting protocol work, not the highest-value
+     immediate web improvement
+   - metadata clarity is good enough for the orchestration/reporting flow
+     proven in Phases 3.0-4.5
+   - Codex sandbox behavior should only return to the top if a fresh repro
+     survives the Phase 4.5 fixes
+3. P2 is the roadmap's next major user-visible priority and still respects the
+   "NO NEW SCOPE" rule because it is mostly convergence/simplification of the
+   existing composer surfaces.
+4. The composer work is independent enough to dispatch in parallel and validate
+   on the real web stack, matching the proven `happy-agent` workflow.
+
+### Scope of Phase 5.1
+
+Dispatch `2-3` independent composer tasks via `happy-agent`:
+
+1. **Composer layout unification**
+   - make the new-session composer structurally/visually closer to the regular
+     chat composer
+   - reduce chrome above the input
+   - enforce the machine → path → agent → input hierarchy
+
+2. **Composer controls integration**
+   - move model / permissions / thinking controls into the input row or
+     immediately adjacent to it
+   - keep active-chat and new-session control treatment aligned
+
+3. **Path and worktree entry flow**
+   - add direct custom-path entry
+   - preserve first-class worktree choices
+   - auto-focus the relevant search/input on desktop control open
+
+### Explicitly not next
+
+- Another P1-only dispatch batch for read receipts or metadata cleanup
+- P2 attachment/image support before the core composer shape is fixed
+- P3 session-list/tool-UI polish
+
 ## Current Task
 
-TASK: Phase 5.0 — select next P1 dispatch batch or begin P2.
+TASK: Phase 5.1 — dispatch the first P2 composer-overhaul batch via
+`happy-agent`.
 
-The core P1 permission/control-flow/rendering blockers are all fixed. Review
-whether the remaining P1 items (read receipts, metadata clarity, sandbox
-behavior) warrant another dispatch batch, or if it's time to move to P2
-(Composer overhaul) which is the roadmap's next major user-visible priority.
+Use the validated multi-session workflow to send the three scoped composer tasks
+in parallel, require web validation evidence from each session, and write the
+results back into `roadmap.md`.

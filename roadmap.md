@@ -443,6 +443,46 @@ Goal: remove the broken session-control paths that currently make remote agent m
 - For plan approval fixes, verify approve and deny both work.
 - For task rendering fixes, verify the output is actually visible and meaningful in the session transcript.
 
+### Post-Phase 4.6 priority decision (2026-03-30)
+
+**Decision: begin P2. The next work item is Phase 5.1 — the first composer-overhaul dispatch batch.**
+
+The remaining P1 items are still real, but they are no longer the highest-leverage next move:
+
+- **Read receipts / message-consumption visibility** is important protocol work, but it is cross-cutting, less directly user-visible, and no longer blocking the already-validated `happy-agent` dispatch flow.
+- **Provider/session metadata clarity** still matters for debugging, but the current metadata is already good enough to complete the Phase 3.0-4.5 orchestration work and roadmap dispatch batches.
+- **Codex sandbox behavior in specific non-`yolo` modes** should stay open as a follow-up only when there is a fresh repro after the Phase 4.5 permission/control fixes.
+
+P2 is now the better priority because it is the next major user-visible roadmap item and still fits the "no new scope" rule: it is a convergence/simplification pass that brings the new-session composer closer to the already-existing regular chat input instead of inventing another surface.
+
+**Scope of Phase 5.1:**
+
+- dispatch `2-3` independent composer tasks via `happy-agent`
+- keep validation on web with the real server + real CLI spawn path
+- bias the first batch toward the highest-value structural gaps, not attachments polish yet
+
+**Initial Phase 5.1 batch shape:**
+
+1. **Composer layout unification**
+   - make the new-session composer visually/structurally closer to the regular chat composer
+   - reduce chrome above the input
+   - enforce the desired hierarchy: machine, project path, agent, input
+
+2. **Composer controls integration**
+   - move model / permissions / thinking controls into the input row or immediately adjacent to it
+   - keep active-chat and new-session control treatment aligned
+
+3. **Path and worktree entry flow**
+   - add direct custom-path entry
+   - preserve first-class worktree choices
+   - auto-focus the relevant search/input when machine/path/worktree controls are opened on desktop
+
+**Explicitly not next:**
+
+- another P1-only dispatch batch for read receipts or metadata cleanup
+- P2 attachment/image support before the core composer shape is fixed
+- P3 session-list or tool-UI polish
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.
