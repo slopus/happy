@@ -1418,11 +1418,62 @@ Dispatch `2-3` independent composer tasks via `happy-agent`:
 - P2 attachment/image support before the core composer shape is fixed
 - P3 session-list/tool-UI polish
 
+## Phase 5.1: DONE
+
+Dispatched the first P2 composer-overhaul batch via `happy-agent`. All 3 tasks
+completed successfully.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510,
+machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
+
+### Sessions
+
+| Task | Session ID | Commit | Files | Result |
+|------|-----------|--------|-------|--------|
+| Composer layout | `CfBQJcfhgFOOie3bX6ucBJxK` | `ed75b79a` | 1 (+170/-145) | PASS |
+| Composer controls | `LcDrpV2NS4l5lPwDKMGM1s7b` | `59e2b4b3` | 4 (+180/-1) | PASS |
+| Path/worktree entry | `mRGX1aA3mbDeP4dRl3iI8NzB` | `5361e6d2` | 12 (+104/-5) | PASS |
+
+### What each agent delivered
+
+1. **Composer layout** — Collapsed 6+ row config box into a compact 2-row
+   header. Row 1: machine icon + name (left), folder icon + path (right-aligned).
+   Row 2: agent icon + name, model, effort, permission as tappable pills, plus
+   worktree pill. Input is now the main visual focus, moved higher on screen.
+   Single file changed: `sources/app/(app)/new/index.tsx`.
+
+2. **Composer controls** — Added compact control pills (model, permission,
+   effort) to `AgentInput.tsx` for active chat sessions. Pills in a row below
+   text input, inside the same visual container. Added `useSessionEffort` hook
+   in `storage.ts`, `effortLevel` to `StorageTypes`, wired through
+   `SessionView.tsx`. 4 files changed.
+
+3. **Path/worktree entry** — Made the path picker search input double as custom
+   path entry: "Use this path" option appears when typed value matches no
+   existing item. Added `autoFocus` on web for all pickers. Added
+   `allowCustomValue` and `customValueLabel` props to `PickerContent`. Added
+   translations for custom path UI across all 11 language files. 12 files.
+
+### Typecheck
+
+`npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes with all 3
+merged.
+
+### Notes
+
+- Agent 2 (controls) committed to `main` instead of `happy-sync-refactor`
+  because its worktree spawned from the main repo root. Cherry-picked via
+  `git cherry-pick ab8399c8` — clean merge, no conflicts.
+- All 3 sessions used yolo mode, no permission blocks.
+- Total time: ~8 minutes from dispatch to all 3 idle.
+- Web URLs: all sessions accessible at
+  `http://localhost:58036/session/<id>?dev_token=...&dev_secret=...`
+
 ## Current Task
 
-TASK: Phase 5.1 — dispatch the first P2 composer-overhaul batch via
-`happy-agent`.
+TASK: Phase 5.2 — select the next P2 work batch.
 
-Use the validated multi-session workflow to send the three scoped composer tasks
-in parallel, require web validation evidence from each session, and write the
-results back into `roadmap.md`.
+Review the P2 roadmap section's remaining concrete requirements against what
+Phase 5.1 delivered and decide the next highest-impact dispatch batch.

@@ -483,6 +483,26 @@ P2 is now the better priority because it is the next major user-visible roadmap 
 - P2 attachment/image support before the core composer shape is fixed
 - P3 session-list or tool-UI polish
 
+### Phase 5.1 results (2026-03-30)
+
+All 3 composer tasks dispatched via `happy-agent` and completed successfully.
+
+| Task | Session ID | Commit | Files | Result |
+|------|-----------|--------|-------|--------|
+| Composer layout unification | `CfBQJcfhgFOOie3bX6ucBJxK` | `ed75b79a` | 1 file (+170/-145) | PASS |
+| Composer controls integration | `LcDrpV2NS4l5lPwDKMGM1s7b` | `59e2b4b3` (cherry-pick of `ab8399c8`) | 4 files (+180/-1) | PASS |
+| Path and worktree entry flow | `mRGX1aA3mbDeP4dRl3iI8NzB` | `5361e6d2` | 12 files (+104/-5) | PASS |
+
+**What each agent delivered:**
+
+1. **Composer layout** — Collapsed the 6+ row config box into a 2-row compact header: row 1 is machine (left) + path (right), row 2 is agent/model/effort/permission as inline tappable pills. Worktree is a compact pill in row 2. Input is now the main focus of the layout.
+
+2. **Composer controls** — Added compact control pills (model, permission, effort) to the active-chat `AgentInput` component. Pills sit in a row below the text input inside the same visual container. Each cycles on tap. Added `useSessionEffort` hook and wired it through `SessionView.tsx`.
+
+3. **Path/worktree entry** — Made the path picker search input double as custom path entry: if the typed value matches no existing item, a "Use this path" option appears. Added `autoFocus` on web for all pickers. Added translations for custom path strings across all 11 language files.
+
+**Typecheck:** `npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes with all 3 merged.
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.
