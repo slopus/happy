@@ -518,14 +518,19 @@ export class CodexAppServerClient {
         this._turnId = turnId;
 
         const runPromise = (async () => {
+            let terminalEventEmitted = false;
             try {
                 const { events } = await this.thread!.runStreamed(prompt, { signal: controller.signal });
                 for await (const event of events) {
+                    if (event.type === 'turn.completed' || event.type === 'turn.failed') {
+                        terminalEventEmitted = true;
+                    }
                     await this.handleThreadEvent(event, turnId);
                 }
                 return { aborted: false };
             } catch (error) {
                 if (controller.signal.aborted) {
+                    terminalEventEmitted = true;
                     this.emitEvent({ type: 'turn_aborted', turn_id: turnId, reason: 'interrupted' });
                     return { aborted: true };
                 }
@@ -533,10 +538,14 @@ export class CodexAppServerClient {
                 const message = error instanceof Error ? error.message : String(error);
                 logger.warn('[Codex] SDK turn failed', error);
                 this.emitEvent({ type: 'agent_message', message });
+                terminalEventEmitted = true;
                 this.emitEvent({ type: 'task_complete', turn_id: turnId, status: 'error', error: message });
                 return { aborted: false };
             } finally {
                 clearTimeout(timer);
+                if (controller.signal.aborted && !terminalEventEmitted) {
+                    this.emitEvent({ type: 'turn_aborted', turn_id: turnId, reason: 'interrupted' });
+                }
                 this._turnId = null;
                 if (this.pendingTurn?.turnId === turnId) {
                     this.pendingTurn = null;
@@ -599,6 +608,11 @@ export class CodexAppServerClient {
         try {
             await pending.promise;
         } catch {}
+
+        if (this.pendingTurn?.turnId === pending.turnId) {
+            logger.warn('[Codex] Turn was not cleaned up after abort; forcing cleanup', { turnId: pending.turnId });
+            this.pendingTurn = null;
+        }
 
         return { hadActiveTurn: true, aborted: true };
     }
