@@ -1,9 +1,16 @@
 import { create } from 'zustand';
 import { AgentConfig, listAgents, createAgent, updateAgent, deleteAgent } from '@/api/agents';
 import { ProjectConfig, listProjects, createProject, updateProject, deleteProject, addAgentToProject, removeAgentFromProject } from '@/api/projects';
-import { TaskConfig, listTasks, createTask, updateTaskStatus, deleteTask, TaskStatus } from '@/api/tasks';
+import { TaskConfig, listTasks, createTask, updateTaskStatus, deleteTask, runTask, sendChat, TaskStatus } from '@/api/tasks';
+import { MachineInfo, listMachines, updateMachine } from '@/api/machines';
 
 interface AppState {
+    // Machines
+    machines: MachineInfo[];
+    machinesLoading: boolean;
+    loadMachines: () => Promise<void>;
+    renameMachine: (id: string, name: string) => Promise<void>;
+
     // Agents
     agents: AgentConfig[];
     agentsLoading: boolean;
@@ -30,12 +37,32 @@ interface AppState {
     selectedTaskId: string | null;
     loadTasks: (projectId: string) => Promise<void>;
     selectTask: (id: string | null) => void;
-    addTask: (projectId: string, data: Parameters<typeof createTask>[1]) => Promise<TaskConfig>;
+    addTask: (projectId: string, data: Parameters<typeof createTask>[1], options?: { yolo?: boolean }) => Promise<TaskConfig>;
+    executeTask: (id: string, options?: { yolo?: boolean }) => Promise<void>;
     setTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
     removeTask: (id: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
+    // Machines
+    machines: [],
+    machinesLoading: false,
+    loadMachines: async () => {
+        set({ machinesLoading: true });
+        try {
+            const machines = await listMachines();
+            set({ machines, machinesLoading: false });
+        } catch {
+            set({ machinesLoading: false });
+        }
+    },
+    renameMachine: async (id, name) => {
+        await updateMachine(id, { displayName: name });
+        set(s => ({
+            machines: s.machines.map(m => m.id === id ? { ...m, displayName: name } : m)
+        }));
+    },
+
     // Agents
     agents: [],
     agentsLoading: false,
@@ -66,9 +93,19 @@ export const useStore = create<AppState>((set, get) => ({
         set({ projectsLoading: true });
         const projects = await listProjects();
         set({ projects, projectsLoading: false });
+        // Restore last selected project
+        if (!get().selectedProjectId && projects.length > 0) {
+            const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedProjectId') : null;
+            const target = saved && projects.find(p => p.id === saved) ? saved : projects[0].id;
+            get().selectProject(target);
+        }
     },
     selectProject: (id) => {
         set({ selectedProjectId: id, selectedTaskId: null, tasks: [] });
+        if (typeof localStorage !== 'undefined') {
+            if (id) { localStorage.setItem('selectedProjectId', id); }
+            else { localStorage.removeItem('selectedProjectId'); }
+        }
         if (id) {
             get().loadTasks(id);
         }
@@ -108,10 +145,33 @@ export const useStore = create<AppState>((set, get) => ({
         set({ tasks, tasksLoading: false });
     },
     selectTask: (id) => set({ selectedTaskId: id }),
-    addTask: async (projectId, data) => {
+    addTask: async (projectId, data, options) => {
         const task = await createTask(projectId, data);
         set(s => ({ tasks: [task, ...s.tasks] }));
+        get().executeTask(task.id, options).catch(() => {});
         return task;
+    },
+    executeTask: async (id, options) => {
+        try {
+            const result = await runTask(id, options?.yolo ? { dangerouslySkipPermissions: true } : undefined);
+            if (result.happySessionId) {
+                set(s => ({
+                    tasks: s.tasks.map(t => t.id === id ? { ...t, happySessionId: result.happySessionId! } : t)
+                }));
+                const task = get().tasks.find(t => t.id === id);
+                if (task?.description) {
+                    // Wait for agent's socket to connect before sending the first message
+                    await new Promise(r => setTimeout(r, 3000));
+                    await sendChat(id, task.description).catch(() => {});
+                }
+            }
+        } catch (e: any) {
+            const msg = e.response?.data?.error || e.message || 'Unknown error';
+            console.warn(`Failed to run task: ${msg}`);
+            set(s => ({
+                tasks: s.tasks.map(t => t.id === id ? { ...t, status: 'failed' as TaskStatus, error: msg } : t)
+            }));
+        }
     },
     setTaskStatus: async (id, status) => {
         await updateTaskStatus(id, status);

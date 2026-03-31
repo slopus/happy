@@ -1,18 +1,32 @@
-import React, { memo, useCallback, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { memo, useCallback, useEffect, useState } from 'react';
+import { View, StyleSheet, Text, ActivityIndicator } from 'react-native';
 import { Sidebar } from '@/components/Sidebar';
 import { TaskDetail } from '@/components/TaskDetail';
 import { useStore } from '@/store/store';
+import { ensureDevAuth } from '@/api/client';
 
 const Home = memo(function Home() {
     const loadProjects = useStore(s => s.loadProjects);
     const loadAgents = useStore(s => s.loadAgents);
     const selectedTaskId = useStore(s => s.selectedTaskId);
+    const [ready, setReady] = useState(false);
 
     useEffect(() => {
-        loadProjects();
-        loadAgents();
+        ensureDevAuth().then(() => {
+            setReady(true);
+            loadProjects();
+            loadAgents();
+        });
     }, []);
+
+    if (!ready) {
+        return (
+            <View style={styles.loading}>
+                <ActivityIndicator size="large" color="#1a73e8" />
+                <Text style={styles.loadingText}>Connecting...</Text>
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
@@ -55,5 +69,16 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    loading: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f5f5f5',
+    },
+    loadingText: {
+        marginTop: 12,
+        fontSize: 14,
+        color: '#666',
     },
 });

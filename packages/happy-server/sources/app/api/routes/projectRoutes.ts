@@ -24,6 +24,7 @@ export function projectRoutes(app: Fastify) {
             description: p.description,
             workingDirectory: p.workingDirectory,
             machineId: p.machineId,
+            githubUrl: p.githubUrl,
             agents: p.projectAgents.map(pa => ({
                 id: pa.agent.id,
                 name: pa.agent.name,
@@ -57,6 +58,7 @@ export function projectRoutes(app: Fastify) {
                 description: project.description,
                 workingDirectory: project.workingDirectory,
                 machineId: project.machineId,
+                githubUrl: project.githubUrl,
                 agents: project.projectAgents.map(pa => ({
                     id: pa.agent.id,
                     name: pa.agent.name,
@@ -78,6 +80,7 @@ export function projectRoutes(app: Fastify) {
                 description: z.string().nullish(),
                 workingDirectory: z.string().nullish(),
                 machineId: z.string().nullish(),
+                githubUrl: z.string().nullish(),
                 agentIds: z.array(z.string()).optional()
             })
         }
@@ -91,6 +94,7 @@ export function projectRoutes(app: Fastify) {
                 description: body.description ?? null,
                 workingDirectory: body.workingDirectory ?? null,
                 machineId: body.machineId ?? null,
+                githubUrl: body.githubUrl ?? null,
                 ...(body.agentIds && body.agentIds.length > 0 && {
                     projectAgents: {
                         create: body.agentIds.map(agentId => ({ agentId }))
@@ -106,6 +110,7 @@ export function projectRoutes(app: Fastify) {
                 description: project.description,
                 workingDirectory: project.workingDirectory,
                 machineId: project.machineId,
+                githubUrl: project.githubUrl,
                 agents: project.projectAgents.map(pa => ({
                     id: pa.agent.id,
                     name: pa.agent.name,
@@ -127,7 +132,8 @@ export function projectRoutes(app: Fastify) {
                 name: z.string().min(1).optional(),
                 description: z.string().nullish(),
                 workingDirectory: z.string().nullish(),
-                machineId: z.string().nullish()
+                machineId: z.string().nullish(),
+                githubUrl: z.string().nullish(),
             })
         }
     }, async (request, reply) => {
@@ -145,7 +151,8 @@ export function projectRoutes(app: Fastify) {
                 ...(body.name !== undefined && { name: body.name }),
                 ...(body.description !== undefined && { description: body.description ?? null }),
                 ...(body.workingDirectory !== undefined && { workingDirectory: body.workingDirectory ?? null }),
-                ...(body.machineId !== undefined && { machineId: body.machineId ?? null })
+                ...(body.machineId !== undefined && { machineId: body.machineId ?? null }),
+                ...(body.githubUrl !== undefined && { githubUrl: body.githubUrl ?? null }),
             },
             include: { projectAgents: { include: { agent: true } } }
         });
@@ -156,6 +163,7 @@ export function projectRoutes(app: Fastify) {
                 description: project.description,
                 workingDirectory: project.workingDirectory,
                 machineId: project.machineId,
+                githubUrl: project.githubUrl,
                 agents: project.projectAgents.map(pa => ({
                     id: pa.agent.id,
                     name: pa.agent.name,

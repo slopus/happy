@@ -338,7 +338,8 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          const skipPermsFlag = options.dangerouslySkipPermissions ? ' --dangerously-skip-permissions' : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${skipPermsFlag}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -445,7 +446,8 @@ export async function startDaemon(): Promise<void> {
           const args = [
             agentCommand,
             '--happy-starting-mode', 'remote',
-            '--started-by', 'daemon'
+            '--started-by', 'daemon',
+            ...(options.dangerouslySkipPermissions ? ['--dangerously-skip-permissions'] : [])
           ];
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions

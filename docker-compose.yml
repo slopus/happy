@@ -1,0 +1,30 @@
+services:
+    server:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        ports:
+            - "3005:3005"
+        volumes:
+            - happy-data:/data
+        environment:
+            - HANDY_MASTER_SECRET=happy-dev-secret
+            - DEV_AUTH_ENABLED=true
+        working_dir: /repo/packages/happy-server
+        command: >
+            sh -c "../../node_modules/.bin/tsx sources/standalone.ts migrate &&
+                   exec ../../node_modules/.bin/tsx sources/standalone.ts serve"
+
+    web:
+        build:
+            context: .
+            dockerfile: Dockerfile.web
+        ports:
+            - "8080:8081"
+        environment:
+            - EXPO_PUBLIC_API_URL=http://localhost:3005
+        depends_on:
+            - server
+
+volumes:
+    happy-data:

@@ -13,6 +13,7 @@ export interface ProjectConfig {
     description: string | null;
     workingDirectory: string | null;
     machineId: string | null;
+    githubUrl: string | null;
     agents: ProjectAgentSummary[];
     createdAt: number;
     updatedAt: number;
@@ -33,6 +34,7 @@ export async function createProject(data: {
     description?: string | null;
     workingDirectory?: string | null;
     machineId?: string | null;
+    githubUrl?: string | null;
     agentIds?: string[];
 }): Promise<ProjectConfig> {
     const res = await api.post('/v1/projects', data);
@@ -44,6 +46,7 @@ export async function updateProject(id: string, data: {
     description?: string | null;
     workingDirectory?: string | null;
     machineId?: string | null;
+    githubUrl?: string | null;
 }): Promise<ProjectConfig> {
     const res = await api.post(`/v1/projects/${id}`, data);
     return res.data.project;

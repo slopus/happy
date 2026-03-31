@@ -1,7 +1,34 @@
 import { z } from 'zod';
 import { Fastify } from '../types';
+import { db } from '@/storage/db';
+import { auth } from '@/app/auth/auth';
+import { log } from '@/utils/log';
 
 export function devRoutes(app: Fastify) {
+
+    if (process.env.DEV_AUTH_ENABLED === 'true') {
+        app.post('/v1/auth/dev-token', async (_request, reply) => {
+            // Prefer the account that owns machines (i.e. the CLI daemon's account)
+            const machineOwner = await db.machine.findFirst({
+                orderBy: { lastActiveAt: 'desc' },
+                select: { accountId: true }
+            });
+            let account;
+            if (machineOwner) {
+                account = await db.account.findUnique({ where: { id: machineOwner.accountId } });
+            }
+            if (!account) {
+                account = await db.account.upsert({
+                    where: { publicKey: 'dev-web-console' },
+                    update: { updatedAt: new Date() },
+                    create: { publicKey: 'dev-web-console' }
+                });
+            }
+            const token = await auth.createToken(account.id);
+            log({ module: 'dev' }, `Dev token issued for account ${account.id}`);
+            return reply.send({ token });
+        });
+    }
 
     // Combined logging endpoint (only when explicitly enabled)
     if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {

@@ -121,6 +121,8 @@ export function machinesRoutes(app: Fastify) {
 
         return machines.map(m => ({
             id: m.id,
+            displayName: m.displayName,
+            hostInfo: m.hostInfo,
             metadata: m.metadata,
             metadataVersion: m.metadataVersion,
             daemonState: m.daemonState,
@@ -132,6 +134,50 @@ export function machinesRoutes(app: Fastify) {
             createdAt: m.createdAt.getTime(),
             updatedAt: m.updatedAt.getTime()
         }));
+    });
+
+    // Update machine display info (name, host info)
+    app.patch('/v1/machines/:id', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({ id: z.string() }),
+            body: z.object({
+                displayName: z.string().nullish(),
+                hostInfo: z.object({
+                    hostname: z.string().optional(),
+                    ip: z.string().optional(),
+                    platform: z.string().optional(),
+                    arch: z.string().optional(),
+                    agents: z.array(z.string()).optional(),
+                    daemonPort: z.number().nullish(),
+                    workspaceRoot: z.string().nullish(),
+                }).nullish(),
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const machine = await db.machine.findFirst({ where: { id, accountId: userId } });
+        if (!machine) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+        const { displayName, hostInfo } = request.body;
+        const updated = await db.machine.update({
+            where: { id },
+            data: {
+                ...(displayName !== undefined && { displayName: displayName ?? null }),
+                ...(hostInfo !== undefined && { hostInfo: hostInfo ?? undefined }),
+            }
+        });
+        return {
+            machine: {
+                id: updated.id,
+                displayName: updated.displayName,
+                hostInfo: updated.hostInfo,
+                active: updated.active,
+                activeAt: updated.lastActiveAt.getTime(),
+            }
+        };
     });
 
     // GET /v1/machines/:id - Get single machine by ID

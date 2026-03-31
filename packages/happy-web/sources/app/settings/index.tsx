@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet, Modal, Pressable } from 'react-native';
 import { useStore } from '@/store/store';
 import { AgentConfig } from '@/api/agents';
 import { ProjectConfig } from '@/api/projects';
@@ -142,8 +142,8 @@ const AgentForm = memo(function AgentForm({ agent, onClose, onSave }: {
 
     return (
         <Modal transparent animationType="fade" onRequestClose={onClose}>
-            <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-                <View style={styles.modal} onStartShouldSetResponder={() => true}>
+            <Pressable style={styles.overlay} onPress={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+                <View style={styles.modal}>
                     <Text style={styles.modalTitle}>{agent ? 'Edit Agent' : 'New Agent'}</Text>
 
                     <Text style={styles.label}>Name *</Text>
@@ -191,7 +191,7 @@ const AgentForm = memo(function AgentForm({ agent, onClose, onSave }: {
                         </TouchableOpacity>
                     </View>
                 </View>
-            </TouchableOpacity>
+            </Pressable>
         </Modal>
     );
 });
@@ -320,8 +320,8 @@ const ProjectForm = memo(function ProjectForm({ project, onClose, onSave }: {
 
     return (
         <Modal transparent animationType="fade" onRequestClose={onClose}>
-            <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-                <View style={styles.modal} onStartShouldSetResponder={() => true}>
+            <Pressable style={styles.overlay} onPress={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+                <View style={styles.modal}>
                     <Text style={styles.modalTitle}>{project ? 'Edit Project' : 'New Project'}</Text>
 
                     <Text style={styles.label}>Name *</Text>
@@ -330,8 +330,9 @@ const ProjectForm = memo(function ProjectForm({ project, onClose, onSave }: {
                     <Text style={styles.label}>Description</Text>
                     <TextInput style={styles.input} value={description} onChangeText={setDescription} placeholder="What is this project?" />
 
-                    <Text style={styles.label}>Working Directory</Text>
-                    <TextInput style={styles.input} value={workingDirectory} onChangeText={setWorkingDirectory} placeholder="/home/user/my-app" />
+                    <Text style={styles.label}>Working Directory (optional)</Text>
+                    <TextInput style={styles.input} value={workingDirectory} onChangeText={setWorkingDirectory} placeholder="Auto-generated from workspace root if empty" />
+                    <Text style={styles.hintText}>Leave empty to auto-create under the machine's workspace root</Text>
 
                     <View style={styles.formActions}>
                         <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -346,7 +347,7 @@ const ProjectForm = memo(function ProjectForm({ project, onClose, onSave }: {
                         </TouchableOpacity>
                     </View>
                 </View>
-            </TouchableOpacity>
+            </Pressable>
         </Modal>
     );
 });
@@ -496,6 +497,12 @@ const styles = StyleSheet.create({
     addAgentText: {
         fontSize: 12,
         color: '#999',
+    },
+    hintText: {
+        fontSize: 11,
+        color: '#aaa',
+        marginTop: 4,
+        fontStyle: 'italic',
     },
     emptyText: {
         fontSize: 14,

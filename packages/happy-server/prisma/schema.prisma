@@ -218,6 +218,8 @@ model Machine {
     createdAt          DateTime    @default(now())
     updatedAt          DateTime    @updatedAt
     accessKeys         AccessKey[]
+    displayName        String?
+    hostInfo           Json?       // Plaintext: { hostname, ip, platform, arch, agents[] }
 
     @@unique([accountId, id])
     @@index([accountId])
@@ -389,6 +391,7 @@ model Project {
     description      String?
     workingDirectory String?
     machineId        String?
+    githubUrl        String?
     createdAt        DateTime       @default(now())
     updatedAt        DateTime       @updatedAt
     projectAgents    ProjectAgent[]
