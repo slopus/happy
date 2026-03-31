@@ -479,10 +479,10 @@ export function handleCodexEvent(
   return result;
 }
 
-export function flushV3CodexTurn(state: V3CodexMapperState): MessageWithParts[] {
+export function flushV3CodexTurn(state: V3CodexMapperState, status: string = 'completed'): MessageWithParts[] {
   const result: V3CodexMapperResult = { messages: [], currentAssistant: null };
   if (state.currentAssistant) {
-    finalizeAssistant(state, result, 'completed');
+    finalizeAssistant(state, result, status);
   }
   return result.messages;
 }

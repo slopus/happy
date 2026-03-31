@@ -224,9 +224,9 @@ export async function runCodex(opts: {
     }
 
     /** Flush any in-flight v3 Codex assistant message. */
-    function flushCodexV3TurnLocal(): void {
+    function flushCodexV3TurnLocal(status?: string): void {
         if (!syncBridge || !v3CodexMapperState) return;
-        const messages = flushV3CodexTurn(v3CodexMapperState);
+        const messages = flushV3CodexTurn(v3CodexMapperState, status);
         for (const msg of messages) {
             publishCodexV3Message(msg);
         }
@@ -405,6 +405,9 @@ export async function runCodex(opts: {
                     await client.abortTurnWithFallback();
                 }
 
+                // Finalize any in-flight v3 assistant message so the UI sees a step-finish
+                flushCodexV3TurnLocal('cancelled');
+
                 if (reasoningProcessor) {
                     reasoningProcessor.abort();
                 }
@@ -436,6 +439,8 @@ export async function runCodex(opts: {
         try {
             // Update lifecycle state to archived before closing
             if (syncBridge) {
+                // Finalize any in-flight v3 assistant message before flushing
+                flushCodexV3TurnLocal('cancelled');
                 syncBridge.updateMetadata((currentMetadata: any) => ({
                     ...currentMetadata,
                     lifecycleState: 'archived',
