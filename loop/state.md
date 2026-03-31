@@ -2365,7 +2365,78 @@ batch via `happy-agent`**.
 Updated `roadmap.md` with the Phase 7.4 priority decision and scoped next
 batch.
 
+## Phase 7.5: DONE
+
+Added web drag-to-reorder for project/worktree groups in the session list
+sidebar. Committed in `30ae2490`.
+
+### Approach
+
+Dispatched 2 agents via `happy-agent`:
+- Agent 1 (`CRE9k4gvCBuCivwOejTort4J`): ordering state + sort logic
+- Agent 2 (`ujUCVcjMQUdpcqawhaEsTskP`): drag UI + translations
+
+Both agents made partial progress (agent 1 edited 3 files but didn't commit
+or create the hook; agent 2 made 0 changes) so the work was completed
+manually using agent 1's diff as a starting point.
+
+### What was delivered (16 files, +206/-12)
+
+1. **Settings schema** (`settings.ts`):
+   - Added `projectGroupOrder: z.array(z.string())` setting
+   - Default: empty array (falls back to alphabetical)
+
+2. **Custom sort logic** (both `ActiveSessionsGroup.tsx` and
+   `ActiveSessionsGroupCompact.tsx`):
+   - Items in `projectGroupOrder` sort first, in their saved order
+   - Unordered items fall back to alphabetical by `displayPath`
+   - Reads `projectGroupOrder` via `useSetting('projectGroupOrder')`
+
+3. **Reorder hook** (`useProjectGroupReorder.ts`):
+   - `reorderGroups(fromIndex, toIndex, allPaths)` for drag reorder
+   - Initializes order from visible paths if setting is empty
+   - Persists via `sync.applySettings({ projectGroupOrder })`
+
+4. **DraggableProjectGroup component** (`DraggableProjectGroup.tsx`):
+   - HTML5 Drag and Drop API on web
+   - Native: passthrough (renders children directly)
+   - Visual feedback: 50% opacity while dragging, blue top border on target
+   - Wrapped around each project group in both list variants
+
+5. **Drag handle icons** (web only):
+   - `reorder-two` Ionicons icon in section header, before project path
+   - `cursor: grab` CSS
+
+6. **Translations**:
+   - `dragToReorder` key added to `_default.ts` and all 10 language files
+   - Proper translations for ru, pl, es, ca, it, pt, ja, zh-Hans, zh-Hant
+
+### Typecheck
+
+`npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes cleanly.
+
+### Agent observations
+
+- Agent 1 made correct edits to 3 files (settings + both group components)
+  but failed to create the hook or commit. 12 messages total.
+- Agent 2 made 0 file changes despite 12 messages of reading/grepping.
+- Manual completion took ~10 minutes after agent partial results.
+- The agents were dispatched via `happy-agent spawn/send` into fresh
+  worktrees. The `--yolo --wait` flow worked correctly for monitoring.
+
+### Cleanup
+
+Both worktrees removed. Branches deleted. Sessions stopped.
+
+### Remaining validation
+
+The ordering feature needs real-stack web validation to confirm:
+1. Drag handle renders in the sidebar
+2. Dragging a group moves it
+3. Order persists across page reloads
+4. Archive/grouping still works after reordering
+
 ## Current Task
 
-TASK: Phase 7.5 — dispatch the P3 worktree/project ordering batch via
-`happy-agent`.
+TASK: Phase 7.6 — real-stack validation of Phase 7.5 drag-to-reorder on web,
+then update `roadmap.md` and choose the next P3 item.
