@@ -34,6 +34,11 @@ export const DiffView: React.FC<DiffViewProps> = ({
     const { theme } = useUnistyles();
     const colors = theme.colors.diff;
 
+    // Nothing to diff when both texts are empty
+    if (!oldText && !newText) {
+        return null;
+    }
+
     // Calculate diff with inline highlighting
     const { hunks } = useMemo(() => {
         return calculateUnifiedDiff(oldText, newText, contextLines);

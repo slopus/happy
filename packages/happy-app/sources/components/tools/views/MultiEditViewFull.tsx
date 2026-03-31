@@ -8,6 +8,7 @@ import { DiffView } from '@/components/diff/DiffView';
 import { trimIdent } from '@/utils/trimIdent';
 import { t } from '@/text';
 import { useSetting } from '@/sync/storage';
+import { resolvePath } from '@/utils/pathUtils';
 
 interface MultiEditViewFullProps {
     tool: ToolCall;
@@ -20,10 +21,16 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
 
     // Parse the input
     let edits: Array<{ old_string: string; new_string: string; replace_all?: boolean }> = [];
-    
+    let filePath: string | undefined;
+
     const parsed = knownTools.MultiEdit.input.safeParse(input);
-    if (parsed.success && parsed.data.edits) {
-        edits = parsed.data.edits;
+    if (parsed.success) {
+        if (parsed.data.edits) {
+            edits = parsed.data.edits;
+        }
+        if (parsed.data.file_path) {
+            filePath = resolvePath(parsed.data.file_path, metadata);
+        }
     }
 
     if (edits.length === 0) {
@@ -32,10 +39,13 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
 
     const content = (
         <View style={{ flex: 1 }}>
+            {filePath && (
+                <Text style={styles.filePath} numberOfLines={1}>{filePath}</Text>
+            )}
             {edits.map((edit, index) => {
                 const oldString = trimIdent(edit.old_string || '');
                 const newString = trimIdent(edit.new_string || '');
-                
+
                 return (
                     <View key={index}>
                         <View style={styles.editHeader}>
@@ -88,6 +98,12 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
 });
 
 const styles = StyleSheet.create({
+    filePath: {
+        fontSize: 13,
+        fontWeight: '500',
+        color: '#8E8E93',
+        marginBottom: 12,
+    },
     editHeader: {
         flexDirection: 'row',
         alignItems: 'center',

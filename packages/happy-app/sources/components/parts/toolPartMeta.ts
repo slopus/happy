@@ -28,6 +28,14 @@ function readString(input: Record<string, unknown>, key: string): string | null 
     return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
+function shortenFilePath(path: string): string {
+    const segments = path.split('/').filter(Boolean);
+    if (segments.length <= 2) {
+        return path;
+    }
+    return segments.slice(-2).join('/');
+}
+
 export function getToolPartTitle(part: v3.ToolPart): string {
     const stateTitle =
         part.state.status === 'running'
@@ -47,10 +55,11 @@ export function getToolPartSubtitle(part: v3.ToolPart): string | null {
     const title = getToolPartTitle(part);
     const input = part.state.input;
 
+    const filePath = readString(input, 'file_path') ?? readString(input, 'path') ?? readString(input, 'notebook_path');
+
     const directCandidate =
         readString(input, 'command')
-        ?? readString(input, 'file_path')
-        ?? readString(input, 'path')
+        ?? (filePath ? shortenFilePath(filePath) : null)
         ?? readString(input, 'url')
         ?? readString(input, 'query')
         ?? readString(input, 'pattern')

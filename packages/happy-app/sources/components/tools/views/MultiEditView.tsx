@@ -6,16 +6,23 @@ import { DiffView } from '@/components/diff/DiffView';
 import { knownTools } from '../../tools/knownTools';
 import { trimIdent } from '@/utils/trimIdent';
 import { useSetting } from '@/sync/storage';
+import { resolvePath } from '@/utils/pathUtils';
 
-export const MultiEditView = React.memo<ToolViewProps>(({ tool }) => {
+export const MultiEditView = React.memo<ToolViewProps>(({ tool, metadata }) => {
     const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
     const wrapLinesInDiffs = useSetting('wrapLinesInDiffs');
-    
+
     let edits: Array<{ old_string: string; new_string: string; replace_all?: boolean }> = [];
-    
+    let filePath: string | undefined;
+
     const parsed = knownTools.MultiEdit.input.safeParse(tool.input);
-    if (parsed.success && parsed.data.edits) {
-        edits = parsed.data.edits;
+    if (parsed.success) {
+        if (parsed.data.edits) {
+            edits = parsed.data.edits;
+        }
+        if (parsed.data.file_path) {
+            filePath = resolvePath(parsed.data.file_path, metadata);
+        }
     }
 
     if (edits.length === 0) {
