@@ -823,26 +823,48 @@ async function main(): Promise<void> {
                     await sendPrompt(step.prompt!, `step${step.id}`);
                     await waitForConditionApprovingAll(node, () => {
                         const assistant = assistantMessagesSince(node, currentSessionId, beforeAssistant);
+                        if (assistant.length === 0) return false;
                         const fullText = assistant.map(getFullText).join(' ');
+                        const fullTextLower = fullText.toLowerCase();
                         const hasTimeResponse = /\btime\b|:\d{2}|\bam\b|\bpm\b/.test(fullText);
                         const hasBackgroundTool = assistantToolsSince(node, currentSessionId, beforeAssistant).some((tool) =>
                             (tool.tool === 'Bash' || tool.tool === 'TaskOutput')
                             && /donezen|sleep 30/.test(toolText(tool)),
                         );
-                        return assistant.some(hasTerminalStepFinish) && hasTimeResponse && hasBackgroundTool;
+                        // Text-based fallback: Claude mentions the background task in prose
+                        const hasBackgroundText = /background.{0,30}running|sleep.{0,5}30|donezen/.test(fullTextLower);
+                        const hasBackground = hasBackgroundTool || hasBackgroundText;
+                        // Accept any step-finish (including tool-calls) as proof the turn
+                        // has paused.  Claude may keep a TaskOutput tool running to wait
+                        // for the background task, so requiring a terminal step-finish
+                        // (reason != 'tool-calls') can deadlock.
+                        const hasAnyStepFinish = assistant.some((msg) =>
+                            msg.parts.some((part) => part.type === 'step-finish'),
+                        );
+                        return hasAnyStepFinish && hasTimeResponse && hasBackground;
                     }, step.timeoutMs);
                     await holdForCapture('running background task', CAPTURE_HOLD_MS, 'component-background-running');
                 } else if (step.id === 32) {
                     let localBefore = beforeAssistant;
                     await sendPrompt(step.prompt!, `step${step.id}`);
 
-                    const hasCompletedBackgroundOutput = () => assistantToolsSince(node, currentSessionId, localBefore).some((tool) =>
-                        (tool.tool === 'TaskOutput' || tool.tool === 'Bash')
-                        && tool.state.status === 'completed'
-                        && 'output' in tool.state
-                        && typeof tool.state.output === 'string'
-                        && tool.state.output.includes('donezen'),
-                    );
+                    const hasCompletedBackgroundOutput = () => {
+                        // Tool-based: TaskOutput/Bash with completed status and output
+                        const hasToolProof = assistantToolsSince(node, currentSessionId, localBefore).some((tool) =>
+                            (tool.tool === 'TaskOutput' || tool.tool === 'Bash')
+                            && tool.state.status === 'completed'
+                            && 'output' in tool.state
+                            && typeof tool.state.output === 'string'
+                            && tool.state.output.includes('donezen'),
+                        );
+                        if (hasToolProof) return true;
+                        // Text-based fallback: Claude relays the background task result
+                        // in prose without a dedicated tool output
+                        return assistantMessagesSince(node, currentSessionId, localBefore).some((message) =>
+                            hasTerminalStepFinish(message)
+                            && /donezen/.test(getFullText(message)),
+                        );
+                    };
 
                     const hasTerminalCompletionTurn = () => assistantMessagesSince(node, currentSessionId, localBefore).some((message) =>
                         hasTerminalStepFinish(message)

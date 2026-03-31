@@ -187,6 +187,13 @@ for (const [index, step] of runSteps.entries()) {
         steps.push(
             ...refreshCurrentSessionSteps(`Refresh before ${capture.outputBase}`),
             {
+                action: 'scroll',
+                y: LATEST_TRANSCRIPT_SCROLL_Y,
+                selector: WALKTHROUGH_TRANSCRIPT_SELECTOR,
+                description: `Scroll to latest content for ${capture.outputBase}`,
+                delay: 500,
+            },
+            {
                 action: 'pause',
                 ms: capture.afterPromptMs ?? CAPTURE_HOLD_MS,
                 description: `Hold for ${capture.outputBase}`,
