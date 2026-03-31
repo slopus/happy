@@ -221,6 +221,16 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
       await syncBridge.connect();
       logger.debug('[OpenClaw] SyncBridge connected');
 
+      // Seed SyncNode metadata with key session fields (see runClaude.ts for rationale)
+      syncBridge.updateMetadata(() => ({
+        machineId: settings.machineId,
+        path: metadata.path,
+        host: metadata.host,
+        flavor: 'openclaw' as const,
+        lifecycleState: 'running',
+        lifecycleStateSince: Date.now(),
+      }));
+
       // ─── Create RpcHandlerManager and wire to SyncBridge ─────────────────
       rpcHandlerManager = new RpcHandlerManager({
         scopePrefix: response.id,

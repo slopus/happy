@@ -210,6 +210,22 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     await syncBridge.connect();
     logger.debug('[START] SyncBridge connected');
 
+    // Seed SyncNode metadata with key session fields. The SyncNode starts with null
+    // metadata for session-scoped tokens, so the first updateMetadata must include
+    // these fields or they'll be lost when the v3 envelope overwrites the legacy flat metadata.
+    syncBridge.updateMetadata(() => ({
+        machineId,
+        path: workingDirectory,
+        host: os.hostname(),
+        flavor: 'claude' as const,
+        version: packageJson.version,
+        os: os.platform(),
+        homeDir: os.homedir(),
+        happyHomeDir: configuration.happyHomeDir,
+        lifecycleState: 'running',
+        lifecycleStateSince: Date.now(),
+    }));
+
     // ─── Create RpcHandlerManager and wire to SyncBridge ───────────────────
 
     const rpcHandlerManager = new RpcHandlerManager({

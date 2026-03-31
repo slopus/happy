@@ -174,6 +174,16 @@ export async function runCodex(opts: {
         await syncBridge.connect();
         logger.debug('[Codex] SyncBridge connected');
 
+        // Seed SyncNode metadata with key session fields (see runClaude.ts for rationale)
+        syncBridge.updateMetadata(() => ({
+            machineId,
+            path: workingDirectory,
+            host: metadata.host,
+            flavor: 'codex' as const,
+            lifecycleState: 'running',
+            lifecycleStateSince: Date.now(),
+        }));
+
         // ─── Create RpcHandlerManager and wire to SyncBridge ────────────
         rpcHandlerManager = new RpcHandlerManager({
             scopePrefix: response.id,

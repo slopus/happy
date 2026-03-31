@@ -199,6 +199,16 @@ export async function runGemini(opts: {
   await syncBridge.connect();
   logger.debug('[START] SyncBridge connected');
 
+  // Seed SyncNode metadata with key session fields (see runClaude.ts for rationale)
+  syncBridge.updateMetadata(() => ({
+    machineId,
+    path: metadata.path,
+    host: metadata.host,
+    flavor: 'gemini' as const,
+    lifecycleState: 'running',
+    lifecycleStateSince: Date.now(),
+  }));
+
   // ─── v3 Mapper: Gemini events → MessageWithParts → SyncBridge ─────────────
 
   const v3MapperState: V3GeminiMapperState = createV3GeminiMapperState({

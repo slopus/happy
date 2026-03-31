@@ -455,8 +455,9 @@ export class SyncNode {
 
         try {
             await this.casRetry(async () => {
-                const session = this.state.sessions.get(key);
-                if (!session) throw new Error(`Session ${sessionId} not found`);
+                // Use ensureSession so session-scoped tokens that haven't fetched
+                // sessions yet can still seed metadata immediately after connect().
+                const session = this.ensureSession(sessionId);
                 const keyMaterial = await this.getKeyMaterialForSession(sessionId);
 
                 const updated = handler(session.metadata as T);

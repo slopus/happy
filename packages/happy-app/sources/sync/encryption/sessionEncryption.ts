@@ -157,7 +157,25 @@ export class SessionEncryption {
         if (!decrypted[0]) {
             return null;
         }
-        const parsed = MetadataSchema.safeParse(decrypted[0]);
+
+        let rawData = decrypted[0];
+
+        // Handle v3 SyncNode metadata format: { session: { directory, title, ... }, metadata: { ... } }
+        // The SyncNode stores metadata in this envelope shape; the inner `metadata` field contains
+        // the actual session metadata (machineId, claudeSessionId, summary, etc.), while the
+        // `session` field contains structural info (directory, title).
+        if (rawData && typeof rawData === 'object' && 'session' in rawData && 'metadata' in rawData) {
+            const sessionInfo = rawData.session as Record<string, unknown> | null;
+            const innerMetadata = (rawData.metadata as Record<string, unknown>) || {};
+            rawData = {
+                ...innerMetadata,
+                // Map v3 session.directory to the flat metadata path field
+                path: innerMetadata.path || sessionInfo?.directory || '',
+                host: innerMetadata.host || '',
+            };
+        }
+
+        const parsed = MetadataSchema.safeParse(rawData);
         if (!parsed.success) {
             return null;
         }

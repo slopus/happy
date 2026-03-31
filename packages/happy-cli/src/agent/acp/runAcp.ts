@@ -584,6 +584,16 @@ export async function runAcp(opts: {
     await syncBridge.connect();
     logAcp('muted', `SyncBridge connected`);
 
+    // Seed SyncNode metadata with key session fields (see runClaude.ts for rationale)
+    syncBridge.updateMetadata(() => ({
+      machineId: settings.machineId,
+      path: metadata.path,
+      host: metadata.host,
+      flavor: metadata.flavor,
+      lifecycleState: 'running',
+      lifecycleStateSince: Date.now(),
+    }));
+
     // ─── Create RpcHandlerManager and wire to SyncBridge ─────────────────
 
     rpcHandlerManager = new RpcHandlerManager({
