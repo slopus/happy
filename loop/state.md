@@ -1,6 +1,6 @@
 # Loop State
 
-Last updated: 2026-03-30
+Last updated: 2026-03-31
 
 Previous completed tasks are archived in `loop/state-archive.md`.
 
@@ -2772,6 +2772,45 @@ worktree with Write + Read tool activity on `hello.txt`).
 
 Both worktrees removed. Branches deleted. All 3 sessions stopped.
 
+## Phase 8.2: DONE
+
+Reviewed `roadmap.md` after the completed Phase 8.1 file-link batch and
+selected the next highest-impact P4 work item.
+
+### Decision
+
+The next work item is **Phase 8.3 — dispatch the changed-files review/input
+mismatch batch via `happy-agent`**.
+
+### Why this is next
+
+1. Phase 8.1 closed the foundational file-link + full-screen viewer +
+   refetch-on-open path, so the main remaining core P4 gap is review
+   correctness.
+2. The changed-files review/input mismatch is now the highest-impact unfinished
+   P4 item because it leaves file review untrustworthy even when file links
+   themselves open correctly.
+3. This is higher leverage than attachment polish because attachment
+   send/render already works end-to-end after Phases 5.3 and 5.5; the
+   remaining attachment work is mostly drag-and-drop or image-preview polish.
+4. The new file-viewer plumbing from Phase 8.1 should be reusable for review
+   details, making this the best next incremental batch instead of another
+   isolated feature.
+
+### Scope of Phase 8.3
+
+1. Reproduce the changed-files review/input mismatch against a real remote
+   session.
+2. Fix the review surface so it maps to the correct files and current
+   contents.
+3. Reuse the Phase 8.1 file-viewer / refetch path where possible.
+4. Validate the corrected review flow on web with concrete proof.
+
+### Roadmap update
+
+Updated `roadmap.md` with the Post-Phase 8.1 priority decision and the scoped
+next batch.
+
 ## Current Task
 
-TASK: Review `roadmap.md` and select the next highest-impact P4 work item.
+TASK: Dispatch the changed-files review/input mismatch batch via `happy-agent`.

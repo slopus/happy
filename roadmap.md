@@ -1413,6 +1413,49 @@ dead or stale references.
   blocks file-link resolution directly
 - another session-list/tool-row polish pass
 
+### Post-Phase 8.1 priority decision (2026-03-31)
+
+**Next highest-impact work item: Phase 8.3 — dispatch the changed-files
+review/input mismatch batch via `happy-agent`.**
+
+Phase 8.1 closed the foundational file-link path: chat file references now
+open the full-screen viewer and refetch current file contents. With that in
+place, the next highest-impact unfinished P4 work is the changed-files
+review/input mismatch.
+
+**Why this is next:**
+
+1. It is now the main remaining core correctness gap in P4. If the review
+   surface points at the wrong files or mismatched content, file review is
+   still not trustworthy even though file links themselves now open correctly.
+2. Phase 8.1 makes this tractable. The resolved-file + refetch-on-open viewer
+   path can now be reused as the review detail surface instead of inventing a
+   second file-opening path.
+3. It has higher leverage than attachment polish. Core attachment send/render
+   already works end-to-end after Phases 5.3 and 5.5; the remaining attachment
+   work is mostly drag-and-drop or image-preview polish, not a core data
+   correctness gap.
+4. It stays within current scope by finishing the other major P4 requirement
+   already called out in the roadmap.
+
+**Scope of Phase 8.3:**
+
+1. Reproduce the changed-files review/input mismatch against a real remote
+   session and identify where file selection/content mapping diverges.
+2. Fix the review surface so it shows the correct files and corresponding
+   current content.
+3. Reuse the Phase 8.1 file-viewer/refetch path wherever possible instead of
+   building a separate review transport.
+4. Validate on web with concrete evidence that the reviewed file list, opened
+   file, and underlying remote file contents all match.
+
+**Explicitly not next:**
+
+- standalone drag-and-drop attachment work
+- image preview expansion polish
+- broader file-link polish beyond what is required to make changed-files review
+  correct
+
 ## User Research
 
 Goal: talk to users regularly to understand why they use Happy, what their day-to-day problems are, and what to build next.
