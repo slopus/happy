@@ -164,6 +164,51 @@ and reporting across more than one spawned session.
 - composer/session-list polish
 - broader new-scope orchestration features
 
+### Phase 3.4 results — multi-session monitoring validated (2026-03-30)
+
+**Environment:** `snug-reef` — server `:52168`, web `:52169`, daemon PID 30480,
+machine `e84feb4b-1729-4e33-80bf-64cfe2238fc9`.
+
+**3 concurrent sessions spawned, driven, monitored, and stopped:**
+
+| Session | ID | Worktree | Messages | Tool | Artifact | Final state |
+|---------|----|----------|----------|------|----------|-------------|
+| Alpha | `CorD57qW4kiYQNjVdXJFX4Gb` | `agent-alpha` | 6 | Write→completed | `ALPHA.md` (69B) | idle→stopped |
+| Beta | `MqYPdxEb23uR1nZ9Uz5kPUam` | `agent-beta` | 5 | Write→completed | `BETA.md` (77B) | idle→stopped |
+| Gamma | `PdWMnez3ek0HPHSErO8WKer3` | `agent-gamma` | 5 | Write→completed | `GAMMA.md` (77B) | idle→stopped |
+
+**Per-session evidence:**
+
+- All 3 sessions appeared in `happy-agent list --active` immediately after spawn.
+- `happy-agent send --yolo --wait` delivered user messages and reported `sent: true`.
+- `happy-agent wait` confirmed all 3 reached `Session Idle`.
+- `happy-agent history` returned full v3 message transcripts with tool parts,
+  step-finish(reason=stop), and model=claude-opus-4-6 on all sessions.
+- Artifacts verified on disk: `ALPHA.md`, `BETA.md`, `GAMMA.md` all exist with
+  correct content.
+- `happy-agent stop` stopped all 3 (method: session-socket; stale httpPort
+  prevented local-daemon-http path — known P1 issue from Phase 3.2).
+
+**Web URLs:**
+
+- Alpha: `http://localhost:52169/session/CorD57qW4kiYQNjVdXJFX4Gb?dev_token=...&dev_secret=...`
+- Beta: `http://localhost:52169/session/MqYPdxEb23uR1nZ9Uz5kPUam?dev_token=...&dev_secret=...`
+- Gamma: `http://localhost:52169/session/PdWMnez3ek0HPHSErO8WKer3?dev_token=...&dev_secret=...`
+
+**No pending permissions or blocked tools** — all sessions ran in yolo mode and
+completed without permission prompts.
+
+**Verdict:** Multi-session spawn/send/monitor/stop flow works end-to-end with
+3 concurrent sessions. The `happy-agent` CLI can reliably manage parallel agent
+sessions and report per-session state, history, and artifacts. The stale
+daemon-port issue (P1) remains the only known gap — it forced socket-based stop
+instead of local-daemon-http stop but did not prevent correct session lifecycle.
+
+**What this unlocks:** `happy-agent` is now validated as a control plane for
+dispatching 2-3+ concurrent agent tasks with monitoring. The next step is either
+fixing the P1 stale-port bug for reliable hard-stop, or beginning to use
+`happy-agent` to dispatch real roadmap work items.
+
 ## P1. Control-flow, permissions, and protocol bugs
 
 Goal: remove the broken session-control paths that currently make remote agent management unreliable.
