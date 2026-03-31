@@ -48,7 +48,6 @@ export async function createSessionScanner(opts: {
 
     // Main sync function
     const sync = new InvalidateSync(async () => {
-        // logger.debug(`[SESSION_SCANNER] Syncing...`);
 
         // Collect session ids - include ALL sessions that have watchers
         // This ensures we continue processing sessions that Claude Code may still write to

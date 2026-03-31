@@ -1,13 +1,13 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Octicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { ToolSectionView } from '../ToolSectionView';
 import { CommandView } from '@/components/CommandView';
-import { CodeView } from '@/components/CodeView';
 import { Metadata } from '@/sync/storageTypes';
 import { resolvePath } from '@/utils/pathUtils';
+import { stringifyToolCommand } from '@/utils/toolCommand';
 import { t } from '@/text';
 
 interface CodexBashViewProps {
@@ -21,7 +21,6 @@ export const CodexBashView = React.memo<CodexBashViewProps>(({ tool, metadata })
 
     // Parse the input structure
     const command = input?.command;
-    const cwd = input?.cwd;
     const parsedCmd = input?.parsed_cmd;
 
     // Determine the type of operation from parsed_cmd
@@ -86,7 +85,7 @@ export const CodexBashView = React.memo<CodexBashViewProps>(({ tool, metadata })
         );
     } else {
         // Display as a regular command
-        const commandDisplay = commandStr || (command && Array.isArray(command) ? command.join(' ') : '');
+        const commandDisplay = commandStr || stringifyToolCommand(command) || '';
         
         return (
             <ToolSectionView>

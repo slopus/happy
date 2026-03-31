@@ -136,9 +136,6 @@ export const zhHans: TranslationStructure = {
         exchangingTokens: '正在交换令牌...',
         usage: '使用情况',
         usageSubtitle: '查看 API 使用情况和费用',
-        profiles: '配置文件',
-        profilesSubtitle: '管理环境配置文件和变量',
-
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
         machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
@@ -207,9 +204,6 @@ export const zhHans: TranslationStructure = {
         markdownCopyV2Subtitle: '长按打开复制模态框',
         hideInactiveSessions: '隐藏非活跃会话',
         hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
-        enhancedSessionWizard: '增强会话向导',
-        enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
-        enhancedSessionWizardDisabled: '使用标准会话启动器',
     },
 
     errors: {
@@ -260,35 +254,9 @@ export const zhHans: TranslationStructure = {
     },
 
     newSession: {
-        // Used by new-session screen and launch flows
-        title: '启动新会话',
-        noMachinesFound: '未找到设备。请先在您的计算机上启动 Happy 会话。',
-        allMachinesOffline: '所有设备似乎都已离线',
-        machineDetails: '查看设备详情 →',
-        directoryDoesNotExist: '目录不存在',
-        createDirectoryConfirm: ({ directory }: { directory: string }) => `目录 ${directory} 不存在。您要创建它吗？`,
-        sessionStarted: '会话已启动',
-        sessionStartedMessage: '会话已成功启动。',
-        sessionSpawningFailed: '会话生成失败 - 未返回会话 ID。',
-        startingSession: '正在启动会话...',
-        startNewSessionInFolder: '在此文件夹中启动新会话',
-        failedToStart: '启动会话失败。确保守护进程在目标设备上运行。',
-        sessionTimeout: '会话启动超时。设备可能运行缓慢或守护进程可能无响应。',
-        notConnectedToServer: '未连接到服务器。请检查您的网络连接。',
-        noMachineSelected: '请选择一台设备以启动会话',
-        noPathSelected: '请选择一个目录以启动会话',
-        sessionType: {
-            title: '会话类型',
-            simple: '简单',
-            worktree: 'Worktree',
-            comingSoon: '即将推出',
-        },
-        worktree: {
-            creating: ({ name }: { name: string }) => `正在创建 worktree '${name}'...`,
-            notGitRepo: 'Worktree 需要 git 仓库',
-            failed: ({ error }: { error: string }) => `创建 worktree 失败：${error}`,
-            success: 'Worktree 创建成功',
-        }
+        title: '开始新会话',
+        machineOffline: '设备离线',
+        switchMachinesHint: '• 点击上方的设备来切换设备',
     },
 
     sessionHistory: {
@@ -303,6 +271,8 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        inactiveArchived: '此会话处于非活动状态。',
+        resumeFromTerminal: '要从终端恢复它：',
     },
 
     commandPalette: {
@@ -338,8 +308,11 @@ export const zhHans: TranslationStructure = {
         happySessionId: 'Happy 会话 ID',
         claudeCodeSessionId: 'Claude Code 会话 ID',
         claudeCodeSessionIdCopied: 'Claude Code 会话 ID 已复制到剪贴板',
+        codexThreadId: 'Codex 线程 ID',
+        codexThreadIdCopied: 'Codex 线程 ID 已复制到剪贴板',
         aiProvider: 'AI 提供商',
         failedToCopyClaudeCodeSessionId: '复制 Claude Code 会话 ID 失败',
+        failedToCopyCodexThreadId: '复制 Codex 线程 ID 失败',
         metadataCopied: '元数据已复制到剪贴板',
         failedToCopyMetadata: '复制元数据失败',
         failedToKillSession: '终止会话失败',
@@ -351,6 +324,14 @@ export const zhHans: TranslationStructure = {
         quickActions: '快速操作',
         viewMachine: '查看设备',
         viewMachineSubtitle: '查看设备详情和会话',
+        resumeSession: 'Resume Session',
+        resumeSessionSubtitle: 'Resume this session on the same machine',
+        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
+        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
+        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
+        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
+        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
+        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: '立即终止会话',
         archiveSessionSubtitle: '归档此会话并停止它',
         metadata: '元数据',
@@ -370,14 +351,18 @@ export const zhHans: TranslationStructure = {
         cliVersionOutdated: '需要更新 CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `已安装版本 ${currentVersion}。请更新到 ${requiredVersion} 或更高版本`,
-        updateCliInstructions: '请运行 npm install -g happy-coder@latest',
+        updateCliInstructions: '请运行 npm install -g happy@latest',
         deleteSession: '删除会话',
         deleteSessionSubtitle: '永久删除此会话',
         deleteSessionConfirm: '永久删除会话？',
         deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
         failedToDeleteSession: '删除会话失败',
         sessionDeleted: '会话删除成功',
-        
+        worktreeCleanupTitle: '删除 Worktree？',
+        worktreeCleanupMessage: 'Worktree 没有未提交的更改。是否要删除 Worktree 文件？',
+        worktreeCleanupDelete: '删除 Worktree',
+        worktreeCleanupKeep: '保留文件',
+
     },
 
     components: {
@@ -397,6 +382,7 @@ export const zhHans: TranslationStructure = {
             default: '默认',
             acceptEdits: '接受编辑',
             plan: '计划模式',
+            dontAsk: '不再询问',
             bypassPermissions: 'Yolo 模式',
             badgeAcceptAllEdits: '接受所有编辑',
             badgeBypassAllPermissions: '绕过所有权限',
@@ -406,6 +392,7 @@ export const zhHans: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            openclaw: 'OpenClaw',
         },
         model: {
             title: '模型',
@@ -434,12 +421,12 @@ export const zhHans: TranslationStructure = {
         geminiPermissionMode: {
             title: 'GEMINI 权限模式',
             default: '默认',
-            readOnly: '只读',
-            safeYolo: '安全 YOLO',
+            autoEdit: '自动编辑',
             yolo: 'YOLO',
-            badgeReadOnly: '只读',
-            badgeSafeYolo: '安全 YOLO',
+            plan: '计划',
+            badgeAutoEdit: '自动编辑',
             badgeYolo: 'YOLO',
+            badgePlan: '计划',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
@@ -555,6 +542,7 @@ export const zhHans: TranslationStructure = {
         file: '文件',
         fileEmpty: '文件为空',
         noChanges: '没有要显示的更改',
+        deleted: '已删除',
     },
 
     settingsVoice: {
@@ -568,7 +556,18 @@ export const zhHans: TranslationStructure = {
             title: '语言',
             footer: ({ count }: { count: number }) => `${count} 种可用语言`,
             autoDetect: '自动检测',
-        }
+        },
+        // Bring your own agent
+        byoTitle: '使用自己的代理',
+        byoDescription: '使用您自己的 ElevenLabs 代理代替 Happy 默认代理。无需订阅 — 直接使用您自己的 ElevenLabs 账户连接。您的代理必须定义两个客户端工具：messageClaudeCode（向编码代理发送文本）和 processPermissionRequest（允许或拒绝工具使用）。通过 {{initialConversationContext}} 动态变量接收会话上下文。',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: '未配置',
+        customAgentIdDescription: '输入您的 ElevenLabs Agent ID。留空则使用 Happy 默认代理。',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: '直接连接',
+        bypassTokenSubtitle: '跳过 Happy 服务器，直接连接到 ElevenLabs',
+        promptGuideTitle: '代理提示词指南',
+        promptGuideDescription: '您的 ElevenLabs 代理需要：\n\n• 工具：messageClaudeCode — 参数：message (string)。向活跃的编码会话发送消息。\n• 工具：processPermissionRequest — 参数：decision ("allow" 或 "deny")。批准或拒绝待处理的工具权限。\n• 动态变量：{{initialConversationContext}} — 启动时接收会话历史和上下文。\n\n代理充当用户和编码代理之间的语音桥梁。它应该简洁，仅在被呼叫时回应，并在编码代理完成工作时进行报告。',
     },
 
     settingsAccount: {
@@ -721,7 +720,7 @@ export const zhHans: TranslationStructure = {
     machine: {
         launchNewSessionInDirectory: '在目录中启动新会话',
         offlineUnableToSpawn: '设备离线时无法启动',
-        offlineHelp: '• 确保您的计算机在线\n• 运行 `happy daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `npm install -g happy-coder@latest` 升级',
+        offlineHelp: '• 确保您的计算机在线\n• 运行 `happy daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `npm install -g happy@latest` 升级',
         daemon: '守护进程',
         status: '状态',
         stopDaemon: '停止守护进程',
@@ -741,6 +740,10 @@ export const zhHans: TranslationStructure = {
         lastSeen: '最后活跃',
         never: '从未',
         metadataVersion: '元数据版本',
+        cliAvailability: 'CLI 可用性',
+        cliInstalled: '已安装',
+        cliNotFound: '未找到',
+        lastDetected: '最近检测',
         untitledSession: '无标题会话',
         back: '返回',
     },
@@ -877,36 +880,6 @@ export const zhHans: TranslationStructure = {
         usageOverTime: '使用趋势',
         byModel: '按模型',
         noData: '暂无使用数据',
-    },
-
-    profiles: {
-        title: '配置文件',
-        subtitle: '管理您的配置文件',
-        noProfile: '无配置文件',
-        noProfileDescription: '创建配置文件以管理您的环境设置',
-        addProfile: '添加配置文件',
-        addProfileTitle: '添加配置文件标题',
-        editProfile: '编辑配置文件',
-        profileName: '配置文件名称',
-        enterName: '输入配置文件名称',
-        baseURL: '基础 URL',
-        authToken: '认证令牌',
-        enterToken: '输入认证令牌',
-        model: '模型',
-        defaultModel: '默认模型',
-        tmuxSession: 'tmux 会话',
-        enterTmuxSession: '输入 tmux 会话名称',
-        tmuxTempDir: 'tmux 临时目录',
-        enterTmuxTempDir: '输入 tmux 临时目录',
-        tmuxUpdateEnvironment: '更新 tmux 环境',
-        deleteConfirm: '确定要删除此配置文件吗？',
-        nameRequired: '配置文件名称为必填项',
-        delete: {
-            title: '删除配置',
-            message: ({ name }: { name: string }) => `确定要删除"${name}"吗？此操作无法撤销。`,
-            confirm: '删除',
-            cancel: '取消',
-        },
     },
 
     feed: {

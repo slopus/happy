@@ -22,6 +22,7 @@ const flavorIcons = {
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
+    openclaw: require('@/assets/images/icon-openclaw.png'),
 };
 
 const styles = StyleSheet.create((theme) => ({
@@ -121,8 +122,8 @@ export const Avatar = React.memo((props: AvatarProps) => {
             ? Math.round(size * 0.28)
             : Math.round(size * 0.35);
 
-    // Only wrap in container if showing flavor icons
-    if (showFlavorIcons) {
+    // Only wrap in container if showing flavor icons and flavor was provided
+    if (showFlavorIcons && flavor !== null) {
         return (
             <View style={[styles.container, { width: size, height: size }]}>
                 <AvatarComponent {...avatarProps} size={size} />

@@ -1,12 +1,9 @@
-import type { CodexSessionConfig } from './types';
-
-type CodexApprovalPolicy = NonNullable<CodexSessionConfig['approval-policy']>;
-type CodexSandboxMode = NonNullable<CodexSessionConfig['sandbox']>;
+import type { ApprovalPolicy, SandboxMode } from './codexAppServerTypes';
 
 export function resolveCodexExecutionPolicy(
     permissionMode: import('@/api/types').PermissionMode,
     sandboxManagedByHappy: boolean,
-): { approvalPolicy: CodexApprovalPolicy; sandbox: CodexSandboxMode } {
+): { approvalPolicy: ApprovalPolicy; sandbox: SandboxMode } {
     if (sandboxManagedByHappy) {
         return {
             approvalPolicy: 'never',
@@ -14,7 +11,7 @@ export function resolveCodexExecutionPolicy(
         };
     }
 
-    const approvalPolicy: CodexApprovalPolicy = (() => {
+    const approvalPolicy: ApprovalPolicy = (() => {
         switch (permissionMode) {
             // Codex native modes
             case 'default': return 'untrusted';                    // Ask for non-trusted commands
@@ -29,7 +26,7 @@ export function resolveCodexExecutionPolicy(
         }
     })();
 
-    const sandbox: CodexSandboxMode = (() => {
+    const sandbox: SandboxMode = (() => {
         switch (permissionMode) {
             // Codex native modes
             case 'default': return 'workspace-write';              // Can write in workspace

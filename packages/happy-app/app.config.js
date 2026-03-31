@@ -9,22 +9,27 @@ const bundleId = {
     preview: "com.slopus.happy.preview",
     production: "com.ex3ndr.happy"
 }[variant];
+const elevenLabsAgentId = {
+    development: 'agent_7801k2c0r5hjfraa1kdbytpvs6yt',
+    preview: 'agent_7801k2c0r5hjfraa1kdbytpvs6yt',
+    production: 'agent_6701k211syvvegba4kt7m68nxjmw',
+}[variant];
+const consoleLoggingDefault = {
+    development: true,
+    preview: true,
+    production: false,
+}[variant];
 
 export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.6.2",
-        runtimeVersion: "20",
+        version: "1.7.0",
+        runtimeVersion: "21",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
         scheme: "happy",
         userInterfaceStyle: "automatic",
-        newArchEnabled: true,
-        notification: {
-            icon: "./sources/assets/images/icon-notification.png",
-            iosDisplayInForeground: true
-        },
         ios: {
             supportsTablet: true,
             bundleIdentifier: bundleId,
@@ -51,9 +56,13 @@ export default {
                 "android.permission.POST_NOTIFICATIONS",
             ],
             blockedPermissions: [
-                "android.permission.ACTIVITY_RECOGNITION"
+                "android.permission.ACTIVITY_RECOGNITION",
+                // Not using external storage/media access for now — blocks Google Play photo/video permission declaration
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE",
+                "android.permission.READ_MEDIA_IMAGES",
+                "android.permission.READ_MEDIA_VIDEO",
             ],
-            edgeToEdgeEnabled: true,
             package: bundleId,
             googleServicesFile: "./google-services.json",
             intentFilters: variant === 'production' ? [
@@ -126,7 +135,8 @@ export default {
             [
                 "expo-notifications",
                 {
-                    "enableBackgroundRemoteNotifications": true
+                    "enableBackgroundRemoteNotifications": true,
+                    "icon": "./sources/assets/images/icon-notification.png"
                 }
             ],
             [
@@ -169,7 +179,9 @@ export default {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
                 revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
-                revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE
+                revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
+                elevenLabsAgentId,
+                consoleLoggingDefault,
             }
         },
         owner: "bulkacorp"

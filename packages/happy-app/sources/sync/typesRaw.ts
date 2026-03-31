@@ -17,15 +17,6 @@ const usageDataSchema = z.object({
 
 export type UsageData = z.infer<typeof usageDataSchema>;
 
-function isSessionProtocolSendEnabled(): boolean {
-    const raw = (
-        process.env.EXPO_PUBLIC_ENABLE_SESSION_PROTOCOL_SEND
-        ?? process.env.ENABLE_SESSION_PROTOCOL_SEND
-        ?? ''
-    ).toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes';
-}
-
 const agentEventSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('switch'),
     mode: z.enum(['local', 'remote'])
@@ -592,10 +583,6 @@ function normalizeSessionEnvelope(
 
     if (envelope.ev.t === 'text') {
         if (envelope.role === 'user') {
-            if (!isSessionProtocolSendEnabled()) {
-                return null;
-            }
-
             return {
                 id: messageId,
                 localId,
@@ -716,18 +703,13 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     // Zod transform handles normalization during validation
     let parsed = rawRecordSchema.safeParse(raw);
     if (!parsed.success) {
-        console.error('=== VALIDATION ERROR ===');
-        console.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
-        console.error('Raw message:', JSON.stringify(raw, null, 2));
-        console.error('=== END ERROR ===');
+        const rawObj = raw as any;
+        const msgType = rawObj?.content?.data?.type ?? rawObj?.content?.type ?? 'unknown';
+        console.warn(`Unrecognized message type: ${msgType} (id: ${id})`);
         return null;
     }
     raw = parsed.data;
     if (raw.role === 'user') {
-        if (isSessionProtocolSendEnabled()) {
-            return null;
-        }
-
         return {
             id,
             localId,

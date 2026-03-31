@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text, FlatList, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { log } from '@/log';
+import { log, MAX_APP_LOG_ENTRIES } from '@/log';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Item } from '@/components/Item';
@@ -90,7 +90,10 @@ export default function LogsScreen() {
         <View style={{ flex: 1, backgroundColor: '#F5F5F5' }}>
             {/* Header with actions */}
             <ItemList>
-                <ItemGroup title={`Logs (${logs.length})`}>
+                <ItemGroup
+                    title={`Logs (${logs.length})`}
+                    footer={`Stored locally and capped at ${MAX_APP_LOG_ENTRIES.toLocaleString()} entries. Oldest logs are dropped first.`}
+                >
                     <Item 
                         title="Add Test Log"
                         subtitle="Add a test log entry with timestamp"

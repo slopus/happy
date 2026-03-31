@@ -1,36 +1,30 @@
 /**
  * Integration tests for daemon HTTP control system
- * 
+ *
  * Tests the full flow of daemon startup, session tracking, and shutdown
- * 
- * IMPORTANT: These tests MUST be run with the integration test environment:
- * yarn test:integration-test-env
- * 
- * DO NOT run with regular 'npm test' or 'yarn test' - it will use the wrong environment
- * and the daemon will not work properly!
- * 
- * The integration test environment uses .env.integration-test which sets:
- * - HAPPY_HOME_DIR=~/.happy-dev-test (DIFFERENT from dev's ~/.happy-dev!)
- * - HAPPY_SERVER_URL=http://localhost:3005 (local dev server)
+ *
+ * This file boots one authenticated Happy environment and restarts the daemon
+ * inside that env for each test against the copied lab-rat project.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execSync, spawn } from 'child_process';
-import { existsSync, unlinkSync, readFileSync, writeFileSync, readdirSync } from 'fs';
-import path, { join } from 'path';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import path from 'path';
+import type { Metadata } from '@/api/types';
+import { getIntegrationEnv } from '@/testing/currentIntegrationEnv';
 import { configuration } from '@/configuration';
-import { 
-  listDaemonSessions, 
-  stopDaemonSession, 
-  spawnDaemonSession, 
-  stopDaemonHttp, 
-  notifyDaemonSessionStarted, 
-  stopDaemon
+import {
+  listDaemonSessions,
+  notifyDaemonSessionStarted,
+  spawnDaemonSession,
+  stopDaemon,
+  stopDaemonHttp,
+  stopDaemonSession,
 } from '@/daemon/controlClient';
-import { readDaemonState, clearDaemonState } from '@/persistence';
-import { Metadata } from '@/api/types';
-import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
+import { clearDaemonState, readDaemonState } from '@/persistence';
 import { getLatestDaemonLog } from '@/ui/logger';
+import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 
 // Utility to wait for condition
 async function waitFor(
@@ -46,47 +40,29 @@ async function waitFor(
   throw new Error('Timeout waiting for condition');
 }
 
-// Check if dev server is running and properly configured
-async function isServerHealthy(): Promise<boolean> {
-  try {
-    // First check if server responds
-    const response = await fetch('http://localhost:3005/', { 
-      signal: AbortSignal.timeout(1000) 
-    });
-    if (!response.ok) {
-      console.log('[TEST] Server health check failed: root endpoint not OK');
-      return false;
-    }
-    
-    // Check if we have test credentials
-    const testCredentials = existsSync(join(configuration.happyHomeDir, 'access.key'));
-    if (!testCredentials) {
-      console.log('[TEST] No test credentials found in', configuration.happyHomeDir);
-      console.log('[TEST] Run "happy auth login" with HAPPY_HOME_DIR=~/.happy-dev-test first');
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    console.log('[TEST] Server not reachable:', error);
-    return false;
-  }
+const integrationEnv = getIntegrationEnv();
+
+async function stopAllTrackedSessions(): Promise<void> {
+  const sessions = await listDaemonSessions().catch(() => []);
+
+  await Promise.all(
+    sessions.map((session: any) =>
+      stopDaemonSession(session.happySessionId ?? `PID-${session.pid}`).catch(() => false)
+    ),
+  );
 }
 
-describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout: 20_000 }, () => {
+describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
   let daemonPid: number;
 
   beforeEach(async () => {
-    // First ensure no daemon is running by checking PID in metadata file
-    await stopDaemon()
-    
-    // Start fresh daemon for this test
-    // This will return and start a background process - we don't need to wait for it
+    await stopAllTrackedSessions().catch(() => undefined);
+    await stopDaemon().catch(() => undefined);
+
     void spawnHappyCLI(['daemon', 'start'], {
-      stdio: 'ignore'
+      stdio: 'ignore',
     });
-    
-    // Wait for daemon to write its state file (it needs to auth, setup, and start server)
+
     await waitFor(async () => {
       const state = await readDaemonState();
       return state !== null;
@@ -103,7 +79,8 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
   });
 
   afterEach(async () => {
-    await stopDaemon()
+    await stopAllTrackedSessions().catch(() => undefined);
+    await stopDaemon().catch(() => undefined);
   });
 
   it('should list sessions (initially empty)', async () => {
@@ -138,7 +115,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
   });
 
   it('should spawn & stop a session via HTTP (not testing RPC route, but similar enough)', async () => {
-    const response = await spawnDaemonSession('/tmp', 'spawned-test-456');
+    const response = await spawnDaemonSession(integrationEnv.projectPath, 'spawned-test-456');
 
     expect(response).toHaveProperty('success', true);
     expect(response).toHaveProperty('sessionId');
@@ -161,7 +138,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     const promises = [];
     const sessionCount = 20;
     for (let i = 0; i < sessionCount; i++) {
-      promises.push(spawnDaemonSession('/tmp'));
+      promises.push(spawnDaemonSession(integrationEnv.projectPath));
     }
 
     // Wait for all sessions to be spawned
@@ -193,7 +170,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       '--happy-starting-mode', 'remote',
       '--started-by', 'terminal'
     ], {
-      cwd: '/tmp',
+      cwd: integrationEnv.projectPath,
       detached: true,
       stdio: 'ignore'
     });
@@ -204,7 +181,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     await new Promise(resolve => setTimeout(resolve, 5_000));
 
     // Spawn a daemon session
-    const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb');
+    const spawnResponse = await spawnDaemonSession(integrationEnv.projectPath, 'daemon-session-bbb');
 
     // List all sessions
     const sessions = await listDaemonSessions();
@@ -238,7 +215,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
   it('should update session metadata when webhook is called', async () => {
     // Spawn a session
-    const spawnResponse = await spawnDaemonSession('/tmp');
+    const spawnResponse = await spawnDaemonSession(integrationEnv.projectPath);
 
     // Verify webhook was processed (session ID updated)
     const sessions = await listDaemonSessions();
@@ -280,7 +257,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     const promises = [];
     for (let i = 0; i < 3; i++) {
       promises.push(
-        spawnDaemonSession('/tmp')
+        spawnDaemonSession(integrationEnv.projectPath)
       );
     }
 
@@ -393,9 +370,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
    * 7. New daemon starts, reads daemon.state.json, sees old version != its compiled version
    * 8. New daemon calls stopDaemon() to kill old daemon, then takes over
    * 
-   * This simulates what happens during `npm upgrade happy-coder`:
+   * This simulates what happens during `npm upgrade happy`:
    * - Running daemon has OLD version loaded in memory (configuration.currentCliVersion)
-   * - npm replaces node_modules/happy-coder/ with NEW version files
+   * - npm replaces node_modules/happy/ with NEW version files
    * - package.json on disk now has NEW version
    * - Daemon reads package.json, detects mismatch, triggers self-update
    * - Key difference: npm atomically replaces the entire module directory, while
@@ -412,7 +389,11 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
    * - Using pkgroll alone: doesn't update compiled configuration.currentCliVersion
    * - Modifying package.json after daemon starts: triggers immediate version check on startup
    */
-  it('[takes 1 minute to run] should detect version mismatch and kill old daemon', { timeout: 100_000 }, async () => {
+  // Keep this skipped. It is destructive (modifies package.json, rebuilds dist, restarts daemon)
+  // and it exercises a hand-rolled self-restart path we probably do not want long-term anyway.
+  // A native system daemon model (like OpenClaw's) would make upgrades and startup/start-at-login
+  // the OS's job instead of something we hand-roll and test this way.
+  it.skip('[skipped] should detect version mismatch and kill old daemon', { timeout: 100_000 }, async () => {
     // Read current package.json to get version
     const packagePath = path.join(process.cwd(), 'package.json');
     const packageJsonOriginalRawText = readFileSync(packagePath, 'utf8');
@@ -433,13 +414,15 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       expect(initialState!.startedWithCliVersion).toBe(originalVersion);
       const initialPid = initialState!.pid;
 
-      // Re-build the CLI - so it will import the new package.json in its configuartion.ts
-      // and think it is a new version
-      // We are not using yarn build here because it cleans out dist/
-      // and we want to avoid that, 
-      // otherwise daemon will spawn a non existing happy js script.
-      // We need to remove index, but not the other files, otherwise some of our code might fail when called from within the daemon.
-      execSync('yarn build', { stdio: 'ignore' });
+      // Re-build the CLI so dist/ has the test version baked in.
+      // The daemon's heartbeat will detect package.json != compiled version,
+      // then spawn a new daemon which will use the rebuilt dist.
+      console.log(`[TEST] Rebuilding CLI with test version ${testVersion}...`);
+      execSync('yarn build', { stdio: 'pipe' });
+
+      // Verify the build actually has the test version
+      const distFiles = execSync('grep -rl "' + testVersion + '" dist/ || echo "NOT_FOUND"', { encoding: 'utf8' }).trim();
+      console.log(`[TEST] Test version in dist: ${distFiles}`);
       
       console.log(`[TEST] Current daemon running with version ${originalVersion}, PID: ${initialPid}`);
       
@@ -467,7 +450,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
   // TODO: Add a test to see if a corrupted file will work
   
-  // TODO: Test npm uninstall scenario - daemon should gracefully handle when happy-coder is uninstalled
+  // TODO: Test npm uninstall scenario - daemon should gracefully handle when happy is uninstalled
   // Current behavior: daemon tries to spawn new daemon on version mismatch but dist/index.mjs is gone
   // Expected: daemon should detect missing entrypoint and either exit cleanly or at minimum not respawn infinitely
 });

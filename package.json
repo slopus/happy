@@ -2,10 +2,26 @@
     "name": "monorepo",
     "private": true,
     "scripts": {
-        "cli": "yarn workspace happy-coder cli",
+        "cli": "yarn workspace happy cli",
         "release": "node ./scripts/release.cjs",
         "web": "yarn workspace happy-app web",
-        "postinstall": "node ./scripts/postinstall.cjs"
+        "app-logs": "yarn workspace happy-app-logs start",
+        "postinstall": "node ./scripts/postinstall.cjs",
+        "env:new": "tsx environments/environments.ts new",
+        "env:list": "tsx environments/environments.ts list",
+        "env:use": "tsx environments/environments.ts use",
+        "env:remove": "tsx environments/environments.ts remove",
+        "env:current": "tsx environments/environments.ts current",
+        "env:server": "tsx environments/environments.ts run server",
+        "env:web": "tsx environments/environments.ts run web",
+        "env:ios": "tsx environments/environments.ts run ios",
+        "env:android": "tsx environments/environments.ts run android",
+        "env:cli": "tsx environments/environments.ts run cli",
+        "env:seed": "tsx environments/environments.ts seed",
+        "env:up": "tsx environments/environments.ts up",
+        "env:up:authenticated": "yarn env:up --template authenticated-empty",
+        "env:down": "tsx environments/environments.ts down",
+        "env:tailscale": "tsx environments/environments.ts tailscale"
     },
     "workspaces": {
         "packages": [
@@ -13,7 +29,8 @@
             "packages/happy-agent",
             "packages/happy-cli",
             "packages/happy-server",
-            "packages/happy-wire"
+            "packages/happy-wire",
+            "packages/happy-app-logs"
         ],
         "nohoist": [
             "**/zod",

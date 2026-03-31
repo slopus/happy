@@ -46,6 +46,7 @@ async function migrate() {
     let migrationsDirResolved = "";
     const candidates = [
         path.join(process.cwd(), "prisma", "migrations"),
+        path.join(process.cwd(), "packages", "happy-server", "prisma", "migrations"),
         path.join(path.dirname(process.execPath), "prisma", "migrations"),
     ];
     for (const candidate of candidates) {
@@ -107,10 +108,9 @@ async function migrate() {
 }
 
 async function serve() {
-    // Set PGLITE_DIR so db.ts picks it up
-    if (!process.env.DATABASE_URL) {
-        process.env.PGLITE_DIR = process.env.PGLITE_DIR || pgliteDir;
-    }
+    // Ensure DB_PROVIDER is set for db.ts
+    process.env.DB_PROVIDER = process.env.DB_PROVIDER || "pglite";
+    process.env.PGLITE_DIR = process.env.PGLITE_DIR || pgliteDir;
 
     // Import and run the main server
     await import("./main");

@@ -13,7 +13,7 @@ export default function FeaturesSettingsScreen() {
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
-    const [useEnhancedSessionWizard, setUseEnhancedSessionWizard] = useSettingMutable('useEnhancedSessionWizard');
+    const [expResumeSession, setExpResumeSession] = useSettingMutable('expResumeSession');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -59,15 +59,13 @@ export default function FeaturesSettingsScreen() {
                     showChevron={false}
                 />
                 <Item
-                    title={t('settingsFeatures.enhancedSessionWizard')}
-                    subtitle={useEnhancedSessionWizard
-                        ? t('settingsFeatures.enhancedSessionWizardEnabled')
-                        : t('settingsFeatures.enhancedSessionWizardDisabled')}
-                    icon={<Ionicons name="sparkles-outline" size={29} color="#AF52DE" />}
+                    title="Resume Session"
+                    subtitle="Allow resuming disconnected sessions via the machine daemon"
+                    icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
                     rightElement={
                         <Switch
-                            value={useEnhancedSessionWizard}
-                            onValueChange={setUseEnhancedSessionWizard}
+                            value={expResumeSession}
+                            onValueChange={setExpResumeSession}
                         />
                     }
                     showChevron={false}

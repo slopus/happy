@@ -17,10 +17,12 @@ import {
 
 export type EncryptionVariant = 'legacy' | 'dataKey';
 
-export type SessionEncryption = {
+export type RecordEncryption = {
     key: Uint8Array;
     variant: EncryptionVariant;
 };
+
+export type SessionEncryption = RecordEncryption;
 
 export type RawSession = {
     id: string;
@@ -46,7 +48,36 @@ export type DecryptedSession = {
     metadata: unknown;
     agentState: unknown | null;
     dataEncryptionKey: string | null;
-    encryption: SessionEncryption;
+    encryption: RecordEncryption;
+};
+
+export type RawMachine = {
+    id: string;
+    seq: number;
+    createdAt: number;
+    updatedAt: number;
+    active: boolean;
+    activeAt: number;
+    metadata: string | null;
+    metadataVersion: number;
+    daemonState: string | null;
+    daemonStateVersion: number;
+    dataEncryptionKey: string | null;
+};
+
+export type DecryptedMachine = {
+    id: string;
+    seq: number;
+    createdAt: number;
+    updatedAt: number;
+    active: boolean;
+    activeAt: number;
+    metadata: unknown | null;
+    metadataVersion: number;
+    daemonState: unknown | null;
+    daemonStateVersion: number;
+    dataEncryptionKey: string | null;
+    encryption: RecordEncryption;
 };
 
 export type RawMessage = WireSessionMessage;
@@ -62,17 +93,18 @@ export type DecryptedMessage = {
 
 // --- Session encryption key resolution ---
 
-export function resolveSessionEncryption(
-    session: RawSession,
+function resolveRecordEncryption(
+    record: { id: string; dataEncryptionKey: string | null },
     creds: Credentials,
-): SessionEncryption {
-    if (session.dataEncryptionKey) {
-        const encrypted = decodeBase64(session.dataEncryptionKey);
+    recordLabel: string,
+): RecordEncryption {
+    if (record.dataEncryptionKey) {
+        const encrypted = decodeBase64(record.dataEncryptionKey);
         // Strip version byte (first byte)
         const bundle = encrypted.slice(1);
         const sessionKey = decryptBoxBundle(bundle, creds.contentKeyPair.secretKey);
         if (!sessionKey) {
-            throw new Error(`Failed to decrypt session key for session ${session.id}`);
+            throw new Error(`Failed to decrypt ${recordLabel} key for ${recordLabel} ${record.id}`);
         }
         return { key: sessionKey, variant: 'dataKey' };
     }
@@ -80,11 +112,25 @@ export function resolveSessionEncryption(
     return { key: creds.secret, variant: 'legacy' };
 }
 
+export function resolveSessionEncryption(
+    session: RawSession,
+    creds: Credentials,
+): SessionEncryption {
+    return resolveRecordEncryption(session, creds, 'session');
+}
+
+export function resolveMachineEncryption(
+    machine: RawMachine,
+    creds: Credentials,
+): RecordEncryption {
+    return resolveRecordEncryption(machine, creds, 'machine');
+}
+
 // --- Decrypt helpers ---
 
 function decryptField(
     encrypted: string | null,
-    encryption: SessionEncryption,
+    encryption: RecordEncryption,
 ): unknown | null {
     if (!encrypted) return null;
     const data = decodeBase64(encrypted);
@@ -105,6 +151,24 @@ function decryptSession(raw: RawSession, creds: Credentials): DecryptedSession {
         activeAt: raw.activeAt,
         metadata: decryptField(raw.metadata, encryption),
         agentState: decryptField(raw.agentState, encryption),
+        dataEncryptionKey: raw.dataEncryptionKey,
+        encryption,
+    };
+}
+
+function decryptMachine(raw: RawMachine, creds: Credentials): DecryptedMachine {
+    const encryption = resolveMachineEncryption(raw, creds);
+    return {
+        id: raw.id,
+        seq: raw.seq,
+        createdAt: raw.createdAt,
+        updatedAt: raw.updatedAt,
+        active: raw.active,
+        activeAt: raw.activeAt,
+        metadata: decryptField(raw.metadata, encryption),
+        metadataVersion: raw.metadataVersion,
+        daemonState: decryptField(raw.daemonState, encryption),
+        daemonStateVersion: raw.daemonStateVersion,
         dataEncryptionKey: raw.dataEncryptionKey,
         encryption,
     };
@@ -157,6 +221,23 @@ export async function listSessions(
     }
 
     return data.sessions.map(raw => decryptSession(raw, creds));
+}
+
+export async function listMachines(
+    config: Config,
+    creds: Credentials,
+): Promise<DecryptedMachine[]> {
+    let data: RawMachine[];
+    try {
+        const resp = await axios.get(`${config.serverUrl}/v1/machines`, {
+            headers: authHeaders(creds),
+        });
+        data = resp.data as RawMachine[];
+    } catch (err) {
+        handleApiError(err, 'listing machines');
+    }
+
+    return data.map(raw => decryptMachine(raw, creds));
 }
 
 export async function listActiveSessions(

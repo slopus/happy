@@ -54,6 +54,14 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
                     } as AgentEvent;
                 }
             }
+
+            // Check for EnterPlanMode tool calls
+            if (content.type === 'tool-call' && (content.name === 'EnterPlanMode' || content.name === 'enter_plan_mode')) {
+                return {
+                    type: 'message',
+                    message: 'Entering plan mode',
+                } as AgentEvent;
+            }
         }
     }
 

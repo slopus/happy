@@ -8,10 +8,11 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete } from '@/sync/ops';
+import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -19,6 +20,8 @@ import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { copySessionMetadataToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { HappyError } from '@/utils/errors';
 
 // Animated status dot component
@@ -126,6 +129,11 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
+    const {
+        canShowResume,
+        resumeSession,
+        resumeSessionSubtitle,
+    } = useSessionQuickActions(session);
     
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -140,18 +148,15 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, [session]);
 
-    const handleCopyMetadata = useCallback(async () => {
-        if (!session?.metadata) return;
-        try {
-            await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
-            Modal.alert(t('common.success'), t('sessionInfo.metadataCopied'));
-        } catch (error) {
-            Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
-        }
+    const handleCopyMetadata = useCallback(() => {
+        void copySessionMetadataToClipboard(session);
     }, [session]);
 
     // Use HappyAction for archiving - it handles errors automatically
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        // Prompt for worktree cleanup before killing (needs an active machine connection)
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
         const result = await sessionKill(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
@@ -162,27 +167,27 @@ function SessionInfoContent({ session }: { session: Session }) {
     });
 
     const handleArchiveSession = useCallback(() => {
-        Modal.alert(
-            t('sessionInfo.archiveSession'),
-            t('sessionInfo.archiveSessionConfirm'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.archiveSession'),
-                    style: 'destructive',
-                    onPress: performArchive
-                }
-            ]
-        );
+        performArchive();
     }, [performArchive]);
 
-    // Use HappyAction for deletion - it handles errors automatically
+    // Use HappyAction for deletion - kills session first if needed, then deletes
     const [deletingSession, performDelete] = useHappyAction(async () => {
+        // Prompt for worktree cleanup before killing (needs an active machine connection)
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
+        // Navigate back optimistically
+        router.back();
+        router.back();
+
+        // Kill session first if it's still active (best-effort)
+        if (sessionStatus.isConnected || session.active) {
+            await sessionKill(session.id).catch(() => {});
+        }
+
         const result = await sessionDelete(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
         }
-        // Success - no alert needed, UI will update to show deleted state
     });
 
     const handleDeleteSession = useCallback(() => {
@@ -205,7 +210,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     }, []);
 
     const handleCopyUpdateCommand = useCallback(async () => {
-        const updateCommand = 'npm install -g happy-coder@latest';
+        const updateCommand = 'npm install -g happy@latest';
         try {
             await Clipboard.setStringAsync(updateCommand);
             Modal.alert(t('common.success'), updateCommand);
@@ -281,6 +286,31 @@ function SessionInfoContent({ session }: { session: Session }) {
                             }}
                         />
                     )}
+                    {session.metadata?.codexThreadId && (
+                        <Item
+                            title={t('sessionInfo.codexThreadId')}
+                            subtitle={`${session.metadata.codexThreadId.substring(0, 8)}...${session.metadata.codexThreadId.substring(session.metadata.codexThreadId.length - 8)}`}
+                            icon={<Ionicons name="terminal-outline" size={29} color="#10A37F" />}
+                            onPress={async () => {
+                                try {
+                                    await Clipboard.setStringAsync(session.metadata!.codexThreadId!);
+                                    Modal.alert(t('common.success'), t('sessionInfo.codexThreadIdCopied'));
+                                } catch (error) {
+                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyCodexThreadId'));
+                                }
+                            }}
+                        />
+                    )}
+                    {/* Resume command — shown for disconnected sessions with a backend session ID */}
+                    {/* TODO: migrate to `happy resume <happy-session-id>` once it works without happy-agent auth */}
+                    {!sessionStatus.isConnected && getResumeCommand(session) && (
+                        <CopyableItem
+                            title="Resume Command"
+                            subtitle={getResumeCommand(session)!}
+                            icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
+                            copyText={getResumeCommand(session)!}
+                        />
+                    )}
                     <Item
                         title={t('sessionInfo.connectionStatus')}
                         detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
@@ -317,6 +347,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
+                    {canShowResume && (
+                        <Item
+                            title={t('sessionInfo.resumeSession')}
+                            subtitle={resumeSessionSubtitle}
+                            icon={<Ionicons name="play-circle-outline" size={29} color="#007AFF" />}
+                            onPress={resumeSession}
+                        />
+                    )}
                     {sessionStatus.isConnected && (
                         <Item
                             title={t('sessionInfo.archiveSession')}
@@ -325,14 +363,12 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={handleArchiveSession}
                         />
                     )}
-                    {!sessionStatus.isConnected && !session.active && (
-                        <Item
-                            title={t('sessionInfo.deleteSession')}
-                            subtitle={t('sessionInfo.deleteSessionSubtitle')}
-                            icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
-                            onPress={handleDeleteSession}
-                        />
-                    )}
+                    <Item
+                        title={t('sessionInfo.deleteSession')}
+                        subtitle={t('sessionInfo.deleteSessionSubtitle')}
+                        icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
+                        onPress={handleDeleteSession}
+                    />
                 </ItemGroup>
 
                 {/* Metadata */}
@@ -374,6 +410,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 if (flavor === 'claude') return 'Claude';
                                 if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
                                 if (flavor === 'gemini') return 'Gemini';
+                                if (flavor === 'openclaw') return 'OpenClaw';
                                 return flavor;
                             })()}
                             icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
@@ -561,3 +598,21 @@ export default React.memo(() => {
 
     return <SessionInfoContent session={session} />;
 });
+
+function CopyableItem({ title, subtitle, icon, copyText }: { title: string; subtitle: string; icon: React.ReactNode; copyText: string }) {
+    const [copied, setCopied] = React.useState(false);
+    return (
+        <Item
+            title={title}
+            subtitle={subtitle}
+            icon={icon}
+            showChevron={false}
+            rightElement={<Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? '#30D158' : '#8E8E93'} />}
+            onPress={async () => {
+                await Clipboard.setStringAsync(copyText);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            }}
+        />
+    );
+}
