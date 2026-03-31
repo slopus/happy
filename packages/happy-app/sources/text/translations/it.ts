@@ -435,6 +435,8 @@ export const it: TranslationStructure = {
         attachFile: 'Allega file',
         removeAttachment: 'Rimuovi',
         filesAttached: ({ count }: { count: number }) => count === 1 ? '1 file allegato' : `${count} file allegati`,
+        fileTooLargeTitle: 'File troppo grande',
+        fileTooLarge: ({ names, limit }: { names: string; limit: string }) => `I seguenti file superano il limite di ${limit} e non sono stati allegati: ${names}`,
     },
 
     machineLauncher: {

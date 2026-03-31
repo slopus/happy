@@ -447,6 +447,8 @@ export const pl: TranslationStructure = {
         attachFile: 'Dołącz plik',
         removeAttachment: 'Usuń',
         filesAttached: ({ count }: { count: number }) => count === 1 ? '1 plik dołączony' : `${count} plików dołączonych`,
+        fileTooLargeTitle: 'Plik zbyt duży',
+        fileTooLarge: ({ names, limit }: { names: string; limit: string }) => `Następujące pliki przekraczają limit ${limit} i nie zostały dołączone: ${names}`,
     },
 
     machineLauncher: {

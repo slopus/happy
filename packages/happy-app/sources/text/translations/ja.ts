@@ -438,6 +438,8 @@ export const ja: TranslationStructure = {
         attachFile: 'ファイルを添付',
         removeAttachment: '削除',
         filesAttached: ({ count }: { count: number }) => count === 1 ? '1件のファイルを添付' : `${count}件のファイルを添付`,
+        fileTooLargeTitle: 'ファイルが大きすぎます',
+        fileTooLarge: ({ names, limit }: { names: string; limit: string }) => `次のファイルは${limit}の制限を超えているため添付されませんでした: ${names}`,
     },
 
     machineLauncher: {

@@ -22,7 +22,20 @@ import { useSetting } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
 import { Theme } from '@/theme';
 import { t } from '@/text';
+import { Modal } from '@/modal';
 import { Metadata } from '@/sync/storageTypes';
+
+/** 5 MB per file — keeps encrypted message payloads reasonable. */
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+function readFileAsDataURI(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
+}
 
 export interface PendingFile {
     id: string;
@@ -444,7 +457,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
 
-    // File attachment handler
+    // File attachment handler — reads content as base64 data URIs for encrypted transport.
     const handleAttachPress = React.useCallback(async () => {
         if (!props.onFilesSelected) return;
         hapticsLight();
@@ -459,12 +472,36 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     multiple: true,
                 });
                 if (!result.canceled && result.assets) {
-                    props.onFilesSelected(result.assets.map(asset => ({
-                        name: asset.name,
-                        mime: asset.mimeType || 'application/octet-stream',
-                        uri: asset.uri,
-                        size: asset.size,
-                    })));
+                    const FileSystem = await import('expo-file-system');
+                    const accepted: Array<{ name: string; mime: string; uri: string; size?: number }> = [];
+                    const rejected: string[] = [];
+
+                    for (const asset of result.assets) {
+                        if (asset.size && asset.size > MAX_FILE_SIZE) {
+                            rejected.push(asset.name);
+                            continue;
+                        }
+                        const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+                            encoding: 'base64',
+                        });
+                        const mime = asset.mimeType || 'application/octet-stream';
+                        accepted.push({
+                            name: asset.name,
+                            mime,
+                            uri: `data:${mime};base64,${base64}`,
+                            size: asset.size,
+                        });
+                    }
+
+                    if (rejected.length > 0) {
+                        Modal.alert(
+                            t('agentInput.fileTooLargeTitle'),
+                            t('agentInput.fileTooLarge', { names: rejected.join(', '), limit: '5 MB' }),
+                        );
+                    }
+                    if (accepted.length > 0) {
+                        props.onFilesSelected(accepted);
+                    }
                 }
             } catch (err) {
                 console.error('Document picker error:', err);
@@ -472,18 +509,40 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         }
     }, [props.onFilesSelected]);
 
-    // Web file input change handler
-    const handleWebFileChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    // Web file input change handler — reads files as base64 data URIs so they
+    // survive page reloads and travel through the encrypted message pipeline.
+    const handleWebFileChange = React.useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         if (!props.onFilesSelected) return;
         const fileList = event.target.files;
         if (!fileList || fileList.length === 0) return;
-        const files = Array.from(fileList).map(file => ({
-            name: file.name,
-            mime: file.type || 'application/octet-stream',
-            uri: URL.createObjectURL(file),
-            size: file.size,
-        }));
-        props.onFilesSelected(files);
+
+        const accepted: Array<{ name: string; mime: string; uri: string; size: number }> = [];
+        const rejected: string[] = [];
+
+        for (const file of Array.from(fileList)) {
+            if (file.size > MAX_FILE_SIZE) {
+                rejected.push(file.name);
+                continue;
+            }
+            const dataUri = await readFileAsDataURI(file);
+            accepted.push({
+                name: file.name,
+                mime: file.type || 'application/octet-stream',
+                uri: dataUri,
+                size: file.size,
+            });
+        }
+
+        if (rejected.length > 0) {
+            Modal.alert(
+                t('agentInput.fileTooLargeTitle'),
+                t('agentInput.fileTooLarge', { names: rejected.join(', '), limit: '5 MB' }),
+            );
+        }
+        if (accepted.length > 0) {
+            props.onFilesSelected(accepted);
+        }
+
         // Reset input so same file can be re-selected
         event.target.value = '';
     }, [props.onFilesSelected]);

@@ -438,6 +438,8 @@ export const zhHans: TranslationStructure = {
         attachFile: '附加文件',
         removeAttachment: '移除',
         filesAttached: ({ count }: { count: number }) => count === 1 ? '已附加1个文件' : `已附加${count}个文件`,
+        fileTooLargeTitle: '文件过大',
+        fileTooLarge: ({ names, limit }: { names: string; limit: string }) => `以下文件超出${limit}限制，未被附加：${names}`,
     },
 
     machineLauncher: {

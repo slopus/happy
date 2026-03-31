@@ -437,6 +437,8 @@ export const zhHant: TranslationStructure = {
         attachFile: '附加檔案',
         removeAttachment: '移除',
         filesAttached: ({ count }: { count: number }) => count === 1 ? '已附加1個檔案' : `已附加${count}個檔案`,
+        fileTooLargeTitle: '檔案過大',
+        fileTooLarge: ({ names, limit }: { names: string; limit: string }) => `以下檔案超過${limit}限制，未被附加：${names}`,
     },
 
     machineLauncher: {

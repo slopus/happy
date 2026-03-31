@@ -40,6 +40,12 @@ export function decodeBase64Url(base64url: string): Uint8Array {
 // ─── Random bytes ────────────────────────────────────────────────────────────
 
 export function getRandomBytes(size: number): Uint8Array {
+    // Use Web Crypto API in browsers where node:crypto is unavailable.
+    if (typeof randomBytes !== 'function' && typeof globalThis.crypto?.getRandomValues === 'function') {
+        const arr = new Uint8Array(size);
+        globalThis.crypto.getRandomValues(arr);
+        return arr;
+    }
     return new Uint8Array(randomBytes(size));
 }
 

@@ -446,6 +446,8 @@ export const ru: TranslationStructure = {
         attachFile: 'Прикрепить файл',
         removeAttachment: 'Удалить',
         filesAttached: ({ count }: { count: number }) => count === 1 ? '1 файл прикреплён' : `${count} файлов прикреплено`,
+        fileTooLargeTitle: 'Файл слишком большой',
+        fileTooLarge: ({ names, limit }: { names: string; limit: string }) => `Следующие файлы превышают лимит ${limit} и не были прикреплены: ${names}`,
     },
 
     machineLauncher: {

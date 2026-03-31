@@ -10,6 +10,7 @@ import { View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { type v3 } from '@slopus/happy-sync';
 import { PartView } from './PartView';
+import { FilePartView } from './FilePartView';
 import { MarkdownView, Option } from '../markdown/MarkdownView';
 import { layout } from '../layout';
 import { sync } from '@/sync/sync';
@@ -51,13 +52,15 @@ const UserMessageView = React.memo((props: {
         sync.sendMessage(sessionId, option.title);
     }, [sessionId]);
 
-    // Extract text from parts
+    // Extract text and file parts
     const text = message.parts
         .filter((p): p is v3.TextPart => p.type === 'text')
         .map(p => p.text)
         .join('\n');
 
-    if (!text) return null;
+    const fileParts = message.parts.filter((p): p is v3.FilePart => p.type === 'file');
+
+    if (!text && fileParts.length === 0) return null;
 
     const renderedText = userInfo.meta?.displayText ?? text;
 
@@ -65,9 +68,14 @@ const UserMessageView = React.memo((props: {
         <View style={styles.messageContainer}>
             <View style={styles.messageContent}>
                 <View style={styles.userMessageContainer}>
-                    <View style={styles.userMessageBubble}>
-                        <MarkdownView markdown={renderedText} onOptionPress={handleOptionPress} sessionId={sessionId} />
-                    </View>
+                    {fileParts.length > 0 && fileParts.map(fp => (
+                        <FilePartView key={fp.id as string} part={fp} sessionId={sessionId} />
+                    ))}
+                    {text ? (
+                        <View style={styles.userMessageBubble}>
+                            <MarkdownView markdown={renderedText} onOptionPress={handleOptionPress} sessionId={sessionId} />
+                        </View>
+                    ) : null}
                 </View>
             </View>
         </View>

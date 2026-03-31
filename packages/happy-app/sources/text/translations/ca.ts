@@ -437,6 +437,8 @@ export const ca: TranslationStructure = {
         attachFile: 'Adjuntar fitxer',
         removeAttachment: 'Eliminar',
         filesAttached: ({ count }: { count: number }) => count === 1 ? '1 fitxer adjunt' : `${count} fitxers adjunts`,
+        fileTooLargeTitle: 'Fitxer massa gran',
+        fileTooLarge: ({ names, limit }: { names: string; limit: string }) => `Els fitxers següents superen el límit de ${limit} i no s'han adjuntat: ${names}`,
     },
 
     machineLauncher: {
