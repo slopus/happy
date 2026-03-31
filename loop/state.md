@@ -1334,15 +1334,42 @@ sub-tasks with specific file paths and expected changes made all 3 succeed. The
 permissions sub-task needed a follow-up prompt, but the other two delivered on
 first attempt.
 
+## Phase 4.6: DONE
+
+All P1 permission/control-flow items from Phase 4.2 are complete. Updated
+`roadmap.md` with DONE markers on all 8 P1 concrete requirements.
+
+### P1 status summary
+
+| Item | Phase |
+|------|-------|
+| Claude permission state correctness | 4.3 |
+| Claude plan approval UI | 4.3 |
+| Codex permission decision handling | 4.5 |
+| Codex stuck-thinking on abort | 4.5 |
+| Codex stop (turn_aborted race) | 4.5 |
+| TaskOutput/TaskStop rendering | 4.0 |
+| Edit rendering fixes | 4.0 |
+| Stale daemon httpPort | 4.0 |
+
+### Remaining P1 items (not yet dispatched)
+
+- Session protocol: message consumption visibility (read receipts) — secondary
+- Provider/session metadata clarity — orchestration-relevant
+- Codex sandbox behavior for specific non-yolo modes — may already be
+  improved by the Phase 4.5 permission decision fix
+
+### Decision
+
+The next work item is **Phase 5.0 — select and dispatch the next P1 dispatch
+batch** targeting the remaining P1 protocol/metadata items, OR move to P2
+(Composer overhaul) if the remaining P1 items are deemed secondary enough.
+
 ## Current Task
 
-TASK: Phase 4.6 — commit Phase 4.5 state update and select next work item.
+TASK: Phase 5.0 — select next P1 dispatch batch or begin P2.
 
-All P1 permission/control-flow items from Phase 4.2 are now complete:
-- Claude permission state: DONE (Phase 4.3)
-- Plan approval UI: DONE (Phase 4.3)
-- Codex permissions: DONE (Phase 4.5)
-- Codex stuck-thinking: DONE (Phase 4.5)
-- Codex stop race: DONE (Phase 4.5)
-
-Review roadmap for next priority.
+The core P1 permission/control-flow/rendering blockers are all fixed. Review
+whether the remaining P1 items (read receipts, metadata clarity, sandbox
+behavior) warrant another dispatch batch, or if it's time to move to P2
+(Composer overhaul) which is the roadmap's next major user-visible priority.

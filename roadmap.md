@@ -408,14 +408,11 @@ Goal: remove the broken session-control paths that currently make remote agent m
 
 ### Concrete requirements
 
-- Fix "Yes, don't ask again" / session-scoped approval behavior for Claude Code permissions.
-- Fix Claude plan proposals that do not show approve / deny buttons.
-  - Repro session:
-    - worktree: `~/projects/happy/happy/.dev/worktree/wise-river`
-    - Happy session id: `cmmbujpkq03iey7lcxyd9fqaw`
-- Fix Codex sandbox behavior where work is still blocked in non-`yolo` modes when it should be allowed by the selected permission mode.
-- Fix Codex session stopping — currently unreliable / painful.
-- Fix Codex sessions appearing stuck in "thinking" indefinitely with no updates — may be a frontend rendering issue where updates aren't being pushed to the session view.
+- DONE in Phase 4.3: Fix "Yes, don't ask again" / session-scoped approval behavior for Claude Code permissions.
+- DONE in Phase 4.3: Fix Claude plan proposals that do not show approve / deny buttons.
+- DONE in Phase 4.5: Fix Codex permission decision handling in sessionAllow/sessionDeny.
+- DONE in Phase 4.5: Fix Codex session stopping — turn_aborted race condition in sendTurnAndWait.
+- DONE in Phase 4.5: Fix Codex sessions appearing stuck in "thinking" — flush v3 mapper on abort/kill.
 - DONE in Phase 4.0/4.1: Fix task rendering for tool calls like:
   - `TaskOutput`
   - `TaskStop`
