@@ -484,19 +484,111 @@ Phase 2.1 fixes.
 - Review visually inspected against 10 Phase 2.2 screenshots read during
   this iteration
 
+## Phase 2.4: DONE
+
+Re-ran the remaining post-Phase-2.1 validation gaps with targeted slices and
+verified the resulting artifacts on disk.
+
+### Artifacts
+
+**Question/outside-project slice (`10..15`):**
+
+```
+-rw-r--r--  1 kirilldubovitskiy  staff  388290 Mar 30 16:49 e2e-recordings/phase-2-4-validation/steps-10-15/happy-walkthrough.mp4
+-rw-r--r--  1 kirilldubovitskiy  staff  138438 Mar 30 16:44 e2e-recordings/phase-2-4-validation/steps-10-15/step-12-agent-asks-a-question.png
+-rw-r--r--  1 kirilldubovitskiy  staff   98142 Mar 30 16:45 e2e-recordings/phase-2-4-validation/steps-10-15/step-15-write-outside-project.png
+-rw-r--r--  1 kirilldubovitskiy  staff    4196 Mar 30 16:45 e2e-recordings/phase-2-4-validation/steps-10-15/walkthrough-driver-results.json
+{
+  "format": {
+    "duration": "8.000000",
+    "size": "388290"
+  }
+}
+```
+
+Hash check:
+- `7` step/component PNGs
+- `7` unique SHA1s
+
+Driver results:
+- Steps `10`, `11`, `12`, `13`, `14`, `15` all **PASS**
+
+Visual verification:
+- `step-12-agent-asks-a-question.png` shows the framework-selection question
+  with the Vitest/Jest/Mocha/Cypress options visible.
+- `step-15-write-outside-project.png` shows `Done — created ../outside-test.txt
+  with "boundary test".`
+
+**Background-task slice (`28..38`):**
+
+```
+-rw-r--r--  1 kirilldubovitskiy  staff  688045 Mar 30 17:01 e2e-recordings/phase-2-4-validation/steps-28-38/happy-walkthrough.mp4
+-rw-r--r--  1 kirilldubovitskiy  staff  125767 Mar 30 16:52 e2e-recordings/phase-2-4-validation/steps-28-38/component-background-running.png
+-rw-r--r--  1 kirilldubovitskiy  staff   95014 Mar 30 16:55 e2e-recordings/phase-2-4-validation/steps-28-38/step-31-launch-background-task.png
+-rw-r--r--  1 kirilldubovitskiy  staff   82861 Mar 30 16:56 e2e-recordings/phase-2-4-validation/steps-28-38/step-32-background-task-completes.png
+-rw-r--r--  1 kirilldubovitskiy  staff  124420 Mar 30 16:59 e2e-recordings/phase-2-4-validation/steps-28-38/step-38-final-summary.png
+-rw-r--r--  1 kirilldubovitskiy  staff   10106 Mar 30 16:59 e2e-recordings/phase-2-4-validation/steps-28-38/walkthrough-driver-results.json
+{
+  "format": {
+    "duration": "14.000000",
+    "size": "688045"
+  }
+}
+```
+
+Hash check:
+- `13` step/component PNGs
+- `13` unique SHA1s
+
+Driver results:
+- **PASS:** `28`, `29`, `30`, `33`, `34`, `35`, `36`, `37`, `38`
+- **FAIL:** `31`, `32`
+
+Exact failures:
+- Step `31` (`Launch background task`) →
+  `Timed out waiting for condition`
+- Step `32` (`Background task completes`) →
+  `Timed out waiting for condition`
+
+The failures are in the walkthrough wait logic, not the user-visible transcript:
+- Step `31` results JSON text snippet says:
+  `It's 4:52 PM PDT ... The background task is running — I'll let you know when it finishes.`
+- Step `32` results JSON text snippet says:
+  `The background task finished: lol i am donezen`
+
+Visual verification:
+- `step-38-final-summary.png` shows the final summary / validation content
+  rendered correctly.
+- `step-31-launch-background-task.png` is content-rich and unique, but already
+  shows later resolved output (`The background task finished: lol i am donezen`)
+  because this capture happens after the Step-32 boundary wait.
+- `step-32-background-task-completes.png` similarly shows the next prompt in
+  view, which is consistent with the current "wait for next step, then capture"
+  strategy.
+- **Real remaining bug:** `component-background-running.png` is stale. Instead
+  of showing the running background-task state, it still shows the earlier
+  Step-29 resume transcript (`What happened with the priority feature?`).
+
+### Verdict
+
+1. The old review gap for Steps `10..15` is fully closed: targeted rerun is
+   clean and all captures are unique.
+2. The old review gap for Steps `29..38` is mostly closed: the slice ran end to
+   end and all step/component captures are unique.
+3. There is one concrete remaining walkthrough bug in the background-task path:
+   Step `31` and Step `32` still time out even though the transcript proves the
+   task launched and completed, and `component-background-running.png` captures
+   stale pre-background content.
+
 ## Current Task
 
-TASK: Awaiting next task definition.
+TASK: Phase 2.5 — stabilize background-task walkthrough capture/waits.
 
-All planned phases (1.0 through 2.3) are complete:
-- Phase 1.x: Full 38-step walkthrough captured, capture pipeline stabilized,
-  44/46 unique screenshots verified.
-- Phase 2.0: Lifecycle/control-flow hardening selected as next work item.
-- Phase 2.1: Dead-end Resume button and stop-while-pending UX fixed.
-- Phase 2.2: Fixes validated on real web stack with targeted capture slices.
-- Phase 2.3: UX review narrative refreshed to match current state.
-
-The remaining evidence gaps from the review (Steps 11-15 question flow and
-Steps 29-38 background tasks not re-validated post-Phase 2.1) are low risk
-since those code paths were not touched by the lifecycle fixes. A full
-walkthrough re-run would close the gap but is not blocking.
+Focus only on the concrete issues proven in Phase 2.4:
+- Make Step `31` pass when the assistant has clearly launched the background
+  task and returned the foreground answer.
+- Make Step `32` pass when the assistant has clearly surfaced the background
+  task output.
+- Fix `component-background-running.png` so it captures the actual running
+  background-task state instead of stale Step-29 content.
+- Re-run only the affected background-task slice after the fix.
