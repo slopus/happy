@@ -2328,7 +2328,44 @@ component (not a native browser dialog).
 - The `force: true` click workaround in Playwright closes the popover overlay
   rather than triggering the action — this is a test limitation, not a product bug.
 
+## Phase 7.4: DONE
+
+Reviewed `roadmap.md` against the validated Phase 7.3 P3 batch and selected
+the next highest-impact work item.
+
+### Decision
+
+The next work item is **Phase 7.5 — dispatch the P3 worktree/project ordering
+batch via `happy-agent`**.
+
+### Why this is next
+
+1. Phase 7.3 cleared the prerequisite that had kept drag ordering deferred:
+   the session rows, tool cards, archive flow, and nested-work presentation
+   are now validated on the real web stack.
+2. The biggest remaining unmet P3 outcome is still worktree/project-level
+   prioritization. Users can scan the list more safely now, but they still
+   cannot reorder worktree/project groups by importance.
+3. Worktree/project ordering is broader and higher-frequency than the
+   remaining markdown image absolute-path preview fix, which is still
+   valuable but narrower.
+4. Moving to P4 now would skip an unfinished core P3 requirement even though
+   its prerequisites are finally satisfied.
+
+### Scope of Phase 7.5
+
+1. Add ordering by importance at the worktree/project level, not individual
+   chat ordering.
+2. Support dragging worktree/project groups on web first.
+3. Preserve archive actions and grouping behavior after ordering changes.
+4. Record a web video once drag ordering ships, per the P3 validation rules.
+
+### Roadmap update
+
+Updated `roadmap.md` with the Phase 7.4 priority decision and scoped next
+batch.
+
 ## Current Task
 
-TASK: Phase 7.4 — review the roadmap and select the next highest-impact work
-item now that P3 scanability/safety is validated.
+TASK: Phase 7.5 — dispatch the P3 worktree/project ordering batch via
+`happy-agent`.

@@ -1135,6 +1135,48 @@ Phase 7.1 P3 scanability/safety batch validated on the real web stack in
 
 **Artifacts:** 16 screenshots in `e2e-recordings/phase-7-3-validation/`
 
+### Post-Phase 7.3 priority decision (2026-03-30)
+
+**Next highest-impact work item: Phase 7.5 — dispatch the P3 worktree/project
+ordering batch via `happy-agent`.**
+
+Phase 7.3 proved the first P3 scanability/safety batch on the real web stack.
+That clears the main sequencing concern that kept ordering work deferred: the
+session rows, tool cards, archive flow, and nested-work presentation are now
+stable enough to build interaction on top of them.
+
+**Why this is next:**
+
+1. The biggest remaining unmet P3 outcome is still worktree/project-level
+   prioritization. Archive safety and row scanability are now validated, but
+   users still cannot reorder project/worktree groups by importance.
+2. The roadmap already said drag ordering should wait until the underlying row
+   and tool-card surfaces are visually stable. Phase 7.3 just established that
+   prerequisite on the real product.
+3. Worktree/project ordering is broader and more central to day-to-day work
+   management than the remaining markdown image absolute-path preview fix,
+   which is still important but narrower.
+4. Moving to P4 file-link/review work now would skip an unfinished core P3
+   requirement even though its prerequisites are finally satisfied.
+
+**Scope of Phase 7.5:**
+
+1. **Worktree/project ordering**
+   - add ordering by importance at the worktree/project level
+   - do not change individual chat ordering
+2. **Web-first drag interaction**
+   - support dragging worktree/project groups on web first
+   - keep grouping and scanability intact while reordering
+3. **Safety/regression checks**
+   - preserve archive actions and related quick actions after ordering changes
+   - record a web video once drag ordering ships, per the P3 validation rules
+
+**Explicitly not next:**
+
+- markdown image absolute-path preview as a standalone batch before ordering
+- broader P4 file-link or changed-files review work
+- returning to another P2/P2.5 control-surface batch
+
 ## P4. File links, changed-files review, and attachments
 
 Goal: make file references in chat actually useful and make file review/attachment flows feel complete.
