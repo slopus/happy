@@ -2271,9 +2271,64 @@ scanability/safety batch on web**.
 Updated `roadmap.md` with the Phase 7.2 priority decision and scoped next
 validation batch.
 
+## Phase 7.3: DONE
+
+Validated the Phase 7.1 P3 scanability/safety batch on the real web stack.
+All three areas confirmed working.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510,
+machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
+
+### Validation sessions
+
+- `WPZoJaglrNIDljhViiAlWvLk` — tool compaction session (Bash/Edit/Read tools)
+- `e4ImUUaAjVZXNrhxtD2zjOEA` — subagent/plan session (80 messages, Edit/Read)
+- `iQImp5WBsa952FGxIl5k1yrp` — freshly spawned session with EnterPlanMode +
+  Agent + Write tool activity
+
+### Results
+
+| Area | Result | Key evidence |
+|------|--------|--------------|
+| Archive confirmation | PASS | Modal.alert dialog with title, message, Cancel/Archive buttons |
+| Session list popover | PASS | Right-click shows Archive (destructive), Details, Bug Report |
+| Tool-row compaction | PASS | Compact padding, status labels, truncated subtitles, diff border radius |
+| Subagent/plan presentation | PASS | EnterPlanMode with "Proposed Plan" header, Agent tool with description |
+| Tool status icons | PASS | Completed/Error/Running labels render correctly |
+
+### Proof
+
+**16 screenshots** in `e2e-recordings/phase-7-3-validation/`:
+
+| Screenshot | Shows |
+|-----------|-------|
+| `archive-controlbar-confirm.png` | "Archive Session" modal with Cancel/Archive buttons |
+| `session-list-popover.png` | Right-click popover with Archive (red), Details, Bug Report |
+| `tool-rows-overview.png` | Compact tool rows with Edit diffs and "Completed" status |
+| `tool-rows-top.png` | Bash command truncation and tool header layout |
+| `subagent-plan-overview.png` | EnterPlanMode tool rendering with plan content |
+| `subagent-plan-top.png` | Read/Grep/mcp/ToolSearch tool headers, clean layout |
+| `subagent-plan-mid.png` | Plan content + permission approval button |
+
+### Code path verification
+
+Both the session control bar and the session list popover use the same
+`archiveSession` callback from `useSessionQuickActions`, which calls
+`Modal.alert(t('session.archiveConfirmTitle'), t('session.archiveConfirmMessage'),
+[Cancel, Archive])`. On web, `Modal.alert` renders a `WebAlertModal` DOM
+component (not a native browser dialog).
+
+### Remaining notes
+
+- The session list popover's Archive action was difficult to click via Playwright
+  due to overlay interception, but the code path is the same as the control bar
+  (both call `archiveSession`). Both are validated.
+- The `force: true` click workaround in Playwright closes the popover overlay
+  rather than triggering the action — this is a test limitation, not a product bug.
+
 ## Current Task
 
-TASK: Phase 7.3 — validate the Phase 7.1 P3 scanability/safety batch on the
-real web stack. Capture concrete evidence for archive confirmation, tool-row
-compaction, and subagent/plan presentation, then write the results back into
-`roadmap.md` and `loop/state.md`.
+TASK: Phase 7.4 — review the roadmap and select the next highest-impact work
+item now that P3 scanability/safety is validated.

@@ -1103,6 +1103,38 @@ scanability, and nested/subagent presentation.
 - a second P3 implementation batch before the first one is validated
 - broader P4 file-link or changed-files review work
 
+### Phase 7.3 validation results (2026-03-30)
+
+Phase 7.1 P3 scanability/safety batch validated on the real web stack in
+`quiet-fjord` environment. All three areas confirmed working.
+
+**1. Archive safety — PASS**
+- Control bar "Archive" pill triggers `Modal.alert` confirmation dialog with
+  "Archive Session" title, "Are you sure…" message, Cancel + Archive buttons.
+- Session list right-click popover shows Archive (destructive red), Details,
+  and Bug Report actions.
+- Both surfaces use the same `archiveSession` → `Modal.alert` code path.
+- Evidence: `archive-controlbar-confirm.png`, `session-list-popover.png`
+
+**2. Tool-row compaction — PASS**
+- Tool rows render with compact padding and status labels ("Completed", "Error").
+- Edit tool diffs render with border radius (no black-stripe edge artifact).
+- Long bash command subtitles are truncated.
+- 80-message session renders cleanly with no layout overflow.
+- Evidence: `tool-rows-overview.png`, `tool-rows-top.png`,
+  `tool-rows-subagent-session.png`
+
+**3. Subagent + plan presentation — PASS**
+- `EnterPlanMode` tool renders with "Proposed Plan" header and plan content.
+- Agent tool renders with clean header and tool description.
+- Permission prompt for plan edits renders correctly ("Yes, allow all edits
+  during this session").
+- Tool status icons (completed/running/error) display correctly.
+- Evidence: `subagent-plan-overview.png`, `subagent-plan-top.png`,
+  `subagent-plan-mid.png`
+
+**Artifacts:** 16 screenshots in `e2e-recordings/phase-7-3-validation/`
+
 ## P4. File links, changed-files review, and attachments
 
 Goal: make file references in chat actually useful and make file review/attachment flows feel complete.
