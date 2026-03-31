@@ -1278,15 +1278,71 @@ The remaining P1 Codex task should be decomposed into 3 targeted sub-tasks
 (A: permission handlers, B: stuck-thinking mapper fix, C: stop path) and
 dispatched as the next batch.
 
+## Phase 4.5: DONE
+
+Dispatched 3 decomposed Codex sub-tasks via `happy-agent`. All 3 delivered commits.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510.
+
+### Sessions
+
+| Task | Session ID | Worktree | Commit | Result |
+|------|-----------|----------|--------|--------|
+| Codex permissions | `ROOPy5rqNgGwBXPeQXElditO` | `agent-codex-permissions` | `1882c5de` | PASS |
+| Codex stuck-thinking | `WNwGGBZ6fsBtgPWYqn0nnXLb` | `agent-codex-thinking` | `bdbf4583` | PASS |
+| Codex stop race | `gcMpCXWIjSAlyoVuBClDVl39` | `agent-codex-stop` | `ef689c42` | PASS |
+
+### What each agent delivered
+
+1. **Codex permissions** (1 commit, 2 files, +19/-5):
+   - Fixed `sessionAllow` in `ops.ts` to properly use `decision` parameter:
+     when `decision === 'approved_for_session'` → `'always'`, when
+     `decision === 'approved'` → `'once'`. Falls back to existing mode logic
+     when no decision is passed (Claude handlers).
+   - Fixed `sessionDeny` to send `sendAbortRequest` when `decision === 'abort'`.
+   - Updated test mocks in `ops.spec.ts` accordingly.
+   - Needed a follow-up prompt to start making changes.
+
+2. **Codex stuck-thinking** (1 commit, 2 files, +9/-4):
+   - Added `flushCodexV3TurnLocal('cancelled')` call in `handleAbort()` after
+     aborting the SDK turn — ensures step-finish is emitted.
+   - Added same call in `handleKillSession()` before `syncBridge.flush()` —
+     prevents orphaned messages during shutdown.
+   - Added optional `status` parameter to `flushV3CodexTurn()` so abort paths
+     finalize with 'cancelled' instead of 'completed'.
+
+3. **Codex stop race** (1 commit, 1 file, +14):
+   - Added `terminalEventEmitted` flag tracking in `sendTurnAndWait`.
+   - Added fallback `turn_aborted` emission in `finally` block when controller
+     was aborted but no terminal event was emitted.
+   - Added cleanup guard in `abortTurnWithFallback` for stale `pendingTurn`.
+
+### Typecheck
+
+Both `packages/happy-app` and `packages/happy-cli` pass typecheck.
+
+### Cleanup
+
+All 3 worktrees removed. Branches deleted. Sessions stopped.
+
+### Key observation
+
+Decomposing the failed broad Codex task (63 messages, 0 commits) into 3 targeted
+sub-tasks with specific file paths and expected changes made all 3 succeed. The
+permissions sub-task needed a follow-up prompt, but the other two delivered on
+first attempt.
+
 ## Current Task
 
-TASK: Phase 4.5 — dispatch decomposed Codex sub-tasks via `happy-agent`.
+TASK: Phase 4.6 — commit Phase 4.5 state update and select next work item.
 
-Use the `quiet-fjord` environment (server `:58035`, web `:58036`). Spawn 2-3
-sessions for:
-- Sub-task A: Fix Codex `PermissionFooter` handlers + `ops.ts` decision mapping
-- Sub-task B: Fix Codex v3-mapper `step-finish` emission for stuck-thinking
-- Sub-task C: Fix Codex `stop` path reliability
+All P1 permission/control-flow items from Phase 4.2 are now complete:
+- Claude permission state: DONE (Phase 4.3)
+- Plan approval UI: DONE (Phase 4.3)
+- Codex permissions: DONE (Phase 4.5)
+- Codex stuck-thinking: DONE (Phase 4.5)
+- Codex stop race: DONE (Phase 4.5)
 
-Each sub-task should target specific files and make targeted changes.
-Require typecheck + commit from each.
+Review roadmap for next priority.
