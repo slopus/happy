@@ -255,6 +255,11 @@ export const ca: TranslationStructure = {
     newSession: {
         title: 'Iniciar nova sessió',
         machineOffline: 'La màquina està fora de línia',
+        useCustomPath: ({ path }: { path: string }) => `Utilitza ${path}`,
+        noResults: 'Sense resultats',
+        searchMachines: 'Cerca màquines...',
+        searchOrEnterPath: 'Cerca o introdueix ruta...',
+        searchWorktrees: 'Cerca worktrees...',
     },
 
     sessionHistory: {

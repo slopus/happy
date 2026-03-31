@@ -180,6 +180,7 @@ function PickerContent({
     selectedKey,
     onSelect,
     searchPlaceholder,
+    allowCustomValue,
 }: {
     title: string;
     fixedItems?: PickerItem[];
@@ -187,6 +188,7 @@ function PickerContent({
     selectedKey: string | null;
     onSelect: (key: string) => void;
     searchPlaceholder?: string;
+    allowCustomValue?: boolean;
 }) {
     const { theme } = useUnistyles();
     const [search, setSearch] = React.useState('');
@@ -196,6 +198,11 @@ function PickerContent({
         const q = search.toLowerCase();
         return items.filter(item => item.label.toLowerCase().includes(q));
     }, [search, items]);
+
+    // Show "use this path" option when search text doesn't exactly match any item
+    const showCustomOption = allowCustomValue && search.length > 0 && !items.some(
+        item => item.key === search || item.label === search,
+    );
 
     const renderOption = (item: PickerItem) => {
         const isSelected = item.key === selectedKey;
@@ -234,6 +241,7 @@ function PickerContent({
                     style={[pickerStyles.searchInput, { color: theme.colors.text }]}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    autoFocus={Platform.OS === 'web'}
                 />
             </View>
 
@@ -243,9 +251,25 @@ function PickerContent({
                     <View style={[pickerStyles.divider, { backgroundColor: theme.colors.divider }]} />
                 )}
                 {filtered.map(renderOption)}
-                {filtered.length === 0 && search.length > 0 && (
+                {showCustomOption && (
+                    <>
+                        {filtered.length > 0 && (
+                            <View style={[pickerStyles.divider, { backgroundColor: theme.colors.divider }]} />
+                        )}
+                        <Pressable
+                            style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                            onPress={() => onSelect(search)}
+                        >
+                            <Ionicons name="add-circle-outline" size={16} color={theme.colors.button.primary.background} />
+                            <Text style={[pickerStyles.optionText, { color: theme.colors.button.primary.background }]}>
+                                {t('newSession.useCustomPath', { path: search })}
+                            </Text>
+                        </Pressable>
+                    </>
+                )}
+                {filtered.length === 0 && !showCustomOption && search.length > 0 && (
                     <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
-                        no results
+                        {t('newSession.noResults')}
                     </Text>
                 )}
             </ScrollView>
@@ -507,11 +531,11 @@ function NewSessionScreen() {
     const pickerData = React.useMemo(() => {
         switch (activePicker) {
             case 'machine':
-                return { title: 'Machine', items: machineItems, selectedKey: selectedMachineId, searchPlaceholder: 'search machines...' };
+                return { title: 'Machine', items: machineItems, selectedKey: selectedMachineId, searchPlaceholder: t('newSession.searchMachines') };
             case 'path':
-                return { title: 'Project', items: pathItems, selectedKey: selectedPath, searchPlaceholder: 'search projects...' };
+                return { title: 'Project', items: pathItems, selectedKey: selectedPath, searchPlaceholder: t('newSession.searchOrEnterPath'), allowCustomValue: true };
             case 'worktree':
-                return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems, selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
+                return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems, selectedKey: worktreeKey, searchPlaceholder: t('newSession.searchWorktrees') };
             default:
                 return null;
         }

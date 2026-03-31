@@ -236,6 +236,11 @@ export const ru: TranslationStructure = {
     newSession: {
         title: 'Начать новую сессию',
         machineOffline: 'Машина недоступна',
+        useCustomPath: ({ path }: { path: string }) => `Использовать ${path}`,
+        noResults: 'Нет результатов',
+        searchMachines: 'Поиск машин...',
+        searchOrEnterPath: 'Поиск или введите путь...',
+        searchWorktrees: 'Поиск worktree...',
     },
 
     sessionHistory: {

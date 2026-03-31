@@ -256,6 +256,11 @@ export const ja: TranslationStructure = {
     newSession: {
         title: '新しいセッションを開始',
         machineOffline: 'マシンがオフラインです',
+        useCustomPath: ({ path }: { path: string }) => `${path} を使用`,
+        noResults: '結果なし',
+        searchMachines: 'マシンを検索...',
+        searchOrEnterPath: '検索またはパスを入力...',
+        searchWorktrees: 'Worktreeを検索...',
     },
 
     sessionHistory: {

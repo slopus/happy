@@ -255,6 +255,11 @@ export const zhHant: TranslationStructure = {
     newSession: {
         title: '開始新工作階段',
         machineOffline: '裝置離線',
+        useCustomPath: ({ path }: { path: string }) => `使用 ${path}`,
+        noResults: '無結果',
+        searchMachines: '搜尋機器...',
+        searchOrEnterPath: '搜尋或輸入路徑...',
+        searchWorktrees: '搜尋 worktree...',
     },
 
     sessionHistory: {

@@ -266,6 +266,11 @@ export const pl: TranslationStructure = {
     newSession: {
         title: 'Rozpocznij nową sesję',
         machineOffline: 'Maszyna jest offline',
+        useCustomPath: ({ path }: { path: string }) => `Użyj ${path}`,
+        noResults: 'Brak wyników',
+        searchMachines: 'Szukaj maszyn...',
+        searchOrEnterPath: 'Szukaj lub wpisz ścieżkę...',
+        searchWorktrees: 'Szukaj worktree...',
     },
 
     sessionHistory: {

@@ -253,6 +253,11 @@ export const en = {
     newSession: {
         title: 'Start New Session',
         machineOffline: 'Machine is offline',
+        useCustomPath: ({ path }: { path: string }) => `Use ${path}`,
+        noResults: 'No results',
+        searchMachines: 'Search machines...',
+        searchOrEnterPath: 'Search or enter path...',
+        searchWorktrees: 'Search worktrees...',
     },
 
     sessionHistory: {

@@ -256,6 +256,11 @@ export const zhHans: TranslationStructure = {
     newSession: {
         title: '开始新会话',
         machineOffline: '设备离线',
+        useCustomPath: ({ path }: { path: string }) => `使用 ${path}`,
+        noResults: '无结果',
+        searchMachines: '搜索机器...',
+        searchOrEnterPath: '搜索或输入路径...',
+        searchWorktrees: '搜索 worktree...',
     },
 
     sessionHistory: {
