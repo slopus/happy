@@ -551,6 +551,35 @@ The biggest remaining unmet P2 requirements are now functional rather than struc
 - P3 session-list or tool-UI polish
 - broader P4 file-review/link-resolution work beyond the composer attachment send path
 
+### Phase 5.3 results (2026-03-30)
+
+**Result: PASS — all 3 composer attachment + context tasks completed.**
+
+| Task | Files | Lines | Result |
+|------|-------|-------|--------|
+| Composer `+` attachment button + send wiring | 5 | +253/-13 | PASS |
+| File/image part rendering in messages | 13 | +171/-6 | PASS |
+| Worktree-project grouping in session list | 4 | +81/-4 | PASS |
+
+Committed as `060dc9de`. Typecheck passes. 21 files changed, +639/-26 total.
+
+**What was delivered:**
+
+- `+` button in AgentInput action row (web: file input, native: expo-document-picker).
+- Pending files shown as horizontal chips with image thumbnails or document icons.
+- `FilePart` entries included in user message `parts` array on send.
+- `FilePartView` component: images inline (max 300×200), files as compact cards.
+- `PartView` now renders `FilePartView` for `type: 'file'` instead of null.
+- `getProjectRoot()` / `getWorktreeName()` utilities in worktree.ts.
+- Session list groups worktree sessions under parent project with git-branch badge.
+- Translations added to all 11 locale files for all three features.
+
+**Remaining P2 gaps after Phase 5.3:**
+
+- Drag-and-drop attachment flow (mentioned in P2 validation requirements)
+- Image preview expansion on tap (currently tappable but no-op)
+- Encrypted file upload to server (currently files are local URIs / object URLs)
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.

@@ -1506,15 +1506,76 @@ project-context batch**.
 2. Image support in the composer flow
 3. Project/worktree continuity cleanup
 
+## Phase 5.3: DONE
+
+Dispatched the P2 composer attachments + project-context batch via `happy-agent`.
+All 3 tasks completed successfully. Committed in `060dc9de`.
+
+### Environment
+
+`quiet-fjord` — server `:58035`, web `:58036`, daemon PID 52510,
+machine `264b1d9a-42d2-4886-ab1c-19f98f46d9bf`.
+
+### Sessions
+
+| Task | Session ID | Commit | Files | Result |
+|------|-----------|--------|-------|--------|
+| Composer attachments | `GZZvcXXu7CtH5jUKVLZ4oy61` | `060dc9de` | 5 (+253) | PASS |
+| File part rendering | `7MUQ9llhvVCckwLBsQhMwJqw` | `060dc9de` | 13 (+171) | PASS |
+| Worktree grouping | `1Hl9VDxzTn5utPQ79NfIgrDf` | `060dc9de` | 4 (+81) | PASS |
+
+### What each agent delivered
+
+1. **Composer attachment button** (5 files, +253/-13):
+   - Added `+` button to AgentInput action row with `Ionicons` "add" icon.
+   - Web: hidden `<input type="file" multiple>` triggered via ref.
+   - Native: `expo-document-picker` with `getDocumentAsync()`.
+   - Pending files shown as horizontal chips with thumbnails (images) or
+     document icons (non-image files), each with a remove `×` button.
+   - Wired `pendingFiles` state through SessionView and new-session composer.
+   - Extended `sync.sendMessage()` and `syncNodeStore.sendUserMessage()` to
+     accept `files` parameter and include them as `FilePart` entries in the
+     message `parts` array.
+
+2. **File/image part rendering** (13 files, +171/-6):
+   - New `FilePartView.tsx` component: images render inline via `expo-image`
+     (max 300×200, border radius 8), non-image files show as compact cards
+     with `FileIcon`, filename, and MIME type badge.
+   - `PartView.tsx`: `case 'file'` now renders `FilePartView` instead of null.
+   - Translations for `parts.unknownFile` and `parts.imageAttachment` added
+     to all 11 locale files.
+
+3. **Worktree-project grouping** (4 files, +81/-4):
+   - `getProjectRoot()` extracts parent project path from worktree paths.
+   - `getWorktreeName()` extracts the worktree name from the path.
+   - Both `ActiveSessionsGroup` and `ActiveSessionsGroupCompact` now group
+     by project root instead of raw path.
+   - Worktree sessions show a git-branch pill badge with the worktree name.
+
+### Typecheck
+
+`npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes cleanly.
+
+### Issues encountered during dispatch
+
+1. First attempt spawned agents into lab-rat project worktree dirs (empty
+   dirs inside `environments/data/envs/quiet-fjord/project/.dev/worktree/`)
+   which had no source files. Fixed by creating proper git worktrees from
+   the main repo.
+2. Agents 1 and 2 failed on first attempt (37 messages, 0 changes) because
+   they couldn't find files or run `yarn typecheck` in bare worktrees.
+   Fixed with follow-up prompts instructing them to skip typecheck.
+3. Cherry-pick produced conflicts (all 3 agents touched overlapping areas).
+   Resolved via subagent. Post-merge dedup removed 86 lines of duplicated
+   code from overlapping commits.
+
+### Cleanup
+
+All 3 worktrees removed. Branches deleted. Sessions stopped.
+
 ## Current Task
 
-TASK: Phase 5.3 — dispatch the next P2 composer batch via `happy-agent`.
+TASK: Phase 5.4 — review what P2 gaps remain and select the next batch.
 
-Dispatch `2-3` independent tasks covering:
-
-1. lower-left `+` attachment entry point + encrypted file wiring
-2. image support in the composer flow
-3. project/worktree continuity cleanup
-
-Require real web validation and write the per-task results back into
-`roadmap.md`.
+Read `roadmap.md` P2 section and the Phase 5.1-5.3 results to determine
+what the highest-impact next work item is.
