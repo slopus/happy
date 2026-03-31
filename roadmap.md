@@ -795,6 +795,90 @@ Do not move to P3 yet. Do not start a broader P2.5 design/build batch first.
 - Another design-heavy P2.5 batch before the blocker is removed
 - Returning to standalone P2 composer polish
 
+### Phase 6.1 results (2026-03-30)
+
+**Result: PASS — machine-store resolution is fixed for new sessions, and the
+web control surface can now see a live machine record.**
+
+Committed in `ed056626`.
+
+**What Phase 6.1 closed:**
+
+- Web metadata parsing now accepts the v3 `{ session, metadata }` shape and
+  maps `session.directory` into the flat metadata path the UI expects.
+- Agent runners now seed `machineId`, `path`, `host`, `flavor`, and
+  `lifecycleState` into SyncNode metadata for new sessions.
+- Session-scoped metadata writes no longer fail on first connect when the local
+  session map has not been hydrated yet.
+
+**Proof:**
+
+- Real web session `RNOD4V2mOR5DAZYuApYnl3Zn` in `quiet-fjord`
+- Server metadata now includes `machineId`
+- Playwright confirmed the Fork Session control renders enabled, with opacity
+  `1` instead of disabled `0.5`
+
+### Phase 6.2 results (2026-03-30)
+
+**Result: PASS — fork from the active control bar now works end-to-end on the
+real web stack, and SessionOriginBadge renders correctly.**
+
+Committed in `867403a4`.
+
+**What Phase 6.2 proved:**
+
+- `canFork` now resolves true for new sessions with machine-backed metadata
+- Clicking Fork Session creates a real child session through
+  `machineSpawnNewSession`
+- The UI navigates into the child session after fork
+- `SessionOriginBadge` renders "Forked from X" in the child session
+
+**Evidence:**
+
+- Parent session: `RNOD4V2mOR5DAZYuApYnl3Zn`
+- Forked child: `LfZ7ygfDGFKgAaATNIPGWXTB`
+- Playwright assertions passed for fork-button visibility, navigation, and
+  visible "Forked from" attribution text
+
+### Post-Phase 6.2 priority decision (2026-03-30)
+
+**Next highest-impact work item: Phase 6.4 — tighten stop-button visibility on
+the active control bar, then move to P3.**
+
+Do not start broader P3 work before this cleanup lands and is re-validated.
+Do not start a larger P2.5 fork-composer expansion first.
+
+**Why this is next:**
+
+1. The core P2.5 control/fork/resume path is now proven end-to-end on the real
+   web stack for newly created sessions. That removes the main reason to keep
+   P3 blocked behind more broad P2.5 validation.
+2. The idle-state stop button is still the one obvious user-facing defect on
+   the validated control surface. Leaving a red destructive control visible
+   when the session is already idle hurts scanability and makes the surface
+   look less trustworthy.
+3. Fixing stop visibility is a narrow stabilization pass that matches the
+   roadmap's "NO NEW SCOPE" rule. By contrast, worktree/agent selection during
+   fork is a broader product expansion and should not delay the next major
+   batch.
+4. Once the stop control reflects real session state, the active control row is
+   stable enough to let P3 session-list/tool-row polish proceed without baking
+   in a misleading control model.
+
+**Scope of Phase 6.4:**
+
+1. Hide or disable the stop control unless the current session is actually in a
+   stoppable in-flight state.
+2. Validate the behavior on a real web session in both active and idle states.
+3. Capture the result in the roadmap/state files, then move to P3 if the
+   control bar behaves correctly.
+
+**Explicitly not next:**
+
+- Moving straight to P3 without fixing the idle stop-control behavior
+- A broader fork-composer batch for alternate worktree/agent selection
+- Existing-session metadata backfill unless it blocks the visibility cleanup
+
 ## P2. Composer overhaul
 
 Goal: make new-session composition feel like the regular chat composer instead of a separate, more awkward surface.

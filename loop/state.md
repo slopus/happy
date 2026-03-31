@@ -2000,8 +2000,6 @@ Fixed the machine-store resolution blocker. Committed in `ed056626`.
    `machineId` in their v3 metadata (the CLI fix only applies to new
    sessions). A backfill or graceful fallback would help.
 
-## Current Task
-
 ## Phase 6.2: DONE
 
 Exercised fork on the real web stack and verified SessionOriginBadge.
@@ -2032,14 +2030,42 @@ Exercised fork on the real web stack and verified SessionOriginBadge.
 2. **Worktree/agent selection during fork**: Not implemented
 3. **Existing sessions backfill**: Pre-fix sessions lack machineId
 
+### Open decision
+
+The P2.5 control/fork/resume flow is now functionally validated. The remaining
+gaps are polish. The Phase 6.3 follow-up is to decide whether to do the
+stop-button visibility cleanup before P3 or move to P3 immediately.
+
+## Phase 6.3: DONE
+
+Reviewed `roadmap.md` against the now-validated P2.5 control/fork/resume flow
+and chose the next priority.
+
 ### Decision
 
-The P2.5 control/fork/resume flow is now functionally validated. The
-remaining gaps are polish. The next highest-impact step is to move to P3
-(session-list/tool-row polish) or address the stop-button visibility as a
-quick cleanup before P3.
+**Next highest-impact work item: Phase 6.4 — tighten stop-button visibility on
+the active control bar, then move to P3.**
+
+### Why this is next
+
+1. The core P2.5 control/fork/resume path is now working end-to-end for new
+   sessions, so a broad new P2.5 build batch no longer outranks the next major
+   roadmap area.
+2. The idle-state stop button is still the one obvious user-facing defect on
+   the validated control surface. Leaving a destructive red control visible
+   while the session is idle weakens scanability and trust.
+3. This is a narrow stabilization fix that matches the roadmap's "NO NEW
+   SCOPE" rule. Worktree/agent selection during fork is broader product work
+   and should not delay P3.
+4. After stop-button visibility is corrected and re-validated, the control row
+   is stable enough to let P3 session-list/tool-row polish proceed.
+
+### Roadmap update
+
+Updated `roadmap.md` with the Phase 6.1 results, Phase 6.2 validation proof,
+and the Phase 6.3 priority decision.
 
 ## Current Task
 
-TASK: Phase 6.3 — review roadmap and decide next priority (P2.5 polish
-vs P3).
+TASK: Phase 6.4 — tighten stop-button visibility on the active session control
+bar, re-validate it on the real web stack, then decide whether P3 can start.
