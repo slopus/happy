@@ -2065,7 +2065,55 @@ the active control bar, then move to P3.**
 Updated `roadmap.md` with the Phase 6.1 results, Phase 6.2 validation proof,
 and the Phase 6.3 priority decision.
 
+## Phase 6.4: DONE
+
+Fixed stop-button visibility on the active session control bar. Committed in
+`8dce614d`.
+
+### Root cause
+
+The `'waiting'` state in `useSessionStatus` means the session is online and
+idle (not running, no pending permissions). The control bar showed the stop
+button for both `'thinking'` (agent is actively running) and `'waiting'`
+(agent is idle), making a destructive red control visible when there is
+nothing to stop.
+
+### Fix (`SessionView.tsx`, 1 file, +2/-2)
+
+- Control bar stop pill: changed `sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'` → `sessionStatus.state === 'thinking'`
+- AgentInput `showAbortButton` prop: same change
+
+### Validation
+
+**Environment:** `quiet-fjord` — server `:58035`, web `:58036`.
+
+**Session:** `jt537b0VhChfWHQRe8pb5hJt` (claude, stop-button-test worktree).
+Sent "Say hello and nothing else", waited for idle, then checked the web UI.
+
+**Playwright results:**
+- Stop button visible when idle: **false** (PASS)
+- Archive button visible: **true**
+- Fork button visible: **true**
+- Session has transcript: **true**
+
+**Screenshot:** `/tmp/stop-button-idle.png` — control bar shows Archive +
+Fork Session pills only, no Stop button.
+
+**Typecheck:** `npx tsc --noEmit -p packages/happy-app/tsconfig.json` passes.
+
+### Decision
+
+**P3 can start.** Rationale:
+
+1. All P2.5 control/fork/resume requirements are now validated end-to-end on
+   the real web stack: fork works, SessionOriginBadge renders, and the control
+   bar shows the right controls at the right time.
+2. The remaining P2.5 gaps (worktree/agent selection during fork, existing
+   session backfill) are product extensions, not broken behavior.
+3. P3 session-list/tool-row polish can now build on a stable, proven control
+   surface.
+
 ## Current Task
 
-TASK: Phase 6.4 — tighten stop-button visibility on the active session control
-bar, re-validate it on the real web stack, then decide whether P3 can start.
+TASK: Phase 7.0 — review `roadmap.md` P3 items, select and scope the first P3
+dispatch batch targeting session-list and tool-row improvements.
