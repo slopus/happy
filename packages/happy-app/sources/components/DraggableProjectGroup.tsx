@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, Platform } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import { Platform } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface DraggableProjectGroupProps {
     projectPath: string;
@@ -11,7 +11,9 @@ interface DraggableProjectGroupProps {
 
 /**
  * Wraps a project group section to enable drag-to-reorder on web.
- * Uses HTML5 Drag and Drop API. On native platforms, renders children directly.
+ * Uses a raw HTML div with HTML5 Drag and Drop API because React Native Web's
+ * View silently drops draggable/onDrag* props.
+ * On native platforms, renders children directly.
  */
 export const DraggableProjectGroup = React.memo(function DraggableProjectGroup(props: DraggableProjectGroupProps) {
     if (Platform.OS !== 'web') {
@@ -26,11 +28,12 @@ function DraggableProjectGroupWeb({
     onReorder,
     children,
 }: DraggableProjectGroupProps) {
+    const { theme } = useUnistyles();
     const [isDragging, setIsDragging] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const dragCounterRef = useRef(0);
 
-    const handleDragStart = useCallback((e: any) => {
+    const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>) => {
         e.dataTransfer.setData('text/plain', String(index));
         e.dataTransfer.effectAllowed = 'move';
         setIsDragging(true);
@@ -42,7 +45,7 @@ function DraggableProjectGroupWeb({
         dragCounterRef.current = 0;
     }, []);
 
-    const handleDragEnter = useCallback((e: any) => {
+    const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         dragCounterRef.current++;
         setIsDragOver(true);
@@ -55,12 +58,12 @@ function DraggableProjectGroupWeb({
         }
     }, []);
 
-    const handleDragOver = useCallback((e: any) => {
+    const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
     }, []);
 
-    const handleDrop = useCallback((e: any) => {
+    const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setIsDragOver(false);
         dragCounterRef.current = 0;
@@ -71,8 +74,7 @@ function DraggableProjectGroupWeb({
     }, [index, onReorder]);
 
     return (
-        <View
-            // @ts-ignore - web-only HTML5 drag props
+        <div
             draggable
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
@@ -80,22 +82,14 @@ function DraggableProjectGroupWeb({
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
-            style={[
-                isDragging && styles.dragging,
-                isDragOver && styles.dragOver,
-            ]}
+            style={{
+                opacity: isDragging ? 0.5 : 1,
+                borderTopWidth: isDragOver ? 2 : 0,
+                borderTopStyle: isDragOver ? 'solid' : undefined,
+                borderTopColor: isDragOver ? theme.colors.textLink : undefined,
+            }}
         >
             {children}
-        </View>
+        </div>
     );
 }
-
-const styles = StyleSheet.create((theme) => ({
-    dragging: {
-        opacity: 0.5,
-    },
-    dragOver: {
-        borderTopWidth: 2,
-        borderTopColor: theme.colors.textLink,
-    },
-}));
