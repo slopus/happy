@@ -1,6 +1,6 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import * as React from 'react';
-import { Image, Pressable, ScrollView, View, Platform } from 'react-native';
+import { Image, Pressable, ScrollView, View, Platform, ActivityIndicator } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
@@ -15,6 +15,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 import { parseSessionFileLink, SessionFileLink, splitSessionFileText } from '@/utils/sessionFileLinks';
+import { sessionReadFile } from '@/sync/ops';
 
 // Option type for callback
 export type Option = {
@@ -108,7 +109,7 @@ export const MarkdownView = React.memo((props: {
                     } else if (block.type === 'table') {
                         return <RenderTableBlock headers={block.headers} rows={block.rows} key={index} first={index === 0} last={index === blocks.length - 1} />;
                     } else if (block.type === 'image') {
-                        return <RenderImageBlock url={block.url} alt={block.alt} key={index} first={index === 0} last={index === blocks.length - 1} />;
+                        return <RenderImageBlock url={block.url} alt={block.alt} key={index} first={index === 0} last={index === blocks.length - 1} sessionId={props.sessionId} />;
                     } else {
                         return null;
                     }
@@ -233,17 +234,81 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
-function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
+const IMAGE_MIME_TYPES: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.bmp': 'image/bmp',
+    '.ico': 'image/x-icon',
+};
+
+function isLocalFilePath(url: string): boolean {
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
+        return false;
+    }
+    // Absolute paths, home-relative, or relative paths (e.g. ./img.png, img.png, ../img.png)
+    return true;
+}
+
+function getMimeFromPath(path: string): string {
+    const dot = path.lastIndexOf('.');
+    if (dot === -1) return 'image/png';
+    const ext = path.slice(dot).toLowerCase();
+    return IMAGE_MIME_TYPES[ext] ?? 'image/png';
+}
+
+function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean, sessionId?: string }) {
     const accessibleLabel = props.alt || 'Markdown image';
+    const [dataUri, setDataUri] = React.useState<string | null>(null);
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState(false);
+
+    const needsFetch = isLocalFilePath(props.url) && !!props.sessionId;
+
+    React.useEffect(() => {
+        if (!needsFetch) return;
+        let cancelled = false;
+        setLoading(true);
+        setError(false);
+        sessionReadFile(props.sessionId!, props.url).then((res) => {
+            if (cancelled) return;
+            if (res.success && res.content) {
+                const mime = getMimeFromPath(props.url);
+                setDataUri(`data:${mime};base64,${res.content}`);
+            } else {
+                setError(true);
+            }
+        }).catch(() => {
+            if (!cancelled) setError(true);
+        }).finally(() => {
+            if (!cancelled) setLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [props.url, props.sessionId, needsFetch]);
+
+    const resolvedUri = needsFetch ? dataUri : props.url;
 
     return (
         <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
-            <Image
-                source={{ uri: props.url }}
-                style={style.image}
-                accessibilityLabel={accessibleLabel}
-                resizeMode="contain"
-            />
+            {loading ? (
+                <View style={[style.image, { justifyContent: 'center', alignItems: 'center' }]}>
+                    <ActivityIndicator />
+                </View>
+            ) : error || !resolvedUri ? (
+                <View style={[style.image, { justifyContent: 'center', alignItems: 'center' }]}>
+                    <Text style={style.imageCaption}>{props.url}</Text>
+                </View>
+            ) : (
+                <Image
+                    source={{ uri: resolvedUri }}
+                    style={style.image}
+                    accessibilityLabel={accessibleLabel}
+                    resizeMode="contain"
+                />
+            )}
             {props.alt ? (
                 <Text style={style.imageCaption}>{props.alt}</Text>
             ) : null}

@@ -4,28 +4,24 @@ import { Socket } from "socket.io";
 
 export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
     
-    // RPC register - Register this socket as a listener for an RPC method
+    // RPC register - Register this socket as a listener for RPC method(s)
+    // Accepts both { method: string } (legacy) and { methods: string[] } (SyncNode)
     socket.on('rpc-register', async (data: any) => {
         try {
-            const { method } = data;
+            const methodList: string[] = Array.isArray(data.methods)
+                ? data.methods
+                : (data.method ? [data.method] : []);
 
-            if (!method || typeof method !== 'string') {
+            if (methodList.length === 0 || methodList.some((m: any) => typeof m !== 'string')) {
                 socket.emit('rpc-error', { type: 'register', error: 'Invalid method name' });
                 return;
             }
 
-            // Check if method was already registered
-            const previousSocket = rpcListeners.get(method);
-            if (previousSocket && previousSocket !== socket) {
-                // log({ module: 'websocket-rpc' }, `RPC method ${method} re-registered: ${previousSocket.id} -> ${socket.id}`);
+            for (const method of methodList) {
+                rpcListeners.set(method, socket);
             }
 
-            // Register this socket as the listener for this method
-            rpcListeners.set(method, socket);
-
-            socket.emit('rpc-registered', { method });
-            // log({ module: 'websocket-rpc' }, `RPC method registered: ${method} on socket ${socket.id} (user: ${userId})`);
-            // log({ module: 'websocket-rpc' }, `Active RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
+            socket.emit('rpc-registered', { methods: methodList });
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in rpc-register: ${error}`);
             socket.emit('rpc-error', { type: 'register', error: 'Internal error' });
