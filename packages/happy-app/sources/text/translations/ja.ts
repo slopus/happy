@@ -398,6 +398,9 @@ export const ja: TranslationStructure = {
             title: 'モデル',
             configureInCli: 'CLIの設定でモデルを構成',
         },
+        effort: {
+            title: 'エフォート',
+        },
         codexPermissionMode: {
             title: 'CODEX権限モード',
             default: 'CLI設定',

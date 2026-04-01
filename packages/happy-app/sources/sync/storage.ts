@@ -124,6 +124,7 @@ interface StorageState {
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: string) => void;
     updateSessionModelMode: (sessionId: string, mode: string) => void;
+    updateSessionEffortLevel: (sessionId: string, level: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -874,6 +875,23 @@ export const storage = create<StorageState>()((set, get) => {
             };
 
             // No need to rebuild sessionListViewData since model mode doesn't affect the list display
+            return {
+                ...state,
+                sessions: updatedSessions
+            };
+        }),
+        updateSessionEffortLevel: (sessionId: string, level: string) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    effortLevel: level
+                }
+            };
+
             return {
                 ...state,
                 sessions: updatedSessions

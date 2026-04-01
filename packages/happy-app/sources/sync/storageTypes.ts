@@ -102,6 +102,7 @@ export interface Session {
     draft?: string | null; // Local draft message, not synced to server
     permissionMode?: string | null; // Local permission mode key, not synced to server
     modelMode?: string | null; // Local model key, not synced to server
+    effortLevel?: string | null; // Local effort level key, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

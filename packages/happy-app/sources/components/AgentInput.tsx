@@ -6,6 +6,7 @@ import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
+import { EffortLevel } from './modelModeOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -38,6 +39,9 @@ interface AgentInputProps {
     modelMode?: ModelMode | null;
     availableModels?: ModelMode[];
     onModelModeChange?: (mode: ModelMode) => void;
+    effortLevel?: EffortLevel | null;
+    availableEffortLevels?: EffortLevel[];
+    onEffortLevelChange?: (level: EffortLevel) => void;
     metadata?: Metadata | null;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
@@ -321,6 +325,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         hackModes(props.availableModes ?? [])
     ), [props.availableModes]);
     const availableModels = props.availableModels ?? [];
+    const availableEffortLevels = props.availableEffortLevels ?? [];
     const isSandboxEnabled = React.useMemo(() => {
         const sandbox = props.metadata?.sandbox as unknown;
         if (!sandbox) {
@@ -432,7 +437,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
         hapticsLight();
         props.onPermissionModeChange?.(mode);
-        // Don't close the settings overlay - let users see the change and potentially switch again
+        setShowSettings(false);
     }, [props.onPermissionModeChange]);
 
     // Handle abort button press
@@ -676,6 +681,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     onPress={() => {
                                                         hapticsLight();
                                                         props.onModelModeChange?.(model);
+                                                        setShowSettings(false);
                                                     }}
                                                     style={({ pressed }) => ({
                                                         flexDirection: 'row',
@@ -737,6 +743,88 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         </Text>
                                     )}
                                 </View>
+
+                                {/* Effort Level Section */}
+                                {availableEffortLevels.length > 0 && props.onEffortLevelChange && (
+                                    <>
+                                        <View style={{
+                                            height: 1,
+                                            backgroundColor: theme.colors.divider,
+                                            marginHorizontal: 16
+                                        }} />
+                                        <View style={{ paddingVertical: 8 }}>
+                                            <Text style={{
+                                                fontSize: 12,
+                                                fontWeight: '600',
+                                                color: theme.colors.textSecondary,
+                                                paddingHorizontal: 16,
+                                                paddingBottom: 4,
+                                                ...Typography.default('semiBold')
+                                            }}>
+                                                {t('agentInput.effort.title')}
+                                            </Text>
+                                            {availableEffortLevels.map((level) => {
+                                                const isSelected = props.effortLevel?.key === level.key;
+
+                                                return (
+                                                    <Pressable
+                                                        key={level.key}
+                                                        onPress={() => {
+                                                            hapticsLight();
+                                                            props.onEffortLevelChange?.(level);
+                                                            setShowSettings(false);
+                                                        }}
+                                                        style={({ pressed }) => ({
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            paddingHorizontal: 16,
+                                                            paddingVertical: 8,
+                                                            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                        })}
+                                                    >
+                                                        <View style={{
+                                                            width: 16,
+                                                            height: 16,
+                                                            borderRadius: 8,
+                                                            borderWidth: 2,
+                                                            borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            marginRight: 12
+                                                        }}>
+                                                            {isSelected && (
+                                                                <View style={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: 3,
+                                                                    backgroundColor: theme.colors.radio.dot
+                                                                }} />
+                                                            )}
+                                                        </View>
+                                                        <View>
+                                                            <Text style={{
+                                                                fontSize: 14,
+                                                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {level.name}
+                                                            </Text>
+                                                            {!!level.description && (
+                                                                <Text style={{
+                                                                    fontSize: 11,
+                                                                    color: theme.colors.textSecondary,
+                                                                    ...Typography.default()
+                                                                }}>
+                                                                    {level.description}
+                                                                </Text>
+                                                            )}
+                                                        </View>
+                                                    </Pressable>
+                                                );
+                                            })}
+                                        </View>
+                                    </>
+                                )}
                             </FloatingOverlay>
                         </View>
                     </>
