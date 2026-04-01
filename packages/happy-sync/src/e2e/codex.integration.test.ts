@@ -18,7 +18,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { SyncNode } from '../sync-node';
 import { type KeyMaterial } from '../encryption';
-import type { SessionID } from '../protocol';
+import type { SessionID } from '../v3-compat';
 import {
     bootTestInfrastructure,
     createIsolatedProjectCopy,

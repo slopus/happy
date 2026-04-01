@@ -8,7 +8,7 @@ import { join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SyncNode } from '../sync-node';
-import type { MessageWithParts, Part, SessionID } from '../protocol';
+import type { MessageWithParts, Part, SessionID } from '../v3-compat';
 import {
     bootTestInfrastructure,
     createIsolatedProjectCopy,

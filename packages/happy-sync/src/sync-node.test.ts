@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SyncNode, type SyncNodeToken } from './sync-node';
 import { type KeyMaterial, encryptMessage, decryptMessage } from './encryption';
-import type { MessageWithParts, SessionID, MessageID, PartID } from './protocol';
+import type { MessageWithParts, SessionID, MessageID, PartID } from './v3-compat';
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
 

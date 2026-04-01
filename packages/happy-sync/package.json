@@ -31,7 +31,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
-    "test:unit": "vitest run src/protocol.test.ts src/sync-node.test.ts src/messages.test.ts src/sessionProtocol.test.ts",
+    "test:unit": "vitest run src/session-message.test.ts src/sync-node.test.ts src/messages.test.ts",
     "test:integration": "vitest run src/sync-node.integration.test.ts",
     "test:e2e": "vitest run src/e2e/*.integration.test.ts",
     "walkthrough:webreel": "tsx src/e2e/walkthrough-runner.ts",
@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^2.2.2",
+    "acpx": "^0.4.0",
     "socket.io-client": "^4.8.1",
     "tweetnacl": "^1.0.3",
     "zod": "3.25.76"

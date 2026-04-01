@@ -17,7 +17,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { SyncNode } from '../sync-node';
 import { type KeyMaterial } from '../encryption';
-import type { MessageWithParts, SessionID } from '../protocol';
+import type { MessageWithParts, SessionID } from '../v3-compat';
 import {
     bootTestInfrastructure,
     createIsolatedProjectCopy,

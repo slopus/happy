@@ -20,7 +20,7 @@ import { resolve as resolvePath } from 'node:path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { SyncNode } from '../sync-node';
 import { type KeyMaterial } from '../encryption';
-import type { SessionID, Part, MessageWithParts } from '../protocol';
+import type { SessionID, Part, MessageWithParts } from '../v3-compat';
 import {
     bootTestInfrastructure,
     createIsolatedProjectCopy,

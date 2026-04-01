@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SyncNode } from '../sync-node';
-import type { MessageWithParts, SessionID, PartID, Part } from '../protocol';
+import type { MessageWithParts, SessionID, PartID, Part } from '../v3-compat';
 import {
     bootTestInfrastructure,
     createIsolatedProjectCopy,

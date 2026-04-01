@@ -38,7 +38,7 @@ import {
     ProtocolEnvelopeSchema,
     SessionID as SessionIDSchema,
     TodoSchema,
-} from './protocol';
+} from './v3-compat';
 
 // ─── Token claims ────────────────────────────────────────────────────────────
 export { SyncNodeTokenClaimsSchema } from './token';

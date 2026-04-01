@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
 import { SyncNode } from '../sync-node';
-import type { MessageWithParts, Part, SessionID } from '../protocol';
+import type { MessageWithParts, Part, SessionID } from '../v3-compat';
 import {
     bootTestInfrastructure,
     createIsolatedProjectCopy,

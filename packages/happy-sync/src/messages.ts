@@ -7,7 +7,7 @@ export const SessionMessageContentSchema = z.object({
 });
 export type SessionMessageContent = z.infer<typeof SessionMessageContentSchema>;
 
-export const SessionMessageSchema = z.object({
+export const TransportMessageSchema = z.object({
   id: z.string(),
   seq: z.number(),
   localId: z.string().nullish(),
@@ -15,7 +15,7 @@ export const SessionMessageSchema = z.object({
   createdAt: z.number(),
   updatedAt: z.number(),
 });
-export type SessionMessage = z.infer<typeof SessionMessageSchema>;
+export type TransportMessage = z.infer<typeof TransportMessageSchema>;
 export { MessageMetaSchema };
 export type { MessageMeta };
 
@@ -34,7 +34,7 @@ export type VersionedNullableEncryptedValue = z.infer<typeof VersionedNullableEn
 export const UpdateNewMessageBodySchema = z.object({
   t: z.literal('new-message'),
   sid: z.string(),
-  message: SessionMessageSchema,
+  message: TransportMessageSchema,
 });
 export type UpdateNewMessageBody = z.infer<typeof UpdateNewMessageBodySchema>;
 
@@ -78,8 +78,8 @@ export const CoreUpdateContainerSchema = z.object({
 export type CoreUpdateContainer = z.infer<typeof CoreUpdateContainerSchema>;
 
 // Aliases used by existing consumers during migration.
-export const ApiMessageSchema = SessionMessageSchema;
-export type ApiMessage = SessionMessage;
+export const ApiMessageSchema = TransportMessageSchema;
+export type ApiMessage = TransportMessage;
 
 export const ApiUpdateNewMessageSchema = UpdateNewMessageBodySchema;
 export type ApiUpdateNewMessage = UpdateNewMessageBody;

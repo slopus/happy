@@ -8,7 +8,7 @@
 import { SyncNode, type SyncNodeToken } from '../sync-node';
 import { type KeyMaterial } from '../encryption';
 import type { ResolveSessionKeyMaterial } from '../sync-node';
-import type { MessageWithParts, SessionID, MessageID, PartID, Part } from '../protocol';
+import type { MessageWithParts, SessionID, MessageID, PartID, Part } from '../v3-compat';
 import { createId } from '@paralleldrive/cuid2';
 import { getServerUrl, getAuthToken, getEncryptionSecret } from './setup';
 import type { MessageMeta } from '../messageMeta';

@@ -27,7 +27,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import nacl from 'tweetnacl';
 import { SyncNode, SyncNodeTokenClaimsSchema, type SyncNodeToken } from './sync-node';
 import { type KeyMaterial, encryptMessage, getRandomBytes, libsodiumEncryptForPublicKey } from './encryption';
-import type { MessageWithParts, SessionID, MessageID, PartID } from './protocol';
+import type { MessageWithParts, SessionID, MessageID, PartID } from './v3-compat';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 

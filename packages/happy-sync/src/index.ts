@@ -1,9 +1,11 @@
 // Transport-level types (server wire format)
 export * from './messages';
 
-// v3 protocol types
-export * from './protocol';
-export * as v3 from './protocol';
+// acpx session types (replaces v3 protocol)
+export * from './acpx-types';
+
+// v3 compat (internal — will be removed when SyncNode is rewritten)
+export * as v3 from './v3-compat';
 
 // Encryption
 export * from './encryption';
