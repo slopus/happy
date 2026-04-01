@@ -3,6 +3,30 @@
 Hard-won knowledge from 37+ loop iterations. READ THIS BEFORE STARTING WORK.
 If you discover something non-obvious, append it here under the right section.
 
+## acpx Rewrite
+
+- acpx types are plain TypeScript (not Zod). No runtime validation schemas.
+  Tests use TypeScript type assertions, not `parse()`/`safeParse()`.
+- acpx `SessionMessage` is a tagged union: `{ User: ... } | { Agent: ... } | "Resume"`.
+  The discriminator is the object key, not a `type` field.
+- `SessionAgentContent` is also a tagged union by key: `{ Text: string }`,
+  `{ Thinking: { text, signature? } }`, `{ RedactedThinking: string }`,
+  `{ ToolUse: SessionToolUse }`.
+- `SessionToolResult` lives in `tool_results: Record<string, SessionToolResult>`
+  on the `SessionAgentMessage`, keyed by `tool_use_id`. It is NOT inline with
+  `SessionAgentContent`.
+- acpx `SessionToolUse.is_input_complete` tracks streaming state. When
+  rendering, only show tool input when `is_input_complete === true`.
+- Permissions are NOT in the message stream. They go in session metadata
+  (`metadata.pending.permissions[]`). The CLI adds them, the app reads and
+  resolves them via metadata CAS updates.
+- `FlowRunState` goes in `metadata.flow`. Updated on each flow node transition.
+- acpx npm package name is `acpx`. It depends on `@agentclientprotocol/sdk@^0.17.0`.
+  Happy currently uses `@agentclientprotocol/sdk@^0.14.1` — version bump needed.
+- The full plan lives at `/Users/kirilldubovitskiy/.claude/plans/greedy-giggling-star.md`.
+- ALL 9 manual browser flows must be tested via agent-browser before merge.
+  No exceptions. See the plan's "Manual testing via agent-browser" section.
+
 ## Testing
 
 - `spawnDaemonSession(directory, sessionId)` uses resume semantics now. Passing a
