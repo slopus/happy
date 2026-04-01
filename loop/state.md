@@ -50,18 +50,38 @@ Session metadata carries `SessionAcpxState`, `FlowRunState`, pending permissions
 
 ## Current Task
 
-TASK: Step 1 — Add `acpx` dep to `happy-sync`, re-export acpx types, delete `protocol.ts` and `sessionProtocol.ts`.
+DONE: Step 1 — Add `acpx` dep to `happy-sync`, re-export acpx types, delete `protocol.ts` and `sessionProtocol.ts`.
+
+Commit: 50dda64f
+
+### Results
+1. ✅ `acpx@^0.4.0` added as dependency in `happy-sync/package.json`
+2. ✅ `happy-sync/src/index.ts` re-exports acpx types from new `acpx-types.ts`
+3. ✅ `protocol.ts` — DELETED (renamed to `v3-compat.ts` internally for sync-node.ts; NOT re-exported)
+4. ✅ `sessionProtocol.ts` — DELETED
+5. ✅ `protocol.test.ts` — DELETED
+6. ✅ `sessionProtocol.test.ts` — DELETED
+7. ✅ `session-message.test.ts` with 17 tests (all pass)
+8. ✅ `yarn tsc --noEmit` passes in happy-sync
+
+### Notes
+- acpx session types (SessionMessage, etc.) are NOT exported from acpx's public API — only used internally. Defined them in `acpx-types.ts` matching acpx's exact definitions. `FlowRunState`/`FlowStepRecord` re-exported from `acpx/flows`.
+- Transport-level `SessionMessage` in `messages.ts` renamed to `TransportMessage` to avoid collision with acpx `SessionMessage`.
+- v3 types live in `v3-compat.ts` (internal only) until Step 2 rewrites sync-node.ts.
+- `v3` namespace still exported via `export * as v3 from './v3-compat'` for downstream compat until Step 6 deletes it.
+
+---
+
+TASK: Step 2 — Update SyncNode to carry `SessionMessage` directly instead of `ProtocolEnvelope`.
 
 ### Acceptance criteria
-1. `acpx` added as dependency in `happy-sync/package.json`
-2. `happy-sync/src/index.ts` re-exports acpx types (`SessionMessage`, `SessionAgentMessage`, `SessionUserMessage`, `SessionAgentContent`, `SessionToolUse`, `SessionToolResult`, `SessionTokenUsage`, `SessionAcpxState`, `SessionRecord`) instead of v3 protocol
-3. `happy-sync/src/protocol.ts` — DELETED
-4. `happy-sync/src/sessionProtocol.ts` — DELETED
-5. `happy-sync/src/protocol.test.ts` — DELETED
-6. `happy-sync/src/sessionProtocol.test.ts` — DELETED
-7. New `happy-sync/src/session-message.test.ts` with ~15 tests covering:
-   - `SessionMessage` variant construction (User, Agent, Resume)
-   - `SessionAgentContent` variant handling (Text, Thinking, ToolUse)
-   - `SessionToolUse` + `SessionToolResult` matching
-   - Encryption round-trip with raw `SessionMessage`
-8. `yarn tsc --noEmit` passes in `happy-sync` (expect failures in downstream packages — that's fine, later steps fix those)
+1. `SyncNode.SessionState.messages` typed as `SessionMessage[]` (not `MessageWithParts[]`)
+2. `SyncNode.SessionState.controlMessages` removed (permissions/config in metadata now)
+3. `SyncNode.sendMessage()` accepts `SessionMessage` directly
+4. `SyncNode.updateMessage()` accepts `SessionMessage` directly
+5. Permission derivation reads from `metadata.pending.permissions[]` (not from message Parts)
+6. Session status derived from metadata lifecycle state (not from Part scanning)
+7. `ProtocolEnvelopeSchema` no longer used — raw `SessionMessage` encrypted directly
+8. `v3-compat.ts` — DELETED (no longer needed)
+9. `sync-node.test.ts` updated: tests use `SessionMessage` instead of `MessageWithParts`
+10. `yarn tsc --noEmit` passes in `happy-sync`
