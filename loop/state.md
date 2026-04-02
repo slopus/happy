@@ -98,13 +98,38 @@ Commit: 6385f7be
 
 ---
 
-TASK: Step 3 — Simplify CLI — `AcpBackend` + `SyncBridge` use acpx types directly.
+DONE: Step 3 — Simplify CLI — `AcpBackend` + `SyncBridge` use acpx types directly.
+
+Commit: ffb0df69
+
+### Results
+1. ✅ ACP sync path (`runAcp.ts`) no longer imports `v3`, `v3Mapper`, or constructs `ProtocolEnvelope`/`MessageWithParts`
+2. ✅ AcpBackend events flow through new `SessionAgentMessage` accumulator in `runAcp.ts` → raw `{ Agent: ... }` messages
+3. ✅ `SyncBridge` rewritten: accepts raw `SessionMessage`, no v3 types, forwards directly to `SyncNode`
+4. ✅ Permission decisions come from `onStateChange` → `session.permissions[].decision` (metadata-derived)
+5. ✅ Runtime config changes come from `onStateChange` → `session.runtimeConfig` (metadata-derived)
+6. ✅ Abort requests detected from `agentState.lastAbortRequest` changes
+7. ✅ `runAcp.test.ts` updated: 9 tests pass with acpx message format and metadata-based config
+8. ✅ `yarn workspace happy-coder build` passes
+9. ✅ `yarn workspace happy-coder vitest run src/agent/acp/` — 40/40 tests pass
+10. ✅ `yarn workspace @slopus/happy-sync test:unit` — 40/40 tests pass
+
+### Notes
+- `v3-compat.ts` restored from git (640 lines) and re-exported as `v3` namespace for non-ACP runners (Claude, Codex, Gemini, OpenClaw). Will be deleted in Step 6.
+- Non-ACP runners patched with `as any` casts for SyncBridge type changes (accepting `SessionMessage` instead of `MessageWithParts`). These files are untouched in substance.
+- `PermissionRequest` and `QuestionRequest` types in sync-node.ts now carry `decision`, `allowTools`, `reason`, `answers` fields for downstream consumers.
+- `UserMessageCallback` now passes `{ User: SessionUserMessage }` instead of `MessageWithParts`. Non-ACP runners use `(message: any)` casts.
+- The acpx accumulator in `runAcp.ts` builds `SessionAgentMessage` directly from `AgentMessage` events: text → `{ Text }`, thinking → `{ Thinking }`, tool-call → `{ ToolUse }`, tool-result → `tool_results` map.
+
+---
+
+TASK: Step 4 — App views — new message components rendering acpx types.
 
 ### Acceptance criteria
-1. CLI/backend sync path no longer imports or constructs `ProtocolEnvelope` / v3 wrapper message types
-2. `AcpBackend` emits and consumes raw acpx `SessionMessage`
-3. `SyncBridge` forwards raw `SessionMessage` to `SyncNode` without envelope translation
-4. Permission/config/session-lifecycle sync uses metadata state, not synthetic control messages
-5. CLI tests are updated for raw `SessionMessage` transport
-6. `yarn workspace happy-coder build` passes
-7. Relevant CLI/backend automated tests pass
+1. New `MessageView.tsx` component renders `SessionMessage` (User/Agent/Resume)
+2. New `AgentContentView.tsx` renders `SessionAgentContent[]` (Text, Thinking, RedactedThinking, ToolUse)
+3. New `ToolUseView.tsx` renders `SessionToolUse` + matching `SessionToolResult`
+4. Old Part-based views are NOT used by the new components
+5. App compiles and renders session transcript using new views
+6. `yarn tsc --noEmit` passes for the app package
+7. Visual smoke test confirms text, thinking, and tool use render correctly
