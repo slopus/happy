@@ -31,7 +31,8 @@
     }
   },
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "src/e2e/**/*.ts"
   ],
   "include": [
     "src/**/*.ts"

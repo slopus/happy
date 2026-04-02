@@ -4,8 +4,8 @@ export * from './messages';
 // acpx session types (replaces v3 protocol)
 export * from './acpx-types';
 
-// v3 compat (internal — will be removed when SyncNode is rewritten)
-export * as v3 from './v3-compat';
+// sync state / ids
+export * from './sync-types';
 
 // Encryption
 export * from './encryption';

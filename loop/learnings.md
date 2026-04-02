@@ -29,6 +29,10 @@ If you discover something non-obvious, append it here under the right section.
 
 ## Testing
 
+- `packages/happy-sync/src/sync-node.integration.test.ts` exercises the real
+  `happy-server`, which imports `packages/happy-sync/dist/index.mjs`. After
+  changing `happy-sync` source, run `yarn workspace @slopus/happy-sync build`
+  before the integration test or the server will execute stale code.
 - `spawnDaemonSession(directory, sessionId)` uses resume semantics now. Passing a
   fresh `sessionId` does NOT label a new daemon session; it makes the daemon try
   to resume that exact existing session and return an error if it does not exist.

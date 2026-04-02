@@ -14,31 +14,28 @@ import { io, type Socket } from 'socket.io-client';
 import { z } from 'zod';
 import { createId } from '@paralleldrive/cuid2';
 import { encryptMessage, decryptMessage, type KeyMaterial } from './encryption';
+import type {
+    SessionAcpxState,
+    SessionAgentContent,
+    SessionMessage,
+    SessionToolResult,
+    SessionToolUse,
+} from './acpx-types';
+import {
+    type MessageID,
+    type RuntimeConfig,
+    type SessionInfo,
+    type SessionID,
+    type Todo,
+    MessageIDSchema,
+    SessionIDSchema,
+    TodoSchema,
+} from './sync-types';
 import {
     SyncNodeTokenClaimsSchema,
     type SyncNodeTokenClaims,
     type SyncNodeToken,
 } from './token';
-import {
-    type AbortRequest,
-    type MessageWithParts,
-    type PermissionRequestMessage,
-    type PermissionResponseMessage,
-    type RuntimeConfigChange,
-    type SessionInfo,
-    type SessionID,
-    type MessageID,
-    type PartID,
-    type Block,
-    type SessionControlMessage,
-    type SessionEnd,
-    type SessionStreamMessage,
-    type Todo,
-    isMessageWithParts,
-    ProtocolEnvelopeSchema,
-    SessionID as SessionIDSchema,
-    TodoSchema,
-} from './v3-compat';
 
 // ─── Token claims ────────────────────────────────────────────────────────────
 export { SyncNodeTokenClaimsSchema } from './token';
@@ -57,29 +54,124 @@ const SyncNodeStoredSessionMetadataSchema = z.object({
     metadata: z.unknown().nullable().optional(),
 });
 
+type PendingPermissionMetadata = {
+    id: string;
+    callId: string;
+    messageId?: string | null;
+    tool: string;
+    patterns: string[];
+    metadata: Record<string, unknown>;
+    allowTools?: string[];
+    decision?: 'once' | 'always' | 'reject';
+    reason?: string;
+    resolved?: boolean;
+};
+
+type PendingQuestionMetadata = {
+    id: string;
+    callId: string;
+    messageId?: string | null;
+    questions: QuestionInfo[];
+    answers?: string[][];
+    resolved?: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object';
+}
+
+function isSessionMessage(value: unknown): value is SessionMessage {
+    if (value === 'Resume') {
+        return true;
+    }
+    if (!isRecord(value)) {
+        return false;
+    }
+    if ('User' in value) {
+        return isRecord(value.User)
+            && typeof value.User.id === 'string'
+            && Array.isArray(value.User.content);
+    }
+    if ('Agent' in value) {
+        return isRecord(value.Agent)
+            && Array.isArray(value.Agent.content)
+            && isRecord(value.Agent.tool_results);
+    }
+    return false;
+}
+
+function isSessionUserMessage(message: SessionMessage): message is Extract<SessionMessage, { User: unknown }> {
+    return typeof message === 'object' && message !== null && 'User' in message;
+}
+
+function isSessionAgentMessage(message: SessionMessage): message is Extract<SessionMessage, { Agent: unknown }> {
+    return typeof message === 'object' && message !== null && 'Agent' in message;
+}
+
+function asStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value.filter((item): item is string => typeof item === 'string');
+}
+
+function asQuestionOptions(value: unknown): QuestionOption[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value.flatMap((item) => {
+        if (!isRecord(item) || typeof item.label !== 'string' || typeof item.description !== 'string') {
+            return [];
+        }
+        return [{
+            label: item.label,
+            description: item.description,
+        }];
+    });
+}
+
+function asQuestionInfos(value: unknown): QuestionInfo[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value.flatMap((item) => {
+        if (!isRecord(item) || typeof item.question !== 'string' || typeof item.header !== 'string') {
+            return [];
+        }
+        return [{
+            question: item.question,
+            header: item.header,
+            options: asQuestionOptions(item.options),
+            ...(typeof item.multiple === 'boolean' ? { multiple: item.multiple } : {}),
+            ...(typeof item.custom === 'boolean' ? { custom: item.custom } : {}),
+        }];
+    });
+}
+
 // ─── State types ─────────────────────────────────────────────────────────────
 
 export interface SessionState {
     info: SessionInfo;
-    messages: MessageWithParts[];
-    controlMessages: SessionControlMessage[];
+    messages: SessionMessage[];
 
-    // Derived from messages by SyncNode
+    // Derived from metadata / messages by SyncNode
     permissions: PermissionRequest[];
     questions: QuestionRequest[];
     todos: Todo[];
     status: SessionStatus;
-    runtimeConfig: RuntimeConfigChange | null;
+    runtimeConfig: RuntimeConfig | null;
 
     // ─── Session-level cache (Amendment 3) ──────────────────────────────
     // Typed fields extracted from metadata/agentState blobs. The app reads
     // these instead of reaching into the opaque blobs. Updated automatically
     // whenever metadata or agentState changes.
-    lifecycleState: 'running' | 'idle' | 'archived';
+    lifecycleState: 'running' | 'idle' | 'archived' | 'archiveRequested';
     agentType?: string;
     modelID?: string;
     summary?: string;
     controlledByUser?: boolean;
+    acpx?: SessionAcpxState | null;
+    flow?: unknown;
 
     // Raw encrypted blobs (transport layer — kept for CAS updates)
     metadata: unknown;
@@ -98,24 +190,51 @@ export type SessionStatus =
 export interface PermissionRequest {
     sessionId: SessionID;
     messageId: MessageID | null;
-    requestMessageId: MessageID;
     callId: string;
     permissionId: string;
-    block: Block & { type: 'permission' };
+    block: PermissionBlock;
     resolved: boolean;
 }
 
 export interface QuestionRequest {
     sessionId: SessionID;
-    messageId: MessageID;
+    messageId: MessageID | null;
     callId: string;
     questionId: string;
-    block: Block & { type: 'question' };
+    block: QuestionBlock;
     resolved: boolean;
 }
 
 export interface SyncState {
     sessions: Map<string, SessionState>;
+}
+
+export interface PermissionBlock {
+    type: 'permission';
+    id: string;
+    permission: string;
+    patterns: string[];
+    always: string[];
+    metadata: Record<string, unknown>;
+}
+
+export interface QuestionOption {
+    label: string;
+    description: string;
+}
+
+export interface QuestionInfo {
+    question: string;
+    header: string;
+    options: QuestionOption[];
+    multiple?: boolean;
+    custom?: boolean;
+}
+
+export interface QuestionBlock {
+    type: 'question';
+    id: string;
+    questions: QuestionInfo[];
 }
 
 // ─── Server message shape (what the HTTP API returns) ────────────────────────
@@ -306,15 +425,15 @@ export class SyncNode {
     private outbox: OutboxEntry[] = [];
     private flushing = false;
     private stateListeners = new Set<(state: SyncState) => void>();
-    private messageListeners = new Map<string, Set<(message: MessageWithParts) => void>>();
-    private sessionMessageListeners = new Map<string, Set<(message: SessionStreamMessage) => void>>();
+    private messageListeners = new Map<string, Set<(message: SessionMessage) => void>>();
+    private sessionMessageListeners = new Map<string, Set<(message: SessionMessage) => void>>();
     private sessionLastSeq = new Map<string, number>();
-    private sessionLocalIds = new Map<string, Map<string, MessageID>>();
     private sessionKeyMaterials = new Map<string, KeyMaterial>();
     private sessionEncryptedDataKeys = new Map<string, string | null>();
     private rpcHandler: RpcHandler | null = null;
     private metadataLocks = new Map<string, boolean>();
     private agentStateLocks = new Map<string, boolean>();
+    private sessionMessageLocalIds = new WeakMap<object, string>();
 
     constructor(
         private readonly serverUrl: string,
@@ -478,6 +597,7 @@ export class SyncNode {
                     }
                     session.metadataVersion = answer.version ?? session.metadataVersion + 1;
                     this.deriveMetadataCache(session);
+                    this.deriveSessionState(session);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version && answer.version > session.metadataVersion) {
                         session.metadataVersion = answer.version;
@@ -486,6 +606,7 @@ export class SyncNode {
                         }
                     }
                     this.deriveMetadataCache(session);
+                    this.deriveSessionState(session);
                     throw new Error('Metadata version mismatch');
                 }
                 // 'error' result: silent ignore
@@ -532,6 +653,7 @@ export class SyncNode {
                         : updated;
                     session.agentStateVersion = answer.version ?? session.agentStateVersion + 1;
                     this.deriveMetadataCache(session);
+                    this.deriveSessionState(session);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version && answer.version > session.agentStateVersion) {
                         session.agentStateVersion = answer.version;
@@ -540,6 +662,7 @@ export class SyncNode {
                         }
                     }
                     this.deriveMetadataCache(session);
+                    this.deriveSessionState(session);
                     throw new Error('Agent state version mismatch');
                 }
             });
@@ -683,14 +806,13 @@ export class SyncNode {
 
     // ─── Message operations ──────────────────────────────────────────────────
 
-    async sendMessage(sessionId: SessionID, message: SessionStreamMessage): Promise<void> {
+    async sendMessage(sessionId: SessionID, message: SessionMessage): Promise<void> {
         this.assertSessionAccess(sessionId);
         this.assertPermission('sendMessage', 'write');
 
         const keyMaterial = await this.getKeyMaterialForSession(sessionId);
-        const envelope = { v: 3 as const, message };
-        const ciphertext = encryptMessage(keyMaterial, envelope);
-        const localId = this.getSessionMessageLocalId(message);
+        const ciphertext = encryptMessage(keyMaterial, message);
+        const localId = this.getSessionMessageLocalId(message, true);
 
         return new Promise<void>((resolve, reject) => {
             this.outbox.push({ sessionId, localId, content: ciphertext, resolve, reject });
@@ -702,16 +824,13 @@ export class SyncNode {
         });
     }
 
-    async updateMessage(sessionId: SessionID, message: MessageWithParts): Promise<void> {
+    async updateMessage(sessionId: SessionID, message: SessionMessage): Promise<void> {
         this.assertSessionAccess(sessionId);
         this.assertPermission('updateMessage', 'write');
 
         const keyMaterial = await this.getKeyMaterialForSession(sessionId);
-        const envelope = { v: 3 as const, message };
-        const ciphertext = encryptMessage(keyMaterial, envelope);
-
-        // Updates patch the same server row by reusing the original localId.
-        const localId = `msg:${message.info.id}`;
+        const ciphertext = encryptMessage(keyMaterial, message);
+        const localId = this.getSessionMessageLocalId(message, false);
 
         return new Promise<void>((resolve, reject) => {
             this.outbox.push({ sessionId, localId, content: ciphertext, resolve, reject });
@@ -725,58 +844,74 @@ export class SyncNode {
 
     async sendRuntimeConfigChange(
         sessionId: SessionID,
-        change: Omit<RuntimeConfigChange, 'type' | 'id' | 'sessionID' | 'time'>,
+        change: RuntimeConfig,
     ): Promise<void> {
-        const message: RuntimeConfigChange = {
-            type: 'runtime-config-change',
-            id: `msg_${createId()}` as MessageID,
-            sessionID: sessionId,
-            time: { created: Date.now() },
-            ...change,
-        };
-        await this.sendMessage(sessionId, message);
+        await this.updateMetadata<Record<string, unknown>>(sessionId, (current) => {
+            const record = isRecord(current) ? current : {};
+            const runtimeConfig = this.mergeRuntimeConfig(
+                this.getRuntimeConfigFromMetadata(record),
+                change,
+            );
+            return {
+                ...record,
+                runtimeConfig,
+            };
+        });
     }
 
     async sendAbortRequest(
         sessionId: SessionID,
-        request: Omit<AbortRequest, 'type' | 'id' | 'sessionID' | 'time'>,
+        request: { source: string; reason: string },
     ): Promise<void> {
-        const message: AbortRequest = {
-            type: 'abort-request',
-            id: `msg_${createId()}` as MessageID,
-            sessionID: sessionId,
-            time: { created: Date.now() },
-            ...request,
-        };
-        await this.sendMessage(sessionId, message);
+        await this.updateAgentState<Record<string, unknown>>(sessionId, (current) => ({
+            ...(isRecord(current) ? current : {}),
+            lastAbortRequest: {
+                ...request,
+                createdAt: Date.now(),
+            },
+        }));
     }
 
     async sendSessionEnd(
         sessionId: SessionID,
-        sessionEnd: Omit<SessionEnd, 'type' | 'id' | 'sessionID' | 'time'>,
+        sessionEnd: { reason: string },
     ): Promise<void> {
-        const message: SessionEnd = {
-            type: 'session-end',
-            id: `msg_${createId()}` as MessageID,
-            sessionID: sessionId,
-            time: { created: Date.now() },
-            ...sessionEnd,
-        };
-        await this.sendMessage(sessionId, message);
+        await this.updateMetadata<Record<string, unknown>>(sessionId, (current) => ({
+            ...(isRecord(current) ? current : {}),
+            lifecycleState: 'archived',
+            lifecycleStateSince: Date.now(),
+            archivedBy: 'sync-node',
+            archiveReason: sessionEnd.reason,
+        }));
     }
 
     async sendPermissionRequest(
         sessionId: SessionID,
-        request: Omit<PermissionRequestMessage, 'type' | 'id' | 'sessionID' | 'time'>,
+        request: { callID: string; tool: string; patterns: string[]; input: Record<string, unknown> },
     ): Promise<void> {
-        const message: PermissionRequestMessage = {
-            type: 'permission-request',
-            id: `msg_${createId()}` as MessageID,
-            sessionID: sessionId,
-            time: { created: Date.now() },
-            ...request,
-        };
-        await this.sendMessage(sessionId, message);
+        const permissionId = `perm_${createId()}`;
+        await this.updateMetadata<Record<string, unknown>>(sessionId, (current) => {
+            const record = isRecord(current) ? current : {};
+            const pending = this.getPendingMetadata(record);
+            const pendingBase = isRecord(record.pending) ? record.pending : {};
+            return {
+                ...record,
+                pending: {
+                    ...pendingBase,
+                    permissions: [
+                        ...pending.permissions,
+                        {
+                            id: permissionId,
+                            callId: request.callID,
+                            tool: request.tool,
+                            patterns: request.patterns,
+                            metadata: request.input,
+                            resolved: false,
+                        },
+                    ],
+                },
+            };
+        });
     }
 
     async approvePermission(
@@ -787,13 +922,10 @@ export class SyncNode {
         this.assertPermission('approvePermission', 'write');
         const request = this.findPermissionRequest(sessionId, requestId);
         if (!request) throw new Error(`Permission request ${requestId} not found`);
-
-        const decisionMessage = this.buildPermissionResponseMessage(sessionId, request, {
+        await this.resolvePendingPermission(sessionId, request.permissionId, {
             decision: opts.decision,
             allowTools: opts.allowTools,
         });
-
-        await this.sendMessage(sessionId, decisionMessage);
     }
 
     async denyPermission(
@@ -804,13 +936,10 @@ export class SyncNode {
         this.assertPermission('denyPermission', 'write');
         const request = this.findPermissionRequest(sessionId, requestId);
         if (!request) throw new Error(`Permission request ${requestId} not found`);
-
-        const decisionMessage = this.buildPermissionResponseMessage(sessionId, request, {
+        await this.resolvePendingPermission(sessionId, request.permissionId, {
             decision: 'reject',
             reason: opts.reason,
         });
-
-        await this.sendMessage(sessionId, decisionMessage);
     }
 
     async answerQuestion(
@@ -821,9 +950,7 @@ export class SyncNode {
         this.assertPermission('answerQuestion', 'write');
         const request = this.findQuestionRequest(sessionId, questionId);
         if (!request) throw new Error(`Question request ${questionId} not found`);
-
-        const answerMessage = this.buildAnswerMessage(sessionId, request, answers);
-        await this.sendMessage(sessionId, answerMessage);
+        await this.resolvePendingQuestion(sessionId, request.questionId, answers);
     }
 
     // ─── Observation ─────────────────────────────────────────────────────────
@@ -833,7 +960,7 @@ export class SyncNode {
         return () => { this.stateListeners.delete(callback); };
     }
 
-    onMessage(sessionId: SessionID, callback: (message: MessageWithParts) => void): () => void {
+    onMessage(sessionId: SessionID, callback: (message: SessionMessage) => void): () => void {
         this.assertSessionAccess(sessionId);
         this.assertPermission('onMessage', 'read');
         const key = sessionId as string;
@@ -844,7 +971,7 @@ export class SyncNode {
         return () => { this.messageListeners.get(key)?.delete(callback); };
     }
 
-    onSessionMessage(sessionId: SessionID, callback: (message: SessionStreamMessage) => void): () => void {
+    onSessionMessage(sessionId: SessionID, callback: (message: SessionMessage) => void): () => void {
         this.assertSessionAccess(sessionId);
         this.assertPermission('onSessionMessage', 'read');
         const key = sessionId as string;
@@ -954,7 +1081,6 @@ export class SyncNode {
                 break;
             case 'delete-session':
                 this.state.sessions.delete(body.sid);
-                this.sessionLocalIds.delete(body.sid);
                 this.sessionLastSeq.delete(body.sid);
                 this.sessionKeyMaterials.delete(body.sid);
                 this.sessionEncryptedDataKeys.delete(body.sid);
@@ -989,14 +1115,9 @@ export class SyncNode {
 
         const keyMaterial = await this.getKeyMaterialForSession(sessionId);
         const decrypted = decryptMessage(keyMaterial, ciphertext);
-        if (!decrypted) return;
+        if (!isSessionMessage(decrypted)) return;
 
-        // Parse as protocol envelope
-        const parsed = ProtocolEnvelopeSchema.safeParse(decrypted);
-        if (!parsed.success) return;
-
-        const message = parsed.data.message;
-        this.insertSessionMessage(sessionId, message, serverMsg.localId ?? undefined, opts);
+        this.insertSessionMessage(sessionId, decrypted, serverMsg.localId ?? `srv:${serverMsg.id}`, opts);
     }
 
     // ─── Internal: state management ──────────────────────────────────────────
@@ -1024,7 +1145,6 @@ export class SyncNode {
         const session: SessionState = {
             info,
             messages: [],
-            controlMessages: [],
             permissions: [],
             questions: [],
             todos: [],
@@ -1037,6 +1157,7 @@ export class SyncNode {
             agentStateVersion: opts?.agentStateVersion ?? 0,
         };
         this.deriveMetadataCache(session);
+        this.deriveSessionState(session);
         return session;
     }
 
@@ -1062,6 +1183,7 @@ export class SyncNode {
             if (opts.agentStateVersion !== undefined) existing.agentStateVersion = opts.agentStateVersion;
         }
         this.deriveMetadataCache(existing);
+        this.deriveSessionState(existing);
         this.notifyStateChange();
     }
 
@@ -1072,11 +1194,11 @@ export class SyncNode {
      * reaching into the encrypted blobs.
      */
     private deriveMetadataCache(session: SessionState): void {
-        const meta = session.metadata as Record<string, unknown> | null;
-        if (meta && typeof meta === 'object') {
+        const meta = isRecord(session.metadata) ? session.metadata : null;
+        if (meta) {
             // Lifecycle
             const lcs = meta.lifecycleState;
-            if (lcs === 'running' || lcs === 'idle' || lcs === 'archived') {
+            if (lcs === 'running' || lcs === 'idle' || lcs === 'archived' || lcs === 'archiveRequested') {
                 session.lifecycleState = lcs;
             }
 
@@ -1089,11 +1211,20 @@ export class SyncNode {
             if (typeof meta.currentModelCode === 'string') {
                 session.modelID = meta.currentModelCode;
             }
+            if (isRecord(meta.acpx)) {
+                session.acpx = meta.acpx as SessionAcpxState;
+                if (typeof meta.acpx.current_model_id === 'string') {
+                    session.modelID = meta.acpx.current_model_id;
+                }
+            }
+            if (meta.flow !== undefined) {
+                session.flow = meta.flow;
+            }
 
             // Summary
             const summary = meta.summary;
-            if (summary && typeof summary === 'object') {
-                const text = (summary as Record<string, unknown>).text;
+            if (isRecord(summary)) {
+                const text = summary.text;
                 if (typeof text === 'string') {
                     session.summary = text;
                 }
@@ -1101,292 +1232,139 @@ export class SyncNode {
         }
 
         // controlledByUser from agentState
-        const state = session.agentState as Record<string, unknown> | null;
-        if (state && typeof state === 'object' && 'controlledByUser' in state) {
+        const state = isRecord(session.agentState) ? session.agentState : null;
+        if (state && 'controlledByUser' in state) {
             session.controlledByUser = state.controlledByUser as boolean | undefined;
         }
     }
 
     insertMessage(
         sessionId: SessionID,
-        message: MessageWithParts,
-        localId?: string,
+        message: SessionMessage,
+        messageKey?: string,
         opts: MessageInsertOpts = {},
     ): void {
-        this.insertSessionMessage(sessionId, message, localId, opts);
+        this.insertSessionMessage(sessionId, message, messageKey, opts);
     }
 
     private insertSessionMessage(
         sessionId: SessionID,
-        message: SessionStreamMessage,
-        localId?: string,
+        message: SessionMessage,
+        messageKey?: string,
         opts: MessageInsertOpts = {},
     ): void {
         const session = this.ensureSession(sessionId);
-        if (localId) {
-            const seenLocalIds = this.ensureSessionLocalIds(sessionId);
-            const existingMessageId = seenLocalIds.get(localId);
-            const nextMessageId = this.getSessionMessageId(message);
-            if (existingMessageId && existingMessageId !== nextMessageId) {
-                return;
-            }
-            seenLocalIds.set(localId, nextMessageId);
+        const storageKey = messageKey ?? this.getSessionMessageLocalId(message, true);
+        if (typeof message === 'object' && message !== null) {
+            this.sessionMessageLocalIds.set(message, storageKey);
         }
-
-        if (isMessageWithParts(message)) {
-            const existingIdx = session.messages.findIndex(m => m.info.id === message.info.id);
-            if (existingIdx >= 0) {
-                session.messages[existingIdx] = message;
-            } else {
-                session.messages.push(message);
+        const existingIdx = session.messages.findIndex((existing) => {
+            try {
+                return this.getSessionMessageLocalId(existing, false) === storageKey;
+            } catch {
+                return false;
             }
+        });
+        if (existingIdx >= 0) {
+            session.messages[existingIdx] = message;
         } else {
-            const existingIdx = session.controlMessages.findIndex(m => m.id === message.id);
-            if (existingIdx >= 0) {
-                session.controlMessages[existingIdx] = message;
-            } else {
-                session.controlMessages.push(message);
-            }
+            session.messages.push(message);
         }
 
         this.deriveSessionState(session);
         this.notifyStateChange();
         if (opts.notifyListeners !== false) {
             this.notifySessionMessageListeners(sessionId, message);
-            if (isMessageWithParts(message)) {
-                this.notifyMessageListeners(sessionId, message);
-            }
+            this.notifyMessageListeners(sessionId, message);
         }
     }
 
-    upsertMessage(sessionId: SessionID, message: MessageWithParts): void {
+    upsertMessage(sessionId: SessionID, message: SessionMessage): void {
         this.insertMessage(sessionId, message);
     }
 
     private deriveSessionState(session: SessionState): void {
-        const permissions: PermissionRequest[] = [];
-        const questions: QuestionRequest[] = [];
         let latestTodos: Todo[] | undefined;
-        let hasRunning = false;
-        let hasBlocked = false;
-        let blockReason: 'permission' | 'question' = 'permission';
-        const permissionResponsesByRequestId = new Map<string, PermissionResponseMessage>();
-        const permissionResponsesByCallId = new Map<string, PermissionResponseMessage>();
-        const permissionRequestsByCallId = new Map<string, PermissionRequestMessage>();
+        const metadata = isRecord(session.metadata) ? session.metadata : null;
+        const pending = this.getPendingMetadata(metadata);
 
-        let runtimeConfig: RuntimeConfigChange | null = null;
-
-        for (const controlMessage of session.controlMessages) {
-            if (controlMessage.type === 'runtime-config-change') {
-                runtimeConfig = this.mergeRuntimeConfig(runtimeConfig, controlMessage);
-            }
-            if (controlMessage.type === 'permission-request') {
-                permissionRequestsByCallId.set(controlMessage.callID, controlMessage);
-            }
-            if (controlMessage.type === 'permission-response') {
-                permissionResponsesByRequestId.set(controlMessage.requestID, controlMessage);
-                permissionResponsesByCallId.set(controlMessage.callID, controlMessage);
-            }
-        }
-
-        session.runtimeConfig = runtimeConfig;
-
-        for (const controlMessage of session.controlMessages) {
-            if (controlMessage.type !== 'permission-request') {
-                continue;
-            }
-
-            const resolved = this.isPermissionResolved(
-                session,
-                null,
-                controlMessage.callID,
-                controlMessage.id,
-                permissionResponsesByRequestId,
-                permissionResponsesByCallId,
-            );
-            permissions.push({
-                sessionId: session.info.id,
-                messageId: this.findToolMessageIdByCallId(session, controlMessage.callID),
-                requestMessageId: controlMessage.id,
-                callId: controlMessage.callID,
-                permissionId: controlMessage.id,
-                block: this.toPermissionBlock(controlMessage),
-                resolved,
-            });
-            if (!resolved) {
-                hasBlocked = true;
-                blockReason = 'permission';
-            }
-        }
+        session.runtimeConfig = metadata ? this.getRuntimeConfigFromMetadata(metadata) : null;
+        session.permissions = pending.permissions.map((permission) => ({
+            sessionId: session.info.id,
+            messageId: permission.messageId ? MessageIDSchema.parse(permission.messageId) : null,
+            callId: permission.callId,
+            permissionId: permission.id,
+            block: {
+                type: 'permission',
+                id: permission.id,
+                permission: permission.tool,
+                patterns: permission.patterns,
+                always: permission.allowTools ?? [],
+                metadata: permission.metadata,
+            },
+            resolved: permission.resolved === true || permission.decision !== undefined,
+        }));
+        session.questions = pending.questions.map((question) => ({
+            sessionId: session.info.id,
+            messageId: question.messageId ? MessageIDSchema.parse(question.messageId) : null,
+            callId: question.callId,
+            questionId: question.id,
+            block: {
+                type: 'question',
+                id: question.id,
+                questions: question.questions,
+            },
+            resolved: question.resolved === true || Array.isArray(question.answers),
+        }));
 
         for (const msg of session.messages) {
-            for (const part of msg.parts) {
-                if (part.type === 'tool') {
-                    const derivedTodos = this.extractTodosFromToolPart(part);
-                    if (derivedTodos !== undefined) {
-                        latestTodos = derivedTodos;
-                    }
-                }
-
-                // Extract permission requests from blocked tool parts
-                if (part.type === 'tool' && part.state.status === 'blocked') {
-                    const block = part.state.block;
-                    if (block.type === 'permission') {
-                        const controlRequest = permissionRequestsByCallId.get(part.callID);
-                        const resolved = this.isPermissionResolved(
-                            session,
-                            msg.info.id,
-                            part.callID,
-                            controlRequest?.id ?? block.id,
-                            permissionResponsesByRequestId,
-                            permissionResponsesByCallId,
-                        );
-                        if (!controlRequest) {
-                            permissions.push({
-                                sessionId: session.info.id,
-                                messageId: msg.info.id,
-                                requestMessageId: block.id as MessageID,
-                                callId: part.callID,
-                                permissionId: block.id,
-                                block,
-                                resolved,
-                            });
-                        }
-                        if (!resolved) {
-                            hasBlocked = true;
-                            blockReason = 'permission';
-                        }
-                    } else if (block.type === 'question') {
-                        const resolved = this.isQuestionResolved(session, msg.info.id, part.callID, block.id);
-                        questions.push({
-                            sessionId: session.info.id,
-                            messageId: msg.info.id,
-                            callId: part.callID,
-                            questionId: block.id,
-                            block,
-                            resolved,
-                        });
-                        if (!resolved) {
-                            hasBlocked = true;
-                            blockReason = 'question';
-                        }
-                    }
-                }
-
-                // Track running tools
-                if (part.type === 'tool' && part.state.status === 'running') {
-                    hasRunning = true;
-                }
+            const derivedTodos = this.extractTodosFromMessage(msg);
+            if (derivedTodos !== undefined) {
+                latestTodos = derivedTodos;
             }
         }
 
-        session.permissions = permissions;
-        session.questions = questions;
         session.todos = latestTodos ?? [];
 
-        if (hasBlocked) {
-            session.status = { type: 'blocked', reason: blockReason };
-        } else if (this.getLatestSessionEnd(session)) {
-            const sessionEnd = this.getLatestSessionEnd(session)!;
-            session.status = sessionEnd.reason === 'crashed'
+        if (session.permissions.some((permission) => !permission.resolved)) {
+            session.status = { type: 'blocked', reason: 'permission' };
+            return;
+        }
+
+        if (session.questions.some((question) => !question.resolved)) {
+            session.status = { type: 'blocked', reason: 'question' };
+            return;
+        }
+
+        if (session.lifecycleState === 'archived') {
+            const metadataRecord = isRecord(session.metadata) ? session.metadata : null;
+            const archiveReason = metadataRecord && typeof metadataRecord.archiveReason === 'string'
+                ? metadataRecord.archiveReason
+                : null;
+            session.status = archiveReason === 'crashed'
                 ? { type: 'error', error: 'Session crashed' }
                 : { type: 'completed' };
-        } else if (hasRunning) {
+            return;
+        }
+
+        if (session.lifecycleState === 'running' || session.lifecycleState === 'archiveRequested') {
             session.status = { type: 'running' };
-        } else {
-            session.status = { type: 'idle' };
-        }
-    }
-
-    private isPermissionResolved(
-        session: SessionState,
-        messageId: MessageID | null,
-        callId: string,
-        permissionId: string,
-        responsesByRequestId: Map<string, PermissionResponseMessage>,
-        responsesByCallId: Map<string, PermissionResponseMessage>,
-    ): boolean {
-        if (responsesByRequestId.has(permissionId) || responsesByCallId.has(callId)) {
-            return true;
+            return;
         }
 
-        if (!messageId) {
-            return false;
-        }
-
-        for (const msg of session.messages) {
-            for (const part of msg.parts) {
-                if (part.type === 'decision'
-                    && part.targetMessageID === messageId
-                    && part.targetCallID === callId
-                    && part.permissionID === permissionId) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private getLatestSessionEnd(session: SessionState): SessionEnd | null {
-        for (let i = session.controlMessages.length - 1; i >= 0; i -= 1) {
-            const controlMessage = session.controlMessages[i];
-            if (controlMessage.type === 'session-end') {
-                return controlMessage;
-            }
-        }
-        return null;
-    }
-
-    private isQuestionResolved(session: SessionState, messageId: MessageID, callId: string, questionId: string): boolean {
-        for (const msg of session.messages) {
-            for (const part of msg.parts) {
-                if (part.type === 'answer'
-                    && part.targetMessageID === messageId
-                    && part.targetCallID === callId
-                    && part.questionID === questionId) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private findToolMessageIdByCallId(session: SessionState, callId: string): MessageID | null {
-        for (let i = session.messages.length - 1; i >= 0; i -= 1) {
-            const message = session.messages[i];
-            for (const part of message.parts) {
-                if (part.type === 'tool' && part.callID === callId) {
-                    return message.info.id;
-                }
-            }
-        }
-        return null;
-    }
-
-    private toPermissionBlock(request: PermissionRequestMessage): Block & { type: 'permission' } {
-        return {
-            type: 'permission',
-            id: request.id,
-            permission: request.tool,
-            patterns: request.patterns,
-            always: [],
-            metadata: request.input,
-        };
+        session.status = { type: 'idle' };
     }
 
     private mergeRuntimeConfig(
-        current: RuntimeConfigChange | null,
-        next: RuntimeConfigChange,
-    ): RuntimeConfigChange {
+        current: RuntimeConfig | null,
+        next: RuntimeConfig,
+    ): RuntimeConfig {
         if (!current) {
             return next;
         }
 
-        const merged: RuntimeConfigChange = {
+        const merged: RuntimeConfig = {
             ...current,
-            id: next.id,
-            sessionID: next.sessionID,
-            time: next.time,
             source: next.source,
         };
 
@@ -1415,19 +1393,42 @@ export class SyncNode {
         return merged;
     }
 
-    private extractTodosFromToolPart(part: Extract<MessageWithParts['parts'][number], { type: 'tool' }>): Todo[] | undefined {
-        if (!this.isTodoTool(part.tool)) {
+    private extractTodosFromMessage(message: SessionMessage): Todo[] | undefined {
+        if (!isSessionAgentMessage(message)) {
             return undefined;
         }
 
-        const fromInput = this.extractTodosFromUnknown(part.state.input);
-        if (fromInput !== undefined) {
-            return fromInput;
+        for (const content of message.Agent.content) {
+            if (!('ToolUse' in content) || !this.isTodoTool(content.ToolUse.name)) {
+                continue;
+            }
+
+            const fromInput = this.extractTodosFromUnknown(content.ToolUse.input);
+            if (fromInput !== undefined) {
+                return fromInput;
+            }
+
+            const fromResult = this.extractTodosFromToolResult(message.Agent.tool_results[content.ToolUse.id]);
+            if (fromResult !== undefined) {
+                return fromResult;
+            }
         }
 
-        if (part.state.status === 'completed') {
-            const parsedOutput = this.parseJson(part.state.output);
-            return this.extractTodosFromUnknown(parsedOutput);
+        return undefined;
+    }
+
+    private extractTodosFromToolResult(result: SessionToolResult | undefined): Todo[] | undefined {
+        if (!result) {
+            return undefined;
+        }
+
+        const fromOutput = this.extractTodosFromUnknown(result.output);
+        if (fromOutput !== undefined) {
+            return fromOutput;
+        }
+
+        if ('Text' in result.content) {
+            return this.extractTodosFromUnknown(this.parseJson(result.content.Text));
         }
 
         return undefined;
@@ -1486,65 +1487,12 @@ export class SyncNode {
         return normalized === 'todowrite' || normalized === 'todo_write' || normalized === 'todo-write';
     }
 
-    // ─── Internal: build control / answer messages ──────────────────────────
-
-    private buildPermissionResponseMessage(
-        sessionId: SessionID,
-        request: PermissionRequest,
-        opts: { decision: 'once' | 'always' | 'reject'; allowTools?: string[]; reason?: string },
-    ): PermissionResponseMessage {
-        const msgId = `msg_${createId()}` as MessageID;
-        return {
-            type: 'permission-response',
-            id: msgId,
-            sessionID: sessionId,
-            time: { created: Date.now() },
-            requestID: request.requestMessageId,
-            callID: request.callId,
-            decision: opts.decision,
-            allowTools: opts.allowTools,
-            reason: opts.reason,
-        };
-    }
-
-    private buildAnswerMessage(
-        sessionId: SessionID,
-        request: QuestionRequest,
-        answers: string[][],
-    ): MessageWithParts {
-        const msgId = `msg_${createId()}` as MessageID;
-        const partId = `prt_${createId()}` as PartID;
-
-        return {
-            info: {
-                id: msgId,
-                sessionID: sessionId,
-                role: 'user' as const,
-                time: { created: Date.now() },
-                agent: 'user',
-                model: { providerID: 'user', modelID: 'user' },
-            },
-            parts: [{
-                id: partId,
-                sessionID: sessionId,
-                messageID: msgId,
-                type: 'answer' as const,
-                targetMessageID: request.messageId,
-                targetCallID: request.callId,
-                questionID: request.questionId,
-                answers,
-                decidedAt: Date.now(),
-            }],
-        };
-    }
-
     // ─── Internal: helpers ───────────────────────────────────────────────────
 
     private findPermissionRequest(sessionId: SessionID, requestId: string): PermissionRequest | undefined {
         const session = this.state.sessions.get(sessionId as string);
         return session?.permissions.find((p) =>
             p.permissionId === requestId
-            || p.requestMessageId === requestId
             || p.callId === requestId,
         );
     }
@@ -1560,7 +1508,7 @@ export class SyncNode {
         }
     }
 
-    private notifyMessageListeners(sessionId: SessionID, message: MessageWithParts): void {
+    private notifyMessageListeners(sessionId: SessionID, message: SessionMessage): void {
         const listeners = this.messageListeners.get(sessionId as string);
         if (listeners) {
             for (const listener of listeners) {
@@ -1569,7 +1517,7 @@ export class SyncNode {
         }
     }
 
-    private notifySessionMessageListeners(sessionId: SessionID, message: SessionStreamMessage): void {
+    private notifySessionMessageListeners(sessionId: SessionID, message: SessionMessage): void {
         const listeners = this.sessionMessageListeners.get(sessionId as string);
         if (listeners) {
             for (const listener of listeners) {
@@ -1578,15 +1526,209 @@ export class SyncNode {
         }
     }
 
-    private getSessionMessageId(message: SessionStreamMessage): MessageID {
-        return isMessageWithParts(message) ? message.info.id : message.id;
+    private getSessionMessageLocalId(message: SessionMessage, createIfMissing: boolean): string {
+        if (message === 'Resume') {
+            if (!createIfMissing) {
+                return 'resume';
+            }
+            return `resume:${createId()}`;
+        }
+
+        const existing = this.sessionMessageLocalIds.get(message);
+        if (existing) {
+            return existing;
+        }
+
+        if (isSessionUserMessage(message)) {
+            return `user:${message.User.id}`;
+        }
+
+        if (!createIfMissing) {
+            throw new Error('Agent message does not have a local id yet');
+        }
+        const localId = `agent:${createId()}`;
+        this.sessionMessageLocalIds.set(message, localId);
+        return localId;
     }
 
-    private getSessionMessageLocalId(message: SessionStreamMessage): string {
-        if (isMessageWithParts(message)) {
-            return `msg:${message.info.id}`;
+    private getPendingMetadata(metadata: Record<string, unknown> | null): {
+        permissions: PendingPermissionMetadata[];
+        questions: PendingQuestionMetadata[];
+    } {
+        const pending = metadata && isRecord(metadata.pending) ? metadata.pending : null;
+        const permissions = Array.isArray(pending?.permissions)
+            ? pending.permissions
+                .map((value) => this.parsePendingPermissionMetadata(value))
+                .filter((value): value is PendingPermissionMetadata => value !== null)
+            : [];
+        const questions = Array.isArray(pending?.questions)
+            ? pending.questions
+                .map((value) => this.parsePendingQuestionMetadata(value))
+                .filter((value): value is PendingQuestionMetadata => value !== null)
+            : [];
+        return { permissions, questions };
+    }
+
+    private parsePendingPermissionMetadata(value: unknown): PendingPermissionMetadata | null {
+        if (!isRecord(value)) {
+            return null;
         }
-        return `ctl:${message.type}:${message.id}`;
+
+        const id = typeof value.id === 'string'
+            ? value.id
+            : typeof value.permissionId === 'string'
+                ? value.permissionId
+                : null;
+        const callId = typeof value.callId === 'string'
+            ? value.callId
+            : typeof value.callID === 'string'
+                ? value.callID
+                : id;
+        const tool = typeof value.tool === 'string'
+            ? value.tool
+            : typeof value.permission === 'string'
+                ? value.permission
+                : null;
+
+        if (!id || !callId || !tool) {
+            return null;
+        }
+
+        return {
+            id,
+            callId,
+            ...(typeof value.messageId === 'string' ? { messageId: value.messageId } : {}),
+            tool,
+            patterns: asStringArray(value.patterns),
+            metadata: isRecord(value.metadata)
+                ? value.metadata
+                : isRecord(value.input)
+                    ? value.input
+                    : {},
+            ...(asStringArray(value.allowTools).length > 0 ? { allowTools: asStringArray(value.allowTools) } : {}),
+            ...(value.decision === 'once' || value.decision === 'always' || value.decision === 'reject'
+                ? { decision: value.decision }
+                : {}),
+            ...(typeof value.reason === 'string' ? { reason: value.reason } : {}),
+            ...(typeof value.resolved === 'boolean' ? { resolved: value.resolved } : {}),
+        };
+    }
+
+    private parsePendingQuestionMetadata(value: unknown): PendingQuestionMetadata | null {
+        if (!isRecord(value)) {
+            return null;
+        }
+
+        const id = typeof value.id === 'string'
+            ? value.id
+            : typeof value.questionId === 'string'
+                ? value.questionId
+                : null;
+        const callId = typeof value.callId === 'string'
+            ? value.callId
+            : typeof value.callID === 'string'
+                ? value.callID
+                : id;
+        const questions = asQuestionInfos(value.questions);
+        if (!id || !callId || questions.length === 0) {
+            return null;
+        }
+
+        const answers = Array.isArray(value.answers)
+            ? value.answers.map((answer) => Array.isArray(answer) ? answer.filter((item): item is string => typeof item === 'string') : [])
+            : undefined;
+
+        return {
+            id,
+            callId,
+            ...(typeof value.messageId === 'string' ? { messageId: value.messageId } : {}),
+            questions,
+            ...(answers ? { answers } : {}),
+            ...(typeof value.resolved === 'boolean' ? { resolved: value.resolved } : {}),
+        };
+    }
+
+    private getRuntimeConfigFromMetadata(metadata: Record<string, unknown>): RuntimeConfig | null {
+        const candidate = isRecord(metadata.runtimeConfig) ? metadata.runtimeConfig : metadata;
+        const runtimeConfig: RuntimeConfig = {
+            source: typeof candidate.source === 'string' ? candidate.source : 'user',
+        };
+        let hasConfig = false;
+
+        for (const key of ['permissionMode', 'model', 'fallbackModel', 'customSystemPrompt', 'appendSystemPrompt']) {
+            if (Object.prototype.hasOwnProperty.call(candidate, key)) {
+                runtimeConfig[key as keyof RuntimeConfig] = candidate[key] as never;
+                hasConfig = true;
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(candidate, 'allowedTools')) {
+            runtimeConfig.allowedTools = Array.isArray(candidate.allowedTools) ? asStringArray(candidate.allowedTools) : null;
+            hasConfig = true;
+        }
+        if (Object.prototype.hasOwnProperty.call(candidate, 'disallowedTools')) {
+            runtimeConfig.disallowedTools = Array.isArray(candidate.disallowedTools) ? asStringArray(candidate.disallowedTools) : null;
+            hasConfig = true;
+        }
+
+        return hasConfig ? runtimeConfig : null;
+    }
+
+    private async resolvePendingPermission(
+        sessionId: SessionID,
+        permissionId: string,
+        resolution: { decision: 'once' | 'always' | 'reject'; allowTools?: string[]; reason?: string },
+    ): Promise<void> {
+        await this.updateMetadata<Record<string, unknown>>(sessionId, (current) => {
+            const record = isRecord(current) ? current : {};
+            const pending = this.getPendingMetadata(record);
+            const pendingBase = isRecord(record.pending) ? record.pending : {};
+            return {
+                ...record,
+                pending: {
+                    ...pendingBase,
+                    permissions: pending.permissions.map((permission) =>
+                        permission.id !== permissionId
+                            ? permission
+                            : {
+                                ...permission,
+                                decision: resolution.decision,
+                                allowTools: resolution.allowTools,
+                                reason: resolution.reason,
+                                resolved: true,
+                            },
+                    ),
+                    questions: pending.questions,
+                },
+            };
+        });
+    }
+
+    private async resolvePendingQuestion(
+        sessionId: SessionID,
+        questionId: string,
+        answers: string[][],
+    ): Promise<void> {
+        await this.updateMetadata<Record<string, unknown>>(sessionId, (current) => {
+            const record = isRecord(current) ? current : {};
+            const pending = this.getPendingMetadata(record);
+            const pendingBase = isRecord(record.pending) ? record.pending : {};
+            return {
+                ...record,
+                pending: {
+                    ...pendingBase,
+                    permissions: pending.permissions,
+                    questions: pending.questions.map((question) =>
+                        question.id !== questionId
+                            ? question
+                            : {
+                                ...question,
+                                answers,
+                                resolved: true,
+                            },
+                    ),
+                },
+            };
+        });
     }
 
     private rememberSessionEncryptedDataKey(sessionId: SessionID, encryptedDataKey: string | null): void {
@@ -1684,6 +1826,7 @@ export class SyncNode {
 
         if (changed) {
             this.deriveMetadataCache(current);
+            this.deriveSessionState(current);
             this.notifyStateChange();
         }
     }
@@ -1705,16 +1848,6 @@ export class SyncNode {
         if (scope.type === 'session' && scope.sessionId !== (sessionId as string)) {
             throw new Error(`Session-scoped token cannot access session ${sessionId}`);
         }
-    }
-
-    private ensureSessionLocalIds(sessionId: SessionID): Map<string, MessageID> {
-        const key = sessionId as string;
-        let seenLocalIds = this.sessionLocalIds.get(key);
-        if (!seenLocalIds) {
-            seenLocalIds = new Map();
-            this.sessionLocalIds.set(key, seenLocalIds);
-        }
-        return seenLocalIds;
     }
 
     private buildSocketAuth(): Record<string, unknown> {
@@ -1783,7 +1916,6 @@ export class SyncNode {
 
     private dropLocalSession(sessionIdStr: string): void {
         this.state.sessions.delete(sessionIdStr);
-        this.sessionLocalIds.delete(sessionIdStr);
         this.sessionLastSeq.delete(sessionIdStr);
         this.sessionKeyMaterials.delete(sessionIdStr);
         this.sessionEncryptedDataKeys.delete(sessionIdStr);

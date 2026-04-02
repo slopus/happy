@@ -72,16 +72,39 @@ Commit: 50dda64f
 
 ---
 
-TASK: Step 2 — Update SyncNode to carry `SessionMessage` directly instead of `ProtocolEnvelope`.
+DONE: Step 2 — Update SyncNode to carry `SessionMessage` directly instead of `ProtocolEnvelope`.
+
+Commit: PENDING
+
+### Results
+1. ✅ `SyncNode.SessionState.messages` is now `SessionMessage[]`; `controlMessages` removed
+2. ✅ `SyncNode.sendMessage()` / `updateMessage()` now take raw acpx `SessionMessage`
+3. ✅ Raw `SessionMessage` is encrypted/stored directly; `ProtocolEnvelopeSchema` usage removed
+4. ✅ Pending permissions/questions now derive from `metadata.pending.*`
+5. ✅ Session status now derives from metadata lifecycle/pending state instead of Part scanning
+6. ✅ Runtime config mutations now persist in metadata instead of control messages
+7. ✅ `v3-compat.ts` — DELETED
+8. ✅ `sync-node.test.ts` rewritten around raw `SessionMessage`
+9. ✅ `sync-node.integration.test.ts` rewritten to cover raw-message + metadata flows against the real server
+10. ✅ New `sync-types.ts` holds remaining shared non-wire sync types (`SessionInfo`, IDs, `Todo`, `RuntimeConfig`)
+
+### Verification
+1. ✅ `yarn workspace @slopus/happy-sync tsc --noEmit`
+2. ✅ `yarn workspace @slopus/happy-sync test:unit` — 40/40 tests passed
+3. ✅ `yarn workspace @slopus/happy-sync build`
+4. ✅ `yarn workspace @slopus/happy-sync test:integration` — 9/9 tests passed
+5. ✅ `test ! -e packages/happy-sync/src/v3-compat.ts && echo deleted` → `deleted`
+6. ⚠️ `yarn tsc --noEmit` at repo root is not configured in this worktree: it exits with TypeScript help text because there is no root `tsconfig.json`
+
+---
+
+TASK: Step 3 — Simplify CLI — `AcpBackend` + `SyncBridge` use acpx types directly.
 
 ### Acceptance criteria
-1. `SyncNode.SessionState.messages` typed as `SessionMessage[]` (not `MessageWithParts[]`)
-2. `SyncNode.SessionState.controlMessages` removed (permissions/config in metadata now)
-3. `SyncNode.sendMessage()` accepts `SessionMessage` directly
-4. `SyncNode.updateMessage()` accepts `SessionMessage` directly
-5. Permission derivation reads from `metadata.pending.permissions[]` (not from message Parts)
-6. Session status derived from metadata lifecycle state (not from Part scanning)
-7. `ProtocolEnvelopeSchema` no longer used — raw `SessionMessage` encrypted directly
-8. `v3-compat.ts` — DELETED (no longer needed)
-9. `sync-node.test.ts` updated: tests use `SessionMessage` instead of `MessageWithParts`
-10. `yarn tsc --noEmit` passes in `happy-sync`
+1. CLI/backend sync path no longer imports or constructs `ProtocolEnvelope` / v3 wrapper message types
+2. `AcpBackend` emits and consumes raw acpx `SessionMessage`
+3. `SyncBridge` forwards raw `SessionMessage` to `SyncNode` without envelope translation
+4. Permission/config/session-lifecycle sync uses metadata state, not synthetic control messages
+5. CLI tests are updated for raw `SessionMessage` transport
+6. `yarn workspace happy-coder build` passes
+7. Relevant CLI/backend automated tests pass
