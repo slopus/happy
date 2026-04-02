@@ -74,7 +74,7 @@ Commit: 50dda64f
 
 DONE: Step 2 — Update SyncNode to carry `SessionMessage` directly instead of `ProtocolEnvelope`.
 
-Commit: PENDING
+Commit: 6385f7be
 
 ### Results
 1. ✅ `SyncNode.SessionState.messages` is now `SessionMessage[]`; `controlMessages` removed
