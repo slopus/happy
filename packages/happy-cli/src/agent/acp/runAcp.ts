@@ -11,14 +11,12 @@ import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@/legacy/sessionProtocol';
-import {
-  createV3AcpMapperState,
-  handleAcpMessage,
-  startAcpTurn,
-  endAcpTurn,
-  type V3AcpMapperState,
-} from './v3Mapper';
-import type { v3 } from '@slopus/happy-sync';
+import type {
+  SessionMessage,
+  SessionAgentMessage,
+  SessionUserMessage,
+} from '@slopus/happy-sync';
+import type { SessionID } from '@slopus/happy-sync';
 import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
@@ -285,6 +283,92 @@ type AcpSwitchMode = {
   permissionMode?: string;
   model?: string | null;
 };
+
+// ─── acpx SessionAgentMessage accumulator ─────────────────────────────────────
+
+type AcpxAccumulator = {
+  message: SessionAgentMessage;
+  localId: string;
+  sent: boolean;
+};
+
+function createAcpxAccumulator(): AcpxAccumulator {
+  return {
+    message: { content: [], tool_results: {} },
+    localId: randomUUID(),
+    sent: false,
+  };
+}
+
+function applyAgentMessageToAccumulator(acc: AcpxAccumulator, msg: AgentMessage): void {
+  const m = acc.message;
+  switch (msg.type) {
+    case 'model-output': {
+      const text = msg.textDelta ?? msg.fullText ?? '';
+      if (!text) break;
+      const last = m.content.length > 0 ? m.content[m.content.length - 1] : null;
+      if (last && 'Text' in last) {
+        (last as { Text: string }).Text += text;
+      } else {
+        m.content.push({ Text: text });
+      }
+      break;
+    }
+    case 'event': {
+      if (msg.name === 'thinking') {
+        const payload = msg.payload;
+        const text = typeof payload === 'string'
+          ? payload
+          : (payload && typeof payload === 'object' && typeof (payload as { text?: unknown }).text === 'string')
+            ? (payload as { text: string }).text
+            : '';
+        if (!text) break;
+        const last = m.content.length > 0 ? m.content[m.content.length - 1] : null;
+        if (last && 'Thinking' in last) {
+          (last as { Thinking: { text: string } }).Thinking.text += text;
+        } else {
+          m.content.push({ Thinking: { text } });
+        }
+      }
+      break;
+    }
+    case 'tool-call': {
+      m.content.push({
+        ToolUse: {
+          id: msg.callId,
+          name: msg.toolName,
+          raw_input: typeof msg.args === 'string' ? msg.args : JSON.stringify(msg.args),
+          input: msg.args,
+          is_input_complete: true,
+        },
+      });
+      break;
+    }
+    case 'tool-result': {
+      const resultText = typeof msg.result === 'string'
+        ? msg.result
+        : JSON.stringify(msg.result ?? '');
+      m.tool_results[msg.callId] = {
+        tool_use_id: msg.callId,
+        tool_name: msg.toolName,
+        is_error: false,
+        content: { Text: resultText },
+      };
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+function isTranscriptMessage(msg: AgentMessage): boolean {
+  return msg.type === 'model-output'
+    || msg.type === 'tool-call'
+    || msg.type === 'tool-result'
+    || (msg.type === 'event' && msg.name === 'thinking');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 type AcpSelectableOption = {
   code: string;
@@ -579,7 +663,7 @@ export async function runAcp(opts: {
         key: response.encryptionKey,
         variant: response.encryptionVariant,
       },
-      sessionId: response.id as v3.SessionID,
+      sessionId: response.id as SessionID,
     });
     await syncBridge.connect();
     logAcp('muted', `SyncBridge connected`);
@@ -628,16 +712,7 @@ export async function runAcp(opts: {
     });
   }
   const sessionManager = new AcpSessionManager();
-  let v3MapperState: V3AcpMapperState | null = response
-    ? createV3AcpMapperState({
-        sessionID: response.id,
-        agent: opts.agentName,
-        modelID: opts.agentName,
-        providerID: opts.agentName,
-        cwd: process.cwd(),
-        root: process.cwd(),
-      })
-    : null;
+  let acpxAcc: AcpxAccumulator | null = null;
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
   let currentModel: string | null | undefined;
@@ -817,23 +892,17 @@ export async function runAcp(opts: {
     }
   };
 
-  const sendV3Messages = (messages: v3.MessageWithParts[]) => {
-    if (!syncBridge) {
-      return;
-    }
-    for (const message of messages) {
-      syncBridge.sendMessage(message).catch((error) => {
-        logger.debug(`[${opts.agentName}] Failed to send v3 message:`, error);
-      });
-    }
+  const sendAcpxMessage = (message: SessionMessage) => {
+    if (!syncBridge) return;
+    syncBridge.sendMessage(message).catch((error) => {
+      logger.debug(`[${opts.agentName}] Failed to send acpx message:`, error);
+    });
   };
 
-  const updateV3Message = (message: v3.MessageWithParts | null) => {
-    if (!syncBridge || !message) {
-      return;
-    }
+  const updateAcpxMessage = (message: SessionMessage) => {
+    if (!syncBridge) return;
     syncBridge.updateMessage(message).catch((error) => {
-      logger.debug(`[${opts.agentName}] Failed to update v3 message:`, error);
+      logger.debug(`[${opts.agentName}] Failed to update acpx message:`, error);
     });
   };
 
@@ -1080,16 +1149,14 @@ export async function runAcp(opts: {
       logAcp(frontendMessage.kind, frontendMessage.text);
     }
 
-    if (syncBridge && v3MapperState) {
-      // Transport status updates drive turn lifecycle and keep-alives, but they
-      // don't add transcript content. Publishing the idle snapshot here can race
-      // with the finalized flushed turn and overwrite the text/step-finish.
+    if (syncBridge && acpxAcc) {
       if (msg.type === 'status') {
         return;
       }
-      const mapped = handleAcpMessage(msg, v3MapperState);
-      sendV3Messages(mapped.messages);
-      updateV3Message(mapped.currentAssistant);
+      if (isTranscriptMessage(msg)) {
+        applyAgentMessageToAccumulator(acpxAcc, msg);
+        updateAcpxMessage({ Agent: acpxAcc.message });
+      }
       return;
     }
 
@@ -1100,27 +1167,11 @@ export async function runAcp(opts: {
 
   if (syncBridge) {
     syncBridge.onUserMessage((message) => {
-      const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
-      if (!textPart) return;
-      if (v3MapperState) {
-        v3MapperState.currentUserMessageID = message.info.id;
-      }
+      const userMsg = message.User;
+      const textContent = userMsg.content.find((c): c is Extract<typeof c, { Text: string }> => 'Text' in c);
+      if (!textContent) return;
 
-      const meta = (message.info as any).meta;
-      if (typeof meta?.permissionMode === 'string') {
-        currentPermissionMode = meta.permissionMode;
-        logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
-      }
-
-      if (meta && Object.prototype.hasOwnProperty.call(meta, 'model')) {
-        currentModel = resolveRequestedAcpModel(meta.model);
-        logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
-      } else if (message.info.role === 'user') {
-        currentModel = resolveRequestedAcpModel(message.info.model);
-        logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
-      }
-
-      messageQueue.push(textPart.text, {
+      messageQueue.push(textContent.Text, {
         permissionMode: currentPermissionMode,
         model: currentModel,
       });
@@ -1230,10 +1281,10 @@ export async function runAcp(opts: {
       await drainOutstandingPromptRpc();
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
-      if (syncBridge && v3MapperState) {
-        const startedTurn = startAcpTurn(v3MapperState);
-        sendV3Messages(startedTurn.messages);
-        updateV3Message(startedTurn.currentAssistant);
+      if (syncBridge) {
+        acpxAcc = createAcpxAccumulator();
+        sendAcpxMessage({ Agent: acpxAcc.message });
+        acpxAcc.sent = true;
       } else {
         sendEnvelopes(sessionManager.startTurn());
       }
@@ -1323,11 +1374,9 @@ export async function runAcp(opts: {
           turnEnded = waitForTurnEnd();
         }
         logger.debug(`[${opts.agentName}] Finalizing ACP turn after wait`);
-        if (syncBridge && v3MapperState) {
-          const endedTurn = endAcpTurn(v3MapperState, 'completed');
-          logger.debug(`[${opts.agentName}] Sending finalized v3 ACP turn with ${endedTurn.messages.length} messages`);
-          sendV3Messages(endedTurn.messages);
-          updateV3Message(endedTurn.currentAssistant);
+        if (syncBridge && acpxAcc) {
+          updateAcpxMessage({ Agent: acpxAcc.message });
+          acpxAcc = null;
         } else {
           sendEnvelopes(sessionManager.endTurn('completed'));
         }
@@ -1343,10 +1392,9 @@ export async function runAcp(opts: {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
-        if (syncBridge && v3MapperState) {
-          const endedTurn = endAcpTurn(v3MapperState, 'failed');
-          sendV3Messages(endedTurn.messages);
-          updateV3Message(endedTurn.currentAssistant);
+        if (syncBridge && acpxAcc) {
+          updateAcpxMessage({ Agent: acpxAcc.message });
+          acpxAcc = null;
         } else {
           sendEnvelopes(sessionManager.endTurn('failed'));
         }

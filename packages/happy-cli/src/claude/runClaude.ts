@@ -342,7 +342,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     syncBridge.onRuntimeConfigChange((change) => {
         if (change.permissionMode) {
-            currentPermissionMode = applySandboxPermissionPolicy(change.permissionMode, sandboxEnabled);
+            currentPermissionMode = applySandboxPermissionPolicy(change.permissionMode as PermissionMode, sandboxEnabled);
         }
         if (Object.prototype.hasOwnProperty.call(change, 'model')) {
             currentModel = change.model || undefined;
@@ -366,13 +366,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     syncBridge.onUserMessage((message) => {
         // Extract text from the first text part
-        const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
+        const textPart = (message as any).parts.find((p: any): p is { type: 'text'; text: string } => p.type === 'text');
         if (!textPart) return;
 
         const text = textPart.text;
 
         // Extract meta from user message info if available
-        const meta = (message.info as any).meta;
+        const meta = ((message as any).info as any).meta;
         if (meta?.permissionMode) {
             currentPermissionMode = applySandboxPermissionPolicy(meta.permissionMode, sandboxEnabled);
             logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);

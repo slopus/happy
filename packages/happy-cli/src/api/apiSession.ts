@@ -235,7 +235,7 @@ export class ApiSessionClient extends EventEmitter {
             info: { id: randomUUID(), role: 'system', createdAt: Date.now() },
             parts: [{ type: 'legacy-envelope', data: content }],
         };
-        this.syncBridge.sendMessage(envelope as unknown as v3.MessageWithParts).catch((err) => {
+        this.syncBridge.sendMessage(envelope as any).catch((err) => {
             logger.debug('[API] SyncBridge sendMessage failed (enqueueMessage)', { error: err });
         });
     }
@@ -315,7 +315,7 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('[API] sendV3ProtocolMessage called but no SyncBridge attached — message dropped');
             return;
         }
-        this.syncBridge.sendMessage(message).catch((err) => {
+        this.syncBridge.sendMessage(message as any).catch((err) => {
             logger.debug('[API] SyncBridge sendMessage failed', { error: err });
         });
     }

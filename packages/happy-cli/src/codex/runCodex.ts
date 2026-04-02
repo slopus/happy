@@ -196,11 +196,8 @@ export async function runCodex(opts: {
 
     function publishCodexV3Message(message: v3.MessageWithParts): void {
         if (!syncBridge) return;
-        const existing = syncBridge.currentAssistantMessage();
-        const publish = existing?.info.id === message.info.id
-            ? syncBridge.updateMessage(message)
-            : syncBridge.sendMessage(message);
-        publish.catch((err) => {
+        // These files will be deleted in Step 6; cast to any to compile against new SessionMessage API
+        syncBridge.sendMessage(message as any).catch((err) => {
             logger.debug('[Codex] SyncBridge publish failed', { error: err });
         });
     }
@@ -271,12 +268,12 @@ export async function runCodex(opts: {
     if (syncBridge) {
         syncBridge.onUserMessage((message) => {
             // Extract text from the first text part
-            const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
+            const textPart = (message as any).parts.find((p: any): p is { type: 'text'; text: string } => p.type === 'text');
             if (!textPart) return;
             const text = textPart.text;
 
             // Extract meta from user message info if available
-            const meta = message.info.role === 'user' ? message.info.meta : undefined;
+            const meta = (message as any).info?.role === 'user' ? (message as any).info.meta : undefined;
 
             // Resolve permission mode (accept all modes, will be mapped in switch statement)
             let messagePermissionMode = currentPermissionMode;

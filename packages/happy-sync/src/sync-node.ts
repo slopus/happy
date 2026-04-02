@@ -194,6 +194,9 @@ export interface PermissionRequest {
     permissionId: string;
     block: PermissionBlock;
     resolved: boolean;
+    decision?: 'once' | 'always' | 'reject';
+    allowTools?: string[];
+    reason?: string;
 }
 
 export interface QuestionRequest {
@@ -203,6 +206,7 @@ export interface QuestionRequest {
     questionId: string;
     block: QuestionBlock;
     resolved: boolean;
+    answers?: string[][];
 }
 
 export interface SyncState {
@@ -1295,7 +1299,7 @@ export class SyncNode {
             callId: permission.callId,
             permissionId: permission.id,
             block: {
-                type: 'permission',
+                type: 'permission' as const,
                 id: permission.id,
                 permission: permission.tool,
                 patterns: permission.patterns,
@@ -1303,6 +1307,9 @@ export class SyncNode {
                 metadata: permission.metadata,
             },
             resolved: permission.resolved === true || permission.decision !== undefined,
+            decision: permission.decision,
+            allowTools: permission.allowTools,
+            reason: permission.reason,
         }));
         session.questions = pending.questions.map((question) => ({
             sessionId: session.info.id,
@@ -1310,11 +1317,12 @@ export class SyncNode {
             callId: question.callId,
             questionId: question.id,
             block: {
-                type: 'question',
+                type: 'question' as const,
                 id: question.id,
                 questions: question.questions,
             },
             resolved: question.resolved === true || Array.isArray(question.answers),
+            answers: question.answers,
         }));
 
         for (const msg of session.messages) {

@@ -303,9 +303,9 @@ export async function runGemini(opts: {
     }
   });
 
-  syncBridge.onUserMessage((message) => {
+  syncBridge.onUserMessage((message: any) => {
     // Extract text from the first text part
-    const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
+    const textPart = message.parts.find((p: any): p is { type: 'text'; text: string } => p.type === 'text');
     if (!textPart) return;
 
     // Extract meta from user message info if available

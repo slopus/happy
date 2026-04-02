@@ -5,7 +5,7 @@ import type { SandboxConfig } from '@/persistence'
 
 export {
   SessionMessageContentSchema,
-  SessionMessageSchema,
+  TransportMessageSchema as SessionMessageSchema,
   UpdateBodySchema,
   UpdateMachineBodySchema,
   UpdateSchema,
@@ -14,6 +14,7 @@ export {
 export type {
   SessionMessage,
   SessionMessageContent,
+  TransportMessage,
   Update,
   UpdateBody,
   UpdateMachineBody,

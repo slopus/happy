@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const sessionHandlers = new Map<string, (params: any) => Promise<any> | any>();
   let userMessageHandler: ((message: any) => void) | null = null;
+  let runtimeConfigHandler: ((config: any) => void) | null = null;
   let killHandler: (() => Promise<void>) | null = null;
 
   const mockSession = {
@@ -35,7 +36,10 @@ const mocks = vi.hoisted(() => {
       userMessageHandler = handler;
     }),
     onPermissionDecision: vi.fn(() => () => {}),
-    onRuntimeConfigChange: vi.fn(() => () => {}),
+    onRuntimeConfigChange: vi.fn((handler: (config: any) => void) => {
+      runtimeConfigHandler = handler;
+      return () => {};
+    }),
     onAbortRequest: vi.fn(() => () => {}),
     sendPermissionRequest: vi.fn(async () => {}),
     sendMessage: vi.fn(async () => {}),
@@ -91,6 +95,10 @@ const mocks = vi.hoisted(() => {
     getUserMessageHandler: () => userMessageHandler,
     setUserMessageHandler: (handler: ((message: any) => void) | null) => {
       userMessageHandler = handler;
+    },
+    getRuntimeConfigHandler: () => runtimeConfigHandler,
+    setRuntimeConfigHandler: (handler: ((config: any) => void) | null) => {
+      runtimeConfigHandler = handler;
     },
     getKillHandler: () => killHandler,
     setKillHandler: (handler: (() => Promise<void>) | null) => {
@@ -272,11 +280,13 @@ vi.mock('./AcpBackend', () => ({
 
 import { runAcp } from './runAcp';
 
-/** Helper: build a SyncBridge-format user message (MessageWithParts). */
-function syncUserMessage(text: string, meta?: Record<string, unknown>) {
+/** Helper: build a SyncBridge-format user message (acpx SessionMessage). */
+function syncUserMessage(text: string) {
   return {
-    parts: [{ type: 'text' as const, text }],
-    info: { meta: meta ?? {} },
+    User: {
+      id: `msg_${Math.random().toString(36).slice(2, 10)}`,
+      content: [{ Text: text }],
+    },
   };
 }
 
@@ -291,6 +301,7 @@ describe('runAcp', () => {
     vi.clearAllMocks();
     mocks.sessionHandlers.clear();
     mocks.setUserMessageHandler(null);
+    mocks.setRuntimeConfigHandler(null);
     mocks.setKillHandler(null);
     mocks.backendState.listeners = [];
     mocks.backendState.prompts = [];
@@ -346,11 +357,19 @@ describe('runAcp', () => {
       prompt: 'Build a test plan',
     });
 
-    // With SyncBridge, messages are sent via syncBridge.sendMessage/updateMessage (v3 MessageWithParts)
-    // instead of session.sendSessionProtocolMessage (protocol envelopes)
+    // With SyncBridge, messages are sent as raw acpx SessionMessage
     const syncMessageCalls = mocks.mockSyncBridge.sendMessage.mock.calls.length
       + mocks.mockSyncBridge.updateMessage.mock.calls.length;
     expect(syncMessageCalls).toBeGreaterThan(0);
+
+    // Verify acpx format: messages should be { Agent: SessionAgentMessage }
+    const sendCalls = mocks.mockSyncBridge.sendMessage.mock.calls as unknown[][];
+    expect(sendCalls.length).toBeGreaterThan(0);
+    const firstSend = sendCalls[0][0] as Record<string, unknown>;
+    expect(firstSend).toHaveProperty('Agent');
+    const agent = firstSend.Agent as Record<string, unknown>;
+    expect(agent).toHaveProperty('content');
+    expect(agent).toHaveProperty('tool_results');
 
     // With SyncBridge, ready events go through updateAgentState instead of sendSessionEvent
     const agentStateUpdates = mocks.mockSession.updateAgentState.mock.calls;
@@ -455,8 +474,8 @@ describe('runAcp', () => {
 
     const lines = consoleLines();
     expect(lines.some((line) => line.startsWith('Outgoing raw backend message from opencode: '))).toBe(true);
-    // With SyncBridge, messages go through sendV3Messages (not sendEnvelopes),
-    // so the "Incoming raw envelope" log is not emitted. Verify v3 messages were sent instead.
+    // With SyncBridge, messages go through sendAcpxMessage/updateAcpxMessage (not sendEnvelopes),
+    // so the "Incoming raw envelope" log is not emitted.
     expect(mocks.mockSyncBridge.sendMessage.mock.calls.length
       + mocks.mockSyncBridge.updateMessage.mock.calls.length).toBeGreaterThan(0);
   });
@@ -663,10 +682,9 @@ describe('runAcp', () => {
       expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
     });
 
-    mocks.getUserMessageHandler()!(syncUserMessage('Apply settings then run', {
-      permissionMode: 'Code',
-      model: 'claude-opus',
-    }));
+    // Simulate runtime config change from the app (via metadata)
+    mocks.getRuntimeConfigHandler()!({ source: 'app', permissionMode: 'Code', model: 'claude-opus' });
+    mocks.getUserMessageHandler()!(syncUserMessage('Apply settings then run'));
 
     await vi.waitFor(() => {
       expect(mocks.backendState.prompts).toHaveLength(1);
@@ -728,10 +746,9 @@ describe('runAcp', () => {
       expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
     });
 
-    mocks.getUserMessageHandler()!(syncUserMessage('Run without switching', {
-      permissionMode: 'invalid-mode',
-      model: 'invalid-model',
-    }));
+    // Simulate runtime config change with invalid values
+    mocks.getRuntimeConfigHandler()!({ source: 'app', permissionMode: 'invalid-mode', model: 'invalid-model' });
+    mocks.getUserMessageHandler()!(syncUserMessage('Run without switching'));
 
     await vi.waitFor(() => {
       expect(mocks.backendState.prompts).toHaveLength(1);

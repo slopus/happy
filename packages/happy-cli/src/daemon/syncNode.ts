@@ -59,12 +59,12 @@ export class DaemonSyncNode {
         title?: string;
         parentID?: SessionID;
     }): Promise<SessionID> {
-        return this.node.createSession(opts);
+        return this.node.createSession(opts) as any;
     }
 
     /** List all known sessions. */
     listSessions(): v3.SessionInfo[] {
-        return this.node.listSessions();
+        return this.node.listSessions() as any;
     }
 
     /** Stop a session. */

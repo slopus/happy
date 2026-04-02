@@ -4,35 +4,33 @@
  * Each CLI session process (Claude, Codex, OpenCode) uses a session-scoped
  * SyncNode. The bridge:
  *   1. Creates the SyncNode with the session-scoped JWT from the daemon
- *   2. Provides a simple interface for mappers to read current state and
- *      push updated MessageWithParts
- *   3. Watches for incoming decision/answer messages and invokes callbacks
+ *   2. Provides a simple interface for sending/updating raw acpx SessionMessage
+ *   3. Watches metadata-derived state for permission decisions, question answers,
+ *      runtime config changes, and lifecycle transitions
  *
- * Usage pattern (from mapper):
- *   const currentMsg = bridge.currentAssistantMessage();
- *   const updated = applyAgentEvent(currentMsg, event);
- *   await bridge.updateMessage(updated);
+ * Usage pattern (from agent runner):
+ *   await bridge.sendMessage({ Agent: agentMessage });
+ *   await bridge.updateMessage({ Agent: agentMessage });
  */
 
 import {
     SyncNode,
     type SyncNodeToken,
-    type SyncState,
     type SessionState,
     type KeyMaterial,
     type UsageReport,
     type RpcHandler,
-    v3,
+} from '@slopus/happy-sync';
+import type {
+    SessionMessage,
+    SessionUserMessage,
+} from '@slopus/happy-sync';
+import type {
+    SessionID,
+    RuntimeConfig,
 } from '@slopus/happy-sync';
 
-type MessageWithParts = v3.MessageWithParts;
-type SessionID = v3.SessionID;
-type AbortRequest = v3.AbortRequest;
-type PermissionRequestMessage = v3.PermissionRequestMessage;
-type RuntimeConfigChange = v3.RuntimeConfigChange;
-type SessionEnd = v3.SessionEnd;
-
-export type UserMessageCallback = (message: MessageWithParts) => void;
+export type UserMessageCallback = (message: { User: SessionUserMessage }) => void;
 
 export interface SyncBridgeOpts {
     serverUrl: string;
@@ -42,7 +40,6 @@ export interface SyncBridgeOpts {
 }
 
 export type PermissionDecisionCallback = (decision: {
-    requestId: string;
     permissionId: string;
     callId: string;
     decision: 'once' | 'always' | 'reject';
@@ -55,9 +52,9 @@ export type QuestionAnswerCallback = (answer: {
     answers: string[][];
 }) => void;
 
-export type RuntimeConfigChangeCallback = (change: RuntimeConfigChange) => void;
-export type AbortRequestCallback = (request: AbortRequest) => void;
-export type SessionEndCallback = (message: SessionEnd) => void;
+export type RuntimeConfigChangeCallback = (config: RuntimeConfig) => void;
+export type AbortRequestCallback = () => void;
+export type SessionEndCallback = () => void;
 
 export class SyncBridge {
     readonly node: SyncNode;
@@ -69,6 +66,12 @@ export class SyncBridge {
     private runtimeConfigCallbacks = new Set<RuntimeConfigChangeCallback>();
     private abortCallbacks = new Set<AbortRequestCallback>();
     private sessionEndCallbacks = new Set<SessionEndCallback>();
+
+    private knownResolvedPermissions = new Set<string>();
+    private knownResolvedQuestions = new Set<string>();
+    private lastRuntimeConfigJson = '';
+    private lastAbortRequestAt: number | null = null;
+    private lastLifecycleState: string | null = null;
 
     constructor(opts: SyncBridgeOpts) {
         if (opts.token.claims.scope.type !== 'session') {
@@ -83,78 +86,100 @@ export class SyncBridge {
         this.sessionId = opts.sessionId;
         this.node = new SyncNode(opts.serverUrl, opts.token, opts.keyMaterial);
 
-        // Watch for incoming session messages — dispatch control messages and user inputs.
+        // Watch for incoming user messages from the app
         this.node.onSessionMessage(this.sessionId, (message) => {
-            if (!v3.isMessageWithParts(message)) {
-                switch (message.type) {
-                    case 'permission-response':
-                        for (const cb of this.permissionCallbacks) {
-                            cb({
-                                requestId: message.requestID,
-                                permissionId: message.requestID,
-                                callId: message.callID,
-                                decision: message.decision,
-                                allowTools: message.allowTools,
-                                reason: message.reason,
-                            });
-                        }
-                        return;
-                    case 'runtime-config-change':
-                        for (const cb of this.runtimeConfigCallbacks) {
-                            cb(message);
-                        }
-                        return;
-                    case 'abort-request':
-                        for (const cb of this.abortCallbacks) {
-                            cb(message);
-                        }
-                        return;
-                    case 'session-end':
-                        for (const cb of this.sessionEndCallbacks) {
-                            cb(message);
-                        }
-                        return;
-                    default:
-                        return;
-                }
-            }
-
-            // User messages from the app
-            if (message.info.role === 'user') {
+            if (typeof message === 'object' && message !== null && 'User' in message) {
                 for (const cb of this.userMessageCallbacks) {
-                    cb(message);
-                }
-            }
-
-            for (const part of message.parts) {
-                if (part.type === 'decision') {
-                    for (const cb of this.permissionCallbacks) {
-                        cb({
-                            requestId: part.permissionID,
-                            permissionId: part.permissionID,
-                            callId: part.targetCallID,
-                            decision: part.decision,
-                            allowTools: part.allowTools,
-                            reason: part.reason,
-                        });
-                    }
-                }
-                if (part.type === 'answer') {
-                    for (const cb of this.questionCallbacks) {
-                        cb({
-                            questionId: part.questionID,
-                            answers: part.answers,
-                        });
-                    }
+                    cb(message as { User: SessionUserMessage });
                 }
             }
         });
+
+        // Watch state changes for permission decisions, question answers, config, abort, lifecycle
+        this.node.onStateChange(() => {
+            const session = this.session;
+            if (!session) return;
+            this.processPermissionChanges(session);
+            this.processQuestionChanges(session);
+            this.processRuntimeConfigChanges(session);
+            this.processAbortChanges(session);
+            this.processLifecycleChanges(session);
+        });
     }
+
+    // ─── State change processors ────────────────────────────────────────────
+
+    private processPermissionChanges(session: SessionState): void {
+        for (const perm of session.permissions) {
+            if (!perm.resolved || this.knownResolvedPermissions.has(perm.permissionId)) continue;
+            this.knownResolvedPermissions.add(perm.permissionId);
+            if (!perm.decision) continue;
+            for (const cb of this.permissionCallbacks) {
+                cb({
+                    permissionId: perm.permissionId,
+                    callId: perm.callId,
+                    decision: perm.decision,
+                    allowTools: perm.allowTools,
+                    reason: perm.reason,
+                });
+            }
+        }
+    }
+
+    private processQuestionChanges(session: SessionState): void {
+        for (const q of session.questions) {
+            if (!q.resolved || this.knownResolvedQuestions.has(q.questionId)) continue;
+            this.knownResolvedQuestions.add(q.questionId);
+            if (!q.answers) continue;
+            for (const cb of this.questionCallbacks) {
+                cb({
+                    questionId: q.questionId,
+                    answers: q.answers,
+                });
+            }
+        }
+    }
+
+    private processRuntimeConfigChanges(session: SessionState): void {
+        const config = session.runtimeConfig;
+        if (!config) return;
+        const json = JSON.stringify(config);
+        if (json === this.lastRuntimeConfigJson) return;
+        this.lastRuntimeConfigJson = json;
+        for (const cb of this.runtimeConfigCallbacks) {
+            cb(config);
+        }
+    }
+
+    private processAbortChanges(session: SessionState): void {
+        const agentState = session.agentState;
+        if (!agentState || typeof agentState !== 'object') return;
+        const lastAbort = (agentState as Record<string, unknown>).lastAbortRequest;
+        if (!lastAbort || typeof lastAbort !== 'object') return;
+        const createdAt = (lastAbort as Record<string, unknown>).createdAt;
+        if (typeof createdAt !== 'number') return;
+        if (this.lastAbortRequestAt !== null && createdAt <= this.lastAbortRequestAt) return;
+        this.lastAbortRequestAt = createdAt;
+        for (const cb of this.abortCallbacks) {
+            cb();
+        }
+    }
+
+    private processLifecycleChanges(session: SessionState): void {
+        if (session.lifecycleState === this.lastLifecycleState) return;
+        const prev = this.lastLifecycleState;
+        this.lastLifecycleState = session.lifecycleState;
+        if (session.lifecycleState === 'archived' && prev !== null && prev !== 'archived') {
+            for (const cb of this.sessionEndCallbacks) {
+                cb();
+            }
+        }
+    }
+
+    // ─── Connection lifecycle ───────────────────────────────────────────────
 
     async connect(): Promise<void> {
         await this.node.connect();
-        // Hydrate existing transcript state without replaying historical messages
-        // into the live agent queue. Live socket updates still notify listeners.
         await this.node.fetchMessages(this.sessionId, undefined, {
             notifyListeners: false,
         });
@@ -164,129 +189,106 @@ export class SyncBridge {
         this.node.disconnect();
     }
 
-    /** Get the current session state. */
+    // ─── Session state accessors ────────────────────────────────────────────
+
     get session(): SessionState | undefined {
         return this.node.state.sessions.get(this.sessionId as string);
     }
 
-    /** Get all messages in the session. */
-    get messages(): MessageWithParts[] {
+    get messages(): SessionMessage[] {
         return this.session?.messages ?? [];
     }
 
-    /** Get the latest assistant message (the one being built), or null. */
-    currentAssistantMessage(): MessageWithParts | null {
-        const msgs = this.messages;
-        for (let i = msgs.length - 1; i >= 0; i--) {
-            if (msgs[i].info.role === 'assistant') {
-                return msgs[i];
-            }
-        }
-        return null;
+    get hasPendingPermissions(): boolean {
+        return (this.session?.permissions.some((p) => !p.resolved)) ?? false;
     }
 
-    /** Send a new message to the session. */
-    async sendMessage(message: MessageWithParts): Promise<void> {
+    get hasPendingQuestions(): boolean {
+        return (this.session?.questions.some((q) => !q.resolved)) ?? false;
+    }
+
+    // ─── Message operations ─────────────────────────────────────────────────
+
+    async sendMessage(message: SessionMessage): Promise<void> {
         await this.node.sendMessage(this.sessionId, message);
     }
 
-    /** Update an existing message (patch in place). */
-    async updateMessage(message: MessageWithParts): Promise<void> {
+    async updateMessage(message: SessionMessage): Promise<void> {
         await this.node.updateMessage(this.sessionId, message);
     }
 
-    /** Register a callback for permission decisions from the app. */
+    // ─── Callback registration ──────────────────────────────────────────────
+
     onPermissionDecision(callback: PermissionDecisionCallback): () => void {
         this.permissionCallbacks.add(callback);
         return () => { this.permissionCallbacks.delete(callback); };
     }
 
-    /** Register a callback for question answers from the app. */
     onQuestionAnswer(callback: QuestionAnswerCallback): () => void {
         this.questionCallbacks.add(callback);
         return () => { this.questionCallbacks.delete(callback); };
     }
 
-    /** Register a callback for runtime config changes. */
     onRuntimeConfigChange(callback: RuntimeConfigChangeCallback): () => void {
         this.runtimeConfigCallbacks.add(callback);
         return () => { this.runtimeConfigCallbacks.delete(callback); };
     }
 
-    /** Register a callback for abort requests. */
     onAbortRequest(callback: AbortRequestCallback): () => void {
         this.abortCallbacks.add(callback);
         return () => { this.abortCallbacks.delete(callback); };
     }
 
-    /** Register a callback for session-end control messages. */
     onSessionEnd(callback: SessionEndCallback): () => void {
         this.sessionEndCallbacks.add(callback);
         return () => { this.sessionEndCallbacks.delete(callback); };
     }
 
-    /** Register a callback for user messages from the app. */
     onUserMessage(callback: UserMessageCallback): () => void {
         this.userMessageCallbacks.add(callback);
         return () => { this.userMessageCallbacks.delete(callback); };
     }
 
-    /** Check if there are unresolved permission requests. */
-    get hasPendingPermissions(): boolean {
-        return (this.session?.permissions.some((p: { resolved: boolean }) => !p.resolved)) ?? false;
-    }
-
-    /** Check if there are unresolved question requests. */
-    get hasPendingQuestions(): boolean {
-        return (this.session?.questions.some((q: { resolved: boolean }) => !q.resolved)) ?? false;
-    }
-
     // ─── Session lifecycle ──────────────────────────────────────────────────
 
-    /** Send a keepalive heartbeat. */
     keepAlive(thinking: boolean, mode: 'local' | 'remote'): void {
         this.node.keepAlive(this.sessionId, thinking, mode);
     }
 
-    /** Signal that the session process has ended. */
     sendSessionDeath(): void {
         this.node.sendSessionDeath(this.sessionId);
     }
 
-    async sendPermissionRequest(request: Omit<PermissionRequestMessage, 'type' | 'id' | 'sessionID' | 'time'>): Promise<void> {
+    async sendPermissionRequest(request: { callID: string; tool: string; patterns: string[]; input: Record<string, unknown> }): Promise<void> {
         await this.node.sendPermissionRequest(this.sessionId, request);
     }
 
-    async sendRuntimeConfigChange(change: Omit<RuntimeConfigChange, 'type' | 'id' | 'sessionID' | 'time'>): Promise<void> {
+    async sendRuntimeConfigChange(change: RuntimeConfig): Promise<void> {
         await this.node.sendRuntimeConfigChange(this.sessionId, change);
     }
 
-    async sendAbortRequest(request: Omit<AbortRequest, 'type' | 'id' | 'sessionID' | 'time'>): Promise<void> {
+    async sendAbortRequest(request: { source: string; reason: string }): Promise<void> {
         await this.node.sendAbortRequest(this.sessionId, request);
     }
 
-    async sendSessionEnd(sessionEnd: Omit<SessionEnd, 'type' | 'id' | 'sessionID' | 'time'>): Promise<void> {
+    async sendSessionEnd(sessionEnd: { reason: string }): Promise<void> {
         await this.node.sendSessionEnd(this.sessionId, sessionEnd);
     }
 
-    /** Send usage/cost data. */
     sendUsageData(report: UsageReport): void {
         this.node.sendUsageData(report);
     }
 
-    /** Update session metadata with CAS. */
     async updateMetadata<T = unknown>(handler: (current: T) => T): Promise<void> {
         await this.node.updateMetadata(this.sessionId, handler);
     }
 
-    /** Update agent state with CAS. */
     async updateAgentState<T = unknown>(handler: (current: T) => T): Promise<void> {
         await this.node.updateAgentState(this.sessionId, handler);
     }
 
-    // ─── Typed session-level setters (Amendment 3) ─────────────────────────
+    // ─── Typed session-level setters ────────────────────────────────────────
 
-    /** Set the session lifecycle state. */
     async setLifecycleState(
         state: 'running' | 'idle' | 'archived',
         opts?: { archivedBy?: string; archiveReason?: string },
@@ -300,7 +302,6 @@ export class SyncBridge {
         }));
     }
 
-    /** Set whether the user is currently controlling the session. */
     async setControlledByUser(value: boolean): Promise<void> {
         await this.updateAgentState((current: Record<string, unknown>) => ({
             ...current,
@@ -308,22 +309,18 @@ export class SyncBridge {
         }));
     }
 
-    /** Register an RPC handler for server-initiated calls. */
     setRpcHandler(handler: RpcHandler): void {
         this.node.setRpcHandler(handler);
     }
 
-    /** Register RPC methods with the server. */
     registerRpcMethods(methods: string[]): void {
         this.node.registerRpcMethods(methods);
     }
 
-    /** Flush the outbox and wait for socket drain. */
     async flush(): Promise<void> {
         await this.node.flush(this.sessionId);
     }
 
-    /** Close the connection (alias for disconnect). */
     async close(): Promise<void> {
         await this.flush();
         this.disconnect();

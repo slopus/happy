@@ -263,13 +263,13 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
 
   const sendV3Message = (msg: v3.MessageWithParts) => {
     if (syncBridge) {
-      syncBridge.sendMessage(msg);
+      syncBridge.sendMessage(msg as any);
     }
   };
 
   const updateV3Message = (msg: v3.MessageWithParts | null) => {
     if (!msg || !syncBridge) return;
-    syncBridge.updateMessage(msg);
+    syncBridge.updateMessage(msg as any);
   };
 
   const messageQueue = new MessageQueue2<Record<string, never>>(() => '');
@@ -343,8 +343,8 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
   backend.onMessage(onBackendMessage);
 
   if (syncBridge) {
-    syncBridge.onUserMessage((message) => {
-      const textPart = message.parts.find((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
+    syncBridge.onUserMessage((message: any) => {
+      const textPart = message.parts.find((p: any): p is { type: 'text'; text: string } => p.type === 'text');
       if (!textPart) return;
       messageQueue.push(textPart.text, {});
     });
