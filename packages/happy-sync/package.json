@@ -30,7 +30,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
+    "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "test:unit": "vitest run src/session-message.test.ts src/sync-node.test.ts src/messages.test.ts",
     "test:integration": "vitest run src/sync-node.integration.test.ts",
     "test:e2e": "vitest run src/e2e/*.integration.test.ts",
