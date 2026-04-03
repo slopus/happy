@@ -2,14 +2,17 @@ import { CodeView } from '@/components/CodeView';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { ToolError } from '@/components/tools/ToolError';
 import { ToolSectionView } from '@/components/tools/ToolSectionView';
+import { PermissionFooter } from '@/components/tools/PermissionFooter';
+import { useSyncSessionState } from '@/sync/storage';
 import type { Metadata } from '@/sync/storageTypes';
-import type { SessionToolResult, SessionToolUse } from '@slopus/happy-sync';
+import type { PermissionRequest, QuestionRequest, SessionToolResult, SessionToolUse } from '@slopus/happy-sync';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { formatToolValue, getToolResultText, getToolUseState } from './transcriptUtils';
+import { findPermissionForTool, findQuestionForTool, formatToolValue, getToolResultText, getToolUseState } from './transcriptUtils';
+import { ToolUseQuestionView } from './ToolUseQuestionView';
 
 export interface ToolUseViewProps {
     toolUse: SessionToolUse;
@@ -18,6 +21,71 @@ export interface ToolUseViewProps {
     messageId?: string;
     metadata?: Metadata | null;
     expanded?: boolean;
+}
+
+function getPermissionStatus(permission: PermissionRequest): {
+    id: string;
+    status: 'pending' | 'approved' | 'denied' | 'canceled';
+    reason?: string;
+    mode?: string;
+    allowedTools?: string[];
+    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+} {
+    if (!permission.resolved) {
+        return { id: permission.permissionId, status: 'pending' };
+    }
+
+    if (permission.decision === 'reject') {
+        return {
+            id: permission.permissionId,
+            status: 'denied',
+            decision: 'denied',
+            reason: permission.reason,
+        };
+    }
+
+    return {
+        id: permission.permissionId,
+        status: 'approved',
+        decision: permission.decision === 'always' ? 'approved_for_session' : 'approved',
+        allowedTools: permission.allowTools,
+    };
+}
+
+function getStatusLabel(
+    state: string,
+    permission?: PermissionRequest,
+    question?: QuestionRequest,
+): string {
+    if (permission && !permission.resolved) {
+        return 'Awaiting approval';
+    }
+    if (question && !question.resolved) {
+        return 'Awaiting answer';
+    }
+    if (permission?.resolved) {
+        return permission.decision === 'reject' ? 'Denied' : 'Approved';
+    }
+    switch (state) {
+        case 'running':
+            return 'Running';
+        case 'error':
+            return 'Failed';
+        case 'completed':
+            return 'Completed';
+        default:
+            return 'Pending';
+    }
+}
+
+function getStatusIcon(state: string, permission?: PermissionRequest, question?: QuestionRequest): string {
+    if ((permission && !permission.resolved) || (question && !question.resolved)) {
+        return 'shield-outline';
+    }
+    if (state === 'error' || permission?.decision === 'reject') {
+        return 'alert-circle-outline';
+    }
+    return 'construct-outline';
 }
 
 export const ToolUseView = React.memo<ToolUseViewProps>(({
@@ -29,11 +97,19 @@ export const ToolUseView = React.memo<ToolUseViewProps>(({
     expanded = false,
 }) => {
     const router = useRouter();
-    const state = getToolUseState(toolUse, toolResult);
+
+    const syncSession = sessionId ? useSyncSessionState(sessionId) : null;
+    const permission = syncSession ? findPermissionForTool(toolUse.id, syncSession.permissions) : undefined;
+    const question = syncSession ? findQuestionForTool(toolUse.id, syncSession.questions) : undefined;
+
+    const state = getToolUseState(toolUse, toolResult, permission, question);
     const input = toolUse.is_input_complete ? formatToolValue(toolUse.input, toolUse.raw_input) : null;
     const output = formatToolValue(toolResult?.output);
     const outputText = getToolResultText(toolResult);
     const imageResult = toolResult && 'Image' in toolResult.content ? toolResult.content.Image : null;
+
+    const statusLabel = getStatusLabel(state, permission, question);
+    const iconName = getStatusIcon(state, permission, question);
 
     const handlePress = React.useCallback(() => {
         if (!sessionId || !messageId || expanded) {
@@ -55,15 +131,13 @@ export const ToolUseView = React.memo<ToolUseViewProps>(({
                 <View style={styles.header}>
                     <View style={styles.headerLeft}>
                         <Ionicons
-                            name={state === 'error' ? 'alert-circle-outline' : 'construct-outline'}
+                            name={iconName as any}
                             size={18}
                             style={styles.icon}
                         />
                         <View style={styles.headerText}>
                             <Text style={styles.title}>{toolUse.name}</Text>
-                            <Text style={styles.subtitle}>
-                                {state === 'running' ? 'Running' : state === 'error' ? 'Failed' : 'Completed'}
-                            </Text>
+                            <Text style={styles.subtitle}>{statusLabel}</Text>
                         </View>
                     </View>
                     {isPressable ? (
@@ -105,6 +179,19 @@ export const ToolUseView = React.memo<ToolUseViewProps>(({
                             ]}
                         />
                     </ToolSectionView>
+                ) : null}
+
+                {question && sessionId && toolUse.name === 'AskUserQuestion' ? (
+                    <ToolUseQuestionView question={question} sessionId={sessionId} toolInput={toolUse.input} />
+                ) : null}
+
+                {permission && sessionId && toolUse.name !== 'AskUserQuestion' ? (
+                    <PermissionFooter
+                        permission={getPermissionStatus(permission)}
+                        sessionId={sessionId}
+                        toolName={toolUse.name}
+                        toolInput={toolUse.input}
+                    />
                 ) : null}
             </Container>
         </View>

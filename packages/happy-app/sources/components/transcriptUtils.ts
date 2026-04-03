@@ -1,11 +1,13 @@
 import type {
+    PermissionRequest,
+    QuestionRequest,
     SessionMessage,
     SessionToolResult,
     SessionToolUse,
     SessionUserContent,
 } from '@slopus/happy-sync';
 
-export type ToolUseState = 'running' | 'completed' | 'error';
+export type ToolUseState = 'running' | 'completed' | 'error' | 'awaiting_approval' | 'awaiting_answer';
 
 export function getUserContentMarkdown(content: SessionUserContent[]): string {
     return content.flatMap((item) => {
@@ -26,12 +28,39 @@ export function getUserContentImages(content: SessionUserContent[]): Array<{ sou
     return content.flatMap((item) => ('Image' in item ? [item.Image] : []));
 }
 
-export function getToolUseState(toolUse: SessionToolUse, result?: SessionToolResult): ToolUseState {
+export function getToolUseState(
+    toolUse: SessionToolUse,
+    result?: SessionToolResult,
+    permission?: PermissionRequest,
+    question?: QuestionRequest,
+): ToolUseState {
+    if (permission && !permission.resolved) {
+        return 'awaiting_approval';
+    }
+
+    if (question && !question.resolved) {
+        return 'awaiting_answer';
+    }
+
     if (!result) {
-        return toolUse.is_input_complete ? 'running' : 'running';
+        return 'running';
     }
 
     return result.is_error ? 'error' : 'completed';
+}
+
+export function findPermissionForTool(
+    toolUseId: string,
+    permissions: PermissionRequest[],
+): PermissionRequest | undefined {
+    return permissions.find((p) => p.callId === toolUseId);
+}
+
+export function findQuestionForTool(
+    toolUseId: string,
+    questions: QuestionRequest[],
+): QuestionRequest | undefined {
+    return questions.find((q) => q.callId === toolUseId);
 }
 
 export function formatToolValue(value: unknown, fallbackRaw?: string): string | null {
