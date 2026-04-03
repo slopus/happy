@@ -277,23 +277,24 @@ All reruns confirmed: 4 package typechecks pass, full test suite passes (happy-s
 
 ## Current Task
 
-No repository work remains on this branch.
+DONE: Merge main into acpx-rewrite — resolve conflicts.
+
+Commit: 11d4a77e
 
 ### Results
-1. ✅ Clean worktree confirmed before the loop started (`git status`, `git diff --stat HEAD`)
-2. ✅ Re-read `loop/state.md` and `loop/learnings.md`; no incomplete implementation or verification task remains in this worktree
-3. ✅ `yarn tsc --noEmit` still exits with TypeScript help text because this worktree has no root `tsconfig.json`
-4. ✅ Package verification rerun passed again on 2026-04-03:
-   - `yarn workspace @slopus/happy-sync test` — 49/49 tests passed
-   - `yarn workspace happy-coder typecheck` — passes
-   - `BROWSER=none yarn workspace happy-coder test` — 452 passed, 1 skipped
-   - `yarn workspace happy-app typecheck` — passes
-   - `BROWSER=none yarn workspace happy-app test --run` — 329 passed, 57 skipped
-   - `yarn workspace happy-server typecheck` — passes
-   - `BROWSER=none yarn workspace happy-server test` — 44/44 tests passed
-   - `yarn workspace @slopus/happy-sync typecheck` — passes
-5. ✅ Deleted targets still absent on disk (`packages/happy-sync/src/protocol.ts`, `packages/happy-sync/src/sessionProtocol.ts`, `packages/happy-app/sources/components/parts/`, `packages/happy-app/sources/components/ToolView.tsx`, `packages/happy-app/sources/components/AskUserQuestionView.tsx`)
-6. ✅ Branch remains merge-ready for `acpx-rewrite`; the earlier `openclaw.integration.test.ts` gateway-connect flake did not reproduce in this rerun
+1. ✅ Merged main (10 commits ahead) into acpx-rewrite — 31 conflicts resolved
+2. ✅ modify/delete conflicts (7): kept acpx-rewrite deletions (v3-compat, codex permissionHandler, happy-wire, reducer, happy-agent)
+3. ✅ Content conflicts (23): resolved — acpx-rewrite authoritative for protocol/sync, main's features (push notifications, codex SDK, UI improvements) integrated
+4. ✅ Push notification API: `session.api.push()` → `session.push`, `session.client.getMetadata()` → `session.getMetadata()`, `session.client.sessionId` → `session.hapSessionId`
+5. ✅ `questionNotification.ts` SDK import: `../sdk` → `@anthropic-ai/claude-agent-sdk`
+6. ✅ Deleted `codex/__tests__/permissionHandler.test.ts` (source file deleted)
+7. ✅ yarn.lock regenerated from main's lockfile
+8. ✅ All 4 package typechecks pass
+9. ✅ All test suites pass:
+   - `yarn workspace @slopus/happy-sync test:unit` — 40/40
+   - `BROWSER=none yarn workspace happy test --run` — 463 passed, 1 skipped
+   - `BROWSER=none yarn workspace happy-app test --run` — 357 passed, 57 skipped (6 test expectation fixes: permission mode order, span-based markdown tables, new settings fields)
+   - `BROWSER=none yarn workspace happy-server test` — 44/44
 
 ### Next Task
-- Review and merge `acpx-rewrite`.
+- Create PR for `acpx-rewrite` → `main` or merge directly (user decision needed).
