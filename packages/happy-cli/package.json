@@ -98,7 +98,6 @@
     "@noble/hashes": "^2.0.1",
     "@openai/codex-sdk": "^0.116.0",
     "@paralleldrive/cuid2": "^2.2.2",
-    "@slopus/happy-sync": "^0.1.0",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",
@@ -131,6 +130,7 @@
   },
   "devDependencies": {
     "@eslint/compat": "^1",
+    "@slopus/happy-sync": "^0.1.0",
     "@types/inquirer": "^9.0.9",
     "@types/node": ">=20",
     "@types/ws": "^8.18.1",
