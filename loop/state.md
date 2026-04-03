@@ -497,6 +497,16 @@ DONE: Loop rerun verification (2026-04-03 10:27 PDT) — still no remaining work
 
 ---
 
+DONE: Loop rerun verification (2026-04-03 11:27 PDT) — still no remaining work on `acpx-rewrite`.
+
+### Results
+1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; there is still no pending implementation task
+2. ✅ Deleted rewrite targets are still absent from disk
+3. ✅ No source changes were required; only this state-file rerun entry was added
+
+### Next Task
+- None.
+
 DONE: Loop rerun verification (2026-04-03 10:08 PT) — still no remaining work on `acpx-rewrite`.
 
 ### Results
