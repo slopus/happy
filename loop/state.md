@@ -639,3 +639,12 @@ Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
 No further verification needed — 10+ consecutive green runs confirm stability. Next action requires human: review and merge the PR, or provide a new task.
 
 Terminal handoff recorded 2026-04-03 (swift-beacon latest autonomous handoff). No product changes made.
+
+---
+
+DONE: Terminal-state loop iteration (2026-04-03, swift-beacon autonomous loop).
+
+### Results
+1. ✅ Re-read `loop/state.md` — branch still merge-ready, no new task assigned
+2. ✅ No product/source changes; no verification runs needed
+3. ✅ Next action remains external: review/merge `acpx-rewrite`, or provide a new task
