@@ -19,14 +19,7 @@ import { resolveSessionScopedSyncNodeToken } from '@/api/syncNodeToken';
 import { SyncBridge } from '@/api/syncBridge';
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers';
-import type { v3 } from '@slopus/happy-sync';
-import {
-    createV3OpenClawMapperState,
-    handleOpenClawMessage,
-    startOpenClawTurn,
-    endOpenClawTurn,
-    type V3OpenClawMapperState,
-} from './utils/v3Mapper';
+import type { SessionID } from '@slopus/happy-sync';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
@@ -40,6 +33,13 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { OpenClawBackend } from './OpenClawBackend';
 import type { OpenClawGatewayConfig } from './openclawTypes';
 import type { AgentMessage } from '@/agent/core';
+import {
+  applyAgentMessageToAcpxTurn,
+  createAcpxTurn,
+  getUserMessageText,
+  hasAcpxTurnContent,
+  resetAcpxTurn,
+} from '@/session/acpxTurn';
 
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -215,7 +215,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
           key: response.encryptionKey,
           variant: response.encryptionVariant,
         },
-        sessionId: response.id as v3.SessionID,
+        sessionId: response.id as SessionID,
       });
 
       await syncBridge.connect();
@@ -254,22 +254,22 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     }
   }
 
-  const v3MapperState: V3OpenClawMapperState = createV3OpenClawMapperState({
-    sessionID: response?.id ?? '',
-    agent: 'openclaw',
-    cwd: process.cwd(),
-    root: process.cwd(),
-  });
-
-  const sendV3Message = (msg: v3.MessageWithParts) => {
-    if (syncBridge) {
-      syncBridge.sendMessage(msg as any);
+  const openClawTurn = createAcpxTurn();
+  const publishOpenClawTurn = () => {
+    if (!syncBridge || !hasAcpxTurnContent(openClawTurn)) return;
+    if (openClawTurn.sent) {
+      syncBridge.updateMessage(openClawTurn.message).catch((error) => {
+        logger.debug('[OpenClaw] SyncBridge update failed', { error });
+      });
+      return;
     }
+    openClawTurn.sent = true;
+    syncBridge.sendMessage(openClawTurn.message).catch((error) => {
+      logger.debug('[OpenClaw] SyncBridge send failed', { error });
+    });
   };
-
-  const updateV3Message = (msg: v3.MessageWithParts | null) => {
-    if (!msg || !syncBridge) return;
-    syncBridge.updateMessage(msg as any);
+  const resetOpenClawTurn = () => {
+    resetAcpxTurn(openClawTurn);
   };
 
   const messageQueue = new MessageQueue2<Record<string, never>>(() => '');
@@ -332,21 +332,17 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
       log(`Device pairing required. Approve device via: openclaw devices list`);
     }
 
-    // Map through v3 mapper and send via SyncBridge
-    const mapResult = handleOpenClawMessage(msg, v3MapperState);
-    for (const finalizedMsg of mapResult.messages) {
-      sendV3Message(finalizedMsg);
-    }
-    updateV3Message(mapResult.currentAssistant);
+    applyAgentMessageToAcpxTurn(openClawTurn, msg);
+    publishOpenClawTurn();
   };
 
   backend.onMessage(onBackendMessage);
 
   if (syncBridge) {
-    syncBridge.onUserMessage((message: any) => {
-      const textPart = message.parts.find((p: any): p is { type: 'text'; text: string } => p.type === 'text');
-      if (!textPart) return;
-      messageQueue.push(textPart.text, {});
+    syncBridge.onUserMessage((message) => {
+      const text = getUserMessageText(message);
+      if (!text) return;
+      messageQueue.push(text, {});
     });
     syncBridge.keepAlive(thinking, 'remote');
   } else {
@@ -375,6 +371,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     // End the turn — gateway may not send final/error after abort
     inTurn = false;
     thinking = false;
+    resetOpenClawTurn();
     if (syncBridge) syncBridge.keepAlive(false, 'remote');
     clearPendingTurn();
     abortController.abort();
@@ -411,33 +408,19 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
 
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
       inTurn = true;
-
-      const turnStartResult = startOpenClawTurn(v3MapperState);
-      for (const finalizedMsg of turnStartResult.messages) {
-        sendV3Message(finalizedMsg);
-      }
-      updateV3Message(turnStartResult.currentAssistant);
+      resetOpenClawTurn();
 
       const turnEnded = waitForTurnEnd();
       try {
         await backend.sendPrompt(started.sessionId, batch.message);
         await turnEnded;
-
-        const turnEndResult = endOpenClawTurn(v3MapperState, 'completed');
-        for (const finalizedMsg of turnEndResult.messages) {
-          sendV3Message(finalizedMsg);
-        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         log(`Turn ended: ${msg}`);
-
-        const turnEndResult = endOpenClawTurn(v3MapperState, 'failed');
-        for (const finalizedMsg of turnEndResult.messages) {
-          sendV3Message(finalizedMsg);
-        }
       }
       inTurn = false;
       thinking = false;
+      resetOpenClawTurn();
       if (syncBridge) {
         syncBridge.keepAlive(false, 'remote');
         syncBridge.updateAgentState((currentState: any) => ({

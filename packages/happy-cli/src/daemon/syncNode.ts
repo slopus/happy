@@ -16,11 +16,10 @@ import {
     type SyncNodeToken,
     SyncNodeTokenClaimsSchema,
     type KeyMaterial,
-    type v3,
+    type SessionID,
+    type SessionInfo,
 } from '@slopus/happy-sync';
 import { z } from 'zod';
-
-type SessionID = v3.SessionID;
 
 const MintSessionTokenResponseSchema = z.object({
     token: z.string(),
@@ -63,7 +62,7 @@ export class DaemonSyncNode {
     }
 
     /** List all known sessions. */
-    listSessions(): v3.SessionInfo[] {
+    listSessions(): SessionInfo[] {
         return this.node.listSessions() as any;
     }
 

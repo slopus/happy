@@ -12,29 +12,24 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import {
-    type v3,
+    type SessionID,
+    type SessionMessage,
 } from '@slopus/happy-sync';
 import {
     type SessionEnvelope,
     type SessionTurnEndStatus,
 } from '@/legacy/sessionProtocol';
-import {
-    handleClaudeMessage,
-    flushV3Turn,
-    createV3MapperState,
-    blockToolForPermission,
-    unblockToolApproved,
-    unblockToolRejected,
-    type V3MapperState,
-} from '@/claude/utils/v3Mapper';
-import {
-    handleCodexEvent,
-    flushV3CodexTurn,
-    createV3CodexMapperState,
-    type V3CodexMapperState,
-} from '@/codex/utils/v3Mapper';
 import { SyncBridge, type SyncBridgeOpts } from './syncBridge';
 import { resolveSessionScopedSyncNodeToken } from './syncNodeToken';
+import {
+    applyClaudeAssistantMessageToAcpxTurn,
+    applyClaudeToolResultsToAcpxTurn,
+    applyPseudoEventToAcpxTurn,
+    createAcpxTurn,
+    createClaudeUserMessage,
+    hasAcpxTurnContent,
+    resetAcpxTurn,
+} from '@/session/acpxTurn';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -78,8 +73,8 @@ export class ApiSessionClient extends EventEmitter {
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
-    private v3MapperState: V3MapperState | null = null;
-    private v3CodexMapperState: V3CodexMapperState | null = null;
+    private claudeTurn = createAcpxTurn();
+    private codexTurn = createAcpxTurn();
     private syncBridge: SyncBridge | null = null;
 
     constructor(token: string, session: Session) {
@@ -227,10 +222,7 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('[API] enqueueMessage called but no SyncBridge attached — message dropped', { content });
             return;
         }
-        // Legacy bridge: wraps non-v3 content in a MessageWithParts envelope.
-        // TODO: These paths (ACP, session protocol, events) should be migrated
-        // to produce proper v3 MessageWithParts. The `as unknown` cast is
-        // intentional — this envelope does NOT conform to MessageWithParts.
+        // Legacy bridge: wraps non-sync-bridge content in a placeholder envelope.
         const envelope = {
             info: { id: randomUUID(), role: 'system', createdAt: Date.now() },
             parts: [{ type: 'legacy-envelope', data: content }],
@@ -245,7 +237,6 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
-        // v3 only — v1 session protocol removed
         this.sendClaudeV3Message(body);
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -269,13 +260,12 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
-        // v3 only — v1 turn close removed
         this.flushClaudeV3Turn();
     }
 
     /**
-     * Attach a SyncBridge for v3 message transport.
-     * When attached, v3 messages go through SyncNode instead of the legacy outbox.
+     * Attach a SyncBridge for acpx message transport.
+     * When attached, transcript messages go through SyncNode instead of the legacy outbox.
      */
     async attachSyncBridge(opts: Omit<SyncBridgeOpts, 'sessionId'>): Promise<SyncBridge> {
         const sessionToken = await resolveSessionScopedSyncNodeToken({
@@ -286,19 +276,10 @@ export class ApiSessionClient extends EventEmitter {
         const bridge = new SyncBridge({
             ...opts,
             token: sessionToken,
-            sessionId: this.sessionId as v3.SessionID,
+            sessionId: this.sessionId as SessionID,
         });
         await bridge.connect();
         this.syncBridge = bridge;
-
-        // Wire permission decisions from the app through to the mapper
-        bridge.onPermissionDecision((decision) => {
-            if (decision.decision === 'reject') {
-                this.unblockToolRejectedV3(decision.callId, decision.reason ?? 'rejected');
-            } else {
-                this.unblockToolApprovedV3(decision.callId, decision.decision);
-            }
-        });
 
         return bridge;
     }
@@ -307,118 +288,81 @@ export class ApiSessionClient extends EventEmitter {
         return this.syncBridge;
     }
 
-    /**
-     * Send a v3 protocol message (Message + Parts canonical format) through SyncNode.
-     */
-    sendV3ProtocolMessage(message: v3.MessageWithParts) {
+    sendV3ProtocolMessage(message: SessionMessage) {
         if (!this.syncBridge) {
             logger.debug('[API] sendV3ProtocolMessage called but no SyncBridge attached — message dropped');
             return;
         }
-        this.syncBridge.sendMessage(message as any).catch((err) => {
+        this.syncBridge.sendMessage(message).catch((err) => {
             logger.debug('[API] SyncBridge sendMessage failed', { error: err });
         });
     }
 
-    /**
-     * Process a Claude SDK message through the v3 mapper and send any finalized messages.
-     * Also sends the in-flight assistant message as a partial update.
-     */
     sendClaudeV3Message(body: RawJSONLines) {
-
-        if (!this.v3MapperState) {
-            this.v3MapperState = createV3MapperState({
-                sessionID: this.sessionId,
-                providerID: 'anthropic',
-            });
+        if (body.type === 'user') {
+            if (applyClaudeToolResultsToAcpxTurn(this.claudeTurn, body)) {
+                this.publishTurn(this.claudeTurn);
+                this.resetTurn(this.claudeTurn);
+            } else {
+                this.resetTurn(this.claudeTurn);
+                const userMessage = createClaudeUserMessage(body);
+                if (userMessage) {
+                    this.sendV3ProtocolMessage(userMessage);
+                }
+            }
+            return;
         }
 
-        const result = handleClaudeMessage(body, this.v3MapperState);
-
-        // Send finalized messages (completed turns)
-        for (const msg of result.messages) {
-            this.sendV3ProtocolMessage(msg);
+        if (body.type === 'assistant') {
+            applyClaudeAssistantMessageToAcpxTurn(this.claudeTurn, body);
+            this.publishTurn(this.claudeTurn);
         }
-
-        // NOTE: Do NOT send currentAssistant partial updates here.
-        // Intermediate snapshots cause duplication when history is fetched.
-        // Permission state changes are sent via blockToolForPermissionV3 / unblockTool*.
     }
 
-    /**
-     * Flush any in-flight v3 assistant message (e.g. on session end or turn close).
-     */
     flushClaudeV3Turn() {
-        if (!this.v3MapperState) return;
-
-        const messages = flushV3Turn(this.v3MapperState);
-        for (const msg of messages) {
-            this.sendV3ProtocolMessage(msg);
-        }
+        this.publishTurn(this.claudeTurn);
+        this.resetTurn(this.claudeTurn);
     }
 
-    // ─── v3 permission blocking (Claude) ───────────────────────────────────────
-
-    /**
-     * Mark a tool as blocked for permission in the v3 mapper.
-     * Does NOT send an envelope — the finalized message on turn completion
-     * will contain the correct final state. Sending intermediate states
-     * causes duplication when history is fetched.
-     */
-    blockToolForPermissionV3(callID: string, permission: string, patterns: string[], metadata: Record<string, unknown>): void {
-        if (!this.v3MapperState) return;
-        blockToolForPermission(this.v3MapperState, callID, permission, patterns, metadata);
+    blockToolForPermissionV3(_callID: string, _permission: string, _patterns: string[], _metadata: Record<string, unknown>): void {
     }
 
-    /**
-     * Mark a blocked tool as approved in the v3 mapper.
-     */
-    unblockToolApprovedV3(callID: string, decision: 'once' | 'always'): void {
-        if (!this.v3MapperState) return;
-        unblockToolApproved(this.v3MapperState, callID, decision);
+    unblockToolApprovedV3(_callID: string, _decision: 'once' | 'always'): void {
     }
 
-    /**
-     * Mark a blocked tool as rejected in the v3 mapper.
-     */
-    unblockToolRejectedV3(callID: string, reason: string): void {
-        if (!this.v3MapperState) return;
-        unblockToolRejected(this.v3MapperState, callID, reason);
+    unblockToolRejectedV3(_callID: string, _reason: string): void {
     }
 
-    // ─── v3 Codex dual-write ────────────────────────────────────────────────────
-
-    /**
-     * Process a Codex event through the v3 mapper and send any finalized messages.
-     */
     sendCodexV3Event(event: Record<string, unknown>): void {
-
-        if (!this.v3CodexMapperState) {
-            this.v3CodexMapperState = createV3CodexMapperState({
-                sessionID: this.sessionId,
-                providerID: 'openai',
-            });
-        }
-
-        const result = handleCodexEvent(event, this.v3CodexMapperState);
-
-        for (const msg of result.messages) {
-            this.sendV3ProtocolMessage(msg);
-        }
-
-        // NOTE: Do NOT send currentAssistant partial updates — causes duplication.
+        applyPseudoEventToAcpxTurn(this.codexTurn, event);
+        this.publishTurn(this.codexTurn);
     }
 
-    /**
-     * Flush any in-flight v3 Codex assistant message.
-     */
     flushCodexV3Turn(): void {
-        if (!this.v3CodexMapperState) return;
+        this.publishTurn(this.codexTurn);
+        this.resetTurn(this.codexTurn);
+    }
 
-        const messages = flushV3CodexTurn(this.v3CodexMapperState);
-        for (const msg of messages) {
-            this.sendV3ProtocolMessage(msg);
+    private publishTurn(turn: ReturnType<typeof createAcpxTurn>): void {
+        if (!this.syncBridge || !hasAcpxTurnContent(turn)) {
+            return;
         }
+
+        if (turn.sent) {
+            this.syncBridge.updateMessage(turn.message).catch((err) => {
+                logger.debug('[API] SyncBridge updateMessage failed', { error: err });
+            });
+            return;
+        }
+
+        turn.sent = true;
+        this.syncBridge.sendMessage(turn.message).catch((err) => {
+            logger.debug('[API] SyncBridge sendMessage failed', { error: err });
+        });
+    }
+
+    private resetTurn(turn: ReturnType<typeof createAcpxTurn>): void {
+        resetAcpxTurn(turn);
     }
 
     sendCodexMessage(body: any) {

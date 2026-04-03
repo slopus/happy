@@ -7,10 +7,6 @@ export * from './acpx-types';
 // sync state / ids
 export * from './sync-types';
 
-// v3 compat — used by non-ACP runners (Claude, Codex, Gemini, OpenClaw).
-// Will be deleted in Step 6 when all v3Mappers are removed.
-export * as v3 from './v3-compat';
-
 // Encryption
 export * from './encryption';
 

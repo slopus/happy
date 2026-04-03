@@ -8,12 +8,6 @@ import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers'
 import { CodexAppServerClient } from './codexAppServerClient';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
-import {
-    handleCodexEvent,
-    flushV3CodexTurn,
-    createV3CodexMapperState,
-    type V3CodexMapperState,
-} from './utils/v3Mapper';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
@@ -38,7 +32,14 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { resumeExistingThread } from './resumeExistingThread';
-import type { v3 } from '@slopus/happy-sync';
+import type { SessionID } from '@slopus/happy-sync';
+import {
+    applyPseudoEventToAcpxTurn,
+    createAcpxTurn,
+    getUserMessageText,
+    hasAcpxTurnContent,
+    resetAcpxTurn,
+} from '@/session/acpxTurn';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -169,7 +170,7 @@ export async function runCodex(opts: {
                 key: response.encryptionKey,
                 variant: response.encryptionVariant,
             },
-            sessionId: response.id as v3.SessionID,
+            sessionId: response.id as SessionID,
         });
         await syncBridge.connect();
         logger.debug('[Codex] SyncBridge connected');
@@ -191,42 +192,120 @@ export async function runCodex(opts: {
         syncBridge.registerRpcMethods(rpcHandlerManager.getRegisteredMethods());
     }
 
-    // v3 Codex mapper state — managed directly instead of through ApiSessionClient
-    let v3CodexMapperState: V3CodexMapperState | null = null;
+    const codexTurn = createAcpxTurn();
 
-    function publishCodexV3Message(message: v3.MessageWithParts): void {
-        if (!syncBridge) return;
-        // These files will be deleted in Step 6; cast to any to compile against new SessionMessage API
-        syncBridge.sendMessage(message as any).catch((err) => {
+    function publishCodexTurn(): void {
+        if (!syncBridge || !hasAcpxTurnContent(codexTurn)) return;
+        if (codexTurn.sent) {
+            syncBridge.updateMessage(codexTurn.message).catch((err) => {
+                logger.debug('[Codex] SyncBridge update failed', { error: err });
+            });
+            return;
+        }
+        codexTurn.sent = true;
+        syncBridge.sendMessage(codexTurn.message).catch((err) => {
             logger.debug('[Codex] SyncBridge publish failed', { error: err });
         });
     }
 
-    /** Send a Codex event through the v3 mapper and push finalized messages via SyncBridge. */
-    function sendCodexV3Event(event: Record<string, unknown>): void {
-        if (!syncBridge) return;
-        if (!v3CodexMapperState) {
-            v3CodexMapperState = createV3CodexMapperState({
-                sessionID: response!.id,
-                providerID: 'openai',
-            });
-        }
-        const result = handleCodexEvent(event, v3CodexMapperState);
-        if (result.currentAssistant) {
-            publishCodexV3Message(result.currentAssistant);
-        }
-        for (const msg of result.messages) {
-            publishCodexV3Message(msg);
-        }
+    function resetCodexTurn(): void {
+        resetAcpxTurn(codexTurn);
     }
 
-    /** Flush any in-flight v3 Codex assistant message. */
-    function flushCodexV3TurnLocal(): void {
-        if (!syncBridge || !v3CodexMapperState) return;
-        const messages = flushV3CodexTurn(v3CodexMapperState);
-        for (const msg of messages) {
-            publishCodexV3Message(msg);
+    function sendCodexAcpxEvent(event: Record<string, unknown>): void {
+        const type = typeof event.type === 'string' ? event.type : '';
+        if (!type) {
+            return;
         }
+
+        if (type === 'agent_message') {
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'message',
+                message: typeof event.message === 'string' ? event.message : '',
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        if (type === 'exec_command_begin') {
+            const callId = typeof event.call_id === 'string'
+                ? event.call_id
+                : typeof event.callId === 'string'
+                    ? event.callId
+                    : randomUUID();
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'tool-call',
+                name: 'CodexBash',
+                callId,
+                input: event,
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        if (type === 'exec_command_end') {
+            const callId = typeof event.call_id === 'string'
+                ? event.call_id
+                : typeof event.callId === 'string'
+                    ? event.callId
+                    : randomUUID();
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'tool-result',
+                toolName: 'CodexBash',
+                callId,
+                output: {
+                    output: event.output,
+                    error: event.error,
+                    exit_code: event.exit_code,
+                },
+                isError: Boolean(event.error),
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        if (type === 'patch_apply_begin') {
+            const callId = typeof event.call_id === 'string'
+                ? event.call_id
+                : typeof event.callId === 'string'
+                    ? event.callId
+                    : randomUUID();
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'tool-call',
+                name: 'CodexPatch',
+                callId,
+                input: {
+                    auto_approved: event.auto_approved,
+                    changes: event.changes,
+                },
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        if (type === 'patch_apply_end') {
+            const callId = typeof event.call_id === 'string'
+                ? event.call_id
+                : typeof event.callId === 'string'
+                    ? event.callId
+                    : randomUUID();
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'tool-result',
+                toolName: 'CodexPatch',
+                callId,
+                output: {
+                    stdout: event.stdout,
+                    stderr: event.stderr,
+                    success: event.success,
+                },
+                isError: event.success === false,
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        applyPseudoEventToAcpxTurn(codexTurn, event);
+        publishCodexTurn();
     }
 
     // Always report to daemon if it exists (skip if offline)
@@ -267,37 +346,12 @@ export async function runCodex(opts: {
 
     if (syncBridge) {
         syncBridge.onUserMessage((message) => {
-            // Extract text from the first text part
-            const textPart = (message as any).parts.find((p: any): p is { type: 'text'; text: string } => p.type === 'text');
-            if (!textPart) return;
-            const text = textPart.text;
-
-            // Extract meta from user message info if available
-            const meta = (message as any).info?.role === 'user' ? (message as any).info.meta : undefined;
-
-            // Resolve permission mode (accept all modes, will be mapped in switch statement)
-            let messagePermissionMode = currentPermissionMode;
-            if (meta?.permissionMode) {
-                messagePermissionMode = meta.permissionMode as import('@/api/types').PermissionMode;
-                currentPermissionMode = messagePermissionMode;
-                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
-            } else {
-                logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
-            }
-
-            // Resolve model; explicit null resets to default (undefined)
-            let messageModel = currentModel;
-            if (meta?.hasOwnProperty?.('model')) {
-                messageModel = meta.model || undefined;
-                currentModel = messageModel;
-                logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
-            } else {
-                logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
-            }
+            const text = getUserMessageText(message);
+            if (!text) return;
 
             const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
+                permissionMode: currentPermissionMode || 'default',
+                model: currentModel,
             };
             messageQueue.push(text, enhancedMode);
         });
@@ -525,10 +579,10 @@ export async function runCodex(opts: {
 
     client = new CodexAppServerClient(sandboxConfig);
     reasoningProcessor = new ReasoningProcessor((message) => {
-        sendCodexV3Event(message as Record<string, unknown>);
+        sendCodexAcpxEvent(message as Record<string, unknown>);
     });
     const diffProcessor = new DiffProcessor((message) => {
-        sendCodexV3Event(message as Record<string, unknown>);
+        sendCodexAcpxEvent(message as Record<string, unknown>);
     });
 
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
@@ -631,11 +685,10 @@ export async function runCodex(opts: {
             || msg.type === 'agent_reasoning'
             || msg.type === 'turn_diff';
 
-        // Keep reasoning/diff side-channels on the v3 path only by routing the
-        // synthetic processor outputs above instead of dual-writing legacy
-        // session envelopes.
+        // Keep reasoning/diff side-channels on the raw acpx path by routing the
+        // synthetic processor outputs above instead of emitting separate legacy payloads.
         if (!handledBySyntheticV3Path) {
-            sendCodexV3Event(msg as Record<string, unknown>);
+            sendCodexAcpxEvent(msg as Record<string, unknown>);
         }
     });
 
@@ -770,8 +823,7 @@ export async function runCodex(opts: {
                     session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                 }
             } finally {
-                // Flush v3 turn before resetting processors
-                flushCodexV3TurnLocal();
+                resetCodexTurn();
                 // Reset reasoning processor and diff processor
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
                 diffProcessor.reset();

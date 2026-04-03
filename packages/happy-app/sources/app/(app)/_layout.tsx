@@ -251,12 +251,6 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="dev/tools2"
-                options={{
-                    headerTitle: 'Tool Views Demo',
-                }}
-            />
-            <Stack.Screen
                 name="dev/masked-progress"
                 options={{
                     headerTitle: 'Masked Progress',

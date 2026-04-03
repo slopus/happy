@@ -32,7 +32,8 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
-import type { v3 } from '@slopus/happy-sync';
+import type { SessionID } from '@slopus/happy-sync';
+import { getUserMessageText } from '@/session/acpxTurn';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -204,7 +205,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             key: response.encryptionKey,
             variant: response.encryptionVariant,
         },
-        sessionId: response.id as v3.SessionID,
+        sessionId: response.id as SessionID,
     });
 
     await syncBridge.connect();
@@ -240,9 +241,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // ─── Start Happy MCP server ────────────────────────────────────────────
 
-    // We need a v3Mapper-based sendClaudeMessage function for the MCP server.
-    // The Session class owns the mapper, but isn't created until loop(). For now,
-    // we defer startHappyServer to use the Session once it's created via onSessionReady.
+    // The Session class owns Claude transcript forwarding, but isn't created
+    // until loop(). Defer the MCP server callback until currentSession exists.
     let currentSession: Session | null = null;
 
     const happyServer = await startHappyServer({
@@ -365,37 +365,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     syncBridge.onUserMessage((message) => {
-        // Extract text from the first text part
-        const textPart = (message as any).parts.find((p: any): p is { type: 'text'; text: string } => p.type === 'text');
-        if (!textPart) return;
-
-        const text = textPart.text;
-
-        // Extract meta from user message info if available
-        const meta = ((message as any).info as any).meta;
-        if (meta?.permissionMode) {
-            currentPermissionMode = applySandboxPermissionPolicy(meta.permissionMode, sandboxEnabled);
-            logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
-        }
-        if (meta?.hasOwnProperty?.('model')) {
-            currentModel = meta.model || undefined;
-            logger.debug(`[loop] Model updated from user message: ${currentModel || 'reset to default'}`);
-        }
-        if (meta?.hasOwnProperty?.('fallbackModel')) {
-            currentFallbackModel = meta.fallbackModel || undefined;
-        }
-        if (meta?.hasOwnProperty?.('customSystemPrompt')) {
-            currentCustomSystemPrompt = meta.customSystemPrompt || undefined;
-        }
-        if (meta?.hasOwnProperty?.('appendSystemPrompt')) {
-            currentAppendSystemPrompt = meta.appendSystemPrompt || undefined;
-        }
-        if (meta?.hasOwnProperty?.('allowedTools')) {
-            currentAllowedTools = meta.allowedTools || undefined;
-        }
-        if (meta?.hasOwnProperty?.('disallowedTools')) {
-            currentDisallowedTools = meta.disallowedTools || undefined;
-        }
+        const text = getUserMessageText(message);
+        if (!text) return;
 
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(text);

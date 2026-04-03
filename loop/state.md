@@ -167,13 +167,33 @@ Commit: 3871ec33
 
 ---
 
-TASK: Step 6 — Delete v3 mappers, part views, legacy code.
+DONE: Step 6 — Delete v3 mappers, part views, legacy code.
+
+### Results
+1. ✅ All 5 v3 mappers deleted (`claude`, `codex`, `gemini`, `openclaw`, `acp`) along with the stale Claude/Codex mapper tests
+2. ✅ `packages/happy-app/sources/components/parts/` deleted from disk
+3. ✅ Old part-based app surface removed: `ToolView.tsx`, `AskUserQuestionView.tsx`, and the `dev/tools2` route are deleted and no longer imported
+4. ✅ `export * as v3 from './v3-compat'` removed from `packages/happy-sync/src/index.ts`
+5. ✅ Live source tree no longer has `v3` imports/usages outside legacy compatibility/e2e fixtures
+6. ✅ Added shared `packages/happy-cli/src/session/acpxTurn.ts` to replace the per-runner mapper accumulation path
+7. ✅ Added `packages/happy-cli/src/session/acpxTurn.test.ts` with focused coverage for raw agent events plus Claude assistant/user tool-result translation
+
+### Verification
+1. ✅ `yarn workspace happy-coder build`
+2. ✅ `yarn workspace happy-app typecheck`
+3. ✅ `yarn workspace @slopus/happy-sync tsc --noEmit`
+4. ✅ `yarn workspace happy-app test --run sources/components/MessageView.test.ts sources/components/AgentContentView.test.ts sources/components/ToolUseView.test.ts` — 17/17 tests passed
+5. ✅ `yarn workspace happy-coder vitest run src/session/acpxTurn.test.ts` — 4/4 tests passed
+6. ✅ `yarn workspace @slopus/happy-sync test:unit` — 40/40 tests passed
+7. ⚠️ `yarn tsc --noEmit` at repo root still exits with TypeScript help text because this worktree has no root `tsconfig.json`
+
+---
+
+TASK: Step 7 — Flow UI — `FlowView` reading `metadata.flow`.
 
 ### Acceptance criteria
-1. All 5 v3Mappers deleted (claude, codex, gemini, openclaw, acp)
-2. `parts/` directory deleted (8 files) — ToolPartView, toolPartMeta, V3MessageView, etc.
-3. Old `ToolView.tsx`, `AskUserQuestionView.tsx`, and other part-based tool views no longer imported
-4. `v3-compat.ts` re-export removed from `happy-sync/src/index.ts`
-5. All remaining `v3` namespace references cleaned up across the app
-6. `yarn workspace happy-app typecheck` passes
-7. `yarn workspace @slopus/happy-sync tsc --noEmit` passes
+1. `FlowView.tsx` renders `session.metadata.flow` / `metadata.flow` state directly, not Part-derived flow data
+2. Transcript/session UI shows flow status from metadata without relying on legacy protocol types
+3. Flow rendering updates correctly as metadata changes across steps and terminal states
+4. Automated app tests cover at least one active flow state and one completed flow state
+5. `yarn workspace happy-app typecheck` passes

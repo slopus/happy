@@ -9,43 +9,16 @@ import type { SandboxConfig } from "@/persistence";
 import type { RawJSONLines } from "./types";
 import type { SessionTurnEndStatus } from "@/legacy/sessionProtocol";
 import type { AgentState, Metadata } from "@/api/types";
-import {
-    handleClaudeMessage,
-    flushV3Turn,
-    createV3MapperState,
-    blockToolForPermission,
-    blockToolForQuestion,
-    unblockToolApproved,
-    unblockToolRejected,
-    unblockToolWithAnswers,
-    type V3MapperState,
-} from "./utils/v3Mapper";
 import { calculateCost } from "@/utils/pricing";
-import type { v3 } from "@slopus/happy-sync";
-
-type PendingPermissionTransition =
-    | {
-        kind: 'block';
-        permission: string;
-        patterns: string[];
-        metadata: Record<string, unknown>;
-    }
-    | {
-        kind: 'approve';
-        decision: 'once' | 'always';
-    }
-    | {
-        kind: 'reject';
-        reason: string;
-    };
-
-type QuestionPrompt = {
-    question: string;
-    header: string;
-    options: Array<{ label: string; description: string }>;
-    multiple?: boolean;
-    custom?: boolean;
-};
+import type { RuntimeConfig } from "@slopus/happy-sync";
+import {
+    applyClaudeAssistantMessageToAcpxTurn,
+    applyClaudeToolResultsToAcpxTurn,
+    createAcpxTurn,
+    createClaudeUserMessage,
+    hasAcpxTurnContent,
+    resetAcpxTurn,
+} from "@/session/acpxTurn";
 
 export class Session {
     readonly path: string;
@@ -70,11 +43,7 @@ export class Session {
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
 
-    /** v3 mapper state — owned by Session, not by SyncBridge */
-    private v3MapperState: V3MapperState | null = null;
-
-    /** Permission transitions that arrived before the tool part existed in the mapper. */
-    private pendingPermissionTransitions = new Map<string, PendingPermissionTransition[]>();
+    private currentTurn = createAcpxTurn();
 
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
@@ -127,25 +96,26 @@ export class Session {
         this.keepAliveInterval = setInterval(sendKeepAlive, 2000);
     }
 
-    // ─── v3 message operations (owned by Session, routed through SyncBridge) ──
+    // ─── acpx transcript operations ────────────────────────────────────────
 
-    /** Process a Claude SDK message through the v3 mapper and send finalized messages. */
     sendClaudeMessage(body: RawJSONLines): void {
-        if (!this.v3MapperState) {
-            this.v3MapperState = createV3MapperState({
-                sessionID: this.hapSessionId,
-                providerID: 'anthropic',
-            });
+        if (body.type === 'user') {
+            if (applyClaudeToolResultsToAcpxTurn(this.currentTurn, body)) {
+                this.publishCurrentTurn();
+                this.resetCurrentTurn();
+            } else {
+                this.resetCurrentTurn();
+                const userMessage = createClaudeUserMessage(body);
+                if (userMessage) {
+                    this.syncBridge.sendMessage(userMessage).catch((err) => {
+                        logger.debug('[Session] SyncBridge send failed', { error: err });
+                    });
+                }
+            }
+        } else if (body.type === 'assistant') {
+            applyClaudeAssistantMessageToAcpxTurn(this.currentTurn, body);
+            this.publishCurrentTurn();
         }
-
-        const result = handleClaudeMessage(body, this.v3MapperState);
-
-        for (const msg of result.messages) {
-            this.sendV3Message(msg);
-        }
-        const questionUpdate = this.applyQuestionBlocks(body);
-        const pendingUpdate = this.applyPendingPermissionTransitions();
-        this.updateV3Message(pendingUpdate ?? questionUpdate ?? result.currentAssistant);
 
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -165,232 +135,43 @@ export class Session {
         }
     }
 
-    /** Flush any in-flight v3 assistant message (on turn close). */
     closeClaudeTurn(_status: SessionTurnEndStatus = 'completed'): void {
-        if (!this.v3MapperState) return;
-        const messages = flushV3Turn(this.v3MapperState);
-        for (const msg of messages) {
-            this.sendV3Message(msg);
-        }
+        this.publishCurrentTurn();
+        this.resetCurrentTurn();
     }
 
-    /** Mark a tool as blocked for permission in the v3 mapper. */
-    blockToolForPermission(callID: string, permission: string, patterns: string[], metadata: Record<string, unknown>): void {
-        if (!this.v3MapperState) return;
-        const message = blockToolForPermission(this.v3MapperState, callID, permission, patterns, metadata);
-        if (message) {
-            this.updateV3Message(message);
+    blockToolForPermission(_callID: string, _permission: string, _patterns: string[], _metadata: Record<string, unknown>): void {
+    }
+
+    unblockToolApproved(_callID: string, _decision: 'once' | 'always'): void {
+    }
+
+    unblockToolRejected(_callID: string, _reason: string): void {
+    }
+
+    unblockToolWithAnswers(_callID: string, _answers: string[][]): void {
+    }
+
+    private publishCurrentTurn(): void {
+        if (!hasAcpxTurnContent(this.currentTurn)) {
             return;
         }
-        this.enqueuePendingPermissionTransition(callID, {
-            kind: 'block',
-            permission,
-            patterns,
-            metadata,
-        });
-    }
 
-    /** Mark a blocked tool as approved. */
-    unblockToolApproved(callID: string, decision: 'once' | 'always'): void {
-        if (!this.v3MapperState) return;
-        const message = unblockToolApproved(this.v3MapperState, callID, decision);
-        if (message) {
-            this.updateV3Message(message);
+        if (this.currentTurn.sent) {
+            this.syncBridge.updateMessage(this.currentTurn.message).catch((err) => {
+                logger.debug('[Session] SyncBridge update failed', { error: err });
+            });
             return;
         }
-        this.enqueuePendingPermissionTransition(callID, {
-            kind: 'approve',
-            decision,
-        });
-    }
 
-    /** Mark a blocked tool as rejected. */
-    unblockToolRejected(callID: string, reason: string): void {
-        if (!this.v3MapperState) return;
-        const message = unblockToolRejected(this.v3MapperState, callID, reason);
-        if (message) {
-            this.updateV3Message(message);
-            return;
-        }
-        this.enqueuePendingPermissionTransition(callID, {
-            kind: 'reject',
-            reason,
-        });
-    }
-
-    /** Resolve a blocked question with the provided answers. */
-    unblockToolWithAnswers(callID: string, answers: string[][]): void {
-        if (!this.v3MapperState) return;
-        const message = unblockToolWithAnswers(this.v3MapperState, callID, answers);
-        this.updateV3Message(message);
-    }
-
-    /** Route a v3 MessageWithParts through SyncBridge. */
-    private sendV3Message(message: { info: unknown; parts: unknown[] }): void {
-        this.syncBridge.sendMessage(message as any).catch((err) => {
-            logger.debug('[Session] SyncBridge send failed', { error: err });
-        });
-    }
-
-    /** Patch the in-flight v3 assistant message through SyncBridge. */
-    private updateV3Message(message: { info: unknown; parts: unknown[] } | null): void {
-        if (!message) return;
-        this.syncBridge.updateMessage(message as any).catch((err) => {
+        this.currentTurn.sent = true;
+        this.syncBridge.sendMessage(this.currentTurn.message).catch((err) => {
             logger.debug('[Session] SyncBridge update failed', { error: err });
         });
     }
 
-    private enqueuePendingPermissionTransition(callID: string, transition: PendingPermissionTransition): void {
-        const pending = this.pendingPermissionTransitions.get(callID) ?? [];
-        pending.push(transition);
-        this.pendingPermissionTransitions.set(callID, pending);
-    }
-
-    private applyPendingPermissionTransitions(): { info: unknown; parts: unknown[] } | null {
-        if (!this.v3MapperState) return null;
-
-        let updatedMessage: { info: unknown; parts: unknown[] } | null = null;
-
-        for (const [callID, transitions] of this.pendingPermissionTransitions) {
-            const remaining: PendingPermissionTransition[] = [];
-
-            for (let i = 0; i < transitions.length; i += 1) {
-                const transition = transitions[i];
-                const message = this.applyPendingPermissionTransition(callID, transition);
-                if (!message) {
-                    remaining.push(...transitions.slice(i));
-                    break;
-                }
-                updatedMessage = message;
-            }
-
-            if (remaining.length > 0) {
-                this.pendingPermissionTransitions.set(callID, remaining);
-            } else {
-                this.pendingPermissionTransitions.delete(callID);
-            }
-        }
-
-        return updatedMessage;
-    }
-
-    private applyPendingPermissionTransition(
-        callID: string,
-        transition: PendingPermissionTransition,
-    ): { info: unknown; parts: unknown[] } | null {
-        if (!this.v3MapperState) return null;
-
-        switch (transition.kind) {
-            case 'block':
-                return blockToolForPermission(
-                    this.v3MapperState,
-                    callID,
-                    transition.permission,
-                    transition.patterns,
-                    transition.metadata,
-                );
-            case 'approve':
-                return unblockToolApproved(this.v3MapperState, callID, transition.decision);
-            case 'reject':
-                return unblockToolRejected(this.v3MapperState, callID, transition.reason);
-        }
-    }
-
-    private applyQuestionBlocks(body: RawJSONLines): { info: unknown; parts: unknown[] } | null {
-        if (!this.v3MapperState || body.type !== 'assistant') return null;
-
-        const content = Array.isArray(body.message?.content) ? body.message.content : [];
-        let updatedMessage: { info: unknown; parts: unknown[] } | null = null;
-
-        for (const block of content) {
-            if (block.type !== 'tool_use' || block.name !== 'AskUserQuestion' || typeof block.id !== 'string') {
-                continue;
-            }
-
-            const questions = this.extractQuestionPrompts(block.input);
-            if (questions.length === 0) {
-                continue;
-            }
-
-            const message = blockToolForQuestion(this.v3MapperState, block.id, questions);
-            if (message) {
-                updatedMessage = message;
-            }
-        }
-
-        return updatedMessage;
-    }
-
-    private extractQuestionPrompts(input: unknown): QuestionPrompt[] {
-        if (!input || typeof input !== 'object') {
-            return [];
-        }
-
-        const inputRecord = input as Record<string, unknown>;
-        const rawQuestions = Array.isArray(inputRecord.questions)
-            ? inputRecord.questions
-            : [inputRecord];
-
-        return rawQuestions.flatMap((rawQuestion, index) => {
-            if (!rawQuestion || typeof rawQuestion !== 'object') {
-                return [];
-            }
-
-            const questionRecord = rawQuestion as Record<string, unknown>;
-            const question = typeof questionRecord.question === 'string'
-                ? questionRecord.question.trim()
-                : '';
-
-            if (!question) {
-                return [];
-            }
-
-            const header = typeof questionRecord.header === 'string' && questionRecord.header.trim().length > 0
-                ? questionRecord.header
-                : `Question ${index + 1}`;
-
-            const options = Array.isArray(questionRecord.options)
-                ? questionRecord.options.flatMap(option => {
-                    if (typeof option === 'string') {
-                        const text = option.trim();
-                        return text ? [{ label: text, description: text }] : [];
-                    }
-                    if (!option || typeof option !== 'object') {
-                        return [];
-                    }
-
-                    const optionRecord = option as Record<string, unknown>;
-                    const label = typeof optionRecord.label === 'string' ? optionRecord.label.trim() : '';
-                    if (!label) {
-                        return [];
-                    }
-
-                    return [{
-                        label,
-                        description: typeof optionRecord.description === 'string'
-                            ? optionRecord.description
-                            : label,
-                    }];
-                })
-                : [];
-
-            const multiple = typeof questionRecord.multiple === 'boolean'
-                ? questionRecord.multiple
-                : typeof questionRecord.multiSelect === 'boolean'
-                    ? questionRecord.multiSelect
-                    : undefined;
-            const custom = typeof questionRecord.custom === 'boolean'
-                ? questionRecord.custom
-                : undefined;
-
-            return [{
-                question,
-                header,
-                options,
-                ...(multiple === undefined ? {} : { multiple }),
-                ...(custom === undefined ? {} : { custom }),
-            }];
-        });
+    private resetCurrentTurn(): void {
+        resetAcpxTurn(this.currentTurn);
     }
 
     // ─── Session lifecycle ─────────────────────────────────────────────────
@@ -422,7 +203,7 @@ export class Session {
         });
     }
 
-    sendRuntimeConfigChange(change: Omit<v3.RuntimeConfigChange, 'type' | 'id' | 'sessionID' | 'time'>): void {
+    sendRuntimeConfigChange(change: RuntimeConfig): void {
         this.syncBridge.sendRuntimeConfigChange(change).catch((err) => {
             logger.debug('[Session] SyncBridge sendRuntimeConfigChange failed', { error: err });
         });
