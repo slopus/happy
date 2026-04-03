@@ -572,6 +572,15 @@ DONE: Terminal-state loop iteration (2026-04-03, no code or verification changes
 
 ---
 
+DONE: Terminal-state loop iteration (2026-04-03, no code or verification changes).
+
+### Results
+1. ✅ Read `loop/state.md` — branch remains merge-ready, no new task assigned
+2. ✅ No source changes, no verification runs — 10+ consecutive green runs already confirm stability
+3. ✅ Next action remains external: review/merge of `acpx-rewrite`, or a new task
+
+---
+
 ## Current Task
 
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
