@@ -1,6 +1,6 @@
 # Loop State
 
-Last updated: 2026-04-01
+Last updated: 2026-04-02
 
 Previous completed tasks are archived in `loop/state-archive.md`.
 
@@ -123,13 +123,33 @@ Commit: ffb0df69
 
 ---
 
-TASK: Step 4 — App views — new message components rendering acpx types.
+DONE: Step 4 — App views — new message components rendering acpx types.
+
+Commit: 79dd3c75
+
+### Results
+1. ✅ `packages/happy-app/sources/components/MessageView.tsx` renders raw `SessionMessage` variants directly (`User`, `Agent`, `Resume`)
+2. ✅ `packages/happy-app/sources/components/AgentContentView.tsx` now renders `SessionAgentContent[]` blocks directly (`Text`, `Thinking`, `RedactedThinking`, `ToolUse`)
+3. ✅ `packages/happy-app/sources/components/ToolUseView.tsx` renders `SessionToolUse` plus its matching `SessionToolResult`; input only shows once `is_input_complete === true`
+4. ✅ Transcript pipeline rewired off the Part model: `ChatList`, message detail route, `AppSyncStore`, storage hooks, and voice context formatters now consume raw acpx `SessionMessage`
+5. ✅ Old Part-based views are not used by the new transcript components (`ChatList` no longer renders `parts/V3MessageView`)
+6. ✅ Added `SessionContentView.tsx` to keep the old keyboard/layout shell separate from the new `AgentContentView.tsx` transcript renderer
+7. ✅ Added targeted app tests for `MessageView`, `AgentContentView`, and `ToolUseView`
+8. ✅ Added placeholder `FlowView.tsx` so the acpx transcript component set exists ahead of Step 7
+
+### Verification
+1. ✅ `yarn workspace happy-app typecheck`
+2. ✅ `yarn workspace happy-app test --run sources/components/MessageView.test.ts sources/components/AgentContentView.test.ts sources/components/ToolUseView.test.ts`
+3. ✅ Visual render smoke covered by the new transcript component tests for text, thinking, resume markers, tool input, tool output, and tool errors
+4. ⚠️ `yarn tsc --noEmit` at repo root still exits with TypeScript help text because this worktree has no root `tsconfig.json`
+
+---
+
+TASK: Step 5 — Permission flow via metadata.
 
 ### Acceptance criteria
-1. New `MessageView.tsx` component renders `SessionMessage` (User/Agent/Resume)
-2. New `AgentContentView.tsx` renders `SessionAgentContent[]` (Text, Thinking, RedactedThinking, ToolUse)
-3. New `ToolUseView.tsx` renders `SessionToolUse` + matching `SessionToolResult`
-4. Old Part-based views are NOT used by the new components
-5. App compiles and renders session transcript using new views
-6. `yarn tsc --noEmit` passes for the app package
-7. Visual smoke test confirms text, thinking, and tool use render correctly
+1. App permission UI reads pending permissions/questions from `SyncNode` session metadata, not tool parts
+2. Permission approve/deny and question answer flows operate entirely via metadata-backed `permissions[]` / `questions[]`
+3. Tool transcript/detail views show permission/question state without depending on legacy Part blocks
+4. Relevant app tests cover pending + resolved permission/question rendering and actions
+5. `yarn workspace happy-app typecheck` passes

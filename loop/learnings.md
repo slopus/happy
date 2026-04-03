@@ -129,6 +129,10 @@ If you discover something non-obvious, append it here under the right section.
   still compiles its Playwright e2e files. In that package, browser callbacks
   must not reference bare `document`; use typed `globalThis.document` access or
   fresh installs/builds can fail before `happy-coder` can rebuild.
+- `happy-app` Vitest runs in plain Node, not Expo/JSDOM. Component tests that
+  import React Native views must mock `react-native` and `react-native-unistyles`
+  up front or Vite will try to parse `react-native/index.js` Flow syntax and
+  fail before the test body runs.
 - OpenCode can leave the ACP `prompt` RPC unresolved even after the transcript
   has settled and `runAcp` has already finalized the turn locally. The NEXT
   user prompt must not treat that stale RPC as fatal. Best fix: send a
