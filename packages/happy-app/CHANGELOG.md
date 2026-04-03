@@ -1,5 +1,13 @@
 # Changelog
 
+## Version 7 - 2026-04-03
+
+Added support for the latest Gemini models in the model picker, so you can take advantage of Google's newest and most powerful AI capabilities.
+
+- Added Gemini 3.1 Pro, Gemini 3 Flash, and Gemini 3.1 Flash Lite to the model picker
+- Gemini 3.x models now appear at the top of the list for quick access
+- Gemini 2.5 models remain available for stability
+
 ## Version 6 - 2026-03-19
 
 This is the biggest update since launch — a redesigned session creation experience, Git worktree management, expanded agent support.
