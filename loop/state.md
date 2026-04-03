@@ -594,6 +594,16 @@ DONE: Terminal-state loop iteration (2026-04-03, no code or verification changes
 
 ---
 
+DONE: Terminal-state loop iteration (2026-04-03, bookkeeping-only handoff).
+
+### Results
+1. ✅ Re-read `loop/state.md` and confirmed the active task is still terminal: branch merge-ready, waiting on external review/merge
+2. ✅ Made no product/source changes; only refreshed loop bookkeeping in `loop/state.md`
+3. ✅ Ran no additional verification because the current task explicitly says no further verification is needed
+4. ✅ Next action remains external: review/merge `acpx-rewrite`, or replace this terminal task with a new one
+
+---
+
 ## Current Task
 
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
