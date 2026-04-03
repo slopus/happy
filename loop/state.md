@@ -415,3 +415,15 @@ DONE: Loop rerun verification (2026-04-03 09:52 PT) — still no remaining work 
 
 ### Next Task
 - None.
+
+---
+
+DONE: Loop rerun verification (2026-04-03) — still no remaining work on `acpx-rewrite`.
+
+### Results
+1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; no pending implementation task
+2. ✅ Working tree clean, no uncommitted changes
+3. ✅ No source changes required; only this state-file rerun entry added
+
+### Next Task
+- None. The `acpx-rewrite` mission is complete. PRs #976 and #977 merged. This worktree can be cleaned up.
