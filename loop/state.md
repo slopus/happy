@@ -398,59 +398,16 @@ DONE: Merge-await verification rerun (2026-04-03).
 
 ---
 
-DONE: Merge-await verification rerun (2026-04-03, latest HEAD).
-
-### Results
-1. ✅ Package typechecks all pass
-2. ✅ Full automated test suite passes: happy-sync 49/49, happy-coder 452 passed/1 skipped, happy-app 329 passed/57 skipped, happy-server 44/44
-3. ✅ All deleted targets confirmed gone from disk
+DONE: Merge-await verification (consolidated, 2026-04-03). Multiple reruns all green — see git log for individual commits.
 
 ---
 
-DONE: Merge-await verification rerun (2026-04-03, evening).
+DONE: Merge-await verification rerun (2026-04-03, latest).
 
 ### Results
-1. ✅ Package typechecks all pass:
-   - `yarn workspace happy-app typecheck`
-   - `yarn workspace happy-coder typecheck`
-   - `yarn workspace happy-server typecheck`
-   - `yarn workspace @slopus/happy-sync typecheck`
-2. ✅ Full automated test suite passes on current HEAD:
-   - `yarn workspace @slopus/happy-sync test` — 49/49 tests passed (incl. 9 integration)
-   - `yarn workspace happy-coder test` — 452 passed, 1 skipped
-   - `yarn workspace happy-app test --run` — 329 passed, 57 skipped
-   - `yarn workspace happy-server test` — 44/44 tests passed
+1. ✅ Package typechecks all pass (happy-app, happy-coder, happy-server, @slopus/happy-sync)
+2. ✅ Full automated test suite passes: happy-sync 49/49 (incl. 9 integration), happy-coder 452 passed/1 skipped, happy-app 329 passed/57 skipped, happy-server 44/44
 3. ✅ All deleted targets confirmed gone from disk
-
-### Notes
-- No source changes required; branch remains merge-ready and awaiting review/merge.
-
----
-
-DONE: Merge-await verification rerun (2026-04-03, current HEAD).
-
-### Results
-1. ✅ `yarn tsc --noEmit` still exits with TypeScript help text because the repo root still has no `tsconfig.json`
-2. ✅ Package typechecks all pass:
-   - `yarn workspace happy-app typecheck`
-   - `yarn workspace happy-coder typecheck`
-   - `yarn workspace happy-server typecheck`
-   - `yarn workspace @slopus/happy-sync typecheck`
-3. ✅ Full automated test suite passes on current HEAD:
-   - `yarn workspace @slopus/happy-sync test` — 49/49 tests passed (incl. 9 integration)
-   - `yarn workspace happy-coder test` — 452 passed, 1 skipped
-   - `yarn workspace happy-app test --run` — 329 passed, 57 skipped
-   - `yarn workspace happy-server test` — 44/44 tests passed
-4. ✅ All deleted targets confirmed gone from disk:
-   - `packages/happy-sync/src/protocol.ts`
-   - `packages/happy-sync/src/sessionProtocol.ts`
-   - `packages/happy-app/sources/components/parts`
-   - `packages/happy-app/sources/components/ToolView.tsx`
-   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
-
-### Notes
-- No source changes required; branch remains merge-ready and awaiting review/merge.
-- `happy-app` tests still emit the existing `react-test-renderer` deprecation / `act(...)` warnings, but the suite passes and no new failures were introduced.
 
 ---
 
