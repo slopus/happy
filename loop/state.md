@@ -562,3 +562,5 @@ DONE: Merge-readiness verification rerun (2026-04-03 latest autonomous handoff, 
 ## Current Task
 
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
+
+No further verification needed — 10+ consecutive green runs confirm stability. Next action requires human: review and merge the PR, or provide a new task.
