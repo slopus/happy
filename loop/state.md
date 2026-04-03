@@ -277,6 +277,12 @@ All reruns confirmed: 4 package typechecks pass, full test suite passes (happy-s
 
 ## Current Task
 
-Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
+No repository work remains on this branch.
 
-No further verification needed — 10+ consecutive green runs confirm stability. Next action requires human: review and merge the PR, or provide a new task.
+### Results
+1. ✅ Clean worktree confirmed before the loop started (`git status --short`, `git diff --stat HEAD`)
+2. ✅ Re-read `loop/state.md` and `loop/learnings.md`; no incomplete implementation or verification task remains in this worktree
+3. ✅ Branch still remains merge-ready for `acpx-rewrite`
+
+### Next Task
+- Review and merge `acpx-rewrite`, or replace this section with the next engineering task after merge.
