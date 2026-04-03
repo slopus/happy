@@ -431,3 +431,25 @@ DONE: Loop rerun verification — branch still has no remaining work after anoth
 
 ### Next Task
 - None.
+
+---
+
+DONE: Loop rerun verification — branch still has no remaining work after another regression pass.
+
+### Results
+1. ✅ Re-read `loop/state.md` / `loop/learnings.md` and confirmed `acpx-rewrite` still has no pending implementation task
+2. ✅ Deleted acpx rewrite targets are still absent from disk
+3. ✅ No source changes were required; only this state-file verification entry was added
+
+### Verification
+1. ✅ `yarn workspace happy test --run` — 463 passed, 1 skipped
+2. ⚠️ `yarn tsc --noEmit` at repo root still exits with the TypeScript help text because this worktree still has no root `tsconfig.json`
+3. ✅ Deleted targets still gone from disk:
+   - `packages/happy-sync/src/protocol.ts`
+   - `packages/happy-sync/src/sessionProtocol.ts`
+   - `packages/happy-app/sources/components/parts`
+   - `packages/happy-app/sources/components/ToolView.tsx`
+   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
+
+### Next Task
+- None.
