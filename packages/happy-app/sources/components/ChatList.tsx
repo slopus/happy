@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
 import { Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
+import { FlowView } from './FlowView';
 import { type SessionMessage } from '@slopus/happy-sync';
 import { makeSessionMessageId } from '@/sync/syncNodeStore';
 
@@ -31,7 +32,10 @@ const ListHeader = React.memo(() => {
 const ListFooter = React.memo((props: { sessionId: string }) => {
     const syncSession = useSyncSessionState(props.sessionId);
     return (
-        <ChatFooter controlledByUser={syncSession?.controlledByUser || false} />
+        <>
+            <FlowView flow={syncSession?.flow} />
+            <ChatFooter controlledByUser={syncSession?.controlledByUser || false} />
+        </>
     )
 });
 
