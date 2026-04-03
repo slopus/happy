@@ -620,3 +620,7 @@ DONE: Loop rerun verification (2026-04-03 10:25 PDT) — still no remaining work
 
 ### Next Task
 - None.
+
+---
+
+DONE: Loop rerun verification (2026-04-03 11:17 PDT) — still no remaining work on `acpx-rewrite`. Mission complete. PRs #976 and #977 merged. This worktree can be cleaned up.
