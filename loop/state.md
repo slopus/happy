@@ -347,14 +347,28 @@ Affected jobs:
 - `smoke-test-linux (24)` — CANCELLED (fail-fast from Node 20 failure)
 - `smoke-test-windows (24)` — CANCELLED (fail-fast from Node 20 failure)
 
-### Fix
-- `typecheck.yml`: Node 20 → 22
-- `cli-smoke-test.yml`: matrix `[20, 24]` → `[22, 24]` (both Linux and Windows)
+### Three issues found and fixed (PR #977)
 
-PR #977: https://github.com/slopus/happy/pull/977
+1. **Node 20 → 22**: `acpx@0.4.0` requires `node >=22.12.0`. Bumped `typecheck.yml` to Node 22 and `cli-smoke-test.yml` matrix from `[20, 24]` → `[22, 24]`.
 
-Commit on `fix/ci-node-22` branch: e4ed2154
+2. **`@slopus/happy-wire` not found**: Package was referenced but never created. `apiVoice.ts` and `voiceRoutes.ts` imported from it. Defined `VoiceTokenResponse` type and Zod schema inline.
+
+3. **`@slopus/happy-sync` npm 404**: Listed in happy-cli `dependencies` but not published to npm. `npm install -g` of packed tarball failed. Moved to `devDependencies` so pkgroll bundles it into dist.
+
+4. **Windows `npx tsc` broken path**: `npx tsc` resolved to doubled `node_modules\node_modules` path on Windows CI. Changed happy-sync build script to use `tsc` directly. Added `SKIP_HAPPY_SYNC_BUILD=1` to CI install step with explicit `yarn workspace @slopus/happy-sync build` step.
+
+### PR #977 results
+- PR: https://github.com/slopus/happy/pull/977
+- State: MERGED at 2026-04-03T16:03:17Z
+- All 5 CI checks green:
+  - `typecheck` — pass (4m24s)
+  - `smoke-test-linux (22)` — pass (4m51s)
+  - `smoke-test-linux (24)` — pass (4m28s)
+  - `smoke-test-windows (22)` — pass (18m19s)
+  - `smoke-test-windows (24)` — pass (22m2s)
 
 ## Current Task
 
-Await CI results on PR #977 and merge once green.
+acpx rewrite complete. PR #976 merged. Post-merge CI failures fixed via PR #977 (merged).
+
+No further tasks remain for the acpx-rewrite branch.
