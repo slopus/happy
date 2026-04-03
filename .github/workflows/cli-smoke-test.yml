@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20, 24]
+        node-version: [22, 24]
 
     steps:
     - name: Checkout code
@@ -78,7 +78,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        node-version: [20, 24]
+        node-version: [22, 24]
 
     steps:
     - name: Checkout code
