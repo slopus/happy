@@ -581,6 +581,19 @@ DONE: Terminal-state loop iteration (2026-04-03, no code or verification changes
 
 ---
 
+DONE: Terminal-state loop iteration (2026-04-03, no code or verification changes).
+
+### Results
+1. ✅ Re-read the current task and confirmed the branch is still merge-ready with no new work assigned
+2. ✅ Made no source changes outside this loop-state bookkeeping update and ran no additional verification, per the current task instruction
+3. ✅ Next action is still external: review/merge `acpx-rewrite`, or replace the terminal task with a new one
+
+### Notes
+- This iteration preserves a fresh git-tracked handoff without disturbing the already-verified tree state.
+- The repository remains in the previously verified merge-ready state.
+
+---
+
 ## Current Task
 
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
