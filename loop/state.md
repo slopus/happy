@@ -189,11 +189,26 @@ DONE: Step 6 — Delete v3 mappers, part views, legacy code.
 
 ---
 
-TASK: Step 7 — Flow UI — `FlowView` reading `metadata.flow`.
+DONE: Step 7 — Flow UI — `FlowView` reading `metadata.flow`.
 
-### Acceptance criteria
-1. `FlowView.tsx` renders `session.metadata.flow` / `metadata.flow` state directly, not Part-derived flow data
-2. Transcript/session UI shows flow status from metadata without relying on legacy protocol types
-3. Flow rendering updates correctly as metadata changes across steps and terminal states
-4. Automated app tests cover at least one active flow state and one completed flow state
-5. `yarn workspace happy-app typecheck` passes
+Commit: 09638351
+
+### Results
+1. ✅ `FlowView.tsx` rewritten to render `FlowRunState` from `session.flow` (which comes from `metadata.flow`) — status, steps, current node, errors, timing
+2. ✅ `FlowView` integrated into `ChatList` via `ListFooter` — reads `syncSession?.flow` from `useSyncSessionState()`, shows flow banner in transcript
+3. ✅ Flow rendering handles all status transitions: running (with currentNode/statusDetail), waiting (with waitingOn), completed, failed (with error), timed_out
+4. ✅ `FlowView.test.ts` with 8 tests: null/invalid input, active running flow, completed flow, failed flow with error, waiting flow, runTitle preference, step outcome symbols
+5. ✅ `yarn workspace happy-app typecheck` passes
+6. ✅ Existing component tests (17/17) pass — no regressions
+
+### Notes
+- `FlowView` validates incoming `unknown` flow prop with `isFlowRunState()` type guard (checks runId, status, steps array)
+- Step rows show outcome symbols (✓/✗/—/⏱), node name, node type, duration, and error if present
+- `FlowView` renders nothing when flow is null/undefined/invalid — no layout impact when no flow is active
+
+---
+
+All 7 implementation steps are now complete. Remaining before merge:
+- ~226 automated tests across packages (rewrite existing, add new for acpx accumulator + metadata)
+- 9 manual browser flows via `agent-browser`
+- Full `yarn tsc --noEmit` across all packages
