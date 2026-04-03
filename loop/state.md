@@ -646,10 +646,24 @@ DONE: Terminal-state loop iteration (2026-04-03, swift-beacon latest autonomous 
 
 ---
 
+DONE: Terminal-state loop iteration (2026-04-03, swift-beacon terminal handoff refresh).
+
+### Results
+1. ✅ Re-read `loop/state.md` and confirmed the branch is still merge-ready with no new task assigned
+2. ✅ Made no product/source changes outside this bookkeeping update to `loop/state.md`
+3. ✅ Ran no additional verification because the current task still says no further verification is needed
+4. ✅ Next action remains external: review/merge `acpx-rewrite`, or provide a new task
+
+### Notes
+- This iteration preserves the previously verified merge-ready tree state.
+- No changes were made outside `loop/state.md`.
+
+---
+
 ## Current Task
 
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
 
 No further verification needed — 10+ consecutive green runs confirm stability. Next action requires human: review and merge the PR, or provide a new task.
 
-Terminal handoff recorded 2026-04-03 (swift-beacon loop). No product changes made.
+Terminal handoff recorded 2026-04-03 (swift-beacon terminal handoff refresh). No product changes made.
