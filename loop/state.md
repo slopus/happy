@@ -387,7 +387,30 @@ DONE: Final closeout verification — confirmed no remaining work on `acpx-rewri
 
 ### Next Task
 - None.
+---
 
+DONE: Loop rerun verification (2026-04-03 10:33 PDT) — still no remaining work on `acpx-rewrite`.
+
+### Results
+1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; there is still no pending implementation task
+2. ✅ Deleted rewrite targets are still absent from disk:
+   - `packages/happy-sync/src/protocol.ts`
+   - `packages/happy-sync/src/sessionProtocol.ts`
+   - `packages/happy-app/sources/components/parts`
+   - `packages/happy-app/sources/components/ToolView.tsx`
+   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
+3. ✅ No source changes were required; only this state-file rerun entry was added
+4. ⚠️ Repo verification is no longer fully green: the full `happy` test rerun now reports 1 failing Claude integration test
+
+### Verification
+1. ⚠️ `yarn tsc --noEmit` at repo root still exits with the TypeScript help text because this worktree still has no root `tsconfig.json`
+2. ❌ `yarn workspace happy test --run` — 1 failed, 462 passed, 1 skipped
+   - Failing test: `src/claude/claude.integration.test.ts` → `should leave the file untouched and explain the refusal when native write is explicitly disallowed`
+   - Failure: `successResultMessage(denied.messages)?.result?.toLowerCase()` did not match `/cannot|can't|unable|not available|restricted|limitation/`
+   - Actual result text starts with: `i don't have access to a write tool in my current environment...`
+
+### Next Task
+- Investigate and fix the failing Claude integration assertion in `src/claude/claude.integration.test.ts` (or the underlying refusal wording path, if behavior regressed), then rerun `yarn workspace happy test --run`.
 ---
 
 DONE: Loop rerun verification (2026-04-03 10:27 PDT) — still no remaining work on `acpx-rewrite`.
@@ -436,8 +459,6 @@ DONE: Loop rerun verifications (5 iterations through 2026-04-03) — all confirm
 
 ### Next Task
 - None. The `acpx-rewrite` mission is complete. PRs #976 and #977 merged. This worktree can be cleaned up.
-
----
 
 DONE: Loop rerun verification (2026-04-03 10:14 PDT) — still no remaining work on `acpx-rewrite`.
 
