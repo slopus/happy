@@ -809,7 +809,6 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
     lines.push("");
     lines.push("# Commands exposed by this env");
     lines.push("# - happy");
-    lines.push("# - happy-agent");
     lines.push("");
 
     return lines.join("\n");
@@ -823,10 +822,6 @@ function writeEnvCommands(envDir: string): void {
         {
             name: "happy",
             entrypoint: path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs"),
-        },
-        {
-            name: "happy-agent",
-            entrypoint: path.join(REPO_ROOT, "packages", "happy-agent", "bin", "happy-agent.mjs"),
         },
     ];
 

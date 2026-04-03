@@ -193,6 +193,8 @@ describe('settings', () => {
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
+                voiceCustomAgentId: null,
+                voiceBypassToken: false,
                 preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,

@@ -769,6 +769,12 @@ export const en: TranslationStructure = {
         unknownEvent: 'Unknown event',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',
+        compactionMarker: 'Conversation compacted',
+        subtask: 'Subtask',
+    },
+
+    permissions: {
+        sessionStopped: 'Session stopped',
     },
 
     codex: {

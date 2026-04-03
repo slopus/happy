@@ -39,23 +39,24 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
 
     const machineId = session.metadata?.machineId;
     if (!machineId) {
-        const message = t('sessionInfo.resumeSessionMissingMachine');
+        // No machine metadata means this session can never be resumed.
+        // Hide the button entirely instead of showing a disabled dead-end.
         return {
             canResume: false,
-            canShowResume: true,
-            subtitle: message,
-            message,
+            canShowResume: false,
+            subtitle: '',
+            message: '',
         };
     }
 
     const hasBackendResumeId = Boolean(session.metadata?.claudeSessionId || session.metadata?.codexThreadId);
     if (!hasBackendResumeId) {
-        const message = t('sessionInfo.resumeSessionMissingBackendId');
+        // No backend resume ID means this session can never be resumed.
         return {
             canResume: false,
-            canShowResume: true,
-            subtitle: message,
-            message,
+            canShowResume: false,
+            subtitle: '',
+            message: '',
         };
     }
 

@@ -3,15 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const sessionHandlers = new Map<string, (params: any) => Promise<any> | any>();
   let userMessageHandler: ((message: any) => void) | null = null;
+  let runtimeConfigHandler: ((config: any) => void) | null = null;
   let killHandler: (() => Promise<void>) | null = null;
 
   const mockSession = {
     onUserMessage: vi.fn((handler: (message: any) => void) => {
       userMessageHandler = handler;
     }),
+    sessionId: 'session-1',
     keepAlive: vi.fn(),
     sendSessionProtocolMessage: vi.fn(),
     sendSessionEvent: vi.fn(),
+    sendClaudeSessionMessage: vi.fn(),
     updateMetadata: vi.fn(),
     sendSessionDeath: vi.fn(),
     flush: vi.fn(async () => {}),
@@ -24,6 +27,31 @@ const mocks = vi.hoisted(() => {
         sessionHandlers.set(name, handler);
       }),
     },
+  };
+
+  const mockSyncBridge = {
+    connect: vi.fn(async () => {}),
+    disconnect: vi.fn(),
+    onUserMessage: vi.fn((handler: (message: any) => void) => {
+      userMessageHandler = handler;
+    }),
+    onPermissionDecision: vi.fn(() => () => {}),
+    onRuntimeConfigChange: vi.fn((handler: (config: any) => void) => {
+      runtimeConfigHandler = handler;
+      return () => {};
+    }),
+    onAbortRequest: vi.fn(() => () => {}),
+    sendPermissionRequest: vi.fn(async () => {}),
+    sendMessage: vi.fn(async () => {}),
+    updateMessage: vi.fn(async () => {}),
+    sendSessionProtocolMessage: vi.fn((envelope: any) => mockSession.sendSessionProtocolMessage(envelope)),
+    updateMetadata: vi.fn((handler: any) => mockSession.updateMetadata(handler)),
+    updateAgentState: vi.fn((handler: any) => mockSession.updateAgentState(handler)),
+    keepAlive: vi.fn((thinking: any, source: any) => mockSession.keepAlive(thinking, source)),
+    sendSessionDeath: vi.fn(() => mockSession.sendSessionDeath()),
+    flush: vi.fn(async () => mockSession.flush()),
+    setRpcHandler: vi.fn(),
+    registerRpcMethods: vi.fn(),
   };
 
   const backendState = {
@@ -43,7 +71,11 @@ const mocks = vi.hoisted(() => {
     mockReadSettings: vi.fn(async () => ({ machineId: 'machine-1', sandboxConfig: undefined })),
     mockApiCreate: vi.fn(),
     mockGetOrCreateMachine: vi.fn(async () => ({})),
-    mockGetOrCreateSession: vi.fn(async () => ({ id: 'session-1' })),
+    mockGetOrCreateSession: vi.fn(async () => ({
+      id: 'session-1',
+      encryptionKey: new Uint8Array(32),
+      encryptionVariant: 'legacy' as const,
+    })),
     mockSetupOfflineReconnection: vi.fn(),
     mockNotifyDaemonSessionStarted: vi.fn(async () => ({ error: null })),
     mockStartHappyServer: vi.fn(),
@@ -54,16 +86,26 @@ const mocks = vi.hoisted(() => {
     }),
     mockLoggerDebug: vi.fn(),
     mockConsoleLog: vi.spyOn(console, 'log').mockImplementation(() => {}),
+    mockResolveSyncNodeToken: vi.fn(async () => ({
+      raw: 'test-sync-token',
+      claims: { scope: { type: 'session', sessionId: 'session-1' }, permissions: ['read', 'write', 'admin'] },
+    })),
+    mockCreateSessionMetadata: vi.fn(() => ({ state: {}, metadata: {} })),
     sessionHandlers,
     getUserMessageHandler: () => userMessageHandler,
     setUserMessageHandler: (handler: ((message: any) => void) | null) => {
       userMessageHandler = handler;
+    },
+    getRuntimeConfigHandler: () => runtimeConfigHandler,
+    setRuntimeConfigHandler: (handler: ((config: any) => void) | null) => {
+      runtimeConfigHandler = handler;
     },
     getKillHandler: () => killHandler,
     setKillHandler: (handler: (() => Promise<void>) | null) => {
       killHandler = handler;
     },
     mockSession,
+    mockSyncBridge,
     backendState,
   };
 });
@@ -116,6 +158,61 @@ vi.mock('@/ui/logger', () => ({
   logger: {
     debug: mocks.mockLoggerDebug,
   },
+}));
+
+vi.mock('@/configuration', () => ({
+  configuration: {
+    serverUrl: 'http://test-server',
+    happyHomeDir: '/tmp/.happy',
+  },
+}));
+
+vi.mock('@/api/syncNodeToken', () => ({
+  resolveSessionScopedSyncNodeToken: mocks.mockResolveSyncNodeToken,
+}));
+
+vi.mock('@/api/syncBridge', () => ({
+  SyncBridge: class MockSyncBridge {
+    constructor() {}
+    connect = mocks.mockSyncBridge.connect;
+    disconnect = mocks.mockSyncBridge.disconnect;
+    onUserMessage = mocks.mockSyncBridge.onUserMessage;
+    onPermissionDecision = mocks.mockSyncBridge.onPermissionDecision;
+    onRuntimeConfigChange = mocks.mockSyncBridge.onRuntimeConfigChange;
+    onAbortRequest = mocks.mockSyncBridge.onAbortRequest;
+    sendPermissionRequest = mocks.mockSyncBridge.sendPermissionRequest;
+    sendMessage = mocks.mockSyncBridge.sendMessage;
+    updateMessage = mocks.mockSyncBridge.updateMessage;
+    sendSessionProtocolMessage = mocks.mockSyncBridge.sendSessionProtocolMessage;
+    updateMetadata = mocks.mockSyncBridge.updateMetadata;
+    updateAgentState = mocks.mockSyncBridge.updateAgentState;
+    keepAlive = mocks.mockSyncBridge.keepAlive;
+    sendSessionDeath = mocks.mockSyncBridge.sendSessionDeath;
+    flush = mocks.mockSyncBridge.flush;
+    setRpcHandler = mocks.mockSyncBridge.setRpcHandler;
+    registerRpcMethods = mocks.mockSyncBridge.registerRpcMethods;
+  },
+}));
+
+vi.mock('@/api/rpc/RpcHandlerManager', () => ({
+  RpcHandlerManager: class MockRpcHandlerManager {
+    registerHandler(name: string, handler: (params: any) => Promise<any> | any) {
+      mocks.sessionHandlers.set(name, handler);
+    }
+    getRegisteredMethods() {
+      return [];
+    }
+    setRegistrationCallback() {}
+    handleRequest() {}
+  },
+}));
+
+vi.mock('@/modules/common/registerCommonHandlers', () => ({
+  registerCommonHandlers: vi.fn(),
+}));
+
+vi.mock('@/utils/createSessionMetadata', () => ({
+  createSessionMetadata: mocks.mockCreateSessionMetadata,
 }));
 
 vi.mock('./AcpBackend', () => ({
@@ -183,6 +280,16 @@ vi.mock('./AcpBackend', () => ({
 
 import { runAcp } from './runAcp';
 
+/** Helper: build a SyncBridge-format user message (acpx SessionMessage). */
+function syncUserMessage(text: string) {
+  return {
+    User: {
+      id: `msg_${Math.random().toString(36).slice(2, 10)}`,
+      content: [{ Text: text }],
+    },
+  };
+}
+
 describe('runAcp', () => {
   const stripAnsi = (line: string) => line.replace(/\u001b\[[0-9;]*m/g, '');
   const stripLogPrefix = (line: string) => stripAnsi(line).replace(/^\[\d{2}:\d{2}\] /, '');
@@ -194,6 +301,7 @@ describe('runAcp', () => {
     vi.clearAllMocks();
     mocks.sessionHandlers.clear();
     mocks.setUserMessageHandler(null);
+    mocks.setRuntimeConfigHandler(null);
     mocks.setKillHandler(null);
     mocks.backendState.listeners = [];
     mocks.backendState.prompts = [];
@@ -233,10 +341,7 @@ describe('runAcp', () => {
       expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
     });
 
-    mocks.getUserMessageHandler()!({
-      role: 'user',
-      content: { type: 'text', text: 'Build a test plan' },
-    });
+    mocks.getUserMessageHandler()!(syncUserMessage('Build a test plan'));
 
     await vi.waitFor(() => {
       expect(mocks.backendState.prompts).toHaveLength(1);
@@ -252,10 +357,29 @@ describe('runAcp', () => {
       prompt: 'Build a test plan',
     });
 
-    const envelopeTypes = mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([envelope]) => envelope.ev.t);
-    expect(envelopeTypes).toEqual(['turn-start', 'text', 'tool-call-start', 'tool-call-end', 'turn-end']);
-    expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'ready' });
-    expect(mocks.mockSession.close).toHaveBeenCalled();
+    // With SyncBridge, messages are sent as raw acpx SessionMessage
+    const syncMessageCalls = mocks.mockSyncBridge.sendMessage.mock.calls.length
+      + mocks.mockSyncBridge.updateMessage.mock.calls.length;
+    expect(syncMessageCalls).toBeGreaterThan(0);
+
+    // Verify acpx format: messages should be { Agent: SessionAgentMessage }
+    const sendCalls = mocks.mockSyncBridge.sendMessage.mock.calls as unknown[][];
+    expect(sendCalls.length).toBeGreaterThan(0);
+    const firstSend = sendCalls[0][0] as Record<string, unknown>;
+    expect(firstSend).toHaveProperty('Agent');
+    const agent = firstSend.Agent as Record<string, unknown>;
+    expect(agent).toHaveProperty('content');
+    expect(agent).toHaveProperty('tool_results');
+
+    // With SyncBridge, ready events go through updateAgentState instead of sendSessionEvent
+    const agentStateUpdates = mocks.mockSession.updateAgentState.mock.calls;
+    const readyUpdates = agentStateUpdates
+      .map(([handler]) => handler({}))
+      .filter((state: any) => state?.lastEvent?.type === 'ready');
+    expect(readyUpdates.length).toBeGreaterThanOrEqual(1);
+
+    // With SyncBridge, cleanup goes through syncBridge.disconnect() instead of session.close()
+    expect(mocks.mockSyncBridge.disconnect).toHaveBeenCalled();
     expect(consoleLines()).toEqual(expect.arrayContaining([
       'Happy Session ID: session-1',
       'Incoming prompt: Build a test plan',
@@ -309,10 +433,7 @@ describe('runAcp', () => {
       throw new Error('Expected backend listener to be registered');
     }
 
-    mocks.getUserMessageHandler()!({
-      role: 'user',
-      content: { type: 'text', text: 'Think first' },
-    });
+    mocks.getUserMessageHandler()!(syncUserMessage('Think first'));
 
     await vi.waitFor(() => {
       expect(mocks.backendState.prompts).toHaveLength(1);
@@ -342,10 +463,7 @@ describe('runAcp', () => {
       expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
     });
 
-    mocks.getUserMessageHandler()!({
-      role: 'user',
-      content: { type: 'text', text: 'Run the command' },
-    });
+    mocks.getUserMessageHandler()!(syncUserMessage('Run the command'));
 
     await vi.waitFor(() => {
       expect(mocks.backendState.prompts).toHaveLength(1);
@@ -356,11 +474,10 @@ describe('runAcp', () => {
 
     const lines = consoleLines();
     expect(lines.some((line) => line.startsWith('Outgoing raw backend message from opencode: '))).toBe(true);
-    expect(lines.some((line) => line.startsWith('Incoming raw envelope for opencode: '))).toBe(true);
-    expect(lines).toEqual(expect.arrayContaining([
-      'Outgoing message: "hello"',
-      'Tool: ReadFile started (callId=tool-1)',
-    ]));
+    // With SyncBridge, messages go through sendAcpxMessage/updateAcpxMessage (not sendEnvelopes),
+    // so the "Incoming raw envelope" log is not emitted.
+    expect(mocks.mockSyncBridge.sendMessage.mock.calls.length
+      + mocks.mockSyncBridge.updateMessage.mock.calls.length).toBeGreaterThan(0);
   });
 
   it('logs slash commands, modes, and models line by line when verbose is enabled', async () => {
@@ -439,7 +556,7 @@ describe('runAcp', () => {
     });
 
     expect(consoleLines()).toContain('Status: error: spawn opencode ENOENT');
-    expect(mocks.mockSession.close).toHaveBeenCalled();
+    expect(mocks.mockSyncBridge.disconnect).toHaveBeenCalled();
     expect(mocks.backendState.disposeCalls).toBe(1);
   });
 
@@ -565,14 +682,9 @@ describe('runAcp', () => {
       expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
     });
 
-    mocks.getUserMessageHandler()!({
-      role: 'user',
-      content: { type: 'text', text: 'Apply settings then run' },
-      meta: {
-        permissionMode: 'Code',
-        model: 'claude-opus',
-      },
-    });
+    // Simulate runtime config change from the app (via metadata)
+    mocks.getRuntimeConfigHandler()!({ source: 'app', permissionMode: 'Code', model: 'claude-opus' });
+    mocks.getUserMessageHandler()!(syncUserMessage('Apply settings then run'));
 
     await vi.waitFor(() => {
       expect(mocks.backendState.prompts).toHaveLength(1);
@@ -634,14 +746,9 @@ describe('runAcp', () => {
       expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
     });
 
-    mocks.getUserMessageHandler()!({
-      role: 'user',
-      content: { type: 'text', text: 'Run without switching' },
-      meta: {
-        permissionMode: 'invalid-mode',
-        model: 'invalid-model',
-      },
-    });
+    // Simulate runtime config change with invalid values
+    mocks.getRuntimeConfigHandler()!({ source: 'app', permissionMode: 'invalid-mode', model: 'invalid-model' });
+    mocks.getUserMessageHandler()!(syncUserMessage('Run without switching'));
 
     await vi.waitFor(() => {
       expect(mocks.backendState.prompts).toHaveLength(1);

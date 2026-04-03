@@ -28,6 +28,7 @@ export class Encryption {
 
     private readonly legacyEncryption: SecretBoxEncryption;
     private readonly contentKeyPair: sodium.KeyPair;
+    private readonly masterSecret: Uint8Array;
     readonly anonID: string;
     readonly contentDataKey: Uint8Array;
 
@@ -38,6 +39,7 @@ export class Encryption {
 
     private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair) {
         this.anonID = anonID;
+        this.masterSecret = masterSecret;
         this.contentKeyPair = contentKeyPair;
         this.legacyEncryption = new SecretBoxEncryption(masterSecret);
         this.cache = new EncryptionCache();
@@ -179,6 +181,27 @@ export class Encryption {
         result[0] = 0; // Version byte
         result.set(encrypted, 1);
         return result;
+    }
+
+    async resolveSyncNodeSessionKeyMaterial(
+        encryptedDataKey: string | null,
+    ): Promise<{ key: Uint8Array; variant: 'legacy' | 'dataKey' } | null> {
+        if (!encryptedDataKey) {
+            return {
+                key: this.masterSecret,
+                variant: 'legacy',
+            };
+        }
+
+        const decrypted = await this.decryptEncryptionKey(encryptedDataKey);
+        if (!decrypted) {
+            return null;
+        }
+
+        return {
+            key: decrypted,
+            variant: 'dataKey',
+        };
     }
 
     generateId(): string {

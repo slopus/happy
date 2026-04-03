@@ -2,6 +2,10 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
 import { ApiClient } from '@/api/api';
+import { SyncBridge } from '@/api/syncBridge';
+import { resolveSessionScopedSyncNodeToken } from '@/api/syncNodeToken';
+import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
 import { AgentState, Metadata } from '@/api/types';
@@ -11,7 +15,7 @@ import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
-import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
+import { extractSDKMetadataAsync } from '@/claude/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
@@ -28,6 +32,8 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import type { SessionID } from '@slopus/happy-sync';
+import { getUserMessageText } from '@/session/acpxTurn';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -48,7 +54,7 @@ export interface StartOptions {
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
-    
+
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
 
@@ -128,14 +134,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             onReconnected: async () => {
                 const resp = await api.getOrCreateSession({ tag: randomUUID(), metadata, state });
                 if (!resp) throw new Error('Server unavailable');
-                const session = api.sessionSyncClient(resp);
+                // TODO: create SyncBridge for reconnected session
                 const scanner = await createSessionScanner({
                     sessionId: null,
                     workingDirectory,
-                    onMessage: (msg) => session.sendClaudeSessionMessage(msg)
+                    onMessage: (_msg) => { /* offline reconnect message handler */ }
                 });
                 if (offlineSessionId) scanner.onNewSession(offlineSessionId);
-                return { session, scanner };
+                return { scanner };
             },
             onNotify: console.log,
             onCleanup: () => {
@@ -178,12 +184,84 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debug('[START] Failed to report to daemon (may not be running):', error);
     }
 
+    // ─── Create SyncBridge directly (no ApiSessionClient) ──────────────────
+
+    const sessionScopedToken = await resolveSessionScopedSyncNodeToken({
+        serverUrl: configuration.serverUrl,
+        sessionId: response.id,
+        token: {
+            raw: credentials.token,
+            claims: {
+                scope: { type: 'account', userId: 'cli' },
+                permissions: ['read', 'write', 'admin'],
+            },
+        },
+    });
+
+    const syncBridge = new SyncBridge({
+        serverUrl: configuration.serverUrl,
+        token: sessionScopedToken,
+        keyMaterial: {
+            key: response.encryptionKey,
+            variant: response.encryptionVariant,
+        },
+        sessionId: response.id as SessionID,
+    });
+
+    await syncBridge.connect();
+    logger.debug('[START] SyncBridge connected');
+
+    // ─── Create RpcHandlerManager and wire to SyncBridge ───────────────────
+
+    const rpcHandlerManager = new RpcHandlerManager({
+        scopePrefix: response.id,
+        encryptionKey: response.encryptionKey,
+        encryptionVariant: response.encryptionVariant,
+    });
+
+    // Wire RPC: SyncBridge forwards RPC requests to RpcHandlerManager
+    syncBridge.setRpcHandler(async (method: string, params: string) => {
+        return rpcHandlerManager.handleRequest({ method, params });
+    });
+
+    // Auto-register new RPC methods with SyncNode
+    rpcHandlerManager.setRegistrationCallback((prefixedMethod) => {
+        syncBridge.registerRpcMethods([prefixedMethod]);
+    });
+
+    // Register common RPC handlers (bash, readFile, etc.)
+    registerCommonHandlers(rpcHandlerManager, workingDirectory);
+
+    // Register all currently known methods with SyncNode
+    syncBridge.registerRpcMethods(rpcHandlerManager.getRegisteredMethods());
+
+    // ─── Push notifications ────────────────────────────────────────────────
+
+    const push = api.push();
+
+    // ─── Start Happy MCP server ────────────────────────────────────────────
+
+    // The Session class owns Claude transcript forwarding, but isn't created
+    // until loop(). Defer the MCP server callback until currentSession exists.
+    let currentSession: Session | null = null;
+
+    const happyServer = await startHappyServer({
+        sessionId: response.id,
+        sendClaudeMessage: (body) => {
+            if (currentSession) {
+                currentSession.sendClaudeMessage(body);
+            } else {
+                logger.debug('[happyMCP] Session not yet ready, dropping message');
+            }
+        },
+    });
+    logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
+
     // Extract SDK metadata in background and update session when ready
     extractSDKMetadataAsync(async (sdkMetadata) => {
         logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
         try {
-            // Update session metadata with tools and slash commands
-            api.sessionSyncClient(response).updateMetadata((currentMetadata) => ({
+            syncBridge.updateMetadata((currentMetadata: any) => ({
                 ...currentMetadata,
                 tools: sdkMetadata.tools,
                 slashCommands: sdkMetadata.slashCommands
@@ -194,22 +272,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     });
 
-    // Create realtime session
-    const session = api.sessionSyncClient(response);
-
-    // Start Happy MCP server
-    const happyServer = await startHappyServer(session);
-    logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
-
-    // Variable to track current session instance (updated via onSessionReady callback)
-    // Used by hook server to notify Session when Claude changes session ID
-    let currentSession: Session | null = null;
-
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
-            
+
             // Update session ID in the Session instance
             if (currentSession) {
                 const previousSessionId = currentSession.sessionId;
@@ -232,7 +299,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.infoDeveloper(`Logs: ${logPath}`);
 
     // Set initial agent state
-    session.updateAgentState((currentState) => ({
+    syncBridge.updateAgentState((currentState: any) => ({
         ...currentState,
         controlledByUser: options.startingMode !== 'remote'
     }));
@@ -254,134 +321,82 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         disallowedTools: mode.disallowedTools
     }));
 
-    // Forward messages to the queue
-    // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
+    // Forward user messages from the app to the queue via SyncBridge
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
-    let currentModel = options.model; // Track current model state
-    let currentFallbackModel: string | undefined = undefined; // Track current fallback model
-    let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
-    let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
-    let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
-    let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    session.onUserMessage((message) => {
+    let currentModel = options.model;
+    let currentFallbackModel: string | undefined = undefined;
+    let currentCustomSystemPrompt: string | undefined = undefined;
+    let currentAppendSystemPrompt: string | undefined = undefined;
+    let currentAllowedTools: string[] | undefined = undefined;
+    let currentDisallowedTools: string[] | undefined = undefined;
 
-        // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
-        let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
-        if (message.meta?.permissionMode) {
-            messagePermissionMode = applySandboxPermissionPolicy(message.meta.permissionMode, sandboxEnabled);
-            currentPermissionMode = messagePermissionMode;
-            logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
-        } else {
-            logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
-        }
+    const getCurrentEnhancedMode = (): EnhancedMode => ({
+        permissionMode: currentPermissionMode || 'default',
+        model: currentModel,
+        fallbackModel: currentFallbackModel,
+        customSystemPrompt: currentCustomSystemPrompt,
+        appendSystemPrompt: currentAppendSystemPrompt,
+        allowedTools: currentAllowedTools,
+        disallowedTools: currentDisallowedTools,
+    });
 
-        // Resolve model - use message.meta.model if provided, otherwise use current model
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined; // null becomes undefined
-            currentModel = messageModel;
-            logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
-        } else {
-            logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);
+    syncBridge.onRuntimeConfigChange((change) => {
+        if (change.permissionMode) {
+            currentPermissionMode = applySandboxPermissionPolicy(change.permissionMode as PermissionMode, sandboxEnabled);
         }
+        if (Object.prototype.hasOwnProperty.call(change, 'model')) {
+            currentModel = change.model || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'fallbackModel')) {
+            currentFallbackModel = change.fallbackModel || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'customSystemPrompt')) {
+            currentCustomSystemPrompt = change.customSystemPrompt || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'appendSystemPrompt')) {
+            currentAppendSystemPrompt = change.appendSystemPrompt || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'allowedTools')) {
+            currentAllowedTools = change.allowedTools || undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(change, 'disallowedTools')) {
+            currentDisallowedTools = change.disallowedTools || undefined;
+        }
+    });
 
-        // Resolve custom system prompt - use message.meta.customSystemPrompt if provided, otherwise use current
-        let messageCustomSystemPrompt = currentCustomSystemPrompt;
-        if (message.meta?.hasOwnProperty('customSystemPrompt')) {
-            messageCustomSystemPrompt = message.meta.customSystemPrompt || undefined; // null becomes undefined
-            currentCustomSystemPrompt = messageCustomSystemPrompt;
-            logger.debug(`[loop] Custom system prompt updated from user message: ${messageCustomSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no custom system prompt override, using current: ${currentCustomSystemPrompt ? 'set' : 'none'}`);
-        }
-
-        // Resolve fallback model - use message.meta.fallbackModel if provided, otherwise use current fallback model
-        let messageFallbackModel = currentFallbackModel;
-        if (message.meta?.hasOwnProperty('fallbackModel')) {
-            messageFallbackModel = message.meta.fallbackModel || undefined; // null becomes undefined
-            currentFallbackModel = messageFallbackModel;
-            logger.debug(`[loop] Fallback model updated from user message: ${messageFallbackModel || 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no fallback model override, using current: ${currentFallbackModel || 'none'}`);
-        }
-
-        // Resolve append system prompt - use message.meta.appendSystemPrompt if provided, otherwise use current
-        let messageAppendSystemPrompt = currentAppendSystemPrompt;
-        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
-            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined; // null becomes undefined
-            currentAppendSystemPrompt = messageAppendSystemPrompt;
-            logger.debug(`[loop] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
-        }
-
-        // Resolve allowed tools - use message.meta.allowedTools if provided, otherwise use current
-        let messageAllowedTools = currentAllowedTools;
-        if (message.meta?.hasOwnProperty('allowedTools')) {
-            messageAllowedTools = message.meta.allowedTools || undefined; // null becomes undefined
-            currentAllowedTools = messageAllowedTools;
-            logger.debug(`[loop] Allowed tools updated from user message: ${messageAllowedTools ? messageAllowedTools.join(', ') : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no allowed tools override, using current: ${currentAllowedTools ? currentAllowedTools.join(', ') : 'none'}`);
-        }
-
-        // Resolve disallowed tools - use message.meta.disallowedTools if provided, otherwise use current
-        let messageDisallowedTools = currentDisallowedTools;
-        if (message.meta?.hasOwnProperty('disallowedTools')) {
-            messageDisallowedTools = message.meta.disallowedTools || undefined; // null becomes undefined
-            currentDisallowedTools = messageDisallowedTools;
-            logger.debug(`[loop] Disallowed tools updated from user message: ${messageDisallowedTools ? messageDisallowedTools.join(', ') : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
-        }
+    syncBridge.onUserMessage((message) => {
+        const text = getUserMessageText(message);
+        if (!text) return;
 
         // Check for special commands before processing
-        const specialCommand = parseSpecialCommand(message.content.text);
+        const specialCommand = parseSpecialCommand(text);
 
-        if (specialCommand.type === 'compact') {
-            logger.debug('[start] Detected /compact command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
-            };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
-            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+        const enhancedMode = getCurrentEnhancedMode();
+
+        if (specialCommand.type === 'compact' || specialCommand.type === 'clear') {
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || text, enhancedMode);
             return;
         }
 
-        if (specialCommand.type === 'clear') {
-            logger.debug('[start] Detected /clear command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
-            };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
-            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+        messageQueue.push(text, enhancedMode);
+        logger.debug('User message pushed to queue via SyncBridge');
+    });
+
+    syncBridge.onQuestionAnswer((answer) => {
+        currentSession?.unblockToolWithAnswers(answer.questionId, answer.answers);
+
+        const answerText = answer.answers
+            .map(group => group.join(', ').trim())
+            .filter(text => text.length > 0)
+            .join('\n');
+
+        if (!answerText) {
+            logger.debug('Received empty question answer via SyncBridge');
             return;
         }
 
-        // Push with resolved permission mode, model, system prompts, and tools
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-            fallbackModel: messageFallbackModel,
-            customSystemPrompt: messageCustomSystemPrompt,
-            appendSystemPrompt: messageAppendSystemPrompt,
-            allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools
-        };
-        messageQueue.push(message.content.text, enhancedMode);
-        logger.debugLargeJson('User message pushed to queue:', message)
+        messageQueue.push(answerText, getCurrentEnhancedMode());
+        logger.debug('Question answer pushed to queue via SyncBridge');
     });
 
     // Setup signal handlers for graceful shutdown
@@ -390,23 +405,21 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         try {
             // Update lifecycle state to archived before closing
-            if (session) {
-                session.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    lifecycleState: 'archived',
-                    lifecycleStateSince: Date.now(),
-                    archivedBy: 'cli',
-                    archiveReason: 'User terminated'
-                }));
-                
-                // Cleanup session resources (intervals, callbacks)
-                currentSession?.cleanup();
+            syncBridge.updateMetadata((currentMetadata: any) => ({
+                ...currentMetadata,
+                lifecycleState: 'archived',
+                lifecycleStateSince: Date.now(),
+                archivedBy: 'cli',
+                archiveReason: 'User terminated'
+            }));
 
-                // Send session death message
-                session.sendSessionDeath();
-                await session.flush();
-                await session.close();
-            }
+            // Cleanup session resources (intervals, callbacks)
+            currentSession?.cleanup();
+
+            // Send session death message
+            syncBridge.sendSessionDeath();
+            await syncBridge.flush();
+            syncBridge.disconnect();
 
             // Stop caffeinate
             stopCaffeinate();
@@ -441,7 +454,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         cleanup();
     });
 
-    registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+    registerKillSessionHandler(rpcHandlerManager, cleanup);
 
     // Create claude loop
     const exitCode = await loop({
@@ -450,17 +463,20 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         permissionMode: initialPermissionMode,
         startingMode: options.startingMode,
         messageQueue,
-        api,
+        syncBridge,
+        rpcHandlerManager,
+        push,
+        hapSessionId: response.id,
         allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
         onModeChange: (newMode) => {
-            session.sendSessionEvent({ type: 'switch', mode: newMode });
-            session.updateAgentState((currentState) => ({
+            syncBridge.updateAgentState((currentState: any) => ({
                 ...currentState,
-                controlledByUser: newMode === 'local'
+                controlledByUser: newMode === 'local',
+                lastEvent: { type: 'switch', mode: newMode, time: Date.now() },
             }));
         },
         onSessionReady: (sessionInstance) => {
-            // Store reference for hook server callback
+            // Store reference for hook server callback and Happy MCP server
             currentSession = sessionInstance;
         },
         mcpServers: {
@@ -469,7 +485,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 url: happyServer.url,
             }
         },
-        session,
         claudeEnvVars: options.claudeEnvVars,
         claudeArgs: options.claudeArgs,
         sandboxConfig,
@@ -482,15 +497,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     (currentSession as Session | null)?.cleanup();
 
     // Send session death message
-    session.sendSessionDeath();
+    syncBridge.sendSessionDeath();
 
     // Wait for socket to flush
     logger.debug('Waiting for socket to flush...');
-    await session.flush();
+    await syncBridge.flush();
 
-    // Close session
-    logger.debug('Closing session...');
-    await session.close();
+    // Close SyncBridge
+    logger.debug('Closing SyncBridge...');
+    syncBridge.disconnect();
 
     // Stop caffeinate before exiting
     stopCaffeinate();

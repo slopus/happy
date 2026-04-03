@@ -18,6 +18,23 @@ const ResumableMetadataSchema = z.object({
     codexThreadId: z.string().optional(),
 }).passthrough();
 
+const SyncNodeStoredSessionMetadataSchema = z.object({
+    session: z.object({
+        directory: z.string(),
+        projectID: z.string(),
+        title: z.string().optional(),
+        parentID: z.string().nullable().optional(),
+    }),
+    metadata: z.unknown().nullable().optional(),
+}).passthrough();
+
+const SyncNodeSessionMetadataSchema = z.object({
+    directory: z.string(),
+    projectID: z.string(),
+    title: z.string().optional(),
+    parentID: z.string().nullable().optional(),
+}).passthrough();
+
 type RawSession = {
     id: string;
     active: boolean;
@@ -70,7 +87,7 @@ function readAgentCredentials() {
     const credentials = readLocalHappyAgentCredentials();
     if (!credentials) {
         throw new Error(
-            `Cannot resume historical Happy sessions without ${credentialPath}. Run \`happy-agent auth login\` in this environment first.`,
+            `Cannot resume historical Happy sessions without ${credentialPath}. Run \`happy auth login\` in this environment first.`,
         );
     }
     return credentials;
@@ -106,6 +123,32 @@ function decryptSessionMetadata(session: RawSession, credentials: LocalHappyAgen
         throw new Error(`Failed to decrypt metadata for Happy session ${session.id}`);
     }
 
+    const syncNodeEnvelope = SyncNodeStoredSessionMetadataSchema.safeParse(metadata);
+    if (syncNodeEnvelope.success) {
+        const nestedMetadata = syncNodeEnvelope.data.metadata;
+        const nested = ResumableMetadataSchema.safeParse(nestedMetadata);
+        if (nested.success) {
+            return nested.data as Metadata;
+        }
+
+        const nestedRecord = nestedMetadata && typeof nestedMetadata === 'object'
+            ? nestedMetadata as Record<string, unknown>
+            : {};
+        return {
+            ...nestedRecord,
+            path: typeof nestedRecord.path === 'string' && nestedRecord.path.length > 0
+                ? nestedRecord.path
+                : syncNodeEnvelope.data.session.directory,
+        } as Metadata;
+    }
+
+    const syncNodeSessionMetadata = SyncNodeSessionMetadataSchema.safeParse(metadata);
+    if (syncNodeSessionMetadata.success) {
+        return {
+            path: syncNodeSessionMetadata.data.directory,
+        } as Metadata;
+    }
+
     try {
         return ResumableMetadataSchema.parse(metadata) as Metadata;
     } catch {
@@ -127,7 +170,7 @@ export async function resolveHappySession(sessionId: string): Promise<ResumableH
     } catch (error) {
         if (error instanceof AxiosError) {
             if (error.response?.status === 401) {
-                throw new Error('Happy session lookup authentication expired. Run `happy-agent auth login` in this environment.');
+                throw new Error('Happy session lookup authentication expired. Run `happy auth login` in this environment.');
             }
             throw new Error(`Failed to load Happy sessions: ${error.message}`);
         }

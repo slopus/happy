@@ -115,7 +115,7 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
   });
 
   it('should spawn & stop a session via HTTP (not testing RPC route, but similar enough)', async () => {
-    const response = await spawnDaemonSession(integrationEnv.projectPath, 'spawned-test-456');
+    const response = await spawnDaemonSession(integrationEnv.projectPath);
 
     expect(response).toHaveProperty('success', true);
     expect(response).toHaveProperty('sessionId');
@@ -181,7 +181,7 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
     await new Promise(resolve => setTimeout(resolve, 5_000));
 
     // Spawn a daemon session
-    const spawnResponse = await spawnDaemonSession(integrationEnv.projectPath, 'daemon-session-bbb');
+    const spawnResponse = await spawnDaemonSession(integrationEnv.projectPath);
 
     // List all sessions
     const sessions = await listDaemonSessions();

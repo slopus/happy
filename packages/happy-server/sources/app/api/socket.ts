@@ -12,6 +12,7 @@ import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
+import { canAccessSession, resolveSyncNodeTokenClaims } from "@/app/auth/syncNodeToken";
 
 export function startSocket(app: Fastify) {
     const io = new Server(app.server, {
@@ -66,6 +67,44 @@ export function startSocket(app: Fastify) {
         if (!verified) {
             log({ module: 'websocket' }, `Invalid token provided`);
             socket.emit('error', { message: 'Invalid authentication token' });
+            socket.disconnect();
+            return;
+        }
+
+        const syncNodeClaims = resolveSyncNodeTokenClaims(verified.userId, verified.extras);
+        if (!syncNodeClaims) {
+            log({ module: 'websocket' }, "Invalid sync node claims");
+            socket.emit('error', { message: 'Invalid token claims' });
+            socket.disconnect();
+            return;
+        }
+
+        if (syncNodeClaims.scope.type === 'session') {
+            if (clientType !== 'session-scoped' || !sessionId) {
+                log({ module: 'websocket' }, "Session-scoped token requires a session-scoped socket connection");
+                socket.emit('error', { message: 'Session-scoped token requires a session-scoped connection' });
+                socket.disconnect();
+                return;
+            }
+
+            if (syncNodeClaims.scope.sessionId !== sessionId) {
+                log({ module: 'websocket' }, `Session-scoped token mismatch: ${syncNodeClaims.scope.sessionId} !== ${sessionId}`);
+                socket.emit('error', { message: 'Session-scoped token does not match requested session' });
+                socket.disconnect();
+                return;
+            }
+        }
+
+        if (sessionId && !canAccessSession(syncNodeClaims, sessionId)) {
+            log({ module: 'websocket' }, `Token cannot access session ${sessionId}`);
+            socket.emit('error', { message: 'Token cannot access requested session' });
+            socket.disconnect();
+            return;
+        }
+
+        if (machineId && syncNodeClaims.scope.type === 'session') {
+            log({ module: 'websocket' }, "Session-scoped tokens cannot open machine-scoped sockets");
+            socket.emit('error', { message: 'Session-scoped token cannot access machine-scoped connection' });
             socket.disconnect();
             return;
         }

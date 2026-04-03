@@ -756,6 +756,12 @@ export const zhHans: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',
+        compactionMarker: '对话已压缩',
+        subtask: '子任务',
+    },
+
+    permissions: {
+        sessionStopped: '会话已停止',
     },
 
     codex: {

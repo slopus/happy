@@ -232,22 +232,10 @@ export default function DevScreen() {
                     onPress={() => router.push('/dev/colors')}
                 />
                 <Item
-                    title="Message Demos"
-                    subtitle="Various message types and components"
-                    icon={<Ionicons name="chatbubbles-outline" size={28} color="#007AFF" />}
-                    onPress={() => router.push('/dev/messages-demo')}
-                />
-                <Item
                     title="Inverted List Test"
                     subtitle="Test inverted FlatList with keyboard"
                     icon={<Ionicons name="swap-vertical-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/inverted-list')}
-                />
-                <Item
-                    title="Tool Views"
-                    subtitle="Tool call visualization components"
-                    icon={<Ionicons name="construct-outline" size={28} color="#007AFF" />}
-                    onPress={() => router.push('/dev/tools2')}
                 />
                 <Item
                     title="Shimmer View"

@@ -1,8 +1,14 @@
 # Agent Exercise Flow
 
-24 steps against lab-rat-todo-project. One continuous session. Execute
-sequentially. Each section labels what's being tested. The flow is linear
-and realistic — each step builds on the last.
+38 user interactions against lab-rat-todo-project. One continuous session.
+Execute sequentially. Each section labels what's being tested. The flow is
+linear and realistic — each step builds on the last.
+
+The step numbering intentionally skips `24` for historical continuity. The
+flow contains 38 total interactions (`0-23`, `25-38`).
+
+Not all agents support every primitive (e.g. TaskCreate/TaskOutput may be
+Claude-only). Record what happens, document what's unsupported with evidence.
 
 Not all agents support every primitive. Record what happens, skip what
 doesn't apply, note what's missing.
@@ -287,18 +293,196 @@ Agent should update the task tracking from step 16.
 
 ---
 
-## WRAP UP
+## MULTI-PERMISSION
 
-Final proof of transcript coherence.
+Multiple tools needing approval in a single turn.
 
-### Step 24 — Full summary
+### Step 25 — Multiple permissions in one turn
 
-> Give me a git-style summary of everything we changed. List files
+> Refactor the app: extract the filter logic into a new file called
+> `filters.js`, move the dark mode toggle into a new file called
+> `theme.js`, and update app.js to import from both.
+
+This should trigger multiple edit/write tools in one agent turn. When
+the permission prompts appear (there should be multiple), **APPROVE ONE
+AT A TIME**. Do not use "allow always" — approve each individually with
+"allow once."
+
+Observe: do all permission prompts appear together? Can you approve
+them independently? Does the agent wait for ALL permissions to resolve
+before continuing?
+
+### Step 26 — Supersede pending permissions
+
+> Actually, undo all that. Put everything back in app.js. Also add a
+> comment at the top: "// single-file architecture".
+
+Send this **immediately** — while the agent is potentially still waiting
+for permission or executing from step 25. If there are pending
+permissions, they should be **auto-rejected** because the user sent a
+new message. The new request takes priority.
+
+Observe: are pending permissions auto-declined? Does the agent start
+fresh with the new request?
+
+---
+
+## SUBAGENT PERMISSIONS
+
+Child session permission handling.
+
+### Step 27 — Subagent hits a permission wall
+
+> Use a subagent to add a "clear completed" button. The subagent should
+> edit index.html and app.js. Don't auto-approve anything for it.
+
+The subagent (child session) should need permission to edit files. When
+the permission appears (it should be for the child session, not the
+parent), **APPROVE ONCE**.
+
+Observe: does the permission appear in the context of the child session?
+Does the parent session show a badge or indication that a child needs
+attention? After approval, does the child complete and report back?
+
+---
+
+## STOP WITH PENDING STATE
+
+### Step 28 — Stop session while permission is pending
+
+> Add a new "priority" field to todos — high, medium, low. Use a
+> colored dot next to each item.
+
+When the permission prompt appears, **DO NOT APPROVE**. Instead, **STOP
+THE SESSION** entirely (kill the agent process).
+
+Observe: are pending permissions auto-rejected on stop? Is the session
+state clean — no stuck "blocked" tools?
+
+### Step 29 — Resume after forced stop
+
+Come back. Resume the session.
+
+> What happened with the priority feature?
+
+Agent should see that the previous tools were rejected because the
+session was stopped. It should explain what happened and wait for
+instruction. The session history should be intact.
+
+### Step 30 — Retry after stop
+
+> Try again — add the priority field. Approve everything this time.
+
+Approve the permissions. Verify the agent completes the task cleanly
+after the previous forced stop.
+
+---
+
+## BACKGROUND TASKS
+
+Long-running tools that execute while the agent continues or waits.
+
+### Step 31 — Launch a background task
+
+> Run a background task that sleeps for 30 seconds and then echoes
+> "lol i am donezen". While it's running, tell me what time it is.
+
+The agent should launch the bash command in the background (e.g.
+`run_in_background` parameter, `&`, or however the agent supports it)
+and respond to the "what time is it" question without waiting for the
+background task to finish.
+
+Observe: does the tool part appear immediately in a "running" state?
+Does the agent continue responding while it runs? Is the tool output
+captured when it eventually completes?
+
+### Step 32 — Background task completes
+
+Wait ~30 seconds for the background task to finish.
+
+> Did that background task finish? What was the output?
+
+Agent should see the completed background tool and report the output
+("lol i am donezen"). Verify: the tool part transitioned from `running`
+to `completed` with the output captured. The timestamp gap between
+start and end should be ~30 seconds.
+
+### Step 33 — Interact during background task
+
+> Run another background task: sleep 20 && echo "background two".
+> While that's running, add a comment to the top of app.js saying
+> "// background task test".
+
+The agent should handle both — launch the background task AND perform
+the edit in the foreground. Two tool parts: one running (background),
+one completed (edit). Verify the edit happens immediately, background
+completes later.
+
+---
+
+## WRAP UP (part 1)
+
+### Step 34 — Full summary
+
+> Give me a git-style summary of everything we changed so far. List files
 > modified, lines added/removed if you can tell.
 
+Agent should produce a coherent summary spanning all interactions so far.
+If it can do this accurately, the transcript held together.
+
+---
+
+## BACKGROUND SUBAGENTS (Tasks)
+
+Background agent tasks that run concurrently with the main conversation.
+Claude uses TaskCreate/TaskOutput. Availability varies by agent — document
+what works and what doesn't per agent.
+
+### Step 35 — Background subagent (TaskCreate)
+
+> Launch a background agent task: have it research what CSS frameworks
+> would work well for this project. Don't wait for it — tell me about
+> the current project structure while it works.
+
+The agent should use TaskCreate (or equivalent) to launch a background
+agent task, then continue responding in the foreground without blocking.
+
+Observe: does a background task tool part appear? Does the agent continue
+the conversation? Is the task visible as a separate running entity?
+
+### Step 36 — Check background agent result (TaskOutput)
+
+> Did that background research finish? What did it find?
+
+The agent should use TaskOutput (with block:true) to retrieve the
+background task's result, then present the findings.
+
+Observe: does the agent retrieve the completed task output? Does the
+tool part transition from running to completed? Is the result coherent?
+
+### Step 37 — Multiple background tasks
+
+> Launch two background tasks in parallel: one to check if our HTML is
+> valid, another to analyze our CSS for unused rules. While they run,
+> add a comment to app.js saying "// multi-task test".
+
+Multiple concurrent background tasks plus foreground work. Three tool
+parts should appear: two background (running), one foreground (edit).
+
+Observe: do both background tasks launch? Does the foreground edit
+happen immediately? Do background tasks complete independently?
+
+---
+
+## WRAP UP (final)
+
+### Step 38 — Final summary
+
+> Update your earlier summary with everything we did since then,
+> including the background tasks. Give me the final git-style summary.
+
 This is the capstone. Agent should produce a coherent summary spanning
-all 24 interactions. If it can do this accurately, the transcript held
-together.
+all 38 interactions.
 
 ---
 
@@ -307,17 +491,21 @@ together.
 After running all steps, check which primitives were exercised:
 
 ### Transcript
-- text response (no tools) — 1, 2, 19, 24
+- text response (no tools) — 1, 2, 19, 22, 29, 38
 - reasoning/thinking — 2, 3
-- streaming text — 1, 2, 24
-- multi-step turn — 1, 6, 13
+- streaming text — 1, 2, 38
+- multi-step turn — 1, 6, 13, 25, 30, 33, 37
 
 ### Tools
-- tool completed — 1, 4, 6, 9, 13
-- tool errored — 3, 10
-- tool with output — 1, 16
-- multi-file edit — 6, 13
-- file changed on disk — 4, 5, 6, 13, 17
+- tool completed — 1, 4, 6, 9, 13, 25, 30, 32, 33, 36
+- tool errored — 3, 10, 26, 28
+- tool with output — 1, 16, 32, 36
+- multi-file edit — 6, 13, 25
+- file changed on disk — 4, 5, 6, 13, 17, 30, 33, 37
+- background task (long-running) — 31, 32, 33, 35, 37
+- foreground + background concurrent — 33, 35, 37
+- background subagent (TaskCreate) — 35, 37
+- background subagent result (TaskOutput) — 36
 
 ### Permissions
 - reject → error — 3
@@ -325,19 +513,25 @@ After running all steps, check which primitives were exercised:
 - allow always → rule stored — 5
 - auto-approve (always rule) — 6, 9
 - deny / sandbox — 15
+- multiple permissions in one turn — 25
+- auto-reject on new message — 26
+- auto-reject on session stop — 28
+- subagent permission — 27
 
 ### Web search
 - external fetch — 7
 
 ### Subagents
 - child tasks — 8
-- constrained permissions — 8
+- constrained permissions — 8, 27
 - parallel execution — 8
+- child permission resolution — 27
 
 ### Interruption
 - cancel mid-stream — 10
 - cleanup after cancel — 10
 - resume — 11
+- supersede with new message — 26
 
 ### Question
 - agent asks, user answers — 12
@@ -360,4 +554,17 @@ After running all steps, check which primitives were exercised:
 ### Persistence
 - close + reopen — 20, 21
 - history intact — 21, 22
-- continuity after resume — 22, 24
+- continuity after resume — 22, 29, 38
+- forced stop with pending state — 28
+- resume after forced stop — 29
+
+### Background tasks
+- launch background tool — 31
+- background completes with output — 32
+- foreground work during background — 33, 35, 37
+- concurrent tool parts (running + completed) — 33, 37
+
+### Background subagents
+- TaskCreate — 35, 37
+- TaskOutput (retrieve result) — 36
+- multiple concurrent background tasks — 37

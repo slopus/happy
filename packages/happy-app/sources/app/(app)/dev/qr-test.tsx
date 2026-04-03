@@ -1,58 +1,56 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, ScrollView } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet } from 'react-native';
 import { QRCode } from '@/components/qr';
 import { RoundButton } from '@/components/RoundButton';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-
-const stylesheet = StyleSheet.create((theme) => ({
-    container: {
-        flex: 1,
-        backgroundColor: theme.colors.surface,
-        padding: 20,
-    },
-    section: {
-        marginBottom: 30,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: theme.colors.text,
-        marginBottom: 15,
-        ...Typography.default(),
-    },
-    input: {
-        backgroundColor: theme.colors.input.background,
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 15,
-        color: theme.colors.input.text,
-        fontSize: 16,
-    },
-    qrContainer: {
-        alignItems: 'center',
-        marginVertical: 15,
-        padding: 15,
-        backgroundColor: theme.colors.surfaceHigh,
-        borderRadius: 12,
-    },
-    qrLabel: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        marginBottom: 10,
-        textAlign: 'center',
-        ...Typography.default(),
-    },
-    row: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-around',
-    },
-}));
 
 export default function QRTest() {
     const { theme } = useUnistyles();
-    const styles = stylesheet;
+    const styles = React.useMemo(() => StyleSheet.create({
+        container: {
+            flex: 1,
+            backgroundColor: theme.colors.surface,
+            padding: 20,
+        },
+        section: {
+            marginBottom: 30,
+        },
+        sectionTitle: {
+            fontSize: 18,
+            fontWeight: 'bold',
+            color: theme.colors.text,
+            marginBottom: 15,
+            ...Typography.default(),
+        },
+        input: {
+            backgroundColor: theme.colors.input.background,
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 15,
+            color: theme.colors.input.text,
+            fontSize: 16,
+        },
+        qrContainer: {
+            alignItems: 'center',
+            marginVertical: 15,
+            padding: 15,
+            backgroundColor: theme.colors.surfaceHigh,
+            borderRadius: 12,
+        },
+        qrLabel: {
+            fontSize: 14,
+            color: theme.colors.textSecondary,
+            marginBottom: 10,
+            textAlign: 'center',
+            ...Typography.default(),
+        },
+        row: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            justifyContent: 'space-around',
+        },
+    }), [theme]);
     const [customData, setCustomData] = useState('Hello World!');
 
     const testData = [

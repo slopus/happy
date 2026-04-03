@@ -1,221 +1,133 @@
-import * as React from "react";
-import { View, Text } from "react-native";
+import type { Metadata } from '@/sync/storageTypes';
+import type { SessionMessage } from '@slopus/happy-sync';
+import * as React from 'react';
+import { Image, Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { MarkdownView } from "./markdown/MarkdownView";
-import { t } from '@/text';
-import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
-import { Metadata } from "@/sync/storageTypes";
-import { layout } from "./layout";
-import { ToolView } from "./tools/ToolView";
-import { AgentEvent } from "@/sync/typesRaw";
+import { MarkdownView, type Option } from './markdown/MarkdownView';
+import { layout } from './layout';
+import { AgentContentView } from './AgentContentView';
+import { getUserContentImages, getUserContentMarkdown, isUserMessage } from './transcriptUtils';
 import { sync } from '@/sync/sync';
-import { Option } from './markdown/MarkdownView';
 
-
-export const MessageView = (props: {
-  message: Message;
-  metadata: Metadata | null;
-  sessionId: string;
-  getMessageById?: (id: string) => Message | null;
-}) => {
-  return (
-    <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
-      <View style={styles.messageContent}>
-        <RenderBlock
-          message={props.message}
-          metadata={props.metadata}
-          sessionId={props.sessionId}
-          getMessageById={props.getMessageById}
-        />
-      </View>
-    </View>
-  );
-};
-
-// RenderBlock function that dispatches to the correct component based on message kind
-function RenderBlock(props: {
-  message: Message;
-  metadata: Metadata | null;
-  sessionId: string;
-  getMessageById?: (id: string) => Message | null;
-}): React.ReactElement {
-  switch (props.message.kind) {
-    case 'user-text':
-      return <UserTextBlock message={props.message} sessionId={props.sessionId} />;
-
-    case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
-
-    case 'tool-call':
-      return <ToolCallBlock
-        message={props.message}
-        metadata={props.metadata}
-        sessionId={props.sessionId}
-        getMessageById={props.getMessageById}
-      />;
-
-    case 'agent-event':
-      return <AgentEventBlock event={props.message.event} metadata={props.metadata} />;
-
-
-    default:
-      // Exhaustive check - TypeScript will error if we miss a case
-      const _exhaustive: never = props.message;
-      throw new Error(`Unknown message kind: ${_exhaustive}`);
-  }
+export interface MessageViewProps {
+    message: SessionMessage;
+    sessionId: string;
+    messageId: string;
+    metadata?: Metadata | null;
 }
 
-function UserTextBlock(props: {
-  message: UserTextMessage;
-  sessionId: string;
-}) {
-  const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId]);
+export const MessageView = React.memo<MessageViewProps>(({ message, sessionId, messageId, metadata }) => {
+    const handleOptionPress = React.useCallback((option: Option) => {
+        sync.sendMessage(sessionId, option.title);
+    }, [sessionId]);
 
-  return (
-    <View style={styles.userMessageContainer}>
-      <View style={styles.userMessageBubble}>
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-        {/* {__DEV__ && (
-          <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
-        )} */}
-      </View>
-    </View>
-  );
-}
+    if (message === 'Resume') {
+        return (
+            <View style={styles.messageContainer}>
+                <View style={styles.messageContent}>
+                    <View style={styles.resumePill}>
+                        <Text style={styles.resumeText}>Resumed session</Text>
+                    </View>
+                </View>
+            </View>
+        );
+    }
 
-function AgentTextBlock(props: {
-  message: AgentTextMessage;
-  sessionId: string;
-}) {
-  const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId]);
+    if (isUserMessage(message)) {
+        const markdown = getUserContentMarkdown(message.User.content);
+        const images = getUserContentImages(message.User.content);
 
-  // Hide thinking messages
-  if (props.message.isThinking) {
-    return null;
-  }
+        if (!markdown && images.length === 0) {
+            return null;
+        }
 
-  return (
-    <View style={styles.agentMessageContainer}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-    </View>
-  );
-}
-
-function AgentEventBlock(props: {
-  event: AgentEvent;
-  metadata: Metadata | null;
-}) {
-  if (props.event.type === 'switch') {
-    return (
-      <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>{t('message.switchedToMode', { mode: props.event.mode })}</Text>
-      </View>
-    );
-  }
-  if (props.event.type === 'message') {
-    return (
-      <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>{props.event.message}</Text>
-      </View>
-    );
-  }
-  if (props.event.type === 'limit-reached') {
-    const formatTime = (timestamp: number): string => {
-      try {
-        const date = new Date(timestamp * 1000); // Convert from Unix timestamp
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } catch {
-        return t('message.unknownTime');
-      }
-    };
+        return (
+            <View style={styles.messageContainer}>
+                <View style={styles.messageContent}>
+                    <View style={styles.userMessageContainer}>
+                        <View style={styles.userMessageBubble}>
+                            {markdown ? (
+                                <MarkdownView markdown={markdown} onOptionPress={handleOptionPress} sessionId={sessionId} />
+                            ) : null}
+                            {images.map((image, index) => (
+                                <Image
+                                    key={`image:${index}`}
+                                    source={{ uri: image.source }}
+                                    style={[
+                                        styles.userImage,
+                                        image.size?.width && image.size?.height
+                                            ? { aspectRatio: image.size.width / image.size.height }
+                                            : null,
+                                    ]}
+                                />
+                            ))}
+                        </View>
+                    </View>
+                </View>
+            </View>
+        );
+    }
 
     return (
-      <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>
-          {t('message.usageLimitUntil', { time: formatTime(props.event.endsAt) })}
-        </Text>
-      </View>
+        <View style={styles.messageContainer}>
+            <View style={styles.messageContent}>
+                <AgentContentView
+                    content={message.Agent.content}
+                    toolResults={message.Agent.tool_results}
+                    sessionId={sessionId}
+                    messageId={messageId}
+                    metadata={metadata}
+                />
+            </View>
+        </View>
     );
-  }
-  return (
-    <View style={styles.agentEventContainer}>
-      <Text style={styles.agentEventText}>{t('message.unknownEvent')}</Text>
-    </View>
-  );
-}
-
-function ToolCallBlock(props: {
-  message: ToolCallMessage;
-  metadata: Metadata | null;
-  sessionId: string;
-  getMessageById?: (id: string) => Message | null;
-}) {
-  if (!props.message.tool) {
-    return null;
-  }
-  return (
-    <View style={styles.toolContainer}>
-      <ToolView
-        tool={props.message.tool}
-        metadata={props.metadata}
-        messages={props.message.children}
-        sessionId={props.sessionId}
-        messageId={props.message.id}
-      />
-    </View>
-  );
-}
+});
 
 const styles = StyleSheet.create((theme) => ({
-  messageContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  messageContent: {
-    flexDirection: 'column',
-    flexGrow: 1,
-    flexBasis: 0,
-    maxWidth: layout.maxWidth,
-  },
-  userMessageContainer: {
-    maxWidth: '100%',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-  },
-  userMessageBubble: {
-    backgroundColor: theme.colors.userMessageBackground,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 12,
-    maxWidth: '100%',
-  },
-  agentMessageContainer: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 16,
-    alignSelf: 'flex-start',
-  },
-  agentEventContainer: {
-    marginHorizontal: 8,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  agentEventText: {
-    color: theme.colors.agentEventText,
-    fontSize: 14,
-  },
-  toolContainer: {
-    marginHorizontal: 8,
-  },
-  debugText: {
-    color: theme.colors.agentEventText,
-    fontSize: 12,
-  },
+    messageContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+    },
+    messageContent: {
+        flexDirection: 'column',
+        flexGrow: 1,
+        flexBasis: 0,
+        maxWidth: layout.maxWidth,
+    },
+    userMessageContainer: {
+        maxWidth: '100%',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        justifyContent: 'flex-end',
+        paddingHorizontal: 16,
+    },
+    userMessageBubble: {
+        backgroundColor: theme.colors.userMessageBackground,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 12,
+        marginBottom: 12,
+        maxWidth: '100%',
+        gap: 8,
+    },
+    userImage: {
+        width: 220,
+        maxWidth: '100%',
+        height: 180,
+        borderRadius: 8,
+    },
+    resumePill: {
+        alignSelf: 'center',
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 999,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginBottom: 12,
+    },
+    resumeText: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+    },
 }));

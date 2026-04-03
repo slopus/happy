@@ -12,8 +12,13 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { AddressInfo } from "node:net";
 import { z } from "zod";
 import { logger } from "@/ui/logger";
-import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
+import type { RawJSONLines } from "@/claude/types";
+
+interface HappyServerOpts {
+    sessionId: string;
+    sendClaudeMessage: (body: RawJSONLines) => void;
+}
 
 function createMcpServer(handler: (title: string) => Promise<{ success: boolean; error?: string }>): McpServer {
     const mcp = new McpServer({
@@ -57,17 +62,20 @@ function createMcpServer(handler: (title: string) => Promise<{ success: boolean;
     return mcp;
 }
 
-export async function startHappyServer(client: ApiSessionClient) {
-    logger.debug(`[happyMCP] server:start sessionId=${client.sessionId}`);
+export async function startHappyServer(opts: HappyServerOpts) {
+    logger.debug(`[happyMCP] server:start sessionId=${opts.sessionId}`);
 
+    // Handler that sends title updates via the client
     const handler = async (title: string) => {
         logger.debug('[happyMCP] Changing title to:', title);
         try {
-            client.sendClaudeSessionMessage({
+            // Send title as a summary message, similar to title generator
+            opts.sendClaudeMessage({
                 type: 'summary',
                 summary: title,
                 leafUuid: randomUUID()
             });
+
             return { success: true };
         } catch (error) {
             return { success: false, error: String(error) };
@@ -102,13 +110,13 @@ export async function startHappyServer(client: ApiSessionClient) {
         });
     });
 
-    logger.debug(`[happyMCP] server:ready sessionId=${client.sessionId} url=${baseUrl.toString()}`);
+    logger.debug(`[happyMCP] server:ready sessionId=${opts.sessionId} url=${baseUrl.toString()}`);
 
     return {
         url: baseUrl.toString(),
         toolNames: ['change_title'],
         stop: () => {
-            logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
+            logger.debug(`[happyMCP] server:stop sessionId=${opts.sessionId}`);
             server.close();
         }
     }

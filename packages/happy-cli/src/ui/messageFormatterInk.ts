@@ -1,4 +1,4 @@
-import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@/claude/sdk'
+import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { MessageBuffer } from './ink/messageBuffer'
 import { logger } from './logger'
 

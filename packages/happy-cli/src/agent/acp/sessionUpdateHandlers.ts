@@ -83,6 +83,27 @@ export interface HandlerResult {
   toolCallCountSincePrompt?: number;
 }
 
+function scheduleIdleStatusIfQuiescent(
+  ctx: HandlerContext,
+  reason: string,
+): void {
+  if (ctx.activeToolCalls.size > 0) {
+    return;
+  }
+
+  ctx.clearIdleTimeout();
+
+  const idleTimeoutMs = ctx.transport.getIdleTimeout?.() ?? DEFAULT_IDLE_TIMEOUT_MS;
+  ctx.setIdleTimeout(() => {
+    if (ctx.activeToolCalls.size === 0) {
+      logger.debug(`[AcpBackend] ${reason}, emitting idle status`);
+      ctx.emitIdleStatus();
+    } else {
+      logger.debug(`[AcpBackend] ${reason}, delaying idle status - ${ctx.activeToolCalls.size} active tool calls`);
+    }
+  }, idleTimeoutMs);
+}
+
 /**
  * Parse args from update content (can be array or object)
  */
@@ -275,9 +296,18 @@ export function startToolCall(
       ctx.toolCallStartTimes.delete(toolCallId);
       ctx.toolCallTimeouts.delete(toolCallId);
 
+      ctx.emit({
+        type: 'tool-result',
+        toolName: realToolName,
+        result: {
+          error: `Tool call timed out after ${timeoutMs}ms`,
+          status: 'failed',
+        },
+        callId: toolCallId,
+      });
+
       if (ctx.activeToolCalls.size === 0) {
-        logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-        ctx.emitIdleStatus();
+        scheduleIdleStatusIfQuiescent(ctx, 'No more active tool calls after timeout');
       }
     }, timeoutMs);
 
@@ -345,11 +375,9 @@ export function completeToolCall(
     callId: toolCallId,
   });
 
-  // If no more active tool calls, emit idle
+  // Delay idle slightly so any trailing model output lands in this same turn.
   if (ctx.activeToolCalls.size === 0) {
-    ctx.clearIdleTimeout();
-    logger.debug('[AcpBackend] All tool calls completed, emitting idle status');
-    ctx.emitIdleStatus();
+    scheduleIdleStatusIfQuiescent(ctx, 'All tool calls completed');
   }
 }
 
@@ -423,11 +451,9 @@ export function failToolCall(
     callId: toolCallId,
   });
 
-  // If no more active tool calls, emit idle
+  // Delay idle slightly so any trailing model output lands in this same turn.
   if (ctx.activeToolCalls.size === 0) {
-    ctx.clearIdleTimeout();
-    logger.debug('[AcpBackend] All tool calls completed/failed, emitting idle status');
-    ctx.emitIdleStatus();
+    scheduleIdleStatusIfQuiescent(ctx, 'All tool calls completed/failed');
   }
 }
 

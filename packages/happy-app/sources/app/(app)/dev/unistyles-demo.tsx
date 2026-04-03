@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Switch, Dimensions } from 'react-native';
+import { View, Text, ScrollView, Pressable, Switch, Dimensions, Platform } from 'react-native';
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width: screenWidth } = Dimensions.get('window');
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = Platform.OS === 'web' ? null : StyleSheet.create((theme, runtime) => ({
     container: {
         flex: 1,
         backgroundColor: theme.colors.surface,
@@ -167,8 +167,33 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 
 export default function UnistylesDemo() {
     const { theme, rt } = useUnistyles();
-    const styles = stylesheet;
     const [showRuntimeInfo, setShowRuntimeInfo] = useState(true);
+
+    if (!stylesheet) {
+        return (
+            <View
+                style={{
+                    flex: 1,
+                    backgroundColor: theme.colors.surface,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    padding: 24,
+                }}
+            >
+                <Text
+                    style={{
+                        color: theme.colors.text,
+                        textAlign: 'center',
+                        fontSize: 16,
+                    }}
+                >
+                    Unistyles demo is unavailable on Expo web builds.
+                </Text>
+            </View>
+        );
+    }
+
+    const styles = stylesheet;
 
     const switchTheme = (themeName: 'light' | 'dark') => {  
         UnistylesRuntime.setTheme(themeName);

@@ -15,7 +15,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {
-                session.client.sendClaudeSessionMessage(message)
+                session.sendClaudeMessage(message)
             }
         }
     });
@@ -32,6 +32,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
     let exitReason: LauncherResult | null = null;
     const processAbortController = new AbortController();
     let exutFuture = new Future<void>();
+    let unsubscribeAbortRequests: (() => void) | null = null;
     try {
         async function abort() {
 
@@ -52,7 +53,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 exitReason = { type: 'switch' };
             }
 
-            session.client.closeClaudeSessionTurn('cancelled');
+            session.closeClaudeTurn('cancelled');
 
             // Reset sent messages
             session.queue.reset();
@@ -69,15 +70,18 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 exitReason = { type: 'switch' };
             }
 
-            session.client.closeClaudeSessionTurn('cancelled');
+            session.closeClaudeTurn('cancelled');
 
             // Abort
             await abort();
         }
 
         // When to abort
-        session.client.rpcHandlerManager.registerHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
-        session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When user wants to switch to remote mode
+        session.rpcHandlerManager.registerHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
+        session.rpcHandlerManager.registerHandler('switch', doSwitch); // When user wants to switch to remote mode
+        unsubscribeAbortRequests = session.syncBridge.onAbortRequest(() => {
+            void doAbort();
+        });
         session.queue.setOnMessage((message: string, mode) => {
             // Switch to remote mode when message received
             doSwitch();
@@ -124,7 +128,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
                 // Normal exit
                 if (!exitReason) {
-                    session.client.closeClaudeSessionTurn('completed');
+                    session.closeClaudeTurn('completed');
                     exitReason = { type: 'exit', code: 0 };
                     break;
                 }
@@ -132,12 +136,12 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                 logger.debug('[local]: launch error', e);
                 // If Claude exited with non-zero exit code, propagate it
                 if (e instanceof ExitCodeError) {
-                    session.client.closeClaudeSessionTurn('failed');
+                    session.closeClaudeTurn('failed');
                     exitReason = { type: 'exit', code: e.exitCode };
                     break;
                 }
                 if (!exitReason) {
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     continue;
                 } else {
                     break;
@@ -149,10 +153,11 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
         // Resolve future
         exutFuture.resolve(undefined);
+        unsubscribeAbortRequests?.();
 
         // Set handlers to no-op
-        session.client.rpcHandlerManager.registerHandler('abort', async () => { });
-        session.client.rpcHandlerManager.registerHandler('switch', async () => { });
+        session.rpcHandlerManager.registerHandler('abort', async () => { });
+        session.rpcHandlerManager.registerHandler('switch', async () => { });
         session.queue.setOnMessage(null);
         
         // Remove session found callback

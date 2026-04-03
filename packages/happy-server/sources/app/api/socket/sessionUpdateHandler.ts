@@ -21,9 +21,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 return;
             }
 
-            // Resolve session
+            // Resolve session (exclude dataEncryptionKey — PGlite Bytes handling)
             const session = await db.session.findUnique({
-                where: { id: sid, accountId: userId }
+                where: { id: sid, accountId: userId },
+                select: { id: true, metadata: true, metadataVersion: true },
             });
             if (!session) {
                 return;
@@ -83,12 +84,13 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 return;
             }
 
-            // Resolve session
+            // Resolve session (exclude dataEncryptionKey — PGlite Bytes handling)
             const session = await db.session.findUnique({
                 where: {
                     id: sid,
                     accountId: userId
-                }
+                },
+                select: { id: true, agentState: true, agentStateVersion: true },
             });
             if (!session) {
                 callback({ result: 'error' });
@@ -191,9 +193,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
                 log({ module: 'websocket' }, `Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`);
 
-                // Resolve session
+                // Resolve session (exclude dataEncryptionKey — PGlite Bytes handling)
                 const session = await db.session.findUnique({
-                    where: { id: sid, accountId: userId }
+                    where: { id: sid, accountId: userId },
+                    select: { id: true },
                 });
                 if (!session) {
                     return;
@@ -261,9 +264,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 return;
             }
 
-            // Resolve session
+            // Resolve session (exclude dataEncryptionKey — PGlite Bytes handling)
             const session = await db.session.findUnique({
-                where: { id: sid, accountId: userId }
+                where: { id: sid, accountId: userId },
+                select: { id: true },
             });
             if (!session) {
                 return;

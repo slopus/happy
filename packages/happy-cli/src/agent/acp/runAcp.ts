@@ -2,17 +2,29 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { SyncBridge } from '@/api/syncBridge';
+import { resolveSessionScopedSyncNodeToken } from '@/api/syncNodeToken';
+import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
-import type { SessionEnvelope } from '@slopus/happy-wire';
+import type { SessionEnvelope } from '@/legacy/sessionProtocol';
+import type {
+  SessionMessage,
+  SessionAgentMessage,
+  SessionUserMessage,
+} from '@slopus/happy-sync';
+import type { SessionID } from '@slopus/happy-sync';
 import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { Credentials, readSettings } from '@/persistence';
+import type { AgentState } from '@/api/types';
 import { initialMachineMetadata } from '@/daemon/run';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { configuration } from '@/configuration';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
@@ -30,6 +42,8 @@ import {
 import type { SessionConfigOption, SessionModeState, SessionModelState } from '@agentclientprotocol/sdk';
 
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
+const IDLE_BEFORE_PROMPT_SETTLE_MS = 15_000;
+const PROMPT_RPC_DRAIN_WAIT_MS = 5_000;
 const ACP_EVENT_PREVIEW_CHARS = 240;
 const ACP_RAW_PREVIEW_CHARS = 2000;
 const ACP_COLOR_RESET = '\u001b[0m';
@@ -270,6 +284,96 @@ type AcpSwitchMode = {
   model?: string | null;
 };
 
+// ─── acpx SessionAgentMessage accumulator ─────────────────────────────────────
+
+type AcpxAccumulator = {
+  message: SessionAgentMessage;
+  /** Stable wrapper for SyncNode's localId tracking (same reference across send/update). */
+  wrapper: SessionMessage;
+  localId: string;
+  sent: boolean;
+};
+
+function createAcpxAccumulator(): AcpxAccumulator {
+  const message: SessionAgentMessage = { content: [], tool_results: {} };
+  return {
+    message,
+    wrapper: { Agent: message },
+    localId: randomUUID(),
+    sent: false,
+  };
+}
+
+function applyAgentMessageToAccumulator(acc: AcpxAccumulator, msg: AgentMessage): void {
+  const m = acc.message;
+  switch (msg.type) {
+    case 'model-output': {
+      const text = msg.textDelta ?? msg.fullText ?? '';
+      if (!text) break;
+      const last = m.content.length > 0 ? m.content[m.content.length - 1] : null;
+      if (last && 'Text' in last) {
+        (last as { Text: string }).Text += text;
+      } else {
+        m.content.push({ Text: text });
+      }
+      break;
+    }
+    case 'event': {
+      if (msg.name === 'thinking') {
+        const payload = msg.payload;
+        const text = typeof payload === 'string'
+          ? payload
+          : (payload && typeof payload === 'object' && typeof (payload as { text?: unknown }).text === 'string')
+            ? (payload as { text: string }).text
+            : '';
+        if (!text) break;
+        const last = m.content.length > 0 ? m.content[m.content.length - 1] : null;
+        if (last && 'Thinking' in last) {
+          (last as { Thinking: { text: string } }).Thinking.text += text;
+        } else {
+          m.content.push({ Thinking: { text } });
+        }
+      }
+      break;
+    }
+    case 'tool-call': {
+      m.content.push({
+        ToolUse: {
+          id: msg.callId,
+          name: msg.toolName,
+          raw_input: typeof msg.args === 'string' ? msg.args : JSON.stringify(msg.args),
+          input: msg.args,
+          is_input_complete: true,
+        },
+      });
+      break;
+    }
+    case 'tool-result': {
+      const resultText = typeof msg.result === 'string'
+        ? msg.result
+        : JSON.stringify(msg.result ?? '');
+      m.tool_results[msg.callId] = {
+        tool_use_id: msg.callId,
+        tool_name: msg.toolName,
+        is_error: false,
+        content: { Text: resultText },
+      };
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+function isTranscriptMessage(msg: AgentMessage): boolean {
+  return msg.type === 'model-output'
+    || msg.type === 'tool-call'
+    || msg.type === 'tool-result'
+    || (msg.type === 'event' && msg.name === 'thinking');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 type AcpSelectableOption = {
   code: string;
   value: string;
@@ -280,6 +384,15 @@ type AcpConfigSelector = {
   currentCode: string;
   options: AcpSelectableOption[];
 };
+
+type MessageModelLike =
+  | string
+  | null
+  | undefined
+  | {
+      providerID?: string | null;
+      modelID?: string | null;
+    };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
@@ -352,6 +465,29 @@ function normalizeComparable(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function resolveRequestedAcpModel(model: MessageModelLike): string | null {
+  if (typeof model === 'string') {
+    return model;
+  }
+
+  if (!model || typeof model !== 'object') {
+    return null;
+  }
+
+  const providerID = typeof model.providerID === 'string' ? model.providerID.trim() : '';
+  const modelID = typeof model.modelID === 'string' ? model.modelID.trim() : '';
+
+  if (!modelID) {
+    return null;
+  }
+
+  if (modelID.includes('/')) {
+    return modelID;
+  }
+
+  return providerID ? `${providerID}/${modelID}` : modelID;
+}
+
 function resolveRequestedCode(options: AcpSelectableOption[], requested: string): string | null {
   for (const option of options) {
     if (option.code === requested || option.value === requested) {
@@ -406,8 +542,13 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
 
-  constructor(session: ApiSessionClient, agentName: string) {
-    super(session);
+  constructor(
+    rpcManager: RpcHandlerManager,
+    updateAgentState: (handler: (state: AgentState) => AgentState) => void,
+    sendPermissionRequest: ((request: { callID: string; tool: string; patterns: string[]; input: Record<string, unknown> }) => Promise<void>) | undefined,
+    agentName: string,
+  ) {
+    super({ rpcHandlerManager: rpcManager, updateAgentState, sendPermissionRequest });
     this.logPrefix = `[${agentName}]`;
   }
 
@@ -490,22 +631,92 @@ export async function runAcp(opts: {
     onSessionSwap: (newSession) => {
       session = newSession;
       if (permissionHandler) {
-        permissionHandler.updateSession(newSession);
+        permissionHandler.updateDeps({
+          rpcHandlerManager: rpcHandlerManager ?? newSession.rpcHandlerManager,
+          updateAgentState: syncBridge
+            ? (handler) => syncBridge!.updateAgentState(handler as any)
+            : (handler) => newSession.updateAgentState(handler),
+        });
       }
     },
   });
   session = initialSession;
 
+  // ─── Create SyncBridge directly ──────────────────────────────────────────
+
+  let syncBridge: SyncBridge | null = null;
+  let rpcHandlerManager: RpcHandlerManager | null = null;
+
   if (response) {
-    try {
-      await notifyDaemonSessionStarted(response.id, metadata);
-    } catch (error) {
-      logger.debug('[acp] Failed to report session to daemon:', error);
-    }
+    const sessionScopedToken = await resolveSessionScopedSyncNodeToken({
+      serverUrl: configuration.serverUrl,
+      sessionId: response.id,
+      token: {
+        raw: opts.credentials.token,
+        claims: {
+          scope: { type: 'account', userId: 'cli' },
+          permissions: ['read', 'write', 'admin'],
+        },
+      },
+    });
+
+    syncBridge = new SyncBridge({
+      serverUrl: configuration.serverUrl,
+      token: sessionScopedToken,
+      keyMaterial: {
+        key: response.encryptionKey,
+        variant: response.encryptionVariant,
+      },
+      sessionId: response.id as SessionID,
+    });
+    await syncBridge.connect();
+    logAcp('muted', `SyncBridge connected`);
+
+    // ─── Create RpcHandlerManager and wire to SyncBridge ─────────────────
+
+    rpcHandlerManager = new RpcHandlerManager({
+      scopePrefix: response.id,
+      encryptionKey: response.encryptionKey,
+      encryptionVariant: response.encryptionVariant,
+    });
+
+    syncBridge.setRpcHandler(async (method: string, params: string) => {
+      return rpcHandlerManager!.handleRequest({ method, params });
+    });
+
+    rpcHandlerManager.setRegistrationCallback((prefixedMethod) => {
+      syncBridge!.registerRpcMethods([prefixedMethod]);
+    });
+
+    registerCommonHandlers(rpcHandlerManager, process.cwd());
+    syncBridge.registerRpcMethods(rpcHandlerManager.getRegisteredMethods());
   }
 
-  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  permissionHandler = new GenericAcpPermissionHandler(
+    rpcHandlerManager ?? session.rpcHandlerManager,
+    syncBridge
+      ? (handler) => syncBridge!.updateAgentState(handler as any)
+      : (handler) => session.updateAgentState(handler),
+    syncBridge
+      ? (request) => syncBridge!.sendPermissionRequest(request)
+      : undefined,
+    opts.agentName,
+  );
+  if (syncBridge) {
+    syncBridge.onPermissionDecision((decision) => {
+      permissionHandler.handleSyncDecision({
+        id: decision.callId,
+        approved: decision.decision !== 'reject',
+        decision: decision.decision === 'always'
+          ? 'approved_for_session'
+          : decision.decision === 'reject'
+            ? 'denied'
+            : 'approved',
+      });
+    });
+  }
   const sessionManager = new AcpSessionManager();
+  let acpxAcc: AcpxAccumulator | null = null;
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
   let currentModel: string | null | undefined;
@@ -517,7 +728,18 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
-  const happyServer = await startHappyServer(session);
+  if (syncBridge) {
+    syncBridge.onRuntimeConfigChange((change) => {
+      if (typeof change.permissionMode === 'string') {
+        currentPermissionMode = change.permissionMode;
+      }
+      if (Object.prototype.hasOwnProperty.call(change, 'model')) {
+        currentModel = resolveRequestedAcpModel(change.model);
+      }
+    });
+  }
+
+  const happyServer = await startHappyServer({ sessionId: session.sessionId, sendClaudeMessage: (body) => session.sendClaudeSessionMessage(body) });
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
@@ -541,28 +763,115 @@ export async function runAcp(opts: {
   let shouldExit = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
+  let activePromptRpc: Promise<void> | null = null;
+  let turnActivityVersion = 0;
+  let turnActivityWaiters: Array<() => void> = [];
 
   const clearPendingTurn = (error?: Error) => {
     if (!pendingTurn) {
+      logger.debug(`[${opts.agentName}] Turn-end signal received with no pending turn`);
       return;
     }
     clearTimeout(pendingTurn.timeout);
     const current = pendingTurn;
     pendingTurn = null;
     if (error) {
+      logger.debug(`[${opts.agentName}] Rejecting pending turn: ${error.message}`);
       current.reject(error);
       return;
     }
+    logger.debug(`[${opts.agentName}] Resolving pending turn`);
     current.resolve();
   };
 
   const waitForTurnEnd = () => new Promise<void>((resolve, reject) => {
+    logger.debug(`[${opts.agentName}] Registered pending turn waiter`);
     const timeout = setTimeout(() => {
       pendingTurn = null;
+      logger.debug(`[${opts.agentName}] Pending turn waiter timed out`);
       reject(new Error(`Timed out waiting for ${opts.agentName} to finish the turn`));
     }, TURN_TIMEOUT_MS);
     pendingTurn = { resolve, reject, timeout };
   });
+
+  const markTurnActivity = () => {
+    turnActivityVersion += 1;
+    const waiters = turnActivityWaiters;
+    turnActivityWaiters = [];
+    for (const wake of waiters) {
+      wake();
+    }
+  };
+
+  const waitForTurnActivityAfter = (version: number, timeoutMs: number): Promise<boolean> => new Promise((resolve) => {
+    if (turnActivityVersion > version) {
+      resolve(true);
+      return;
+    }
+
+    const onActivity = () => {
+      clearTimeout(timeout);
+      resolve(true);
+    };
+
+    const timeout = setTimeout(() => {
+      const index = turnActivityWaiters.indexOf(onActivity);
+      if (index !== -1) {
+        turnActivityWaiters.splice(index, 1);
+      }
+      resolve(false);
+    }, timeoutMs);
+
+    turnActivityWaiters.push(onActivity);
+  });
+
+  const waitForPromptRpcToSettle = async (
+    pending: Promise<void>,
+    timeoutMs: number,
+  ): Promise<boolean> => {
+    return await Promise.race([
+      pending.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+    ]);
+  };
+
+  const drainOutstandingPromptRpc = async (): Promise<void> => {
+    const pending = activePromptRpc;
+    if (!pending || !acpSessionId) {
+      return;
+    }
+
+    logger.debug(
+      `[${opts.agentName}] Waiting up to ${PROMPT_RPC_DRAIN_WAIT_MS}ms for previous ACP prompt RPC to settle before sending next prompt`,
+    );
+
+    if (await waitForPromptRpcToSettle(pending, PROMPT_RPC_DRAIN_WAIT_MS)) {
+      return;
+    }
+
+    logger.debug(
+      `[${opts.agentName}] Previous ACP prompt RPC still pending; sending session/cancel before next prompt`,
+    );
+    try {
+      await backend.cancelPromptTurn(acpSessionId);
+    } catch (error) {
+      logger.debug(
+        `[${opts.agentName}] Failed to cancel stale ACP prompt RPC; detaching anyway:`,
+        error,
+      );
+      activePromptRpc = null;
+      return;
+    }
+
+    if (await waitForPromptRpcToSettle(pending, PROMPT_RPC_DRAIN_WAIT_MS)) {
+      return;
+    }
+
+    logger.debug(
+      `[${opts.agentName}] Previous ACP prompt RPC still pending after session/cancel; detaching from stale prompt RPC and continuing`,
+    );
+    activePromptRpc = null;
+  };
 
   const stopRunnerFromBackendStatus = (status: 'error' | 'stopped', detail?: string) => {
     const reason = detail
@@ -585,6 +894,20 @@ export async function runAcp(opts: {
         logAcp('muted', `Incoming raw envelope for ${opts.agentName}: ${formatUnknownForConsole(envelope, ACP_RAW_PREVIEW_CHARS)}`);
       }
     }
+  };
+
+  const sendAcpxMessage = (message: SessionMessage) => {
+    if (!syncBridge) return;
+    syncBridge.sendMessage(message).catch((error) => {
+      logger.debug(`[${opts.agentName}] Failed to send acpx message:`, error);
+    });
+  };
+
+  const updateAcpxMessage = (message: SessionMessage) => {
+    if (!syncBridge) return;
+    syncBridge.updateMessage(message).catch((error) => {
+      logger.debug(`[${opts.agentName}] Failed to update acpx message:`, error);
+    });
   };
 
   const switchPermissionModeIfRequested = async (requestedMode: string): Promise<void> => {
@@ -673,7 +996,19 @@ export async function runAcp(opts: {
     }
   };
 
+  const updateMetadata = (handler: (current: any) => any) => {
+    if (syncBridge) {
+      syncBridge.updateMetadata(handler);
+    } else {
+      session.updateMetadata(handler);
+    }
+  };
+
   const onBackendMessage = (msg: AgentMessage) => {
+    if (msg.type !== 'status') {
+      markTurnActivity();
+    }
+
     if (verbose) {
       logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
     }
@@ -688,7 +1023,7 @@ export async function runAcp(opts: {
           logAcp('muted', `  /${command.name}${formatOptionalDetail(command.description, 160)}`);
         }
       }
-      session.updateMetadata((currentMetadata) => ({
+      updateMetadata((currentMetadata: any) => ({
         ...currentMetadata,
         slashCommands: commandNames,
       }));
@@ -731,7 +1066,7 @@ export async function runAcp(opts: {
             logAcp('muted', `Outgoing model options from ${opts.agentName}: not reported in config options`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
+        updateMetadata((currentMetadata: any) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { configOptions }),
         );
       }
@@ -748,7 +1083,7 @@ export async function runAcp(opts: {
             logAcp('muted', `  mode=${mode.id} name=${mode.name}${formatOptionalDetail(mode.description, 160)}`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
+        updateMetadata((currentMetadata: any) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { modes }),
         );
       }
@@ -765,7 +1100,7 @@ export async function runAcp(opts: {
             logAcp('muted', `  model=${model.modelId} name=${model.name}`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
+        updateMetadata((currentMetadata: any) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { models }),
         );
       }
@@ -786,7 +1121,7 @@ export async function runAcp(opts: {
             currentModeId,
           };
         }
-        session.updateMetadata((currentMetadata) =>
+        updateMetadata((currentMetadata: any) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { currentModeId }),
         );
       }
@@ -799,7 +1134,11 @@ export async function runAcp(opts: {
       const nextThinking = msg.status === 'running';
       if (thinking !== nextThinking) {
         thinking = nextThinking;
-        session.keepAlive(thinking, 'remote');
+        if (syncBridge) {
+          syncBridge.keepAlive(thinking, 'remote');
+        } else {
+          session.keepAlive(thinking, 'remote');
+        }
       }
       if (msg.status === 'idle') {
         clearPendingTurn();
@@ -814,35 +1153,68 @@ export async function runAcp(opts: {
       logAcp(frontendMessage.kind, frontendMessage.text);
     }
 
+    if (syncBridge && acpxAcc) {
+      if (msg.type === 'status') {
+        return;
+      }
+      if (isTranscriptMessage(msg)) {
+        applyAgentMessageToAccumulator(acpxAcc, msg);
+        updateAcpxMessage(acpxAcc.wrapper);
+      }
+      return;
+    }
+
     sendEnvelopes(sessionManager.mapMessage(msg));
   };
 
   backend.onMessage(onBackendMessage);
 
-  session.onUserMessage((message) => {
-    if (!message.content.text) {
-      return;
-    }
+  if (syncBridge) {
+    syncBridge.onUserMessage((message) => {
+      const userMsg = message.User;
+      const textContent = userMsg.content.find((c): c is Extract<typeof c, { Text: string }> => 'Text' in c);
+      if (!textContent) return;
 
-    if (typeof message.meta?.permissionMode === 'string') {
-      currentPermissionMode = message.meta.permissionMode;
-      logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
-    }
-
-    if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
-      currentModel = message.meta.model ?? null;
-      logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
-    }
-
-    messageQueue.push(message.content.text, {
-      permissionMode: currentPermissionMode,
-      model: currentModel,
+      messageQueue.push(textContent.Text, {
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+      });
     });
-  });
-  session.keepAlive(thinking, 'remote');
+  } else {
+    session.onUserMessage((message) => {
+      if (!message.content.text) {
+        return;
+      }
+
+      if (typeof message.meta?.permissionMode === 'string') {
+        currentPermissionMode = message.meta.permissionMode;
+        logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
+      }
+
+      if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
+        currentModel = resolveRequestedAcpModel(message.meta.model);
+        logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
+      }
+
+      messageQueue.push(message.content.text, {
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+      });
+    });
+  }
+
+  if (syncBridge) {
+    syncBridge.keepAlive(thinking, 'remote');
+  } else {
+    session.keepAlive(thinking, 'remote');
+  }
 
   const keepAliveInterval = setInterval(() => {
-    session.keepAlive(thinking, 'remote');
+    if (syncBridge) {
+      syncBridge.keepAlive(thinking, 'remote');
+    } else {
+      session.keepAlive(thinking, 'remote');
+    }
   }, 2000);
 
   async function handleAbort() {
@@ -859,8 +1231,12 @@ export async function runAcp(opts: {
     }
   }
 
-  session.rpcHandlerManager.registerHandler('abort', handleAbort);
-  registerKillSessionHandler(session.rpcHandlerManager, async () => {
+  const activeRpcManager = rpcHandlerManager ?? session.rpcHandlerManager;
+  activeRpcManager.registerHandler('abort', handleAbort);
+  syncBridge?.onAbortRequest(() => {
+    void handleAbort();
+  });
+  registerKillSessionHandler(activeRpcManager, async () => {
     shouldExit = true;
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
@@ -870,6 +1246,13 @@ export async function runAcp(opts: {
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    if (response) {
+      try {
+        await notifyDaemonSessionStarted(response.id, metadata);
+      } catch (error) {
+        logger.debug('[acp] Failed to report session to daemon:', error);
+      }
+    }
     if (verbose) {
       if (!sawSlashCommands) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
@@ -899,9 +1282,17 @@ export async function runAcp(opts: {
         throw new Error('ACP session is not started');
       }
 
+      await drainOutstandingPromptRpc();
+
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
-      sendEnvelopes(sessionManager.startTurn());
-      const turnEnded = waitForTurnEnd();
+      if (syncBridge) {
+        acpxAcc = createAcpxAccumulator();
+        sendAcpxMessage(acpxAcc.wrapper);
+        acpxAcc.sent = true;
+      } else {
+        sendEnvelopes(sessionManager.startTurn());
+      }
+      let turnEnded = waitForTurnEnd();
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
           await switchPermissionModeIfRequested(batch.mode.permissionMode);
@@ -909,16 +1300,116 @@ export async function runAcp(opts: {
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
         }
-        await backend.sendPrompt(acpSessionId, batch.message);
-        await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
-        session.sendSessionEvent({ type: 'ready' });
+        // Some ACP agents keep the prompt RPC open until all background/subagent
+        // work finishes. Some also emit transient `status: idle` updates between
+        // phases of the same prompt, so only treat an idle-before-prompt-return
+        // as terminal if the session stays quiet for a short grace period.
+        let turnEndedBeforePromptReturned = false;
+        let promptReturned = false;
+        const promptPromise = backend.sendPrompt(acpSessionId, batch.message).catch((error) => {
+          if (turnEndedBeforePromptReturned) {
+            logger.debug(`[${opts.agentName}] Ignoring late ACP prompt rejection after turn end:`, error);
+            return;
+          }
+          throw error;
+        });
+        const promptSettled = promptPromise
+          .catch(() => undefined)
+          .finally(() => {
+            if (activePromptRpc === promptSettled) {
+              activePromptRpc = null;
+            }
+          });
+        activePromptRpc = promptSettled;
+        const trackedPromptPromise = promptPromise.then(() => {
+          promptReturned = true;
+        });
+
+        while (true) {
+          let raceResult: 'prompt' | 'idle' | null = null;
+          await Promise.race([
+            trackedPromptPromise.then(() => {
+              raceResult = 'prompt';
+            }),
+            turnEnded.then(() => {
+              raceResult = 'idle';
+            }),
+          ]);
+
+          if (raceResult === 'prompt') {
+            logger.debug(`[${opts.agentName}] Prompt RPC returned before turn end; waiting for idle`);
+            // Wait for idle with a grace period — if the agent returned without
+            // tool calls the backend may never emit idle on its own.
+            const idleOrTimeout = await Promise.race([
+              turnEnded.then(() => 'idle' as const),
+              new Promise<'timeout'>(resolve =>
+                setTimeout(() => resolve('timeout'), IDLE_BEFORE_PROMPT_SETTLE_MS),
+              ),
+            ]);
+            if (idleOrTimeout === 'timeout') {
+              logger.debug(
+                `[${opts.agentName}] No idle ${IDLE_BEFORE_PROMPT_SETTLE_MS}ms after prompt returned; finalizing`,
+              );
+            }
+            turnEndedBeforePromptReturned = true;
+            break;
+          }
+
+          if (promptReturned) {
+            turnEndedBeforePromptReturned = true;
+            break;
+          }
+
+          logger.debug(`[${opts.agentName}] Turn ended before prompt RPC returned`);
+          const activityVersionAtIdle = turnActivityVersion;
+          const sawMoreActivity = await waitForTurnActivityAfter(
+            activityVersionAtIdle,
+            IDLE_BEFORE_PROMPT_SETTLE_MS,
+          );
+          if (!sawMoreActivity) {
+            logger.debug(
+              `[${opts.agentName}] No new activity ${IDLE_BEFORE_PROMPT_SETTLE_MS}ms after idle; finalizing before prompt RPC returned`,
+            );
+            turnEndedBeforePromptReturned = true;
+            break;
+          }
+
+          logger.debug(`[${opts.agentName}] More activity arrived after idle; waiting for the next idle`);
+          turnEnded = waitForTurnEnd();
+        }
+        logger.debug(`[${opts.agentName}] Finalizing ACP turn after wait`);
+        if (syncBridge && acpxAcc) {
+          updateAcpxMessage(acpxAcc.wrapper);
+          acpxAcc = null;
+        } else {
+          sendEnvelopes(sessionManager.endTurn('completed'));
+        }
+        if (syncBridge) {
+          syncBridge.updateAgentState((currentState: any) => ({
+            ...currentState,
+            lastEvent: { type: 'ready', time: Date.now() },
+          }));
+        } else {
+          session.sendSessionEvent({ type: 'ready' });
+        }
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
-        sendEnvelopes(sessionManager.endTurn('failed'));
-        session.sendSessionEvent({ type: 'ready' });
+        if (syncBridge && acpxAcc) {
+          updateAcpxMessage(acpxAcc.wrapper);
+          acpxAcc = null;
+        } else {
+          sendEnvelopes(sessionManager.endTurn('failed'));
+        }
+        if (syncBridge) {
+          syncBridge.updateAgentState((currentState: any) => ({
+            ...currentState,
+            lastEvent: { type: 'ready', time: Date.now() },
+          }));
+        } else {
+          session.sendSessionEvent({ type: 'ready' });
+        }
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
         throw error;
@@ -945,16 +1436,22 @@ export async function runAcp(opts: {
     }
 
     try {
-      session.updateMetadata((currentMetadata) => ({
+      updateMetadata((currentMetadata: any) => ({
         ...currentMetadata,
         lifecycleState: 'archived',
         lifecycleStateSince: Date.now(),
         archivedBy: 'cli',
         archiveReason: 'Session ended',
       }));
-      session.sendSessionDeath();
-      await session.flush();
-      await session.close();
+      if (syncBridge) {
+        syncBridge.sendSessionDeath();
+        await syncBridge.flush();
+        syncBridge.disconnect();
+      } else {
+        session.sendSessionDeath();
+        await session.flush();
+        await session.close();
+      }
     } catch (error) {
       logger.debug(`[${opts.agentName}] Session close failed:`, error);
     }

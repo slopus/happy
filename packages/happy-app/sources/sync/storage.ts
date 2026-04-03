@@ -1,10 +1,14 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
 import { Session, Machine, GitStatus } from "./storageTypes";
+import {
+    type MessageID,
+    type SessionID,
+    type SessionMessage,
+    type SessionState as SyncNodeSessionState,
+    type Todo,
+} from '@slopus/happy-sync';
 import type { GitStatusFiles } from "./gitStatusFiles";
-import { createReducer, reducer, ReducerState } from "./reducer/reducer";
-import { Message } from "./typesMessage";
-import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
@@ -16,6 +20,7 @@ import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
+import { type AppSessionToolUseRef } from './syncNodeStore';
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
@@ -25,6 +30,9 @@ import { FeedItem } from "./feedTypes";
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const REALTIME_MODE_DEBOUNCE_MS = 150;
+
+// Track which permission IDs we've already notified the voice assistant about
+const notifiedPermissionIds = new Set<string>();
 
 /**
  * Centralized session online state resolver
@@ -51,24 +59,12 @@ function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boo
 // Known entitlement IDs
 export type KnownEntitlements = 'pro';
 
-interface SessionMessages {
-    messages: Message[];
-    messagesMap: Record<string, Message>;
-    reducerState: ReducerState;
-    isLoaded: boolean;
-}
-
-// Machine type is now imported from storageTypes - represents persisted machine data
-
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
     | { type: 'header'; title: string }
     | { type: 'active-sessions'; sessions: Session[] }
     | { type: 'project-group'; displayPath: string; machine: Machine }
     | { type: 'session'; session: Session; variant?: 'default' | 'no-path' };
-
-// Legacy type for backward compatibility - to be removed
-export type SessionListItem = string | Session;
 
 interface StorageState {
     settings: Settings;
@@ -77,9 +73,7 @@ interface StorageState {
     purchases: Purchases;
     profile: Profile;
     sessions: Record<string, Session>;
-    sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
-    sessionMessages: Record<string, SessionMessages>;
     sessionGitStatus: Record<string, GitStatus | null>;
     sessionGitStatusFiles: Record<string, GitStatusFiles | null>;
     sessionFileCache: Record<string, Record<string, { content: string | null; diff: string | null; isBinary: boolean; cachedAt: number }>>;
@@ -104,8 +98,6 @@ interface StorageState {
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyLoaded: () => void;
     applyReady: () => void;
-    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
-    applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
@@ -274,9 +266,7 @@ export const storage = create<StorageState>()((set, get) => {
         feedHasMore: false,
         feedLoaded: false,  // Initialize as false
         friendsLoaded: false,  // Initialize as false
-        sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
-        sessionMessages: {},
         sessionGitStatus: {},
         sessionGitStatusFiles: {},
         sessionFileCache: {},
@@ -288,19 +278,19 @@ export const storage = create<StorageState>()((set, get) => {
         isDataReady: false,
         nativeUpdateStatus: null,
         isMutableToolCall: (sessionId: string, callId: string) => {
-            const sessionMessages = get().sessionMessages[sessionId];
-            if (!sessionMessages) {
-                return true;
+            const messages = sync.appSyncStore?.getMessages(sessionId as SessionID) ?? [];
+            for (const msg of messages) {
+                if (typeof msg !== 'object' || !('Agent' in msg)) {
+                    continue;
+                }
+
+                for (const content of msg.Agent.content) {
+                    if ('ToolUse' in content && content.ToolUse.id === callId) {
+                        return isMutableTool(content.ToolUse.name);
+                    }
+                }
             }
-            const toolCall = sessionMessages.reducerState.toolIdToMessageId.get(callId);
-            if (!toolCall) {
-                return true;
-            }
-            const toolCallMessage = sessionMessages.messagesMap[toolCall];
-            if (!toolCallMessage || toolCallMessage.kind !== 'tool-call') {
-                return true;
-            }
-            return toolCallMessage.tool?.name ? isMutableTool(toolCallMessage.tool?.name) : true;
+            return true;
         },
         getActiveSessions: () => {
             const state = get();
@@ -339,118 +329,21 @@ export const storage = create<StorageState>()((set, get) => {
                 };
             });
 
-            // Build active set from all sessions (including existing ones)
-            const activeSet = new Set<string>();
-            Object.values(mergedSessions).forEach(session => {
-                if (isSessionActive(session)) {
-                    activeSet.add(session.id);
-                }
-            });
-
-            // Separate active and inactive sessions
-            const activeSessions: Session[] = [];
-            const inactiveSessions: Session[] = [];
-
-            // Process all sessions from merged set
-            Object.values(mergedSessions).forEach(session => {
-                if (activeSet.has(session.id)) {
-                    activeSessions.push(session);
-                } else {
-                    inactiveSessions.push(session);
-                }
-            });
-
-            // Sort both arrays by creation date for stable ordering
-            activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-            inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
-
-            // Build flat list data for FlashList
-            const listData: SessionListItem[] = [];
-
-            if (activeSessions.length > 0) {
-                listData.push('online');
-                listData.push(...activeSessions);
-            }
-
-            // Legacy sessionsData - to be removed
-            // Machines are now integrated into sessionListViewData
-
-            if (inactiveSessions.length > 0) {
-                listData.push('offline');
-                listData.push(...inactiveSessions);
-            }
-
-            // console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
-
-            // Process AgentState updates for sessions that already have messages loaded
-            const updatedSessionMessages = { ...state.sessionMessages };
-
+            // Check for NEW permission requests from SyncNode and notify voice assistant
             sessions.forEach(session => {
-                const oldSession = state.sessions[session.id];
-                const newSession = mergedSessions[session.id];
+                const currentRealtimeSessionId = getCurrentRealtimeSessionId();
+                const voiceSession = getVoiceSession();
+                if (currentRealtimeSessionId !== session.id || !voiceSession) return;
 
-                // Check if sessionMessages exists AND agentStateVersion is newer
-                const existingSessionMessages = updatedSessionMessages[session.id];
-                if (existingSessionMessages && newSession.agentState &&
-                    (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))) {
+                const syncSession = sync.appSyncStore?.getSession(session.id as SessionID);
+                if (!syncSession) return;
 
-                    // Check for NEW permission requests before processing
-                    const currentRealtimeSessionId = getCurrentRealtimeSessionId();
-                    const voiceSession = getVoiceSession();
-
-                    // console.log('[REALTIME DEBUG] Permission check:', {
-                    //     currentRealtimeSessionId,
-                    //     sessionId: session.id,
-                    //     match: currentRealtimeSessionId === session.id,
-                    //     hasVoiceSession: !!voiceSession,
-                    //     oldRequests: Object.keys(oldSession?.agentState?.requests || {}),
-                    //     newRequests: Object.keys(newSession.agentState?.requests || {})
-                    // });
-
-                    if (currentRealtimeSessionId === session.id && voiceSession) {
-                        const oldRequests = oldSession?.agentState?.requests || {};
-                        const newRequests = newSession.agentState?.requests || {};
-
-                        // Find NEW permission requests only
-                        for (const [requestId, request] of Object.entries(newRequests)) {
-                            if (!oldRequests[requestId]) {
-                                // This is a NEW permission request
-                                const toolName = request.tool;
-                                // console.log('[REALTIME DEBUG] Sending permission notification for:', toolName);
-                                voiceSession.sendTextMessage(
-                                    `Claude is requesting permission to use the ${toolName} tool`
-                                );
-                            }
-                        }
-                    }
-
-                    // Process new AgentState through reducer
-                    const reducerResult = reducer(existingSessionMessages.reducerState, [], newSession.agentState);
-                    const processedMessages = reducerResult.messages;
-
-                    // Always update the session messages, even if no new messages were created
-                    // This ensures the reducer state is updated with the new AgentState
-                    const mergedMessagesMap = { ...existingSessionMessages.messagesMap };
-                    processedMessages.forEach(message => {
-                        mergedMessagesMap[message.id] = message;
-                    });
-
-                    const messagesArray = Object.values(mergedMessagesMap)
-                        .sort((a, b) => b.createdAt - a.createdAt);
-
-                    updatedSessionMessages[session.id] = {
-                        messages: messagesArray,
-                        messagesMap: mergedMessagesMap,
-                        reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
-                        isLoaded: existingSessionMessages.isLoaded
-                    };
-
-                    // IMPORTANT: Copy latestUsage from reducerState to Session for immediate availability
-                    if (existingSessionMessages.reducerState.latestUsage) {
-                        mergedSessions[session.id] = {
-                            ...mergedSessions[session.id],
-                            latestUsage: { ...existingSessionMessages.reducerState.latestUsage }
-                        };
+                for (const perm of syncSession.permissions) {
+                    if (!perm.resolved && !notifiedPermissionIds.has(perm.permissionId)) {
+                        notifiedPermissionIds.add(perm.permissionId);
+                        voiceSession.sendTextMessage(
+                            `Claude is requesting permission to use the ${perm.block.permission} tool`
+                        );
                     }
                 }
             });
@@ -472,198 +365,14 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: mergedSessions,
-                sessionsData: listData,  // Legacy - to be removed
                 sessionListViewData,
-                sessionMessages: updatedSessionMessages
             };
         }),
-        applyLoaded: () => set((state) => {
-            const result = {
-                ...state,
-                sessionsData: []
-            };
-            return result;
-        }),
+        applyLoaded: () => set((state) => state),
         applyReady: () => set((state) => ({
             ...state,
             isDataReady: true
         })),
-        applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
-            let changed = new Set<string>();
-            let hasReadyEvent = false;
-
-            // Check if any incoming messages contain EnterPlanMode tool calls
-            let shouldEnterPlanMode = false;
-            for (const msg of messages) {
-                if (msg.role === 'agent') {
-                    for (const c of msg.content) {
-                        if (c.type === 'tool-call' && (c.name === 'EnterPlanMode' || c.name === 'enter_plan_mode')) {
-                            shouldEnterPlanMode = true;
-                            break;
-                        }
-                    }
-                    if (shouldEnterPlanMode) break;
-                }
-            }
-
-            set((state) => {
-
-                // Resolve session messages state
-                const existingSession = state.sessionMessages[sessionId] || {
-                    messages: [],
-                    messagesMap: {},
-                    reducerState: createReducer(),
-                    isLoaded: false
-                };
-
-                // Get the session's agentState if available
-                const session = state.sessions[sessionId];
-                const agentState = session?.agentState;
-
-                // Messages are already normalized, no need to process them again
-                const normalizedMessages = messages;
-
-                // Run reducer with agentState
-                const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
-                const processedMessages = reducerResult.messages;
-                for (let message of processedMessages) {
-                    changed.add(message.id);
-                }
-                if (reducerResult.hasReadyEvent) {
-                    hasReadyEvent = true;
-                }
-
-                // Merge messages
-                const mergedMessagesMap = { ...existingSession.messagesMap };
-                processedMessages.forEach(message => {
-                    mergedMessagesMap[message.id] = message;
-                });
-
-                // Convert to array and sort by createdAt
-                const messagesArray = Object.values(mergedMessagesMap)
-                    .sort((a, b) => b.createdAt - a.createdAt);
-
-                // Update session with todos and latestUsage
-                // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
-                // This ensures latestUsage is available immediately on load, even before messages are fully loaded
-                let updatedSessions = state.sessions;
-                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode) && session;
-
-                if (needsUpdate) {
-                    updatedSessions = {
-                        ...state.sessions,
-                        [sessionId]: {
-                            ...session,
-                            ...(reducerResult.todos !== undefined && { todos: reducerResult.todos }),
-                            // Copy latestUsage from reducerState to make it immediately available
-                            latestUsage: existingSession.reducerState.latestUsage ? {
-                                ...existingSession.reducerState.latestUsage
-                            } : session.latestUsage,
-                            // Auto-switch to plan mode when EnterPlanMode tool call is detected
-                            ...(shouldEnterPlanMode && { permissionMode: 'plan' })
-                        }
-                    };
-                }
-
-                return {
-                    ...state,
-                    sessions: updatedSessions,
-                    sessionMessages: {
-                        ...state.sessionMessages,
-                        [sessionId]: {
-                            ...existingSession,
-                            messages: messagesArray,
-                            messagesMap: mergedMessagesMap,
-                            reducerState: existingSession.reducerState, // Explicitly include the mutated reducer state
-                            isLoaded: true
-                        }
-                    }
-                };
-            });
-
-            // Persist plan mode change
-            if (shouldEnterPlanMode) {
-                const allModes: Record<string, string> = {};
-                const currentState = get();
-                Object.entries(currentState.sessions).forEach(([id, sess]) => {
-                    if (sess.permissionMode && sess.permissionMode !== 'default') {
-                        allModes[id] = sess.permissionMode;
-                    }
-                });
-                saveSessionPermissionModes(allModes);
-            }
-
-            return { changed: Array.from(changed), hasReadyEvent };
-        },
-        applyMessagesLoaded: (sessionId: string) => set((state) => {
-            const existingSession = state.sessionMessages[sessionId];
-            let result: StorageState;
-
-            if (!existingSession) {
-                // First time loading - check for AgentState
-                const session = state.sessions[sessionId];
-                const agentState = session?.agentState;
-
-                // Create new reducer state
-                const reducerState = createReducer();
-
-                // Process AgentState if it exists
-                let messages: Message[] = [];
-                let messagesMap: Record<string, Message> = {};
-
-                if (agentState) {
-                    // Process AgentState through reducer to get initial permission messages
-                    const reducerResult = reducer(reducerState, [], agentState);
-                    const processedMessages = reducerResult.messages;
-
-                    processedMessages.forEach(message => {
-                        messagesMap[message.id] = message;
-                    });
-
-                    messages = Object.values(messagesMap)
-                        .sort((a, b) => b.createdAt - a.createdAt);
-                }
-
-                // Extract latestUsage from reducerState if available and update session
-                let updatedSessions = state.sessions;
-                if (session && reducerState.latestUsage) {
-                    updatedSessions = {
-                        ...state.sessions,
-                        [sessionId]: {
-                            ...session,
-                            latestUsage: { ...reducerState.latestUsage }
-                        }
-                    };
-                }
-
-                result = {
-                    ...state,
-                    sessions: updatedSessions,
-                    sessionMessages: {
-                        ...state.sessionMessages,
-                        [sessionId]: {
-                            reducerState,
-                            messages,
-                            messagesMap,
-                            isLoaded: true
-                        } satisfies SessionMessages
-                    }
-                };
-            } else {
-                result = {
-                    ...state,
-                    sessionMessages: {
-                        ...state.sessionMessages,
-                        [sessionId]: {
-                            ...existingSession,
-                            isLoaded: true
-                        } satisfies SessionMessages
-                    }
-                };
-            }
-
-            return result;
-        }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
             saveSettings(applySettings(state.settings, settings), state.settingsVersion ?? 0);
             return {
@@ -984,13 +693,7 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         deleteSession: (sessionId: string) => set((state) => {
-            // Remove session from sessions
             const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;
-            
-            // Remove session messages if they exist
-            const { [sessionId]: deletedMessages, ...remainingSessionMessages } = state.sessionMessages;
-            
-            // Remove session git status if it exists
             const { [sessionId]: deletedGitStatus, ...remainingGitStatus } = state.sessionGitStatus;
             const { [sessionId]: _gitStatusFiles, ...remainingGitStatusFiles } = state.sessionGitStatusFiles;
             const { [sessionId]: _fileCache, ...remainingFileCache } = state.sessionFileCache;
@@ -999,18 +702,16 @@ export const storage = create<StorageState>()((set, get) => {
             const drafts = loadSessionDrafts();
             delete drafts[sessionId];
             saveSessionDrafts(drafts);
-            
+
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
-            
-            // Rebuild sessionListViewData without the deleted session
+
             const sessionListViewData = buildSessionListViewData(remainingSessions);
-            
+
             return {
                 ...state,
                 sessions: remainingSessions,
-                sessionMessages: remainingSessionMessages,
                 sessionGitStatus: remainingGitStatus,
                 sessionGitStatusFiles: remainingGitStatusFiles,
                 sessionFileCache: remainingFileCache,
@@ -1143,37 +844,179 @@ export const storage = create<StorageState>()((set, get) => {
     }
 });
 
-export function useSessions() {
-    return storage(useShallow((state) => state.isDataReady ? state.sessionsData : null));
-}
-
 export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? null));
 }
 
-const emptyArray: unknown[] = [];
+const emptySessionMessages: SessionMessage[] = [];
+const emptyTodoArray: Todo[] = [];
 
-export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean } {
-    return storage(useShallow((state) => {
-        const session = state.sessionMessages[sessionId];
-        return {
-            messages: session?.messages ?? emptyArray,
-            isLoaded: session?.isLoaded ?? false
-        };
-    }));
+function subscribeToAppSyncStore(onStoreChange: () => void): () => void {
+    return sync.appSyncStore?.subscribeStore(onStoreChange) ?? (() => {});
 }
 
-export function useMessage(sessionId: string, messageId: string): Message | null {
-    return storage(useShallow((state) => {
-        const session = state.sessionMessages[sessionId];
-        return session?.messagesMap[messageId] ?? null;
-    }));
+export function useSessionMessages(sessionId: string): { messages: SessionMessage[], isLoaded: boolean } {
+    const cacheRef = React.useRef<{
+        version: number;
+        messages: SessionMessage[];
+        isLoaded: boolean;
+        snapshot: { messages: SessionMessage[]; isLoaded: boolean };
+    } | null>(null);
+
+    return React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            const version = store?.getSessionMessagesVersion(sessionId as SessionID) ?? 0;
+            const messages = store?.getMessages(sessionId as SessionID) ?? emptySessionMessages;
+            const isLoaded = store?.isSessionLoaded(sessionId as SessionID) ?? false;
+            const cached = cacheRef.current;
+
+            if (cached && cached.version === version && cached.messages === messages && cached.isLoaded === isLoaded) {
+                return cached.snapshot;
+            }
+
+            const snapshot = { messages, isLoaded };
+            cacheRef.current = { version, messages, isLoaded, snapshot };
+            return snapshot;
+        },
+        () => ({ messages: emptySessionMessages, isLoaded: false }),
+    );
+}
+
+export function useSessionMessage(sessionId: string, messageId: string): SessionMessage | null {
+    const cacheRef = React.useRef<{
+        version: number;
+        value: SessionMessage | null;
+        snapshot: { version: number; value: SessionMessage | null };
+    } | null>(null);
+
+    const snapshot = React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            const version = store?.getMessageVersion(sessionId as SessionID, messageId as MessageID) ?? 0;
+            const value = store?.getMessage(sessionId as SessionID, messageId as MessageID) ?? null;
+            const cached = cacheRef.current;
+
+            if (cached && cached.version === version && cached.value === value) {
+                return cached.snapshot;
+            }
+
+            const nextSnapshot = { version, value };
+            cacheRef.current = { version, value, snapshot: nextSnapshot };
+            return nextSnapshot;
+        },
+        () => ({ version: 0, value: null }),
+    );
+
+    return snapshot.value;
+}
+
+export function useSessionToolUse(sessionId: string, messageId: string, toolUseId: string | undefined): AppSessionToolUseRef | null {
+    const cacheRef = React.useRef<{
+        version: number;
+        value: AppSessionToolUseRef | null;
+        snapshot: { version: number; value: AppSessionToolUseRef | null };
+    } | null>(null);
+
+    const snapshot = React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            const version = store?.getMessageVersion(sessionId as SessionID, messageId as MessageID) ?? 0;
+            const value = store?.getToolUse(
+                sessionId as SessionID,
+                messageId as MessageID,
+                toolUseId,
+            ) ?? null;
+            const cached = cacheRef.current;
+
+            if (cached && cached.version === version && cached.value === value) {
+                return cached.snapshot;
+            }
+
+            const nextSnapshot = { version, value };
+            cacheRef.current = { version, value, snapshot: nextSnapshot };
+            return nextSnapshot;
+        },
+        () => ({ version: 0, value: null }),
+    );
+
+    return snapshot.value;
+}
+
+export function useSyncSessionState(sessionId: string): SyncNodeSessionState | null {
+    const cacheRef = React.useRef<{
+        version: number;
+        value: SyncNodeSessionState | null;
+        snapshot: { version: number; value: SyncNodeSessionState | null };
+    } | null>(null);
+
+    const snapshot = React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            const version = store?.getSessionStateVersion(sessionId as SessionID) ?? 0;
+            const value = store?.getSession(sessionId as SessionID) ?? null;
+            const cached = cacheRef.current;
+
+            if (cached && cached.version === version && cached.value === value) {
+                return cached.snapshot;
+            }
+
+            const nextSnapshot = { version, value };
+            cacheRef.current = { version, value, snapshot: nextSnapshot };
+            return nextSnapshot;
+        },
+        () => ({ version: 0, value: null }),
+    );
+
+    return snapshot.value;
+}
+
+export function useSyncSessionTodos(sessionId: string): Todo[] {
+    return useSyncSessionState(sessionId)?.todos ?? emptyTodoArray;
+}
+
+export function useV3SessionMessages(sessionId: string): { messages: SessionMessage[], isLoaded: boolean } {
+    return useSessionMessages(sessionId);
+}
+
+export function useV3Message(sessionId: string, messageId: string): SessionMessage | null {
+    return useSessionMessage(sessionId, messageId);
+}
+
+export function useV3ToolPart(sessionId: string, messageId: string, partId: string | undefined): AppSessionToolUseRef | null {
+    return useSessionToolUse(sessionId, messageId, partId);
+}
+
+export function useSyncPendingPermissionCount(sessionId: string): number {
+    const session = useSyncSessionState(sessionId);
+    return session?.permissions.filter((permission) => !permission.resolved).length ?? 0;
+}
+
+export function useAnyOnlineSyncSessionHasPendingPermissions(sessionIds: string[]): boolean {
+    return React.useSyncExternalStore(
+        subscribeToAppSyncStore,
+        () => {
+            const store = sync.appSyncStore;
+            if (!store) {
+                return false;
+            }
+
+            return sessionIds.some((sessionId) => {
+                const session = store.getSession(sessionId as SessionID);
+                return Boolean(session?.permissions.some((permission) => !permission.resolved));
+            });
+        },
+        () => false,
+    );
 }
 
 export function useSessionUsage(sessionId: string) {
     return storage(useShallow((state) => {
-        const session = state.sessionMessages[sessionId];
-        return session?.reducerState?.latestUsage ?? null;
+        return state.sessions[sessionId]?.latestUsage ?? null;
     }));
 }
 

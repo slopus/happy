@@ -7,7 +7,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady } from '@/sync/storage';
+import { useSession, useIsDataReady, useSyncPendingPermissionCount, useSyncSessionState } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -129,6 +129,8 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
+    const pendingPermissionCount = useSyncPendingPermissionCount(session.id);
+    const syncSession = useSyncSessionState(session.id);
     const {
         canShowResume,
         resumeSession,
@@ -457,19 +459,19 @@ function SessionInfoContent({ session }: { session: Session }) {
                     </ItemGroup>
                 )}
 
-                {/* Agent State */}
-                {session.agentState && (
+                {/* Agent State (from SyncNode) */}
+                {(syncSession || session.agentState) && (
                     <ItemGroup title={t('sessionInfo.agentState')}>
                         <Item
                             title={t('sessionInfo.controlledByUser')}
-                            detail={session.agentState.controlledByUser ? t('common.yes') : t('common.no')}
+                            detail={(syncSession?.controlledByUser ?? session.agentState?.controlledByUser) ? t('common.yes') : t('common.no')}
                             icon={<Ionicons name="person-outline" size={29} color="#FF9500" />}
                             showChevron={false}
                         />
-                        {session.agentState.requests && Object.keys(session.agentState.requests).length > 0 && (
+                        {pendingPermissionCount > 0 && (
                             <Item
                                 title={t('sessionInfo.pendingRequests')}
-                                detail={Object.keys(session.agentState.requests).length.toString()}
+                                detail={pendingPermissionCount.toString()}
                                 icon={<Ionicons name="hourglass-outline" size={29} color="#FF9500" />}
                                 showChevron={false}
                             />
@@ -481,8 +483,8 @@ function SessionInfoContent({ session }: { session: Session }) {
                 <ItemGroup title={t('sessionInfo.activity')}>
                     <Item
                         title={t('sessionInfo.thinking')}
-                        detail={session.thinking ? t('common.yes') : t('common.no')}
-                        icon={<Ionicons name="bulb-outline" size={29} color={session.thinking ? "#FFCC00" : "#8E8E93"} />}
+                        detail={(syncSession ? syncSession.status.type === 'running' : session.thinking) ? t('common.yes') : t('common.no')}
+                        icon={<Ionicons name="bulb-outline" size={29} color={(syncSession ? syncSession.status.type === 'running' : session.thinking) ? "#FFCC00" : "#8E8E93"} />}
                         showChevron={false}
                     />
                     {session.thinking && (

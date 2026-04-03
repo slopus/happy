@@ -1,0 +1,63 @@
+{
+  "name": "@slopus/happy-sync",
+  "version": "0.1.0",
+  "description": "Sync protocol types, SyncNode, and encryption for Happy",
+  "author": "Kirill Dubovitskiy",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/slopus/happy/tree/main/packages/happy-sync",
+  "bugs": "https://github.com/slopus/happy/issues",
+  "repository": "slopus/happy",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "package.json",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
+    "test:unit": "vitest run src/session-message.test.ts src/sync-node.test.ts src/messages.test.ts",
+    "test:integration": "vitest run src/sync-node.integration.test.ts",
+    "test:e2e": "vitest run src/e2e/*.integration.test.ts",
+    "walkthrough:webreel": "tsx src/e2e/walkthrough-runner.ts",
+    "walkthrough:direct": "tsx src/e2e/walkthrough-driver.ts",
+    "test": "$npm_execpath run build && $npm_execpath run test:unit && $npm_execpath run test:integration",
+    "prepublishOnly": "$npm_execpath run build && $npm_execpath run test",
+    "release": "npx --no-install release-it"
+  },
+  "dependencies": {
+    "@paralleldrive/cuid2": "^2.2.2",
+    "acpx": "^0.4.0",
+    "socket.io-client": "^4.8.1",
+    "tweetnacl": "^1.0.3",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "pkgroll": "^2.14.2",
+    "playwright": "^1.58.2",
+    "release-it": "^19.0.6",
+    "shx": "^0.3.3",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "packageManager": "yarn@1.22.22"
+}

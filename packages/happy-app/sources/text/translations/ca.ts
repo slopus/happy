@@ -755,6 +755,12 @@ export const ca: TranslationStructure = {
         unknownEvent: 'Esdeveniment desconegut',
         usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
         unknownTime: 'temps desconegut',
+        compactionMarker: 'Conversa compactada',
+        subtask: 'Subtasca',
+    },
+
+    permissions: {
+        sessionStopped: 'Sessió aturada',
     },
 
     codex: {

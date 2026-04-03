@@ -15,9 +15,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
-import { AcpSessionManager } from '@/agent/acp/AcpSessionManager';
-import type { SessionEnvelope } from '@slopus/happy-wire';
+import { resolveSessionScopedSyncNodeToken } from '@/api/syncNodeToken';
+import { SyncBridge } from '@/api/syncBridge';
+import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers';
+import type { SessionID } from '@slopus/happy-sync';
 import { logger } from '@/ui/logger';
+import { configuration } from '@/configuration';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -29,6 +33,13 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { OpenClawBackend } from './OpenClawBackend';
 import type { OpenClawGatewayConfig } from './openclawTypes';
 import type { AgentMessage } from '@/agent/core';
+import {
+  applyAgentMessageToAcpxTurn,
+  createAcpxTurn,
+  getUserMessageText,
+  hasAcpxTurnContent,
+  resetAcpxTurn,
+} from '@/session/acpxTurn';
 
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -179,6 +190,62 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
   });
   session = initialSession;
 
+  // ─── Create SyncBridge directly ──────────────────────────────────────────
+  let syncBridge: SyncBridge | null = null;
+  let rpcHandlerManager: RpcHandlerManager | null = null;
+
+  if (response) {
+    try {
+      const sessionScopedToken = await resolveSessionScopedSyncNodeToken({
+        serverUrl: configuration.serverUrl,
+        sessionId: response.id,
+        token: {
+          raw: opts.credentials.token,
+          claims: {
+            scope: { type: 'account', userId: 'cli' },
+            permissions: ['read', 'write', 'admin'],
+          },
+        },
+      });
+
+      syncBridge = new SyncBridge({
+        serverUrl: configuration.serverUrl,
+        token: sessionScopedToken,
+        keyMaterial: {
+          key: response.encryptionKey,
+          variant: response.encryptionVariant,
+        },
+        sessionId: response.id as SessionID,
+      });
+
+      await syncBridge.connect();
+      logger.debug('[OpenClaw] SyncBridge connected');
+
+      // ─── Create RpcHandlerManager and wire to SyncBridge ─────────────────
+      rpcHandlerManager = new RpcHandlerManager({
+        scopePrefix: response.id,
+        encryptionKey: response.encryptionKey,
+        encryptionVariant: response.encryptionVariant,
+      });
+
+      syncBridge.setRpcHandler(async (method: string, params: string) => {
+        return rpcHandlerManager!.handleRequest({ method, params });
+      });
+
+      rpcHandlerManager.setRegistrationCallback((prefixedMethod) => {
+        syncBridge!.registerRpcMethods([prefixedMethod]);
+      });
+
+      registerCommonHandlers(rpcHandlerManager, process.cwd());
+
+      syncBridge.registerRpcMethods(rpcHandlerManager.getRegisteredMethods());
+    } catch (err) {
+      logger.debug('[OpenClaw] SyncBridge creation failed, falling back to legacy transport', err);
+      syncBridge = null;
+      rpcHandlerManager = null;
+    }
+  }
+
   if (response) {
     try {
       await notifyDaemonSessionStarted(response.id, metadata);
@@ -187,7 +254,24 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     }
   }
 
-  const sessionManager = new AcpSessionManager();
+  const openClawTurn = createAcpxTurn();
+  const publishOpenClawTurn = () => {
+    if (!syncBridge || !hasAcpxTurnContent(openClawTurn)) return;
+    if (openClawTurn.sent) {
+      syncBridge.updateMessage(openClawTurn.message).catch((error) => {
+        logger.debug('[OpenClaw] SyncBridge update failed', { error });
+      });
+      return;
+    }
+    openClawTurn.sent = true;
+    syncBridge.sendMessage(openClawTurn.message).catch((error) => {
+      logger.debug('[OpenClaw] SyncBridge send failed', { error });
+    });
+  };
+  const resetOpenClawTurn = () => {
+    resetAcpxTurn(openClawTurn);
+  };
+
   const messageQueue = new MessageQueue2<Record<string, never>>(() => '');
   let shouldExit = false;
   let abortController = new AbortController();
@@ -216,12 +300,6 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
       pendingTurn = { resolve, reject, timeout };
     });
 
-  const sendEnvelopes = (envelopes: SessionEnvelope[]) => {
-    for (const envelope of envelopes) {
-      session.sendSessionProtocolMessage(envelope);
-    }
-  };
-
   const backend = new OpenClawBackend({
     homeDir: os.homedir(),
     gatewayConfig,
@@ -233,13 +311,11 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
       log(`Backend message: ${JSON.stringify(msg).slice(0, 200)}`);
     }
 
-    // Still forward all messages as envelopes so frontend history matches gateway,
-    // but don't let stale post-abort events flip the thinking/turn state.
     if (msg.type === 'status' && inTurn) {
       const nextThinking = msg.status === 'running';
       if (thinking !== nextThinking) {
         thinking = nextThinking;
-        session.keepAlive(thinking, 'remote');
+        if (syncBridge) syncBridge.keepAlive(thinking, 'remote');
       }
       if (msg.status === 'idle') {
         clearPendingTurn();
@@ -256,19 +332,30 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
       log(`Device pairing required. Approve device via: openclaw devices list`);
     }
 
-    sendEnvelopes(sessionManager.mapMessage(msg));
+    applyAgentMessageToAcpxTurn(openClawTurn, msg);
+    publishOpenClawTurn();
   };
 
   backend.onMessage(onBackendMessage);
 
-  session.onUserMessage((message) => {
-    if (!message.content.text) return;
-    messageQueue.push(message.content.text, {});
-  });
-  session.keepAlive(thinking, 'remote');
+  if (syncBridge) {
+    syncBridge.onUserMessage((message) => {
+      const text = getUserMessageText(message);
+      if (!text) return;
+      messageQueue.push(text, {});
+    });
+    syncBridge.keepAlive(thinking, 'remote');
+  } else {
+    session.onUserMessage((message) => {
+      if (!message.content.text) return;
+      messageQueue.push(message.content.text, {});
+    });
+  }
 
   const keepAliveInterval = setInterval(() => {
-    session.keepAlive(thinking, 'remote');
+    if (syncBridge) {
+      syncBridge.keepAlive(thinking, 'remote');
+    }
   }, 2000);
 
   async function handleAbort() {
@@ -284,17 +371,22 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     // End the turn — gateway may not send final/error after abort
     inTurn = false;
     thinking = false;
-    session.keepAlive(false, 'remote');
+    resetOpenClawTurn();
+    if (syncBridge) syncBridge.keepAlive(false, 'remote');
     clearPendingTurn();
     abortController.abort();
     abortController = new AbortController();
   }
 
-  session.rpcHandlerManager.registerHandler('abort', handleAbort);
-  session.rpcHandlerManager.registerHandler('openclaw-retry-pairing', async () => {
+  const effectiveRpcManager = rpcHandlerManager ?? session.rpcHandlerManager;
+  effectiveRpcManager.registerHandler('abort', handleAbort);
+  syncBridge?.onAbortRequest(() => {
+    void handleAbort();
+  });
+  effectiveRpcManager.registerHandler('openclaw-retry-pairing', async () => {
     backend.retryConnect();
   });
-  registerKillSessionHandler(session.rpcHandlerManager, async () => {
+  registerKillSessionHandler(effectiveRpcManager, async () => {
     shouldExit = true;
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
@@ -316,21 +408,26 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
 
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
       inTurn = true;
-      sendEnvelopes(sessionManager.startTurn());
+      resetOpenClawTurn();
+
       const turnEnded = waitForTurnEnd();
       try {
         await backend.sendPrompt(started.sessionId, batch.message);
         await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         log(`Turn ended: ${msg}`);
-        sendEnvelopes(sessionManager.endTurn('failed'));
       }
       inTurn = false;
       thinking = false;
-      session.keepAlive(false, 'remote');
-      session.sendSessionEvent({ type: 'ready' });
+      resetOpenClawTurn();
+      if (syncBridge) {
+        syncBridge.keepAlive(false, 'remote');
+        syncBridge.updateAgentState((currentState: any) => ({
+          ...currentState,
+          lastEvent: { type: 'ready', time: Date.now() },
+        }));
+      }
     }
   } finally {
     clearInterval(keepAliveInterval);
@@ -341,15 +438,18 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     await backend.dispose();
 
     try {
-      session.updateMetadata((currentMetadata) => ({
-        ...currentMetadata,
-        lifecycleState: 'archived',
-        lifecycleStateSince: Date.now(),
-        archivedBy: 'cli',
-        archiveReason: 'Session ended',
-      }));
-      session.sendSessionDeath();
-      await session.flush();
+      if (syncBridge) {
+        syncBridge.updateMetadata((currentMetadata: any) => ({
+          ...currentMetadata,
+          lifecycleState: 'archived',
+          lifecycleStateSince: Date.now(),
+          archivedBy: 'cli',
+          archiveReason: 'Session ended',
+        }));
+        syncBridge.sendSessionDeath();
+        await syncBridge.flush();
+        syncBridge.disconnect();
+      }
       await session.close();
     } catch (error) {
       logger.debug('[openclaw] Session close failed:', error);

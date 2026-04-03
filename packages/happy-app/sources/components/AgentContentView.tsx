@@ -1,48 +1,102 @@
-import { useHeaderHeight } from '@/utils/responsive';
+import { sync } from '@/sync/sync';
+import type { Metadata } from '@/sync/storageTypes';
+import type { SessionAgentContent, SessionToolResult } from '@slopus/happy-sync';
 import * as React from 'react';
-import { View } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
-import { useKeyboardState } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
+import { MarkdownView, type Option } from './markdown/MarkdownView';
+import { ToolUseView } from './ToolUseView';
 
-interface AgentContentViewProps {
-    input?: React.ReactNode | null;
-    content?: React.ReactNode | null;
-    placeholder?: React.ReactNode | null;
+export interface AgentContentViewProps {
+    content: SessionAgentContent[];
+    toolResults: Record<string, SessionToolResult>;
+    sessionId: string;
+    messageId: string;
+    metadata?: Metadata | null;
+    expandedTools?: boolean;
 }
 
-export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ input, content, placeholder }) => {
-    const safeArea = useSafeAreaInsets();
-    const headerHeight = useHeaderHeight();
-    const state = useKeyboardState();
+export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({
+    content,
+    toolResults,
+    sessionId,
+    messageId,
+    metadata,
+    expandedTools = false,
+}) => {
+    const handleOptionPress = React.useCallback((option: Option) => {
+        sync.sendMessage(sessionId, option.title);
+    }, [sessionId]);
+
     return (
-        <View style={{ flexBasis:0, flexGrow:1, paddingBottom: state.isVisible ? state.height - safeArea.bottom : 0 }}>
-            <View style={{ flexBasis:0, flexGrow:1 }}>
-                {content && (
-                    <View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}>
-                        {content}
-                    </View>
-                )}
-                {placeholder && (
-                    <ScrollView
-                        style={[{ position: 'absolute', top: safeArea.top + headerHeight, left: 0, right: 0, bottom: 0 }]}
-                        contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}
-                        keyboardShouldPersistTaps="handled"
-                        alwaysBounceVertical={false}
-                    >
-                        {placeholder}
-                    </ScrollView>
-                )}
-            </View>
-            <View>
-                {input}
-            </View>
+        <View style={styles.container}>
+            {content.map((item, index) => {
+                if ('Text' in item) {
+                    return (
+                        <View key={`text:${index}`} style={styles.block}>
+                            <MarkdownView markdown={item.Text} onOptionPress={handleOptionPress} sessionId={sessionId} />
+                        </View>
+                    );
+                }
+
+                if ('Thinking' in item) {
+                    return (
+                        <View key={`thinking:${index}`} style={[styles.block, styles.thinkingBlock]}>
+                            <Text style={styles.label}>Thinking</Text>
+                            <MarkdownView markdown={item.Thinking.text} sessionId={sessionId} />
+                        </View>
+                    );
+                }
+
+                if ('RedactedThinking' in item) {
+                    return (
+                        <View key={`redacted:${index}`} style={[styles.block, styles.thinkingBlock]}>
+                            <Text style={styles.label}>Thinking</Text>
+                            <Text style={styles.redactedText}>{item.RedactedThinking || 'Redacted'}</Text>
+                        </View>
+                    );
+                }
+
+                return (
+                    <ToolUseView
+                        key={`tool:${item.ToolUse.id}`}
+                        toolUse={item.ToolUse}
+                        toolResult={toolResults[item.ToolUse.id]}
+                        sessionId={sessionId}
+                        messageId={messageId}
+                        metadata={metadata}
+                        expanded={expandedTools}
+                    />
+                );
+            })}
         </View>
     );
 });
 
-// const FallbackKeyboardAvoidingView: React.FC<AgentContentViewProps> = React.memo(({
-//     children,
-// }) => {
-    
-// });
+const styles = StyleSheet.create((theme) => ({
+    container: {
+        gap: 12,
+    },
+    block: {
+        paddingHorizontal: 16,
+    },
+    thinkingBlock: {
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 12,
+        marginHorizontal: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+    },
+    label: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 6,
+        textTransform: 'uppercase',
+    },
+    redactedText: {
+        color: theme.colors.textSecondary,
+        fontSize: 14,
+        lineHeight: 20,
+    },
+}));

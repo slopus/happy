@@ -2,15 +2,7 @@ import type { ApprovalPolicy, SandboxMode } from './codexAppServerTypes';
 
 export function resolveCodexExecutionPolicy(
     permissionMode: import('@/api/types').PermissionMode,
-    sandboxManagedByHappy: boolean,
 ): { approvalPolicy: ApprovalPolicy; sandbox: SandboxMode } {
-    if (sandboxManagedByHappy) {
-        return {
-            approvalPolicy: 'never',
-            sandbox: 'danger-full-access',
-        };
-    }
-
     const approvalPolicy: ApprovalPolicy = (() => {
         switch (permissionMode) {
             // Codex native modes

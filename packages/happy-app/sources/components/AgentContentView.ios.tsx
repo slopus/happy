@@ -1,70 +1,102 @@
-import { useHeaderHeight } from '@/utils/responsive';
+import { sync } from '@/sync/sync';
+import type { Metadata } from '@/sync/storageTypes';
+import type { SessionAgentContent, SessionToolResult } from '@slopus/happy-sync';
 import * as React from 'react';
-import { View } from 'react-native';
-import { useKeyboardHandler, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
+import { MarkdownView, type Option } from './markdown/MarkdownView';
+import { ToolUseView } from './ToolUseView';
 
-interface AgentContentViewProps {
-    input?: React.ReactNode | null;
-    content?: React.ReactNode | null;
-    placeholder?: React.ReactNode | null;
+export interface AgentContentViewProps {
+    content: SessionAgentContent[];
+    toolResults: Record<string, SessionToolResult>;
+    sessionId: string;
+    messageId: string;
+    metadata?: Metadata | null;
+    expandedTools?: boolean;
 }
 
-export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ input, content, placeholder }) => {
-    const safeArea = useSafeAreaInsets();
-    const height = useReanimatedKeyboardAnimation();
-    const headerHeight = useHeaderHeight();
-    const animatedPadding = useSharedValue(0);
-    useKeyboardHandler({
-        onEnd(e) {
-            'worklet';
-            animatedPadding.value = e.progress === 1 ? (-height.height.value - safeArea.bottom) : 0;
-        },
-        onStart(e) {
-            'worklet';
-            animatedPadding.value = 0;
-        },
-    },[safeArea.bottom]);
-    const animatedStyle = useAnimatedStyle(() => ({
-        paddingTop: animatedPadding.value,
-        transform: [{ translateY: height.height.value + safeArea.bottom * height.progress.value }]
-    }), [safeArea.bottom]);
-    const animatedInputStyle = useAnimatedStyle(() => ({
-        transform: [{ translateY: height.height.value + safeArea.bottom * height.progress.value }]
-    }), [safeArea.bottom]);
-    const animatePlaceholderdStyle = useAnimatedStyle(() => ({
-        paddingTop: height.progress.value === 1 ? height.height.value : 0,
-        transform: [{ translateY: (height.height.value  + safeArea.bottom * height.progress.value) / 2 }]
-    }), [safeArea.bottom]);
+export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({
+    content,
+    toolResults,
+    sessionId,
+    messageId,
+    metadata,
+    expandedTools = false,
+}) => {
+    const handleOptionPress = React.useCallback((option: Option) => {
+        sync.sendMessage(sessionId, option.title);
+    }, [sessionId]);
+
     return (
-        <View style={{ flexBasis:0, flexGrow:1 }}>
-            <View style={{ flexBasis:0, flexGrow:1 }}>
-                {content && (
-                    <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }, animatedStyle]}>
-                        {content}
-                    </Animated.View>
-                )}
-                {placeholder && (
-                    <Animated.ScrollView 
-                        style={[{ position: 'absolute', top: safeArea.top + headerHeight, left: 0, right: 0, bottom: 0 }, animatePlaceholderdStyle]}
-                        contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}
-                        keyboardShouldPersistTaps="handled"
-                        alwaysBounceVertical={false}
-                    >
-                        {placeholder}
-                    </Animated.ScrollView>
-                )}
-            </View>
-            <Animated.View style={[animatedInputStyle]}>
-                {input}
-            </Animated.View>
+        <View style={styles.container}>
+            {content.map((item, index) => {
+                if ('Text' in item) {
+                    return (
+                        <View key={`text:${index}`} style={styles.block}>
+                            <MarkdownView markdown={item.Text} onOptionPress={handleOptionPress} sessionId={sessionId} />
+                        </View>
+                    );
+                }
+
+                if ('Thinking' in item) {
+                    return (
+                        <View key={`thinking:${index}`} style={[styles.block, styles.thinkingBlock]}>
+                            <Text style={styles.label}>Thinking</Text>
+                            <MarkdownView markdown={item.Thinking.text} sessionId={sessionId} />
+                        </View>
+                    );
+                }
+
+                if ('RedactedThinking' in item) {
+                    return (
+                        <View key={`redacted:${index}`} style={[styles.block, styles.thinkingBlock]}>
+                            <Text style={styles.label}>Thinking</Text>
+                            <Text style={styles.redactedText}>{item.RedactedThinking || 'Redacted'}</Text>
+                        </View>
+                    );
+                }
+
+                return (
+                    <ToolUseView
+                        key={`tool:${item.ToolUse.id}`}
+                        toolUse={item.ToolUse}
+                        toolResult={toolResults[item.ToolUse.id]}
+                        sessionId={sessionId}
+                        messageId={messageId}
+                        metadata={metadata}
+                        expanded={expandedTools}
+                    />
+                );
+            })}
         </View>
     );
 });
 
-// const FallbackKeyboardAvoidingView: React.FC<AgentContentViewProps> = React.memo(({
-//     children,
-// }) => {
-    
-// });
+const styles = StyleSheet.create((theme) => ({
+    container: {
+        gap: 12,
+    },
+    block: {
+        paddingHorizontal: 16,
+    },
+    thinkingBlock: {
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 12,
+        marginHorizontal: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+    },
+    label: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 6,
+        textTransform: 'uppercase',
+    },
+    redactedText: {
+        color: theme.colors.textSecondary,
+        fontSize: 14,
+        lineHeight: 20,
+    },
+}));

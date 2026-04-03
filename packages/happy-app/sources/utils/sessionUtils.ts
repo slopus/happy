@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useSyncSessionState } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
@@ -21,11 +22,16 @@ export interface SessionStatus {
  */
 export function useSessionStatus(session: Session): SessionStatus {
     const isOnline = session.presence === "online";
-    const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+    const syncSession = useSyncSessionState(session.id);
+    const hasPermissions = syncSession?.permissions.some((permission) => !permission.resolved) ?? false;
+    const isRunning = syncSession
+        ? syncSession.status.type === 'running'
+            || (syncSession.status.type === 'blocked' && syncSession.status.reason === 'question')
+        : false;
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
-    }, [isOnline, hasPermissions, session.thinking]);
+    }, [hasPermissions, isOnline, isRunning]);
 
     if (!isOnline) {
         return {
@@ -51,7 +57,7 @@ export function useSessionStatus(session: Session): SessionStatus {
         };
     }
 
-    if (session.thinking === true) {
+    if (isRunning) {
         return {
             state: 'thinking',
             isConnected: true,

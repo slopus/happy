@@ -1,4 +1,3 @@
-import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
 import { layout } from '@/components/layout';
 import {
@@ -16,6 +15,7 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { SessionContentView } from '@/components/SessionContentView';
 import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -43,6 +43,55 @@ import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
+
+function useWalkthroughSyncLabel(): string | null {
+    const [label, setLabel] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        if (!__DEV__ || Platform.OS !== 'web' || typeof window === 'undefined') {
+            return;
+        }
+
+        const stateUrl = new URLSearchParams(window.location.search).get('walkthrough_state_url');
+        if (!stateUrl) {
+            return;
+        }
+
+        let cancelled = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        const poll = async () => {
+            try {
+                const response = await fetch(stateUrl, { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`Walkthrough state request failed: ${response.status}`);
+                }
+                const data = await response.json() as { label?: unknown };
+                if (!cancelled && typeof data.label === 'string') {
+                    setLabel(data.label);
+                }
+            } catch {
+                // Ignore transient polling failures while the harness boots or tears down.
+            } finally {
+                if (!cancelled) {
+                    timer = setTimeout(() => {
+                        void poll();
+                    }, 250);
+                }
+            }
+        };
+
+        void poll();
+        return () => {
+            cancelled = true;
+            if (timer) {
+                clearTimeout(timer);
+            }
+        };
+    }, []);
+
+    return label;
+}
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -250,6 +299,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
+    const walkthroughSyncLabel = useWalkthroughSyncLabel();
     const expResumeSession = useSetting('expResumeSession');
     const isArchivedSession = session.metadata?.lifecycleState === 'archived';
     const isDisconnected = !sessionStatus.isConnected;
@@ -437,6 +487,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     return (
         <>
+            {Platform.OS === 'web' && walkthroughSyncLabel ? (
+                <Text
+                    style={{
+                        position: 'absolute',
+                        left: -10_000,
+                        top: 0,
+                        opacity: 0,
+                    }}
+                >
+                    {walkthroughSyncLabel}
+                </Text>
+            ) : null}
+
             {/* CLI Version Warning Overlay - Subtle centered pill */}
             {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
                 <Pressable
@@ -473,7 +536,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
             {/* Main content area - no padding since header is overlay */}
             <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 8 : 0) }}>
-                <AgentContentView
+                <SessionContentView
                     content={content}
                     input={input}
                     placeholder={placeholder}

@@ -9,7 +9,8 @@ import {
     formatSessionOnline
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
-import { Message } from '@/sync/typesMessage';
+import { sync } from '@/sync/sync';
+import { type SessionMessage, type SessionID } from '@slopus/happy-sync';
 import { VOICE_CONFIG } from '../voiceConfig';
 
 /**
@@ -107,7 +108,7 @@ function injectSessionContext(sessionId: string): string | null {
     shownSessions.add(sessionId);
     const session = storage.getState().sessions[sessionId];
     if (!session) return null;
-    const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
+    const messages = sync.appSyncStore?.getMessages(sessionId as SessionID) ?? [];
     return formatSessionFull(session, messages);
 }
 
@@ -174,7 +175,7 @@ export const voiceHooks = {
     /**
      * Called when agent sends a message/response
      */
-    onMessages(sessionId: string, messages: Message[]) {
+    onMessages(sessionId: string, messages: SessionMessage[]) {
         if (VOICE_CONFIG.DISABLE_MESSAGES) return;
 
         const ctx = injectSessionContext(sessionId);

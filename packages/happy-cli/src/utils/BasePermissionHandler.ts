@@ -8,7 +8,7 @@
  */
 
 import { logger } from "@/ui/logger";
-import { ApiSessionClient } from "@/api/apiSession";
+import { RpcHandlerManager } from "@/api/rpc/RpcHandlerManager";
 import { AgentState } from "@/api/types";
 
 /**
@@ -38,6 +38,16 @@ export interface PermissionResult {
 }
 
 /**
+ * Dependencies required by BasePermissionHandler.
+ * Can be satisfied by ApiSessionClient (legacy) or by passing SyncBridge-based deps directly.
+ */
+export interface PermissionHandlerDeps {
+    rpcHandlerManager: RpcHandlerManager;
+    updateAgentState: (handler: (state: AgentState) => AgentState) => void;
+    sendPermissionRequest?: (request: { callID: string; tool: string; patterns: string[]; input: Record<string, unknown> }) => Promise<void>;
+}
+
+/**
  * Abstract base class for permission handlers.
  *
  * Subclasses must implement:
@@ -45,7 +55,7 @@ export interface PermissionResult {
  */
 export abstract class BasePermissionHandler {
     protected pendingRequests = new Map<string, PendingRequest>();
-    protected session: ApiSessionClient;
+    protected deps: PermissionHandlerDeps;
     private isResetting = false;
 
     /**
@@ -53,19 +63,26 @@ export abstract class BasePermissionHandler {
      */
     protected abstract getLogPrefix(): string;
 
-    constructor(session: ApiSessionClient) {
-        this.session = session;
+    constructor(deps: PermissionHandlerDeps) {
+        this.deps = deps;
         this.setupRpcHandler();
     }
 
     /**
-     * Update the session reference (used after offline reconnection swaps sessions).
-     * This is critical for avoiding stale session references after onSessionSwap.
+     * Apply a permission decision that arrived over SyncNode instead of RPC.
      */
-    updateSession(newSession: ApiSessionClient): void {
-        logger.debug(`${this.getLogPrefix()} Session reference updated`);
-        this.session = newSession;
-        // Re-setup RPC handler with new session
+    handleSyncDecision(response: PermissionResponse): void {
+        this.applyPermissionResponse(response);
+    }
+
+    /**
+     * Update the deps reference (used after offline reconnection swaps sessions).
+     * This is critical for avoiding stale references after onSessionSwap.
+     */
+    updateDeps(newDeps: PermissionHandlerDeps): void {
+        logger.debug(`${this.getLogPrefix()} Deps reference updated`);
+        this.deps = newDeps;
+        // Re-setup RPC handler with new deps
         this.setupRpcHandler();
     }
 
@@ -73,58 +90,58 @@ export abstract class BasePermissionHandler {
      * Setup RPC handler for permission responses.
      */
     protected setupRpcHandler(): void {
-        this.session.rpcHandlerManager.registerHandler<PermissionResponse, void>(
+        this.deps.rpcHandlerManager.registerHandler<PermissionResponse, void>(
             'permission',
             async (response) => {
-                const pending = this.pendingRequests.get(response.id);
-                if (!pending) {
-                    logger.debug(`${this.getLogPrefix()} Permission request not found or already resolved`);
-                    return;
-                }
-
-                // Remove from pending
-                this.pendingRequests.delete(response.id);
-
-                // Resolve the permission request
-                const result: PermissionResult = response.approved
-                    ? { decision: response.decision === 'approved_for_session' ? 'approved_for_session' : 'approved' }
-                    : { decision: response.decision === 'denied' ? 'denied' : 'abort' };
-
-                pending.resolve(result);
-
-                // Move request to completed in agent state
-                this.session.updateAgentState((currentState) => {
-                    const request = currentState.requests?.[response.id];
-                    if (!request) return currentState;
-
-                    const { [response.id]: _, ...remainingRequests } = currentState.requests || {};
-
-                    let res = {
-                        ...currentState,
-                        requests: remainingRequests,
-                        completedRequests: {
-                            ...currentState.completedRequests,
-                            [response.id]: {
-                                ...request,
-                                completedAt: Date.now(),
-                                status: response.approved ? 'approved' : 'denied',
-                                decision: result.decision
-                            }
-                        }
-                    } satisfies AgentState;
-                    return res;
-                });
-
-                logger.debug(`${this.getLogPrefix()} Permission ${response.approved ? 'approved' : 'denied'} for ${pending.toolName}`);
+                this.applyPermissionResponse(response);
             }
         );
+    }
+
+    private applyPermissionResponse(response: PermissionResponse): void {
+        const pending = this.pendingRequests.get(response.id);
+        if (!pending) {
+            logger.debug(`${this.getLogPrefix()} Permission request not found or already resolved`);
+            return;
+        }
+
+        this.pendingRequests.delete(response.id);
+
+        const result: PermissionResult = response.approved
+            ? { decision: response.decision === 'approved_for_session' ? 'approved_for_session' : 'approved' }
+            : { decision: response.decision === 'denied' ? 'denied' : 'abort' };
+
+        pending.resolve(result);
+
+        this.deps.updateAgentState((currentState) => {
+            const request = currentState.requests?.[response.id];
+            if (!request) return currentState;
+
+            const { [response.id]: _, ...remainingRequests } = currentState.requests || {};
+
+            return {
+                ...currentState,
+                requests: remainingRequests,
+                completedRequests: {
+                    ...currentState.completedRequests,
+                    [response.id]: {
+                        ...request,
+                        completedAt: Date.now(),
+                        status: response.approved ? 'approved' : 'denied',
+                        decision: result.decision,
+                    },
+                },
+            } satisfies AgentState;
+        });
+
+        logger.debug(`${this.getLogPrefix()} Permission ${response.approved ? 'approved' : 'denied'} for ${pending.toolName}`);
     }
 
     /**
      * Add a pending request to the agent state.
      */
     protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
-        this.session.updateAgentState((currentState) => ({
+        this.deps.updateAgentState((currentState) => ({
             ...currentState,
             requests: {
                 ...currentState.requests,
@@ -135,6 +152,18 @@ export abstract class BasePermissionHandler {
                 }
             }
         }));
+
+        const normalizedInput = (input && typeof input === 'object')
+            ? input as Record<string, unknown>
+            : {};
+        this.deps.sendPermissionRequest?.({
+            callID: toolCallId,
+            tool: toolName,
+            patterns: this.extractPatterns(toolName, normalizedInput),
+            input: normalizedInput,
+        }).catch((error) => {
+            logger.debug(`${this.getLogPrefix()} Failed to send permission-request control message`, error);
+        });
     }
 
     /**
@@ -159,7 +188,7 @@ export abstract class BasePermissionHandler {
         }
 
         // Move pending requests to completed as canceled in agent state
-        this.session.updateAgentState((currentState) => {
+        this.deps.updateAgentState((currentState) => {
             const pendingRequests = currentState.requests || {};
             const completedRequests = { ...currentState.completedRequests };
 
@@ -209,7 +238,7 @@ export abstract class BasePermissionHandler {
             }
 
             // Clear requests in agent state
-            this.session.updateAgentState((currentState) => {
+            this.deps.updateAgentState((currentState) => {
                 const pendingRequests = currentState.requests || {};
                 const completedRequests = { ...currentState.completedRequests };
 
@@ -234,5 +263,18 @@ export abstract class BasePermissionHandler {
         } finally {
             this.isResetting = false;
         }
+    }
+
+    private extractPatterns(toolName: string, input: Record<string, unknown>): string[] {
+        if (toolName === 'Bash' && typeof input.command === 'string') {
+            return [input.command];
+        }
+        for (const key of ['file_path', 'path', 'pattern', 'command']) {
+            const value = input[key];
+            if (typeof value === 'string' && value.length > 0) {
+                return [value];
+            }
+        }
+        return ['*'];
     }
 }

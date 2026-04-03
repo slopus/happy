@@ -23,7 +23,7 @@ describe('modelModeOptions', () => {
 
     it('builds claude permission fallbacks with translated names', () => {
         const modes = getClaudePermissionModes(translate);
-        expect(modes.map((mode) => mode.key)).toEqual(['default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions']);
+        expect(modes.map((mode) => mode.key)).toEqual(['default', 'plan', 'dontAsk', 'acceptEdits', 'bypassPermissions']);
         expect(modes[0].name).toBe('tr:agentInput.permissionMode.default');
     });
 

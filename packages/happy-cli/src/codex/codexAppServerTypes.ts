@@ -1,6 +1,6 @@
 /**
- * Cherry-picked types from `codex app-server generate-ts` (Codex 0.107.0).
- * Only the essential types needed for our integration.
+ * Shared Codex integration types that still sit above the SDK layer:
+ * execution-policy enums and the normalized event shape our v3 mapper consumes.
  */
 
 export type ThreadId = string;
@@ -158,19 +158,3 @@ export type FileChange =
 // EventMsg uses the same type discriminators as the MCP server, so our
 // existing handler works without changes. We type it loosely here.
 export type EventMsg = { type: string } & Record<string, unknown>;
-
-// --- JSON-RPC 2.0 wire types ---
-
-export type JsonRpcRequest = {
-    jsonrpc?: "2.0";
-    id?: number;
-    method: string;
-    params?: unknown;
-};
-
-export type JsonRpcResponse = {
-    jsonrpc?: "2.0";
-    id: number;
-    result?: unknown;
-    error?: { code: number; message: string; data?: unknown };
-};

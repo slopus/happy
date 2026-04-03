@@ -71,6 +71,9 @@
     "paths": {
       "@/*": [
         "./sources/*"
+      ],
+      "@slopus/happy-sync": [
+        "../happy-sync/dist/index.d.mts"
       ]
     }
   },

@@ -755,6 +755,12 @@ export const zhHant: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知時間',
+        compactionMarker: '對話已壓縮',
+        subtask: '子任務',
+    },
+
+    permissions: {
+        sessionStopped: '工作階段已停止',
     },
 
     codex: {

@@ -3,21 +3,12 @@
  * Provides strictly typed functions for all session-related RPC operations
  */
 
+import type { SessionID } from '@slopus/happy-sync';
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import type { MachineMetadata } from './storageTypes';
 
 // Strict type definitions for all operations
-
-// Permission operation types
-interface SessionPermissionRequest {
-    id: string;
-    approved: boolean;
-    reason?: string;
-    mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-    allowTools?: string[];
-    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
-}
 
 // Mode change operation types
 interface SessionModeChangeRequest {
@@ -144,6 +135,42 @@ export interface SpawnSessionOptions {
 export interface ResumeSessionOptions {
     machineId: string;
     sessionId: string;
+}
+
+function getSyncNodeSession(sessionId: string) {
+    return sync.appSyncStore?.getSession(sessionId as SessionID);
+}
+
+async function ensureSyncNodeSession(sessionId: string) {
+    if (!sync.appSyncStore) {
+        return undefined;
+    }
+
+    const current = getSyncNodeSession(sessionId);
+    if (current) {
+        return current;
+    }
+
+    try {
+        await sync.appSyncStore.fetchSession(sessionId as SessionID);
+    } catch {
+        return undefined;
+    }
+
+    return getSyncNodeSession(sessionId);
+}
+
+async function requireSyncNodeSession(sessionId: string) {
+    if (!sync.appSyncStore) {
+        throw new Error('AppSyncStore is not initialized');
+    }
+
+    const session = await ensureSyncNodeSession(sessionId);
+    if (!session) {
+        throw new Error(`SyncNode session ${sessionId} is not available`);
+    }
+
+    return session;
 }
 
 // Exported session operation functions
@@ -323,16 +350,53 @@ export async function sessionAbort(sessionId: string): Promise<void> {
  * Allow a permission request
  */
 export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'approved' | 'approved_for_session'): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: true, mode, allowTools: allowedTools, decision };
-    await apiSocket.sessionRPC(sessionId, 'permission', request);
+    const session = await requireSyncNodeSession(sessionId);
+    const pendingPermission = session.permissions.find((request) => request.permissionId === id && !request.resolved);
+    if (!pendingPermission) {
+        throw new Error(`Permission request ${id} was not found in session ${sessionId}`);
+    }
+
+    await sync.appSyncStore!.approvePermission(sessionId as SessionID, id, {
+        decision:
+            decision === 'approved_for_session'
+            || mode === 'acceptEdits'
+            || (allowedTools?.length ?? 0) > 0
+                ? 'always'
+                : 'once',
+        allowTools: allowedTools,
+    });
 }
 
 /**
  * Deny a permission request
  */
 export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'denied' | 'abort'): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: false, mode, allowTools: allowedTools, decision };
-    await apiSocket.sessionRPC(sessionId, 'permission', request);
+    const session = await requireSyncNodeSession(sessionId);
+    const pendingPermission = session.permissions.find((request) => request.permissionId === id && !request.resolved);
+    if (!pendingPermission) {
+        throw new Error(`Permission request ${id} was not found in session ${sessionId}`);
+    }
+
+    await sync.appSyncStore!.denyPermission(
+        sessionId as SessionID,
+        id,
+        decision === 'abort' ? 'request aborted by user' : 'request denied by user',
+    );
+}
+
+/**
+ * Answer a v3 question request through SyncNode.
+ * Returns true when the session is on the SyncNode path and the answer was sent.
+ */
+export async function sessionAnswerQuestion(sessionId: string, questionId: string, answers: string[][]): Promise<boolean> {
+    const session = await ensureSyncNodeSession(sessionId);
+    const pendingQuestion = session?.questions.find((request) => request.questionId === questionId && !request.resolved);
+    if (!sync.appSyncStore || !pendingQuestion) {
+        return false;
+    }
+
+    await sync.appSyncStore.answerQuestion(sessionId as SessionID, questionId, answers);
+    return true;
 }
 
 /**

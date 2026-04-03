@@ -11,14 +11,25 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
-import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
-    closeClaudeTurnWithStatus,
-    mapClaudeLogMessageToSessionEnvelopes,
-    type ClaudeSessionProtocolState,
-} from '@/claude/utils/sessionProtocolMapper';
-import { InvalidateSync } from '@/utils/sync';
-import axios from 'axios';
+    type SessionID,
+    type SessionMessage,
+} from '@slopus/happy-sync';
+import {
+    type SessionEnvelope,
+    type SessionTurnEndStatus,
+} from '@/legacy/sessionProtocol';
+import { SyncBridge, type SyncBridgeOpts } from './syncBridge';
+import { resolveSessionScopedSyncNodeToken } from './syncNodeToken';
+import {
+    applyClaudeAssistantMessageToAcpxTurn,
+    applyClaudeToolResultsToAcpxTurn,
+    applyPseudoEventToAcpxTurn,
+    createAcpxTurn,
+    createClaudeUserMessage,
+    hasAcpxTurnContent,
+    resetAcpxTurn,
+} from '@/session/acpxTurn';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -47,30 +58,6 @@ export type ACPMessageData =
 
 export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
 
-type V3SessionMessage = {
-    id: string;
-    seq: number;
-    content: { t: 'encrypted'; c: string };
-    localId: string | null;
-    createdAt: number;
-    updatedAt: number;
-};
-
-type V3GetSessionMessagesResponse = {
-    messages: V3SessionMessage[];
-    hasMore: boolean;
-};
-
-type V3PostSessionMessagesResponse = {
-    messages: Array<{
-        id: string;
-        seq: number;
-        localId: string | null;
-        createdAt: number;
-        updatedAt: number;
-    }>;
-};
-
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     readonly sessionId: string;
@@ -86,21 +73,9 @@ export class ApiSessionClient extends EventEmitter {
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
-    private claudeSessionProtocolState: ClaudeSessionProtocolState = {
-        currentTurnId: null,
-        uuidToProviderSubagent: new Map<string, string>(),
-        taskPromptToSubagents: new Map<string, string[]>(),
-        providerSubagentToSessionSubagent: new Map<string, string>(),
-        subagentTitles: new Map<string, string>(),
-        bufferedSubagentMessages: new Map<string, RawJSONLines[]>(),
-        hiddenParentToolCalls: new Set<string>(),
-        startedSubagents: new Set<string>(),
-        activeSubagents: new Set<string>(),
-    };
-    private lastSeq = 0;
-    private pendingOutbox: Array<{ content: string; localId: string }> = [];
-    private readonly sendSync: InvalidateSync;
-    private readonly receiveSync: InvalidateSync;
+    private claudeTurn = createAcpxTurn();
+    private codexTurn = createAcpxTurn();
+    private syncBridge: SyncBridge | null = null;
 
     constructor(token: string, session: Session) {
         super()
@@ -112,8 +87,6 @@ export class ApiSessionClient extends EventEmitter {
         this.agentStateVersion = session.agentStateVersion;
         this.encryptionKey = session.encryptionKey;
         this.encryptionVariant = session.encryptionVariant;
-        this.sendSync = new InvalidateSync(() => this.flushOutbox());
-        this.receiveSync = new InvalidateSync(() => this.fetchMessages());
 
         // Initialize RPC handler manager
         this.rpcHandlerManager = new RpcHandlerManager({
@@ -151,7 +124,6 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully');
             this.rpcHandlerManager.onSocketConnect(this.socket);
-            this.receiveSync.invalidate();
         })
 
         // Set up global RPC request handler
@@ -180,19 +152,18 @@ export class ApiSessionClient extends EventEmitter {
                 }
 
                 if (data.body.t === 'new-message') {
-                    const messageSeq = data.body.message?.seq;
-                    if (this.lastSeq === 0) {
-                        this.receiveSync.invalidate();
-                        return;
+                    // When SyncBridge is attached, incoming messages arrive through SyncNode
+                    if (this.syncBridge) return;
+
+                    const message = data.body.message;
+                    if (!message || message.content?.t !== 'encrypted') return;
+                    try {
+                        const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
+                        logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
+                        this.routeIncomingMessage(body);
+                    } catch (error) {
+                        logger.debug('[SOCKET] [UPDATE] Failed to decrypt new-message', { error });
                     }
-                    if (typeof messageSeq !== 'number' || messageSeq !== this.lastSeq + 1 || data.body.message.content.t !== 'encrypted') {
-                        this.receiveSync.invalidate();
-                        return;
-                    }
-                    const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
-                    logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
-                    this.routeIncomingMessage(body);
-                    this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
                         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
@@ -233,13 +204,6 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    private authHeaders() {
-        return {
-            'Authorization': `Bearer ${this.token}`,
-            'Content-Type': 'application/json'
-        };
-    }
-
     private routeIncomingMessage(message: unknown) {
         const userResult = UserMessageSchema.safeParse(message);
         if (userResult.success) {
@@ -253,98 +217,19 @@ export class ApiSessionClient extends EventEmitter {
         this.emit('message', message);
     }
 
-    private async fetchMessages() {
-        let afterSeq = this.lastSeq;
-        while (true) {
-            const response = await axios.get<V3GetSessionMessagesResponse>(
-                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                {
-                    params: {
-                        after_seq: afterSeq,
-                        limit: 100
-                    },
-                    headers: this.authHeaders(),
-                    timeout: 60000
-                }
-            );
-
-            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-            let maxSeq = afterSeq;
-
-            for (const message of messages) {
-                if (message.seq > maxSeq) {
-                    maxSeq = message.seq;
-                }
-
-                if (message.content?.t !== 'encrypted') {
-                    continue;
-                }
-
-                try {
-                    const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
-                    this.routeIncomingMessage(body);
-                } catch (error) {
-                    logger.debug('[API] Failed to decrypt fetched message', {
-                        sessionId: this.sessionId,
-                        seq: message.seq,
-                        error
-                    });
-                }
-            }
-
-            this.lastSeq = Math.max(this.lastSeq, maxSeq);
-            const hasMore = !!response.data.hasMore;
-            if (hasMore && maxSeq === afterSeq) {
-                logger.debug('[API] fetchMessages pagination stalled, stopping to avoid infinite loop', {
-                    sessionId: this.sessionId,
-                    afterSeq
-                });
-                break;
-            }
-            afterSeq = maxSeq;
-            if (!hasMore) {
-                break;
-            }
+    private enqueueMessage(content: unknown) {
+        if (!this.syncBridge) {
+            logger.debug('[API] enqueueMessage called but no SyncBridge attached — message dropped', { content });
+            return;
         }
-    }
-
-    private static readonly MAX_OUTBOX_BATCH_SIZE = 50;
-
-    private async flushOutbox() {
-        // Send latest messages first so the user sees recent activity immediately,
-        // then backfill older messages in subsequent batches.
-        while (this.pendingOutbox.length > 0) {
-            const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
-            const batch = this.pendingOutbox.splice(-batchSize, batchSize);
-
-            const response = await axios.post<V3PostSessionMessagesResponse>(
-                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                {
-                    messages: batch
-                },
-                {
-                    headers: this.authHeaders(),
-                    timeout: 60000
-                }
-            );
-
-            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-            const maxSeq = messages.reduce((acc, message) => (
-                message.seq > acc ? message.seq : acc
-            ), this.lastSeq);
-            this.lastSeq = maxSeq;
-        }
-    }
-
-    private enqueueMessage(content: unknown, invalidate: boolean = true) {
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.pendingOutbox.push({
-            content: encrypted,
-            localId: randomUUID()
+        // Legacy bridge: wraps non-sync-bridge content in a placeholder envelope.
+        const envelope = {
+            info: { id: randomUUID(), role: 'system', createdAt: Date.now() },
+            parts: [{ type: 'legacy-envelope', data: content }],
+        };
+        this.syncBridge.sendMessage(envelope as any).catch((err) => {
+            logger.debug('[API] SyncBridge sendMessage failed (enqueueMessage)', { error: err });
         });
-        if (invalidate) {
-            this.sendSync.invalidate();
-        }
     }
 
     /**
@@ -352,11 +237,7 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
-        const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
-        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-        for (const envelope of mapped.envelopes) {
-            this.sendSessionProtocolMessage(envelope);
-        }
+        this.sendClaudeV3Message(body);
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
@@ -379,11 +260,109 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
-        const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
-        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-        for (const envelope of mapped.envelopes) {
-            this.sendSessionProtocolMessage(envelope);
+        this.flushClaudeV3Turn();
+    }
+
+    /**
+     * Attach a SyncBridge for acpx message transport.
+     * When attached, transcript messages go through SyncNode instead of the legacy outbox.
+     */
+    async attachSyncBridge(opts: Omit<SyncBridgeOpts, 'sessionId'>): Promise<SyncBridge> {
+        const sessionToken = await resolveSessionScopedSyncNodeToken({
+            serverUrl: opts.serverUrl,
+            sessionId: this.sessionId,
+            token: opts.token,
+        });
+        const bridge = new SyncBridge({
+            ...opts,
+            token: sessionToken,
+            sessionId: this.sessionId as SessionID,
+        });
+        await bridge.connect();
+        this.syncBridge = bridge;
+
+        return bridge;
+    }
+
+    getSyncBridge(): SyncBridge | null {
+        return this.syncBridge;
+    }
+
+    sendV3ProtocolMessage(message: SessionMessage) {
+        if (!this.syncBridge) {
+            logger.debug('[API] sendV3ProtocolMessage called but no SyncBridge attached — message dropped');
+            return;
         }
+        this.syncBridge.sendMessage(message).catch((err) => {
+            logger.debug('[API] SyncBridge sendMessage failed', { error: err });
+        });
+    }
+
+    sendClaudeV3Message(body: RawJSONLines) {
+        if (body.type === 'user') {
+            if (applyClaudeToolResultsToAcpxTurn(this.claudeTurn, body)) {
+                this.publishTurn(this.claudeTurn);
+                this.resetTurn(this.claudeTurn);
+            } else {
+                this.resetTurn(this.claudeTurn);
+                const userMessage = createClaudeUserMessage(body);
+                if (userMessage) {
+                    this.sendV3ProtocolMessage(userMessage);
+                }
+            }
+            return;
+        }
+
+        if (body.type === 'assistant') {
+            applyClaudeAssistantMessageToAcpxTurn(this.claudeTurn, body);
+            this.publishTurn(this.claudeTurn);
+        }
+    }
+
+    flushClaudeV3Turn() {
+        this.publishTurn(this.claudeTurn);
+        this.resetTurn(this.claudeTurn);
+    }
+
+    blockToolForPermissionV3(_callID: string, _permission: string, _patterns: string[], _metadata: Record<string, unknown>): void {
+    }
+
+    unblockToolApprovedV3(_callID: string, _decision: 'once' | 'always'): void {
+    }
+
+    unblockToolRejectedV3(_callID: string, _reason: string): void {
+    }
+
+    sendCodexV3Event(event: Record<string, unknown>): void {
+        applyPseudoEventToAcpxTurn(this.codexTurn, event);
+        this.publishTurn(this.codexTurn);
+    }
+
+    flushCodexV3Turn(): void {
+        this.publishTurn(this.codexTurn);
+        this.resetTurn(this.codexTurn);
+    }
+
+    private publishTurn(turn: ReturnType<typeof createAcpxTurn>): void {
+        if (!this.syncBridge || !hasAcpxTurnContent(turn)) {
+            return;
+        }
+
+        if (turn.sent) {
+            this.syncBridge.updateMessage(turn.message).catch((err) => {
+                logger.debug('[API] SyncBridge updateMessage failed', { error: err });
+            });
+            return;
+        }
+
+        turn.sent = true;
+        this.syncBridge.sendMessage(turn.message).catch((err) => {
+            logger.debug('[API] SyncBridge sendMessage failed', { error: err });
+        });
+    }
+
+    private resetTurn(turn: ReturnType<typeof createAcpxTurn>): void {
+        resetAcpxTurn(turn);
     }
 
     sendCodexMessage(body: any) {
@@ -400,7 +379,7 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content);
     }
 
-    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope) {
         const content = {
             role: 'session',
             content: envelope,
@@ -409,7 +388,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
-        this.enqueueMessage(content, invalidate);
+        this.enqueueMessage(content);
     }
 
     sendSessionProtocolMessage(envelope: SessionEnvelope) {
@@ -588,7 +567,7 @@ export class ApiSessionClient extends EventEmitter {
      */
     async flush(): Promise<void> {
         await Promise.race([
-            this.sendSync.invalidateAndAwait(),
+            this.syncBridge?.flush() ?? Promise.resolve(),
             delay(10000)
         ]);
         if (!this.socket.connected) {
@@ -606,8 +585,7 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
-        this.sendSync.stop();
-        this.receiveSync.stop();
+        this.syncBridge?.disconnect();
         this.socket.close();
     }
 }

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { SDKToLogConverter, convertSDKToLog } from './sdkToLogConverter'
-import type { SDKMessage, SDKUserMessage, SDKAssistantMessage, SDKSystemMessage, SDKResultMessage } from '@/claude/sdk'
+import type { SDKMessage, SDKUserMessage, SDKAssistantMessage, SDKSystemMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 
 describe('SDKToLogConverter', () => {
     let converter: SDKToLogConverter
@@ -15,19 +15,110 @@ describe('SDKToLogConverter', () => {
         gitBranch: 'main'
     }
 
+    function userMessage(content: SDKUserMessage['message']['content'], overrides: Partial<SDKUserMessage> = {}): SDKUserMessage {
+        return {
+            type: 'user',
+            session_id: context.sessionId,
+            parent_tool_use_id: null,
+            message: {
+                role: 'user',
+                content,
+            },
+            ...overrides,
+        }
+    }
+
+    function assistantMessage(
+        content: SDKAssistantMessage['message']['content'],
+        overrides: Partial<SDKAssistantMessage> = {},
+    ): SDKAssistantMessage {
+        return {
+            type: 'assistant',
+            uuid: '00000000-0000-4000-8000-000000000001',
+            session_id: context.sessionId,
+            parent_tool_use_id: null,
+            message: {
+                role: 'assistant',
+                content,
+            },
+            ...overrides,
+        }
+    }
+
+    function systemInitMessage(overrides: Partial<SDKSystemMessage> = {}): SDKSystemMessage {
+        return {
+            type: 'system',
+            subtype: 'init',
+            session_id: context.sessionId,
+            model: 'claude-opus-4',
+            cwd: context.cwd,
+            tools: ['bash', 'edit'],
+            slash_commands: [],
+            mcp_servers: [],
+            apiKeySource: 'user',
+            claude_code_version: '0.0.0-test',
+            permissionMode: 'default',
+            output_style: 'default',
+            skills: [],
+            plugins: [],
+            uuid: '00000000-0000-4000-8000-000000000002',
+            ...overrides,
+        }
+    }
+
+    function resultSuccessMessage(overrides: Partial<SDKResultMessage> = {}): SDKResultMessage {
+        return {
+            type: 'result',
+            subtype: 'success',
+            result: 'Task completed',
+            num_turns: 5,
+            usage: {
+                input_tokens: 100,
+                output_tokens: 200,
+            },
+            total_cost_usd: 0.05,
+            duration_ms: 3000,
+            duration_api_ms: 2500,
+            is_error: false,
+            stop_reason: null,
+            modelUsage: {},
+            permission_denials: [],
+            uuid: '00000000-0000-4000-8000-000000000003',
+            session_id: context.sessionId,
+            ...overrides,
+        } as SDKResultMessage
+    }
+
+    function resultErrorMessage(overrides: Partial<SDKResultMessage> = {}): SDKResultMessage {
+        return {
+            type: 'result',
+            subtype: 'error_max_turns',
+            num_turns: 10,
+            usage: {
+                input_tokens: 100,
+                output_tokens: 200,
+            },
+            total_cost_usd: 0.1,
+            duration_ms: 5000,
+            duration_api_ms: 4500,
+            is_error: true,
+            stop_reason: null,
+            modelUsage: {},
+            permission_denials: [],
+            errors: ['Maximum turns reached'],
+            uuid: '00000000-0000-4000-8000-000000000004',
+            session_id: context.sessionId,
+            ...overrides,
+        } as SDKResultMessage
+    }
+
     beforeEach(() => {
         converter = new SDKToLogConverter(context)
     })
 
     describe('User messages', () => {
         it('should convert SDK user message to log format', () => {
-            const sdkMessage: SDKUserMessage = {
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: 'Hello Claude'
-                }
-            }
+            const sdkMessage = userMessage('Hello Claude')
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -52,16 +143,10 @@ describe('SDKToLogConverter', () => {
         })
 
         it('should handle user message with complex content', () => {
-            const sdkMessage: SDKUserMessage = {
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: [
-                        { type: 'text', text: 'Check this out' },
-                        { type: 'tool_result', tool_use_id: 'tool123', content: 'Result data' }
-                    ]
-                }
-            }
+            const sdkMessage = userMessage([
+                { type: 'text', text: 'Check this out' },
+                { type: 'tool_result', tool_use_id: 'tool123', content: 'Result data' }
+            ])
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -72,15 +157,9 @@ describe('SDKToLogConverter', () => {
 
     describe('Assistant messages', () => {
         it('should convert SDK assistant message to log format', () => {
-            const sdkMessage: SDKAssistantMessage = {
-                type: 'assistant',
-                message: {
-                    role: 'assistant',
-                    content: [
-                        { type: 'text', text: 'Hello! How can I help?' }
-                    ]
-                }
-            }
+            const sdkMessage = assistantMessage([
+                { type: 'text', text: 'Hello! How can I help?' }
+            ])
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -99,12 +178,8 @@ describe('SDKToLogConverter', () => {
         })
 
         it('should include requestId if present', () => {
-            const sdkMessage: any = {
-                type: 'assistant',
-                message: {
-                    role: 'assistant',
-                    content: [{ type: 'text', text: 'Response' }]
-                },
+            const sdkMessage = {
+                ...assistantMessage([{ type: 'text', text: 'Response' }]),
                 requestId: 'req_123'
             }
 
@@ -116,14 +191,12 @@ describe('SDKToLogConverter', () => {
 
     describe('System messages', () => {
         it('should convert SDK system message to log format', () => {
-            const sdkMessage: SDKSystemMessage = {
-                type: 'system',
-                subtype: 'init',
+            const sdkMessage = systemInitMessage({
                 session_id: 'new-session-456',
                 model: 'claude-opus-4',
                 cwd: '/project',
-                tools: ['bash', 'edit']
-            }
+                tools: ['bash', 'edit'],
+            })
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -138,42 +211,25 @@ describe('SDKToLogConverter', () => {
         })
 
         it('should update session ID on init system message', () => {
-            const sdkMessage: SDKSystemMessage = {
-                type: 'system',
-                subtype: 'init',
+            const sdkMessage = systemInitMessage({
                 session_id: 'updated-session-789'
-            }
+            })
 
             converter.convert(sdkMessage)
 
             // Next message should have updated session ID
-            const userMessage: SDKUserMessage = {
-                type: 'user',
-                message: { role: 'user', content: 'Test' }
-            }
+            const nextUserMessage = userMessage('Test')
 
-            const logMessage = converter.convert(userMessage)
+            const logMessage = converter.convert(nextUserMessage)
             expect(logMessage?.sessionId).toBe('updated-session-789')
         })
     })
 
     describe('Result messages', () => {
         it('should not convert result messages', () => {
-            const sdkMessage: SDKResultMessage = {
-                type: 'result',
-                subtype: 'success',
-                result: 'Task completed',
-                num_turns: 5,
-                usage: {
-                    input_tokens: 100,
-                    output_tokens: 200
-                },
-                total_cost_usd: 0.05,
-                duration_ms: 3000,
-                duration_api_ms: 2500,
-                is_error: false,
+            const sdkMessage = resultSuccessMessage({
                 session_id: 'result-session'
-            }
+            })
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -181,16 +237,9 @@ describe('SDKToLogConverter', () => {
         })
 
         it('should not convert error results', () => {
-            const sdkMessage: SDKResultMessage = {
-                type: 'result',
-                subtype: 'error_max_turns',
-                num_turns: 10,
-                total_cost_usd: 0.1,
-                duration_ms: 5000,
-                duration_api_ms: 4500,
-                is_error: true,
+            const sdkMessage = resultErrorMessage({
                 session_id: 'error-session'
-            }
+            })
 
             const logMessage = converter.convert(sdkMessage)
 
@@ -201,18 +250,9 @@ describe('SDKToLogConverter', () => {
 
     describe('Parent-child relationships', () => {
         it('should track parent UUIDs across messages', () => {
-            const msg1: SDKUserMessage = {
-                type: 'user',
-                message: { role: 'user', content: 'First' }
-            }
-            const msg2: SDKAssistantMessage = {
-                type: 'assistant',
-                message: { role: 'assistant', content: [{ type: 'text', text: 'Second' }] }
-            }
-            const msg3: SDKUserMessage = {
-                type: 'user',
-                message: { role: 'user', content: 'Third' }
-            }
+            const msg1 = userMessage('First')
+            const msg2 = assistantMessage([{ type: 'text', text: 'Second' }])
+            const msg3 = userMessage('Third')
 
             const log1 = converter.convert(msg1)
             const log2 = converter.convert(msg2)
@@ -224,18 +264,12 @@ describe('SDKToLogConverter', () => {
         })
 
         it('should reset parent chain when requested', () => {
-            const msg1: SDKUserMessage = {
-                type: 'user',
-                message: { role: 'user', content: 'First' }
-            }
+            const msg1 = userMessage('First')
             const log1 = converter.convert(msg1)
 
             converter.resetParentChain()
 
-            const msg2: SDKUserMessage = {
-                type: 'user',
-                message: { role: 'user', content: 'Second' }
-            }
+            const msg2 = userMessage('Second')
             const log2 = converter.convert(msg2)
 
             expect(log2?.parentUuid).toBeNull()
@@ -246,17 +280,14 @@ describe('SDKToLogConverter', () => {
         it('should convert multiple messages maintaining relationships', () => {
             const messages: SDKMessage[] = [
                 {
-                    type: 'user',
-                    message: { role: 'user', content: 'Hello' }
-                } as SDKUserMessage,
+                    ...userMessage('Hello')
+                },
                 {
-                    type: 'assistant',
-                    message: { role: 'assistant', content: [{ type: 'text', text: 'Hi there!' }] }
-                } as SDKAssistantMessage,
+                    ...assistantMessage([{ type: 'text', text: 'Hi there!' }])
+                },
                 {
-                    type: 'user',
-                    message: { role: 'user', content: 'How are you?' }
-                } as SDKUserMessage
+                    ...userMessage('How are you?')
+                }
             ]
 
             const logMessages = converter.convertMany(messages)
@@ -270,10 +301,7 @@ describe('SDKToLogConverter', () => {
 
     describe('Convenience function', () => {
         it('should convert single message without state', () => {
-            const sdkMessage: SDKUserMessage = {
-                type: 'user',
-                message: { role: 'user', content: 'Test message' }
-            }
+            const sdkMessage = userMessage('Test message')
 
             const logMessage = convertSDKToLog(sdkMessage, context)
 
@@ -290,17 +318,11 @@ describe('SDKToLogConverter', () => {
             
             const converterWithResponses = new SDKToLogConverter(context, responses)
             
-            const sdkMessage: SDKUserMessage = {
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: [{
-                        type: 'tool_result',
-                        tool_use_id: 'tool_123',
-                        content: 'Tool executed successfully'
-                    }]
-                }
-            }
+            const sdkMessage = userMessage([{
+                type: 'tool_result',
+                tool_use_id: 'tool_123',
+                content: 'Tool executed successfully'
+            }])
 
             const logMessage = converterWithResponses.convert(sdkMessage)
 
@@ -314,17 +336,11 @@ describe('SDKToLogConverter', () => {
             
             const converterWithResponses = new SDKToLogConverter(context, responses)
             
-            const sdkMessage: SDKUserMessage = {
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: [{
-                        type: 'tool_result',
-                        tool_use_id: 'tool_456',
-                        content: 'Tool result'
-                    }]
-                }
-            }
+            const sdkMessage = userMessage([{
+                type: 'tool_result',
+                tool_use_id: 'tool_456',
+                content: 'Tool result'
+            }])
 
             const logMessage = converterWithResponses.convert(sdkMessage)
 
@@ -339,20 +355,14 @@ describe('SDKToLogConverter', () => {
             
             const converterWithResponses = new SDKToLogConverter(context, responses)
             
-            const sdkMessage: SDKUserMessage = {
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: [
-                        { type: 'text', text: 'Here is the result:' },
-                        {
-                            type: 'tool_result',
-                            tool_use_id: 'tool_789',
-                            content: 'Tool output'
-                        }
-                    ]
+            const sdkMessage = userMessage([
+                { type: 'text', text: 'Here is the result:' },
+                {
+                    type: 'tool_result',
+                    tool_use_id: 'tool_789',
+                    content: 'Tool output'
                 }
-            }
+            ])
 
             const logMessage = converterWithResponses.convert(sdkMessage)
 
@@ -365,17 +375,11 @@ describe('SDKToLogConverter', () => {
             const responses = new Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>()
             responses.set('tool_abc', { approved: false, mode: 'plan', reason: 'User rejected' })
             
-            const sdkMessage: SDKUserMessage = {
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: [{
-                        type: 'tool_result',
-                        tool_use_id: 'tool_abc',
-                        content: 'Permission denied'
-                    }]
-                }
-            }
+            const sdkMessage = userMessage([{
+                type: 'tool_result',
+                tool_use_id: 'tool_abc',
+                content: 'Permission denied'
+            }])
 
             const logMessage = convertSDKToLog(sdkMessage, context, responses)
 

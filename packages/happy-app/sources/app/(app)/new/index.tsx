@@ -31,7 +31,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
-import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
+import { useAllMachines, useAllSessions, useSetting, storage } from '@/sync/storage';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -474,7 +474,7 @@ function NewSessionScreen() {
 
     // Real data sources
     const allMachines = useAllMachines({ includeOffline: true });
-    const sessions = useSessions();
+    const sessions = useAllSessions();
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
     // Persisted draft state (survives navigation)
@@ -535,11 +535,9 @@ function NewSessionScreen() {
 
     // Build path items from session history for selected machine
     const pathItems = React.useMemo<PickerItem[]>(() => {
-        if (!selectedMachineId || !sessions) return [];
+        if (!selectedMachineId || sessions.length === 0) return [];
         const paths = new Set<string>();
-        for (const s of sessions) {
-            if (typeof s === 'string') continue;
-            const session = s as Session;
+        for (const session of sessions) {
             if (session.metadata?.machineId === selectedMachineId && session.metadata?.path) {
                 paths.add(session.metadata.path);
             }

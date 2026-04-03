@@ -752,6 +752,12 @@ export const ru: TranslationStructure = {
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
         unknownTime: 'неизвестное время',
+        compactionMarker: 'Разговор сжат',
+        subtask: 'Подзадача',
+    },
+
+    permissions: {
+        sessionStopped: 'Сессия остановлена',
     },
 
     codex: {

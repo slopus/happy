@@ -1,8 +1,11 @@
 import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
+import { SyncBridge } from '@/api/syncBridge';
+import { resolveSessionScopedSyncNodeToken } from '@/api/syncNodeToken';
+import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { registerCommonHandlers } from '@/modules/common/registerCommonHandlers';
 import { CodexAppServerClient } from './codexAppServerClient';
-import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
@@ -29,8 +32,15 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
-import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
+import type { SessionID } from '@slopus/happy-sync';
+import {
+    applyPseudoEventToAcpxTurn,
+    createAcpxTurn,
+    getUserMessageText,
+    hasAcpxTurnContent,
+    resetAcpxTurn,
+} from '@/session/acpxTurn';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -136,9 +146,6 @@ export async function runCodex(opts: {
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
-    // Permission handler declared here so it can be updated in onSessionSwap callback
-    // (assigned later at line ~385 after client setup)
-    let permissionHandler: CodexPermissionHandler;
     let client!: CodexAppServerClient;
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
@@ -150,13 +157,172 @@ export async function runCodex(opts: {
         response,
         onSessionSwap: (newSession) => {
             session = newSession;
-            // Update permission handler with new session to avoid stale reference
-            if (permissionHandler) {
-                permissionHandler.updateSession(newSession);
-            }
         }
     });
     session = initialSession;
+
+    // ─── Create SyncBridge directly (no routing through ApiSessionClient) ────
+    const workingDirectory = process.cwd();
+    let syncBridge: SyncBridge | null = null;
+    let rpcHandlerManager: RpcHandlerManager | null = null;
+
+    if (response) {
+        const sessionScopedToken = await resolveSessionScopedSyncNodeToken({
+            serverUrl: configuration.serverUrl,
+            sessionId: response.id,
+            token: {
+                raw: opts.credentials.token,
+                claims: {
+                    scope: { type: 'account', userId: 'cli' },
+                    permissions: ['read', 'write', 'admin'],
+                },
+            },
+        });
+
+        syncBridge = new SyncBridge({
+            serverUrl: configuration.serverUrl,
+            token: sessionScopedToken,
+            keyMaterial: {
+                key: response.encryptionKey,
+                variant: response.encryptionVariant,
+            },
+            sessionId: response.id as SessionID,
+        });
+        await syncBridge.connect();
+        logger.debug('[Codex] SyncBridge connected');
+
+        // ─── Create RpcHandlerManager and wire to SyncBridge ────────────
+        rpcHandlerManager = new RpcHandlerManager({
+            scopePrefix: response.id,
+            encryptionKey: response.encryptionKey,
+            encryptionVariant: response.encryptionVariant,
+        });
+
+        syncBridge.setRpcHandler(async (method: string, params: string) => {
+            return rpcHandlerManager!.handleRequest({ method, params });
+        });
+        rpcHandlerManager.setRegistrationCallback((prefixedMethod) => {
+            syncBridge!.registerRpcMethods([prefixedMethod]);
+        });
+        registerCommonHandlers(rpcHandlerManager, workingDirectory);
+        syncBridge.registerRpcMethods(rpcHandlerManager.getRegisteredMethods());
+    }
+
+    const codexTurn = createAcpxTurn();
+
+    function publishCodexTurn(): void {
+        if (!syncBridge || !hasAcpxTurnContent(codexTurn)) return;
+        if (codexTurn.sent) {
+            syncBridge.updateMessage(codexTurn.message).catch((err) => {
+                logger.debug('[Codex] SyncBridge update failed', { error: err });
+            });
+            return;
+        }
+        codexTurn.sent = true;
+        syncBridge.sendMessage(codexTurn.message).catch((err) => {
+            logger.debug('[Codex] SyncBridge publish failed', { error: err });
+        });
+    }
+
+    function resetCodexTurn(): void {
+        resetAcpxTurn(codexTurn);
+    }
+
+    function sendCodexAcpxEvent(event: Record<string, unknown>): void {
+        const type = typeof event.type === 'string' ? event.type : '';
+        if (!type) {
+            return;
+        }
+
+        if (type === 'agent_message') {
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'message',
+                message: typeof event.message === 'string' ? event.message : '',
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        if (type === 'exec_command_begin') {
+            const callId = typeof event.call_id === 'string'
+                ? event.call_id
+                : typeof event.callId === 'string'
+                    ? event.callId
+                    : randomUUID();
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'tool-call',
+                name: 'CodexBash',
+                callId,
+                input: event,
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        if (type === 'exec_command_end') {
+            const callId = typeof event.call_id === 'string'
+                ? event.call_id
+                : typeof event.callId === 'string'
+                    ? event.callId
+                    : randomUUID();
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'tool-result',
+                toolName: 'CodexBash',
+                callId,
+                output: {
+                    output: event.output,
+                    error: event.error,
+                    exit_code: event.exit_code,
+                },
+                isError: Boolean(event.error),
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        if (type === 'patch_apply_begin') {
+            const callId = typeof event.call_id === 'string'
+                ? event.call_id
+                : typeof event.callId === 'string'
+                    ? event.callId
+                    : randomUUID();
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'tool-call',
+                name: 'CodexPatch',
+                callId,
+                input: {
+                    auto_approved: event.auto_approved,
+                    changes: event.changes,
+                },
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        if (type === 'patch_apply_end') {
+            const callId = typeof event.call_id === 'string'
+                ? event.call_id
+                : typeof event.callId === 'string'
+                    ? event.callId
+                    : randomUUID();
+            applyPseudoEventToAcpxTurn(codexTurn, {
+                type: 'tool-result',
+                toolName: 'CodexPatch',
+                callId,
+                output: {
+                    stdout: event.stdout,
+                    stderr: event.stderr,
+                    success: event.success,
+                },
+                isError: event.success === false,
+            });
+            publishCodexTurn();
+            return;
+        }
+
+        applyPseudoEventToAcpxTurn(codexTurn, event);
+        publishCodexTurn();
+    }
 
     // Always report to daemon if it exists (skip if offline)
     if (response) {
@@ -183,46 +349,70 @@ export async function runCodex(opts: {
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
 
-    session.onUserMessage((message) => {
-        // Resolve permission mode (accept all modes, will be mapped in switch statement)
-        let messagePermissionMode = currentPermissionMode;
-        if (message.meta?.permissionMode) {
-            messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
-            currentPermissionMode = messagePermissionMode;
-            logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
-        } else {
-            logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
-        }
+    if (syncBridge) {
+        syncBridge.onRuntimeConfigChange((change) => {
+            if (typeof change.permissionMode === 'string') {
+                currentPermissionMode = change.permissionMode as import('@/api/types').PermissionMode;
+            }
+            if (Object.prototype.hasOwnProperty.call(change, 'model')) {
+                currentModel = change.model || undefined;
+            }
+        });
+    }
 
-        // Resolve model; explicit null resets to default (undefined)
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined;
-            currentModel = messageModel;
-            logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
-        } else {
-            logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
-        }
+    if (syncBridge) {
+        syncBridge.onUserMessage((message) => {
+            const text = getUserMessageText(message);
+            if (!text) return;
 
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-        };
-        messageQueue.push(message.content.text, enhancedMode);
-    });
+            const enhancedMode: EnhancedMode = {
+                permissionMode: currentPermissionMode || 'default',
+                model: currentModel,
+            };
+            messageQueue.push(text, enhancedMode);
+        });
+    } else {
+        // Fallback: legacy ApiSessionClient user message path for offline mode
+        session.onUserMessage((message) => {
+            let messagePermissionMode = currentPermissionMode;
+            if (message.meta?.permissionMode) {
+                messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
+                currentPermissionMode = messagePermissionMode;
+            }
+            let messageModel = currentModel;
+            if (message.meta?.hasOwnProperty('model')) {
+                messageModel = message.meta.model || undefined;
+                currentModel = messageModel;
+            }
+            const enhancedMode: EnhancedMode = {
+                permissionMode: messagePermissionMode || 'default',
+                model: messageModel,
+            };
+            messageQueue.push(message.content.text, enhancedMode);
+        });
+    }
+
     let thinking = false;
-    let currentTurnId: string | null = null;
-    let codexStartedSubagents = new Set<string>();
-    let codexActiveSubagents = new Set<string>();
-    let codexProviderSubagentToSessionSubagent = new Map<string, string>();
-    session.keepAlive(thinking, 'remote');
+    const doKeepAlive = () => {
+        if (syncBridge) {
+            syncBridge.keepAlive(thinking, 'remote');
+        } else {
+            session.keepAlive(thinking, 'remote');
+        }
+    };
+    doKeepAlive();
     // Periodic keep-alive; store handle so we can clear on exit
-    const keepAliveInterval = setInterval(() => {
-        session.keepAlive(thinking, 'remote');
-    }, 2000);
+    const keepAliveInterval = setInterval(doKeepAlive, 2000);
 
     const sendReady = () => {
-        session.sendSessionEvent({ type: 'ready' });
+        if (syncBridge) {
+            syncBridge.updateAgentState((currentState: any) => ({
+                ...currentState,
+                lastEvent: { type: 'ready', time: Date.now() },
+            }));
+        } else {
+            session.sendSessionEvent({ type: 'ready' });
+        }
         try {
             api.push().sendSessionNotification({
                 kind: 'done',
@@ -282,27 +472,8 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Abort requested - stopping current task');
         abortInProgress = (async () => {
             try {
-                // Resolve any pending permission requests as 'abort' first.
-                if (permissionHandler) {
-                    permissionHandler.abortAll();
-                }
-
-                // Request interruption, then force-restart Codex app-server if
-                // it doesn't settle quickly (long-running shell commands).
                 if (client) {
-                    const abortResult = await client.abortTurnWithFallback({
-                        gracePeriodMs: 3000,
-                        forceRestartOnTimeout: true,
-                    });
-                    if (abortResult.forcedRestart) {
-                        logger.warn('[Codex] Forced app-server restart after interrupt timeout');
-                        session.sendSessionEvent({
-                            type: 'message',
-                            message: abortResult.resumedThread
-                                ? 'Force-stopped active task after interrupt timeout. Codex backend was restarted and the previous thread was resumed.'
-                                : 'Force-stopped active task after interrupt timeout. Codex backend was restarted, but the previous thread could not be resumed.',
-                        });
-                    }
+                    await client.abortTurnWithFallback();
                 }
 
                 if (reasoningProcessor) {
@@ -335,7 +506,18 @@ export async function runCodex(opts: {
 
         try {
             // Update lifecycle state to archived before closing
-            if (session) {
+            if (syncBridge) {
+                syncBridge.updateMetadata((currentMetadata: any) => ({
+                    ...currentMetadata,
+                    lifecycleState: 'archived',
+                    lifecycleStateSince: Date.now(),
+                    archivedBy: 'cli',
+                    archiveReason: 'User terminated'
+                }));
+                syncBridge.sendSessionDeath();
+                await syncBridge.flush();
+                syncBridge.disconnect();
+            } else if (session) {
                 session.updateMetadata((currentMetadata) => ({
                     ...currentMetadata,
                     lifecycleState: 'archived',
@@ -343,8 +525,6 @@ export async function runCodex(opts: {
                     archivedBy: 'cli',
                     archiveReason: 'User terminated'
                 }));
-                
-                // Send session death message
                 session.sendSessionDeath();
                 await session.flush();
                 await session.close();
@@ -371,10 +551,14 @@ export async function runCodex(opts: {
         }
     };
 
-    // Register abort handler
-    session.rpcHandlerManager.registerHandler('abort', handleAbort);
+    // Register abort handler — prefer SyncBridge-wired RpcHandlerManager
+    const activeRpcManager = rpcHandlerManager ?? session.rpcHandlerManager;
+    activeRpcManager.registerHandler('abort', handleAbort);
+    syncBridge?.onAbortRequest(() => {
+        void handleAbort();
+    });
 
-    registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+    registerKillSessionHandler(activeRpcManager, handleKillSession);
 
     //
     // Initialize Ink UI
@@ -414,47 +598,31 @@ export async function runCodex(opts: {
     //
 
     client = new CodexAppServerClient(sandboxConfig);
-
-    permissionHandler = new CodexPermissionHandler(session);
     reasoningProcessor = new ReasoningProcessor((message) => {
-        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
-        for (const envelope of envelopes) {
-            session.sendSessionProtocolMessage(envelope);
-        }
+        sendCodexAcpxEvent(message as Record<string, unknown>);
     });
     const diffProcessor = new DiffProcessor((message) => {
-        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
-        for (const envelope of envelopes) {
-            session.sendSessionProtocolMessage(envelope);
-        }
-    });
-
-    // Approval handler: routes server → client approval requests to our permission handler
-    client.setApprovalHandler(async (params) => {
-        const toolName = params.type === 'exec'
-            ? 'CodexBash'
-            : params.type === 'patch'
-                ? 'CodexPatch'
-                : (params.toolName ?? 'McpTool');
-        const input = params.type === 'exec'
-            ? { command: params.command, cwd: params.cwd }
-            : params.type === 'patch'
-                ? { changes: params.fileChanges }
-                : (params.input ?? {});
-
-        try {
-            const result = await permissionHandler.handleToolCall(params.callId, toolName, input);
-            logger.debug('[Codex] Permission result:', result.decision);
-            return result.decision;
-        } catch (error) {
-            logger.debug('[Codex] Error handling permission:', error);
-            return 'denied';
-        }
+        sendCodexAcpxEvent(message as Record<string, unknown>);
     });
 
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
     client.setEventHandler((msg) => {
         logger.debug(`[Codex] Event: ${JSON.stringify(msg)}`);
+
+        if (msg.type === 'thread_started' && typeof (msg as any).thread_id === 'string') {
+            const threadId = (msg as any).thread_id as string;
+            if (syncBridge) {
+                syncBridge.updateMetadata((currentMetadata: any) => ({
+                    ...currentMetadata,
+                    codexThreadId: threadId,
+                }));
+            } else {
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    codexThreadId: threadId,
+                }));
+            }
+        }
 
         // Add messages to the ink UI buffer based on message type
         if (msg.type === 'agent_message') {
@@ -486,14 +654,14 @@ export async function runCodex(opts: {
             if (!thinking) {
                 logger.debug('thinking started');
                 thinking = true;
-                session.keepAlive(thinking, 'remote');
+                doKeepAlive();
             }
         }
         if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
             if (thinking) {
                 logger.debug('thinking completed');
                 thinking = false;
-                session.keepAlive(thinking, 'remote');
+                doKeepAlive();
             }
             // Reset diff processor on task end or abort
             diffProcessor.reset();
@@ -529,27 +697,24 @@ export async function runCodex(opts: {
             }
         }
 
-        // Convert events into the unified session-protocol envelope stream.
-        // Reasoning deltas are handled by ReasoningProcessor to avoid duplicate text output.
-        if (msg.type !== 'agent_reasoning_delta' && msg.type !== 'agent_reasoning' && msg.type !== 'agent_reasoning_section_break' && msg.type !== 'turn_diff') {
-            const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, {
-                currentTurnId,
-                startedSubagents: codexStartedSubagents,
-                activeSubagents: codexActiveSubagents,
-                providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
-            });
-            currentTurnId = mapped.currentTurnId;
-            codexStartedSubagents = mapped.startedSubagents;
-            codexActiveSubagents = mapped.activeSubagents;
-            codexProviderSubagentToSessionSubagent = mapped.providerSubagentToSessionSubagent;
-            for (const envelope of mapped.envelopes) {
-                session.sendSessionProtocolMessage(envelope);
-            }
+        const handledBySyntheticV3Path =
+            msg.type === 'thread_started'
+            || msg.type === 'token_count'
+            || msg.type === 'agent_reasoning_section_break'
+            || msg.type === 'agent_reasoning_delta'
+            || msg.type === 'agent_reasoning'
+            || msg.type === 'turn_diff';
+
+        // Keep reasoning/diff side-channels on the raw acpx path by routing the
+        // synthetic processor outputs above instead of emitting separate legacy payloads.
+        if (!handledBySyntheticV3Path) {
+            sendCodexAcpxEvent(msg as Record<string, unknown>);
         }
     });
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
-    const happyServer = await startHappyServer(session);
+    const effectiveSessionId = response?.id ?? session.sessionId;
+    const happyServer = await startHappyServer({ sessionId: effectiveSessionId, sendClaudeMessage: (body) => session.sendClaudeSessionMessage(body) });
     const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
     const mcpServers = {
         happy: {
@@ -565,9 +730,23 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect done');
 
         if (opts.resumeThreadId) {
+            // Adapt SyncBridge or session to the ResumeThreadSession interface
+            const resumeSession = {
+                updateMetadata: syncBridge
+                    ? (handler: (m: any) => any) => syncBridge!.updateMetadata(handler)
+                    : (handler: (m: any) => any) => session.updateMetadata(handler),
+                sendSessionEvent: syncBridge
+                    ? (event: { type: 'message'; message: string }) => {
+                        syncBridge!.updateAgentState((s: any) => ({
+                            ...s,
+                            lastEvent: { ...event, time: Date.now() },
+                        }));
+                    }
+                    : (event: { type: 'message'; message: string }) => session.sendSessionEvent(event),
+            };
             await resumeExistingThread({
                 client,
-                session,
+                session: resumeSession,
                 messageBuffer,
                 threadId: opts.resumeThreadId,
                 cwd: process.cwd(),
@@ -607,12 +786,8 @@ export async function runCodex(opts: {
             messageBuffer.addMessage(message.message, 'user');
 
             try {
-                // Map permission mode to approval policy and sandbox.
-                // With app-server, these are per-turn — no restart needed on mode change.
-                const sandboxManagedByHappy = client.sandboxEnabled;
                 const executionPolicy = resolveCodexExecutionPolicy(
                     message.mode.permissionMode,
-                    sandboxManagedByHappy,
                 );
 
                 // Start thread on first turn (thread persists across mode changes)
@@ -624,10 +799,19 @@ export async function runCodex(opts: {
                         sandbox: executionPolicy.sandbox,
                         mcpServers,
                     });
-                    session.updateMetadata((currentMetadata) => ({
-                        ...currentMetadata,
-                        codexThreadId: startedThread.threadId,
-                    }));
+                    if (startedThread.threadId) {
+                        if (syncBridge) {
+                            syncBridge.updateMetadata((currentMetadata: any) => ({
+                                ...currentMetadata,
+                                codexThreadId: startedThread.threadId,
+                            }));
+                        } else {
+                            session.updateMetadata((currentMetadata) => ({
+                                ...currentMetadata,
+                                codexThreadId: startedThread.threadId,
+                            }));
+                        }
+                    }
                 }
 
                 const turnPrompt = first
@@ -650,14 +834,21 @@ export async function runCodex(opts: {
                 // Only actual errors reach here (process crash, connection failure, etc.)
                 logger.warn('Error in codex session:', error);
                 messageBuffer.addMessage('Process exited unexpectedly', 'status');
-                session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                if (syncBridge) {
+                    syncBridge.updateAgentState((currentState: any) => ({
+                        ...currentState,
+                        lastEvent: { type: 'message', message: 'Process exited unexpectedly', time: Date.now() },
+                    }));
+                } else {
+                    session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                }
             } finally {
-                // Reset permission handler, reasoning processor, and diff processor
-                permissionHandler.reset();
+                resetCodexTurn();
+                // Reset reasoning processor and diff processor
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
                 diffProcessor.reset();
                 thinking = false;
-                session.keepAlive(thinking, 'remote');
+                doKeepAlive();
                 emitReadyIfIdle({
                     pending,
                     queueSize: () => messageQueue.size(),
@@ -680,14 +871,25 @@ export async function runCodex(opts: {
         }
 
         try {
-            logger.debug('[codex]: sendSessionDeath');
-            session.sendSessionDeath();
-            logger.debug('[codex]: flush begin');
-            await session.flush();
-            logger.debug('[codex]: flush done');
-            logger.debug('[codex]: session.close begin');
-            await session.close();
-            logger.debug('[codex]: session.close done');
+            if (syncBridge) {
+                logger.debug('[codex]: syncBridge.sendSessionDeath');
+                syncBridge.sendSessionDeath();
+                logger.debug('[codex]: syncBridge.flush begin');
+                await syncBridge.flush();
+                logger.debug('[codex]: syncBridge.flush done');
+                logger.debug('[codex]: syncBridge.disconnect begin');
+                syncBridge.disconnect();
+                logger.debug('[codex]: syncBridge.disconnect done');
+            } else {
+                logger.debug('[codex]: sendSessionDeath');
+                session.sendSessionDeath();
+                logger.debug('[codex]: flush begin');
+                await session.flush();
+                logger.debug('[codex]: flush done');
+                logger.debug('[codex]: session.close begin');
+                await session.close();
+                logger.debug('[codex]: session.close done');
+            }
         } catch (e) {
             logger.debug('[codex]: Error while closing session', e);
         }

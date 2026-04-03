@@ -1,7 +1,7 @@
 import { z } from 'zod';
+import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
-import { storage } from '@/sync/storage';
 import { trackPermissionResponse } from '@/track';
 
 /**

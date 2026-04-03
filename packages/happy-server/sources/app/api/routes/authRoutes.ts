@@ -4,6 +4,7 @@ import * as privacyKit from "privacy-kit";
 import { db } from "@/storage/db";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
+import { buildAccountSyncNodeClaims } from "@/app/auth/syncNodeToken";
 
 export function authRoutes(app: Fastify) {
     app.post('/v1/auth', {
@@ -34,7 +35,9 @@ export function authRoutes(app: Fastify) {
 
         return reply.send({
             success: true,
-            token: await auth.createToken(user.id)
+            token: await auth.createToken(user.id, {
+                syncNode: buildAccountSyncNodeClaims(user.id),
+            })
         });
     });
 
@@ -75,7 +78,10 @@ export function authRoutes(app: Fastify) {
         });
 
         if (answer.response && answer.responseAccountId) {
-            const token = await auth.createToken(answer.responseAccountId!, { session: answer.id });
+            const token = await auth.createToken(answer.responseAccountId!, {
+                session: answer.id,
+                syncNode: buildAccountSyncNodeClaims(answer.responseAccountId!),
+            });
             return reply.send({
                 state: 'authorized',
                 token: token,
@@ -199,7 +205,9 @@ export function authRoutes(app: Fastify) {
         });
 
         if (answer.response && answer.responseAccountId) {
-            const token = await auth.createToken(answer.responseAccountId!);
+            const token = await auth.createToken(answer.responseAccountId!, {
+                syncNode: buildAccountSyncNodeClaims(answer.responseAccountId!),
+            });
             return reply.send({
                 state: 'authorized',
                 token: token,

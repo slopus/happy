@@ -1,4 +1,4 @@
-import type { SDKAssistantMessage, SDKMessage } from '../sdk';
+import type { SDKAssistantMessage, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 
 export function getAskUserQuestionToolCallIds(message: SDKMessage): string[] {
     if (message.type !== 'assistant') {
