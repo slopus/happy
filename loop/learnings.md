@@ -26,6 +26,18 @@ If you discover something non-obvious, append it here under the right section.
 - The full plan lives at `/Users/kirilldubovitskiy/.claude/plans/greedy-giggling-star.md`.
 - ALL 9 manual browser flows must be tested via agent-browser before merge.
   No exceptions. See the plan's "Manual testing via agent-browser" section.
+- SyncNode tracks message localIds by object reference (`sessionMessageLocalIds`
+  WeakMap). If you create `{ Agent: message }` wrapper objects inline at each
+  call site, `sendMessage` and `updateMessage` get different references and the
+  update silently fails. Always reuse a stable wrapper reference.
+- `SyncNode.sendMessage`/`updateMessage` are async (await key material). But
+  callers fire-and-forget and mutate the shared message object on the next
+  tick. The `JSON.stringify(data)` inside `encryptMessage` runs AFTER the
+  await, by which time `resetAcpxTurn()` may have cleared the content array.
+  The fix: snapshot the JSON synchronously before any await.
+- `yarn env:up:authenticated` is the fastest way to get a full test environment
+  (server + web + CLI + auth). It allocates unique ports, runs migrations,
+  seeds credentials, and starts a daemon. Use `yarn env:down` to tear down.
 
 ## Testing
 
