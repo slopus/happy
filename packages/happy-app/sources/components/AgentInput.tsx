@@ -6,6 +6,7 @@ import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
+import { EffortLevel } from './modelModeOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -38,6 +39,9 @@ interface AgentInputProps {
     modelMode?: ModelMode | null;
     availableModels?: ModelMode[];
     onModelModeChange?: (mode: ModelMode) => void;
+    effortLevel?: EffortLevel | null;
+    availableEffortLevels?: EffortLevel[];
+    onEffortLevelChange?: (level: EffortLevel) => void;
     metadata?: Metadata | null;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
@@ -69,6 +73,7 @@ interface AgentInputProps {
     onMachineClick?: () => void;
     currentPath?: string | null;
     onPathClick?: () => void;
+    blockSend?: boolean;
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
@@ -262,6 +267,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonInactive: {
         backgroundColor: theme.colors.button.primary.disabled,
     },
+    sendButtonLocked: {
+        backgroundColor: theme.colors.surfaceHigh,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
     sendButtonInner: {
         width: '100%',
         height: '100%',
@@ -295,8 +305,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
+    const isSendBlocked = props.blockSend ?? false;
 
     const hasText = props.value.trim().length > 0;
+    const canPressSendButton = !props.isSending
+        && !props.isSendDisabled
+        && (isSendBlocked ? hasText : (hasText || !!props.onMicPress));
 
     // Check if this is a Codex, Gemini, or OpenClaw session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
@@ -311,6 +325,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         hackModes(props.availableModes ?? [])
     ), [props.availableModes]);
     const availableModels = props.availableModels ?? [];
+    const availableEffortLevels = props.availableEffortLevels ?? [];
     const isSandboxEnabled = React.useMemo(() => {
         const sandbox = props.metadata?.sandbox as unknown;
         if (!sandbox) {
@@ -346,6 +361,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Abort button state
     const [isAborting, setIsAborting] = React.useState(false);
     const shakerRef = React.useRef<ShakeInstance>(null);
+    const sendBlockShakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
 
     // Forward ref to the MultiTextInput
@@ -421,7 +437,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
         hapticsLight();
         props.onPermissionModeChange?.(mode);
-        // Don't close the settings overlay - let users see the change and potentially switch again
+        setShowSettings(false);
     }, [props.onPermissionModeChange]);
 
     // Handle abort button press
@@ -448,6 +464,27 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             setIsAborting(false);
         }
     }, [props.onAbort]);
+
+    const handleBlockedSendAttempt = React.useCallback(() => {
+        if (!isSendBlocked || !hasText || props.isSending) return;
+        hapticsError();
+        sendBlockShakerRef.current?.shake();
+    }, [hasText, isSendBlocked, props.isSending]);
+
+    const handleSendPress = React.useCallback(() => {
+        if (isSendBlocked) {
+            handleBlockedSendAttempt();
+            return;
+        }
+        if (props.isSendDisabled || props.isSending) return;
+
+        hapticsLight();
+        if (hasText) {
+            props.onSend();
+        } else {
+            props.onMicPress?.();
+        }
+    }, [handleBlockedSendAttempt, hasText, isSendBlocked, props]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -486,9 +523,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         // Original key handling
         if (Platform.OS === 'web') {
-            if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
+            // On mobile web (touch devices), Enter should insert a newline since
+            // there's no Shift key available. Users send via the send button instead.
+            const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+            if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !isTouchDevice) {
                 if (props.value.trim()) {
-                    props.onSend();
+                    if (isSendBlocked) {
+                        handleBlockedSendAttempt();
+                    } else if (!props.isSendDisabled) {
+                        props.onSend();
+                    }
                     return true; // Key was handled
                 }
             }
@@ -503,7 +547,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
 
 
 
@@ -637,6 +681,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     onPress={() => {
                                                         hapticsLight();
                                                         props.onModelModeChange?.(model);
+                                                        setShowSettings(false);
                                                     }}
                                                     style={({ pressed }) => ({
                                                         flexDirection: 'row',
@@ -698,6 +743,88 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         </Text>
                                     )}
                                 </View>
+
+                                {/* Effort Level Section */}
+                                {availableEffortLevels.length > 0 && props.onEffortLevelChange && (
+                                    <>
+                                        <View style={{
+                                            height: 1,
+                                            backgroundColor: theme.colors.divider,
+                                            marginHorizontal: 16
+                                        }} />
+                                        <View style={{ paddingVertical: 8 }}>
+                                            <Text style={{
+                                                fontSize: 12,
+                                                fontWeight: '600',
+                                                color: theme.colors.textSecondary,
+                                                paddingHorizontal: 16,
+                                                paddingBottom: 4,
+                                                ...Typography.default('semiBold')
+                                            }}>
+                                                {t('agentInput.effort.title')}
+                                            </Text>
+                                            {availableEffortLevels.map((level) => {
+                                                const isSelected = props.effortLevel?.key === level.key;
+
+                                                return (
+                                                    <Pressable
+                                                        key={level.key}
+                                                        onPress={() => {
+                                                            hapticsLight();
+                                                            props.onEffortLevelChange?.(level);
+                                                            setShowSettings(false);
+                                                        }}
+                                                        style={({ pressed }) => ({
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            paddingHorizontal: 16,
+                                                            paddingVertical: 8,
+                                                            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                        })}
+                                                    >
+                                                        <View style={{
+                                                            width: 16,
+                                                            height: 16,
+                                                            borderRadius: 8,
+                                                            borderWidth: 2,
+                                                            borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            marginRight: 12
+                                                        }}>
+                                                            {isSelected && (
+                                                                <View style={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: 3,
+                                                                    backgroundColor: theme.colors.radio.dot
+                                                                }} />
+                                                            )}
+                                                        </View>
+                                                        <View>
+                                                            <Text style={{
+                                                                fontSize: 14,
+                                                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {level.name}
+                                                            </Text>
+                                                            {!!level.description && (
+                                                                <Text style={{
+                                                                    fontSize: 11,
+                                                                    color: theme.colors.textSecondary,
+                                                                    ...Typography.default()
+                                                                }}>
+                                                                    {level.description}
+                                                                </Text>
+                                                            )}
+                                                        </View>
+                                                    </Pressable>
+                                                );
+                                            })}
+                                        </View>
+                                    </>
+                                )}
                             </FloatingOverlay>
                         </View>
                     </>
@@ -921,6 +1048,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Box 2: Action Area (Input + Send) */}
+                <Shaker ref={sendBlockShakerRef}>
                 <View style={styles.unifiedPanel}>
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
@@ -1046,6 +1174,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 <View
                                     style={[
                                         styles.sendButton,
+                                        isSendBlocked ? styles.sendButtonLocked :
                                         (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
@@ -1060,20 +1189,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             opacity: p.pressed ? 0.7 : 1,
                                         })}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        onPress={() => {
-                                            hapticsLight();
-                                            if (hasText) {
-                                                props.onSend();
-                                            } else {
-                                                props.onMicPress?.();
-                                            }
-                                        }}
-                                        disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
+                                        onPress={handleSendPress}
+                                        disabled={!canPressSendButton}
                                     >
                                         {props.isSending ? (
                                             <ActivityIndicator
                                                 size="small"
                                                 color={theme.colors.button.primary.tint}
+                                            />
+                                        ) : isSendBlocked ? (
+                                            <Ionicons
+                                                name="lock-closed"
+                                                size={15}
+                                                color={theme.colors.textSecondary}
                                             />
                                         ) : hasText ? (
                                             <Octicons
@@ -1111,6 +1239,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         </View>
                     </View>
                 </View>
+                </Shaker>
             </View>
         </View>
     );

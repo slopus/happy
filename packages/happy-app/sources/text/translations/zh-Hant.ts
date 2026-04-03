@@ -255,6 +255,7 @@ export const zhHant: TranslationStructure = {
     newSession: {
         title: '開始新工作階段',
         machineOffline: '裝置離線',
+        switchMachinesHint: '• 點擊上方的裝置來切換裝置',
     },
 
     sessionHistory: {
@@ -269,6 +270,8 @@ export const zhHant: TranslationStructure = {
 
     session: {
         inputPlaceholder: '輸入訊息...',
+        inactiveArchived: '此會話處於非活動狀態。',
+        resumeFromTerminal: '若要從終端恢復它：',
     },
 
     commandPalette: {
@@ -347,13 +350,17 @@ export const zhHant: TranslationStructure = {
         cliVersionOutdated: '需要更新 CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `已安裝版本 ${currentVersion}。請更新到 ${requiredVersion} 或更高版本`,
-        updateCliInstructions: '請執行 npm install -g happy-coder@latest',
+        updateCliInstructions: '請執行 npm install -g happy@latest',
         deleteSession: '刪除工作階段',
         deleteSessionSubtitle: '永久刪除此工作階段',
         deleteSessionConfirm: '永久刪除工作階段？',
         deleteSessionWarning: '此操作無法復原。與此工作階段相關的所有訊息和資料將被永久刪除。',
         failedToDeleteSession: '刪除工作階段失敗',
         sessionDeleted: '工作階段刪除成功',
+        worktreeCleanupTitle: '刪除 Worktree？',
+        worktreeCleanupMessage: 'Worktree 沒有未提交的變更。是否要刪除 Worktree 檔案？',
+        worktreeCleanupDelete: '刪除 Worktree',
+        worktreeCleanupKeep: '保留檔案',
 
     },
 
@@ -389,6 +396,9 @@ export const zhHant: TranslationStructure = {
         model: {
             title: '模型',
             configureInCli: '在 CLI 設定中配置模型',
+        },
+        effort: {
+            title: '工作量',
         },
         codexPermissionMode: {
             title: 'CODEX 權限模式',
@@ -534,6 +544,7 @@ export const zhHant: TranslationStructure = {
         file: '檔案',
         fileEmpty: '檔案為空',
         noChanges: '沒有要顯示的更改',
+        deleted: '已刪除',
     },
 
     settingsVoice: {
@@ -547,7 +558,18 @@ export const zhHant: TranslationStructure = {
             title: '語言',
             footer: ({ count }: { count: number }) => `${count} 種可用語言`,
             autoDetect: '自動偵測',
-        }
+        },
+        // Bring your own agent
+        byoTitle: '使用自己的代理',
+        byoDescription: '使用您自己的 ElevenLabs 代理取代 Happy 預設代理。無需訂閱 — 直接使用您自己的 ElevenLabs 帳戶連線。您的代理必須定義兩個用戶端工具：messageClaudeCode（向編碼代理傳送文字）和 processPermissionRequest（允許或拒絕工具使用）。透過 {{initialConversationContext}} 動態變數接收工作階段上下文。',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: '未設定',
+        customAgentIdDescription: '輸入您的 ElevenLabs Agent ID。留空則使用 Happy 預設代理。',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: '直接連線',
+        bypassTokenSubtitle: '跳過 Happy 伺服器，直接連線到 ElevenLabs',
+        promptGuideTitle: '代理提示詞指南',
+        promptGuideDescription: '您的 ElevenLabs 代理需要：\n\n• 工具：messageClaudeCode — 參數：message (string)。向活躍的編碼工作階段傳送訊息。\n• 工具：processPermissionRequest — 參數：decision ("allow" 或 "deny")。核准或拒絕待處理的工具權限。\n• 動態變數：{{initialConversationContext}} — 啟動時接收工作階段歷史和上下文。\n\n代理充當使用者和編碼代理之間的語音橋梁。它應該簡潔，僅在被呼叫時回應，並在編碼代理完成工作時進行報告。',
     },
 
     settingsAccount: {
@@ -700,7 +722,7 @@ export const zhHant: TranslationStructure = {
     machine: {
         launchNewSessionInDirectory: '在目錄中啟動新工作階段',
         offlineUnableToSpawn: '裝置離線時無法啟動',
-        offlineHelp: '• 確保您的電腦在線上\n• 執行 `happy daemon status` 進行診斷\n• 您是否在執行最新的 CLI 版本？請使用 `npm install -g happy-coder@latest` 升級',
+        offlineHelp: '• 確保您的電腦在線上\n• 執行 `happy daemon status` 進行診斷\n• 您是否在執行最新的 CLI 版本？請使用 `npm install -g happy@latest` 升級',
         daemon: '守護程序',
         status: '狀態',
         stopDaemon: '停止守護程序',

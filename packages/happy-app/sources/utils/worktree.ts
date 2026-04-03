@@ -171,3 +171,17 @@ export async function removeWorktree(
 export function isWorktreePath(path: string): boolean {
     return path.includes(WORKTREE_PATH_MARKER);
 }
+
+/** Extract the main repository checkout path from a possibly-worktree path */
+export function getRepoPath(path: string): string {
+    const idx = path.indexOf(WORKTREE_PATH_MARKER);
+    if (idx === -1) return path;
+    return path.slice(0, idx);
+}
+
+/** Extract the worktree name from a worktree path, or null if not a worktree */
+export function getWorktreeName(path: string): string | null {
+    const idx = path.indexOf(WORKTREE_PATH_MARKER);
+    if (idx === -1) return null;
+    return path.slice(idx + WORKTREE_PATH_MARKER.length);
+}

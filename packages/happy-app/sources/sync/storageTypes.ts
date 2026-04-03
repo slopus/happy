@@ -43,6 +43,10 @@ export const MetadataSchema = z.object({
     flavor: z.string().nullish(), // Session flavor/variant identifier
     sandbox: z.any().nullish(), // Sandbox config metadata from CLI (or null when disabled)
     dangerouslySkipPermissions: z.boolean().nullish(), // Claude --dangerously-skip-permissions mode (or null when unknown)
+    lifecycleState: z.string().optional(),
+    lifecycleStateSince: z.number().optional(),
+    archivedBy: z.string().optional(),
+    archiveReason: z.string().optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
@@ -69,6 +73,17 @@ export const AgentStateSchema = z.object({
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
+export const TodoItemSchema = z.object({
+    content: z.string(),
+    status: z.enum(['pending', 'in_progress', 'completed']),
+    priority: z.enum(['high', 'medium', 'low']).optional(),
+    id: z.string().optional(),
+});
+
+export const TodoItemsSchema = z.array(TodoItemSchema);
+
+export type TodoItem = z.infer<typeof TodoItemSchema>;
+
 export interface Session {
     id: string,
     seq: number,
@@ -83,15 +98,11 @@ export interface Session {
     thinking: boolean,
     thinkingAt: number,
     presence: "online" | number, // "online" when active, timestamp when last seen
-    todos?: Array<{
-        content: string;
-        status: 'pending' | 'in_progress' | 'completed';
-        priority: 'high' | 'medium' | 'low';
-        id: string;
-    }>;
+    todos?: TodoItem[];
     draft?: string | null; // Local draft message, not synced to server
     permissionMode?: string | null; // Local permission mode key, not synced to server
     modelMode?: string | null; // Local model key, not synced to server
+    effortLevel?: string | null; // Local effort level key, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

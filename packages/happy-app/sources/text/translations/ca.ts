@@ -255,6 +255,7 @@ export const ca: TranslationStructure = {
     newSession: {
         title: 'Iniciar nova sessió',
         machineOffline: 'La màquina està fora de línia',
+        switchMachinesHint: '• Canvia de màquina fent clic a la màquina de dalt',
     },
 
     sessionHistory: {
@@ -269,6 +270,8 @@ export const ca: TranslationStructure = {
 
     session: {
         inputPlaceholder: 'Escriu un missatge...',
+        inactiveArchived: 'Aquesta sessió està inactiva.',
+        resumeFromTerminal: 'Per reprendre-la des del terminal:',
     },
 
     commandPalette: {
@@ -347,14 +350,18 @@ export const ca: TranslationStructure = {
         cliVersionOutdated: 'Actualització del CLI requerida',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
-        updateCliInstructions: 'Si us plau executeu npm install -g happy-coder@latest',
+        updateCliInstructions: 'Si us plau executeu npm install -g happy@latest',
         deleteSession: 'Elimina la sessió',
         deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
         deleteSessionConfirm: 'Eliminar la sessió permanentment?',
         deleteSessionWarning: 'Aquesta acció no es pot desfer. Tots els missatges i dades associats amb aquesta sessió s\'eliminaran permanentment.',
         failedToDeleteSession: 'Error en eliminar la sessió',
         sessionDeleted: 'Sessió eliminada amb èxit',
-        
+        worktreeCleanupTitle: 'Eliminar Worktree?',
+        worktreeCleanupMessage: 'El Worktree no té canvis sense confirmar. Vols eliminar els fitxers del Worktree?',
+        worktreeCleanupDelete: 'Eliminar Worktree',
+        worktreeCleanupKeep: 'Conservar fitxers',
+
     },
 
     components: {
@@ -389,6 +396,9 @@ export const ca: TranslationStructure = {
         model: {
             title: 'MODEL',
             configureInCli: 'Configura els models a la configuració del CLI',
+        },
+        effort: {
+            title: 'ESFORÇ',
         },
         codexPermissionMode: {
             title: 'MODE DE PERMISOS CODEX',
@@ -534,6 +544,7 @@ export const ca: TranslationStructure = {
         file: 'Fitxer',
         fileEmpty: 'El fitxer està buit',
         noChanges: 'No hi ha canvis a mostrar',
+        deleted: 'Eliminat',
     },
 
     settingsVoice: {
@@ -547,7 +558,18 @@ export const ca: TranslationStructure = {
             title: 'Idiomes',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomes' })} disponibles`,
             autoDetect: 'Detecta automàticament',
-        }
+        },
+        // Bring your own agent
+        byoTitle: 'Porta el teu propi agent',
+        byoDescription: 'Utilitza el teu propi agent d\'ElevenLabs en lloc del predeterminat de Happy. No cal subscripció — connecta directament amb el teu propi compte d\'ElevenLabs. El teu agent ha de definir dues eines de client: messageClaudeCode (envia text a l\'agent de codi) i processPermissionRequest (permet o denega l\'ús d\'eines). Rep el context de la sessió a través de la variable dinàmica {{initialConversationContext}}.',
+        customAgentId: 'ElevenLabs Agent ID',
+        customAgentIdNotSet: 'No configurat',
+        customAgentIdDescription: 'Introdueix el teu ElevenLabs Agent ID. Deixa-ho buit per utilitzar el predeterminat de Happy.',
+        customAgentIdPlaceholder: 'e.g. abc123def456',
+        bypassToken: 'Connexió directa',
+        bypassTokenSubtitle: 'Omet el servidor de Happy, connecta directament a ElevenLabs',
+        promptGuideTitle: 'Guia de prompt de l\'agent',
+        promptGuideDescription: 'El teu agent d\'ElevenLabs necessita:\n\n• Eina: messageClaudeCode — paràmetre: message (string). Envia un missatge a la sessió de codi activa.\n• Eina: processPermissionRequest — paràmetre: decision ("allow" o "deny"). Aprova o denega un permís d\'eina pendent.\n• Variable dinàmica: {{initialConversationContext}} — rep l\'historial i el context de la sessió en iniciar.\n\nL\'agent actua com a pont de veu entre l\'usuari i els agents de codi. Ha de ser concís, respondre només quan se li parla i informar quan un agent de codi acaba la feina.',
     },
 
     settingsAccount: {
@@ -699,7 +721,7 @@ export const ca: TranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'El llançador està desactivat mentre la màquina està fora de línia',
-        offlineHelp: '• Assegura\'t que l\'ordinador estigui en línia\n• Executa `happy daemon status` per diagnosticar\n• Fas servir l\'última versió del CLI? Actualitza amb `npm install -g happy-coder@latest`',
+        offlineHelp: '• Assegura\'t que l\'ordinador estigui en línia\n• Executa `happy daemon status` per diagnosticar\n• Fas servir l\'última versió del CLI? Actualitza amb `npm install -g happy@latest`',
         launchNewSessionInDirectory: 'Inicia una nova sessió al directori',
         daemon: 'Dimoni',
         status: 'Estat',

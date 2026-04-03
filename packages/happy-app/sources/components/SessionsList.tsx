@@ -20,7 +20,6 @@ import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { SessionActionsNativeMenu } from './SessionActionsNativeMenu';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -292,6 +291,9 @@ export function SessionsList() {
                     keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
+                    windowSize={5}
+                    maxToRenderPerBatch={8}
+                    initialNumToRender={12}
                 />
             </View>
         </View>
@@ -311,35 +313,19 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
-    const triggerRef = React.useRef<View | null>(null);
-    const suppressPressUntilRef = React.useRef(0);
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
 
-    const openActionsFromTrigger = React.useCallback(() => {
-        if (!triggerRef.current) {
-            return;
-        }
-
-        suppressPressUntilRef.current = Date.now() + 750;
-        triggerRef.current.measureInWindow((x, y, width, height) => {
-            setActionsAnchor({
-                type: 'rect',
-                x,
-                y,
-                width,
-                height,
-            });
-        });
-    }, []);
+    const handlePress = React.useCallback(() => {
+        navigateToSession(session.id);
+    }, [navigateToSession, session.id]);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
         event.stopPropagation?.();
-        suppressPressUntilRef.current = Date.now() + 750;
         setActionsAnchor({
             type: 'point',
             x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,
@@ -347,38 +333,17 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         });
     }, []);
 
-    const handleKeyDown = React.useCallback((event: any) => {
-        const key = event.nativeEvent?.key;
-        const shiftKey = !!event.nativeEvent?.shiftKey;
-        if (key === 'ContextMenu' || (shiftKey && key === 'F10')) {
-            event.preventDefault?.();
-            openActionsFromTrigger();
-        }
-    }, [openActionsFromTrigger]);
-
-    const handlePress = React.useCallback(() => {
-        if (Date.now() < suppressPressUntilRef.current) {
-            return;
-        }
-        navigateToSession(session.id);
-    }, [navigateToSession, session.id]);
-
-    const handleWebLongPress = React.useCallback(() => {
-        suppressPressUntilRef.current = Date.now() + 750;
-
-        if (Platform.OS === 'web') {
-            openActionsFromTrigger();
-        }
-    }, [openActionsFromTrigger]);
-
     const webMenuProps = Platform.OS === 'web' ? {
-        'aria-expanded': !!actionsAnchor,
-        'aria-haspopup': 'menu',
         onContextMenu: handleContextMenu,
-        onKeyDown: handleKeyDown,
     } as any : {};
 
-    const itemContent = (
+    return (
+        <View style={[
+            styles.sessionItemContainer,
+            isSingle ? styles.sessionItemContainerSingle :
+                isFirst ? styles.sessionItemContainerFirst :
+                    isLast ? styles.sessionItemContainerLast : {}
+        ]}>
         <Pressable
             style={[
                 styles.sessionItem,
@@ -387,7 +352,6 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
             ]}
-            onLongPress={Platform.OS === 'web' ? handleWebLongPress : undefined}
             onPress={handlePress}
             {...webMenuProps}
         >
@@ -433,31 +397,14 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 </View>
             </View>
         </Pressable>
-    );
-
-    const containerStyles = [
-        styles.sessionItemContainer,
-        isSingle ? styles.sessionItemContainerSingle :
-            isFirst ? styles.sessionItemContainerFirst :
-                isLast ? styles.sessionItemContainerLast : {}
-    ];
-    const wrappedItemContent = (
-        <SessionActionsNativeMenu session={session}>
-            {itemContent}
-        </SessionActionsNativeMenu>
-    );
-
-    return (
-        <View collapsable={false} ref={triggerRef} style={containerStyles}>
-            {wrappedItemContent}
-            {Platform.OS === 'web' && (
-                <SessionActionsPopover
-                    anchor={actionsAnchor}
-                    onClose={() => setActionsAnchor(null)}
-                    session={session}
-                    visible={!!actionsAnchor}
-                />
-            )}
+        {Platform.OS === 'web' && (
+            <SessionActionsPopover
+                anchor={actionsAnchor}
+                onClose={() => setActionsAnchor(null)}
+                session={session}
+                visible={!!actionsAnchor}
+            />
+        )}
         </View>
     );
 });

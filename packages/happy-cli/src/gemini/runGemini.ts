@@ -250,8 +250,6 @@ export async function runGemini(opts: {
 
   // ─── Push notifications ────────────────────────────────────────────────
 
-  const push = api.push();
-
   // Report to daemon (only if we have a real session)
   if (response) {
     try {
@@ -348,11 +346,15 @@ export async function runGemini(opts: {
       lastEvent: { type: 'ready', time: Date.now() },
     }));
     try {
-      push.sendToAllDevices(
-        "It's ready!",
-        'Gemini is waiting for your command',
-        { sessionId: response.id }
-      );
+      api.push().sendSessionNotification({
+        kind: 'done',
+        metadata: session.getMetadata(),
+        data: {
+          sessionId: session.sessionId,
+          type: 'ready',
+          provider: 'gemini',
+        }
+      });
     } catch (pushError) {
       logger.debug('[Gemini] Failed to send ready push', pushError);
     }

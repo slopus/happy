@@ -8,11 +8,11 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady, useSyncPendingPermissionCount, useSyncSessionState } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete } from '@/sync/ops';
-import { removeWorktree, isWorktreePath } from '@/utils/worktree';
+import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -21,6 +21,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { copySessionMetadataToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { HappyError } from '@/utils/errors';
 
 // Animated status dot component
@@ -149,18 +150,15 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, [session]);
 
-    const handleCopyMetadata = useCallback(async () => {
-        if (!session?.metadata) return;
-        try {
-            await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
-            Modal.alert(t('common.success'), t('sessionInfo.metadataCopied'));
-        } catch (error) {
-            Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
-        }
+    const handleCopyMetadata = useCallback(() => {
+        void copySessionMetadataToClipboard(session);
     }, [session]);
 
     // Use HappyAction for archiving - it handles errors automatically
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        // Prompt for worktree cleanup before killing (needs an active machine connection)
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
         const result = await sessionKill(session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
@@ -176,6 +174,9 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     // Use HappyAction for deletion - kills session first if needed, then deletes
     const [deletingSession, performDelete] = useHappyAction(async () => {
+        // Prompt for worktree cleanup before killing (needs an active machine connection)
+        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
         // Navigate back optimistically
         router.back();
         router.back();
@@ -183,13 +184,6 @@ function SessionInfoContent({ session }: { session: Session }) {
         // Kill session first if it's still active (best-effort)
         if (sessionStatus.isConnected || session.active) {
             await sessionKill(session.id).catch(() => {});
-        }
-
-        // Clean up worktree if this session was in one (best-effort)
-        const sessionPath = session.metadata?.path;
-        const machineId = session.metadata?.machineId;
-        if (sessionPath && isWorktreePath(sessionPath) && machineId) {
-            await removeWorktree(machineId, sessionPath).catch(() => {});
         }
 
         const result = await sessionDelete(session.id);
@@ -218,7 +212,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     }, []);
 
     const handleCopyUpdateCommand = useCallback(async () => {
-        const updateCommand = 'npm install -g happy-coder@latest';
+        const updateCommand = 'npm install -g happy@latest';
         try {
             await Clipboard.setStringAsync(updateCommand);
             Modal.alert(t('common.success'), updateCommand);
@@ -307,6 +301,16 @@ function SessionInfoContent({ session }: { session: Session }) {
                                     Modal.alert(t('common.error'), t('sessionInfo.failedToCopyCodexThreadId'));
                                 }
                             }}
+                        />
+                    )}
+                    {/* Resume command — shown for disconnected sessions with a backend session ID */}
+                    {/* TODO: migrate to `happy resume <happy-session-id>` once it works without happy-agent auth */}
+                    {!sessionStatus.isConnected && getResumeCommand(session) && (
+                        <CopyableItem
+                            title="Resume Command"
+                            subtitle={getResumeCommand(session)!}
+                            icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
+                            copyText={getResumeCommand(session)!}
                         />
                     )}
                     <Item
@@ -596,3 +600,21 @@ export default React.memo(() => {
 
     return <SessionInfoContent session={session} />;
 });
+
+function CopyableItem({ title, subtitle, icon, copyText }: { title: string; subtitle: string; icon: React.ReactNode; copyText: string }) {
+    const [copied, setCopied] = React.useState(false);
+    return (
+        <Item
+            title={title}
+            subtitle={subtitle}
+            icon={icon}
+            showChevron={false}
+            rightElement={<Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? '#30D158' : '#8E8E93'} />}
+            onPress={async () => {
+                await Clipboard.setStringAsync(copyText);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            }}
+        />
+    );
+}

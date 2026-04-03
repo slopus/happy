@@ -14,6 +14,8 @@ import { PLAN_FAKE_REJECT } from "./prompts";
 import { EnhancedMode } from "./loop";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { hashObject } from "@/utils/deterministicJson";
+import { getToolName } from "./utils/getToolName";
+import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 
 interface PermissionsField {
     date: number;
@@ -144,6 +146,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     // Handle messages
     let planModeToolCalls = new Set<string>();
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
+    let notifiedQuestionToolCalls = new Set<string>();
 
     function onMessage(message: SDKMessage) {
 
@@ -178,6 +181,26 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 }
             }
         }
+
+        // Notify once when Claude asks the user a native clarifying question
+        for (const toolCallId of getAskUserQuestionToolCallIds(message)) {
+            if (notifiedQuestionToolCalls.has(toolCallId)) {
+                continue;
+            }
+            notifiedQuestionToolCalls.add(toolCallId);
+            session.push.sendSessionNotification({
+                kind: 'question',
+                metadata: session.getMetadata(),
+                data: {
+                    sessionId: session.hapSessionId,
+                    tool: 'AskUserQuestion',
+                    toolCallId,
+                    type: 'question_request',
+                    provider: 'claude',
+                }
+            });
+        }
+
         if (message.type === 'user') {
             let umessage = message as SDKUserMessage;
             if (umessage.message.content && Array.isArray(umessage.message.content)) {
@@ -421,11 +444,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             return;
                         }
                         if (!pending && session.queue.size() === 0) {
-                            session.push.sendToAllDevices(
-                                'It\'s ready!',
-                                `Claude is waiting for your command`,
-                                { sessionId: session.hapSessionId }
-                            );
+                            session.push.sendSessionNotification({
+                                kind: 'done',
+                                metadata: session.getMetadata(),
+                                data: {
+                                    sessionId: session.hapSessionId,
+                                    type: 'ready',
+                                    provider: 'claude',
+                                }
+                            });
                         }
                     },
                     signal: abortController.signal,

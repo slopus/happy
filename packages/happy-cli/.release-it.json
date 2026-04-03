@@ -4,7 +4,7 @@
         "tagName": "v${version}",
         "push": true,
         "requireCleanWorkingDir": true,
-        "requireBranch": "main",
+        "requireBranch": ["main", "beta"],
         "addUntrackedFiles": false
     },
     "github": {
@@ -13,8 +13,7 @@
         "releaseNotes": "node .release-it.notes.js ${version}"
     },
     "npm": {
-        "publish": true,
-        "tag": "beta"
+        "publish": true
     },
     "hooks": {}
 }

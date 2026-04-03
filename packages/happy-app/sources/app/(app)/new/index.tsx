@@ -11,13 +11,20 @@ import {
     ScrollView,
     LayoutAnimation,
     ActivityIndicator,
+    TextInputSelectionChangeEventData,
+    NativeSyntheticEvent,
+    Image as RNImage,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { GlassView } from 'expo-glass-effect';
+import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
-import { MultiTextInput, type KeyPressEvent } from '@/components/MultiTextInput';
+import {
+    MultiTextInput,
+    MULTI_TEXT_INPUT_LINE_HEIGHT,
+    type KeyPressEvent,
+} from '@/components/MultiTextInput';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -65,11 +72,38 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'gemini', label: 'gemini' },
 ];
 
-type PickerItem = { key: string; label: string; subtitle?: string };
+type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
 
 type PickerType = 'machine' | 'path' | 'worktree';
 
 type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
+
+const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
+const COMPOSER_SEND_BUTTON_SIZE = 32;
+const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
+    0,
+    Math.round((MULTI_TEXT_INPUT_LINE_HEIGHT + COMPOSER_INPUT_VERTICAL_PADDING * 2 - COMPOSER_SEND_BUTTON_SIZE) / 2),
+);
+const WORKTREE_PATH_DEBOUNCE_MS = 300;
+
+function trimPathInput(path: string | null | undefined): string {
+    return path?.trim() ?? '';
+}
+
+function trimTrailingPathSeparator(path: string): string {
+    if (path === '/' || /^[A-Za-z]:[\\/]?$/.test(path)) {
+        return path;
+    }
+    return path.replace(/[\\/]+$/, '');
+}
+
+function normalizePathForComparison(path: string | null | undefined, homeDir?: string): string | null {
+    const trimmed = trimPathInput(path);
+    if (!trimmed) {
+        return null;
+    }
+    return trimTrailingPathSeparator(resolveAbsolutePath(trimmed, homeDir));
+}
 
 function getPermissionStyle(key: string): PermissionStyle | null {
     switch (key) {
@@ -202,7 +236,7 @@ function PickerContent({
         return (
             <Pressable
                 key={item.key}
-                style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed, item.dimmed && { opacity: 0.45 }]}
                 onPress={() => onSelect(item.key)}
             >
                 <Octicons
@@ -237,7 +271,7 @@ function PickerContent({
                 />
             </View>
 
-            <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
                 {fixedItems?.map(renderOption)}
                 {fixedItems && fixedItems.length > 0 && filtered.length > 0 && (
                     <View style={[pickerStyles.divider, { backgroundColor: theme.colors.divider }]} />
@@ -246,6 +280,179 @@ function PickerContent({
                 {filtered.length === 0 && search.length > 0 && (
                     <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
                         no results
+                    </Text>
+                )}
+            </ScrollView>
+        </View>
+    );
+}
+
+function PathPickerContent({
+    title,
+    items,
+    value,
+    homeDir,
+    onChangeValue,
+    onDone,
+}: {
+    title: string;
+    items: PickerItem[];
+    value: string | null;
+    homeDir?: string;
+    onChangeValue: (value: string) => void;
+    onDone?: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const inputRef = React.useRef<TextInput>(null);
+    const currentValue = value ?? '';
+    const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
+
+    React.useEffect(() => {
+        const timeout = setTimeout(() => {
+            inputRef.current?.focus();
+        }, 50);
+        return () => clearTimeout(timeout);
+    }, []);
+
+    const matchedItemKey = React.useMemo(() => {
+        const normalizedValue = normalizePathForComparison(currentValue, homeDir);
+        if (!normalizedValue) {
+            return null;
+        }
+
+        const match = items.find((item) =>
+            normalizePathForComparison(item.key, homeDir) === normalizedValue,
+        );
+
+        return match?.key ?? null;
+    }, [currentValue, homeDir, items]);
+
+    const handleSuggestionPress = React.useCallback((item: PickerItem) => {
+        const nextValue = item.label;
+        const nextSelection = { start: nextValue.length, end: nextValue.length };
+
+        onChangeValue(nextValue);
+        setSelection(nextSelection);
+
+        setTimeout(() => {
+            inputRef.current?.focus();
+        }, 0);
+    }, [onChangeValue]);
+
+    const isCustomPath = currentValue.trim().length > 0 && matchedItemKey === null;
+    const handleSelectionChange = React.useCallback((event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+        setSelection(event.nativeEvent.selection);
+    }, []);
+    const doneIconColor = theme.colors.header.tint;
+
+    return (
+        <View style={pickerStyles.container}>
+            <View style={pickerStyles.titleRow}>
+                <Text style={[pickerStyles.title, { color: theme.colors.text }]}>{title}</Text>
+                {Platform.OS !== 'web' && onDone && (
+                    <Pressable
+                        onPress={onDone}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={({ pressed }) => [
+                            pickerStyles.doneButtonPressable,
+                            { opacity: pressed ? 0.82 : 1 },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Done"
+                    >
+                        <GlassView
+                            glassEffectStyle="regular"
+                            tintColor="rgba(255,255,255,0.10)"
+                            isInteractive={true}
+                            style={[
+                                pickerStyles.doneButtonGlass,
+                                { borderColor: 'rgba(255,255,255,0.16)' },
+                            ]}
+                        >
+                            <Ionicons
+                                name="checkmark"
+                                size={20}
+                                color={doneIconColor}
+                            />
+                        </GlassView>
+                    </Pressable>
+                )}
+            </View>
+
+            <View
+                style={[
+                    pickerStyles.pathInputRow,
+                    {
+                        backgroundColor: theme.colors.input.background,
+                        borderColor: theme.colors.divider,
+                    },
+                ]}
+            >
+                <Ionicons name="folder-outline" size={16} color={theme.colors.textSecondary} />
+                <View style={pickerStyles.pathInputField}>
+                    <TextInput
+                        ref={inputRef}
+                        value={currentValue}
+                        onChangeText={onChangeValue}
+                        onSelectionChange={handleSelectionChange}
+                        selection={selection}
+                        placeholder="Enter project path"
+                        placeholderTextColor={theme.colors.textSecondary}
+                        style={[pickerStyles.pathTextInput, { color: theme.colors.text }]}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        multiline={false}
+                        numberOfLines={1}
+                        returnKeyType="done"
+                        onSubmitEditing={onDone}
+                    />
+                </View>
+            </View>
+
+            {isCustomPath && (
+                <Text style={[pickerStyles.pathMetaText, { color: theme.colors.textSecondary }]}>
+                    using custom path above
+                </Text>
+            )}
+
+            <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
+                Recent
+            </Text>
+
+            <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+                {items.map((item) => {
+                    const isSelected = item.key === matchedItemKey;
+
+                    return (
+                        <Pressable
+                            key={item.key}
+                            style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                            onPress={() => handleSuggestionPress(item)}
+                        >
+                            <Ionicons
+                                name="folder-outline"
+                                size={16}
+                                color={theme.colors.textSecondary}
+                            />
+                            <View style={{ flex: 1 }}>
+                                <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>
+                                    {item.label}
+                                </Text>
+                            </View>
+                            {isSelected && (
+                                <Ionicons
+                                    name="checkmark-circle"
+                                    size={18}
+                                    color={theme.colors.button.primary.background}
+                                />
+                            )}
+                        </Pressable>
+                    );
+                })}
+
+                {items.length === 0 && (
+                    <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                        no recent projects yet
                     </Text>
                 )}
             </ScrollView>
@@ -309,6 +516,7 @@ function NewSessionScreen() {
         () => allMachines.find(m => m.id === selectedMachineId) ?? null,
         [allMachines, selectedMachineId],
     );
+    const selectedHomeDir = selectedMachine?.metadata?.homeDir;
 
     // Build machine picker items: online first, then offline
     const machineItems = React.useMemo<PickerItem[]>(() => {
@@ -320,7 +528,8 @@ function NewSessionScreen() {
         return sorted.map(m => ({
             key: m.id,
             label: getMachineName(m),
-            subtitle: isMachineOnline(m) ? undefined : t('status.lastSeen', { time: formatLastSeen(m.activeAt, false) }),
+            subtitle: isMachineOnline(m) ? t('status.online') : t('status.lastSeen', { time: formatLastSeen(m.activeAt, false) }),
+            dimmed: !isMachineOnline(m),
         }));
     }, [allMachines]);
 
@@ -342,15 +551,36 @@ function NewSessionScreen() {
 
     // Auto-select first path when machine changes
     React.useEffect(() => {
-        if (pathItems.length > 0 && !pathItems.find(p => p.key === selectedPath)) {
-            setSelectedPath(pathItems[0].key);
+        if (!selectedMachineId || selectedPath !== null) {
+            return;
         }
-    }, [pathItems, selectedPath, setSelectedPath]);
+
+        setSelectedPath(pathItems[0]?.label ?? '~');
+    }, [selectedMachineId, pathItems, selectedPath, setSelectedPath]);
+
+    const resolvedSelectedPath = React.useMemo(() => {
+        return normalizePathForComparison(selectedPath, selectedHomeDir);
+    }, [selectedHomeDir, selectedPath]);
+
+    const [debouncedResolvedSelectedPath, setDebouncedResolvedSelectedPath] = React.useState<string | null>(resolvedSelectedPath);
+
+    React.useEffect(() => {
+        if (!resolvedSelectedPath) {
+            setDebouncedResolvedSelectedPath(null);
+            return;
+        }
+
+        const timeout = setTimeout(() => {
+            setDebouncedResolvedSelectedPath(resolvedSelectedPath);
+        }, WORKTREE_PATH_DEBOUNCE_MS);
+
+        return () => clearTimeout(timeout);
+    }, [resolvedSelectedPath]);
 
     // Fetch existing worktrees from the selected machine/path
     const [worktreeItems, setWorktreeItems] = React.useState<PickerItem[]>([]);
     React.useEffect(() => {
-        if (!selectedMachineId || !selectedPath) {
+        if (!selectedMachineId || !debouncedResolvedSelectedPath) {
             setWorktreeItems([]);
             return;
         }
@@ -358,9 +588,8 @@ function NewSessionScreen() {
             setWorktreeItems([]);
             return;
         }
-        const absolutePath = resolveAbsolutePath(selectedPath, selectedMachine.metadata?.homeDir);
         let cancelled = false;
-        listWorktrees(selectedMachineId, absolutePath).then(worktrees => {
+        listWorktrees(selectedMachineId, debouncedResolvedSelectedPath).then(worktrees => {
             if (cancelled) return;
             setWorktreeItems(worktrees.map(wt => ({
                 key: wt.path,
@@ -369,7 +598,17 @@ function NewSessionScreen() {
             })));
         });
         return () => { cancelled = true; };
-    }, [selectedMachineId, selectedPath, selectedMachine]);
+    }, [debouncedResolvedSelectedPath, selectedMachineId, selectedMachine]);
+
+    React.useEffect(() => {
+        if (worktreeKey === '__none__' || worktreeKey === '__new__') {
+            return;
+        }
+
+        if (!worktreeItems.some((item) => item.key === worktreeKey)) {
+            setWorktreeKey('__none__');
+        }
+    }, [worktreeItems, worktreeKey]);
 
     // Filter available agents based on CLI availability from machine metadata
     const availableAgents = React.useMemo(() => {
@@ -434,22 +673,16 @@ function NewSessionScreen() {
 
     const hasText = prompt.trim().length > 0;
 
-    // Auto collapse/expand config based on input text
-    const prevHasTextRef = React.useRef(false);
+    // Auto collapse config once when user starts typing, never auto-expand again
+    const hasCollapsedOnceRef = React.useRef(false);
     React.useEffect(() => {
-        if (hasText !== prevHasTextRef.current) {
-            prevHasTextRef.current = hasText;
+        if (hasText && !hasCollapsedOnceRef.current) {
+            hasCollapsedOnceRef.current = true;
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            setIsConfigExpanded(!hasText);
+            setIsConfigExpanded(false);
         }
     }, [hasText]);
 
-    // Close any open picker when config collapses
-    React.useEffect(() => {
-        if (!isConfigExpanded) {
-            setActivePicker(null);
-        }
-    }, [isConfigExpanded]);
 
     const toggleConfig = React.useCallback(() => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -494,8 +727,8 @@ function NewSessionScreen() {
 
     // Display values
     const machineName = selectedMachine ? getMachineName(selectedMachine) : 'Select machine';
-    const pathName = selectedPath
-        ? formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)
+    const pathName = trimPathInput(selectedPath)
+        ? formatPathRelativeToHome(trimPathInput(selectedPath), selectedHomeDir)
         : '~';
     const worktreeLabel = worktreeKey === '__none__'
         ? 'no worktree'
@@ -503,34 +736,44 @@ function NewSessionScreen() {
             ? 'new worktree'
             : worktreeItems.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
 
+    // Flash label for collapsed icon taps — shows label briefly above the icon
+    const flashOpacity = React.useRef(new Animated.Value(0)).current;
+    const [flashText, setFlashText] = React.useState('');
+    const flashTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const showFlash = React.useCallback((text: string) => {
+        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+        setFlashText(text);
+        flashOpacity.setValue(0);
+        Animated.timing(flashOpacity, { toValue: 1, duration: 120, useNativeDriver: true }).start();
+        flashTimerRef.current = setTimeout(() => {
+            Animated.timing(flashOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
+        }, 800);
+    }, [flashOpacity]);
+
     // Picker data derived from active picker type
     const pickerData = React.useMemo(() => {
         switch (activePicker) {
             case 'machine':
                 return { title: 'Machine', items: machineItems, selectedKey: selectedMachineId, searchPlaceholder: 'search machines...' };
-            case 'path':
-                return { title: 'Project', items: pathItems, selectedKey: selectedPath, searchPlaceholder: 'search projects...' };
             case 'worktree':
                 return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems, selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
             default:
                 return null;
         }
-    }, [activePicker, machineItems, selectedMachineId, pathItems, selectedPath, worktreeKey, worktreeItems]);
+    }, [activePicker, machineItems, selectedMachineId, worktreeKey, worktreeItems]);
 
     const handlePickerSelect = React.useCallback((key: string) => {
         switch (activePicker) {
             case 'machine':
                 setSelectedMachineId(key);
                 break;
-            case 'path':
-                setSelectedPath(key);
-                break;
             case 'worktree':
                 setWorktreeKey(key);
                 break;
         }
         setActivePicker(null);
-    }, [activePicker, setSelectedMachineId, setSelectedPath, setWorktreeKey]);
+    }, [activePicker, setSelectedMachineId, setWorktreeKey]);
 
     // Spawn session handler
     const handleSend = React.useCallback(async (approvedNewDirectoryCreation: boolean = false) => {
@@ -545,7 +788,7 @@ function NewSessionScreen() {
 
         setIsSpawning(true);
         try {
-            const pathToUse = selectedPath || '~';
+            const pathToUse = trimPathInput(selectedPath) || '~';
             const absolutePath = resolveAbsolutePath(pathToUse, selectedMachine.metadata?.homeDir);
 
             // Handle worktree selection
@@ -633,6 +876,15 @@ function NewSessionScreen() {
         return false;
     }, [agentInputEnterToSend, canSend, handleSend]);
 
+    // Auto-focus the text input when the composer mounts
+    const composerInputRef = React.useRef<import('@/components/MultiTextInput').MultiTextInputHandle>(null);
+    React.useEffect(() => {
+        const timeout = setTimeout(() => {
+            composerInputRef.current?.focus();
+        }, 100);
+        return () => clearTimeout(timeout);
+    }, []);
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -647,20 +899,40 @@ function NewSessionScreen() {
                         {isConfigExpanded ? (
                             <>
                                 {/* Machine row */}
-                                <Pressable
-                                    style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
-                                    onPress={() => togglePicker('machine')}
-                                >
-                                    <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
-                                    <Text style={styles.configLabel} numberOfLines={1}>
-                                        {machineName}
-                                    </Text>
-                                    {selectedMachine && isOffline && (
-                                        <Text style={{ fontSize: 12, color: theme.colors.status.disconnected }}>
-                                            {t('status.lastSeen', { time: formatLastSeen(selectedMachine.activeAt, false) })}
+                                <View style={styles.configRowWithToggle}>
+                                    <Pressable
+                                        style={(p) => [styles.configRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
+                                        onPress={() => togglePicker('machine')}
+                                    >
+                                        <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
+                                        <Text style={styles.configLabel} numberOfLines={1}>
+                                            {machineName}
                                         </Text>
-                                    )}
-                                </Pressable>
+                                    </Pressable>
+                                    <Pressable
+                                        onPress={toggleConfig}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        style={(p) => [styles.collapseToggle, p.pressed && styles.configRowPressed]}
+                                    >
+                                        <Ionicons name="chevron-up" size={16} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                </View>
+
+                                {/* Offline help section — right under machine */}
+                                {isOffline && (
+                                    <View style={styles.offlineHelp}>
+                                        <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.offlineHelpTitle, { color: theme.colors.status.disconnected }]}>
+                                                {t('newSession.machineOffline')}
+                                            </Text>
+                                            <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
+                                                {t('machine.offlineHelp')}
+                                                {'\n'}{t('newSession.switchMachinesHint')}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
 
                                 {/* Config rows below machine — grayed out when offline */}
                                 <View style={{ opacity: isOffline ? 0.4 : 1 }} pointerEvents={isOffline ? 'none' : 'auto'}>
@@ -681,11 +953,10 @@ function NewSessionScreen() {
                                             onPress={cycleAgent}
                                             style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 8 }, p.pressed && styles.configRowPressed]}
                                         >
-                                            <Image
+                                            <RNImage
                                                 source={agentIcons[agent.key]}
-                                                style={{ width: 15, height: 15 }}
-                                                contentFit="contain"
-                                                tintColor={theme.colors.textSecondary}
+                                                style={[styles.agentIcon, { tintColor: theme.colors.textSecondary }]}
+                                                resizeMode="contain"
                                             />
                                             <Text style={styles.configLabel} numberOfLines={1}>
                                                 {agent.label}
@@ -738,7 +1009,7 @@ function NewSessionScreen() {
                                             style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
                                             onPress={() => togglePicker('worktree')}
                                         >
-                                            <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
+                                            <MaterialCommunityIcons name="tree" size={15} color={theme.colors.textSecondary} />
                                             <Text style={styles.configLabel} numberOfLines={1}>
                                                 {worktreeLabel}
                                             </Text>
@@ -746,7 +1017,82 @@ function NewSessionScreen() {
                                     )}
                                 </View>
 
-                                {/* Offline help section */}
+                            </>
+                        ) : (
+                            /* Collapsed: path row + icons row + optional offline warning */
+                            <>
+                                {/* Path row with expand chevron */}
+                                <View style={styles.configRowWithToggle}>
+                                    <Pressable
+                                        style={(p) => [styles.collapsedRow, { flex: 1 }, p.pressed && styles.configRowPressed]}
+                                        onPress={() => togglePicker('path')}
+                                    >
+                                        <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
+                                        <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
+                                            {pathName}
+                                        </Text>
+                                    </Pressable>
+                                    <Pressable
+                                        onPress={toggleConfig}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        style={(p) => [styles.collapseToggle, p.pressed && styles.configRowPressed]}
+                                    >
+                                        <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                </View>
+
+                                {/* Tappable icons row: machine, agent, permission, worktree */}
+                                <View style={styles.collapsedIconsRow}>
+                                    {/* Machine */}
+                                    <Pressable
+                                        onPress={() => togglePicker('machine')}
+                                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                        style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                    >
+                                        <Ionicons name="desktop-outline" size={14} color={isOffline ? theme.colors.status.disconnected : theme.colors.textSecondary} />
+                                    </Pressable>
+
+                                    {/* Agent */}
+                                    <Pressable
+                                        onPress={() => { cycleAgent(); showFlash(availableAgents[(availableAgents.findIndex(a => a.key === selectedAgent) + 1) % availableAgents.length].label); }}
+                                        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                        style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                    >
+                                        <RNImage
+                                            source={agentIcons[agent.key]}
+                                            style={[styles.collapsedAgentIcon, { tintColor: theme.colors.textSecondary }]}
+                                            resizeMode="contain"
+                                        />
+                                    </Pressable>
+
+                                    {/* Permission */}
+                                    {showPermission && (
+                                        <Pressable
+                                            onPress={() => { cyclePermission(); showFlash(permissionModes[(permissionIndex + 1) % permissionModes.length]?.name ?? 'default'); }}
+                                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                            style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                        >
+                                            <Ionicons
+                                                name={permissionStyle?.icon ?? 'shield-outline'}
+                                                size={14}
+                                                color={permissionStyle?.color ?? theme.colors.textSecondary}
+                                            />
+                                        </Pressable>
+                                    )}
+
+                                    {/* Worktree */}
+                                    {supportsWorktree && (
+                                        <Pressable
+                                            onPress={() => togglePicker('worktree')}
+                                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                            style={(p) => [styles.collapsedIconButton, p.pressed && styles.configRowPressed]}
+                                        >
+                                            <MaterialCommunityIcons name="tree" size={14} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    )}
+                                </View>
+
+                                {/* Offline warning in collapsed state */}
                                 {isOffline && (
                                     <View style={styles.offlineHelp}>
                                         <Ionicons name="cloud-offline-outline" size={14} color={theme.colors.status.disconnected} />
@@ -756,30 +1102,37 @@ function NewSessionScreen() {
                                             </Text>
                                             <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
                                                 {t('machine.offlineHelp')}
+                                                {'\n'}{t('newSession.switchMachinesHint')}
                                             </Text>
                                         </View>
                                     </View>
                                 )}
                             </>
-                        ) : (
-                            /* Collapsed: path + chevron to re-expand */
-                            <Pressable
-                                style={(p) => [styles.collapsedRow, p.pressed && styles.configRowPressed]}
-                                onPress={toggleConfig}
-                            >
-                                <Ionicons name="folder-outline" size={15} color={theme.colors.textSecondary} />
-                                <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
-                                    {pathName}
-                                </Text>
-                                <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
-                            </Pressable>
                         )}
                     </View>
 
+                    {/* Flash label — centered below config box, hidden when picker is open */}
+                    {flashText !== '' && !activePicker && (
+                        <Animated.View style={[styles.flashLabel, { opacity: flashOpacity }]} pointerEvents="none">
+                            <Text style={[styles.flashLabelText, { color: theme.colors.textSecondary }]}>{flashText}</Text>
+                        </Animated.View>
+                    )}
+
                     {/* Web: inline popover */}
-                    {Platform.OS === 'web' && activePicker && pickerData && (
+                    {Platform.OS === 'web' && activePicker && (
                         <View style={[styles.popover, { backgroundColor: theme.colors.header.background }]}>
-                            <PickerContent {...pickerData} onSelect={handlePickerSelect} />
+                            {activePicker === 'path' ? (
+                                <PathPickerContent
+                                    title="Project"
+                                    items={pathItems}
+                                    value={selectedPath}
+                                    homeDir={selectedHomeDir}
+                                    onChangeValue={setSelectedPath}
+                                    onDone={() => setActivePicker(null)}
+                                />
+                            ) : pickerData ? (
+                                <PickerContent {...pickerData} onSelect={handlePickerSelect} />
+                            ) : null}
                         </View>
                     )}
                 </View>
@@ -801,11 +1154,13 @@ function NewSessionScreen() {
                         <View style={styles.inputField}>
                             <View style={{ flex: 1 }}>
                                 <MultiTextInput
+                                    ref={composerInputRef}
                                     value={prompt}
                                     onChangeText={setPrompt}
                                     placeholder="What would you like to work on?"
-                                    paddingTop={Platform.OS === 'web' ? 10 : 8}
-                                    paddingBottom={Platform.OS === 'web' ? 10 : 8}
+                                    lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
+                                    paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
+                                    paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
                                     maxHeight={240}
                                     onKeyPress={handleKeyPress}
                                 />
@@ -853,7 +1208,18 @@ function NewSessionScreen() {
                     visible={!!activePicker}
                     onClose={() => setActivePicker(null)}
                 >
-                    {pickerData && <PickerContent {...pickerData} onSelect={handlePickerSelect} />}
+                    {activePicker === 'path' ? (
+                        <PathPickerContent
+                            title="Project"
+                            items={pathItems}
+                            value={selectedPath}
+                            homeDir={selectedHomeDir}
+                            onChangeValue={setSelectedPath}
+                            onDone={() => setActivePicker(null)}
+                        />
+                    ) : pickerData ? (
+                        <PickerContent {...pickerData} onSelect={handlePickerSelect} />
+                    ) : null}
                 </BottomSheet>
             )}
         </KeyboardAvoidingView>
@@ -907,6 +1273,16 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 10,
         borderRadius: 12,
     },
+    configRowWithToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    collapseToggle: {
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     collapsedRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -915,8 +1291,38 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 10,
         borderRadius: 12,
     },
+    collapsedIconsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+        paddingHorizontal: 4,
+        paddingBottom: 8,
+    },
+    collapsedIconButton: {
+        width: 34,
+        height: 28,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    flashLabel: {
+        alignSelf: 'center',
+        paddingVertical: 4,
+    },
+    flashLabelText: {
+        fontSize: 12,
+        ...Typography.default(),
+    },
     configRowPressed: {
         opacity: 0.6,
+    },
+    agentIcon: {
+        width: 15,
+        height: 15,
+    },
+    collapsedAgentIcon: {
+        width: 14,
+        height: 14,
     },
     configLabel: {
         fontSize: 14,
@@ -941,13 +1347,13 @@ const styles = StyleSheet.create((theme) => ({
         gap: 8,
     },
     sendButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: COMPOSER_SEND_BUTTON_SIZE,
+        height: COMPOSER_SEND_BUTTON_SIZE,
+        borderRadius: COMPOSER_SEND_BUTTON_SIZE / 2,
         justifyContent: 'center',
         alignItems: 'center',
         flexShrink: 0,
-        marginBottom: 4,
+        marginBottom: COMPOSER_SEND_BUTTON_MARGIN_BOTTOM,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
@@ -1024,6 +1430,27 @@ const pickerStyles = {
         ...Typography.default('semiBold'),
         ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
     } as const,
+    titleRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+    },
+    doneButtonPressable: {
+        width: 44,
+        height: 44,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    },
+    doneButtonGlass: {
+        width: 40,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        overflow: 'hidden' as const,
+        borderWidth: 1,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
     searchRow: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
@@ -1039,6 +1466,44 @@ const pickerStyles = {
         padding: 0,
         ...Typography.default(),
         ...Platform.select({ web: { outlineStyle: 'none' } as any, default: {} }),
+    } as const,
+    pathInputRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 10,
+        paddingHorizontal: 12,
+        minHeight: 46,
+        borderRadius: 12,
+        marginBottom: 8,
+        borderWidth: 1,
+    },
+    pathInputField: {
+        flex: 1,
+    } as const,
+    pathTextInput: {
+        fontSize: 16,
+        minHeight: 44,
+        paddingVertical: 0,
+        ...Typography.default(),
+        ...Platform.select({
+            android: { textAlignVertical: 'center' as const },
+            web: { outlineStyle: 'none' } as any,
+            default: {},
+        }),
+    } as const,
+    pathMetaText: {
+        fontSize: 13,
+        paddingHorizontal: 4,
+        paddingBottom: 8,
+        ...Typography.default(),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+    sectionLabel: {
+        fontSize: 13,
+        paddingHorizontal: 4,
+        paddingBottom: 8,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
     } as const,
     option: {
         flexDirection: 'row' as const,
@@ -1060,6 +1525,10 @@ const pickerStyles = {
         height: 1,
         marginHorizontal: 12,
         marginVertical: 4,
+    } as const,
+    optionList: {
+        flexGrow: 0,
+        flexShrink: 1,
     } as const,
     emptyText: {
         fontSize: 14,

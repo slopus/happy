@@ -503,6 +503,13 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * Returns the latest session metadata known to the client.
+     */
+    getMetadata(): Metadata | null {
+        return this.metadata;
+    }
+
+    /**
      * Update session metadata
      * @param handler - Handler function that returns the updated metadata
      */

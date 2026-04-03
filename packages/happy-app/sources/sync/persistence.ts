@@ -7,6 +7,7 @@ import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
+const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -172,6 +173,18 @@ export function saveNewSessionDraft(draft: NewSessionDraft) {
 
 export function clearNewSessionDraft() {
     mmkv.delete(NEW_SESSION_DRAFT_KEY);
+}
+
+export function loadRegisteredPushToken(): string | null {
+    return mmkv.getString(REGISTERED_PUSH_TOKEN_KEY) ?? null;
+}
+
+export function saveRegisteredPushToken(token: string) {
+    mmkv.set(REGISTERED_PUSH_TOKEN_KEY, token);
+}
+
+export function clearRegisteredPushToken() {
+    mmkv.delete(REGISTERED_PUSH_TOKEN_KEY);
 }
 
 export function loadSessionPermissionModes(): Record<string, string> {

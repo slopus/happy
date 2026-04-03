@@ -45,9 +45,9 @@ export function mapMetadataOptions(options?: MetadataOption[] | null): ModeOptio
 export function getClaudePermissionModes(translate: Translate): PermissionMode[] {
     return [
         { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
-        { key: 'acceptEdits', name: translate('agentInput.permissionMode.acceptEdits'), description: null },
         { key: 'plan', name: translate('agentInput.permissionMode.plan'), description: null },
         { key: 'dontAsk', name: translate('agentInput.permissionMode.dontAsk'), description: null },
+        { key: 'acceptEdits', name: translate('agentInput.permissionMode.acceptEdits'), description: null },
         { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
     ];
 }

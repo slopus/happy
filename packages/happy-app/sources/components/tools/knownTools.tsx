@@ -1,6 +1,7 @@
-import { Metadata } from '@/sync/storageTypes';
+import { Metadata, TodoItemsSchema } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
+import { stringifyToolCommand } from '@/utils/toolCommand';
 import * as z from 'zod';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import React from 'react';
@@ -18,33 +19,44 @@ const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name=
 const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
 const ICON_QUESTION = (size: number = 24, color: string = '#000') => <Ionicons name="help-circle-outline" size={size} color={color} />;
 
-export const knownTools = {
-    'Task': {
-        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Check for description field at runtime
-            if (opts.tool.input && opts.tool.input.description && typeof opts.tool.input.description === 'string') {
-                return opts.tool.input.description;
-            }
-            return t('tools.names.task');
-        },
-        icon: ICON_TASK,
-        isMutable: true,
-        minimal: (opts: { metadata: Metadata | null, tool: ToolCall, messages?: Message[] }) => {
-            // Check if there would be any filtered tasks
-            const messages = opts.messages || [];
-            for (let m of messages) {
-                if (m.kind === 'tool-call' && 
-                    (m.tool.state === 'running' || m.tool.state === 'completed' || m.tool.state === 'error')) {
-                    return false; // Has active sub-tasks, show expanded
-                }
-            }
-            return true; // No active sub-tasks, render as minimal
-        },
-        input: z.object({
-            prompt: z.string().describe('The task for the agent to perform'),
-            subagent_type: z.string().optional().describe('The type of specialized agent to use')
-        }).partial().passthrough()
+function getPatchFiles(input: any): string[] {
+    if (input?.changes && typeof input.changes === 'object' && !Array.isArray(input.changes)) {
+        return Object.keys(input.changes);
+    }
+    if (input?.fileChanges && typeof input.fileChanges === 'object' && !Array.isArray(input.fileChanges)) {
+        return Object.keys(input.fileChanges);
+    }
+    return [];
+}
+
+const taskLikeTool = {
+    title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+        if (opts.tool.input && opts.tool.input.description && typeof opts.tool.input.description === 'string') {
+            return opts.tool.input.description;
+        }
+        return t('tools.names.task');
     },
+    icon: ICON_TASK,
+    isMutable: true,
+    minimal: (opts: { metadata: Metadata | null, tool: ToolCall, messages?: Message[] }) => {
+        const messages = opts.messages || [];
+        for (let m of messages) {
+            if (m.kind === 'tool-call'
+                && (m.tool.state === 'running' || m.tool.state === 'completed' || m.tool.state === 'error')) {
+                return false;
+            }
+        }
+        return true;
+    },
+    input: z.object({
+        prompt: z.string().describe('The task for the agent to perform'),
+        subagent_type: z.string().optional().describe('The type of specialized agent to use')
+    }).partial().passthrough()
+};
+
+export const knownTools = {
+    'Task': taskLikeTool,
+    'Agent': taskLikeTool,
     'Bash': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.description) {
@@ -384,26 +396,11 @@ export const knownTools = {
             return true; // No todos, render as minimal
         },
         input: z.object({
-            todos: z.array(z.object({
-                content: z.string().describe('The todo item content'),
-                status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
-                id: z.string().optional().describe('Unique identifier for the todo')
-            }).passthrough()).describe('The updated todo list')
+            todos: TodoItemsSchema.describe('The updated todo list')
         }).partial().passthrough(),
         result: z.object({
-            oldTodos: z.array(z.object({
-                content: z.string().describe('The todo item content'),
-                status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
-                id: z.string().describe('Unique identifier for the todo')
-            }).passthrough()).describe('The old todo list'),
-            newTodos: z.array(z.object({
-                content: z.string().describe('The todo item content'),
-                status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
-                id: z.string().describe('Unique identifier for the todo')
-            }).passthrough()).describe('The new todo list')
+            oldTodos: TodoItemsSchema.describe('The old todo list'),
+            newTodos: TodoItemsSchema.describe('The new todo list')
         }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (Array.isArray(opts.tool.input.todos)) {
@@ -456,7 +453,7 @@ export const knownTools = {
         hideDefaultError: true,
         isMutable: true,
         input: z.object({
-            command: z.array(z.string()).describe('The command array to execute'),
+            command: z.union([z.string(), z.array(z.string())]).describe('The command to execute'),
             cwd: z.string().optional().describe('Current working directory'),
             parsed_cmd: z.array(z.object({
                 type: z.string().describe('Type of parsed command (read, write, bash, etc.)'),
@@ -484,16 +481,7 @@ export const knownTools = {
                     return parsedCmd.cmd;
                 }
             }
-            if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-                let cmdArray = opts.tool.input.command;
-                // Remove shell wrapper prefix if present (bash/zsh with -lc flag)
-                if (cmdArray.length >= 3 && (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') && cmdArray[1] === '-lc') {
-                    // The actual command is in the third element
-                    return cmdArray[2];
-                }
-                return cmdArray.join(' ');
-            }
-            return null;
+            return stringifyToolCommand(opts.tool.input?.command);
         },
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Provide a description based on the parsed command type
@@ -706,11 +694,16 @@ export const knownTools = {
     'CodexPatch': {
         title: t('tools.names.applyChanges'),
         icon: ICON_EDIT,
-        minimal: true,
+        minimal: false,
         hideDefaultError: true,
         input: z.object({
             auto_approved: z.boolean().optional().describe('Whether changes were auto-approved'),
             changes: z.record(z.string(), z.object({
+                diff: z.string().optional(),
+                kind: z.object({
+                    type: z.string().optional(),
+                    move_path: z.string().nullable().optional()
+                }).optional(),
                 add: z.object({
                     content: z.string()
                 }).optional(),
@@ -725,34 +718,30 @@ export const knownTools = {
         }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Show the first file being modified
-            if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
-                const files = Object.keys(opts.tool.input.changes);
-                if (files.length > 0) {
-                    const path = resolvePath(files[0], opts.metadata);
-                    const fileName = path.split('/').pop() || path;
-                    if (files.length > 1) {
-                        return t('tools.desc.modifyingMultipleFiles', { 
-                            file: fileName, 
-                            count: files.length - 1 
-                        });
-                    }
-                    return fileName;
+            const files = getPatchFiles(opts.tool.input);
+            if (files.length > 0) {
+                const path = resolvePath(files[0], opts.metadata);
+                const fileName = path.split('/').pop() || path;
+                if (files.length > 1) {
+                    return t('tools.desc.modifyingMultipleFiles', {
+                        file: fileName,
+                        count: files.length - 1
+                    });
                 }
+                return fileName;
             }
             return null;
         },
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Show the number of files being modified
-            if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
-                const files = Object.keys(opts.tool.input.changes);
-                const fileCount = files.length;
-                if (fileCount === 1) {
-                    const path = resolvePath(files[0], opts.metadata);
-                    const fileName = path.split('/').pop() || path;
-                    return t('tools.desc.modifyingFile', { file: fileName });
-                } else if (fileCount > 1) {
-                    return t('tools.desc.modifyingFiles', { count: fileCount });
-                }
+            const files = getPatchFiles(opts.tool.input);
+            const fileCount = files.length;
+            if (fileCount === 1) {
+                const path = resolvePath(files[0], opts.metadata);
+                const fileName = path.split('/').pop() || path;
+                return t('tools.desc.modifyingFile', { file: fileName });
+            } else if (fileCount > 1) {
+                return t('tools.desc.modifyingFiles', { count: fileCount });
             }
             return t('tools.names.applyChanges');
         }
@@ -764,19 +753,11 @@ export const knownTools = {
         hideDefaultError: true,
         isMutable: true,
         input: z.object({
-            command: z.array(z.string()).describe('The command array to execute'),
+            command: z.union([z.string(), z.array(z.string())]).describe('The command to execute'),
             cwd: z.string().optional().describe('Current working directory')
         }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-                let cmdArray = opts.tool.input.command;
-                // Remove shell wrapper prefix if present (bash/zsh with -lc flag)
-                if (cmdArray.length >= 3 && (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') && cmdArray[1] === '-lc') {
-                    return cmdArray[2];
-                }
-                return cmdArray.join(' ');
-            }
-            return null;
+            return stringifyToolCommand(opts.tool.input?.command);
         }
     },
     'GeminiPatch': {

@@ -9,6 +9,7 @@ import { CodexAppServerClient } from './codexAppServerClient';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -78,6 +79,21 @@ export async function runCodex(opts: {
     noSandbox?: boolean;
     resumeThreadId?: string;
 }): Promise<void> {
+    // Early check: ensure Codex CLI is installed before proceeding
+    try {
+        execSync('codex --version', { encoding: 'utf8', stdio: 'pipe' });
+    } catch {
+        console.error('\n\x1b[1m\x1b[33mCodex CLI is not installed\x1b[0m\n');
+        console.error('Please install Codex CLI using one of these methods:\n');
+        console.error('\x1b[1mOption 1 - npm (recommended):\x1b[0m');
+        console.error('  \x1b[36mnpm install -g @openai/codex\x1b[0m\n');
+        console.error('\x1b[1mOption 2 - Homebrew (macOS):\x1b[0m');
+        console.error('  \x1b[36mbrew install --cask codex\x1b[0m\n');
+        console.error('Alternatively, use Claude Code:');
+        console.error('  \x1b[36mhappy claude\x1b[0m\n');
+        process.exit(1);
+    }
+
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
     interface EnhancedMode {
@@ -398,11 +414,15 @@ export async function runCodex(opts: {
             session.sendSessionEvent({ type: 'ready' });
         }
         try {
-            api.push().sendToAllDevices(
-                "It's ready!",
-                'Codex is waiting for your command',
-                { sessionId: response?.id ?? session.sessionId }
-            );
+            api.push().sendSessionNotification({
+                kind: 'done',
+                metadata: session.getMetadata(),
+                data: {
+                    sessionId: session.sessionId,
+                    type: 'ready',
+                    provider: 'codex',
+                }
+            });
         } catch (pushError) {
             logger.debug('[Codex] Failed to send ready push', pushError);
         }
@@ -623,11 +643,11 @@ export async function runCodex(opts: {
         } else if (msg.type === 'task_started') {
             messageBuffer.addMessage('Starting task...', 'status');
         } else if (msg.type === 'task_complete') {
+            // Ready is emitted from the main loop's idle check so pushes only fire once
+            // after the queue is actually drained.
             messageBuffer.addMessage('Task completed', 'status');
-            sendReady();
         } else if (msg.type === 'turn_aborted') {
             messageBuffer.addMessage('Turn aborted', 'status');
-            sendReady();
         }
 
         if (msg.type === 'task_started') {

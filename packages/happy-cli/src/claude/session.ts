@@ -182,6 +182,10 @@ export class Session {
         });
     }
 
+    getMetadata(): Metadata | null {
+        return (this.syncBridge.session?.metadata as Metadata) ?? null;
+    }
+
     updateMetadata(handler: (metadata: Metadata) => Metadata): void {
         this.syncBridge.updateMetadata(handler).catch((err) => {
             logger.debug('[Session] SyncBridge updateMetadata failed', { error: err });

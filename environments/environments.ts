@@ -569,9 +569,14 @@ function commandList() {
         const serverStatus = serverUp ? "running" : "stopped";
         const expoStatus = expoUp ? "running" : "stopped";
 
+        const serverUrl = `http://localhost:${config.serverPort}`;
+        const bundlerUrl = `http://localhost:${config.expoPort}`;
+        const webAppUrl = config.authenticatedWebUrl ?? bundlerUrl;
+
         console.log(`${marker} ${envName}`);
-        console.log(`     Server: :${config.serverPort} (${serverStatus})`);
-        console.log(`     Webapp: :${config.expoPort} (${expoStatus})`);
+        console.log(`     Server:  ${serverUrl} (${serverStatus})`);
+        console.log(`     Bundler: ${bundlerUrl} (${expoStatus})`);
+        console.log(`     Web app: ${webAppUrl}`);
         console.log(`     Created: ${config.createdAt}`);
         console.log("");
     }
@@ -618,6 +623,12 @@ function commandCurrent() {
         process.exit(1);
     }
     console.log(envShPath);
+
+    const config = readEnvironmentConfig(currentConfig.current);
+    const webAppUrl = config.authenticatedWebUrl ?? `http://localhost:${config.expoPort}`;
+    console.log(`\nServer:  http://localhost:${config.serverPort}`);
+    console.log(`Bundler: http://localhost:${config.expoPort}`);
+    console.log(`Web app: ${webAppUrl}`);
 }
 
 function commandRun(service: string, serviceArgs: string[] = []) {
@@ -734,13 +745,12 @@ function buildEnvVars(envDir: string, serverPort: number, expoPort: number): Rec
         DATA_DIR: path.join(envDir, "server"),
         PGLITE_DIR: path.join(envDir, "server", "pglite"),
         DATABASE_URL: "",
-        DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: "true",
         METRICS_ENABLED: "false",
 
         // App (Expo)
         EXPO_PUBLIC_SERVER_URL: `http://localhost:${serverPort}`,
         EXPO_PUBLIC_HAPPY_SERVER_URL: `http://localhost:${serverPort}`,
-        EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: "true",
+        EXPO_PUBLIC_LOG_SERVER_URL: "http://localhost:8787",
         EXPO_PORT: String(expoPort),
 
         // CLI
@@ -774,14 +784,13 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
     lines.push(`export DATA_DIR="${vars.DATA_DIR}"`);
     lines.push(`export PGLITE_DIR="${vars.PGLITE_DIR}"`);
     lines.push(`export DATABASE_URL=""`);
-    lines.push(`export DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=true`);
     lines.push(`export METRICS_ENABLED=false`);
     lines.push("");
 
     lines.push("# App (Expo)");
     lines.push(`export EXPO_PUBLIC_SERVER_URL="${vars.EXPO_PUBLIC_SERVER_URL}"`);
     lines.push(`export EXPO_PUBLIC_HAPPY_SERVER_URL="${vars.EXPO_PUBLIC_HAPPY_SERVER_URL}"`);
-    lines.push(`export EXPO_PUBLIC_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=true`);
+    lines.push(`export EXPO_PUBLIC_LOG_SERVER_URL="${vars.EXPO_PUBLIC_LOG_SERVER_URL}"`);
     if (vars.EXPO_PUBLIC_DEV_TOKEN && vars.EXPO_PUBLIC_DEV_SECRET) {
         lines.push(`export EXPO_PUBLIC_DEV_TOKEN="${vars.EXPO_PUBLIC_DEV_TOKEN}"`);
         lines.push(`export EXPO_PUBLIC_DEV_SECRET="${vars.EXPO_PUBLIC_DEV_SECRET}"`);

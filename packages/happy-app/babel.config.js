@@ -20,11 +20,6 @@ module.exports = function (api) {
 
   return {
     presets: ['babel-preset-expo'],
-    env: {
-      production: {
-        plugins: ["transform-remove-console"],
-      },
-    },
     plugins: [
       ['react-native-unistyles/plugin', { root: 'sources' }],
       workletsPlugin // Must be last - automatically selects correct plugin for version

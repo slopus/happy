@@ -1,68 +1,46 @@
 import * as React from 'react';
 import { View, ActivityIndicator, Platform, TextInput } from 'react-native';
 import { t } from '@/text';
-import { useRoute } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Octicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
+import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { useGitStatusFiles } from '@/hooks/useGitStatusFiles';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
+import { Shaker, ShakeInstance } from '@/components/Shaker';
+import { usePrefetchFileContents } from '@/hooks/usePrefetchFileContents';
 
-export default function FilesScreen() {
-    const route = useRoute();
+export default React.memo(function FilesScreen() {
     const router = useRouter();
-    const sessionId = (route.params! as any).id as string;
-    
-    const [gitStatusFiles, setGitStatusFiles] = React.useState<GitStatusFiles | null>(null);
-    const [isLoading, setIsLoading] = React.useState(true);
+    const { id: sessionId } = useLocalSearchParams<{ id: string }>();
+
+    const { data: gitStatusFiles, isLoading } = useGitStatusFiles(sessionId!);
+
+    // Prefetch file contents for instant navigation into file view
+    usePrefetchFileContents(sessionId!, gitStatusFiles);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState<FileItem[]>([]);
     const [isSearching, setIsSearching] = React.useState(false);
-    // Use project git status first, fallback to session git status for backward compatibility
-    const projectGitStatus = useSessionProjectGitStatus(sessionId);
-    const sessionGitStatus = useSessionGitStatus(sessionId);
+    const projectGitStatus = useSessionProjectGitStatus(sessionId!);
+    const sessionGitStatus = useSessionGitStatus(sessionId!);
     const gitStatus = projectGitStatus || sessionGitStatus;
     const { theme } = useUnistyles();
-    
-    // Load git status files
-    const loadGitStatusFiles = React.useCallback(async () => {
-        try {
-            setIsLoading(true);
-            const result = await getGitStatusFiles(sessionId);
-            setGitStatusFiles(result);
-        } catch (error) {
-            console.error('Failed to load git status files:', error);
-            setGitStatusFiles(null);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [sessionId]);
 
-    // Load on mount
-    React.useEffect(() => {
-        loadGitStatusFiles();
-    }, [loadGitStatusFiles]);
-
-    // Refresh when screen is focused
-    useFocusEffect(
-        React.useCallback(() => {
-            loadGitStatusFiles();
-        }, [loadGitStatusFiles])
-    );
+    // Refs for shaking deleted file items
+    const shakerRefs = React.useRef(new Map<string, ShakeInstance>());
 
     // Handle search and file loading
     React.useEffect(() => {
         const loadFiles = async () => {
             if (!sessionId) return;
-            
+
             try {
                 setIsSearching(true);
                 const results = await searchFiles(sessionId, searchQuery, { limit: 100 });
@@ -76,9 +54,9 @@ export default function FilesScreen() {
         };
 
         // Load files when searching or when repo is clean
-        const shouldShowAllFiles = searchQuery || 
+        const shouldShowAllFiles = searchQuery ||
             (gitStatusFiles?.totalStaged === 0 && gitStatusFiles?.totalUnstaged === 0);
-        
+
         if (shouldShowAllFiles && !isLoading) {
             loadFiles();
         } else if (!searchQuery) {
@@ -88,7 +66,11 @@ export default function FilesScreen() {
     }, [searchQuery, gitStatusFiles, sessionId, isLoading]);
 
     const handleFilePress = React.useCallback((file: GitFileStatus | FileItem) => {
-        // Navigate to file viewer with the file path (base64 encoded for special characters)
+        // Deleted files: shake and don't navigate
+        if ('status' in file && file.status === 'deleted') {
+            shakerRefs.current.get(file.fullPath)?.shake();
+            return;
+        }
         const encodedPath = btoa(file.fullPath);
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId]);
@@ -98,6 +80,22 @@ export default function FilesScreen() {
     };
 
     const renderStatusIcon = (file: GitFileStatus) => {
+        if (file.status === 'deleted') {
+            return (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{
+                        color: '#FF3B30',
+                        fontSize: 12,
+                        marginRight: 4,
+                        ...Typography.default()
+                    }}>
+                        {t('files.deleted')}
+                    </Text>
+                    <Octicons name="diff-removed" size={16} color="#FF3B30" />
+                </View>
+            );
+        }
+
         let statusColor: string;
         let statusIcon: string;
 
@@ -109,10 +107,6 @@ export default function FilesScreen() {
             case 'added':
                 statusColor = "#34C759";
                 statusIcon = "diff-added";
-                break;
-            case 'deleted':
-                statusColor = "#FF3B30";
-                statusIcon = "diff-removed";
                 break;
             case 'renamed':
                 statusColor = "#007AFF";
@@ -150,13 +144,43 @@ export default function FilesScreen() {
         if (file.fileType === 'folder') {
             return <Octicons name="file-directory" size={29} color="#007AFF" />;
         }
-        
+
         return <FileIcon fileName={file.fileName} size={29} />;
+    };
+
+    const renderGitFileItem = (file: GitFileStatus, index: number, prefix: string, isLast: boolean) => {
+        const isDeleted = file.status === 'deleted';
+        const item = (
+            <Item
+                key={`${prefix}-${file.fullPath}-${index}`}
+                title={file.fileName}
+                subtitle={renderFileSubtitle(file)}
+                icon={renderFileIcon(file)}
+                rightElement={renderStatusIcon(file)}
+                onPress={() => handleFilePress(file)}
+                showDivider={!isLast}
+            />
+        );
+
+        if (isDeleted) {
+            return (
+                <Shaker
+                    key={`shaker-${prefix}-${file.fullPath}-${index}`}
+                    ref={(ref) => {
+                        if (ref) shakerRefs.current.set(file.fullPath, ref);
+                        else shakerRefs.current.delete(file.fullPath);
+                    }}
+                >
+                    {item}
+                </Shaker>
+            );
+        }
+        return item;
     };
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
-            
+
             {/* Search Input - Always Visible */}
             <View style={{
                 padding: 16,
@@ -187,7 +211,7 @@ export default function FilesScreen() {
                     />
                 </View>
             </View>
-            
+
             {/* Header with branch info */}
             {!isLoading && gitStatusFiles && (
                 <View style={{
@@ -223,18 +247,18 @@ export default function FilesScreen() {
             {/* Git Status List */}
             <ItemList style={{ flex: 1 }}>
                 {isLoading ? (
-                    <View style={{ 
-                        flex: 1, 
-                        justifyContent: 'center', 
+                    <View style={{
+                        flex: 1,
+                        justifyContent: 'center',
                         alignItems: 'center',
                         paddingTop: 40
                     }}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 ) : !gitStatusFiles ? (
-                    <View style={{ 
-                        flex: 1, 
-                        justifyContent: 'center', 
+                    <View style={{
+                        flex: 1,
+                        justifyContent: 'center',
                         alignItems: 'center',
                         paddingTop: 40,
                         paddingHorizontal: 20
@@ -262,9 +286,9 @@ export default function FilesScreen() {
                 ) : searchQuery || (gitStatusFiles.totalStaged === 0 && gitStatusFiles.totalUnstaged === 0) ? (
                     // Show search results or all files when clean repo
                     isSearching ? (
-                        <View style={{ 
-                            flex: 1, 
-                            justifyContent: 'center', 
+                        <View style={{
+                            flex: 1,
+                            justifyContent: 'center',
                             alignItems: 'center',
                             paddingTop: 40
                         }}>
@@ -280,9 +304,9 @@ export default function FilesScreen() {
                             </Text>
                         </View>
                     ) : searchResults.length === 0 ? (
-                        <View style={{ 
-                            flex: 1, 
-                            justifyContent: 'center', 
+                        <View style={{
+                            flex: 1,
+                            justifyContent: 'center',
                             alignItems: 'center',
                             paddingTop: 40,
                             paddingHorizontal: 20
@@ -363,17 +387,14 @@ export default function FilesScreen() {
                                         {t('files.stagedChanges', { count: gitStatusFiles.stagedFiles.length })}
                                     </Text>
                                 </View>
-                                {gitStatusFiles.stagedFiles.map((file, index) => (
-                                    <Item
-                                        key={`staged-${file.fullPath}-${index}`}
-                                        title={file.fileName}
-                                        subtitle={renderFileSubtitle(file)}
-                                        icon={renderFileIcon(file)}
-                                        rightElement={renderStatusIcon(file)}
-                                        onPress={() => handleFilePress(file)}
-                                        showDivider={index < gitStatusFiles.stagedFiles.length - 1 || gitStatusFiles.unstagedFiles.length > 0}
-                                    />
-                                ))}
+                                {gitStatusFiles.stagedFiles.map((file, index) =>
+                                    renderGitFileItem(
+                                        file,
+                                        index,
+                                        'staged',
+                                        index === gitStatusFiles.stagedFiles.length - 1 && gitStatusFiles.unstagedFiles.length === 0
+                                    )
+                                )}
                             </>
                         )}
 
@@ -396,17 +417,14 @@ export default function FilesScreen() {
                                         {t('files.unstagedChanges', { count: gitStatusFiles.unstagedFiles.length })}
                                     </Text>
                                 </View>
-                                {gitStatusFiles.unstagedFiles.map((file, index) => (
-                                    <Item
-                                        key={`unstaged-${file.fullPath}-${index}`}
-                                        title={file.fileName}
-                                        subtitle={renderFileSubtitle(file)}
-                                        icon={renderFileIcon(file)}
-                                        rightElement={renderStatusIcon(file)}
-                                        onPress={() => handleFilePress(file)}
-                                        showDivider={index < gitStatusFiles.unstagedFiles.length - 1}
-                                    />
-                                ))}
+                                {gitStatusFiles.unstagedFiles.map((file, index) =>
+                                    renderGitFileItem(
+                                        file,
+                                        index,
+                                        'unstaged',
+                                        index === gitStatusFiles.unstagedFiles.length - 1
+                                    )
+                                )}
                             </>
                         )}
                     </>
@@ -414,7 +432,7 @@ export default function FilesScreen() {
             </ItemList>
         </View>
     );
-}
+});
 
 const styles = StyleSheet.create((theme) => ({
     container: {

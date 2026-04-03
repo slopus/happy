@@ -3,7 +3,6 @@ import {
     View,
     Text,
     Platform,
-    StyleSheet,
     Pressable,
     Modal as RNModal,
     TouchableWithoutFeedback,
@@ -13,11 +12,11 @@ import {
     LayoutAnimation,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
-import { MultiTextInput } from '@/components/MultiTextInput';
-import { useUnistyles } from 'react-native-unistyles';
+import { MultiTextInput, MULTI_TEXT_INPUT_LINE_HEIGHT } from '@/components/MultiTextInput';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
@@ -84,6 +83,13 @@ type PickerType = 'machine' | 'path' | 'worktree';
 
 // Permission mode colors & icons matching Claude Code CLI
 type PermissionStyle = { color: string; icon: 'play-forward' | 'pause' };
+
+const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
+const COMPOSER_SEND_BUTTON_SIZE = 32;
+const COMPOSER_SEND_BUTTON_MARGIN_BOTTOM = Math.max(
+    0,
+    Math.round((MULTI_TEXT_INPUT_LINE_HEIGHT + COMPOSER_INPUT_VERTICAL_PADDING * 2 - COMPOSER_SEND_BUTTON_SIZE) / 2),
+);
 
 function getPermissionStyle(key: string): PermissionStyle | null {
     switch (key) {
@@ -608,7 +614,7 @@ function SessionComposerDemo() {
                                         style={(p) => [styles.configRow, p.pressed && styles.configRowPressed]}
                                         onPress={() => togglePicker('worktree')}
                                     >
-                                        <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
+                                        <MaterialCommunityIcons name="tree" size={15} color={theme.colors.textSecondary} />
                                         <Text style={styles.configLabel} numberOfLines={1}>
                                             {worktreeLabel}
                                         </Text>
@@ -658,8 +664,9 @@ function SessionComposerDemo() {
                                     value={prompt}
                                     onChangeText={setPrompt}
                                     placeholder="What would you like to work on?"
-                                    paddingTop={Platform.OS === 'web' ? 10 : 8}
-                                    paddingBottom={Platform.OS === 'web' ? 10 : 8}
+                                    lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
+                                    paddingTop={COMPOSER_INPUT_VERTICAL_PADDING}
+                                    paddingBottom={COMPOSER_INPUT_VERTICAL_PADDING}
                                     maxHeight={240}
                                 />
                             </View>
@@ -705,6 +712,99 @@ function SessionComposerDemo() {
         </KeyboardAvoidingView>
     );
 }
+
+const styles = StyleSheet.create((theme) => ({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.header.background,
+    },
+    inner: {
+        flex: 1,
+    },
+    configBox: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        paddingVertical: 4,
+        paddingHorizontal: 4,
+        overflow: 'hidden',
+    },
+    popover: {
+        borderRadius: 12,
+        paddingVertical: 4,
+        marginTop: 4,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        ...Platform.select({
+            web: {
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.12)',
+            },
+            default: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.12,
+                shadowRadius: 10,
+                elevation: 8,
+            },
+        }),
+    },
+    configRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    collapsedRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    configRowPressed: {
+        opacity: 0.6,
+    },
+    configLabel: {
+        fontSize: 14,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    },
+    inputBox: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        overflow: 'hidden',
+        paddingVertical: 2,
+        paddingHorizontal: 8,
+    },
+    inputField: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        paddingLeft: 8,
+        paddingRight: 4,
+        paddingVertical: 4,
+        minHeight: 40,
+        gap: 8,
+    },
+    sendButton: {
+        width: COMPOSER_SEND_BUTTON_SIZE,
+        height: COMPOSER_SEND_BUTTON_SIZE,
+        borderRadius: COMPOSER_SEND_BUTTON_SIZE / 2,
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexShrink: 0,
+        marginBottom: COMPOSER_SEND_BUTTON_MARGIN_BOTTOM,
+    },
+    sendButtonActive: {
+        backgroundColor: theme.colors.button.primary.background,
+    },
+    sendButtonInactive: {
+        backgroundColor: theme.colors.button.primary.disabled,
+    },
+}));
+
 
 // Bottom sheet styles
 const sheetStyles = {

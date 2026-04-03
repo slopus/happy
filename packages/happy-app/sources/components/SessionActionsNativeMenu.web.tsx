@@ -4,7 +4,6 @@ import { Session } from '@/sync/storageTypes';
 interface SessionActionsNativeMenuProps {
     children: React.ReactNode;
     onAfterArchive?: () => void;
-    onAfterBugReport?: () => void;
     onAfterDelete?: () => void;
     session: Session;
 }

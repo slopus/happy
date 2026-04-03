@@ -1,186 +1,128 @@
 # Happy
 
-Code on the go — control AI coding agents from your mobile device.
+Code on the go — control AI coding agents from your phone, browser, or terminal.
 
 Free. Open source. Code anywhere.
 
 ## Installation
 
 ```bash
-npm install -g happy-coder
+npm install -g happy
 ```
 
-## Run From Source
-
-From a repo checkout:
-
-```bash
-# repository root
-yarn cli --help
-
-# package directory
-yarn cli --help
-```
+> Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!
 
 ## Usage
 
-### Claude (default)
+### Claude Code (default)
 
 ```bash
 happy
+# or
+happy claude
 ```
 
 This will:
 1. Start a Claude Code session
-2. Display a QR code to connect from your mobile device
-3. Allow real-time session sharing between Claude Code and your mobile app
+2. Display a QR code to connect from your mobile device or browser
+3. Allow real-time session control — all communication is end-to-end encrypted
+4. Start new sessions directly from your phone or web while your computer is online
 
-### Gemini
+### More agents
 
-```bash
+```
+happy codex
 happy gemini
+happy openclaw
+
+# or any ACP-compatible CLI
+happy acp opencode
+happy acp -- custom-agent --flag
 ```
 
-Start a Gemini CLI session with remote control capabilities.
+## Daemon
 
-**First time setup:**
+The daemon is a background service that stays running on your machine. It lets you spawn and manage coding sessions remotely — from your phone or the web app — without needing an open terminal.
+
 ```bash
-# Authenticate with Google
+happy daemon start
+happy daemon stop
+happy daemon status
+happy daemon list
+```
+
+The daemon starts automatically when you run `happy`, so you usually don't need to manage it manually.
+
+## Authentication
+
+```bash
+happy auth login
+happy auth logout
+```
+
+Happy uses cryptographic key pairs for authentication — your private key stays on your machine. All session data is end-to-end encrypted before leaving your device.
+
+To connect third-party agent APIs:
+
+```bash
 happy connect gemini
+happy connect claude
+happy connect codex
+happy connect status
 ```
 
 ## Commands
 
-### Main Commands
+| Command | Description |
+|---------|-------------|
+| `happy` | Start Claude Code session (default) |
+| `happy codex` | Start Codex mode |
+| `happy gemini` | Start Gemini CLI session |
+| `happy openclaw` | Start OpenClaw session |
+| `happy acp` | Start any ACP-compatible agent |
+| `happy resume <id>` | Resume a previous session |
+| `happy notify` | Send push notification to your devices |
+| `happy doctor` | Diagnostics & troubleshooting |
 
-- `happy` – Start Claude Code session (default)
-- `happy gemini` – Start Gemini CLI session
-- `happy codex` – Start Codex mode
-- `happy acp` – Start a generic ACP-compatible agent
+---
 
-### Utility Commands
+## Advanced
 
-- `happy auth` – Manage authentication
-- `happy connect` – Store AI vendor API keys in Happy cloud
-- `happy sandbox` – Configure sandbox runtime restrictions
-- `happy notify` – Send a push notification to your devices
-- `happy daemon` – Manage background service
-- `happy doctor` – System diagnostics & troubleshooting
+### Environment Variables
 
-### Connect Subcommands
+| Variable | Description |
+|----------|-------------|
+| `HAPPY_SERVER_URL` | Custom server URL (default: `https://api.cluster-fluster.com`) |
+| `HAPPY_WEBAPP_URL` | Custom web app URL (default: `https://app.happy.engineering`) |
+| `HAPPY_HOME_DIR` | Custom home directory for Happy data (default: `~/.happy`) |
+| `HAPPY_DISABLE_CAFFEINATE` | Disable macOS sleep prevention |
+| `HAPPY_EXPERIMENTAL` | Enable experimental features |
 
-```bash
-happy connect gemini     # Authenticate with Google for Gemini
-happy connect claude     # Authenticate with Anthropic
-happy connect codex      # Authenticate with OpenAI
-happy connect status     # Show connection status for all vendors
-```
+### Sandbox (experimental)
 
-### Gemini Subcommands
-
-```bash
-happy gemini                      # Start Gemini session
-happy gemini model set <model>    # Set default model
-happy gemini model get            # Show current model
-happy gemini project set <id>     # Set Google Cloud Project ID (for Workspace accounts)
-happy gemini project get          # Show current Google Cloud Project ID
-```
-
-**Available models:** `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
-
-### Generic ACP Commands
+Happy can run agents inside an OS-level sandbox to restrict file system and network access.
 
 ```bash
-happy acp gemini                     # Run built-in Gemini ACP command
-happy acp opencode                   # Run built-in OpenCode ACP command
-happy acp opencode --verbose         # Include raw backend/envelope logs
-happy acp -- custom-agent --flag     # Run any ACP-compatible command directly
+happy sandbox configure
+happy sandbox status
+happy sandbox disable
 ```
 
-### Sandbox Subcommands
+### Building from source
 
 ```bash
-happy sandbox configure  # Interactive sandbox setup wizard
-happy sandbox status     # Show current sandbox configuration
-happy sandbox disable    # Disable sandboxing
+git clone https://github.com/slopus/happy
+cd happy-cli
+yarn install
+yarn workspace happy cli --help
 ```
-
-## Options
-
-### Claude Options
-
-- `-m, --model <model>` - Claude model to use (default: sonnet)
-- `-p, --permission-mode <mode>` - Permission mode: auto, default, or plan
-- `--claude-env KEY=VALUE` - Set environment variable for Claude Code
-- `--claude-arg ARG` - Pass additional argument to Claude CLI
-
-### Global Options
-
-- `-h, --help` - Show help
-- `-v, --version` - Show version
-- `--no-sandbox` - Disable sandbox for the current Claude/Codex run
-
-## Environment Variables
-
-### Happy Configuration
-
-- `HAPPY_SERVER_URL` - Custom server URL (default: https://api.cluster-fluster.com)
-- `HAPPY_WEBAPP_URL` - Custom web app URL (default: https://app.happy.engineering)
-- `HAPPY_HOME_DIR` - Custom home directory for Happy data (default: ~/.happy)
-- `HAPPY_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
-- `HAPPY_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)
-
-### Gemini Configuration
-
-- `GEMINI_MODEL` - Override default Gemini model
-- `GOOGLE_CLOUD_PROJECT` - Google Cloud Project ID (required for Workspace accounts)
-
-## Gemini Authentication
-
-### Personal Google Account
-
-Personal Gmail accounts work out of the box:
-
-```bash
-happy connect gemini
-happy gemini
-```
-
-### Google Workspace Account
-
-Google Workspace (organization) accounts require a Google Cloud Project:
-
-1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable the Gemini API
-3. Set the project ID:
-
-```bash
-happy gemini project set your-project-id
-```
-
-Or use environment variable:
-```bash
-GOOGLE_CLOUD_PROJECT=your-project-id happy gemini
-```
-
-**Guide:** https://goo.gle/gemini-cli-auth-docs#workspace-gca
-
-## Contributing
-
-Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## Requirements
 
 - Node.js >= 20.0.0
-
-### For Claude
-
-- Claude CLI installed & logged in (`claude` command available in PATH)
-
-### For Gemini
-
-- Gemini CLI installed (`npm install -g @google/gemini-cli`)
-- Google account authenticated via `happy connect gemini`
+- For Claude: `claude` CLI installed & logged in
+- For Codex: `codex` CLI installed & logged in
+- For Gemini: `npm install -g @google/gemini-cli` + `happy connect gemini`
 
 ## License
 

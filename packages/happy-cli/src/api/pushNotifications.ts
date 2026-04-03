@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { logger } from '@/ui/logger'
 import { Expo, ExpoPushMessage } from 'expo-server-sdk'
+import type { Metadata } from './types'
 
 export interface PushToken {
     id: string
@@ -9,6 +10,65 @@ export interface PushToken {
     updatedAt: number
 }
 
+export type SessionNotificationKind = 'done' | 'permission' | 'question'
+
+function getSessionTitle(metadata: Metadata | null | undefined): string {
+    const summaryText = metadata?.summary?.text?.trim()
+    if (summaryText) {
+        return summaryText
+    }
+
+    const path = metadata?.path?.trim()
+    if (!path) {
+        return 'Session'
+    }
+
+    const segments = path.split(/[\\/]/).filter(Boolean)
+    return segments[segments.length - 1] || 'Session'
+}
+
+function getSessionNotificationUrl(data: Record<string, any> | undefined): `/session/${string}` | null {
+    const sessionId = data?.sessionId
+    if (typeof sessionId !== 'string') {
+        return null
+    }
+
+    const trimmedSessionId = sessionId.trim()
+    if (!trimmedSessionId) {
+        return null
+    }
+
+    return `/session/${encodeURIComponent(trimmedSessionId)}`
+}
+
+export function getSessionNotificationTitle(
+    kind: SessionNotificationKind
+): string {
+    switch (kind) {
+        case 'done':
+            return "It's ready!"
+        case 'permission':
+            return 'Permission request'
+        case 'question':
+            return 'Clarification needed'
+    }
+}
+
+export function getSessionNotificationBody(
+    metadata: Metadata | null | undefined
+): string {
+    return getSessionTitle(metadata)
+}
+
+export function getSessionNotificationCopy(
+    kind: SessionNotificationKind,
+    metadata: Metadata | null | undefined
+): { title: string; body: string } {
+    return {
+        title: getSessionNotificationTitle(kind),
+        body: getSessionNotificationBody(metadata),
+    }
+}
 
 export class PushNotificationClient {
     private readonly token: string
@@ -127,8 +187,8 @@ export class PushNotificationClient {
      * @param body - Notification body
      * @param data - Additional data to send with the notification
      */
-    sendToAllDevices(title: string, body: string, data?: Record<string, any>): void {
-        logger.debug(`[PUSH] sendToAllDevices called with title: "${title}", body: "${body}"`);
+    sendToAllDevices(title: string, body?: string, data?: Record<string, any>): void {
+        logger.debug(`[PUSH] sendToAllDevices called with title: "${title}", body: "${body ?? ''}"`);
         
         // Execute async operations without awaiting
         (async () => {
@@ -154,8 +214,11 @@ export class PushNotificationClient {
                     return {
                         to: token.token,
                         title,
-                        body,
+                        body: body && body.length > 0 ? body : undefined,
                         data,
+                        // TODO: For brutalist session artwork, attach rich media via a public HTTPS image URL.
+                        // Bundled app asset paths / require(...) / local file paths will not work in push payloads.
+                        // iOS also needs a Notification Service Extension to render richContent.image reliably.
                         sound: 'default',
                         priority: 'high'
                     }
@@ -169,5 +232,21 @@ export class PushNotificationClient {
                 logger.debug('[PUSH] Error sending to all devices:', error)
             }
         })()
+    }
+
+    sendSessionNotification(params: {
+        kind: SessionNotificationKind
+        metadata: Metadata | null | undefined
+        data?: Record<string, any>
+    }): void {
+        const { title, body } = getSessionNotificationCopy(params.kind, params.metadata)
+        const sessionTitle = getSessionNotificationBody(params.metadata)
+        const url = getSessionNotificationUrl(params.data)
+        this.sendToAllDevices(title, body, {
+            ...params.data,
+            kind: params.kind,
+            sessionTitle,
+            ...(url ? { url } : {}),
+        })
     }
 }

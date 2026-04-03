@@ -20,6 +20,7 @@ import type {
     EventMsg,
     ReasoningEffort,
     SandboxMode,
+    ReviewDecision,
 } from './codexAppServerTypes';
 import type { SandboxConfig } from '@/persistence';
 
@@ -38,6 +39,21 @@ type PendingThreadOptions = {
     effort?: ReasoningEffort;
 };
 
+type LegacyPatchChanges = Record<string, Record<string, unknown>>;
+
+export type ApprovalHandler = (params: {
+    type: 'exec' | 'patch' | 'mcp';
+    callId: string;
+    command?: string[];
+    cwd?: string;
+    fileChanges?: Record<string, unknown>;
+    reason?: string | null;
+    toolName?: string;
+    input?: unknown;
+    serverName?: string;
+    message?: string;
+}) => Promise<ReviewDecision>;
+
 type ResolvedModel = {
     model: string | undefined;
     effort: ModelReasoningEffort | undefined;
@@ -45,6 +61,36 @@ type ResolvedModel = {
 };
 
 type CodexConfigValue = string | number | boolean | CodexConfigValue[] | { [key: string]: CodexConfigValue };
+
+function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | undefined {
+    if (!Array.isArray(changes)) {
+        return undefined;
+    }
+
+    const normalized: LegacyPatchChanges = {};
+    for (const change of changes) {
+        if (!change || typeof change !== 'object' || Array.isArray(change)) {
+            continue;
+        }
+
+        const path = typeof change.path === 'string' ? change.path : null;
+        if (!path) {
+            continue;
+        }
+
+        const entry: Record<string, unknown> = {};
+        if (typeof change.diff === 'string') {
+            entry.diff = change.diff;
+        }
+        if (change.kind && typeof change.kind === 'object' && !Array.isArray(change.kind)) {
+            entry.kind = change.kind;
+        }
+
+        normalized[path] = entry;
+    }
+
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
 
 export class CodexAppServerClient {
     private connected = false;
@@ -56,7 +102,9 @@ export class CodexAppServerClient {
     private startedItems = new Set<string>();
     private _threadId: string | null = null;
     private _turnId: string | null = null;
+    // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
+    private approvalHandler: ApprovalHandler | null = null;
 
     constructor(private readonly sandboxConfig?: SandboxConfig) {}
 
@@ -71,6 +119,12 @@ export class CodexAppServerClient {
     setEventHandler(handler: (msg: EventMsg) => void): void {
         this.eventHandler = handler;
     }
+
+    setApprovalHandler(handler: ApprovalHandler): void {
+        this.approvalHandler = handler;
+    }
+
+    // ─── Lifecycle ──────────────────────────────────────────────
 
     async connect(): Promise<void> {
         if (this.connected) return;
