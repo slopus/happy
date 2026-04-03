@@ -11,7 +11,7 @@ import {
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { type v3 } from '@slopus/happy-sync';
+import { type SessionMessage, type SessionID } from '@slopus/happy-sync';
 import { VOICE_CONFIG } from '../voiceConfig';
 
 /**
@@ -60,7 +60,7 @@ function reportSession(sessionId: string) {
     shownSessions.add(sessionId);
     const session = storage.getState().sessions[sessionId];
     if (!session) return;
-    const messages = sync.appSyncStore?.getMessages(sessionId as v3.SessionID) ?? [];
+    const messages = sync.appSyncStore?.getMessages(sessionId as SessionID) ?? [];
     const contextUpdate = formatSessionFull(session, messages);
     reportContextualUpdate(contextUpdate);
 }
@@ -114,7 +114,7 @@ export const voiceHooks = {
     /**
      * Called when agent sends a message/response
      */
-    onMessages(sessionId: string, messages: v3.MessageWithParts[]) {
+    onMessages(sessionId: string, messages: SessionMessage[]) {
         if (VOICE_CONFIG.DISABLE_MESSAGES) return;
 
         reportSession(sessionId);
@@ -132,7 +132,7 @@ export const voiceHooks = {
         let prompt = '';
         prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(
             storage.getState().sessions[sessionId],
-            sync.appSyncStore?.getMessages(sessionId as v3.SessionID) ?? [],
+            sync.appSyncStore?.getMessages(sessionId as SessionID) ?? [],
         );
         shownSessions.add(sessionId);
         return prompt;

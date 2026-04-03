@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type v3 } from '@slopus/happy-sync';
+import { type SessionID } from '@slopus/happy-sync';
 import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { trackPermissionResponse } from '@/track';
@@ -64,7 +64,7 @@ export const realtimeClientTools = {
         console.log('🔍 processPermissionRequest called with:', decision);
         
         // Get pending permissions from SyncNode (single source of truth)
-        const syncSession = sync.appSyncStore?.getSession(sessionId as v3.SessionID);
+        const syncSession = sync.appSyncStore?.getSession(sessionId as SessionID);
         const pendingPermissions = syncSession?.permissions.filter((p) => !p.resolved) ?? [];
 
         if (pendingPermissions.length === 0) {

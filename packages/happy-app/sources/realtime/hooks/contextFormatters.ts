@@ -1,7 +1,8 @@
 import { Session } from "@/sync/storageTypes";
-import { type v3 } from '@slopus/happy-sync';
+import { type SessionMessage } from '@slopus/happy-sync';
 import { trimIdent } from "@/utils/trimIdent";
 import { VOICE_CONFIG } from "../voiceConfig";
+import { getToolResultText, getUserContentMarkdown, isAgentMessage, isUserMessage } from '@/components/transcriptUtils';
 
 interface SessionMetadata {
     summary?: { text?: string };
@@ -33,32 +34,37 @@ export function formatPermissionRequest(
 // Message formatting
 //
 
-export function formatMessage(message: v3.MessageWithParts): string | null {
+export function formatMessage(message: SessionMessage): string | null {
     const lines: string[] = [];
-    const role = message.info.role;
 
-    if (role === 'user') {
-        const textParts = message.parts.filter((p): p is v3.TextPart => p.type === 'text');
-        if (textParts.length > 0) {
-            lines.push(`User sent message: \n<text>${textParts.map(p => p.text).join('\n')}</text>`);
+    if (message === 'Resume') {
+        return 'Session resumed.';
+    }
+
+    if (isUserMessage(message)) {
+        const markdown = getUserContentMarkdown(message.User.content);
+        if (markdown) {
+            lines.push(`User sent message: \n<text>${markdown}</text>`);
         }
-    } else if (role === 'assistant') {
-        const textParts = message.parts.filter((p): p is v3.TextPart => p.type === 'text');
-        const toolParts = message.parts.filter((p): p is v3.ToolPart => p.type === 'tool');
-
-        if (textParts.length > 0) {
-            lines.push(`Claude Code: \n<text>${textParts.map(p => p.text).join('\n')}</text>`);
+    } else if (isAgentMessage(message)) {
+        const textContent = message.Agent.content.flatMap((item) => ('Text' in item ? [item.Text] : []));
+        if (textContent.length > 0) {
+            lines.push(`Claude Code: \n<text>${textContent.join('\n')}</text>`);
         }
 
         if (!VOICE_CONFIG.DISABLE_TOOL_CALLS) {
-            for (const tool of toolParts) {
-                const title = tool.state.status === 'completed' ? tool.state.title : tool.tool;
+            for (const item of message.Agent.content) {
+                if (!('ToolUse' in item)) {
+                    continue;
+                }
+
+                const resultText = getToolResultText(message.Agent.tool_results[item.ToolUse.id]) ?? undefined;
                 if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
-                    if (title) {
-                        lines.push(`Claude Code is using ${tool.tool} - ${title}`);
-                    }
+                    lines.push(resultText
+                        ? `Claude Code is using ${item.ToolUse.name} - ${resultText}`
+                        : `Claude Code is using ${item.ToolUse.name}`);
                 } else {
-                    lines.push(`Claude Code is using ${tool.tool} (tool_use_id: ${tool.callID})`);
+                    lines.push(`Claude Code is using ${item.ToolUse.name} (tool_use_id: ${item.ToolUse.id})`);
                 }
             }
         }
@@ -70,7 +76,7 @@ export function formatMessage(message: v3.MessageWithParts): string | null {
     return lines.join('\n\n');
 }
 
-export function formatNewSingleMessage(sessionId: string, message: v3.MessageWithParts): string | null {
+export function formatNewSingleMessage(sessionId: string, message: SessionMessage): string | null {
     let formatted = formatMessage(message);
     if (!formatted) {
         return null;
@@ -78,15 +84,15 @@ export function formatNewSingleMessage(sessionId: string, message: v3.MessageWit
     return 'New message in session: ' + sessionId + '\n\n' + formatted;
 }
 
-export function formatNewMessages(sessionId: string, messages: v3.MessageWithParts[]): string | null {
-    let formatted = [...messages].sort((a, b) => a.info.time.created - b.info.time.created).map(formatMessage).filter(Boolean);
+export function formatNewMessages(sessionId: string, messages: SessionMessage[]): string | null {
+    let formatted = messages.map(formatMessage).filter(Boolean);
     if (formatted.length === 0) {
         return null;
     }
     return 'New messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
 }
 
-export function formatHistory(sessionId: string, messages: v3.MessageWithParts[]): string {
+export function formatHistory(sessionId: string, messages: SessionMessage[]): string {
     let messagesToFormat = VOICE_CONFIG.MAX_HISTORY_MESSAGES > 0
         ? messages.slice(0, VOICE_CONFIG.MAX_HISTORY_MESSAGES)
         : messages;
@@ -98,7 +104,7 @@ export function formatHistory(sessionId: string, messages: v3.MessageWithParts[]
 // Session states
 //
 
-export function formatSessionFull(session: Session, messages: v3.MessageWithParts[]): string {
+export function formatSessionFull(session: Session, messages: SessionMessage[]): string {
     const sessionName = session.metadata?.summary?.text;
     const sessionPath = session.metadata?.path;
     const lines: string[] = [];

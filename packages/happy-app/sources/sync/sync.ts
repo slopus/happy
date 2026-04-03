@@ -38,7 +38,7 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import { AppSyncStore, type AppSyncUserMessageMeta } from './syncNodeStore';
-import type { v3 } from '@slopus/happy-sync';
+import type { SessionID } from '@slopus/happy-sync';
 
 class Sync {
     encryption!: Encryption;
@@ -64,7 +64,7 @@ class Sync {
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
 
-    // v3 SyncNode store — renders MessageWithParts directly, no conversion
+    // SyncNode-backed store for raw acpx session messages.
     appSyncStore: AppSyncStore | null = null;
 
     // Generic locking mechanism
@@ -155,8 +155,7 @@ class Sync {
             }
         }
 
-        // Initialize AppSyncStore for v3 protocol
-        // SyncNode handles v3 MessageWithParts transport; legacy messages still go through the old path.
+        // Initialize AppSyncStore for raw acpx transcript rendering.
         // Per-session encryption keys are resolved by the SyncNode when fetching/decrypting messages.
         // The account-level key (contentDataKey) is used as the default.
         try {
@@ -182,10 +181,11 @@ class Sync {
             this.appSyncStore.subscribe((state) => {
                 for (const [sessionId, sessionState] of state.sessions) {
                     const shouldEnterPlanMode = sessionState.messages.some((message) => (
-                        message.info.role === 'assistant'
-                        && message.parts.some((part) => (
-                            part.type === 'tool'
-                            && (part.tool === 'EnterPlanMode' || part.tool === 'enter_plan_mode')
+                        typeof message === 'object'
+                        && 'Agent' in message
+                        && message.Agent.content.some((content) => (
+                            'ToolUse' in content
+                            && (content.ToolUse.name === 'EnterPlanMode' || content.ToolUse.name === 'enter_plan_mode')
                         ))
                     ));
                     if (!shouldEnterPlanMode) {
@@ -255,11 +255,11 @@ class Sync {
             return;
         }
 
-        if (!force && this.appSyncStore.isSessionLoaded(sessionId as v3.SessionID)) {
+        if (!force && this.appSyncStore.isSessionLoaded(sessionId as SessionID)) {
             return;
         }
 
-        void this.appSyncStore.fetchSession(sessionId as v3.SessionID).catch((err: unknown) => {
+        void this.appSyncStore.fetchSession(sessionId as SessionID).catch((err: unknown) => {
             log.log(`AppSyncStore fetchSession failed for ${sessionId}: ${String(err)}`);
         });
     }
@@ -297,7 +297,7 @@ class Sync {
         const fallbackModel: string | null = null;
         const syncNodePermissionMode = permissionMode as AppSyncUserMessageMeta['permissionMode'];
 
-        await this.appSyncStore.sendUserMessage(sessionId as v3.SessionID, text, {
+        await this.appSyncStore.sendUserMessage(sessionId as SessionID, text, {
             agent: session.metadata?.flavor ?? 'user',
             meta: {
                 sentFrom,

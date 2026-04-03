@@ -6,14 +6,7 @@
  * - Holds SessionState for all sessions
  * - Provides typed state for React components
  *
- * React components render MessageWithParts.parts directly:
- *   text part     → TextPartView
- *   tool part     → ToolPartView
- *   reasoning part → ReasoningPartView
- *   subtask part  → SubtaskPartView
- *
- * No conversion. No intermediate types. The type that enters the pipeline
- * is the type that renders on screen.
+ * React components render raw acpx SessionMessage values directly.
  */
 
 import {
@@ -23,25 +16,42 @@ import {
     type SessionState,
     type KeyMaterial,
     type ResolveSessionKeyMaterial,
-    type v3,
+    type MessageID,
+    type RuntimeConfig,
+    type SessionID,
+    type SessionMessage,
+    type SessionToolResult,
+    type SessionToolUse,
 } from '@slopus/happy-sync';
 
-type MessageWithParts = v3.MessageWithParts;
-type SessionID = v3.SessionID;
-type Part = v3.Part;
-type SessionControlMessage = v3.SessionControlMessage;
-
-const EMPTY_MESSAGES: MessageWithParts[] = [];
+const EMPTY_MESSAGES: SessionMessage[] = [];
+const SESSION_MESSAGE_ID_PREFIX = 'msg:';
 
 interface SessionSnapshot {
     infoSignature: string;
     messageIds: string[];
-    messageRefs: MessageWithParts[];
-    controlIds: string[];
-    controlRefs: SessionControlMessage[];
+    messageRefs: SessionMessage[];
     metadataVersion: number;
     agentStateVersion: number;
     statusSignature: string;
+}
+
+export interface AppSessionToolUseRef {
+    toolUse: SessionToolUse;
+    toolResult?: SessionToolResult;
+}
+
+export function makeSessionMessageId(index: number): MessageID {
+    return `${SESSION_MESSAGE_ID_PREFIX}${index}` as MessageID;
+}
+
+function parseSessionMessageId(messageId: MessageID | string): number | null {
+    if (!messageId.startsWith(SESSION_MESSAGE_ID_PREFIX)) {
+        return null;
+    }
+
+    const index = Number.parseInt(messageId.slice(SESSION_MESSAGE_ID_PREFIX.length), 10);
+    return Number.isInteger(index) && index >= 0 ? index : null;
 }
 
 export interface AppSyncUserMessageMeta {
@@ -144,31 +154,43 @@ export class AppSyncStore {
     }
 
     /** Get messages for a session. */
-    getMessages(sessionId: SessionID): MessageWithParts[] {
+    getMessages(sessionId: SessionID): SessionMessage[] {
         return this.getSession(sessionId)?.messages ?? EMPTY_MESSAGES;
     }
 
     /** Get a single message by ID. */
-    getMessage(sessionId: SessionID, messageId: v3.MessageID): MessageWithParts | null {
-        return this.getMessages(sessionId).find((message) => message.info.id === messageId) ?? null;
-    }
-
-    /** Get a single tool part by message/part IDs. */
-    getToolPart(
-        sessionId: SessionID,
-        messageId: v3.MessageID,
-        partId?: v3.PartID,
-    ): v3.ToolPart | null {
-        const message = this.getMessage(sessionId, messageId);
-        if (!message) {
+    getMessage(sessionId: SessionID, messageId: MessageID): SessionMessage | null {
+        const index = parseSessionMessageId(messageId);
+        if (index === null) {
             return null;
         }
 
-        const toolParts = message.parts.filter((part): part is v3.ToolPart => part.type === 'tool');
-        if (partId) {
-            return toolParts.find((part) => part.id === partId) ?? null;
+        return this.getMessages(sessionId)[index] ?? null;
+    }
+
+    /** Get a single tool use and matching result by message/tool IDs. */
+    getToolUse(
+        sessionId: SessionID,
+        messageId: MessageID,
+        toolUseId?: string,
+    ): AppSessionToolUseRef | null {
+        const message = this.getMessage(sessionId, messageId);
+        if (!message || typeof message !== 'object' || !('Agent' in message)) {
+            return null;
         }
-        return toolParts[0] ?? null;
+
+        const toolUses = message.Agent.content.flatMap((item) => ('ToolUse' in item ? [item.ToolUse] : []));
+        const toolUse = toolUseId
+            ? toolUses.find((candidate) => candidate.id === toolUseId)
+            : toolUses[0];
+        if (!toolUse) {
+            return null;
+        }
+
+        return {
+            toolUse,
+            toolResult: message.Agent.tool_results[toolUse.id],
+        };
     }
 
     /** Whether the app already hydrated full message history for a session. */
@@ -184,7 +206,7 @@ export class AppSyncStore {
         return this.sessionMessagesVersions.get(sessionId as string) ?? 0;
     }
 
-    getMessageVersion(sessionId: SessionID, messageId: v3.MessageID): number {
+    getMessageVersion(sessionId: SessionID, messageId: MessageID): number {
         return this.messageVersions.get(this.messageVersionKey(sessionId, messageId)) ?? 0;
     }
 
@@ -236,7 +258,7 @@ export class AppSyncStore {
         text: string,
         opts: AppSyncUserMessageOpts = {},
     ): Promise<void> {
-        const runtimeConfig: Omit<v3.RuntimeConfigChange, 'type' | 'id' | 'sessionID' | 'time'> = {
+        const runtimeConfig: RuntimeConfig = {
             source: 'user',
         };
         let hasRuntimeConfigChange = false;
@@ -275,25 +297,11 @@ export class AppSyncStore {
         }
 
         const { createId } = await import('@paralleldrive/cuid2');
-        const msgId = `msg_${createId()}` as v3.MessageID;
-
-        const message: MessageWithParts = {
-            info: {
-                id: msgId,
-                sessionID: sessionId,
-                role: 'user' as const,
-                time: { created: Date.now() },
-                agent: opts.agent ?? 'user',
-                model: opts.model ?? { providerID: 'user', modelID: 'user' },
-                meta: opts.meta,
+        const message: SessionMessage = {
+            User: {
+                id: `msg_${createId()}`,
+                content: [{ Text: text }],
             },
-            parts: [{
-                id: `prt_${createId()}` as v3.PartID,
-                sessionID: sessionId,
-                messageID: msgId,
-                type: 'text' as const,
-                text,
-            }],
         };
 
         await this.node.sendMessage(sessionId, message);
@@ -329,17 +337,11 @@ export class AppSyncStore {
                 messageIds,
                 messageRefs,
             } = this.diffMessages(previous, session.messages);
-            const {
-                changed: controlChanged,
-                ids: controlIds,
-                refs: controlRefs,
-            } = this.diffControlMessages(previous, session.controlMessages);
 
             const infoSignature = this.getInfoSignature(session.info);
             const statusSignature = this.getStatusSignature(session.status);
             const sessionStateChanged = !previous
                 || messagesChanged
-                || controlChanged
                 || previous.infoSignature !== infoSignature
                 || previous.metadataVersion !== session.metadataVersion
                 || previous.agentStateVersion !== session.agentStateVersion
@@ -359,8 +361,6 @@ export class AppSyncStore {
                 infoSignature,
                 messageIds,
                 messageRefs,
-                controlIds,
-                controlRefs,
                 metadataVersion: session.metadataVersion,
                 agentStateVersion: session.agentStateVersion,
                 statusSignature,
@@ -380,13 +380,13 @@ export class AppSyncStore {
         }
     }
 
-    private diffMessages(previous: SessionSnapshot | undefined, messages: MessageWithParts[]): {
+    private diffMessages(previous: SessionSnapshot | undefined, messages: SessionMessage[]): {
         messagesChanged: boolean;
         changedMessageIds: string[];
         messageIds: string[];
-        messageRefs: MessageWithParts[];
+        messageRefs: SessionMessage[];
     } {
-        const messageIds = messages.map((message) => message.info.id as string);
+        const messageIds = messages.map((_, index) => makeSessionMessageId(index));
         const messageRefs = [...messages];
 
         if (!previous) {
@@ -431,38 +431,6 @@ export class AppSyncStore {
         };
     }
 
-    private diffControlMessages(previous: SessionSnapshot | undefined, messages: SessionControlMessage[]): {
-        changed: boolean;
-        ids: string[];
-        refs: SessionControlMessage[];
-    } {
-        const ids = messages.map((message) => message.id as string);
-        const refs = [...messages];
-
-        if (!previous) {
-            return {
-                changed: messages.length > 0,
-                ids,
-                refs,
-            };
-        }
-
-        let changed = previous.controlIds.length !== ids.length;
-        const maxLength = Math.max(previous.controlIds.length, ids.length);
-        for (let i = 0; i < maxLength; i += 1) {
-            if (previous.controlIds[i] !== ids[i] || previous.controlRefs[i] !== refs[i]) {
-                changed = true;
-                break;
-            }
-        }
-
-        return {
-            changed,
-            ids,
-            refs,
-        };
-    }
-
     private getInfoSignature(info: SessionState['info']): string {
         return [
             info.id,
@@ -490,7 +458,7 @@ export class AppSyncStore {
         map.set(key, (map.get(key) ?? 0) + 1);
     }
 
-    private messageVersionKey(sessionId: SessionID | string, messageId: v3.MessageID | string): string {
+    private messageVersionKey(sessionId: SessionID | string, messageId: MessageID | string): string {
         return `${sessionId as string}:${messageId as string}`;
     }
 

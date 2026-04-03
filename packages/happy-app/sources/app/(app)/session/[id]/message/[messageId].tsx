@@ -1,12 +1,12 @@
 import * as React from 'react';
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
-import { View, ActivityIndicator } from "react-native";
-import { useSession, useV3SessionMessages, useV3ToolPart } from "@/sync/storage";
+import { View, ActivityIndicator, Text } from "react-native";
+import { useSession, useSessionMessages, useSessionToolUse } from "@/sync/storage";
 import { sync } from '@/sync/sync';
 import { Deferred } from "@/components/Deferred";
-import { ToolPartHeader, ToolPartStatusIndicator, ToolPartView } from '@/components/parts/ToolPartView';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Typography } from '@/constants/Typography';
+import { ToolUseView } from '@/components/ToolUseView';
+import { getToolUseState } from '@/components/transcriptUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     loadingContainer: {
@@ -14,15 +14,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    fullViewContainer: {
-        flex: 1,
-        padding: 16,
-    },
-    messageText: {
+    headerTitle: {
         color: theme.colors.text,
         fontSize: 16,
-        lineHeight: 24,
-        ...Typography.default(),
+        fontWeight: '600',
+    },
+    headerStatus: {
+        color: theme.colors.textSecondary,
+        fontSize: 13,
     },
 }));
 
@@ -30,8 +29,8 @@ export default React.memo(() => {
     const { id: sessionId, messageId, partId } = useLocalSearchParams<{ id: string; messageId: string; partId?: string }>();
     const router = useRouter();
     const session = useSession(sessionId!);
-    const { isLoaded } = useV3SessionMessages(sessionId!);
-    const toolPart = useV3ToolPart(sessionId!, messageId!, partId);
+    const { isLoaded } = useSessionMessages(sessionId!);
+    const toolUseRef = useSessionToolUse(sessionId!, messageId!, partId);
     const { theme } = useUnistyles();
     const styles = stylesheet;
 
@@ -44,10 +43,10 @@ export default React.memo(() => {
 
     // Navigate back if tool part doesn't exist after messages are loaded
     React.useEffect(() => {
-        if (isLoaded && !toolPart) {
+        if (isLoaded && !toolUseRef) {
             router.back();
         }
-    }, [isLoaded, toolPart, router]);
+    }, [isLoaded, toolUseRef, router]);
 
     // Show loader while waiting for session and messages to load
     if (!session || !isLoaded) {
@@ -58,7 +57,7 @@ export default React.memo(() => {
         );
     }
 
-    if (!toolPart) {
+    if (!toolUseRef) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
@@ -66,12 +65,15 @@ export default React.memo(() => {
         );
     }
 
+    const toolState = getToolUseState(toolUseRef.toolUse, toolUseRef.toolResult);
+    const statusText = toolState === 'running' ? 'Running' : toolState === 'error' ? 'Failed' : 'Completed';
+
     return (
         <>
             <Stack.Screen
                 options={{
-                    headerTitle: () => <ToolPartHeader part={toolPart} />,
-                    headerRight: () => <ToolPartStatusIndicator part={toolPart} />,
+                    headerTitle: () => <Text style={styles.headerTitle}>{toolUseRef.toolUse.name}</Text>,
+                    headerRight: () => <Text style={styles.headerStatus}>{statusText}</Text>,
                     headerStyle: {
                         backgroundColor: theme.colors.header.background,
                     },
@@ -80,11 +82,13 @@ export default React.memo(() => {
                 }}
             />
             <Deferred>
-                <ToolPartView
-                    part={toolPart}
+                <ToolUseView
+                    toolUse={toolUseRef.toolUse}
+                    toolResult={toolUseRef.toolResult}
                     sessionId={sessionId!}
                     messageId={messageId!}
-                    expanded
+                    metadata={session.metadata}
+                    expanded={true}
                 />
             </Deferred>
         </>

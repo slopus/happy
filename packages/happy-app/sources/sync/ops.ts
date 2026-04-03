@@ -3,12 +3,10 @@
  * Provides strictly typed functions for all session-related RPC operations
  */
 
-import type { v3 } from '@slopus/happy-sync';
+import type { SessionID } from '@slopus/happy-sync';
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import type { MachineMetadata } from './storageTypes';
-
-type SessionID = v3.SessionID;
 
 // Strict type definitions for all operations
 
