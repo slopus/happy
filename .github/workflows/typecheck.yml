@@ -28,6 +28,11 @@ jobs:
 
             - name: Install dependencies
               run: yarn install --frozen-lockfile
+              env:
+                  SKIP_HAPPY_SYNC_BUILD: '1'
+
+            - name: Build happy-sync
+              run: yarn workspace @slopus/happy-sync build
 
             - name: TypeScript typecheck
               run: yarn workspace happy-app typecheck

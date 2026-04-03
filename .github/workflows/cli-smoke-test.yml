@@ -33,6 +33,11 @@ jobs:
 
     - name: Install dependencies
       run: yarn install --immutable
+      env:
+        SKIP_HAPPY_SYNC_BUILD: '1'
+
+    - name: Build happy-sync
+      run: yarn workspace @slopus/happy-sync build
 
     - name: Build package
       run: yarn workspace happy build
@@ -93,6 +98,11 @@ jobs:
 
     - name: Install dependencies
       run: yarn install --immutable
+      env:
+        SKIP_HAPPY_SYNC_BUILD: '1'
+
+    - name: Build happy-sync
+      run: yarn workspace @slopus/happy-sync build
 
     - name: Build package
       run: yarn workspace happy build
