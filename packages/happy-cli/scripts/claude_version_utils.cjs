@@ -74,6 +74,20 @@ function findClaudeInPath() {
         const resolvedPath = resolvePathSafe(claudePath) || claudePath;
 
         if (resolvedPath) {
+            // On Windows, npm creates shell script shims (no extension) for global packages.
+            // These cannot be spawned directly by Node.js. When we find such a shim,
+            // resolve to the actual cli.js in the adjacent node_modules directory.
+            const isExecutable = resolvedPath.endsWith('.js') || resolvedPath.endsWith('.cjs') || resolvedPath.endsWith('.exe');
+            if (!isExecutable) {
+                const shimDir = path.dirname(claudePath);
+                const cliJsPath = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+                if (fs.existsSync(cliJsPath)) {
+                    return { path: cliJsPath, source: 'npm' };
+                }
+                // Shim found but no cli.js next to it — skip and let other finders handle it
+                return null;
+            }
+
             // Detect source from BOTH original PATH entry and resolved path
             // Original path tells us HOW user accessed it (context)
             // Resolved path tells us WHERE it actually lives (content)

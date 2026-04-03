@@ -39,6 +39,7 @@ export function run(args: string[], options?: DifftasticOptions): Promise<Diffta
         const child = spawn(binaryPath, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             cwd: options?.cwd,
+            windowsHide: true,
             env: {
                 ...process.env,
                 // Force color output when needed

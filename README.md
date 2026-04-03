@@ -46,20 +46,11 @@ Step 3: Start using `happy` instead of `claude` or `codex`
 </h3>
 
 ```bash
-
-# Instead of: claude
-# Use: happy
-
-happy
-
-# Instead of: codex
-# Use: happy codex
-
+# Instead of claude, use:
+happy claude
+# or
 happy codex
-
 ```
-
-<div align="center"><img src="/.github/mascot.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
 
 ## How does it work?
 
