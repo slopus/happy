@@ -290,5 +290,25 @@ DONE: Open PR for `acpx-rewrite` → `main`.
 2. ✅ `yarn workspace @slopus/happy-sync test:unit` — 40/40 tests passed
 3. ⚠️ `yarn tsc --noEmit` at repo root still exits with TypeScript help text because this worktree has no root `tsconfig.json`
 
+---
+
+DONE: Resolve merge conflicts with main on PR #976.
+
+Commit: b965e8b8
+
+### Results
+1. ✅ `query.ts` and `utils.ts` (deleted in acpx-rewrite, modified in main with Windows `windowsHide` fix) — kept deleted per rewrite
+2. ✅ `codexAppServerClient.ts` content conflict — kept our SDK-based version, discarded main's old app-server code
+3. ✅ PR #976 now shows `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`
+
+### Verification
+1. ✅ `yarn workspace happy build` — passes
+2. ✅ `yarn workspace happy-app typecheck` — passes
+3. ✅ `yarn workspace @slopus/happy-sync tsc --noEmit` — passes
+4. ✅ `yarn workspace @slopus/happy-sync test:unit` — 40/40 tests passed
+5. ✅ `yarn workspace happy test --run` — 463 passed, 1 skipped
+6. ✅ `yarn workspace happy-app test --run` — 357 passed, 57 skipped
+7. ✅ `yarn workspace happy-server test` — 44/44 tests passed
+
 ### Next Task
 - Await review and merge PR #976 into `main`.
