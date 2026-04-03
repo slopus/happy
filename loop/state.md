@@ -277,24 +277,18 @@ All reruns confirmed: 4 package typechecks pass, full test suite passes (happy-s
 
 ## Current Task
 
-DONE: Merge main into acpx-rewrite — resolve conflicts.
-
-Commit: 11d4a77e
+DONE: Open PR for `acpx-rewrite` → `main`.
 
 ### Results
-1. ✅ Merged main (10 commits ahead) into acpx-rewrite — 31 conflicts resolved
-2. ✅ modify/delete conflicts (7): kept acpx-rewrite deletions (v3-compat, codex permissionHandler, happy-wire, reducer, happy-agent)
-3. ✅ Content conflicts (23): resolved — acpx-rewrite authoritative for protocol/sync, main's features (push notifications, codex SDK, UI improvements) integrated
-4. ✅ Push notification API: `session.api.push()` → `session.push`, `session.client.getMetadata()` → `session.getMetadata()`, `session.client.sessionId` → `session.hapSessionId`
-5. ✅ `questionNotification.ts` SDK import: `../sdk` → `@anthropic-ai/claude-agent-sdk`
-6. ✅ Deleted `codex/__tests__/permissionHandler.test.ts` (source file deleted)
-7. ✅ yarn.lock regenerated from main's lockfile
-8. ✅ All 4 package typechecks pass
-9. ✅ All test suites pass:
-   - `yarn workspace @slopus/happy-sync test:unit` — 40/40
-   - `BROWSER=none yarn workspace happy test --run` — 463 passed, 1 skipped
-   - `BROWSER=none yarn workspace happy-app test --run` — 357 passed, 57 skipped (6 test expectation fixes: permission mode order, span-based markdown tables, new settings fields)
-   - `BROWSER=none yarn workspace happy-server test` — 44/44
+1. ✅ Pushed `acpx-rewrite` to `origin` and set upstream tracking
+2. ✅ Opened PR #976: `Rewrite Happy to use acpx types end-to-end`
+3. ✅ PR URL: `https://github.com/slopus/happy/pull/976`
+4. ✅ PR body summarizes the acpx rewrite, metadata-based UI changes, legacy deletions, merge-from-main integration, and the recorded verification commands
+
+### Verification
+1. ✅ `gh pr view 976 --json number,url,state,headRefName,baseRefName,isDraft` — PR is open against `main` from `acpx-rewrite`
+2. ✅ `yarn workspace @slopus/happy-sync test:unit` — 40/40 tests passed
+3. ⚠️ `yarn tsc --noEmit` at repo root still exits with TypeScript help text because this worktree has no root `tsconfig.json`
 
 ### Next Task
-- Create PR for `acpx-rewrite` → `main` or merge directly (user decision needed).
+- Await review and merge PR #976 into `main`.
