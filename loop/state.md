@@ -145,11 +145,35 @@ Commit: 79dd3c75
 
 ---
 
-TASK: Step 5 — Permission flow via metadata.
+DONE: Step 5 — Permission flow via metadata.
+
+Commit: 3871ec33
+
+### Results
+1. ✅ `ToolUseView.tsx` reads pending permissions/questions from `useSyncSessionState()` → `session.permissions[]` / `session.questions[]`, not v3 ToolPart blocks
+2. ✅ Permission approve/deny uses `PermissionFooter` with `getPermissionStatus()` mapping `PermissionRequest` → footer props; calls `sessionAllow`/`sessionDeny` via metadata-backed ops
+3. ✅ Question answer flow uses new `ToolUseQuestionView` component reading `QuestionRequest` from metadata; calls `sessionAnswerQuestion` via metadata-backed ops
+4. ✅ `transcriptUtils.ts` extended: `getToolUseState()` now accepts optional `PermissionRequest`/`QuestionRequest` and returns `'awaiting_approval'`/`'awaiting_answer'` states; `findPermissionForTool()`/`findQuestionForTool()` helpers match `callId` to `toolUse.id`
+5. ✅ Tool status labels in `ToolUseView` show "Awaiting approval" / "Awaiting answer" / "Approved" / "Denied" from metadata state
+6. ✅ 13 tests pass: 3 original + 10 new (pending/approved/denied/always permissions, pending/resolved questions, AskUserQuestion exclusion, no-match, no-session)
+7. ✅ `yarn workspace happy-app typecheck` passes
+8. ✅ `yarn workspace @slopus/happy-sync tsc --noEmit` passes
+
+### Notes
+- `PermissionFooter.tsx` unchanged — it already accepts a generic permission props object. `getPermissionStatus()` in `ToolUseView.tsx` bridges `PermissionRequest` → footer interface.
+- `ToolUseQuestionView.tsx` is a new component (~260 lines) — metadata-backed port of `AskUserQuestionView.tsx` that accepts `QuestionRequest` directly instead of `ToolViewProps`.
+- `AskUserQuestionView.tsx` (old, part-based) still exists for backward compat until Step 6 deletes it.
+- `ToolUseView` shows `PermissionFooter` for all tools EXCEPT `AskUserQuestion`, which gets `ToolUseQuestionView` instead.
+
+---
+
+TASK: Step 6 — Delete v3 mappers, part views, legacy code.
 
 ### Acceptance criteria
-1. App permission UI reads pending permissions/questions from `SyncNode` session metadata, not tool parts
-2. Permission approve/deny and question answer flows operate entirely via metadata-backed `permissions[]` / `questions[]`
-3. Tool transcript/detail views show permission/question state without depending on legacy Part blocks
-4. Relevant app tests cover pending + resolved permission/question rendering and actions
-5. `yarn workspace happy-app typecheck` passes
+1. All 5 v3Mappers deleted (claude, codex, gemini, openclaw, acp)
+2. `parts/` directory deleted (8 files) — ToolPartView, toolPartMeta, V3MessageView, etc.
+3. Old `ToolView.tsx`, `AskUserQuestionView.tsx`, and other part-based tool views no longer imported
+4. `v3-compat.ts` re-export removed from `happy-sync/src/index.ts`
+5. All remaining `v3` namespace references cleaned up across the app
+6. `yarn workspace happy-app typecheck` passes
+7. `yarn workspace @slopus/happy-sync tsc --noEmit` passes
