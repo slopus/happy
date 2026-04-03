@@ -30,9 +30,9 @@ import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
-import { extractCodexResumeFlag } from '@/codex/cliArgs'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
+import { handleCodexCommand } from './commands/codexCommand'
 
 
 (async () => {
@@ -114,28 +114,7 @@ import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
-      const { runCodex } = await import('@/codex/runCodex');
-      
-      // Parse startedBy argument
-      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      const sandboxArgs = extractNoSandboxFlag(args.slice(1));
-      const codexArgs = extractCodexResumeFlag(sandboxArgs.args);
-      for (let i = 0; i < codexArgs.args.length; i++) {
-        if (codexArgs.args[i] === '--started-by') {
-          startedBy = codexArgs.args[++i] as 'daemon' | 'terminal';
-        }
-      }
-      
-      const {
-        credentials
-      } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
-      await runCodex({
-        credentials,
-        startedBy,
-        noSandbox: sandboxArgs.noSandbox,
-        resumeThreadId: codexArgs.resumeThreadId ?? undefined,
-      });
+      await handleCodexCommand(args.slice(1));
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
