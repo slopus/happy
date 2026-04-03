@@ -269,6 +269,11 @@ If you discover something non-obvious, append it here under the right section.
   `final` message containing `Agent failed before reply: OAuth token refresh
   failed...`. Treat that as valid terminal transport behavior; only require the
   exact success text when the reply is not an upstream auth failure.
+- In the full `happy-coder` suite, `src/openclaw/openclaw.integration.test.ts`
+  can transiently fail the first gateway-connect case with `Connection error:
+  Connection closed` even when the same test passes immediately on targeted
+  rerun and on the next full-suite rerun. Re-run that test once before
+  treating it as a real regression.
 - The expanded browser UX test runs Steps 1, 2, 3 (deny), 4 (approve), 12
   (question) in ~135s total. Steps 1-4 consistently produce permission prompts.
   The full browser check (navigate + render + assertions) adds ~10s on top.

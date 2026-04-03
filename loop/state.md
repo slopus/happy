@@ -282,7 +282,19 @@ No repository work remains on this branch.
 ### Results
 1. ✅ Clean worktree confirmed before the loop started (`git status --short`, `git diff --stat HEAD`)
 2. ✅ Re-read `loop/state.md` and `loop/learnings.md`; no incomplete implementation or verification task remains in this worktree
-3. ✅ Branch still remains merge-ready for `acpx-rewrite`
+3. ✅ `yarn tsc --noEmit` still exits with TypeScript help text because this worktree has no root `tsconfig.json`
+4. ✅ Package verification rerun passed:
+   - `yarn workspace @slopus/happy-sync test` — 49/49 tests passed
+   - `yarn workspace happy-coder typecheck` — passes
+   - `BROWSER=none yarn workspace happy-coder test` — 452 passed, 1 skipped
+   - `yarn workspace happy-app typecheck` — passes
+   - `BROWSER=none yarn workspace happy-app test --run` — 329 passed, 57 skipped
+   - `yarn workspace happy-server typecheck` — passes
+   - `BROWSER=none yarn workspace happy-server test` — 44/44 tests passed
+   - `yarn workspace @slopus/happy-sync typecheck` — passes
+5. ✅ Deleted targets still absent on disk (`packages/happy-sync/src/protocol.ts`, `packages/happy-sync/src/sessionProtocol.ts`, `packages/happy-app/sources/components/parts/`, `packages/happy-app/sources/components/ToolView.tsx`, `packages/happy-app/sources/components/AskUserQuestionView.tsx`)
+6. ✅ Branch remains merge-ready for `acpx-rewrite`
 
 ### Next Task
-- Review and merge `acpx-rewrite`, or replace this section with the next engineering task after merge.
+- Review and merge `acpx-rewrite`.
+- If the full `happy-coder` suite is rerun again and `src/openclaw/openclaw.integration.test.ts` flakes on the first gateway-connect case, stabilize that test before merge; it failed once in this loop pass with `Connection error: Connection closed` and passed immediately on targeted rerun plus full rerun under `BROWSER=none`.
