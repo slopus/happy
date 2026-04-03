@@ -25,6 +25,9 @@ type MetadataOption = {
 };
 
 const GEMINI_MODEL_FALLBACKS: ModelMode[] = [
+    { key: 'gemini-3.1-pro-preview', name: 'gemini 3.1 pro', description: 'latest & most capable' },
+    { key: 'gemini-3-flash-preview', name: 'gemini 3 flash', description: 'latest & fast' },
+    { key: 'gemini-3.1-flash-lite-preview', name: 'gemini 3.1 flash lite', description: 'latest & fastest' },
     { key: 'gemini-2.5-pro', name: 'gemini 2.5 pro', description: 'most capable' },
     { key: 'gemini-2.5-flash', name: 'gemini 2.5 flash', description: 'fast & efficient' },
     { key: 'gemini-2.5-flash-lite', name: 'gemini 2.5 flash lite', description: 'fastest' },

@@ -1,6 +1,17 @@
 {
   "entries": [
     {
+      "version": 7,
+      "date": "2026-04-03",
+      "summary": "Added support for the latest Gemini models in the model picker, so you can take advantage of Google's newest and most powerful AI capabilities.",
+      "changes": [
+        "Added Gemini 3.1 Pro, Gemini 3 Flash, and Gemini 3.1 Flash Lite to the model picker",
+        "Gemini 3.x models now appear at the top of the list for quick access",
+        "Gemini 2.5 models remain available for stability"
+      ],
+      "rawMarkdown": "## Version 7 - 2026-04-03\n\n\nAdded support for the latest Gemini models in the model picker, so you can take advantage of Google's newest and most powerful AI capabilities.\n\n- Added Gemini 3.1 Pro, Gemini 3 Flash, and Gemini 3.1 Flash Lite to the model picker\n- Gemini 3.x models now appear at the top of the list for quick access\n- Gemini 2.5 models remain available for stability"
+    },
+    {
       "version": 6,
       "date": "2026-03-19",
       "summary": "This is the biggest update since launch — a redesigned session creation experience, Git worktree management, expanded agent support.",
@@ -84,5 +95,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 6
+  "latestVersion": 7
 }
