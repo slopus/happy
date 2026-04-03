@@ -378,6 +378,26 @@ DONE: Merge-await verification rerun on current `acpx-rewrite` HEAD.
 
 ---
 
+DONE: Merge-await verification rerun (2026-04-03).
+
+### Results
+1. ✅ Package typechecks all pass:
+   - `yarn workspace happy-app typecheck`
+   - `yarn workspace happy-coder typecheck`
+   - `yarn workspace happy-server typecheck`
+   - `yarn workspace @slopus/happy-sync typecheck`
+2. ✅ Full automated test suite passes on current HEAD:
+   - `yarn workspace @slopus/happy-sync test` — 49/49 (incl. 9 integration)
+   - `yarn workspace happy-coder test` — 452 passed, 1 skipped
+   - `yarn workspace happy-app test --run` — 329 passed, 57 skipped
+   - `yarn workspace happy-server test` — 44/44 tests passed
+3. ✅ All deleted targets confirmed gone from disk
+
+### Notes
+- No source changes required; branch remains merge-ready.
+
+---
+
 ## Current Task
 
 Await merge review and merge of the acpx rewrite branch.
