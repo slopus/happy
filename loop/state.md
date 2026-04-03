@@ -666,4 +666,4 @@ Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
 
 No further verification needed — 10+ consecutive green runs confirm stability. Next action requires human: review and merge the PR, or provide a new task.
 
-Terminal handoff recorded 2026-04-03 (swift-beacon terminal handoff refresh). No product changes made.
+Terminal handoff recorded 2026-04-03 (swift-beacon latest terminal loop). No product changes made.
