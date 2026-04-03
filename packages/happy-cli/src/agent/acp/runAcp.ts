@@ -288,13 +288,17 @@ type AcpSwitchMode = {
 
 type AcpxAccumulator = {
   message: SessionAgentMessage;
+  /** Stable wrapper for SyncNode's localId tracking (same reference across send/update). */
+  wrapper: SessionMessage;
   localId: string;
   sent: boolean;
 };
 
 function createAcpxAccumulator(): AcpxAccumulator {
+  const message: SessionAgentMessage = { content: [], tool_results: {} };
   return {
-    message: { content: [], tool_results: {} },
+    message,
+    wrapper: { Agent: message },
     localId: randomUUID(),
     sent: false,
   };
@@ -1155,7 +1159,7 @@ export async function runAcp(opts: {
       }
       if (isTranscriptMessage(msg)) {
         applyAgentMessageToAccumulator(acpxAcc, msg);
-        updateAcpxMessage({ Agent: acpxAcc.message });
+        updateAcpxMessage(acpxAcc.wrapper);
       }
       return;
     }
@@ -1283,7 +1287,7 @@ export async function runAcp(opts: {
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       if (syncBridge) {
         acpxAcc = createAcpxAccumulator();
-        sendAcpxMessage({ Agent: acpxAcc.message });
+        sendAcpxMessage(acpxAcc.wrapper);
         acpxAcc.sent = true;
       } else {
         sendEnvelopes(sessionManager.startTurn());
@@ -1375,7 +1379,7 @@ export async function runAcp(opts: {
         }
         logger.debug(`[${opts.agentName}] Finalizing ACP turn after wait`);
         if (syncBridge && acpxAcc) {
-          updateAcpxMessage({ Agent: acpxAcc.message });
+          updateAcpxMessage(acpxAcc.wrapper);
           acpxAcc = null;
         } else {
           sendEnvelopes(sessionManager.endTurn('completed'));
@@ -1393,7 +1397,7 @@ export async function runAcp(opts: {
         }
       } catch (error) {
         if (syncBridge && acpxAcc) {
-          updateAcpxMessage({ Agent: acpxAcc.message });
+          updateAcpxMessage(acpxAcc.wrapper);
           acpxAcc = null;
         } else {
           sendEnvelopes(sessionManager.endTurn('failed'));

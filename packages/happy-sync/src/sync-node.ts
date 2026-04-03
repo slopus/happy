@@ -814,9 +814,13 @@ export class SyncNode {
         this.assertSessionAccess(sessionId);
         this.assertPermission('sendMessage', 'write');
 
-        const keyMaterial = await this.getKeyMaterialForSession(sessionId);
-        const ciphertext = encryptMessage(keyMaterial, message);
+        // Snapshot the message JSON before any async work to avoid races
+        // where callers mutate the same object between yield points.
+        const snapshot = JSON.stringify(message);
         const localId = this.getSessionMessageLocalId(message, true);
+
+        const keyMaterial = await this.getKeyMaterialForSession(sessionId);
+        const ciphertext = encryptMessage(keyMaterial, JSON.parse(snapshot));
 
         return new Promise<void>((resolve, reject) => {
             this.outbox.push({ sessionId, localId, content: ciphertext, resolve, reject });
@@ -832,9 +836,13 @@ export class SyncNode {
         this.assertSessionAccess(sessionId);
         this.assertPermission('updateMessage', 'write');
 
-        const keyMaterial = await this.getKeyMaterialForSession(sessionId);
-        const ciphertext = encryptMessage(keyMaterial, message);
+        // Snapshot the message JSON before any async work to avoid races
+        // where callers mutate the same object between yield points.
+        const snapshot = JSON.stringify(message);
         const localId = this.getSessionMessageLocalId(message, false);
+
+        const keyMaterial = await this.getKeyMaterialForSession(sessionId);
+        const ciphertext = encryptMessage(keyMaterial, JSON.parse(snapshot));
 
         return new Promise<void>((resolve, reject) => {
             this.outbox.push({ sessionId, localId, content: ciphertext, resolve, reject });
