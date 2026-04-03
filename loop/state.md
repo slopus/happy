@@ -427,3 +427,24 @@ DONE: Loop rerun verification (2026-04-03) — still no remaining work on `acpx-
 
 ### Next Task
 - None. The `acpx-rewrite` mission is complete. PRs #976 and #977 merged. This worktree can be cleaned up.
+
+---
+
+DONE: Loop rerun verification (2026-04-03 10:02 PT) — still no remaining work on `acpx-rewrite`.
+
+### Results
+1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; there is still no pending implementation task
+2. ✅ Deleted rewrite targets are still absent from disk:
+   - `packages/happy-sync/src/protocol.ts`
+   - `packages/happy-sync/src/sessionProtocol.ts`
+   - `packages/happy-app/sources/components/parts`
+   - `packages/happy-app/sources/components/ToolView.tsx`
+   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
+3. ✅ No source changes were required; only this state-file rerun entry was added
+
+### Verification
+1. ✅ `yarn workspace happy test --run` — 459 passed, 5 skipped
+2. ⚠️ `yarn tsc --noEmit` at repo root still exits with the TypeScript help text because this worktree still has no root `tsconfig.json`
+
+### Next Task
+- None.
