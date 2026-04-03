@@ -604,10 +604,24 @@ DONE: Terminal-state loop iteration (2026-04-03, bookkeeping-only handoff).
 
 ---
 
+DONE: Terminal-state loop iteration (2026-04-03, autonomous bookkeeping handoff).
+
+### Results
+1. ✅ Re-read `loop/state.md` and confirmed the active task is still terminal: branch merge-ready, awaiting external review/merge
+2. ✅ Made no product/source changes; only refreshed `loop/state.md` to record this handoff
+3. ✅ Ran no additional verification because the current task still says no further verification is needed
+4. ✅ Next action remains external: review/merge `acpx-rewrite`, or replace the terminal task with a new one
+
+### Notes
+- This iteration preserves the merge-ready state exactly as previously verified.
+- No changes were made outside `loop/state.md`.
+
+---
+
 ## Current Task
 
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
 
 No further verification needed — 10+ consecutive green runs confirm stability. Next action requires human: review and merge the PR, or provide a new task.
 
-Terminal handoff recorded 2026-04-03 (swift-beacon loop). No changes made.
+Terminal handoff recorded 2026-04-03 (swift-beacon autonomous bookkeeping handoff). No product changes made.
