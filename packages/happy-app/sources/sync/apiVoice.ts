@@ -1,9 +1,10 @@
-import { type VoiceTokenResponse } from '@slopus/happy-wire';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 
-export type { VoiceTokenResponse };
+export type VoiceTokenResponse =
+    | { allowed: true; token: string; agentId: string; elevenUserId: string; usedSeconds: number; limitSeconds: number }
+    | { allowed: false; reason: 'voice_limit_reached'; usedSeconds: number; limitSeconds: number; agentId: string };
 
 export async function fetchVoiceToken(
     credentials: AuthCredentials,

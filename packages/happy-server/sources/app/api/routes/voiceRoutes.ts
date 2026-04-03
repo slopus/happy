@@ -1,7 +1,24 @@
 import { z } from "zod";
 import * as crypto from "crypto";
-import { VoiceTokenResponseSchema } from "@slopus/happy-wire";
 import { type Fastify } from "../types";
+
+const VoiceTokenResponseSchema = z.discriminatedUnion("allowed", [
+    z.object({
+        allowed: z.literal(true),
+        token: z.string(),
+        agentId: z.string(),
+        elevenUserId: z.string(),
+        usedSeconds: z.number(),
+        limitSeconds: z.number(),
+    }),
+    z.object({
+        allowed: z.literal(false),
+        reason: z.literal("voice_limit_reached"),
+        usedSeconds: z.number(),
+        limitSeconds: z.number(),
+        agentId: z.string(),
+    }),
+]);
 import { log } from "@/utils/log";
 
 const VOICE_FREE_LIMIT_SECONDS = 3600;
