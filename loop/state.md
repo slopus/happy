@@ -372,3 +372,18 @@ Affected jobs:
 acpx rewrite complete. PR #976 merged. Post-merge CI failures fixed via PR #977 (merged).
 
 No further tasks remain for the acpx-rewrite branch.
+
+---
+
+DONE: Final closeout verification — confirmed no remaining work on `acpx-rewrite`.
+
+### Results
+1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; there is still no pending implementation task on this branch
+2. ✅ No source changes were required; only this state-file closeout entry was added
+
+### Verification
+1. ✅ `yarn workspace happy test --run` — 463 passed, 1 skipped
+2. ⚠️ `yarn tsc --noEmit` at repo root still exits with TypeScript help text because this worktree still has no root `tsconfig.json`
+
+### Next Task
+- None.
