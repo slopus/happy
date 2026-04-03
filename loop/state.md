@@ -678,3 +678,7 @@ DONE: Loop rerun verification (2026-04-03 11:21 PDT) — still no remaining work
 
 ### Next Task
 - None.
+
+---
+
+DONE: Loop rerun verification (2026-04-03 latest automated) — no remaining work. Mission complete. PRs #976 and #977 merged. Worktree can be cleaned up.
