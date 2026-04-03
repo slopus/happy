@@ -32,6 +32,7 @@ import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { extractCodexResumeFlag } from '@/codex/cliArgs'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
+import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 
 
 (async () => {
@@ -128,6 +129,7 @@ import { handleResumeCommand } from '@/resume/handleResumeCommand'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
       await runCodex({
         credentials,
         startedBy,
@@ -338,19 +340,7 @@ import { handleResumeCommand } from '@/resume/handleResumeCommand'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-
-      // Auto-start daemon for gemini (same as claude)
-      logger.debug('Ensuring Happy background service is running & matches our version...');
-      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
-        logger.debug('Starting Happy background service...');
-        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env
-        });
-        daemonProcess.unref();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      await ensureDaemonRunning()
 
       await runGemini({credentials, startedBy});
     } catch (error) {
@@ -386,18 +376,7 @@ import { handleResumeCommand } from '@/resume/handleResumeCommand'
 
       const resolved = resolveAcpAgentConfig(acpArgs);
       const { credentials } = await authAndSetupMachineIfNeeded();
-
-      logger.debug('Ensuring Happy background service is running & matches our version...');
-      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
-        logger.debug('Starting Happy background service...');
-        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env
-        });
-        daemonProcess.unref();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      await ensureDaemonRunning()
 
       await runAcp({
         credentials,
@@ -439,18 +418,7 @@ import { handleResumeCommand } from '@/resume/handleResumeCommand'
       }
 
       const { credentials } = await authAndSetupMachineIfNeeded();
-
-      logger.debug('Ensuring Happy background service is running & matches our version...');
-      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
-        logger.debug('Starting Happy background service...');
-        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env
-        });
-        daemonProcess.unref();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      await ensureDaemonRunning()
 
       await runOpenClaw({
         credentials,
@@ -764,24 +732,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     const {
       credentials
     } = await authAndSetupMachineIfNeeded();
-
-    // Always auto-start daemon for simplicity
-    logger.debug('Ensuring Happy background service is running & matches our version...');
-
-    if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
-      logger.debug('Starting Happy background service...');
-
-      // Use the built binary to spawn daemon
-      const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env
-      })
-      daemonProcess.unref();
-
-      // Give daemon a moment to write PID & port file
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
+    await ensureDaemonRunning()
 
     // Start the CLI
     try {
