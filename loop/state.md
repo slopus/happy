@@ -609,3 +609,5 @@ DONE: Terminal-state loop iteration (2026-04-03, bookkeeping-only handoff).
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
 
 No further verification needed — 10+ consecutive green runs confirm stability. Next action requires human: review and merge the PR, or provide a new task.
+
+Terminal handoff recorded 2026-04-03 (swift-beacon loop). No changes made.
