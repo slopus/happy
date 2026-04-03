@@ -732,6 +732,32 @@ DONE: Loop rerun verification (2026-04-03 11:37 PDT) — still no remaining work
 ### Next Task
 - None. The `acpx-rewrite` mission is complete. This worktree can be cleaned up.
 
+---
+
+DONE: Loop rerun verification (2026-04-03 15:40 PDT) — no implementation task remained, but fresh repo verification is no longer green.
+
+### Results
+1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; there is still no pending implementation task on `acpx-rewrite`
+2. ✅ Deleted rewrite targets are still absent from disk:
+   - `packages/happy-sync/src/protocol.ts`
+   - `packages/happy-sync/src/sessionProtocol.ts`
+   - `packages/happy-app/sources/components/parts`
+   - `packages/happy-app/sources/components/ToolView.tsx`
+   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
+3. ✅ No source changes were required; only this state-file rerun entry was added
+4. ⚠️ Fresh repo verification found 3 failing authenticated daemon integration tests in `packages/happy-cli/src/daemon/daemon.integration.test.ts`
+
+### Verification
+1. ✅ `test ! -e packages/happy-sync/src/protocol.ts && test ! -e packages/happy-sync/src/sessionProtocol.ts && test ! -e packages/happy-app/sources/components/parts && test ! -e packages/happy-app/sources/components/ToolView.tsx && test ! -e packages/happy-app/sources/components/AskUserQuestionView.tsx` — deleted targets confirmed absent
+2. ❌ `yarn workspace happy test --run` — 1 failed file, 49 passed files, 1 skipped file; 3 failed, 454 passed, 7 skipped tests
+   - `src/daemon/daemon.integration.test.ts` → `stress test: spawn / stop` expected 20 sessions, got 16
+   - `src/daemon/daemon.integration.test.ts` → `should handle daemon stop request gracefully` timed out waiting for condition
+   - `src/daemon/daemon.integration.test.ts` → `should track both daemon-spawned and terminal sessions` expected 2 sessions, got 1
+3. ⚠️ `yarn tsc --noEmit` at repo root still exits with the TypeScript help text because this worktree still has no root `tsconfig.json`
+
+### Next Task
+- Investigate and fix the authenticated daemon integration regressions in `packages/happy-cli/src/daemon/daemon.integration.test.ts`, then rerun `yarn workspace happy test --run`.
+
 DONE: Loop rerun verification (2026-04-03 11:45 PDT) — still no remaining work on `acpx-rewrite`.
 
 ### Results
