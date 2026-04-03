@@ -275,6 +275,32 @@ All reruns confirmed: 4 package typechecks pass, full test suite passes (happy-s
 
 ---
 
+DONE: Merge-readiness verification rerun (2026-04-03, no source changes).
+
+### Results
+1. ✅ `yarn tsc --noEmit` at repo root still exits with TypeScript help text because this worktree has no root `tsconfig.json`
+2. ✅ Package typechecks all pass:
+   - `yarn workspace happy-app typecheck`
+   - `yarn workspace happy-coder typecheck`
+   - `yarn workspace happy-server typecheck`
+   - `yarn workspace @slopus/happy-sync typecheck`
+3. ✅ `yarn workspace @slopus/happy-sync test` — 49/49 tests passed
+4. ✅ `yarn workspace happy-coder test` — 452 passed, 1 skipped
+5. ✅ `yarn workspace happy-app test --run` — 329 passed, 57 skipped
+6. ✅ `yarn workspace happy-server test` — 44/44 tests passed
+7. ✅ Deleted targets rechecked and still absent:
+   - `packages/happy-sync/src/protocol.ts`
+   - `packages/happy-sync/src/sessionProtocol.ts`
+   - `packages/happy-app/sources/components/parts`
+   - `packages/happy-app/sources/components/ToolView.tsx`
+   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
+
+### Notes
+- An initial parallel verification run produced false failures in `happy-coder`, `happy-app`, and `happy-server` while `happy-sync` was rebuilding `dist`. Re-running after `yarn workspace @slopus/happy-sync test` completed produced a clean pass across all packages.
+- No source changes were required. Branch remains merge-ready.
+
+---
+
 ## Current Task
 
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.

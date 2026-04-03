@@ -45,6 +45,12 @@ If you discover something non-obvious, append it here under the right section.
   `happy-server`, which imports `packages/happy-sync/dist/index.mjs`. After
   changing `happy-sync` source, run `yarn workspace @slopus/happy-sync build`
   before the integration test or the server will execute stale code.
+- `yarn workspace @slopus/happy-sync test` is not safe to run in parallel with
+  `happy-coder`, `happy-app`, or `happy-server` test suites. The happy-sync
+  test script starts with `rm -rf dist && pkgroll`, which temporarily removes
+  `packages/happy-sync/dist/index.mjs` / the workspace package entry and causes
+  false `Cannot find module '@slopus/happy-sync'` failures in dependent tests.
+  Run happy-sync first, then rerun dependent packages after its build finishes.
 - `spawnDaemonSession(directory, sessionId)` uses resume semantics now. Passing a
   fresh `sessionId` does NOT label a new daemon session; it makes the daemon try
   to resume that exact existing session and return an error if it does not exist.
