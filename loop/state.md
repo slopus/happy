@@ -559,6 +559,19 @@ DONE: Merge-readiness verification rerun (2026-04-03 latest autonomous handoff, 
 
 ---
 
+DONE: Terminal-state loop iteration (2026-04-03, no code or verification changes).
+
+### Results
+1. ✅ Read the live task in `loop/state.md`; it still says the branch is merge-ready and requires no further verification
+2. ✅ Made no source changes and ran no additional verification, per the current task instruction
+3. ✅ Next action remains external review/merge of `acpx-rewrite`, or replacement with a new task
+
+### Notes
+- This iteration only updates loop bookkeeping so the handoff state is explicit in git history.
+- The repository remains in the previously verified merge-ready state.
+
+---
+
 ## Current Task
 
 Branch is merge-ready. Awaiting review/merge of `acpx-rewrite`.
