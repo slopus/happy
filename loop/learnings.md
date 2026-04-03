@@ -181,6 +181,11 @@ If you discover something non-obvious, append it here under the right section.
   next iteration doesn't re-discover it.
 - After fixing code, re-run ONLY the affected step first, then the full
   passing suite (Steps 0-6+) to check for regressions.
+- GitHub can merge a PR immediately even while checks are still running if the
+  branch has no required status checks. `gh pr merge --auto --merge` on PR #976
+  merged at once; failing and cancelled checks then reported after the merge.
+  For merge tasks, always re-check the final check outcomes after the PR state
+  flips to `MERGED` and record any post-merge failures as the next task.
 
 ## CRITICAL: Global daemon safety
 

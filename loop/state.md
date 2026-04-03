@@ -312,3 +312,31 @@ Commit: b965e8b8
 
 ### Next Task
 - Await review and merge PR #976 into `main`.
+
+---
+
+DONE: Merge PR #976 into `main`.
+
+### Results
+1. ✅ Enabled merge on PR #976 and GitHub merged it into `main`
+2. ✅ PR #976 state is now `MERGED`
+3. ✅ Merge commit on `main`: `17d773ee12546269eab46990bf8267759b44fb7c`
+4. ✅ Merge timestamp: `2026-04-03T14:48:11Z`
+
+### Verification
+1. ✅ `gh pr view 976 --json number,url,state,mergedAt,mergeCommit,headRefName,baseRefName` — reports `state: MERGED` into `main`
+2. ✅ `yarn workspace happy test --run` — 463 passed, 1 skipped
+3. ✅ Deleted targets still gone from disk:
+   - `packages/happy-sync/src/protocol.ts`
+   - `packages/happy-sync/src/sessionProtocol.ts`
+   - `packages/happy-app/sources/components/parts`
+   - `packages/happy-app/sources/components/ToolView.tsx`
+   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
+4. ⚠️ `yarn tsc --noEmit` at repo root still exits with the TypeScript help text because this worktree still has no root `tsconfig.json`
+5. ⚠️ PR checks around merge time were not gating the merge; `typecheck` and `smoke-test-linux (20)` reported `FAILURE`, one Linux smoke shard was `CANCELLED`, and the Windows smoke shards were still in progress when the PR merged
+
+## Current Task
+
+Investigate the post-merge GitHub Actions failures associated with merge commit `17d773ee12546269eab46990bf8267759b44fb7c`, starting with:
+- `Expo App TypeScript typecheck` (`typecheck`)
+- `CLI Smoke Test` / `smoke-test-linux (20)`
