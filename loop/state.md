@@ -350,6 +350,34 @@ DONE: Merge-await verification rerun on current HEAD.
 
 ---
 
+DONE: Merge-await verification rerun on current `acpx-rewrite` HEAD.
+
+### Results
+1. ✅ Current branch confirmed as `acpx-rewrite`
+2. ✅ `yarn tsc --noEmit` still exits with TypeScript help text because the repo root still has no `tsconfig.json`
+3. ✅ Package typechecks still pass:
+   - `yarn workspace happy-app typecheck`
+   - `yarn workspace happy-coder typecheck`
+   - `yarn workspace happy-server typecheck`
+   - `yarn workspace @slopus/happy-sync typecheck`
+4. ✅ Full automated test suite still passes on current HEAD:
+   - `yarn workspace @slopus/happy-sync test` — 49/49 tests passed
+   - `yarn workspace happy-coder test` — 452 passed, 1 skipped
+   - `yarn workspace happy-app test --run` — 329 passed, 57 skipped
+   - `yarn workspace happy-server test` — 44/44 tests passed
+5. ✅ Representative deleted targets are still gone from disk:
+   - `packages/happy-sync/src/protocol.ts`
+   - `packages/happy-sync/src/sessionProtocol.ts`
+   - `packages/happy-app/sources/components/parts`
+   - `packages/happy-app/sources/components/ToolView.tsx`
+   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
+
+### Notes
+- No source changes were required in this iteration; `acpx-rewrite` remains merge-ready and awaiting review/merge.
+- `happy-app` tests still emit the existing `react-test-renderer` deprecation / `act(...)` warnings, but the suite passes and no new failures were introduced.
+
+---
+
 ## Current Task
 
 Await merge review and merge of the acpx rewrite branch.
