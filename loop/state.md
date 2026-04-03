@@ -335,8 +335,26 @@ DONE: Merge PR #976 into `main`.
 4. ⚠️ `yarn tsc --noEmit` at repo root still exits with the TypeScript help text because this worktree still has no root `tsconfig.json`
 5. ⚠️ PR checks around merge time were not gating the merge; `typecheck` and `smoke-test-linux (20)` reported `FAILURE`, one Linux smoke shard was `CANCELLED`, and the Windows smoke shards were still in progress when the PR merged
 
+DONE: Investigate and fix post-merge CI failures.
+
+### Root Cause
+All failures had the same root cause: `acpx@0.4.0` declares `engines.node >= 22.12.0`. The CI jobs running Node 20 failed at `yarn install --frozen-lockfile` with `error acpx@0.4.0: The engine "node" is incompatible with this module`.
+
+Affected jobs:
+- `typecheck` (Node 20) — FAILURE
+- `smoke-test-linux (20)` — FAILURE
+- `smoke-test-windows (20)` — FAILURE
+- `smoke-test-linux (24)` — CANCELLED (fail-fast from Node 20 failure)
+- `smoke-test-windows (24)` — CANCELLED (fail-fast from Node 20 failure)
+
+### Fix
+- `typecheck.yml`: Node 20 → 22
+- `cli-smoke-test.yml`: matrix `[20, 24]` → `[22, 24]` (both Linux and Windows)
+
+PR #977: https://github.com/slopus/happy/pull/977
+
+Commit on `fix/ci-node-22` branch: e4ed2154
+
 ## Current Task
 
-Investigate the post-merge GitHub Actions failures associated with merge commit `17d773ee12546269eab46990bf8267759b44fb7c`, starting with:
-- `Expo App TypeScript typecheck` (`typecheck`)
-- `CLI Smoke Test` / `smoke-test-linux (20)`
+Await CI results on PR #977 and merge once green.
