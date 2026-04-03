@@ -713,9 +713,31 @@ DONE: Loop rerun verification (2026-04-03 11:37 PDT) — still no remaining work
 ### Next Task
 - None. The `acpx-rewrite` mission is complete. This worktree can be cleaned up.
 
+DONE: Loop rerun verification (2026-04-03 11:45 PDT) — still no remaining work on `acpx-rewrite`.
+
+### Results
+1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; there is still no pending implementation task
+2. ✅ Deleted rewrite targets are still absent from disk:
+   - `packages/happy-sync/src/protocol.ts`
+   - `packages/happy-sync/src/sessionProtocol.ts`
+   - `packages/happy-app/sources/components/parts`
+   - `packages/happy-app/sources/components/ToolView.tsx`
+   - `packages/happy-app/sources/components/AskUserQuestionView.tsx`
+3. ✅ No source changes were required; only this state-file rerun entry was added
+
+### Verification
+1. ✅ `test ! -e packages/happy-sync/src/protocol.ts && test ! -e packages/happy-sync/src/sessionProtocol.ts && test ! -e packages/happy-app/sources/components/parts && test ! -e packages/happy-app/sources/components/ToolView.tsx && test ! -e packages/happy-app/sources/components/AskUserQuestionView.tsx` — deleted targets confirmed absent
+2. ✅ `yarn workspace happy test --run` — 463 passed, 1 skipped
+3. ⚠️ `yarn tsc --noEmit` at repo root still exits with the TypeScript help text because this worktree still has no root `tsconfig.json`
+
+### Next Task
+- None. The `acpx-rewrite` mission is complete. This worktree can be cleaned up.
+
+DONE: acpx closeout rerun (2026-04-03) — no remaining work. PRs #976 and #977 merged. No further reruns needed.
+
 ---
 
-DONE: Loop rerun verification (2026-04-03 11:45 PDT) — still no remaining work on `acpx-rewrite`.
+DONE: Loop rerun verification (2026-04-03 11:53 PDT) — still no remaining work on `acpx-rewrite`.
 
 ### Results
 1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; there is still no pending implementation task
@@ -737,11 +759,7 @@ DONE: Loop rerun verification (2026-04-03 11:45 PDT) — still no remaining work
 
 ---
 
-DONE: acpx closeout rerun (2026-04-03) — no remaining work. PRs #976 and #977 merged. No further reruns needed.
-
----
-
-DONE: Loop rerun verification (2026-04-03 11:53 PDT) — still no remaining work on `acpx-rewrite`.
+DONE: Loop rerun verification (2026-04-03 12:13 PDT) — still no remaining work on `acpx-rewrite`.
 
 ### Results
 1. ✅ Re-read `loop/state.md` and `loop/learnings.md`; there is still no pending implementation task
