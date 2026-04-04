@@ -16,6 +16,8 @@ export async function claudeRemote(opts: {
 
     // Fixed parameters
     sessionId: string | null,
+    /** Override: resume from this session ID instead of continuing the current one */
+    resumeFromSessionId?: string | null,
     path: string,
     mcpServers?: Record<string, any>,
     claudeEnvVars?: Record<string, string>,
@@ -45,11 +47,12 @@ export async function claudeRemote(opts: {
 }) {
 
     // Check if session is valid
-    let startFrom = opts.sessionId;
-    if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
+    // resumeFromSessionId takes priority (in-place resume from web UI)
+    let startFrom = opts.resumeFromSessionId ?? opts.sessionId;
+    if (startFrom && !claudeCheckSession(startFrom, opts.path)) {
         startFrom = null;
     }
-    
+
     // Extract --resume from claudeArgs if present (for first spawn)
     if (!startFrom && opts.claudeArgs) {
         for (let i = 0; i < opts.claudeArgs.length; i++) {
@@ -142,6 +145,8 @@ export async function claudeRemote(opts: {
             }
         }
     };
+
+
 
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();

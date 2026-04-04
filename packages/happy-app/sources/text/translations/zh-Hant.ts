@@ -338,6 +338,7 @@ export const zhHant: TranslationStructure = {
         viewMachine: '查看裝置',
         viewMachineSubtitle: '查看裝置詳情和工作階段',
         resumeSession: 'Resume Session',
+        resumeInPlace: '重啟會話',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',

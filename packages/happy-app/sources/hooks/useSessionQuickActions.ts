@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionKill, sessionResume } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -176,6 +176,18 @@ export function useSessionQuickActions(
         }
     });
 
+    // In-place resume: fork the active session with full history (fixes corrupted context)
+    const [resumingInPlace, performResumeInPlace] = useHappyAction(async () => {
+        const result = await sessionResume(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message, false);
+        }
+    });
+
+    const resumeInPlace = React.useCallback(() => {
+        performResumeInPlace();
+    }, [performResumeInPlace]);
+
     const [archivingSession, performArchive] = useHappyAction(async () => {
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
@@ -202,6 +214,10 @@ export function useSessionQuickActions(
             { id: 'details', icon: 'information-circle-outline', label: t('profile.details'), onPress: openDetails },
         ];
 
+        if (sessionStatus.isConnected) {
+            items.push({ id: 'resume-in-place', icon: 'refresh-circle-outline', label: t('sessionInfo.resumeInPlace'), onPress: resumeInPlace });
+        }
+
         if (resumeAvailability.canShowResume) {
             items.push({ id: 'resume', icon: 'play-circle-outline', label: t('sessionInfo.resumeSession'), onPress: resumeSession });
         }
@@ -221,7 +237,9 @@ export function useSessionQuickActions(
         copySessionMetadataAndLogs,
         openDetails,
         resumeAvailability.canShowResume,
+        resumeInPlace,
         resumeSession,
+        sessionStatus.isConnected,
     ]);
 
     const showActionAlert = React.useCallback(() => {
@@ -242,12 +260,15 @@ export function useSessionQuickActions(
         canArchive: true,
         canCopySessionMetadata,
         canResume: resumeAvailability.canResume,
+        canResumeInPlace: sessionStatus.isConnected,
         canShowResume: resumeAvailability.canShowResume,
         copySessionMetadata,
         copySessionMetadataAndLogs,
         openDetails,
+        resumeInPlace,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
+        resumingInPlace,
         resumingSession,
     };
 }

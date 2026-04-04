@@ -338,6 +338,7 @@ export const ca: TranslationStructure = {
         viewMachine: 'Veure la màquina',
         viewMachineSubtitle: 'Veure detalls de la màquina i sessions',
         resumeSession: 'Resume Session',
+        resumeInPlace: 'Reiniciar sessió',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',

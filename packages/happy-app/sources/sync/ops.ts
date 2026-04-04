@@ -525,6 +525,31 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
     }
 }
 
+// Resume session types
+interface SessionResumeResponse {
+    success: boolean;
+    message: string;
+}
+
+/**
+ * Resume the current Claude session in-place (fork with full history)
+ */
+export async function sessionResume(sessionId: string): Promise<SessionResumeResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<SessionResumeResponse, {}>(
+            sessionId,
+            'resumeSession',
+            {}
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
 /**
  * Archive a session by deactivating it on the server.
  * Use this when the CLI process is already dead and sessionKill can't reach it.

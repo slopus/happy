@@ -25,6 +25,9 @@ export class Session {
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
+
+    /** When set, the next claudeRemote launch will use --resume with this session ID */
+    pendingResumeSessionId: string | null = null;
     
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
@@ -142,6 +145,30 @@ export class Session {
     clearSessionId = (): void => {
         this.sessionId = null;
         logger.debug('[Session] Session ID cleared');
+    }
+
+    /**
+     * Request a session resume. Stores the current session ID so the next
+     * claudeRemote launch uses --resume to fork the session with full history.
+     */
+    requestResume = (): { success: boolean; message: string } => {
+        if (!this.sessionId) {
+            return { success: false, message: 'No active Claude session to resume from' };
+        }
+        this.pendingResumeSessionId = this.sessionId;
+        this.sessionId = null;
+        logger.debug(`[Session] Resume requested from session: ${this.pendingResumeSessionId}`);
+        return { success: true, message: 'Resume requested' };
+    }
+
+    /**
+     * Consume the pending resume session ID (called by claudeRemoteLauncher).
+     * Returns the session ID to resume from, or null if no resume was requested.
+     */
+    consumePendingResume = (): string | null => {
+        const id = this.pendingResumeSessionId;
+        this.pendingResumeSessionId = null;
+        return id;
     }
 
     /**
