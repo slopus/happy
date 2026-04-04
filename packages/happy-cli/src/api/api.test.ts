@@ -4,23 +4,45 @@ import axios from 'axios';
 import { connectionState } from '@/utils/serverConnectionErrors';
 
 // Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
-const { mockPost, mockIsAxiosError } = vi.hoisted(() => ({
+const { mockPost, mockGet, mockIsAxiosError } = vi.hoisted(() => ({
     mockPost: vi.fn(),
+    mockGet: vi.fn(),
     mockIsAxiosError: vi.fn(() => true)
 }));
 
 vi.mock('axios', () => ({
     default: {
         post: mockPost,
+        get: mockGet,
         isAxiosError: mockIsAxiosError
     },
     isAxiosError: mockIsAxiosError
+}));
+
+vi.mock('chalk', () => ({
+    default: new Proxy({}, {
+        get: () => (value: string) => value
+    })
 }));
 
 vi.mock('@/ui/logger', () => ({
     logger: {
         debug: vi.fn()
     }
+}));
+
+vi.mock('./apiSession', () => ({
+    ApiSessionClient: vi.fn()
+}));
+
+vi.mock('./apiMachine', () => ({
+    ApiMachineClient: vi.fn()
+}));
+
+vi.mock('./pushNotifications', () => ({
+    PushNotificationClient: vi.fn(function PushNotificationClient() {
+        return {};
+    })
 }));
 
 // Mock encryption utilities
@@ -308,6 +330,115 @@ describe('Api server error handling', () => {
             );
 
             consoleSpy.mockRestore();
+        });
+    });
+
+    describe('registerVendorToken', () => {
+        it('waits for long-task completion while progress continues', async () => {
+            mockPost.mockResolvedValue({
+                status: 202,
+                data: {
+                    taskId: 'task-1',
+                    state: 'accepted',
+                    stage: 'accepted',
+                    pollAfterMs: 1,
+                    heartbeatAt: '2026-01-01T00:00:00.000Z',
+                    updatedAt: '2026-01-01T00:00:00.000Z'
+                }
+            });
+            mockGet
+                .mockResolvedValueOnce({
+                    data: {
+                        taskId: 'task-1',
+                        state: 'running',
+                        stage: 'persisting',
+                        pollAfterMs: 1,
+                        heartbeatAt: '2026-01-01T00:00:00.100Z',
+                        updatedAt: '2026-01-01T00:00:00.100Z'
+                    }
+                })
+                .mockResolvedValueOnce({
+                    data: {
+                        taskId: 'task-1',
+                        state: 'succeeded',
+                        stage: 'succeeded',
+                        pollAfterMs: 1,
+                        heartbeatAt: '2026-01-01T00:00:00.200Z',
+                        updatedAt: '2026-01-01T00:00:00.200Z'
+                    }
+                });
+
+            const seenStages: string[] = [];
+            await expect(api.registerVendorToken('openai', { oauth: true }, {
+                pollIntervalMs: 1,
+                idleTimeoutMs: 50,
+                absoluteTimeoutMs: 500,
+                onProgress: (status) => seenStages.push(status.stage)
+            })).resolves.toBeUndefined();
+
+            expect(mockGet).toHaveBeenCalledTimes(2);
+            expect(seenStages).toEqual(['accepted', 'persisting', 'succeeded']);
+        });
+
+        it('fails when task stops making progress', async () => {
+            mockPost.mockResolvedValue({
+                status: 202,
+                data: {
+                    taskId: 'task-2',
+                    state: 'accepted',
+                    stage: 'accepted',
+                    pollAfterMs: 1,
+                    heartbeatAt: '2026-01-01T00:00:00.000Z',
+                    updatedAt: '2026-01-01T00:00:00.000Z'
+                }
+            });
+            mockGet.mockResolvedValue({
+                data: {
+                    taskId: 'task-2',
+                    state: 'running',
+                    stage: 'persisting',
+                    pollAfterMs: 1,
+                    heartbeatAt: '2026-01-01T00:00:00.000Z',
+                    updatedAt: '2026-01-01T00:00:00.000Z'
+                }
+            });
+
+            await expect(api.registerVendorToken('openai', { oauth: true }, {
+                pollIntervalMs: 1,
+                idleTimeoutMs: 10,
+                absoluteTimeoutMs: 100
+            })).rejects.toThrow('Failed to register vendor token: Vendor token registration stalled after 10ms without progress');
+        });
+
+        it('surfaces task failure errors', async () => {
+            mockPost.mockResolvedValue({
+                status: 202,
+                data: {
+                    taskId: 'task-3',
+                    state: 'accepted',
+                    stage: 'accepted',
+                    pollAfterMs: 1,
+                    heartbeatAt: '2026-01-01T00:00:00.000Z',
+                    updatedAt: '2026-01-01T00:00:00.000Z'
+                }
+            });
+            mockGet.mockResolvedValue({
+                data: {
+                    taskId: 'task-3',
+                    state: 'failed',
+                    stage: 'failed',
+                    pollAfterMs: 1,
+                    heartbeatAt: '2026-01-01T00:00:00.100Z',
+                    updatedAt: '2026-01-01T00:00:00.100Z',
+                    error: 'database unavailable'
+                }
+            });
+
+            await expect(api.registerVendorToken('openai', { oauth: true }, {
+                pollIntervalMs: 1,
+                idleTimeoutMs: 50,
+                absoluteTimeoutMs: 500
+            })).rejects.toThrow('Failed to register vendor token: Vendor token registration failed: database unavailable');
         });
     });
 });

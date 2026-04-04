@@ -86,6 +86,10 @@ Auth flows:
 - `POST /v1/connect/github/webhook`
 - `DELETE /v1/connect/github`
 - `POST /v1/connect/:vendor/register` (`vendor` in `openai | anthropic | gemini`)
+  - Returns `202 Accepted` for long-running registration work with `{ taskId, state, stage, pollAfterMs, heartbeatAt, updatedAt }`
+  - Clients should poll task status until `state` becomes `succeeded` or `failed`
+- `GET /v1/tasks/:taskId`
+  - Returns current long-task status `{ taskId, state, stage, pollAfterMs, heartbeatAt, updatedAt, error? }`
 - `GET /v1/connect/:vendor/token`
 - `DELETE /v1/connect/:vendor`
 - `GET /v1/connect/tokens`

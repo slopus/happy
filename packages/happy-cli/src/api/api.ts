@@ -10,6 +10,29 @@ import chalk from 'chalk';
 import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
 
+type LongTaskState = 'accepted' | 'running' | 'succeeded' | 'failed';
+
+type LongTaskStatus = {
+  taskId: string;
+  state: LongTaskState;
+  stage: string;
+  pollAfterMs: number;
+  heartbeatAt: string;
+  updatedAt: string;
+  error?: string;
+};
+
+type RegisterVendorTokenOptions = {
+  onProgress?: (status: LongTaskStatus) => void;
+  pollIntervalMs?: number;
+  idleTimeoutMs?: number;
+  absoluteTimeoutMs?: number;
+};
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class ApiClient {
 
   static async create(credential: Credentials) {
@@ -289,7 +312,7 @@ export class ApiClient {
    * Register a vendor API token with the server
    * The token is sent as a JSON string - server handles encryption
    */
-  async registerVendorToken(vendor: 'openai' | 'anthropic' | 'gemini', apiKey: any): Promise<void> {
+  async registerVendorToken(vendor: 'openai' | 'anthropic' | 'gemini', apiKey: any, options: RegisterVendorTokenOptions = {}): Promise<void> {
     try {
       const response = await axios.post(
         `${configuration.serverUrl}/v1/connect/${vendor}/register`,
@@ -301,11 +324,14 @@ export class ApiClient {
             'Authorization': `Bearer ${this.credential.token}`,
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: 10000,
+          validateStatus: (status) => (status >= 200 && status < 300) || status === 202
         }
       );
 
-      if (response.status !== 200 && response.status !== 201) {
+      if (response.status === 202) {
+        await this.waitForLongTask(response.data as LongTaskStatus, options);
+      } else if (response.status !== 200 && response.status !== 201) {
         throw new Error(`Server returned status ${response.status}`);
       }
 
@@ -313,6 +339,71 @@ export class ApiClient {
     } catch (error) {
       logger.debug(`[API] [ERROR] Failed to register vendor token:`, error);
       throw new Error(`Failed to register vendor token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async waitForLongTask(initialStatus: LongTaskStatus, options: RegisterVendorTokenOptions): Promise<void> {
+    const pollIntervalMs = options.pollIntervalMs ?? 500;
+    const idleTimeoutMs = options.idleTimeoutMs ?? 15_000;
+    const absoluteTimeoutMs = options.absoluteTimeoutMs ?? 60_000;
+    const startedAt = Date.now();
+    let lastProgressAt = startedAt;
+    let lastStage = initialStatus.stage;
+    let lastHeartbeatMs = Date.parse(initialStatus.heartbeatAt);
+    let lastUpdatedMs = Date.parse(initialStatus.updatedAt);
+
+    options.onProgress?.(initialStatus);
+
+    while (true) {
+      const response = await axios.get<LongTaskStatus>(
+        `${configuration.serverUrl}/v1/tasks/${initialStatus.taskId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.credential.token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+
+      const status = response.data;
+      const heartbeatMs = Date.parse(status.heartbeatAt);
+      const updatedMs = Date.parse(status.updatedAt);
+      const progressed = (
+        status.stage !== lastStage ||
+        heartbeatMs > lastHeartbeatMs ||
+        updatedMs > lastUpdatedMs
+      );
+
+      if (progressed) {
+        lastProgressAt = Date.now();
+      }
+
+      if (status.stage !== lastStage) {
+        options.onProgress?.(status);
+      }
+
+      lastStage = status.stage;
+      lastHeartbeatMs = heartbeatMs;
+      lastUpdatedMs = updatedMs;
+
+      if (status.state === 'succeeded') {
+        return;
+      }
+
+      if (status.state === 'failed') {
+        throw new Error(`Vendor token registration failed: ${status.error ?? 'Unknown task failure'}`);
+      }
+
+      const now = Date.now();
+      if (now - lastProgressAt > idleTimeoutMs) {
+        throw new Error(`Vendor token registration stalled after ${idleTimeoutMs}ms without progress`);
+      }
+      if (now - startedAt > absoluteTimeoutMs) {
+        throw new Error(`Vendor token registration exceeded ${absoluteTimeoutMs}ms overall timeout`);
+      }
+
+      await sleep(status.pollAfterMs || pollIntervalMs);
     }
   }
 

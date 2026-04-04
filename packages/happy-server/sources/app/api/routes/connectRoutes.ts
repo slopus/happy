@@ -8,6 +8,53 @@ import { githubConnect } from "@/app/github/githubConnect";
 import { githubDisconnect } from "@/app/github/githubDisconnect";
 import { Context } from "@/context";
 import { db } from "@/storage/db";
+import { createLongTask, getLongTask, updateLongTask, withLongTaskHeartbeat } from "../longTaskStore";
+
+const connectRegisterTaskResponseSchema = z.object({
+    taskId: z.string().uuid(),
+    state: z.enum(["accepted", "running", "succeeded", "failed"]),
+    stage: z.string(),
+    pollAfterMs: z.number().int().positive(),
+    heartbeatAt: z.string(),
+    updatedAt: z.string(),
+    error: z.string().optional()
+});
+
+async function processVendorRegisterTask(taskId: string, userId: string, vendor: "openai" | "anthropic" | "gemini", token: string) {
+    try {
+        updateLongTask(taskId, userId, {
+            state: "running",
+            stage: "encrypting"
+        });
+
+        const encrypted = encryptString(["user", userId, "vendors", vendor, "token"], token);
+
+        updateLongTask(taskId, userId, {
+            state: "running",
+            stage: "persisting"
+        });
+
+        await withLongTaskHeartbeat(taskId, userId, async () => {
+            await db.serviceAccountToken.upsert({
+                where: { accountId_vendor: { accountId: userId, vendor } },
+                update: { updatedAt: new Date(), token: encrypted },
+                create: { accountId: userId, vendor, token: encrypted }
+            });
+        }, 1000);
+
+        updateLongTask(taskId, userId, {
+            state: "succeeded",
+            stage: "succeeded",
+            error: undefined
+        });
+    } catch (error) {
+        updateLongTask(taskId, userId, {
+            state: "failed",
+            stage: "failed",
+            error: error instanceof Error ? error.message : "Unknown error"
+        });
+    }
+}
 
 export function connectRoutes(app: Fastify) {
 
@@ -253,17 +300,60 @@ export function connectRoutes(app: Fastify) {
             }),
             params: z.object({
                 vendor: z.enum(['openai', 'anthropic', 'gemini'])
-            })
+            }),
+            response: {
+                202: connectRegisterTaskResponseSchema
+            }
         }
     }, async (request, reply) => {
         const userId = request.userId;
-        const encrypted = encryptString(['user', userId, 'vendors', request.params.vendor, 'token'], request.body.token);
-        await db.serviceAccountToken.upsert({
-            where: { accountId_vendor: { accountId: userId, vendor: request.params.vendor } },
-            update: { updatedAt: new Date(), token: encrypted },
-            create: { accountId: userId, vendor: request.params.vendor, token: encrypted }
+        const task = createLongTask({
+            ownerId: userId,
+            kind: "connect-register",
+            stage: "accepted",
+            pollAfterMs: 500
         });
-        reply.send({ success: true });
+
+        void processVendorRegisterTask(task.id, userId, request.params.vendor, request.body.token);
+
+        return reply.code(202).send({
+            taskId: task.id,
+            state: task.state,
+            stage: task.stage,
+            pollAfterMs: task.pollAfterMs,
+            heartbeatAt: task.heartbeatAt,
+            updatedAt: task.updatedAt
+        });
+    });
+
+    app.get('/v1/tasks/:taskId', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                taskId: z.string().uuid()
+            }),
+            response: {
+                200: connectRegisterTaskResponseSchema,
+                404: z.object({
+                    error: z.string()
+                })
+            }
+        }
+    }, async (request, reply) => {
+        const task = getLongTask(request.params.taskId, request.userId);
+        if (!task) {
+            return reply.code(404).send({ error: 'Task not found' });
+        }
+
+        return reply.send({
+            taskId: task.id,
+            state: task.state,
+            stage: task.stage,
+            pollAfterMs: task.pollAfterMs,
+            heartbeatAt: task.heartbeatAt,
+            updatedAt: task.updatedAt,
+            error: task.error
+        });
     });
 
     app.get('/v1/connect/:vendor/token', {
