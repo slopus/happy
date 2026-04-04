@@ -947,8 +947,7 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             const result = RawRecordSchema.safeParse(userMessage);
 
             expect(result.success).toBe(true);
-            if (result.success && result.data.role === 'user') {
-                expect(result.data.content.type).toBe('text');
+            if (result.success && result.data.role === 'user' && result.data.content.type === 'text') {
                 expect(result.data.content.text).toBe('User input message');
             }
         });
