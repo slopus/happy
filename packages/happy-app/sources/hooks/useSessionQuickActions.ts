@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionKill } from '@/sync/ops';
+import { machineResumeSession, sessionKill, sessionResume } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -169,6 +169,18 @@ export function useSessionQuickActions(
         }
     });
 
+    // In-place resume: fork the active session with full history (fixes corrupted context)
+    const [resumingInPlace, performResumeInPlace] = useHappyAction(async () => {
+        const result = await sessionResume(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message, false);
+        }
+    });
+
+    const resumeInPlace = React.useCallback(() => {
+        performResumeInPlace();
+    }, [performResumeInPlace]);
+
     const [archivingSession, performArchive] = useHappyAction(async () => {
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
@@ -193,11 +205,14 @@ export function useSessionQuickActions(
         canArchive: sessionStatus.isConnected,
         canCopySessionMetadata: __DEV__ || devModeEnabled,
         canResume: resumeAvailability.canResume,
+        canResumeInPlace: sessionStatus.isConnected,
         canShowResume: resumeAvailability.canShowResume,
         copySessionMetadata,
         openDetails,
+        resumeInPlace,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
+        resumingInPlace,
         resumingSession,
     };
 }

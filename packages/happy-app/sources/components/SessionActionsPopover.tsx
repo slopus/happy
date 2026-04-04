@@ -127,9 +127,11 @@ export function SessionActionsPopover({
         archiveSession,
         canArchive,
         canCopySessionMetadata,
+        canResumeInPlace,
         canShowResume,
         copySessionMetadata,
         openDetails,
+        resumeInPlace,
         resumeSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
@@ -145,6 +147,15 @@ export function SessionActionsPopover({
                 onPress: openDetails,
             },
         ];
+
+        if (canResumeInPlace) {
+            items.push({
+                id: 'resume-in-place',
+                icon: 'refresh-circle-outline',
+                label: t('sessionInfo.resumeInPlace'),
+                onPress: resumeInPlace,
+            });
+        }
 
         if (canArchive) {
             items.push({
@@ -178,9 +189,11 @@ export function SessionActionsPopover({
         archiveSession,
         canArchive,
         canCopySessionMetadata,
+        canResumeInPlace,
         canShowResume,
         copySessionMetadata,
         openDetails,
+        resumeInPlace,
         resumeSession,
     ]);
 
