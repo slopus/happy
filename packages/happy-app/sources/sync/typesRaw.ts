@@ -431,14 +431,25 @@ const rawRecordSchema = z.preprocess(
         }),
         z.object({
             role: z.literal('user'),
-            content: z.object({
-                type: z.literal('text'),
-                text: z.string(),
-                images: z.array(z.object({
-                    base64: z.string(),
-                    mediaType: z.string(),
-                })).optional(),
-            }),
+            content: z.discriminatedUnion('type', [
+                z.object({
+                    type: z.literal('text'),
+                    text: z.string(),
+                    images: z.array(z.object({
+                        base64: z.string(),
+                        mediaType: z.string(),
+                    })).optional(),
+                    imageGroupId: z.string().optional(),
+                }),
+                z.object({
+                    type: z.literal('images'),
+                    groupId: z.string(),
+                    images: z.array(z.object({
+                        base64: z.string(),
+                        mediaType: z.string(),
+                    })),
+                }),
+            ]),
             meta: MessageMetaSchema.optional()
         }),
         z.object({
@@ -715,6 +726,10 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     }
     raw = parsed.data;
     if (raw.role === 'user') {
+        // Skip image-only messages (they are ephemeral, displayed via imageGroupId on text messages)
+        if (raw.content.type === 'images') {
+            return null;
+        }
         return {
             id,
             localId,
