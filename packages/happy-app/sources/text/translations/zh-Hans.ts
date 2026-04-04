@@ -326,6 +326,7 @@ export const zhHans: TranslationStructure = {
         viewMachineSubtitle: '查看设备详情和会话',
         resumeSession: 'Resume Session',
         resumeInPlace: '重启会话',
+        resumeInPlaceSubtitle: '保留完整对话历史重新开始',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',

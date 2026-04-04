@@ -325,6 +325,7 @@ export const es: TranslationStructure = {
         viewMachineSubtitle: 'Ver detalles de máquina y sesiones',
         resumeSession: 'Resume Session',
         resumeInPlace: 'Reiniciar sesión',
+        resumeInPlaceSubtitle: 'Reiniciar con el historial completo de conversación',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
