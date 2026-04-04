@@ -430,7 +430,8 @@ describe('Api server error handling', () => {
                     pollAfterMs: 1,
                     heartbeatAt: '2026-01-01T00:00:00.100Z',
                     updatedAt: '2026-01-01T00:00:00.100Z',
-                    error: 'database unavailable'
+                    error: 'Vendor token registration failed. Please retry.',
+                    errorCode: 'CONNECT_REGISTER_FAILED'
                 }
             });
 
@@ -438,7 +439,34 @@ describe('Api server error handling', () => {
                 pollIntervalMs: 1,
                 idleTimeoutMs: 50,
                 absoluteTimeoutMs: 500
-            })).rejects.toThrow('Failed to register vendor token: Vendor token registration failed: database unavailable');
+            })).rejects.toThrow('Failed to register vendor token: Vendor token registration failed. Please retry.');
+        });
+
+        it('explains when the long-task record disappears mid-poll', async () => {
+            mockPost.mockResolvedValue({
+                status: 202,
+                data: {
+                    taskId: 'task-4',
+                    state: 'accepted',
+                    stage: 'accepted',
+                    pollAfterMs: 1,
+                    heartbeatAt: '2026-01-01T00:00:00.000Z',
+                    updatedAt: '2026-01-01T00:00:00.000Z'
+                }
+            });
+            mockGet.mockRejectedValue({
+                response: {
+                    status: 404
+                }
+            });
+
+            await expect(api.registerVendorToken('openai', { oauth: true }, {
+                pollIntervalMs: 1,
+                idleTimeoutMs: 50,
+                absoluteTimeoutMs: 500
+            })).rejects.toThrow(
+                'Failed to register vendor token: Vendor token registration task was lost before completion (the server may have restarted or evicted the task). Please retry registration.'
+            );
         });
     });
 });

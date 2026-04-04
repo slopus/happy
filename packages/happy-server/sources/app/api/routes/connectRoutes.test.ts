@@ -253,7 +253,35 @@ describe("connectRoutes", () => {
 
         const failed = await waitForTaskState(invoke, accepted.payload.taskId, "failed");
         expect(failed.stage).toBe("failed");
-        expect(failed.error).toBe("database unavailable");
+        expect(failed.error).toBe("Vendor token registration failed. Please retry.");
+        expect(failed.errorCode).toBe("CONNECT_REGISTER_FAILED");
+    });
+
+    it("returns 202 before synchronous registration work starts", async () => {
+        let releaseUpsert: (() => void) | undefined;
+        dbMock.serviceAccountToken.upsert.mockImplementation(() => new Promise((resolve) => {
+            releaseUpsert = () => resolve({ ok: true });
+        }));
+        const { invoke } = createFakeApp();
+
+        const accepted = await invoke("POST", "/v1/connect/:vendor/register", {
+            userId: "user-1",
+            params: { vendor: "openai" },
+            body: { token: "{\"oauth\":true}" }
+        });
+
+        expect(accepted.statusCode).toBe(202);
+        expect(encryptStringMock).not.toHaveBeenCalled();
+        expect(dbMock.serviceAccountToken.upsert).not.toHaveBeenCalled();
+
+        const deadline = Date.now() + 2000;
+        while (!releaseUpsert && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(releaseUpsert).toBeTypeOf("function");
+        releaseUpsert?.();
+        const succeeded = await waitForTaskState(invoke, accepted.payload.taskId, "succeeded");
+        expect(succeeded.state).toBe("succeeded");
     });
 
     it("keeps token lookup behavior intact", async () => {

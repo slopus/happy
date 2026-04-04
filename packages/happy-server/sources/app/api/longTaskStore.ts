@@ -13,6 +13,7 @@ export interface LongTaskRecord<Result = undefined> {
     heartbeatAt: string;
     pollAfterMs: number;
     error?: string;
+    errorCode?: string;
     result?: Result;
 }
 
@@ -28,13 +29,14 @@ type UpdateLongTaskInput<Result = undefined> = {
     stage?: string;
     pollAfterMs?: number;
     error?: string;
+    errorCode?: string;
     result?: Result;
     heartbeat?: boolean;
 };
 
 const DEFAULT_POLL_AFTER_MS = 500;
 const TERMINAL_TTL_MS = 10 * 60 * 1000;
-const tasks = new Map<string, LongTaskRecord>();
+const tasks = new Map<string, LongTaskRecord<any>>();
 
 function nowIso(): string {
     return new Date().toISOString();
@@ -93,6 +95,9 @@ export function updateLongTask<Result = undefined>(taskId: string, ownerId: stri
     }
     if (Object.prototype.hasOwnProperty.call(update, "error")) {
         task.error = update.error;
+    }
+    if (Object.prototype.hasOwnProperty.call(update, "errorCode")) {
+        task.errorCode = update.errorCode;
     }
     if (Object.prototype.hasOwnProperty.call(update, "result")) {
         task.result = update.result;

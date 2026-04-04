@@ -20,6 +20,7 @@ type LongTaskStatus = {
   heartbeatAt: string;
   updatedAt: string;
   error?: string;
+  errorCode?: string;
 };
 
 type RegisterVendorTokenOptions = {
@@ -355,16 +356,26 @@ export class ApiClient {
     options.onProgress?.(initialStatus);
 
     while (true) {
-      const response = await axios.get<LongTaskStatus>(
-        `${configuration.serverUrl}/v1/tasks/${initialStatus.taskId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.credential.token}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000
+      let response: { data: LongTaskStatus };
+      try {
+        response = await axios.get<LongTaskStatus>(
+          `${configuration.serverUrl}/v1/tasks/${initialStatus.taskId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${this.credential.token}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 10000
+          }
+        );
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          throw new Error(
+            'Vendor token registration task was lost before completion (the server may have restarted or evicted the task). Please retry registration.'
+          );
         }
-      );
+        throw error;
+      }
 
       const status = response.data;
       const heartbeatMs = Date.parse(status.heartbeatAt);
@@ -392,7 +403,7 @@ export class ApiClient {
       }
 
       if (status.state === 'failed') {
-        throw new Error(`Vendor token registration failed: ${status.error ?? 'Unknown task failure'}`);
+        throw new Error(status.error ?? 'Vendor token registration failed');
       }
 
       const now = Date.now();

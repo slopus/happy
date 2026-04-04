@@ -17,8 +17,14 @@ const connectRegisterTaskResponseSchema = z.object({
     pollAfterMs: z.number().int().positive(),
     heartbeatAt: z.string(),
     updatedAt: z.string(),
-    error: z.string().optional()
+    error: z.string().optional(),
+    errorCode: z.string().optional()
 });
+
+const CONNECT_REGISTER_FAILURE = {
+    error: "Vendor token registration failed. Please retry.",
+    errorCode: "CONNECT_REGISTER_FAILED"
+} as const;
 
 async function processVendorRegisterTask(taskId: string, userId: string, vendor: "openai" | "anthropic" | "gemini", token: string) {
     try {
@@ -45,13 +51,19 @@ async function processVendorRegisterTask(taskId: string, userId: string, vendor:
         updateLongTask(taskId, userId, {
             state: "succeeded",
             stage: "succeeded",
-            error: undefined
+            error: undefined,
+            errorCode: undefined
         });
     } catch (error) {
+        log(
+            { module: "connect-register", level: "error" },
+            `Failed to register ${vendor} token for user ${userId}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`
+        );
         updateLongTask(taskId, userId, {
             state: "failed",
             stage: "failed",
-            error: error instanceof Error ? error.message : "Unknown error"
+            error: CONNECT_REGISTER_FAILURE.error,
+            errorCode: CONNECT_REGISTER_FAILURE.errorCode
         });
     }
 }
@@ -314,7 +326,9 @@ export function connectRoutes(app: Fastify) {
             pollAfterMs: 500
         });
 
-        void processVendorRegisterTask(task.id, userId, request.params.vendor, request.body.token);
+        setImmediate(() => {
+            void processVendorRegisterTask(task.id, userId, request.params.vendor, request.body.token);
+        });
 
         return reply.code(202).send({
             taskId: task.id,
@@ -322,7 +336,8 @@ export function connectRoutes(app: Fastify) {
             stage: task.stage,
             pollAfterMs: task.pollAfterMs,
             heartbeatAt: task.heartbeatAt,
-            updatedAt: task.updatedAt
+            updatedAt: task.updatedAt,
+            errorCode: task.errorCode
         });
     });
 
@@ -352,7 +367,8 @@ export function connectRoutes(app: Fastify) {
             pollAfterMs: task.pollAfterMs,
             heartbeatAt: task.heartbeatAt,
             updatedAt: task.updatedAt,
-            error: task.error
+            error: task.error,
+            errorCode: task.errorCode
         });
     });
 
