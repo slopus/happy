@@ -133,6 +133,7 @@ function SessionInfoContent({ session }: { session: Session }) {
         canResumeInPlace,
         canShowResume,
         resumeInPlace,
+        resumingInPlace,
         resumeSession,
         resumeSessionSubtitle,
     } = useSessionQuickActions(session);
@@ -363,6 +364,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             subtitle={t('sessionInfo.resumeInPlaceSubtitle')}
                             icon={<Ionicons name="refresh-circle-outline" size={29} color="#007AFF" />}
                             onPress={resumeInPlace}
+                            loading={resumingInPlace}
                         />
                     )}
                     {sessionStatus.isConnected && (
