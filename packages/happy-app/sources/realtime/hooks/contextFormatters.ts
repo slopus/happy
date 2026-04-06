@@ -1,6 +1,5 @@
 import { Session } from "@/sync/storageTypes";
 import { Message } from "@/sync/typesMessage";
-import { trimIdent } from "@/utils/trimIdent";
 import { VOICE_CONFIG } from "../voiceConfig";
 
 interface SessionMetadata {
@@ -21,40 +20,69 @@ export function formatPermissionRequest(
     toolName: string,
     toolArgs: any
 ): string {
-    return trimIdent(`
-        Claude Code is requesting permission to use ${toolName} (session ${sessionId}):
-        <request_id>${requestId}</request_id>
-        <tool_name>${toolName}</tool_name>
-        <tool_args>${JSON.stringify(toolArgs)}</tool_args>
-    `);
+    return `[CLAUDE] Permission request (request_id: ${requestId}): Claude wants to use ${toolName} with arguments: ${JSON.stringify(toolArgs)}`;
 }
 
 //
 // Message formatting
 //
 
-export function formatMessage(message: Message): string | null {
-
-    // Lines
-    let lines: string[] = [];
-    if (message.kind === 'agent-text') {
-        lines.push(`Claude Code: \n<text>${message.text}</text>`);
-    } else if (message.kind === 'user-text') {
-        lines.push(`User sent message: \n<text>${message.text}</text>`);
-    } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
-        const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
-        if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
-            if (message.tool.description) {
-                lines.push(`Claude Code is using ${message.tool.name}${toolDescription}`);
+function humanizeToolCall(name: string, input: any, description: string | null): string {
+    const d = description;
+    switch (name) {
+        case 'WebSearch':
+            return `Web search tool: ${input?.query ?? d ?? 'searching'}`;
+        case 'WebFetch':
+            try {
+                const domain = new URL(input?.url ?? '').hostname;
+                return `Web fetch tool: ${domain}`;
+            } catch {
+                return `Web fetch tool: ${d ?? 'fetching a page'}`;
             }
-        } else {
-            lines.push(`Claude Code is using ${message.tool.name}${toolDescription} (tool_use_id: ${message.id}) with arguments: <arguments>${JSON.stringify(message.tool.input)}</arguments>`);
-        }
+        case 'Bash':
+            return `Bash tool: ${d ?? input?.command ?? 'running a command'}`;
+        case 'Read':
+            const file = input?.file_path?.split('/').pop() ?? d ?? 'a file';
+            return `Read tool: ${file}`;
+        case 'Write':
+            const writeFile = input?.file_path?.split('/').pop() ?? d ?? 'a file';
+            return `Write tool: ${writeFile}`;
+        case 'Edit':
+            const editFile = input?.file_path?.split('/').pop() ?? d ?? 'a file';
+            return `Edit tool: ${editFile}`;
+        case 'Grep':
+            return `Search tool: ${input?.pattern ?? d ?? 'searching code'}`;
+        case 'Glob':
+            return `File search tool: ${input?.pattern ?? d ?? 'finding files'}`;
+        case 'Agent':
+            return `Agent tool: ${d ?? input?.description ?? 'running a sub-agent'}`;
+        case 'Skill':
+            return `Skill tool: ${input?.skill ?? 'loading a skill'}`;
+        case 'ToolSearch':
+            return `Tool search: ${input?.query ?? 'looking up tools'}`;
+        default:
+            return `${name} tool`;
     }
-    if (lines.length === 0) {
+}
+
+const spokenToolCalls = new Set<string>();
+
+export function formatMessage(message: Message): string | null {
+    if (message.kind === 'agent-text' && message.isThinking) {
         return null;
+    } else if (message.kind === 'agent-text') {
+        return `[CLAUDE] Response: ${message.text}`;
+    } else if (message.kind === 'user-text') {
+        return `[USER] ${message.text}`;
+    } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
+        // Only speak each tool call once (first time seen, whether running or completed)
+        if (spokenToolCalls.has(message.id)) {
+            return null;
+        }
+        spokenToolCalls.add(message.id);
+        return `[CLAUDE] ${humanizeToolCall(message.tool.name, message.tool.input, message.tool.description)}`;
     }
-    return lines.join('\n\n');
+    return null;
 }
 
 export function formatNewSingleMessage(sessionId: string, message: Message): string | null {
@@ -62,7 +90,7 @@ export function formatNewSingleMessage(sessionId: string, message: Message): str
     if (!formatted) {
         return null;
     }
-    return 'New message in session: ' + sessionId + '\n\n' + formatted;
+    return formatted;
 }
 
 export function formatNewMessages(sessionId: string, messages: Message[]): string | null {
@@ -70,7 +98,7 @@ export function formatNewMessages(sessionId: string, messages: Message[]): strin
     if (formatted.length === 0) {
         return null;
     }
-    return 'New messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
+    return formatted.join('\n');
 }
 
 export function formatHistory(sessionId: string, messages: Message[]): string {
@@ -111,17 +139,69 @@ export function formatSessionFull(session: Session, messages: Message[]): string
 }
 
 export function formatSessionOffline(sessionId: string, metadata?: SessionMetadata): string {
-    return `Session went offline: ${sessionId}`;
+    return `[CLAUDE] Status: session ${sessionId} went offline`;
 }
 
 export function formatSessionOnline(sessionId: string, metadata?: SessionMetadata): string {
-    return `Session came online: ${sessionId}`;
+    return `[CLAUDE] Status: session ${sessionId} came online`;
 }
 
 export function formatSessionFocus(sessionId: string, metadata?: SessionMetadata): string {
-    return `Session became focused: ${sessionId}`;
+    return `[CLAUDE] Status: session ${sessionId} is now focused`;
 }
 
 export function formatReadyEvent(sessionId: string): string {
-    return `Claude Code done working in session: ${sessionId}. The previous message(s) are the summary of the work done. Report this to the human immediately.`;
+    return `[CLAUDE] Claude Code has finished working.`;
+}
+
+//
+// Jargon glossary
+//
+
+const JARGON_PATTERNS = [
+    /[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*/g,          // camelCase / PascalCase
+    /[a-z]+(?:_[a-z]+)+/g,                             // snake_case
+    /[A-Z]+(?:_[A-Z]+)+/g,                             // SCREAMING_CASE
+    /(?:\.\/|\/)?(?:[\w.-]+\/)+[\w.-]+\.\w+/g,         // file paths
+    /[a-z]+(?:-[a-z]+)+/g,                             // kebab-case (package names)
+    /\b[a-zA-Z]\w+\.\w+(?:\.\w+)*/g,                  // dot notation (e.g. sync.sendMessage)
+];
+
+export function extractTerms(text: string): string[] {
+    const terms: string[] = [];
+    for (const pattern of JARGON_PATTERNS) {
+        pattern.lastIndex = 0;
+        for (const match of text.matchAll(pattern)) {
+            const term = match[0];
+            if (term.length >= 3 && term.length <= 80) {
+                terms.push(term);
+            }
+        }
+    }
+    return terms;
+}
+
+const GLOSSARY_MAX_LENGTH = 900; // Stay under 1024 token limit
+
+export function formatGlossary(terms: Set<string>): string | null {
+    if (terms.size === 0) return null;
+    const prefix = 'Glossary of technical terms for transcription accuracy:\n';
+    const allTerms = [...terms];
+    let result = prefix;
+    for (const term of allTerms) {
+        const next = result.length === prefix.length ? term : ', ' + term;
+        if (result.length + next.length > GLOSSARY_MAX_LENGTH) break;
+        result += next;
+    }
+    return result;
+}
+
+/**
+ * Strip [CLAUDE] prefixes from formatted messages for TTS playback.
+ */
+export function stripVoicePrefix(text: string): string {
+    return text
+        .replace(/^\[CLAUDE\]\s*(Response:|Status:|Tool use:|Tool result:|Ready:)\s*/gm, '')
+        .replace(/^\[CLAUDE\]\s*/gm, '')
+        .trim();
 }
