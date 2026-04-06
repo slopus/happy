@@ -45,23 +45,32 @@ function readEnvValue(value: string | undefined): string | null {
 }
 
 export function loadConfig(input: { env: NodeJS.ProcessEnv; cwd: string }): VideoDirectorConfig {
+  const seedanceBaseUrl = readEnvValue(input.env.SEEDANCE_BASE_URL) ?? defaults.seedance.baseUrl
+  const seedanceTasksPath = readEnvValue(input.env.SEEDANCE_TASKS_PATH) ?? defaults.seedance.tasksPath
+  const seedanceModel = readEnvValue(input.env.SEEDANCE_MODEL) ?? defaults.seedance.model
+  const promptModelBaseUrl = readEnvValue(input.env.PROMPT_MODEL_BASE_URL) ?? defaults.promptModel.baseUrl
+  const promptModelModel = readEnvValue(input.env.PROMPT_MODEL_ID) ?? defaults.promptModel.model
+  const ffmpegPath = readEnvValue(input.env.FFMPEG_PATH) ?? defaults.tools.ffmpegPath
+  const ffprobePath = readEnvValue(input.env.FFPROBE_PATH) ?? defaults.tools.ffprobePath
+  const sayPath = readEnvValue(input.env.SAY_PATH) ?? defaults.tools.sayPath
+
   return {
     outputRoot: `${input.cwd}/projects/video-runs`,
     seedance: {
       apiKey: readEnvValue(input.env.SEEDANCE_API_KEY),
-      baseUrl: defaults.seedance.baseUrl,
-      tasksPath: defaults.seedance.tasksPath,
-      model: defaults.seedance.model,
+      baseUrl: seedanceBaseUrl,
+      tasksPath: seedanceTasksPath,
+      model: seedanceModel,
     },
     promptModel: {
       apiKey: readEnvValue(input.env.PROMPT_MODEL_API_KEY),
-      baseUrl: defaults.promptModel.baseUrl,
-      model: defaults.promptModel.model,
+      baseUrl: promptModelBaseUrl,
+      model: promptModelModel,
     },
     tools: {
-      ffmpegPath: defaults.tools.ffmpegPath,
-      ffprobePath: defaults.tools.ffprobePath,
-      sayPath: defaults.tools.sayPath,
+      ffmpegPath,
+      ffprobePath,
+      sayPath,
     },
   }
 }
