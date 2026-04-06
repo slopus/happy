@@ -31,7 +31,7 @@ import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
-import { systemPrompt } from './prompt/systemPrompt';
+import { getSystemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
@@ -438,7 +438,7 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
-    async sendMessage(sessionId: string, text: string, displayText?: string) {
+    async sendMessage(sessionId: string, text: string, displayText?: string, systemPromptOverride?: string) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -490,7 +490,7 @@ class Sync {
                 permissionMode,
                 model,
                 fallbackModel,
-                appendSystemPrompt: systemPrompt,
+                appendSystemPrompt: systemPromptOverride ?? getSystemPrompt(),
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
@@ -1367,9 +1367,10 @@ class Sync {
             parsedSettings = { ...settingsDefaults };
         }
 
-        // Log
+        // Log (redact sensitive fields)
+        const { inferenceOpenAIKey: _redacted, ...safeSettings } = parsedSettings;
         console.log('settings', JSON.stringify({
-            settings: parsedSettings,
+            settings: safeSettings,
             version: data.settingsVersion
         }));
 
@@ -1854,10 +1855,13 @@ class Sync {
 
                     // Check for new permission requests and notify voice assistant
                     if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
-                        const requestIds = Object.keys(agentState.requests);
-                        const firstRequest = agentState.requests[requestIds[0]];
-                        const toolName = firstRequest?.tool;
-                        voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
+                        const previousRequests = session.agentState?.requests ?? {};
+                        for (const requestId of Object.keys(agentState.requests)) {
+                            if (!previousRequests[requestId]) {
+                                const request = agentState.requests[requestId];
+                                voiceHooks.onPermissionRequested(updateData.body.id, requestId, request?.tool, request?.arguments);
+                            }
+                        }
                     }
 
                     // Re-fetch messages when control returns to mobile (local -> remote mode switch)
