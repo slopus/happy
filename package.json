@@ -3,6 +3,7 @@
     "private": true,
     "scripts": {
         "cli": "yarn workspace huppy-ai cli",
+        "video-director": "yarn workspace huppy-video-director dev",
         "release": "node ./scripts/release.cjs",
         "web": "yarn workspace huppy-app web",
         "app-logs": "yarn workspace huppy-app-logs start",
@@ -30,6 +31,7 @@
             "packages/huppy-cli",
             "packages/huppy-server",
             "packages/huppy-wire",
+            "packages/huppy-video-director",
             "packages/huppy-app-logs"
         ],
         "nohoist": [

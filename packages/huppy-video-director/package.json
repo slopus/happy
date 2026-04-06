@@ -1,0 +1,36 @@
+{
+  "name": "huppy-video-director",
+  "version": "0.0.0",
+  "description": "Video director workflow scaffolding for Huppy",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "huppy-video-director": "./bin/huppy-video-director.mjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc --noEmit && pkgroll",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "yarn build && yarn test"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "gray-matter": "^4.0.3",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "pkgroll": "^2.14.2",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "packageManager": "yarn@1.22.22"
+}
