@@ -16,7 +16,7 @@ let vadSilenceTimer: ReturnType<typeof setTimeout> | null = null;
 let agentIsSpeaking = false;
 
 // Global voice session implementation
-class RealtimeVoiceSessionImpl implements VoiceSession {
+class ElevenLabsVoiceSessionImpl implements VoiceSession {
     
     async startSession(config: VoiceSessionConfig): Promise<void> {
         if (!conversationInstance) {
@@ -84,6 +84,9 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
         }
     }
 
+    startTalking(): void { /* no-op for ElevenLabs */ }
+    stopTalking(): void { /* no-op for ElevenLabs */ }
+
     sendContextualUpdate(update: string): void {
         if (!conversationInstance) {
             console.warn('Realtime voice session not initialized');
@@ -98,7 +101,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
     }
 }
 
-export const RealtimeVoiceSession: React.FC = () => {
+export const ElevenLabsVoiceSession: React.FC = () => {
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: (data) => {
@@ -176,7 +179,7 @@ export const RealtimeVoiceSession: React.FC = () => {
         // Register the voice session once
         if (!hasRegistered.current) {
             try {
-                registerVoiceSession(new RealtimeVoiceSessionImpl());
+                registerVoiceSession(new ElevenLabsVoiceSessionImpl());
                 hasRegistered.current = true;
             } catch (error) {
                 console.error('Failed to register voice session:', error);
