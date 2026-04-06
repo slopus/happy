@@ -550,10 +550,22 @@ export const zhHans: TranslationStructure = {
 
     settingsVoice: {
         // Voice settings screen
+        backendTitle: 'Voice Provider',
+        backendDescription: 'Choose which voice service to use for the voice assistant.',
+        backendElevenLabsSubtitle: 'Default provider, no API key needed',
+        backendOpenAISubtitle: 'Requires your own OpenAI API key',
+        apiKeyTitle: 'OpenAI API Key',
+        apiKeyDescription: 'Required for voice assistant. Enter your OpenAI API key to enable voice features.',
+        apiKeyPlaceholder: 'sk-...',
         languageTitle: '语言',
         languageDescription: '选择您希望语音助手交互使用的语言。此设置将在您的所有设备间同步。',
         preferredLanguage: '首选语言',
         preferredLanguageSubtitle: '语音助手响应使用的语言',
+        pushToTalkTitle: 'Push to Talk',
+        pushToTalkDescription: 'Hold the mic button to talk instead of always-on listening. Reduces false triggers from ambient noise.',
+        tapToEnd: 'Tap to end',
+        pttHoldToTalk: 'Hold to talk',
+        pttListening: 'Listening...',
         language: {
             searchPlaceholder: '搜索语言...',
             title: '语言',
