@@ -1,13 +1,14 @@
 import * as React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
+import { useRealtimeStatus, useRealtimeMode, useSetting } from '@/sync/storage';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
-import { stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { stopRealtimeSession, startTalking, stopTalking, isPushToTalkEnabled } from '@/realtime/RealtimeSession';
 import { useUnistyles } from 'react-native-unistyles';
 import { VoiceBars } from './VoiceBars';
+import { t } from '@/text';
 
 interface VoiceAssistantStatusBarProps {
     variant?: 'full' | 'sidebar';
@@ -18,12 +19,17 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
     const { theme } = useUnistyles();
     const realtimeStatus = useRealtimeStatus();
     const realtimeMode = useRealtimeMode();
+    const voiceBackend = useSetting('voiceBackend');
+    const voicePushToTalk = useSetting('voicePushToTalk');
+    const [isTalking, setIsTalking] = React.useState(false);
+
+    const pushToTalk = voiceBackend === 'openai' && voicePushToTalk;
 
     // Don't render if disconnected
     if (realtimeStatus === 'disconnected') {
         return null;
     }
-    
+
     // Check if voice assistant or user is speaking (show voice bars for either)
     const isVoiceSpeaking = realtimeMode === 'agent-speaking' || realtimeMode === 'user-speaking';
 
@@ -81,7 +87,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
         return (
             <View style={{
                 backgroundColor: statusInfo.backgroundColor,
-                height: 32,
+                height: pushToTalk && realtimeStatus === 'connected' ? 88 : 32,
                 width: '100%',
                 justifyContent: 'center',
                 alignItems: 'center',
@@ -118,21 +124,44 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                                 {statusInfo.text}
                             </Text>
                         </View>
-                        
+
                         <View style={styles.rightSection}>
                             {isVoiceSpeaking && (
-                                <VoiceBars 
-                                    isActive={isVoiceSpeaking} 
+                                <VoiceBars
+                                    isActive={isVoiceSpeaking}
                                     color={statusInfo.textColor}
                                     size="small"
                                 />
                             )}
                             <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: isVoiceSpeaking ? 8 : 0 }]}>
-                                Tap to end
+                                {t('settingsVoice.tapToEnd')}
                             </Text>
                         </View>
                     </View>
                 </Pressable>
+                {pushToTalk && realtimeStatus === 'connected' && (
+                    <Pressable
+                        onPressIn={() => { setIsTalking(true); startTalking(); }}
+                        onPressOut={() => { setIsTalking(false); stopTalking(); }}
+                        style={[
+                            styles.pttButton,
+                            { backgroundColor: isTalking ? theme.colors.status.connected : '#cc3333' },
+                        ]}
+                        hitSlop={5}
+                    >
+                        <Ionicons
+                            name={isTalking ? 'mic' : 'mic-outline'}
+                            size={16}
+                            color='#fff'
+                        />
+                        <Text style={[
+                            styles.pttText,
+                            { color: '#fff' },
+                        ]}>
+                            {isTalking ? t('settingsVoice.pttListening') : t('settingsVoice.pttHoldToTalk')}
+                        </Text>
+                    </Pressable>
+                )}
             </View>
         );
     }
@@ -176,15 +205,15 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                             {statusInfo.text}
                         </Text>
                     </View>
-                    
+
                     {isVoiceSpeaking && (
-                        <VoiceBars 
-                            isActive={isVoiceSpeaking} 
+                        <VoiceBars
+                            isActive={isVoiceSpeaking}
                             color={statusInfo.textColor}
                             size="small"
                         />
                     )}
-                    
+
                     <Ionicons
                         name="close"
                         size={14}
@@ -255,6 +284,21 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '400',
         opacity: 0.8,
+        ...Typography.default(),
+    },
+    pttButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 56,
+        width: '100%',
+        borderRadius: 6,
+        marginTop: 2,
+        gap: 6,
+    },
+    pttText: {
+        fontSize: 12,
+        fontWeight: '600',
         ...Typography.default(),
     },
 });
