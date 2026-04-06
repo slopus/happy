@@ -922,6 +922,11 @@ export const knownTools = {
     'ToolSearch': {
         icon: ICON_SEARCH,
         hidden: true,
+    },
+    // Skill loading - completely hidden, content handled by the tool call announcement in TTS
+    'Skill': {
+        icon: ICON_SEARCH,
+        hidden: true,
     }
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
