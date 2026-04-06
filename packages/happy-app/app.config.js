@@ -87,6 +87,7 @@ export default {
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
+            require("./plugins/withForegroundService.js"),
             [
                 "expo-router",
                 {
