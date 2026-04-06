@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
+import { constants as osConstants } from "node:os";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
-import { mkdirSync, existsSync } from "node:fs";
+import { mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
@@ -11,6 +12,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { delay } from "@/utils/time";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -28,9 +30,43 @@ export class ExitCodeError extends Error {
 
 // Get Claude CLI path from project root
 export const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
+const SIGTERM_EXIT_CODE = 128 + osConstants.signals.SIGTERM;
 
 function quoteShellArg(value: string): string {
     return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function findNewestSessionSince(projectDir: string, workingDirectory: string, sinceMs: number): string | null {
+    try {
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const graceMs = 1000;
+
+        const files = readdirSync(projectDir)
+            .filter(file => file.endsWith('.jsonl'))
+            .map(file => {
+                const sessionId = file.replace('.jsonl', '');
+                if (!uuidPattern.test(sessionId)) {
+                    return null;
+                }
+
+                const mtime = statSync(join(projectDir, file)).mtime.getTime();
+                if (mtime + graceMs < sinceMs) {
+                    return null;
+                }
+
+                if (!claudeCheckSession(sessionId, workingDirectory)) {
+                    return null;
+                }
+
+                return { sessionId, mtime };
+            })
+            .filter((entry): entry is { sessionId: string; mtime: number } => entry !== null)
+            .sort((a, b) => b.mtime - a.mtime);
+
+        return files[0]?.sessionId ?? null;
+    } catch {
+        return null;
+    }
 }
 
 export async function claudeLocal(opts: {
@@ -134,6 +170,15 @@ export async function claudeLocal(opts: {
             }
         }
     }
+    let announcedSessionId: string | null = null;
+    const announceSessionId = (sessionId: string) => {
+        if (announcedSessionId === sessionId) {
+            return;
+        }
+        announcedSessionId = sessionId;
+        opts.onSessionFound(sessionId);
+    };
+
     // Session ID handling depends on whether we have a hook server
     // - With hookSettingsPath: Session ID comes from Claude via hook (normal mode)
     // - Without hookSettingsPath: We generate session ID ourselves (offline mode)
@@ -150,13 +195,13 @@ export async function claudeLocal(opts: {
         // Notify about session ID immediately (we know it upfront in offline mode)
         if (startFrom) {
             logger.debug(`[ClaudeLocal] Resuming session: ${startFrom}`);
-            opts.onSessionFound(startFrom);
+            announceSessionId(startFrom);
         } else if (explicitSessionId) {
             logger.debug(`[ClaudeLocal] Using explicit session ID: ${explicitSessionId}`);
-            opts.onSessionFound(explicitSessionId);
+            announceSessionId(explicitSessionId);
         } else {
             logger.debug(`[ClaudeLocal] Generated new session ID: ${newSessionId}`);
-            opts.onSessionFound(newSessionId!);
+            announceSessionId(newSessionId!);
         }
     } else {
         // Normal mode with hook server: Session ID comes from Claude via hook
@@ -246,6 +291,26 @@ export async function claudeLocal(opts: {
             logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
 
             (async () => {
+                const spawnStartedAt = Date.now();
+                let stopSessionDiscovery = false;
+                const sessionDiscoveryPromise = (async () => {
+                    const deadline = spawnStartedAt + 15000;
+                    while (!stopSessionDiscovery && !opts.abort.aborted && Date.now() < deadline) {
+                        if (announcedSessionId && claudeCheckSession(announcedSessionId, opts.path)) {
+                            return;
+                        }
+
+                        const discoveredSessionId = findNewestSessionSince(projectDir, opts.path, spawnStartedAt);
+                        if (discoveredSessionId && discoveredSessionId !== announcedSessionId) {
+                            logger.debug(`[ClaudeLocal] Corrected session ID from ${announcedSessionId ?? 'none'} to ${discoveredSessionId} using project directory fallback`);
+                            announceSessionId(discoveredSessionId);
+                            return;
+                        }
+
+                        await delay(500);
+                    }
+                })();
+
                 let cleanupSandbox: (() => Promise<void>) | null = null;
                 let spawnCommand: string | null = null;
                 let spawnArgs: string[] = [claudeCliPath, ...args];
@@ -364,9 +429,13 @@ export async function claudeLocal(opts: {
                     });
                 }
                 child.on('error', (error) => {
+                    stopSessionDiscovery = true;
                     // Ignore
                 });
                 child.on('exit', async (code, signal) => {
+                    stopSessionDiscovery = true;
+                    await sessionDiscoveryPromise;
+
                     if (cleanupSandbox) {
                         try {
                             await cleanupSandbox();
@@ -375,8 +444,9 @@ export async function claudeLocal(opts: {
                         }
                     }
 
-                    if (signal === 'SIGTERM' && opts.abort.aborted) {
-                        // Normal termination due to abort signal
+                    if (opts.abort.aborted && (signal === 'SIGTERM' || code === SIGTERM_EXIT_CODE)) {
+                        // Some environments report an abort-triggered SIGTERM as signal,
+                        // while others surface the equivalent exit code (128 + SIGTERM).
                         r();
                     } else if (signal) {
                         reject(new Error(`Process terminated with signal: ${signal}`));

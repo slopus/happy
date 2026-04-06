@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { constants as osConstants } from 'node:os';
 import { claudeLocal } from './claudeLocal';
+
+const SIGTERM_EXIT_CODE = 128 + osConstants.signals.SIGTERM;
 
 // Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
 const {
@@ -42,7 +45,9 @@ vi.mock('./utils/systemPrompt', () => ({
 
 vi.mock('node:fs', () => ({
     mkdirSync: vi.fn(),
-    existsSync: vi.fn(() => true)
+    existsSync: vi.fn(() => true),
+    readdirSync: vi.fn(() => []),
+    statSync: vi.fn(() => ({ mtime: new Date() }))
 }));
 
 vi.mock('./utils/claudeCheckSession', () => ({
@@ -314,5 +319,56 @@ describe('claudeLocal --continue handling', () => {
         );
         const spawnedArgs = mockSpawn.mock.calls[0][1];
         expect(spawnedArgs).not.toContain('--dangerously-skip-permissions');
+    });
+
+    it('should pass hook settings instead of generating a local session id', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            hookSettingsPath: '/tmp/hook-settings.json'
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+        expect(spawnArgs).toContain('--settings');
+        expect(spawnArgs).toContain('/tmp/hook-settings.json');
+        expect(spawnArgs).not.toContain('--session-id');
+        expect(onSessionFound).not.toHaveBeenCalled();
+    });
+
+    it('should treat abort with exit code 143 as a normal switch', async () => {
+        const controller = new AbortController();
+
+        mockSpawn.mockReturnValueOnce({
+            stdio: [null, null, null, null],
+            on: vi.fn((event, callback) => {
+                if (event === 'exit') {
+                    process.nextTick(() => {
+                        controller.abort();
+                        callback(SIGTERM_EXIT_CODE, null);
+                    });
+                }
+            }),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            kill: vi.fn(),
+            stdout: { on: vi.fn() },
+            stderr: { on: vi.fn() },
+            stdin: {
+                on: vi.fn(),
+                end: vi.fn()
+            }
+        });
+
+        await expect(claudeLocal({
+            abort: controller.signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            hookSettingsPath: '/tmp/hook-settings.json'
+        })).resolves.toBeNull();
     });
 });
