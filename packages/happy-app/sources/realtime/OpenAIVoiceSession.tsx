@@ -59,6 +59,9 @@ function humanizeOpenAIError(error: { type?: string; code?: string; message?: st
     if (code === 'invalid_api_key') {
         return 'Your OpenAI API key is invalid. Please check your settings.';
     }
+    if (code === 'session_expired') {
+        return 'Your voice session has expired. Please start a new session.';
+    }
     if (type === 'server_error') {
         return 'OpenAI voice service is unavailable. This is usually caused by insufficient credits — please check your balance at platform.openai.com.';
     }
@@ -223,6 +226,12 @@ async function speakText(text: string) {
     if (!response.ok) {
         const errorText = await response.text();
         console.error('[Voice] TTS request failed:', response.status, errorText);
+        let parsed: { error?: { code?: string; type?: string; message?: string } } | null = null;
+        try { parsed = JSON.parse(errorText); } catch {}
+        if (parsed?.error) {
+            const message = humanizeOpenAIError(parsed.error);
+            Modal.alert(t('common.error'), message);
+        }
         return;
     }
 
@@ -435,6 +444,8 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                             reject(new Error(message));
                         } else {
                             console.error('[Voice] API error:', JSON.stringify(data.error));
+                            const message = humanizeOpenAIError(data.error);
+                            Modal.alert(t('common.error'), message);
                         }
                         return;
                     }
