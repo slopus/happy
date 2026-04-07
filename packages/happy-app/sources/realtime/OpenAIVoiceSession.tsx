@@ -151,8 +151,8 @@ function playPcm16Bytes(bytes: Uint8Array) {
 // Permission pattern matching
 //
 
-const ALLOW_PATTERNS = /^(yes|yeah|yep|approve|approved|allow|go ahead|do it|ok|okay|sure|go for it)$/i;
-const DENY_PATTERNS = /^(no|nope|deny|reject|stop|cancel|don't|do not)$/i;
+const ALLOW_PATTERNS = /^(yes|yeah|yep|approve|approved|allow|go ahead|do it|ok|okay|sure|go for it)[.!,]?$/i;
+const DENY_PATTERNS = /^(no|nope|deny|reject|stop|cancel|don't|do not)[.!,]?$/i;
 
 function tryHandlePermission(transcript: string): boolean {
     const sessionId = getCurrentRealtimeSessionId();
