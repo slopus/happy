@@ -220,6 +220,8 @@ export const ca: TranslationStructure = {
         sessionNotFound: 'Sessió no trobada',
         voiceSessionFailed: 'Ha fallat l\'inici de la sessió de veu',
         voiceServiceUnavailable: 'El servei de veu no està disponible temporalment',
+        voiceLimitReachedTitle: 'Límit de veu assolit',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `Has utilitzat ${hours}+ hores de veu aquest mes. Aquest és el màxim permès. Pots configurar el teu propi agent ElevenLabs a la configuració de veu per utilitzar la teva pròpia quota.`,
         oauthInitializationFailed: 'Ha fallat la inicialització del flux OAuth',
         tokenStorageFailed: 'Ha fallat l\'emmagatzematge dels tokens d\'autenticació',
         oauthStateMismatch: 'Ha fallat la validació de seguretat. Si us plau, torna-ho a provar',
@@ -570,6 +572,10 @@ export const ca: TranslationStructure = {
         bypassTokenSubtitle: 'Omet el servidor de Happy, connecta directament a ElevenLabs',
         promptGuideTitle: 'Guia de prompt de l\'agent',
         promptGuideDescription: 'El teu agent d\'ElevenLabs necessita:\n\n• Eina: messageClaudeCode — paràmetre: message (string). Envia un missatge a la sessió de codi activa.\n• Eina: processPermissionRequest — paràmetre: decision ("allow" o "deny"). Aprova o denega un permís d\'eina pendent.\n• Variable dinàmica: {{initialConversationContext}} — rep l\'historial i el context de la sessió en iniciar.\n\nL\'agent actua com a pont de veu entre l\'usuari i els agents de codi. Ha de ser concís, respondre només quan se li parla i informar quan un agent de codi acaba la feina.',
+        usageTitle: 'Ús (últims 30 dies)',
+        usageFooter: 'Temps de veu utilitzat en els últims 30 dies. El nivell gratuït inclou 1 hora.',
+        usageLabel: 'Temps de veu',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} utilitzat de ${limit}`,
     },
 
     settingsAccount: {

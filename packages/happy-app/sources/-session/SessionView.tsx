@@ -21,7 +21,7 @@ import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { getCurrentVoiceConversationId, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
@@ -303,16 +303,29 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
             try {
                 const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
-                await startRealtimeSession(sessionId, initialPrompt);
-                tracking?.capture('voice_session_started', { sessionId });
+                const conversationId = await startRealtimeSession(sessionId, initialPrompt);
+                if (conversationId) {
+                    tracking?.capture('voice_session_started', {
+                        sessionId,
+                        conversationId,
+                    });
+                }
             } catch (error) {
                 console.error('Failed to start realtime session:', error);
                 Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
-                tracking?.capture('voice_session_error', { error: error instanceof Error ? error.message : 'Unknown error' });
+                tracking?.capture('voice_session_error', {
+                    sessionId,
+                    conversationId: getCurrentVoiceConversationId(),
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                });
             }
         } else if (realtimeStatus === 'connected') {
+            const conversationId = getCurrentVoiceConversationId();
             await stopRealtimeSession();
-            tracking?.capture('voice_session_stopped');
+            tracking?.capture('voice_session_stopped', {
+                sessionId,
+                conversationId,
+            });
 
             // Notify voice assistant about voice session stop
             voiceHooks.onVoiceStopped();

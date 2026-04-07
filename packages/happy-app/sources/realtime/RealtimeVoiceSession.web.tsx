@@ -18,11 +18,11 @@ let agentIsSpeaking = false;
 // Global voice session implementation
 class RealtimeVoiceSessionImpl implements VoiceSession {
 
-    async startSession(config: VoiceSessionConfig): Promise<void> {
+    async startSession(config: VoiceSessionConfig): Promise<string | null> {
         console.log('[RealtimeVoiceSessionImpl] conversationInstance:', conversationInstance);
         if (!conversationInstance) {
             console.warn('Realtime voice session not initialized - conversationInstance is null');
-            return;
+            throw new Error('Realtime voice session not initialized');
         }
 
         try {
@@ -34,19 +34,18 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             } catch (error) {
                 console.error('Failed to get microphone permission:', error);
                 storage.getState().setRealtimeStatus('error');
-                return;
+                throw error;
             }
 
             // Get user's preferred language for voice assistant
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
             
-            if (!config.token && !config.agentId) {
-                throw new Error('Neither token nor agentId provided');
+            if (!config.signedUrl && !config.agentId) {
+                throw new Error('No signedUrl or agentId provided');
             }
-            
+
             const sessionConfig: any = {
-                connectionType: 'webrtc',
                 dynamicVariables: {
                     sessionId: config.sessionId,
                     initialConversationContext: config.initialContext || ''
@@ -56,16 +55,20 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                         language: elevenLabsLanguage
                     }
                 },
-                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId }),
-                ...(config.userId ? { userId: config.userId } : {}),
+                // signedUrl → websocket (default), agentId → public (bypass mode)
+                signedUrl: config.signedUrl,
+                agentId: config.agentId,
+                userId: config.userId,
             };
             
             const conversationId = await conversationInstance.startSession(sessionConfig);
 
             console.log('Started conversation with ID:', conversationId);
+            return conversationId ?? conversationInstance.getId?.() ?? null;
         } catch (error) {
             console.error('Failed to start realtime session:', error);
             storage.getState().setRealtimeStatus('error');
+            throw error;
         }
     }
 

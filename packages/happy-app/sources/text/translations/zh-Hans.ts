@@ -221,6 +221,8 @@ export const zhHans: TranslationStructure = {
         sessionNotFound: '会话未找到',
         voiceSessionFailed: '启动语音会话失败',
         voiceServiceUnavailable: '语音服务暂时不可用',
+        voiceLimitReachedTitle: '已达语音上限',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `您本月已使用超过 ${hours} 小时的语音。这是允许的最大用量。您可以在语音设置中配置自己的 ElevenLabs 代理，以使用您自己的配额。`,
         oauthInitializationFailed: '初始化 OAuth 流程失败',
         tokenStorageFailed: '存储认证令牌失败',
         oauthStateMismatch: '安全验证失败。请重试',
@@ -571,6 +573,10 @@ export const zhHans: TranslationStructure = {
         bypassTokenSubtitle: '跳过 Happy 服务器，直接连接到 ElevenLabs',
         promptGuideTitle: '代理提示词指南',
         promptGuideDescription: '您的 ElevenLabs 代理需要：\n\n• 工具：messageClaudeCode — 参数：message (string)。向活跃的编码会话发送消息。\n• 工具：processPermissionRequest — 参数：decision ("allow" 或 "deny")。批准或拒绝待处理的工具权限。\n• 动态变量：{{initialConversationContext}} — 启动时接收会话历史和上下文。\n\n代理充当用户和编码代理之间的语音桥梁。它应该简洁，仅在被呼叫时回应，并在编码代理完成工作时进行报告。',
+        usageTitle: '使用量（过去 30 天）',
+        usageFooter: '过去 30 天使用的语音时间。免费方案包含 1 小时。',
+        usageLabel: '语音时间',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `已使用 ${used}，共 ${limit}`,
     },
 
     settingsAccount: {

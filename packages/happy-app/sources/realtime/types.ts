@@ -1,13 +1,13 @@
 export interface VoiceSessionConfig {
     sessionId: string;
     initialContext?: string;
-    token?: string;
+    signedUrl?: string;
     agentId?: string;
     userId?: string;
 }
 
 export interface VoiceSession {
-    startSession(config: VoiceSessionConfig): Promise<void>;
+    startSession(config: VoiceSessionConfig): Promise<string | null>;
     endSession(): Promise<void>;
     sendTextMessage(message: string): void;
     sendContextualUpdate(update: string): void;

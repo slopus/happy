@@ -1,5 +1,5 @@
 import type { VoiceSession } from './types';
-import { fetchVoiceToken } from '@/sync/apiVoice';
+import { fetchVoiceSignedUrl } from '@/sync/apiVoice';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
 import { TokenStorage } from '@/auth/tokenStorage';
@@ -11,11 +11,17 @@ import { config } from '@/config';
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
 let currentSessionId: string | null = null;
+let currentVoiceConversationId: string | null = null;
 
-export async function startRealtimeSession(sessionId: string, initialContext?: string) {
+/**
+ * Start a voice session. Returns the ElevenLabs conversation ID if started, null otherwise.
+ */
+export async function startRealtimeSession(sessionId: string, initialContext?: string): Promise<string | null> {
+    currentVoiceConversationId = null;
+
     if (!voiceSession) {
         console.warn('No voice session registered');
-        return;
+        return null;
     }
 
     // Show connecting state immediately so the user sees feedback
@@ -27,67 +33,76 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     if (!permissionResult.granted) {
         storage.getState().setRealtimeStatus('disconnected');
         showMicrophonePermissionDeniedAlert(permissionResult.canAskAgain);
-        return;
+        return null;
     }
 
     try {
-        // Bypass Happy server token when enabled
+        // Bypass Happy server token — only when user has their own custom agent
         const { voiceBypassToken, voiceCustomAgentId } = storage.getState().settings;
-        if (voiceBypassToken) {
-            const agentId = voiceCustomAgentId || config.elevenLabsAgentId;
-            if (!agentId) {
-                storage.getState().setRealtimeStatus('disconnected');
-                Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
-                return;
-            }
-            console.log('[Voice] Bypassing token, agent ID:', agentId);
+        if (voiceBypassToken && voiceCustomAgentId) {
+            console.log('[Voice] Bypassing token, custom agent ID:', voiceCustomAgentId);
             currentSessionId = sessionId;
-            voiceSessionStarted = true;
-            await voiceSession.startSession({
+            const conversationId = await voiceSession.startSession({
                 sessionId,
                 initialContext,
-                agentId,
+                agentId: voiceCustomAgentId,
             });
-            return;
+            currentVoiceConversationId = conversationId;
+            voiceSessionStarted = true;
+            return conversationId;
         }
 
         const credentials = await TokenStorage.getCredentials();
         if (!credentials) {
             storage.getState().setRealtimeStatus('disconnected');
             Modal.alert(t('common.error'), t('errors.authenticationFailed'));
-            return;
+            return null;
         }
 
-        const response = await fetchVoiceToken(credentials, sessionId);
-        console.log('[Voice] fetchVoiceToken response:', response);
+        const response = await fetchVoiceSignedUrl(credentials, sessionId);
+        console.log('[Voice] fetchVoiceSignedUrl response:', response);
 
         if (!response.allowed) {
             storage.getState().setRealtimeStatus('disconnected');
+
+            if (response.reason === 'voice_hard_limit_reached') {
+                const hrs = Math.floor(response.usedSeconds / 3600);
+                Modal.alert(
+                    t('errors.voiceLimitReachedTitle'),
+                    t('errors.voiceHardLimitReached', { hours: hrs }),
+                );
+                return null;
+            }
+
             console.log('[Voice] Not allowed, presenting paywall...');
             const result = await sync.presentPaywall();
             console.log('[Voice] Paywall result:', result);
             if (result.purchased) {
-                await startRealtimeSession(sessionId, initialContext);
+                return startRealtimeSession(sessionId, initialContext);
             }
-            return;
+            return null;
         }
 
         currentSessionId = sessionId;
-        voiceSessionStarted = true;
 
-        await voiceSession.startSession({
+        const startedConversationId = await voiceSession.startSession({
             sessionId,
             initialContext,
-            token: response.token,
+            signedUrl: response.signedUrl,
             agentId: response.agentId,
             userId: response.elevenUserId,
         });
+        currentVoiceConversationId = response.conversationId ?? startedConversationId;
+        voiceSessionStarted = true;
+        return currentVoiceConversationId;
     } catch (error) {
         console.error('Failed to start realtime session:', error);
         storage.getState().setRealtimeStatus('disconnected');
         currentSessionId = null;
+        currentVoiceConversationId = null;
         voiceSessionStarted = false;
         Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
+        return null;
     }
 }
 
@@ -102,6 +117,7 @@ export async function stopRealtimeSession() {
         console.error('Failed to stop realtime session:', error);
     } finally {
         currentSessionId = null;
+        currentVoiceConversationId = null;
         voiceSessionStarted = false;
     }
 }
@@ -123,6 +139,10 @@ export function getVoiceSession(): VoiceSession | null {
 
 export function getCurrentRealtimeSessionId(): string | null {
     return currentSessionId;
+}
+
+export function getCurrentVoiceConversationId(): string | null {
+    return currentVoiceConversationId;
 }
 
 export function setCurrentRealtimeSessionId(sessionId: string) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import * as crypto from "crypto";
-import { VoiceTokenResponseSchema, VoiceUsageResponseSchema } from "@slopus/happy-wire";
+import { VoiceConversationResponseSchema, VoiceUsageResponseSchema } from "@slopus/happy-wire";
 import { type Fastify } from "../types";
 import { log } from "@/utils/log";
 import { db } from "@/storage/db";
@@ -8,6 +8,17 @@ import { db } from "@/storage/db";
 const VOICE_FREE_LIMIT_SECONDS = 3600;  // 1 hour free tier per 30 days
 const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days (even with subscription)
 const ELEVEN_LABS_API = "https://api.elevenlabs.io/v1/convai";
+
+// Only the fields we actually read from ElevenLabs API responses.
+// Full schema: https://elevenlabs.io/docs/api-reference/conversations/get
+const ElevenLabsConversationSchema = z.object({
+    status: z.string(),
+    metadata: z.object({
+        call_duration_secs: z.number(),
+    }).passthrough(),
+}).passthrough();
+
+const TERMINAL_STATUSES = new Set(["done", "failed"]);
 
 function deriveElevenUserId(happyUserId: string): string {
     const hmac = crypto.createHmac("sha256", process.env.HANDY_MASTER_SECRET!);
@@ -42,6 +53,8 @@ async function getUsedVoiceSeconds(
 
     if (convos.length === 0) return 0;
 
+    const transientDurations = new Map<string, number>();
+
     // Backfill durations for conversations that don't have them yet
     const needsDuration = convos.filter(c => c.durationSecs === null);
     if (needsDuration.length > 0) {
@@ -52,15 +65,21 @@ async function getUsedVoiceSeconds(
                         headers: { "xi-api-key": elevenLabsApiKey },
                     });
                     if (!res.ok) return;
-                    const data = (await res.json()) as { metadata?: { call_duration_secs?: number } };
-                    const dur = data.metadata?.call_duration_secs;
-                    if (dur != null) {
+                    const data = ElevenLabsConversationSchema.parse(await res.json());
+                    const dur = data.metadata.call_duration_secs;
+
+                    if (TERMINAL_STATUSES.has(data.status)) {
                         await db.voiceConversation.update({
                             where: { id: c.id },
                             data: { durationSecs: dur },
                         });
                         c.durationSecs = dur;
+                        return;
                     }
+
+                    // Active conversations still count against the current request,
+                    // but we do not persist them until ElevenLabs reports a terminal status.
+                    transientDurations.set(c.id, dur);
                 } catch { /* best effort */ }
             })
         );
@@ -68,7 +87,7 @@ async function getUsedVoiceSeconds(
 
     let total = 0;
     for (const c of convos) {
-        total += c.durationSecs ?? 0;
+        total += c.durationSecs ?? transientDurations.get(c.id) ?? 0;
     }
     return total;
 }
@@ -104,7 +123,7 @@ export function voiceRoutes(app: Fastify) {
                 agentId: z.string(),
             }),
             response: {
-                200: VoiceTokenResponseSchema,
+                200: VoiceConversationResponseSchema,
                 500: z.object({ error: z.string() }),
             },
         },
@@ -164,12 +183,10 @@ export function voiceRoutes(app: Fastify) {
                 return reply.code(500).send({ error: 'Failed to get voice credentials' });
             }
 
-            const signedUrlData = (await signedUrlRes.json()) as { signed_url: string };
+            const signedUrlData = (await signedUrlRes.json()) as { signed_url: string; conversation_id?: string };
             const signedUrl = signedUrlData.signed_url;
-
-            // Extract conversation_id from the signed URL
-            const convIdMatch = signedUrl.match(/conversation_id=(conv_[a-z0-9]+)/);
-            const elevenLabsConversationId = convIdMatch?.[1];
+            const elevenLabsConversationId = signedUrlData.conversation_id
+                ?? new URL(signedUrl).searchParams.get("conversation_id");
 
             if (!elevenLabsConversationId) {
                 log({ module: 'voice' }, `No conversation_id in signed URL for user ${userId}`);
@@ -180,7 +197,7 @@ export function voiceRoutes(app: Fastify) {
             await db.voiceConversation.create({
                 data: {
                     accountId: userId,
-                    elevenLabsConversationId,
+                    elevenLabsConversationId: elevenLabsConversationId,
                 },
             });
 
@@ -190,6 +207,7 @@ export function voiceRoutes(app: Fastify) {
             return reply.send({
                 allowed: true as const,
                 signedUrl,
+                conversationId: elevenLabsConversationId,
                 agentId,
                 elevenUserId,
                 usedSeconds,

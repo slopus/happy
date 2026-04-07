@@ -70,5 +70,3 @@ import hmac, hashlib, base64
 digest = hmac.new(MASTER_SECRET.encode(), happy_cuid.encode(), hashlib.sha256).digest()
 eleven_id = "u_" + base64.b64encode(digest).decode().replace("+","-").replace("/","_").rstrip("=")
 ```
-
-The `scripts/voice-usage.py` script accepts a Happy CUID as argument and does this automatically.

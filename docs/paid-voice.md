@@ -16,8 +16,9 @@ User taps mic
 │   ├─ REVENUECAT_API_KEY missing?     → 500
 │   │
 │   ├─ Query DB: VoiceConversation where accountId + last 30 days
-│   │   └─ Lazily backfill durationSecs from ElevenLabs API for completed calls
-│   │   └─ Sum → usedSeconds
+│   │   └─ Lazily fetch call_duration_secs from ElevenLabs
+│   │   └─ Persist only terminal conversations (status: done/failed)
+│   │   └─ Sum persisted + in-memory active durations → usedSeconds
 │   │
 │   ├─ usedSeconds >= 5h?             → { allowed: false, reason: "voice_hard_limit_reached" }
 │   ├─ usedSeconds >= 1h + no sub?    → { allowed: false, reason: "subscription_required" }
@@ -59,9 +60,11 @@ Token issuance (server):
 Next token request:
   → SELECT VoiceConversation WHERE accountId = ? AND createdAt > 30 days ago
   → For each row where durationSecs IS NULL:
-      GET /v1/convai/conversations/{conversationId}  → call_duration_secs
-      UPDATE durationSecs = call_duration_secs        (cache it)
-  → SUM(durationSecs) → usedSeconds
+      GET /v1/convai/conversations/{conversationId}
+      → status + metadata.call_duration_secs
+      → status in {done, failed}? UPDATE durationSecs = call_duration_secs
+      → otherwise keep duration in memory only for this request
+  → SUM(persisted durations + in-memory active durations) → usedSeconds
 ```
 
 We own the mapping. ElevenLabs can't tell us which user a conversation belongs to (authorized agents override user_id to the API key owner). But we know because we created the signed URL and recorded the conversation_id before the client ever connected.

@@ -221,6 +221,8 @@ export const ja: TranslationStructure = {
         sessionNotFound: 'セッションが見つかりません',
         voiceSessionFailed: '音声セッションの開始に失敗しました',
         voiceServiceUnavailable: '音声サービスは一時的に利用できません',
+        voiceLimitReachedTitle: '音声の上限に達しました',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `今月${hours}時間以上の音声を使用しました。これは許可される最大量です。音声設定で独自の ElevenLabs エージェントを設定して、自分のクォータを使用できます。`,
         oauthInitializationFailed: 'OAuth フローの初期化に失敗しました',
         tokenStorageFailed: '認証トークンの保存に失敗しました',
         oauthStateMismatch: 'セキュリティ検証に失敗しました。再試行してください',
@@ -571,6 +573,10 @@ export const ja: TranslationStructure = {
         bypassTokenSubtitle: 'Happy サーバーをスキップし、ElevenLabs に直接接続',
         promptGuideTitle: 'エージェントプロンプトガイド',
         promptGuideDescription: 'ElevenLabs エージェントには以下が必要です:\n\n• ツール: messageClaudeCode — パラメータ: message (string)。アクティブなコーディングセッションにメッセージを送信します。\n• ツール: processPermissionRequest — パラメータ: decision ("allow" または "deny")。保留中のツール許可を承認または拒否します。\n• 動的変数: {{initialConversationContext}} — 開始時にセッション履歴とコンテキストを受信します。\n\nエージェントはユーザーとコーディングエージェント間の音声ブリッジとして機能します。簡潔に、話しかけられた時のみ応答し、コーディングエージェントが作業を完了したら報告する必要があります。',
+        usageTitle: '使用状況（過去30日間）',
+        usageFooter: '過去30日間に使用した音声時間。無料プランには1時間が含まれます。',
+        usageLabel: '音声時間',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${limit}中${used}使用済み`,
     },
 
     settingsAccount: {

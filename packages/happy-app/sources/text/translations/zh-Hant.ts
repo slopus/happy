@@ -220,6 +220,8 @@ export const zhHant: TranslationStructure = {
         sessionNotFound: '工作階段未找到',
         voiceSessionFailed: '啟動語音工作階段失敗',
         voiceServiceUnavailable: '語音服務暫時無法使用',
+        voiceLimitReachedTitle: '已達語音上限',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `您本月已使用超過 ${hours} 小時的語音。這是允許的最大用量。您可以在語音設定中配置自己的 ElevenLabs 代理，以使用您自己的配額。`,
         oauthInitializationFailed: '初始化 OAuth 流程失敗',
         tokenStorageFailed: '儲存驗證權杖失敗',
         oauthStateMismatch: '安全驗證失敗。請重試',
@@ -570,6 +572,10 @@ export const zhHant: TranslationStructure = {
         bypassTokenSubtitle: '跳過 Happy 伺服器，直接連線到 ElevenLabs',
         promptGuideTitle: '代理提示詞指南',
         promptGuideDescription: '您的 ElevenLabs 代理需要：\n\n• 工具：messageClaudeCode — 參數：message (string)。向活躍的編碼工作階段傳送訊息。\n• 工具：processPermissionRequest — 參數：decision ("allow" 或 "deny")。核准或拒絕待處理的工具權限。\n• 動態變數：{{initialConversationContext}} — 啟動時接收工作階段歷史和上下文。\n\n代理充當使用者和編碼代理之間的語音橋梁。它應該簡潔，僅在被呼叫時回應，並在編碼代理完成工作時進行報告。',
+        usageTitle: '使用量（過去 30 天）',
+        usageFooter: '過去 30 天使用的語音時間。免費方案包含 1 小時。',
+        usageLabel: '語音時間',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `已使用 ${used}，共 ${limit}`,
     },
 
     settingsAccount: {

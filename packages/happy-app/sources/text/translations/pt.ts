@@ -219,6 +219,8 @@ export const pt: TranslationStructure = {
         sessionNotFound: 'Sessão não encontrada',
         voiceSessionFailed: 'Falha ao iniciar sessão de voz',
         voiceServiceUnavailable: 'Serviço de voz temporariamente indisponível',
+        voiceLimitReachedTitle: 'Limite de voz atingido',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `Você usou ${hours}+ horas de voz este mês. Este é o máximo permitido. Você pode configurar seu próprio agente ElevenLabs nas configurações de voz para usar sua própria cota.`,
         oauthInitializationFailed: 'Falha ao inicializar o fluxo OAuth',
         tokenStorageFailed: 'Falha ao armazenar tokens de autenticação',
         oauthStateMismatch: 'Falha na validação de segurança. Por favor, tente novamente',
@@ -569,6 +571,10 @@ export const pt: TranslationStructure = {
         bypassTokenSubtitle: 'Pule o servidor do Happy, conecte-se diretamente ao ElevenLabs',
         promptGuideTitle: 'Guia de prompt do agente',
         promptGuideDescription: 'Seu agente ElevenLabs precisa de:\n\n• Ferramenta: messageClaudeCode — parâmetro: message (string). Envia uma mensagem para a sessão de código ativa.\n• Ferramenta: processPermissionRequest — parâmetro: decision ("allow" ou "deny"). Aprova ou nega uma permissão de ferramenta pendente.\n• Variável dinâmica: {{initialConversationContext}} — recebe o histórico e contexto da sessão ao iniciar.\n\nO agente atua como ponte de voz entre o usuário e os agentes de código. Deve ser conciso, responder apenas quando abordado e informar quando um agente de código terminar o trabalho.',
+        usageTitle: 'Uso (últimos 30 dias)',
+        usageFooter: 'Tempo de voz utilizado nos últimos 30 dias. O plano gratuito inclui 1 hora.',
+        usageLabel: 'Tempo de voz',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} usado de ${limit}`,
     },
 
     settingsAccount: {

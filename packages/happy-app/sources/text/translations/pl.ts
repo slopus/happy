@@ -231,6 +231,8 @@ export const pl: TranslationStructure = {
         sessionNotFound: 'Sesja nie została znaleziona',
         voiceSessionFailed: 'Nie udało się uruchomić sesji głosowej',
         voiceServiceUnavailable: 'Usługa głosowa jest tymczasowo niedostępna',
+        voiceLimitReachedTitle: 'Osiągnięto limit głosu',
+        voiceHardLimitReached: ({ hours }: { hours: number }) => `Wykorzystałeś ${hours}+ godzin głosu w tym miesiącu. To jest maksymalny dozwolony limit. Możesz skonfigurować własnego agenta ElevenLabs w ustawieniach głosu, aby korzystać z własnego limitu.`,
         oauthInitializationFailed: 'Nie udało się zainicjować przepływu OAuth',
         tokenStorageFailed: 'Nie udało się zapisać tokenów uwierzytelniania',
         oauthStateMismatch: 'Weryfikacja bezpieczeństwa nie powiodła się. Spróbuj ponownie',
@@ -580,6 +582,10 @@ export const pl: TranslationStructure = {
         bypassTokenSubtitle: 'Pomiń serwer Happy, połącz się bezpośrednio z ElevenLabs',
         promptGuideTitle: 'Przewodnik po promptach agenta',
         promptGuideDescription: 'Twój agent ElevenLabs potrzebuje:\n\n• Narzędzie: messageClaudeCode — parametr: message (string). Wysyła wiadomość do aktywnej sesji kodowania.\n• Narzędzie: processPermissionRequest — parametr: decision ("allow" lub "deny"). Zatwierdza lub odrzuca oczekujące uprawnienie narzędzia.\n• Zmienna dynamiczna: {{initialConversationContext}} — otrzymuje historię sesji i kontekst przy uruchomieniu.\n\nAgent działa jako most głosowy między użytkownikiem a agentami kodującymi. Powinien być zwięzły, odpowiadać tylko gdy jest adresowany i raportować, gdy agent kodujący zakończy pracę.',
+        usageTitle: 'Użycie (ostatnie 30 dni)',
+        usageFooter: 'Czas głosowy wykorzystany w ostatnich 30 dniach. Darmowy plan obejmuje 1 godzinę.',
+        usageLabel: 'Czas głosowy',
+        usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} wykorzystano z ${limit}`,
     },
 
     settingsAccount: {
