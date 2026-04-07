@@ -1,12 +1,15 @@
 import { getCurrentRealtimeSessionId, getVoiceSession, isVoiceSessionStarted, setCurrentRealtimeSessionId } from '../RealtimeSession';
 import {
+    formatMessage,
     formatNewMessages,
     formatPermissionRequest,
     formatReadyEvent,
     formatSessionFocus,
     formatSessionFull,
     formatSessionOffline,
-    formatSessionOnline
+    formatSessionOnline,
+    extractTerms,
+    formatGlossary
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
@@ -30,6 +33,9 @@ interface SessionMetadata {
 }
 
 let shownSessions = new Set<string>();
+let lastFocusSession: string | null = null;
+let glossaryTerms = new Set<string>();
+let focusSwitchedAt = 0;
 
 // Prompt queue — batched text messages that trigger agent responses
 let pendingPrompts: string[] = [];
@@ -66,6 +72,7 @@ function flushPendingPrompts() {
 
 /**
  * Send silent background context — always immediate, never queued.
+ * Also extracts jargon terms and sends glossary for transcription accuracy.
  */
 function sendContext(update: string | null | undefined) {
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
@@ -74,7 +81,15 @@ function sendContext(update: string | null | undefined) {
     if (!update) return;
     const voice = getVoiceSession();
     if (!voice || !isVoiceSessionStarted()) return;
-    voice.sendContextualUpdate(update);
+
+    // Extract jargon terms and send glossary
+    for (const term of extractTerms(update)) {
+        glossaryTerms.add(term);
+    }
+    const glossary = formatGlossary(glossaryTerms);
+    if (glossary) {
+        voice.sendContextualUpdate(glossary);
+    }
 }
 
 /**
@@ -111,19 +126,6 @@ function injectSessionContext(sessionId: string): string | null {
     return formatSessionFull(session, messages);
 }
 
-/**
- * Build a one-line directory of all active sessions (id + summary).
- */
-function formatSessionDirectory(): string {
-    const activeSessions = storage.getState().getActiveSessions();
-    if (activeSessions.length === 0) return 'No active sessions.';
-    const lines = activeSessions.map(s => {
-        const summary = s.metadata?.summary?.text ?? 'No summary';
-        return `- ${s.id}: "${summary}"`;
-    });
-    return 'Available sessions:\n' + lines.join('\n');
-}
-
 export const voiceHooks = {
 
     /**
@@ -131,6 +133,7 @@ export const voiceHooks = {
      */
     onSessionOnline(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
+        if (sessionId !== getCurrentRealtimeSessionId()) return;
 
         const ctx = injectSessionContext(sessionId);
         if (ctx) sendContext(ctx);
@@ -142,6 +145,7 @@ export const voiceHooks = {
      */
     onSessionOffline(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
+        if (sessionId !== getCurrentRealtimeSessionId()) return;
 
         const ctx = injectSessionContext(sessionId);
         if (ctx) sendContext(ctx);
@@ -153,7 +157,10 @@ export const voiceHooks = {
      */
     onSessionFocus(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_FOCUS) return;
-        if (getCurrentRealtimeSessionId() === sessionId) return;
+        if (!isVoiceSessionStarted()) return;
+        if (lastFocusSession === sessionId) return;
+        lastFocusSession = sessionId;
+        focusSwitchedAt = Date.now();
         setCurrentRealtimeSessionId(sessionId);
         const ctx = injectSessionContext(sessionId);
         if (ctx) sendContext(ctx);
@@ -165,6 +172,7 @@ export const voiceHooks = {
      */
     onPermissionRequested(sessionId: string, requestId: string, toolName: string, toolArgs: any) {
         if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
+        if (sessionId !== getCurrentRealtimeSessionId()) return;
 
         const ctx = injectSessionContext(sessionId);
         if (ctx) sendContext(ctx);
@@ -176,36 +184,51 @@ export const voiceHooks = {
      */
     onMessages(sessionId: string, messages: Message[]) {
         if (VOICE_CONFIG.DISABLE_MESSAGES) return;
+        if (sessionId !== getCurrentRealtimeSessionId()) return;
 
         const ctx = injectSessionContext(sessionId);
         if (ctx) sendContext(ctx);
-        sendContext(formatNewMessages(sessionId, messages));
+        const recentMessages = messages.filter(m => m.createdAt >= focusSwitchedAt);
+        const agentMessages = recentMessages.filter(m => m.kind !== 'user-text');
+        const userMessages = recentMessages.filter(m => m.kind === 'user-text');
+        sendPrompt(formatNewMessages(sessionId, agentMessages));
+        sendContext(formatNewMessages(sessionId, userMessages));
     },
 
     /**
      * Called when voice session starts.
-     * Builds initial prompt with session directory + full current session context.
+     * Seeds glossary from existing session messages.
      */
     onVoiceStarted(sessionId: string): string {
         if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
             console.log('🎤 Voice session started for:', sessionId);
         }
         shownSessions.clear();
+        shownSessions.add(sessionId);
+        glossaryTerms.clear();
         pendingPrompts = [];
         ensureModeSubscription();
 
-        let prompt = '';
-
-        // Session directory — all active sessions with titles
-        prompt += formatSessionDirectory() + '\n\n';
-
-        // Full context for the current session
-        const ctx = injectSessionContext(sessionId);
-        if (ctx) {
-            prompt += 'CURRENT SESSION:\n\n' + ctx;
+        // Seed glossary from existing session messages
+        const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
+        for (const msg of messages) {
+            const text = formatMessage(msg);
+            if (text) {
+                for (const term of extractTerms(text)) {
+                    glossaryTerms.add(term);
+                }
+            }
+        }
+        const glossary = formatGlossary(glossaryTerms);
+        if (glossary) {
+            console.log('🎤 Voice: Sending initial glossary:', glossary);
+            const voice = getVoiceSession();
+            if (voice && isVoiceSessionStarted()) {
+                voice.sendContextualUpdate(glossary);
+            }
         }
 
-        return prompt;
+        return '';
     },
 
     /**
@@ -213,6 +236,7 @@ export const voiceHooks = {
      */
     onReady(sessionId: string) {
         if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;
+        if (sessionId !== getCurrentRealtimeSessionId()) return;
 
         const ctx = injectSessionContext(sessionId);
         if (ctx) sendContext(ctx);
@@ -227,6 +251,7 @@ export const voiceHooks = {
             console.log('🎤 Voice session stopped');
         }
         shownSessions.clear();
+        glossaryTerms.clear();
         pendingPrompts = [];
     }
 };

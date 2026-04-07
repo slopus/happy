@@ -1,6 +1,10 @@
 export interface VoiceSessionConfig {
     sessionId: string;
     initialContext?: string;
+    pushToTalk?: boolean;
+    // OpenAI backend
+    apiKey?: string;
+    // ElevenLabs backend
     token?: string;
     agentId?: string;
     userId?: string;
@@ -11,6 +15,8 @@ export interface VoiceSession {
     endSession(): Promise<void>;
     sendTextMessage(message: string): void;
     sendContextualUpdate(update: string): void;
+    startTalking(): void;
+    stopTalking(): void;
 }
 
 export type ConversationStatus = 'disconnected' | 'connecting' | 'connected';
