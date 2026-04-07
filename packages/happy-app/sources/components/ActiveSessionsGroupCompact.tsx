@@ -1,6 +1,5 @@
 import React from 'react';
-import { View, Pressable, Platform, Image as RNImage } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
+import { View, Pressable, Platform } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { Session, Machine } from '@/sync/storageTypes';
@@ -9,7 +8,7 @@ import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativ
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines, useSessionProjectGitStatus, useSessionGitStatus, useSetting } from '@/sync/storage';
+import { useAllMachines, useSessionProjectGitStatus, useSessionGitStatus } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -20,13 +19,6 @@ import { sessionKill } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
-
-const flavorIcons = {
-    claude: require('@/assets/images/icon-claude.png'),
-    codex: require('@/assets/images/icon-gpt.png'),
-    gemini: require('@/assets/images/icon-gemini.png'),
-    openclaw: require('@/assets/images/icon-openclaw.png'),
-};
 
 interface ActiveSessionsGroupProps {
     sessions: Session[];
@@ -264,44 +256,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     );
 }
 
-// Small agent icon with pulsing animation matching StatusDot behavior
-const PulsingAgentIcon = React.memo(({ flavorIcon, isPulsing, tintColor, opacity: baseOpacity }: {
-    flavorIcon: any;
-    isPulsing: boolean;
-    tintColor?: string;
-    opacity: number;
-}) => {
-    const opacity = useSharedValue(baseOpacity);
-
-    React.useEffect(() => {
-        if (isPulsing) {
-            opacity.value = withRepeat(
-                withTiming(0.3, { duration: 1000 }),
-                -1,
-                true
-            );
-        } else {
-            opacity.value = withTiming(baseOpacity, { duration: 200 });
-        }
-    }, [isPulsing, baseOpacity]);
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        opacity: opacity.value,
-    }));
-
-    return (
-        <Animated.View style={[{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center', marginRight: 8 }, animatedStyle]}>
-            <RNImage
-                source={flavorIcon}
-                style={{ width: 8, height: 8 }}
-                resizeMode="contain"
-                tintColor={tintColor}
-            />
-        </Animated.View>
-    );
-});
-
-// Compact session row — agent icon replaces dot when showFlavorIcons is on
+// Compact session row with status dot indicator
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -311,10 +266,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
-    const showFlavorIcons = useSetting('showFlavorIcons');
-
-    const flavor = session.metadata?.flavor || 'claude';
-    const flavorIcon = flavorIcons[flavor as keyof typeof flavorIcons] || flavorIcons.claude;
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(session.id);
@@ -358,7 +309,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         >
             <View style={styles.sessionContent}>
                 <View style={styles.sessionTitleRow}>
-                    {/* Left indicator: agent icon OR status dot/draft */}
+                    {/* Left indicator: status dot or draft icon */}
                     {(() => {
                         // Show draft icon when online with draft
                         if (sessionStatus.state === 'waiting' && session.draft) {
@@ -368,22 +319,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                                     size={14}
                                     color={theme.colors.textSecondary}
                                     style={{ marginRight: 8 }}
-                                />
-                            );
-                        }
-
-                        // When showFlavorIcons is on, show agent icon instead of dot
-                        if (showFlavorIcons) {
-                            return (
-                                <PulsingAgentIcon
-                                    flavorIcon={flavorIcon}
-                                    isPulsing={sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking'}
-                                    tintColor={
-                                        (sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking')
-                                            ? sessionStatus.statusDotColor
-                                            : flavor === 'codex' ? theme.colors.text : undefined
-                                    }
-                                    opacity={sessionStatus.state === 'waiting' ? 0.5 : (sessionStatus.isConnected ? 1 : 0.3)}
                                 />
                             );
                         }
@@ -574,12 +509,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionRowSelected: {
         backgroundColor: theme.colors.surfaceSelected,
-    },
-    agentIconContainer: {
-        width: 16,
-        height: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     sessionContent: {
         flex: 1,
