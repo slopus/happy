@@ -52,6 +52,7 @@ model Account {
     AccessKey           AccessKey[]
     UserFeedItem        UserFeedItem[]
     UserKVStore         UserKVStore[]
+    VoiceConversation   VoiceConversation[]
 }
 
 model TerminalAuthRequest {
@@ -360,4 +361,19 @@ model UserKVStore {
 
     @@unique([accountId, key])
     @@index([accountId])
+}
+
+//
+// Voice Conversations — tracks ElevenLabs conversations per user for rate limiting
+//
+
+model VoiceConversation {
+    id                         String   @id @default(cuid())
+    accountId                  String
+    account                    Account  @relation(fields: [accountId], references: [id])
+    elevenLabsConversationId   String   @unique
+    durationSecs               Int?     // Filled in lazily from ElevenLabs API
+    createdAt                  DateTime @default(now())
+
+    @@index([accountId, createdAt(sort: Desc)])
 }
