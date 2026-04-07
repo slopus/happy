@@ -20,7 +20,8 @@ export function formatPermissionRequest(
     toolName: string,
     toolArgs: any
 ): string {
-    return `[CLAUDE] Permission request (request_id: ${requestId}): Claude wants to use ${toolName} with arguments: ${JSON.stringify(toolArgs)}`;
+    const humanized = humanizeToolCall(toolName, toolArgs, null);
+    return `[CLAUDE] Permission request: Claude wants to use the ${humanized}. Do you approve?`;
 }
 
 //
@@ -74,13 +75,9 @@ export function formatMessage(message: Message): string | null {
         return `[CLAUDE] Response: ${message.text}`;
     } else if (message.kind === 'user-text') {
         return `[USER] ${message.text}`;
-    } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
-        // Only speak each tool call once (first time seen, whether running or completed)
-        if (spokenToolCalls.has(message.id)) {
-            return null;
-        }
-        spokenToolCalls.add(message.id);
-        return `[CLAUDE] ${humanizeToolCall(message.tool.name, message.tool.input, message.tool.description)}`;
+    } else if (message.kind === 'tool-call') {
+        // Only permission requests are spoken via onPermissionRequested — regular tool calls are too noisy
+        return null;
     }
     return null;
 }
