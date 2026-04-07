@@ -574,6 +574,8 @@ export const it: TranslationStructure = {
         usageFooter: 'Tempo vocale utilizzato negli ultimi 30 giorni. Il piano gratuito include 1 ora.',
         usageLabel: 'Tempo vocale',
         usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} utilizzato su ${limit}`,
+        supportTitle: 'Migliora voce',
+        supportSubtitle: 'Più tempo vocale e supporta lo sviluppo',
     },
 
     settingsAccount: {

@@ -8,6 +8,7 @@ import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
+const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -237,6 +238,14 @@ export function retrieveTempText(id: string): string | null {
         return content;
     }
     return null;
+}
+
+export function getVoiceSoftPaywallShownCount(): number {
+    return mmkv.getNumber(VOICE_SOFT_PAYWALL_SHOWN_KEY) ?? 0;
+}
+
+export function incrementVoiceSoftPaywallShown() {
+    mmkv.set(VOICE_SOFT_PAYWALL_SHOWN_KEY, getVoiceSoftPaywallShownCount() + 1);
 }
 
 export function clearPersistence() {

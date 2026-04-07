@@ -577,6 +577,8 @@ export const zhHans: TranslationStructure = {
         usageFooter: '过去 30 天使用的语音时间。免费方案包含 1 小时。',
         usageLabel: '语音时间',
         usageUsed: ({ used, limit }: { used: string; limit: string }) => `已使用 ${used}，共 ${limit}`,
+        supportTitle: '升级语音',
+        supportSubtitle: '获取更多语音时间并支持开发',
     },
 
     settingsAccount: {

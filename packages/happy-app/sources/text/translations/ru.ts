@@ -585,6 +585,8 @@ export const ru: TranslationStructure = {
         usageFooter: 'Время голосового общения за последние 30 дней. Бесплатный тариф включает 1 час.',
         usageLabel: 'Голосовое время',
         usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} использовано из ${limit}`,
+        supportTitle: 'Улучшить голос',
+        supportSubtitle: 'Больше голосового времени и поддержка разработки',
     },
 
     settingsAccount: {

@@ -575,6 +575,8 @@ export const en = {
         usageFooter: 'Voice time used in the last 30 days. Free tier includes 1 hour.',
         usageLabel: 'Voice Time',
         usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} used of ${limit}`,
+        supportTitle: 'Upgrade Voice',
+        supportSubtitle: 'Get more voice time and support development',
     },
 
     settingsAccount: {

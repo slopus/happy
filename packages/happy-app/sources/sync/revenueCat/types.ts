@@ -65,6 +65,7 @@ export enum PaywallResult {
 
 export interface PaywallOptions {
     offering?: Offering;
+    customVariables?: Record<string, string>;
 }
 
 // Main interface that all platform implementations must follow

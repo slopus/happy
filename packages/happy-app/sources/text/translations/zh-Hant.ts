@@ -576,6 +576,8 @@ export const zhHant: TranslationStructure = {
         usageFooter: '過去 30 天使用的語音時間。免費方案包含 1 小時。',
         usageLabel: '語音時間',
         usageUsed: ({ used, limit }: { used: string; limit: string }) => `已使用 ${used}，共 ${limit}`,
+        supportTitle: '升級語音',
+        supportSubtitle: '獲取更多語音時間並支持開發',
     },
 
     settingsAccount: {

@@ -576,6 +576,8 @@ export const ca: TranslationStructure = {
         usageFooter: 'Temps de veu utilitzat en els últims 30 dies. El nivell gratuït inclou 1 hora.',
         usageLabel: 'Temps de veu',
         usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} utilitzat de ${limit}`,
+        supportTitle: 'Millorar veu',
+        supportSubtitle: 'Més temps de veu i suport al desenvolupament',
     },
 
     settingsAccount: {

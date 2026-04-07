@@ -576,6 +576,8 @@ export const es: TranslationStructure = {
         usageFooter: 'Tiempo de voz utilizado en los últimos 30 días. El plan gratuito incluye 1 hora.',
         usageLabel: 'Tiempo de voz',
         usageUsed: ({ used, limit }: { used: string; limit: string }) => `${used} usado de ${limit}`,
+        supportTitle: 'Mejorar voz',
+        supportSubtitle: 'Más tiempo de voz y apoya el desarrollo',
     },
 
     settingsAccount: {

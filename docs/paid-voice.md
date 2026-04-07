@@ -32,14 +32,43 @@ User taps mic
 │   └─ Return { allowed: true, signedUrl, agentId, elevenUserId, usedSeconds, limitSeconds }
 │
 ├─ allowed: false?
-│   ├─ "subscription_required"        → show paywall (RevenueCat)
-│   ├─ "voice_hard_limit_reached"     → show "configure your own agent" message
-│   └─ purchased? → retry POST /v1/voice/conversations
+│   └─ Show paywall with flow="voice_must_pay" (every time)
+│       └─ purchased? → retry POST /v1/voice/conversations
+│       └─ dismissed? → return, voice blocked
 │
 └─ allowed: true
+    ├─ Free tier + soft paywall not yet shown on this device?
+    │   └─ Show paywall with flow="voice_trial_eligible" (soft, once per device)
+    │       └─ purchased or dismissed → continue to voice either way
+    │
     └─ startSession({ signedUrl, connectionType: 'webrtc' })
         └─ ElevenLabs creates conversation with THAT conversation_id
 ```
+
+## Paywall Flows (RevenueCat)
+
+The paywall is a single RevenueCat paywall template with rules driven by a custom variable `flow`.
+Passed via `RevenueCatUI.presentPaywall({ customVariables: { flow: "..." } })`.
+
+| Flow | When | Behavior |
+|------|------|----------|
+| `voice_trial_eligible` | First voice use on device, free tier, server allowed | Soft — dismissable, voice starts either way. Shown once per device (counter in MMKV, can bump later). |
+| `voice_must_pay` | Server returns `allowed: false` (any reason) | Hard — must purchase to use voice. Shown every attempt. |
+| `voluntary_support` | Settings > Voice > "Upgrade Voice" or main Settings > subscribe button | Voluntary — user-initiated, no gating. |
+
+Soft paywall counter stored in MMKV key `voice-soft-paywall-shown` (integer, currently gated at < 1).
+
+The soft paywall exists to set expectations early — voice is not a free feature. Reduces freeloading by making the cost visible before users get attached.
+
+### Future: Voice Agent Self-Sell (not yet implemented)
+
+Better than a paywall modal: have the voice agent itself mention pricing naturally in conversation.
+
+- **First message in a new session (free tier):** Agent mentions this is a paid feature with a 30-min trial.
+- **< 10 min remaining:** Agent proactively offers to upgrade, can call a client tool to trigger the voluntary paywall.
+- **Tone:** Helpful, not pushy. "By the way, you have about 10 minutes of voice time left this month. Want me to pull up upgrade options?"
+
+Implementation: inject `usedSeconds` / `limitSeconds` into the voice agent's `initialConversationContext` and add a `showUpgradePaywall` client tool that triggers `sync.presentPaywall('voluntary_support')`.
 
 ## Limits
 

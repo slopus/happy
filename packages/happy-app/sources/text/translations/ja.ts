@@ -577,6 +577,8 @@ export const ja: TranslationStructure = {
         usageFooter: '過去30日間に使用した音声時間。無料プランには1時間が含まれます。',
         usageLabel: '音声時間',
         usageUsed: ({ used, limit }: { used: string; limit: string }) => `${limit}中${used}使用済み`,
+        supportTitle: '音声をアップグレード',
+        supportSubtitle: '音声時間を増やして開発を支援',
     },
 
     settingsAccount: {

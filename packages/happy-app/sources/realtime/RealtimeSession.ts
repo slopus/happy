@@ -7,6 +7,7 @@ import { t } from '@/text';
 import { requestMicrophonePermission, showMicrophonePermissionDeniedAlert } from '@/utils/microphonePermissions';
 import { storage } from '@/sync/storage';
 import { config } from '@/config';
+import { getVoiceSoftPaywallShownCount, incrementVoiceSoftPaywallShown } from '@/sync/persistence';
 
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
@@ -65,22 +66,24 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         if (!response.allowed) {
             storage.getState().setRealtimeStatus('disconnected');
 
-            if (response.reason === 'voice_hard_limit_reached') {
-                const hrs = Math.floor(response.usedSeconds / 3600);
-                Modal.alert(
-                    t('errors.voiceLimitReachedTitle'),
-                    t('errors.voiceHardLimitReached', { hours: hrs }),
-                );
-                return null;
-            }
-
-            console.log('[Voice] Not allowed, presenting paywall...');
-            const result = await sync.presentPaywall();
-            console.log('[Voice] Paywall result:', result);
+            // Server hard-declined — must pay to continue
+            console.log('[Voice] Not allowed (reason: %s), presenting must-pay paywall...', response.reason);
+            const result = await sync.presentPaywall('voice_must_pay');
+            console.log('[Voice] Must-pay paywall result:', result);
             if (result.purchased) {
                 return startRealtimeSession(sessionId, initialContext);
             }
             return null;
+        }
+
+        // Show soft paywall once per device for free-tier users on first successful voice use
+        const hasPro = storage.getState().purchases.entitlements['pro'] ?? false;
+        if (!hasPro && getVoiceSoftPaywallShownCount() < 1) {
+            console.log('[Voice] First voice attempt on free tier, showing soft paywall...');
+            incrementVoiceSoftPaywallShown();
+            const result = await sync.presentPaywall('voice_trial_eligible');
+            console.log('[Voice] Soft paywall result:', result);
+            // Dismissed or error — continue anyway, they can still use free tier
         }
 
         currentSessionId = sessionId;

@@ -601,7 +601,7 @@ class Sync {
         }
     }
 
-    presentPaywall = async (): Promise<{ success: boolean; purchased?: boolean; error?: string }> => {
+    presentPaywall = async (flow?: string): Promise<{ success: boolean; purchased?: boolean; error?: string }> => {
         try {
             // Check if RevenueCat is initialized
             if (!this.revenueCatInitialized) {
@@ -613,8 +613,10 @@ class Sync {
             // Track paywall presentation
             trackPaywallPresented();
 
-            // Present the paywall
-            const result = await RevenueCat.presentPaywall();
+            // Present the paywall (with flow custom variable if specified)
+            const result = await RevenueCat.presentPaywall(
+                flow ? { customVariables: { flow } } : undefined
+            );
 
             // Handle the result
             switch (result) {

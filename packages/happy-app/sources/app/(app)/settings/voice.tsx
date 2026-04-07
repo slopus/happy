@@ -8,12 +8,13 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Switch } from '@/components/Switch';
 import { UsageBar } from '@/components/usage/UsageBar';
-import { useSettingMutable } from '@/sync/storage';
+import { useSettingMutable, useEntitlement } from '@/sync/storage';
 import { useAuth } from '@/auth/AuthContext';
 import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constants/Languages';
 import { fetchVoiceUsage, type VoiceUsageResponse } from '@/sync/apiVoice';
 import { t } from '@/text';
 import { Modal } from '@/modal';
+import { sync } from '@/sync/sync';
 
 function formatVoiceTime(totalSeconds: number): string {
     const mins = Math.floor(totalSeconds / 60);
@@ -28,6 +29,8 @@ export default React.memo(function VoiceSettingsScreen() {
     const [voiceCustomAgentId, setVoiceCustomAgentId] = useSettingMutable('voiceCustomAgentId');
     const [voiceBypassToken, setVoiceBypassToken] = useSettingMutable('voiceBypassToken');
 
+    const hasPro = useEntitlement('pro');
+
     const [usage, setUsage] = React.useState<VoiceUsageResponse | null>(null);
     const [usageLoading, setUsageLoading] = React.useState(true);
 
@@ -41,6 +44,10 @@ export default React.memo(function VoiceSettingsScreen() {
 
     // Find current language or default to first option
     const currentLanguage = findLanguageByCode(voiceAssistantLanguage) || LANGUAGES[0];
+
+    const handleSupportUs = React.useCallback(async () => {
+        await sync.presentPaywall('voluntary_support');
+    }, []);
 
     const handleCustomAgentId = React.useCallback(async () => {
         const value = await Modal.prompt(
@@ -87,6 +94,18 @@ export default React.memo(function VoiceSettingsScreen() {
                     </View>
                 </ItemGroup>
             ) : null}
+
+            {/* Support / Upgrade */}
+            {!hasPro && (
+                <ItemGroup>
+                    <Item
+                        title={t('settingsVoice.supportTitle')}
+                        subtitle={t('settingsVoice.supportSubtitle')}
+                        icon={<Ionicons name="heart-outline" size={29} color="#FF2D55" />}
+                        onPress={handleSupportUs}
+                    />
+                </ItemGroup>
+            )}
 
             {/* Language Settings */}
             <ItemGroup
