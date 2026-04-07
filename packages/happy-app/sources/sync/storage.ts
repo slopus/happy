@@ -492,17 +492,23 @@ export const storage = create<StorageState>()((set, get) => {
             let changed = new Set<string>();
             let hasReadyEvent = false;
 
-            // Check if any incoming messages contain EnterPlanMode tool calls
+            // Track plan mode transitions through the batch in order.
+            // Set true on EnterPlanMode, false on ExitPlanMode. The final value
+            // tells us whether the batch ends with an unresolved plan entry.
+            // This prevents history replays (which contain both Enter + Exit) from
+            // re-triggering plan mode, while still catching real-time EnterPlanMode.
             let shouldEnterPlanMode = false;
             for (const msg of messages) {
                 if (msg.role === 'agent') {
                     for (const c of msg.content) {
-                        if (c.type === 'tool-call' && (c.name === 'EnterPlanMode' || c.name === 'enter_plan_mode')) {
-                            shouldEnterPlanMode = true;
-                            break;
+                        if (c.type === 'tool-call') {
+                            if (c.name === 'EnterPlanMode' || c.name === 'enter_plan_mode') {
+                                shouldEnterPlanMode = true;
+                            } else if (c.name === 'ExitPlanMode' || c.name === 'exit_plan_mode') {
+                                shouldEnterPlanMode = false;
+                            }
                         }
                     }
-                    if (shouldEnterPlanMode) break;
                 }
             }
 
