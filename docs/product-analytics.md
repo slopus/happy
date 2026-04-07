@@ -97,7 +97,7 @@ All custom events are defined in `packages/happy-app/sources/track/index.ts` unl
 
 ## Summary
 
-**25 custom events** + auto-captured lifecycle + screen views.
+**24 custom events** + auto-captured lifecycle + screen views.
 
 | Category | Count | Notes |
 |----------|-------|-------|

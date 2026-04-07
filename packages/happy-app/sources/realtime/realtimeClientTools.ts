@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
-import { trackPermissionResponse } from '@/track';
+import { trackVoiceMessageSent, trackVoicePermissionResponse } from '@/track';
 
 /**
  * Static client tools for the realtime voice interface.
@@ -27,6 +27,7 @@ export const realtimeClientTools = {
         const { sessionId, message } = parsed.data;
         console.log('📤 Sending message to session:', sessionId);
         sync.sendMessage(sessionId, message);
+        trackVoiceMessageSent();
         return "sent [DO NOT say anything else, simply say 'sent']";
     },
 
@@ -67,10 +68,10 @@ export const realtimeClientTools = {
         try {
             if (decision === 'allow') {
                 await sessionAllow(sessionId, requestId);
-                trackPermissionResponse(true);
+                trackVoicePermissionResponse(true);
             } else {
                 await sessionDeny(sessionId, requestId);
-                trackPermissionResponse(false);
+                trackVoicePermissionResponse(false);
             }
             return "done [DO NOT say anything else, simply say 'done']";
         } catch (error) {

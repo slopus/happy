@@ -37,12 +37,12 @@ export function trackMessageSent() {
     tracking?.capture('message_sent');
 }
 
-export function trackVoiceRecording(action: 'start' | 'stop') {
-    tracking?.capture('voice_recording', { action });
+export function trackVoiceMessageSent() {
+    tracking?.capture('voice_message_sent');
 }
 
-export function trackPermissionResponse(allowed: boolean) {
-    tracking?.capture('permission_response', { allowed });
+export function trackVoicePermissionResponse(allowed: boolean) {
+    tracking?.capture('voice_permission_response', { allowed });
 }
 
 /**
@@ -89,6 +89,17 @@ export function trackReviewStoreShown() {
 
 export function trackReviewRetryScheduled(daysUntilRetry: number) {
     tracking?.capture('review_retry_scheduled', { days_until_retry: daysUntilRetry });
+}
+
+/**
+ * OTA update events
+ */
+export function trackOtaUpdateAvailable() {
+    tracking?.capture('ota_update_available');
+}
+
+export function trackOtaUpdateApplied() {
+    tracking?.capture('ota_update_applied');
 }
 
 /**

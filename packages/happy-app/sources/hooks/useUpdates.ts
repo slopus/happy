@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import * as Updates from 'expo-updates';
+import { trackOtaUpdateAvailable, trackOtaUpdateApplied } from '@/track';
 
 export function useUpdates() {
     const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -40,6 +41,7 @@ export function useUpdates() {
             const update = await Updates.checkForUpdateAsync();
             if (update.isAvailable) {
                 await Updates.fetchUpdateAsync();
+                trackOtaUpdateAvailable();
                 setUpdateAvailable(true);
             }
         } catch (error) {
@@ -50,6 +52,7 @@ export function useUpdates() {
     };
 
     const reloadApp = async () => {
+        trackOtaUpdateApplied();
         if (Platform.OS === 'web') {
             window.location.reload();
         } else {
