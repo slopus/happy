@@ -37,15 +37,15 @@ export function SessionActionsNativeMenu({
         <Host matchContents>
             <ContextMenu>
                 <ContextMenu.Items>
-                    <Button onPress={openDetails} systemImage={iosSymbol('info.circle')} label="Details" />
+                    <Button onPress={openDetails} systemImage={iosSymbol('info.circle')}>Details</Button>
                     {canArchive && (
-                        <Button onPress={archiveSession} systemImage={iosSymbol('archivebox')} label="Archive" />
+                        <Button onPress={archiveSession} systemImage={iosSymbol('archivebox')}>Archive</Button>
                     )}
                     {canShowResume && (
-                        <Button onPress={resumeSession} systemImage={iosSymbol('play.circle')} label="Resume" />
+                        <Button onPress={resumeSession} systemImage={iosSymbol('play.circle')}>Resume</Button>
                     )}
                     {canCopySessionMetadata && (
-                        <Button onPress={copySessionMetadata} systemImage={iosSymbol('ladybug')} label={t('sessionInfo.copyMetadata')} />
+                        <Button onPress={copySessionMetadata} systemImage={iosSymbol('ladybug')}>{t('sessionInfo.copyMetadata')}</Button>
                     )}
                 </ContextMenu.Items>
                 <ContextMenu.Trigger>{children}</ContextMenu.Trigger>
