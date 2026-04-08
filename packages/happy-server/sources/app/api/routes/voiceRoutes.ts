@@ -30,13 +30,13 @@ function deriveElevenUserId(happyUserId: string): string {
  */
 async function getVoiceUsage(
     elevenLabsApiKey: string,
-    agentId: string,
     elevenUserId: string,
 ): Promise<{ usedSeconds: number; conversationCount: number }> {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000).toISOString();
 
+    // Query across all agents — usage is per-user, not per-agent
     const res = await fetch(
-        `${ELEVEN_LABS_API}/conversations?agent_id=${agentId}&user_id=${elevenUserId}&created_after=${thirtyDaysAgo}&page_size=100`,
+        `${ELEVEN_LABS_API}/conversations?user_id=${elevenUserId}&created_after=${thirtyDaysAgo}&page_size=100`,
         { headers: { "xi-api-key": elevenLabsApiKey } }
     );
 
@@ -109,7 +109,7 @@ export function voiceRoutes(app: Fastify) {
         const elevenUserId = deriveElevenUserId(userId);
 
         // Check usage from ElevenLabs directly
-        const { usedSeconds, conversationCount } = await getVoiceUsage(elevenLabsApiKey, agentId, elevenUserId);
+        const { usedSeconds, conversationCount } = await getVoiceUsage(elevenLabsApiKey, elevenUserId);
         log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${VOICE_HARD_LIMIT_SECONDS}s)`);
 
         // Conversation count cap — we can only track 100 per query (ElevenLabs page_size limit)
@@ -195,9 +195,6 @@ export function voiceRoutes(app: Fastify) {
     app.get('/v1/voice/usage', {
         preHandler: app.authenticate,
         schema: {
-            querystring: z.object({
-                agentId: z.string(),
-            }),
             response: {
                 200: VoiceUsageResponseSchema,
                 500: z.object({ error: z.string() }),
@@ -205,7 +202,6 @@ export function voiceRoutes(app: Fastify) {
         },
     }, async (request, reply) => {
         const userId = request.userId;
-        const { agentId } = request.query;
 
         const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
         if (!elevenLabsApiKey) {
@@ -216,7 +212,7 @@ export function voiceRoutes(app: Fastify) {
 
         try {
             const [{ usedSeconds, conversationCount }, subscribed] = await Promise.all([
-                getVoiceUsage(elevenLabsApiKey, agentId, elevenUserId),
+                getVoiceUsage(elevenLabsApiKey, elevenUserId),
                 hasActiveSubscription(userId),
             ]);
             return reply.send({

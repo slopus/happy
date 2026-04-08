@@ -44,9 +44,8 @@ export async function fetchVoiceUsage(
     credentials: AuthCredentials
 ): Promise<VoiceUsageResponse> {
     const serverUrl = getServerUrl();
-    const agentId = config.elevenLabsAgentId;
 
-    const response = await fetch(`${serverUrl}/v1/voice/usage?agentId=${agentId}`, {
+    const response = await fetch(`${serverUrl}/v1/voice/usage`, {
         method: 'GET',
         headers: {
             'Authorization': `Bearer ${credentials.token}`,
