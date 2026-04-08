@@ -1,12 +1,16 @@
 # Changelog
 
-## Version 7 - 2026-04-03
+## Version 7 - 2026-04-08
 
-Added support for the latest Gemini models in the model picker, so you can take advantage of Google's newest and most powerful AI capabilities.
+This preview release expands the current update with the latest Gemini models, a smarter voice onboarding flow, and more reliable Happy CLI sessions for plan approvals and Codex turns.
 
 - Added Gemini 3.1 Pro, Gemini 3 Flash, and Gemini 3.1 Flash Lite to the model picker
 - Gemini 3.x models now appear at the top of the list for quick access
 - Gemini 2.5 models remain available for stability
+- Improved voice onboarding with smarter first-run prompts and clearer upgrade guidance for free users
+- Fixed Happy CLI plan approval flows so Accept and Reject buttons show up reliably in plan mode
+- Fixed Happy CLI background task updates and Codex turns that could sometimes hang or fail to complete
+- If you use Happy CLI, update it with `npm i -g happy`
 
 ## Version 6 - 2026-03-19
 
