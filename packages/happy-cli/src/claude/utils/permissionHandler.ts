@@ -137,6 +137,21 @@ export class PermissionHandler {
         // Calculate descriptor
         const descriptor = getToolDescriptor(toolName);
 
+        // ExitPlanMode always requires user approval — never auto-approve it.
+        // Without this, a stale permissionMode (e.g. 'bypassPermissions' from a prior session)
+        // silently approves the plan, and the isAborted hack kills the session with no recovery.
+        if (descriptor.exitPlan) {
+            let toolCallId = this.resolveToolCallId(toolName, input);
+            if (!toolCallId) {
+                await delay(1000);
+                toolCallId = this.resolveToolCallId(toolName, input);
+                if (!toolCallId) {
+                    throw new Error(`Could not resolve tool call ID for ${toolName}`);
+                }
+            }
+            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+        }
+
         //
         // Handle special cases
         //

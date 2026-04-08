@@ -192,7 +192,7 @@ export async function claudeRemote(opts: {
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                logger.debug('[claudeRemote] Result received');
 
                 // Send completion messages
                 if (isCompactCommand) {
@@ -206,14 +206,19 @@ export async function claudeRemote(opts: {
                 // Send ready event
                 opts.onReady();
 
-                // Push next message
-                const next = await opts.nextMessage();
-                if (!next) {
+                // Wait for next user message without blocking the message loop.
+                // Background task messages (task_started, task_progress, task_notification)
+                // continue flowing through while we wait for user input.
+                opts.nextMessage().then((next) => {
+                    if (!next) {
+                        messages.end();
+                    } else {
+                        mode = next.mode;
+                        messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                    }
+                }).catch(() => {
                     messages.end();
-                    return;
-                }
-                mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                });
             }
 
             // Handle tool result
