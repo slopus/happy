@@ -8,13 +8,14 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Switch } from '@/components/Switch';
 import { UsageBar } from '@/components/usage/UsageBar';
-import { useSettingMutable, useEntitlement } from '@/sync/storage';
+import { useSettingMutable, useEntitlement, useLocalSetting, useSetting } from '@/sync/storage';
 import { useAuth } from '@/auth/AuthContext';
 import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constants/Languages';
 import { fetchVoiceUsage, type VoiceUsageResponse } from '@/sync/apiVoice';
 import { t } from '@/text';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
+import { getVoiceExperimentStatus } from '@/realtime/voiceExperiment';
 
 function formatVoiceTime(totalSeconds: number): string {
     const mins = Math.floor(totalSeconds / 60);
@@ -28,6 +29,8 @@ export default React.memo(function VoiceSettingsScreen() {
     const [voiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [voiceCustomAgentId, setVoiceCustomAgentId] = useSettingMutable('voiceCustomAgentId');
     const [voiceBypassToken, setVoiceBypassToken] = useSettingMutable('voiceBypassToken');
+    const experiments = useSetting('experiments');
+    const devModeEnabled = __DEV__ || useLocalSetting('devModeEnabled');
 
     const hasPro = useEntitlement('pro');
 
@@ -65,6 +68,28 @@ export default React.memo(function VoiceSettingsScreen() {
             setVoiceBypassToken(trimmed !== null);
         }
     }, [voiceCustomAgentId, setVoiceCustomAgentId, setVoiceBypassToken]);
+
+    const voiceExperimentStatus = React.useMemo(() => {
+        return getVoiceExperimentStatus({
+            voiceBypassToken,
+            voiceCustomAgentId,
+        });
+    }, [voiceBypassToken, voiceCustomAgentId]);
+
+    const developerExperimentSubtitle = React.useMemo(() => {
+        const upsellVariant = voiceExperimentStatus.upsellVariantSource === 'default'
+            ? `${voiceExperimentStatus.upsellVariant} (default)`
+            : voiceExperimentStatus.upsellVariant;
+        const gatingMode = voiceExperimentStatus.gatingMode === 'direct-byo-agent'
+            ? 'direct BYO agent bypass'
+            : 'Happy server gate';
+
+        return [
+            `voice-upsell: ${upsellVariant}`,
+            `gate: ${gatingMode}`,
+            `experiments setting: ${experiments ? 'on' : 'off'}`,
+        ].join('\n');
+    }, [experiments, voiceExperimentStatus]);
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -109,6 +134,22 @@ export default React.memo(function VoiceSettingsScreen() {
                         subtitle={t('settingsVoice.supportSubtitle')}
                         icon={<Ionicons name="heart-outline" size={29} color="#FF2D55" />}
                         onPress={handleSupportUs}
+                    />
+                </ItemGroup>
+            )}
+
+            {devModeEnabled && (
+                <ItemGroup
+                    title="Developer"
+                    footer="Developer-only diagnostics for the current voice rollout. The paid voice gate runs through Happy server unless Direct Connection and a custom ElevenLabs agent are both enabled."
+                >
+                    <Item
+                        title="Voice Experiment Status"
+                        subtitle={developerExperimentSubtitle}
+                        subtitleLines={0}
+                        icon={<Ionicons name="flask-outline" size={29} color="#5856D6" />}
+                        showChevron={false}
+                        copy={developerExperimentSubtitle}
                     />
                 </ItemGroup>
             )}

@@ -14,20 +14,7 @@ import {
     incrementVoiceSoftPaywallShown,
 } from '@/sync/persistence';
 import { buildVoiceFirstMessage, buildVoiceSystemPrompt } from './voiceSystemPrompt';
-import { tracking } from '@/track';
-
-type VoiceUpsellVariant =
-    | 'show-paywall-before-first-voice-chat'
-    | 'voice-onboarding-and-upsell'
-    | 'control';
-
-function getVoiceUpsellVariant(): VoiceUpsellVariant {
-    const variant = tracking?.getFeatureFlag('voice-upsell');
-    if (variant === 'show-paywall-before-first-voice-chat' || variant === 'voice-onboarding-and-upsell') {
-        return variant;
-    }
-    return 'control';
-}
+import { getVoiceUpsellVariant } from './voiceExperiment';
 
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
