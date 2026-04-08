@@ -52,7 +52,8 @@ async function isClaudeAvailable(cwd: string): Promise<boolean> {
             prompt: 'Say exactly ready',
             options: { abort: AbortSignal.timeout(20_000), cwd, model: MODEL },
         }));
-        return resultMessage(messages)?.result?.trim() === 'ready';
+        const result = resultMessage(messages);
+        return (result && 'result' in result) ? result.result?.trim() === 'ready' : false;
     } catch {
         console.log('[plan-mode-test] Skipping: Claude query unavailable');
         return false;
@@ -97,6 +98,7 @@ describe.skipIf(!(await claudeAvailable))('Plan Mode Integration', { timeout: 18
 
         promptStream.push({
             type: 'user',
+            parent_tool_use_id: null,
             message: {
                 role: 'user',
                 content: [
@@ -155,6 +157,7 @@ describe.skipIf(!(await claudeAvailable))('Plan Mode Integration', { timeout: 18
 
         promptStream.push({
             type: 'user',
+            parent_tool_use_id: null,
             message: {
                 role: 'user',
                 content: [
@@ -207,6 +210,7 @@ describe.skipIf(!(await claudeAvailable))('Plan Mode Integration', { timeout: 18
 
         promptStream.push({
             type: 'user',
+            parent_tool_use_id: null,
             message: {
                 role: 'user',
                 content: 'Create a short plan to add a comment to hello-world.js. Then implement it.',

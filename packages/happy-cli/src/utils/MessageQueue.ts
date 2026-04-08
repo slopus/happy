@@ -32,6 +32,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
             logger.debug(`[MessageQueue] Found waiter! Delivering message directly: "${message}"`);
             waiter({
                 type: 'user',
+                parent_tool_use_id: null,
                 message: {
                     role: 'user',
                     content: message,
@@ -41,6 +42,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
             logger.debug(`[MessageQueue] No waiter found. Adding to queue: "${message}"`);
             this.queue.push({
                 type: 'user',
+                parent_tool_use_id: null,
                 message: {
                     role: 'user',
                     content: message,

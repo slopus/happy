@@ -88,10 +88,11 @@ export class SDKToLogConverter {
         const timestamp = new Date().toISOString()
         let parentUuid = this.lastUuid;
         let isSidechain = false;
-        if (sdkMessage.parent_tool_use_id) {
+        const parentToolUseId = (sdkMessage as any).parent_tool_use_id as string | null | undefined;
+        if (parentToolUseId) {
             isSidechain = true;
-            parentUuid = this.sidechainLastUUID.get((sdkMessage as any).parent_tool_use_id) ?? null;
-            this.sidechainLastUUID.set((sdkMessage as any).parent_tool_use_id!, uuid);
+            parentUuid = this.sidechainLastUUID.get(parentToolUseId) ?? null;
+            this.sidechainLastUUID.set(parentToolUseId, uuid);
         }
         const baseFields = {
             parentUuid: parentUuid,
@@ -113,7 +114,7 @@ export class SDKToLogConverter {
                 logMessage = {
                     ...baseFields,
                     type: 'user',
-                    message: userMsg.message,
+                    message: userMsg.message as any,
                     ...(userMsg.parent_tool_use_id ? { parent_tool_use_id: userMsg.parent_tool_use_id } : {}),
                 }
 
@@ -138,7 +139,7 @@ export class SDKToLogConverter {
                 logMessage = {
                     ...baseFields,
                     type: 'assistant',
-                    message: assistantMsg.message,
+                    message: assistantMsg.message as any,
                     // Assistant messages often have additional fields
                     requestId: (assistantMsg as any).requestId,
                     ...(assistantMsg.parent_tool_use_id ? { parent_tool_use_id: assistantMsg.parent_tool_use_id } : {}),
@@ -179,35 +180,6 @@ export class SDKToLogConverter {
                 // Result messages are not converted to log messages
                 // They're SDK-specific messages that indicate session completion
                 // Not part of the actual conversation log
-                break
-            }
-
-            // Handle tool use results (often comes as user messages)
-            case 'tool_result': {
-                const toolMsg = sdkMessage as any
-                const baseLogMessage: any = {
-                    ...baseFields,
-                    type: 'user',
-                    message: {
-                        role: 'user',
-                        content: [{
-                            type: 'tool_result',
-                            tool_use_id: toolMsg.tool_use_id,
-                            content: toolMsg.content
-                        }]
-                    },
-                    toolUseResult: toolMsg.content
-                }
-
-                // Add mode if available from responses
-                if (toolMsg.tool_use_id && this.responses?.has(toolMsg.tool_use_id)) {
-                    const response = this.responses.get(toolMsg.tool_use_id)
-                    if (response?.mode) {
-                        baseLogMessage.mode = response.mode
-                    }
-                }
-
-                logMessage = baseLogMessage
                 break
             }
 

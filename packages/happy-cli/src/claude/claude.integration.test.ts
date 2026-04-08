@@ -95,6 +95,11 @@ function resultMessage(messages: SDKMessage[]): SDKResultMessage | undefined {
     return messages.find((message): message is SDKResultMessage => message.type === 'result');
 }
 
+function resultText(messages: SDKMessage[]): string | undefined {
+    const msg = resultMessage(messages);
+    return msg && 'result' in msg ? msg.result : undefined;
+}
+
 function sessionIdFrom(messages: SDKMessage[]): string {
     const result = resultMessage(messages)?.session_id;
     if (result) {
@@ -128,7 +133,8 @@ async function isClaudeQueryAvailable(): Promise<boolean> {
             },
         }));
 
-        return resultMessage(messages)?.result?.trim() === 'ready';
+        const result = resultMessage(messages);
+        return (result && 'result' in result) ? result.result?.trim() === 'ready' : false;
     } catch (error) {
         console.log(`[claude-test] Skipping: Claude query unavailable (${String(error)})`);
         return false;
@@ -224,6 +230,7 @@ class ClaudeQueryDriver {
 
         promptStream.push({
             type: 'user',
+            parent_tool_use_id: null,
             message: {
                 role: 'user',
                 content: options.prompt,
@@ -293,6 +300,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
                     answeredClarification = true;
                     clarificationPrompt.push({
                         type: 'user',
+                        parent_tool_use_id: null,
                         message: {
                             role: 'user',
                             content: 'I choose OPTION_B.',
@@ -305,6 +313,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
 
         clarificationPrompt.push({
             type: 'user',
+            parent_tool_use_id: null,
             message: {
                 role: 'user',
                 content: [
@@ -325,7 +334,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
         expect(askUserQuestion).toBeDefined();
         expect(JSON.stringify(askUserQuestion?.input)).toContain('OPTION_A');
         expect(JSON.stringify(askUserQuestion?.input)).toContain('OPTION_B');
-        expect(resultMessage(clarificationMessages)?.result?.trim()).toBe('ACK-OPTION_B');
+        expect(resultText(clarificationMessages)?.trim()).toBe('ACK-OPTION_B');
 
         const execution = await driver!.runTurn({
             allowedTools: ['mcp__happy__change_title', 'TodoWrite', 'TodoRead', 'Write', 'Edit', 'Read', 'Glob', 'LS'],
@@ -359,7 +368,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
         expect(JSON.stringify(todoWrite?.input)).toContain('Implement OPTION_B follow-up');
         expect(JSON.stringify(todoWrite?.input)).toContain('Inspect ../sibling-dir boundary');
         expect(driver!.getTitleSummaries().some((summary) => summary.includes('OPTION_B'))).toBe(true);
-        expect(execution.result?.result?.trim()).toBe('DONE');
+        expect(execution.result && 'result' in execution.result ? execution.result.result?.trim() : undefined).toBe('DONE');
     });
 
     it('should leave the file untouched and explain the refusal when native write is explicitly disallowed', async () => {
@@ -378,7 +387,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
         expect(denied.toolUseNames).not.toContain('Bash');
         expect(existsSync(deniedFile)).toBe(false);
         expect(denied.assistantText.toLowerCase()).toMatch(/cannot|can't|unable|not available|restricted|limitation/);
-        expect(denied.result?.result?.toLowerCase()).toMatch(/cannot|can't|unable|not available|restricted|limitation/);
+        expect(denied.result && 'result' in denied.result ? denied.result.result?.toLowerCase() : undefined).toMatch(/cannot|can't|unable|not available|restricted|limitation/);
     });
 
     it('should stop a pending AskUserQuestion turn when the caller aborts it', async () => {
@@ -421,6 +430,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
 
         promptStream.push({
             type: 'user',
+            parent_tool_use_id: null,
             message: {
                 role: 'user',
                 content: [
