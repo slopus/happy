@@ -8,6 +8,13 @@ spec:
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
+  # replicas: 1 is safe for single-process mode.
+  # replicas: 2+ is now supported with Redis backplane + S3 file storage.
+  # Prerequisites for multi-pod:
+  #   - REDIS_URL must be set (enables cross-process event delivery and RPC)
+  #   - S3_HOST must be set (enables shared file storage across pods)
+  #   - DB_PROVIDER must be postgres (PGlite is single-process only)
+  # See docs/plans/multiprocess-architecture.md for full architecture details.
   replicas: 1
   selector:
     matchLabels:
@@ -20,7 +27,16 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
         prometheus.io/path: "/metrics"
+        # Optional: session affinity reduces cross-process hops for WebSocket connections.
+        # Not required for correctness — all clients use transports: ['websocket'] and the
+        # backplane handles cross-process event delivery and RPC forwarding.
+        # nginx.ingress.kubernetes.io/affinity: "cookie"
+        # nginx.ingress.kubernetes.io/session-cookie-name: "HAPPYROUTE"
+        # nginx.ingress.kubernetes.io/session-cookie-max-age: "3600"
     spec:
+      # Allow 15 seconds for clean shutdown: backplane disconnect, RPC registry cleanup,
+      # and in-flight request completion before SIGKILL.
+      terminationGracePeriodSeconds: 15
       containers:
       - name: handy
         image: docker.korshakov.com/handy-server:{version}

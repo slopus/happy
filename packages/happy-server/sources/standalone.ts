@@ -48,6 +48,7 @@ async function migrate() {
         path.join(process.cwd(), "prisma", "migrations"),
         path.join(process.cwd(), "packages", "happy-server", "prisma", "migrations"),
         path.join(path.dirname(process.execPath), "prisma", "migrations"),
+        path.join(path.dirname(process.execPath), "packages", "happy-server", "prisma", "migrations"),
     ];
     for (const candidate of candidates) {
         if (fs.existsSync(candidate)) {
@@ -112,8 +113,10 @@ async function serve() {
     process.env.DB_PROVIDER = process.env.DB_PROVIDER || "pglite";
     process.env.PGLITE_DIR = process.env.PGLITE_DIR || pgliteDir;
 
-    // Import and run the main server
-    await import("./main");
+    // Standalone runs without Redis by default, so main.ts will select MemoryBackplane
+    // unless REDIS_URL is explicitly provided by the operator.
+    const { runMain } = await import("./main");
+    await runMain();
 }
 
 // CLI

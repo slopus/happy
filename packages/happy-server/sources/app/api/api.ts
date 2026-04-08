@@ -3,6 +3,7 @@ import { log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
+import { Backplane } from "@/modules/backplane/backplane";
 import { authRoutes } from "./routes/authRoutes";
 import { pushRoutes } from "./routes/pushRoutes";
 import { sessionRoutes } from "./routes/sessionRoutes";
@@ -26,7 +27,7 @@ import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
 import * as fs from "fs";
 
-export async function startApi() {
+export async function startApi(backplane?: Backplane) {
 
     // Configure
     log('Starting API...');
@@ -51,7 +52,7 @@ export async function startApi() {
     const typed = app.withTypeProvider<ZodTypeProvider>() as unknown as Fastify;
 
     // Enable features
-    enableMonitoring(typed);
+    enableMonitoring(typed, backplane);
     enableErrorHandlers(typed);
     enableAuthentication(typed);
 
@@ -99,7 +100,7 @@ export async function startApi() {
     });
 
     // Start Socket
-    startSocket(typed);
+    await startSocket(typed, backplane);
 
     // End
     log('API ready on port http://localhost:' + port);
