@@ -31,6 +31,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
 import { getSessionRouteFromNotificationResponse } from '@/utils/notificationRouting';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
+import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
 
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
@@ -347,9 +348,18 @@ export default function RootLayout() {
 
     // Sync console output toggle from Dev screen
     const consoleLoggingEnabled = useLocalSetting('consoleLoggingEnabled');
+    const devModeEnabled = __DEV__ || useLocalSetting('devModeEnabled');
+    const voiceUpsellOverride = useLocalSetting('voiceUpsellOverride');
     React.useEffect(() => {
         setConsoleOutputEnabled(consoleLoggingEnabled);
     }, [consoleLoggingEnabled]);
+
+    React.useEffect(() => {
+        if (!devModeEnabled || !voiceUpsellOverride) {
+            return;
+        }
+        applyVoiceUpsellOverride(voiceUpsellOverride);
+    }, [devModeEnabled, voiceUpsellOverride]);
 
     //
     // Not inited

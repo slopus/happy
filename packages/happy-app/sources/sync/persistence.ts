@@ -266,6 +266,20 @@ export function incrementVoiceMessageCount() {
     mmkv.set(VOICE_MESSAGE_COUNT_KEY, getVoiceMessageCount() + 1);
 }
 
+export function getVoiceLocalCounters() {
+    return {
+        softPaywallShownCount: getVoiceSoftPaywallShownCount(),
+        onboardingPromptLoadCount: getVoiceOnboardingPromptLoadCount(),
+        voiceMessageCount: getVoiceMessageCount(),
+    };
+}
+
+export function resetVoiceLocalCounters() {
+    mmkv.delete(VOICE_SOFT_PAYWALL_SHOWN_KEY);
+    mmkv.delete(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY);
+    mmkv.delete(VOICE_MESSAGE_COUNT_KEY);
+}
+
 export function clearPersistence() {
     mmkv.clearAll();
 }

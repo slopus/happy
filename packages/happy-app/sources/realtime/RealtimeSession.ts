@@ -95,7 +95,11 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         }
 
         const hasPro = storage.getState().purchases.entitlements['pro'] ?? false;
-        const voiceUpsellVariant = getVoiceUpsellVariant();
+        const { voiceUpsellOverride, devModeEnabled } = storage.getState().localSettings;
+        const voiceUpsellVariant = getVoiceUpsellVariant({
+            override: voiceUpsellOverride,
+            overrideEnabled: __DEV__ || devModeEnabled,
+        });
 
         if (
             !hasPro &&

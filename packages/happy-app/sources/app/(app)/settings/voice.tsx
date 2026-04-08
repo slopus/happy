@@ -8,14 +8,15 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Switch } from '@/components/Switch';
 import { UsageBar } from '@/components/usage/UsageBar';
-import { useSettingMutable, useEntitlement, useLocalSetting, useSetting } from '@/sync/storage';
+import { useSettingMutable, useEntitlement, useLocalSetting, useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { useAuth } from '@/auth/AuthContext';
 import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constants/Languages';
 import { fetchVoiceUsage, type VoiceUsageResponse } from '@/sync/apiVoice';
 import { t } from '@/text';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
-import { getVoiceExperimentStatus } from '@/realtime/voiceExperiment';
+import { getVoiceExperimentStatus, getVoiceUpsellVariantLabel } from '@/realtime/voiceExperiment';
+import { getVoiceLocalCounters, resetVoiceLocalCounters } from '@/sync/persistence';
 
 function formatVoiceTime(totalSeconds: number): string {
     const mins = Math.floor(totalSeconds / 60);
@@ -29,6 +30,7 @@ export default React.memo(function VoiceSettingsScreen() {
     const [voiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [voiceCustomAgentId, setVoiceCustomAgentId] = useSettingMutable('voiceCustomAgentId');
     const [voiceBypassToken, setVoiceBypassToken] = useSettingMutable('voiceBypassToken');
+    const [voiceUpsellOverride, setVoiceUpsellOverride] = useLocalSettingMutable('voiceUpsellOverride');
     const experiments = useSetting('experiments');
     const devModeEnabled = __DEV__ || useLocalSetting('devModeEnabled');
 
@@ -36,6 +38,7 @@ export default React.memo(function VoiceSettingsScreen() {
 
     const [usage, setUsage] = React.useState<VoiceUsageResponse | null>(null);
     const [usageLoading, setUsageLoading] = React.useState(true);
+    const [voiceLocalCounters, setVoiceLocalCounters] = React.useState(() => getVoiceLocalCounters());
 
     React.useEffect(() => {
         if (!auth.credentials) return;
@@ -69,27 +72,73 @@ export default React.memo(function VoiceSettingsScreen() {
         }
     }, [voiceCustomAgentId, setVoiceCustomAgentId, setVoiceBypassToken]);
 
+    const handleVoiceExperimentOverride = React.useCallback(() => {
+        Modal.alert(
+            'Voice Experiment Override',
+            'Select a local override for the voice-upsell experiment.',
+            [
+                { text: 'No Override', onPress: () => setVoiceUpsellOverride(null) },
+                { text: 'Control', onPress: () => setVoiceUpsellOverride('control') },
+                { text: 'Soft Paywall', onPress: () => setVoiceUpsellOverride('show-paywall-before-first-voice-chat') },
+                { text: 'Onboarding + Upsell', onPress: () => setVoiceUpsellOverride('voice-onboarding-and-upsell') },
+            ],
+        );
+    }, [setVoiceUpsellOverride]);
+
+    const handleResetVoiceCounters = React.useCallback(async () => {
+        const confirmed = await Modal.confirm(
+            'Reset Voice Counters',
+            'Clear local voice counters used for onboarding and soft-paywall behavior on this device?',
+            {
+                confirmText: 'Reset',
+                destructive: true,
+            },
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        resetVoiceLocalCounters();
+        setVoiceLocalCounters(getVoiceLocalCounters());
+    }, []);
+
     const voiceExperimentStatus = React.useMemo(() => {
         return getVoiceExperimentStatus({
             voiceBypassToken,
             voiceCustomAgentId,
+            voiceUpsellOverride,
+            voiceUpsellOverrideEnabled: devModeEnabled,
         });
-    }, [voiceBypassToken, voiceCustomAgentId]);
+    }, [devModeEnabled, voiceBypassToken, voiceCustomAgentId, voiceUpsellOverride]);
 
     const developerExperimentSubtitle = React.useMemo(() => {
-        const upsellVariant = voiceExperimentStatus.upsellVariantSource === 'default'
-            ? `${voiceExperimentStatus.upsellVariant} (default)`
-            : voiceExperimentStatus.upsellVariant;
+        const upsellVariant = getVoiceUpsellVariantLabel(voiceExperimentStatus.upsellVariant);
         const gatingMode = voiceExperimentStatus.gatingMode === 'direct-byo-agent'
             ? 'direct BYO agent bypass'
             : 'Happy server gate';
 
         return [
             `voice-upsell: ${upsellVariant}`,
+            `source: ${voiceExperimentStatus.upsellVariantSource}`,
             `gate: ${gatingMode}`,
             `experiments setting: ${experiments ? 'on' : 'off'}`,
         ].join('\n');
     }, [experiments, voiceExperimentStatus]);
+
+    const developerOverrideLabel = React.useMemo(() => {
+        if (!voiceUpsellOverride) {
+            return 'No Override';
+        }
+        return getVoiceUpsellVariantLabel(voiceUpsellOverride);
+    }, [voiceUpsellOverride]);
+
+    const developerCountersSubtitle = React.useMemo(() => {
+        return [
+            `soft paywall shown: ${voiceLocalCounters.softPaywallShownCount}`,
+            `onboarding prompt loads: ${voiceLocalCounters.onboardingPromptLoadCount}`,
+            `voice messages: ${voiceLocalCounters.voiceMessageCount}`,
+        ].join('\n');
+    }, [voiceLocalCounters]);
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -141,8 +190,15 @@ export default React.memo(function VoiceSettingsScreen() {
             {devModeEnabled && (
                 <ItemGroup
                     title="Developer"
-                    footer="Developer-only diagnostics for the current voice rollout. The paid voice gate runs through Happy server unless Direct Connection and a custom ElevenLabs agent are both enabled."
+                    footer="Developer-only diagnostics and local override controls for the current voice rollout. The paid voice gate runs through Happy server unless Direct Connection and a custom ElevenLabs agent are both enabled."
                 >
+                    <Item
+                        title="Voice Experiment Override"
+                        subtitle="Simple local override for the voice-upsell flag"
+                        detail={developerOverrideLabel}
+                        icon={<Ionicons name="options-outline" size={29} color="#007AFF" />}
+                        onPress={handleVoiceExperimentOverride}
+                    />
                     <Item
                         title="Voice Experiment Status"
                         subtitle={developerExperimentSubtitle}
@@ -150,6 +206,13 @@ export default React.memo(function VoiceSettingsScreen() {
                         icon={<Ionicons name="flask-outline" size={29} color="#5856D6" />}
                         showChevron={false}
                         copy={developerExperimentSubtitle}
+                    />
+                    <Item
+                        title="Reset Voice Counters"
+                        subtitle={developerCountersSubtitle}
+                        subtitleLines={0}
+                        icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
+                        onPress={handleResetVoiceCounters}
                     />
                 </ItemGroup>
             )}
