@@ -38,8 +38,11 @@ function resolveSessionOnlineState(session: { active: boolean; activeAt: number 
 /**
  * Checks if a session should be shown in the active sessions group
  */
-function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
-    // Use the active flag directly, no timeout checks
+function isSessionActive(session: { active: boolean; activeAt: number; metadata: { lifecycleState?: string } | null }): boolean {
+    // Archived sessions are never active, even if the agent is still running
+    if (session.metadata?.lifecycleState === 'archived') {
+        return false;
+    }
     return session.active;
 }
 
@@ -171,8 +174,9 @@ function buildSessionListViewData(
     });
 
     // Sort sessions by updated date (newest first)
-    activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-    inactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    // Sort sessions by updated date (newest first), with createdAt as stable tiebreaker
+    activeSessions.sort((a, b) => (b.updatedAt - a.updatedAt) || (b.createdAt - a.createdAt));
+    inactiveSessions.sort((a, b) => (b.updatedAt - a.updatedAt) || (b.createdAt - a.createdAt));
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
@@ -331,11 +335,24 @@ export const storage = create<StorageState>()((set, get) => {
                     (session.permissionMode && session.permissionMode !== 'default' ? session.permissionMode : undefined) ||
                     defaultPermissionMode;
 
+                // If the session was locally archived (by the user) but the
+                // server still reports it as active (race: CLI process hasn't
+                // fully exited yet), preserve the local archived state so the
+                // session doesn't "revive" in the UI.
+                const existing = state.sessions[session.id];
+                const locallyArchived = existing?.metadata?.lifecycleState === 'archived'
+                    && existing?.metadata?.archivedBy === 'app'
+                    && session.active;
+
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: resolvedPermissionMode
+                    permissionMode: resolvedPermissionMode,
+                    ...(locallyArchived ? {
+                        active: false,
+                        metadata: existing.metadata,
+                    } : {}),
                 };
             });
 
@@ -360,9 +377,9 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             });
 
-            // Sort both arrays by creation date for stable ordering
-            activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-            inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
+            // Sort both arrays by updated date (newest first), with createdAt as stable tiebreaker
+            activeSessions.sort((a, b) => (b.updatedAt - a.updatedAt) || (b.createdAt - a.createdAt));
+            inactiveSessions.sort((a, b) => (b.updatedAt - a.updatedAt) || (b.createdAt - a.createdAt));
 
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];
@@ -498,14 +515,17 @@ export const storage = create<StorageState>()((set, get) => {
             // This prevents history replays (which contain both Enter + Exit) from
             // re-triggering plan mode, while still catching real-time EnterPlanMode.
             let shouldEnterPlanMode = false;
+            let shouldExitPlanMode = false;
             for (const msg of messages) {
                 if (msg.role === 'agent') {
                     for (const c of msg.content) {
                         if (c.type === 'tool-call') {
                             if (c.name === 'EnterPlanMode' || c.name === 'enter_plan_mode') {
                                 shouldEnterPlanMode = true;
+                                shouldExitPlanMode = false;
                             } else if (c.name === 'ExitPlanMode' || c.name === 'exit_plan_mode') {
                                 shouldEnterPlanMode = false;
+                                shouldExitPlanMode = true;
                             }
                         }
                     }
@@ -553,7 +573,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
                 let updatedSessions = state.sessions;
-                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode) && session;
+                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode || shouldExitPlanMode) && session;
 
                 if (needsUpdate) {
                     updatedSessions = {
@@ -565,8 +585,9 @@ export const storage = create<StorageState>()((set, get) => {
                             latestUsage: existingSession.reducerState.latestUsage ? {
                                 ...existingSession.reducerState.latestUsage
                             } : session.latestUsage,
-                            // Auto-switch to plan mode when EnterPlanMode tool call is detected
-                            ...(shouldEnterPlanMode && { permissionMode: 'plan' })
+                            // Auto-switch permission mode when EnterPlanMode/ExitPlanMode tool call is detected
+                            ...(shouldEnterPlanMode && { permissionMode: 'plan' }),
+                            ...(shouldExitPlanMode && { permissionMode: 'default' })
                         }
                     };
                 }
@@ -588,7 +609,7 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             // Persist plan mode change
-            if (shouldEnterPlanMode) {
+            if (shouldEnterPlanMode || shouldExitPlanMode) {
                 const allModes: Record<string, string> = {};
                 const currentState = get();
                 Object.entries(currentState.sessions).forEach(([id, sess]) => {
@@ -1223,7 +1244,7 @@ export function useSessionListViewData(): SessionListViewItem[] | null {
 export function useAllSessions(): Session[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        return Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+        return Object.values(state.sessions).sort((a, b) => (b.updatedAt - a.updatedAt) || (b.createdAt - a.createdAt));
     }));
 }
 
