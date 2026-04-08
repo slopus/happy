@@ -29,7 +29,7 @@ import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { tracking, trackMessageSent } from '@/track';
+import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
@@ -402,8 +402,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 if (message.trim()) {
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
-                    trackMessageSent(session.metadata?.version);
+                    sync.sendMessage(sessionId, message, { source: 'chat' });
                 }
             }}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}

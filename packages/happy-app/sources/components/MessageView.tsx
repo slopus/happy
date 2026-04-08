@@ -70,7 +70,7 @@ function UserTextBlock(props: {
   sessionId: string;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
+    sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
   return (
@@ -90,7 +90,7 @@ function AgentTextBlock(props: {
   sessionId: string;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
+    sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
   // Hide thinking messages

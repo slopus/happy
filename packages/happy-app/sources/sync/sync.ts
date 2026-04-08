@@ -21,6 +21,7 @@ import { loadPendingSettings, savePendingSettings } from './persistence';
 import {
     initializeTracking,
     trackGitHubConnected,
+    trackMessageSent,
     tracking,
     trackPaywallCancelled,
     trackPaywallError,
@@ -28,6 +29,7 @@ import {
     trackPaywallPurchased,
     trackPaywallRestored,
 } from '@/track';
+import type { MessageSentSource } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 import { getServerUrl } from './serverConfig';
@@ -67,6 +69,11 @@ type V3PostSessionMessagesResponse = {
 type OutboxMessage = {
     localId: string;
     content: string;
+};
+
+type SendMessageOptions = {
+    displayText?: string;
+    source?: MessageSentSource;
 };
 
 class Sync {
@@ -446,7 +453,7 @@ class Sync {
         this.backgroundSendStartedAt = null;
     }
 
-    async sendMessage(sessionId: string, text: string, displayText?: string) {
+    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -463,6 +470,7 @@ class Sync {
         }
 
         const { permissionMode, model } = resolveMessageModeMeta(session);
+        const { displayText, source = 'chat' } = options ?? {};
 
         // Generate local ID
         const localId = randomUUID();
@@ -520,6 +528,7 @@ class Sync {
             localId,
             content: encryptedRawRecord
         });
+        trackMessageSent(source, session.metadata);
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();

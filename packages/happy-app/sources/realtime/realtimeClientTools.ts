@@ -2,11 +2,10 @@ import { z } from 'zod';
 import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
-import { trackVoiceMessageSent, trackVoicePermissionResponse } from '@/track';
+import { trackVoicePermissionResponse } from '@/track';
 import { getVoiceSession, isVoiceSessionStarted } from './RealtimeSession';
 import {
     getVoiceMessageCount,
-    getVoiceOnboardingPromptLoadCount,
     incrementVoiceMessageCount,
 } from '@/sync/persistence';
 
@@ -32,7 +31,7 @@ export const realtimeClientTools = {
 
         const { sessionId, message } = parsed.data;
         console.log('📤 Sending message to session:', sessionId);
-        sync.sendMessage(sessionId, message);
+        await sync.sendMessage(sessionId, message, { source: 'voice' });
         incrementVoiceMessageCount();
         const voiceMessageCount = getVoiceMessageCount();
         if (isVoiceSessionStarted()) {
@@ -41,11 +40,6 @@ export const realtimeClientTools = {
                 `- voice_message_count: ${voiceMessageCount}`,
             ].join('\n'));
         }
-        trackVoiceMessageSent({
-            has_pro: storage.getState().purchases.entitlements['pro'] ?? false,
-            onboarding_prompt_load_count: getVoiceOnboardingPromptLoadCount(),
-            voice_message_count: voiceMessageCount,
-        });
         return "sent [DO NOT say anything else, simply say 'sent']";
     },
 

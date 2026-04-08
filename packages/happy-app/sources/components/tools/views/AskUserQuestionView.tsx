@@ -245,7 +245,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                 await sessionAllow(sessionId, tool.permission.id);
             }
             // 2. Send the answer as a message
-            await sync.sendMessage(sessionId, responseText);
+            await sync.sendMessage(sessionId, responseText, { source: 'question' });
         } catch (error) {
             console.error('Failed to submit answer:', error);
         } finally {

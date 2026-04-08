@@ -834,7 +834,7 @@ function NewSessionScreen() {
 
                     // Send initial message if provided
                     if (prompt.trim()) {
-                        await sync.sendMessage(result.sessionId, prompt.trim());
+                        await sync.sendMessage(result.sessionId, prompt.trim(), { source: 'new_session' });
                     }
 
                     router.back();

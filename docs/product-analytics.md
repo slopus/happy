@@ -30,14 +30,20 @@
 
 - connect_attempt
 - message_sent
+  - source
+  - session_agent
+  - session_started_source
   - happy_cli_version
+  - ota_version
+  - ota_runtime_version
 - session_switched
+  - session_id
+  - session_created_at
   - last_active_at
   - last_updated_at
 
 ## Voice
 
-- voice_message_sent
 - voice_permission_response
   - allowed
 - voice_session_started
@@ -76,7 +82,11 @@ all include flow property which customizes the upsell screen shown by revenue ca
 ## Updates
 
 - ota_update_available
+  - ota_version
+  - ota_runtime_version
 - ota_update_applied
+  - ota_version
+  - ota_runtime_version
 - whats_new_clicked
 
 ## GitHub
@@ -124,9 +134,19 @@ all include flow property which customizes the upsell screen shown by revenue ca
 - optIn
 - optOut
 
+## Strong Preferences
+
+- Prefer a small number of core events with explicit properties over a growing set of overlapping events.
+- `message_sent` is the canonical outbound send event. Do not add parallel send events for specific surfaces like voice. Add or use `source` instead.
+- If a new analytics question can be answered by extending an existing event, prefer adding a property over inventing a new event.
+- `session_switched` should carry stable identity, not just recency. Keep `session_id` and `session_created_at` on it.
+- OTA context is first-class and should travel with the events that matter. Keep `ota_version` and `ota_runtime_version` on `message_sent`, `ota_update_available`, and `ota_update_applied`.
+- Prefer direct, explicit property objects at capture sites. Do not hide event shape behind generic helper layers that silently add, remove, or filter fields.
+- If we ever care about session-switch entry source, add an explicit `source` property. Do not try to reconstruct it later from navigation context.
+
 ## Notes
 
-- session_switched gives recency, but not source. Sidebar vs push vs any other entry point is still merged.
+- session_switched now includes stable identity (`session_id`, `session_created_at`) plus recency. Entry source is still merged until we add an explicit source property.
 - elevenlabs_conversation_id is the conversation id returned by the ElevenLabs voice session layer.
 - github_connected is a plain event with no GitHub profile data attached.
 
