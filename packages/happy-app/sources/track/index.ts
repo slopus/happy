@@ -41,8 +41,10 @@ export function trackSessionSwitched(session: Pick<Session, 'activeAt' | 'update
     });
 }
 
-export function trackMessageSent() {
-    tracking?.capture('message_sent');
+export function trackMessageSent(cliVersion?: string) {
+    tracking?.capture('message_sent', {
+        happy_cli_version: cliVersion,
+    });
 }
 
 export function trackVoiceMessageSent() {

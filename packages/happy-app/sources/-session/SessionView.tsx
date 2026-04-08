@@ -398,7 +398,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     setMessage('');
                     clearDraft();
                     sync.sendMessage(sessionId, message);
-                    trackMessageSent();
+                    trackMessageSent(session.metadata?.version);
                 }
             }}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}

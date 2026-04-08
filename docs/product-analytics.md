@@ -30,6 +30,7 @@
 
 - connect_attempt
 - message_sent
+  - happy_cli_version
 - session_switched
   - last_active_at
   - last_updated_at
