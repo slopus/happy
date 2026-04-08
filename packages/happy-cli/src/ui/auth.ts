@@ -57,12 +57,28 @@ export async function doAuth(): Promise<Credentials | null> {
     }
 }
 
+export function getAuthMethodFallbackForEnvironment(): AuthMethod | null {
+    if (!process.stdout.isTTY || !process.stdin.isTTY || process.env.CI || process.env.HEADLESS) {
+        return 'web';
+    }
+
+    return null;
+}
+
 /**
  * Display authentication method selector and return user choice
  */
 function selectAuthenticationMethod(): Promise<AuthMethod | null> {
+    const fallbackMethod = getAuthMethodFallbackForEnvironment();
+    if (fallbackMethod) {
+        logger.debug('[AUTH] Non-interactive environment detected, skipping Ink auth selector');
+        console.log('\nNon-interactive terminal detected. Falling back to Web Browser authentication.\n');
+        return Promise.resolve(fallbackMethod);
+    }
+
     return new Promise((resolve) => {
         let hasResolved = false;
+        let app: ReturnType<typeof render>;
 
         const onSelect = (method: AuthMethod) => {
             if (!hasResolved) {
@@ -80,7 +96,7 @@ function selectAuthenticationMethod(): Promise<AuthMethod | null> {
             }
         };
 
-        const app = render(React.createElement(AuthSelector, { onSelect, onCancel }), {
+        app = render(React.createElement(AuthSelector, { onSelect, onCancel }), {
             exitOnCtrlC: false,
             patchConsole: false
         });
