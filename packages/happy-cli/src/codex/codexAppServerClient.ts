@@ -4,6 +4,13 @@
  *
  * Protocol: JSON-RPC 2.0 over stdio (newline-delimited JSON).
  * Reference: codex-rs/app-server/README.md in the openai/codex repo.
+ *
+ * WARNING: @openai/codex-sdk (v0.118.0) exists but only wraps `codex exec`
+ * (non-interactive, fire-and-forget). It has NO support for `app-server`,
+ * interactive approvals, or bidirectional JSON-RPC. We need app-server for
+ * mobile approval routing (exec:request, patch:request, mcp:call), which is
+ * why this client is hand-rolled. Re-evaluate if the SDK ever adds an
+ * app-server wrapper or approval callbacks. See docs/plans/codex-app-server-migration.md.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -126,7 +133,6 @@ export class CodexAppServerClient {
     // A completion event only resolves once we have seen task_started for this turn.
     private pendingTurnCompletion: {
         resolve: (aborted: boolean) => void;
-        started: boolean;
         turnId: string | null;
     } | null = null;
 
@@ -260,7 +266,7 @@ export class CodexAppServerClient {
 
         if (method === 'thread/status/changed') {
             const statusType = params?.status?.type;
-            if (statusType === 'idle' && this.pendingTurnCompletion?.started) {
+            if (statusType === 'idle' && this.pendingTurnCompletion) {
                 this.emitRawTurnCompletion(this._turnId, 'completed', null, method);
             }
             return true;
@@ -355,7 +361,7 @@ export class CodexAppServerClient {
                 });
             }
 
-            if (item.phase === 'final_answer' && this.pendingTurnCompletion?.started) {
+            if (item.phase === 'final_answer' && this.pendingTurnCompletion) {
                 this.emitRawTurnCompletion(
                     this.extractTurnId(params),
                     'completed',
@@ -672,7 +678,6 @@ export class CodexAppServerClient {
 
     private markPendingTurnStarted(turnId?: string | null): void {
         if (!this.pendingTurnCompletion) return;
-        this.pendingTurnCompletion.started = true;
         if (turnId) {
             this.pendingTurnCompletion.turnId = turnId;
         }
@@ -682,12 +687,10 @@ export class CodexAppServerClient {
         const pending = this.pendingTurnCompletion;
         if (!pending) return;
 
-        // Guard against stale completion notifications from the prior turn.
-        if (!pending.started) {
-            logger.debug(`[CodexAppServer] Ignoring ${source} before task_started`);
-            return;
-        }
-
+        // Guard against stale completion notifications from a *different* turn.
+        // We use turn ID matching instead of the `started` flag because Codex
+        // can skip the turn/started notification entirely for fast turns,
+        // which would cause us to discard a valid turn/completed and hang forever.
         if (pending.turnId && turnId && pending.turnId !== turnId) {
             logger.debug(
                 `[CodexAppServer] Ignoring ${source} for turn ${turnId}; awaiting ${pending.turnId}`,
@@ -744,7 +747,7 @@ export class CodexAppServerClient {
 
         logger.warn(`[CodexAppServer] interrupt did not settle turn in ${gracePeriodMs}ms; force-restarting app-server`);
         const pendingTurnId = this.pendingTurnCompletion?.turnId ?? this._turnId;
-        if (this.pendingTurnCompletion?.started) {
+        if (this.pendingTurnCompletion) {
             this.eventHandler?.({
                 type: 'turn_aborted',
                 reason: 'interrupted',
@@ -845,7 +848,6 @@ export class CodexAppServerClient {
         const completion = new Promise<boolean>((resolve) => {
             this.pendingTurnCompletion = {
                 resolve,
-                started: false,
                 turnId: null,
             };
 
