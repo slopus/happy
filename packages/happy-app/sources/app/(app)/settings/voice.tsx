@@ -86,10 +86,16 @@ export default React.memo(function VoiceSettingsScreen() {
                             color={usage.usedSeconds >= usage.limitSeconds ? '#FF3B30' : '#007AFF'}
                         />
                         <Text style={{ fontSize: 13, color: '#8E8E93', marginTop: 4 }}>
-                            {t('settingsVoice.usageUsed', {
-                                used: formatVoiceTime(usage.usedSeconds),
-                                limit: formatVoiceTime(usage.limitSeconds),
-                            })}
+                            {formatVoiceTime(usage.usedSeconds)} / {formatVoiceTime(usage.limitSeconds)}
+                        </Text>
+                        <UsageBar
+                            label={t('settingsVoice.conversationsLabel')}
+                            value={usage.conversationCount}
+                            maxValue={usage.conversationLimit}
+                            color={usage.conversationCount >= usage.conversationLimit ? '#FF3B30' : '#007AFF'}
+                        />
+                        <Text style={{ fontSize: 13, color: '#8E8E93', marginTop: 4 }}>
+                            {usage.conversationCount} / {usage.conversationLimit}
                         </Text>
                     </View>
                 </ItemGroup>

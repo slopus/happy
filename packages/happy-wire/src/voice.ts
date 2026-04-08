@@ -2,7 +2,7 @@ import * as z from 'zod';
 
 export const VoiceConversationGrantedSchema = z.object({
     allowed: z.literal(true),
-    signedUrl: z.string(),
+    conversationToken: z.string(),
     conversationId: z.string(),
     agentId: z.string(),
     elevenUserId: z.string(),
@@ -12,7 +12,7 @@ export const VoiceConversationGrantedSchema = z.object({
 
 export const VoiceConversationDeniedSchema = z.object({
     allowed: z.literal(false),
-    reason: z.enum(['voice_hard_limit_reached', 'subscription_required']),
+    reason: z.enum(['voice_hard_limit_reached', 'subscription_required', 'voice_conversation_limit_reached']),
     usedSeconds: z.number(),
     limitSeconds: z.number(),
     agentId: z.string(),
@@ -28,6 +28,8 @@ export type VoiceConversationResponse = z.infer<typeof VoiceConversationResponse
 export const VoiceUsageResponseSchema = z.object({
     usedSeconds: z.number(),
     limitSeconds: z.number(),
+    conversationCount: z.number(),
+    conversationLimit: z.number(),
     elevenUserId: z.string(),
 });
 

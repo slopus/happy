@@ -10,7 +10,7 @@ import { config } from '@/config';
 
 export type { VoiceConversationResponse, VoiceUsageResponse };
 
-export async function fetchVoiceSignedUrl(
+export async function fetchVoiceCredentials(
     credentials: AuthCredentials,
     sessionId: string
 ): Promise<VoiceConversationResponse> {
@@ -44,8 +44,9 @@ export async function fetchVoiceUsage(
     credentials: AuthCredentials
 ): Promise<VoiceUsageResponse> {
     const serverUrl = getServerUrl();
+    const agentId = config.elevenLabsAgentId;
 
-    const response = await fetch(`${serverUrl}/v1/voice/usage`, {
+    const response = await fetch(`${serverUrl}/v1/voice/usage?agentId=${agentId}`, {
         method: 'GET',
         headers: {
             'Authorization': `Bearer ${credentials.token}`,

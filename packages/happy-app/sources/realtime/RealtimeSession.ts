@@ -1,5 +1,5 @@
 import type { VoiceSession } from './types';
-import { fetchVoiceSignedUrl } from '@/sync/apiVoice';
+import { fetchVoiceCredentials } from '@/sync/apiVoice';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
 import { TokenStorage } from '@/auth/tokenStorage';
@@ -60,11 +60,19 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             return null;
         }
 
-        const response = await fetchVoiceSignedUrl(credentials, sessionId);
-        console.log('[Voice] fetchVoiceSignedUrl response:', response);
+        const response = await fetchVoiceCredentials(credentials, sessionId);
+        console.log('[Voice] fetchVoiceCredentials response:', response);
 
         if (!response.allowed) {
             storage.getState().setRealtimeStatus('disconnected');
+
+            if (response.reason === 'voice_conversation_limit_reached') {
+                Modal.alert(
+                    t('errors.voiceLimitReachedTitle'),
+                    t('errors.voiceConversationLimitReached'),
+                );
+                return null;
+            }
 
             // Server hard-declined — must pay to continue
             console.log('[Voice] Not allowed (reason: %s), presenting must-pay paywall...', response.reason);
@@ -91,7 +99,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         const startedConversationId = await voiceSession.startSession({
             sessionId,
             initialContext,
-            signedUrl: response.signedUrl,
+            conversationToken: response.conversationToken,
             agentId: response.agentId,
             userId: response.elevenUserId,
         });

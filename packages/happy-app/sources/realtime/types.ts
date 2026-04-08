@@ -1,7 +1,7 @@
 export interface VoiceSessionConfig {
     sessionId: string;
     initialContext?: string;
-    signedUrl?: string;
+    conversationToken?: string;
     agentId?: string;
     userId?: string;
 }

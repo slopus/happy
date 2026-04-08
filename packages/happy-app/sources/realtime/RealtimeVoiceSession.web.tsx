@@ -41,8 +41,8 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
             
-            if (!config.signedUrl && !config.agentId) {
-                throw new Error('No signedUrl or agentId provided');
+            if (!config.conversationToken && !config.agentId) {
+                throw new Error('No conversationToken or agentId provided');
             }
 
             const sessionConfig: any = {
@@ -55,9 +55,10 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                         language: elevenLabsLanguage
                     }
                 },
-                // signedUrl → websocket (default), agentId → public (bypass mode)
-                signedUrl: config.signedUrl,
-                agentId: config.agentId,
+                // conversationToken (WebRTC JWT from server) or agentId (bypass mode)
+                ...(config.conversationToken
+                    ? { conversationToken: config.conversationToken }
+                    : { agentId: config.agentId }),
                 userId: config.userId,
             };
             
