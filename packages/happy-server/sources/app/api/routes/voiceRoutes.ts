@@ -63,18 +63,20 @@ async function hasActiveSubscription(userId: string): Promise<boolean> {
 
     try {
         const response = await fetch(
-            `https://api.revenuecat.com/v1/subscribers/${userId}`,
+            `https://api.revenuecat.com/v2/projects/proj493735ad/customers/${userId}/active_entitlements`,
             {
                 method: "GET",
                 headers: {
                     "Authorization": `Bearer ${revenueCatApiKey}`,
-                    "Content-Type": "application/json",
                 },
             }
         );
-        if (!response.ok) return false;
-        const data = (await response.json()) as any;
-        return !!data.subscriber?.entitlements?.active?.pro;
+        if (!response.ok) {
+            log({ module: 'voice' }, `RevenueCat check failed for ${userId}: ${response.status}`);
+            return false;
+        }
+        const data = (await response.json()) as { items?: Array<{ entitlement_id: string }> };
+        return (data.items?.length ?? 0) > 0;
     } catch {
         return false;
     }
