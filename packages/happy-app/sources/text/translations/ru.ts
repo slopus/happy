@@ -776,6 +776,7 @@ export const ru: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Да, разрешить все правки в этой сессии',
+            yesAllowEverything: 'Да, разрешить всё в этой сессии',
             yesForTool: 'Да, больше не спрашивать для этого инструмента',
             noTellClaude: 'Нет, дать обратную связь',
         }
