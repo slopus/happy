@@ -21,7 +21,7 @@ import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { getCurrentVoiceConversationId, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
@@ -306,25 +306,27 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 const conversationId = await startRealtimeSession(sessionId, initialPrompt);
                 if (conversationId) {
                     tracking?.capture('voice_session_started', {
-                        sessionId,
-                        conversationId,
+                        session_id: sessionId,
+                        elevenlabs_conversation_id: conversationId,
                     });
                 }
             } catch (error) {
                 console.error('Failed to start realtime session:', error);
                 Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
                 tracking?.capture('voice_session_error', {
-                    sessionId,
-                    conversationId: getCurrentVoiceConversationId(),
+                    session_id: sessionId,
+                    elevenlabs_conversation_id: getCurrentVoiceConversationId(),
                     error: error instanceof Error ? error.message : 'Unknown error',
                 });
             }
         } else if (realtimeStatus === 'connected') {
             const conversationId = getCurrentVoiceConversationId();
+            const durationSeconds = getCurrentVoiceSessionDurationSeconds();
             await stopRealtimeSession();
             tracking?.capture('voice_session_stopped', {
-                sessionId,
-                conversationId,
+                session_id: sessionId,
+                elevenlabs_conversation_id: conversationId,
+                duration_seconds: durationSeconds,
             });
 
             // Notify voice assistant about voice session stop

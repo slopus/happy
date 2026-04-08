@@ -1,126 +1,141 @@
 # Product Analytics
 
-**Platform:** [PostHog](https://us.posthog.com/project/202516) (US Cloud)  
-**Core Dashboard:** [Dashboard #491247](https://us.posthog.com/project/202516/dashboard/491247)  
-**Library:** `posthog-react-native`  
-**Client-only** — no server-side analytics.
+# [auto]
 
-## Setup
+## Navigation
 
-- **Init:** `packages/happy-app/sources/track/tracking.ts` — PostHog client created with key from `EXPO_PUBLIC_POSTHOG_KEY`
-- **Provider:** `packages/happy-app/sources/app/_layout.tsx:390` — `<PostHogProvider>` wraps the app
-- **Screen tracking:** `packages/happy-app/sources/track/useTrackScreens.ts` — auto-tracks route changes (no params, privacy-safe)
-- **Auto lifecycle:** `captureAppLifecycleEvents: true` — app open/close/install/update tracked automatically
-- **Opt-out:** synced from user settings `analyticsOptOut` flag → `tracking.optOut()` / `tracking.optIn()`
-- **Identity:** `tracking.identify(anonymousUserId)` called during auth init
+- $screen
+  - $screen_name
 
-## All Events
+## Lifecycle
 
-All custom events are defined in `packages/happy-app/sources/track/index.ts` unless noted otherwise.
+- Application Installed
+- Application Updated
+  - previous_version?
+  - previous_build?
+- Application Opened
+  - url?
+- Application Became Active
+- Application Backgrounded
 
-### Auth
+# [explicit]
 
-| Event | Properties | Trigger | Called From |
-|-------|-----------|---------|-------------|
-| `account_created` | — | User creates a new account | `app/(app)/index.tsx:45` |
-| `account_restored` | — | User restores/links existing account | `app/(app)/index.tsx:71,98,132,158` |
+## Auth
 
-### Core Interactions
+- account_created
+- account_restored
+  - note: this is restore-flow start, not restore success
 
-| Event | Properties | Trigger | Called From |
-|-------|-----------|---------|-------------|
-| `connect_attempt` | — | User taps authenticate / manual URL connect | `components/ConnectButton.tsx:15,21` |
-| `message_sent` | — | User sends a message in session | `-session/SessionView.tsx:386` |
+## Core
 
-### Voice
+- connect_attempt
+- message_sent
+- session_switched
+  - last_active_at
+  - last_updated_at
 
-| Event | Properties | Trigger | Called From |
-|-------|-----------|---------|-------------|
-| `voice_session_started` | `{ sessionId, conversationId? }` | Voice session start is authorized and handed off to ElevenLabs | `-session/SessionView.tsx` (direct capture) |
-| `voice_session_error` | `{ sessionId, conversationId?, error }` | Voice session fails to start | `-session/SessionView.tsx` (direct capture) |
-| `voice_session_stopped` | `{ sessionId, conversationId? }` | User stops voice session | `-session/SessionView.tsx` (direct capture) |
-| `voice_message_sent` | — | Voice assistant sends a message to a session | `realtime/realtimeClientTools.ts:30` |
-| `voice_permission_response` | `{ allowed: boolean }` | Voice assistant allows/denies a permission request | `realtime/realtimeClientTools.ts:70,73` |
+## Voice
 
-### Paywall / Monetization
+- voice_message_sent
+- voice_permission_response
+  - allowed
+- voice_session_started
+  - session_id
+  - elevenlabs_conversation_id
+- voice_session_error
+  - session_id
+  - elevenlabs_conversation_id
+  - error
+- voice_session_stopped
+  - session_id
+  - elevenlabs_conversation_id
+  - duration_seconds
 
-| Event | Properties | Trigger | Called From |
-|-------|-----------|---------|-------------|
-| `paywall_button_clicked` | — | User taps subscribe button in settings | `components/SettingsView.tsx:66` |
-| `paywall_presented` | — | RevenueCat paywall UI shown | `sync/sync.ts:614` |
-| `paywall_purchased` | — | User completes purchase | `sync/sync.ts:622` |
-| `paywall_restored` | — | User restores previous purchase | `sync/sync.ts:627` |
-| `paywall_cancelled` | — | User closes paywall without buying | `sync/sync.ts:632` |
-| `paywall_error` | `{ error }` | RevenueCat init/presentation error | `sync/sync.ts:609,640,645` |
+## Paywall
 
-### App Review
+all include flow property which customizes the upsell screen shown by revenue cat.
 
-| Event | Properties | Trigger | Called From |
-|-------|-----------|---------|-------------|
-| `review_prompt_shown` | — | Initial "do you enjoy this app?" prompt shown | `utils/requestReview.ts:86` |
-| `review_prompt_response` | `{ likes_app: boolean }` | User answers yes/no | `utils/requestReview.ts:95` |
-| `review_store_shown` | — | Native store review dialog opened | `utils/requestReview.ts:61,114` |
-| `review_retry_scheduled` | `{ days_until_retry }` | User declined, retry set to 30 days | `utils/requestReview.ts:108` |
+- paywall_button_clicked
+- paywall_presented
+- paywall_purchased
+- paywall_restored
+- paywall_cancelled
+- paywall_error
+  - error
 
-### Feature Discovery
+## Review
 
-| Event | Properties | Trigger | Called From |
-|-------|-----------|---------|-------------|
-| `whats_new_clicked` | — | User opens changelog in settings | `components/SettingsView.tsx:353` |
+- review_prompt_shown
+- review_prompt_response
+  - likes_app
+- review_store_shown
+- review_retry_scheduled
+  - days_until_retry
 
-### Friends / Social
+## Updates
 
-> NOTE: Tracking interest to decide whether to keep or remove the friends feature.
+- ota_update_available
+- ota_update_applied
+- whats_new_clicked
 
-| Event | Properties | Trigger | Called From |
-|-------|-----------|---------|-------------|
-| `friends_search` | — | User opens friend search | `components/MainView.tsx:196`, `components/InboxView.tsx:83` |
-| `friends_profile_view` | — | User views a friend's profile | `components/InboxView.tsx:215,232,249` |
-| `friends_connect` | — | User sends/accepts friend request | `app/(app)/user/[id].tsx:59`, `app/(app)/friends/search.tsx:39` |
+## GitHub
 
-### OTA Updates
+- github_connected
 
-| Event | Properties | Trigger | Called From |
-|-------|-----------|---------|-------------|
-| `ota_update_available` | — | OTA update fetched and ready to apply | `hooks/useUpdates.ts` |
-| `ota_update_applied` | — | User taps banner to apply the update | `hooks/useUpdates.ts` |
+## Friends
 
-### Auto-captured (PostHog built-in)
+- friends_search
+- friends_profile_view
+- friends_connect
 
-| Event | Source |
-|-------|--------|
-| `Application Installed` | `captureAppLifecycleEvents` |
-| `Application Updated` | `captureAppLifecycleEvents` |
-| `Application Opened` | `captureAppLifecycleEvents` |
-| `Application Backgrounded` | `captureAppLifecycleEvents` |
-| `$screen` | `useTrackScreens()` — route name only, no params |
+# Appendix
 
-## Summary
+## Shared SDK Properties
 
-**24 custom events** + auto-captured lifecycle + screen views.
+- every capture(...) send also includes:
+  - $lib
+  - $lib_version
+  - $session_id
+  - $screen_height
+  - $screen_width
+  - $process_person_profile
+  - $is_identified
+  - $device_type
+  - $app_build?
+  - $app_name?
+  - $app_namespace?
+  - $app_version?
+  - $device_manufacturer?
+  - $device_name?
+  - $os_name?
+  - $os_version?
+  - $locale?
+  - $timezone?
+  - $screen_name?
+  - event
+  - distinct_id
 
-| Category | Count | Notes |
-|----------|-------|-------|
-| Auth | 2 | |
-| Core Interactions | 2 | |
-| Voice | 5 | |
-| Paywall | 6 | Full RevenueCat funnel |
-| App Review | 4 | Full review prompt funnel |
-| OTA Updates | 2 | |
-| Feature Discovery | 1 | |
-| Friends | 3 | Measuring feature interest |
+## Identity And Control Sends
 
-## Gaps / Missing Events
+- $identify
+- $set
+- reset
+- optIn
+- optOut
 
-Potential events we're **not** tracking that could be valuable:
+## Notes
 
-- **Session lifecycle** — session started, session ended, session duration
-- **Session list interactions** — session tapped, session deleted, session created
-- **Settings changes** — theme changed, language changed, notification toggle, analytics opt-out toggle
-- **Onboarding funnel** — individual onboarding steps, time-to-first-session
-- **Error rates** — connection failures, sync errors, encryption errors
-- **Retention signals** — daily/weekly active use (though PostHog can derive from lifecycle events)
-- **Voice duration** — how long voice sessions last (start/stop timestamps exist but no duration event)
-- **Deep link / notification opened** — what brought user back to the app
-- **Share / invite** — user sharing sessions or inviting friends
-- **Search** — session search usage and results
+- session_switched gives recency, but not source. Sidebar vs push vs any other entry point is still merged.
+- elevenlabs_conversation_id is the conversation id returned by the ElevenLabs voice session layer.
+- github_connected is a plain event with no GitHub profile data attached.
+
+## Relevant Sources
+
+- packages/happy-app/sources/track/index.ts
+- packages/happy-app/sources/hooks/useNavigateToSession.ts
+- packages/happy-app/sources/-session/SessionView.tsx
+- packages/happy-app/sources/realtime/RealtimeSession.ts
+- packages/happy-app/sources/components/SettingsView.tsx
+- packages/happy-app/sources/sync/sync.ts
+- packages/happy-app/sources/track/useTrackScreens.ts
+- packages/happy-app/sources/track/tracking.ts

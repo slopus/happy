@@ -18,10 +18,18 @@ import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
-import { initializeTracking, tracking } from '@/track';
+import {
+    initializeTracking,
+    trackGitHubConnected,
+    tracking,
+    trackPaywallCancelled,
+    trackPaywallError,
+    trackPaywallPresented,
+    trackPaywallPurchased,
+    trackPaywallRestored,
+} from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
-import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
@@ -606,12 +614,12 @@ class Sync {
             // Check if RevenueCat is initialized
             if (!this.revenueCatInitialized) {
                 const error = 'RevenueCat not initialized';
-                trackPaywallError(error);
+                trackPaywallError(error, flow);
                 return { success: false, error };
             }
 
             // Track paywall presentation
-            trackPaywallPresented();
+            trackPaywallPresented(flow);
 
             // Present the paywall (with flow custom variable if specified)
             const result = await RevenueCat.presentPaywall(
@@ -621,17 +629,17 @@ class Sync {
             // Handle the result
             switch (result) {
                 case PaywallResult.PURCHASED:
-                    trackPaywallPurchased();
+                    trackPaywallPurchased(flow);
                     // Refresh customer info after purchase
                     await this.syncPurchases();
                     return { success: true, purchased: true };
                 case PaywallResult.RESTORED:
-                    trackPaywallRestored();
+                    trackPaywallRestored(flow);
                     // Refresh customer info after restore
                     await this.syncPurchases();
                     return { success: true, purchased: true };
                 case PaywallResult.CANCELLED:
-                    trackPaywallCancelled();
+                    trackPaywallCancelled(flow);
                     return { success: true, purchased: false };
                 case PaywallResult.NOT_PRESENTED:
                     // Don't track error for NOT_PRESENTED as it's a platform limitation
@@ -639,12 +647,12 @@ class Sync {
                 case PaywallResult.ERROR:
                 default:
                     const errorMsg = 'Failed to present paywall';
-                    trackPaywallError(errorMsg);
+                    trackPaywallError(errorMsg, flow);
                     return { success: false, error: errorMsg };
             }
         } catch (error: any) {
             const errorMessage = error.message || 'Failed to present paywall';
-            trackPaywallError(errorMessage);
+            trackPaywallError(errorMessage, flow);
             return { success: false, error: errorMessage };
         }
     }
@@ -1875,6 +1883,7 @@ class Sync {
         } else if (updateData.body.t === 'update-account') {
             const accountUpdate = updateData.body;
             const currentProfile = storage.getState().profile;
+            const hadGitHub = !!currentProfile.github?.login;
 
             // Build updated profile with new data
             const updatedProfile: Profile = {
@@ -1888,6 +1897,10 @@ class Sync {
 
             // Apply the updated profile to storage
             storage.getState().applyProfile(updatedProfile);
+
+            if (!hadGitHub && updatedProfile.github?.login) {
+                trackGitHubConnected();
+            }
 
             // Handle settings updates (new for profile sync)
             if (accountUpdate.settings?.value) {

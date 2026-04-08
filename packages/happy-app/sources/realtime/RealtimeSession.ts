@@ -13,12 +13,14 @@ let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
 let currentSessionId: string | null = null;
 let currentVoiceConversationId: string | null = null;
+let currentVoiceSessionStartedAt: number | null = null;
 
 /**
  * Start a voice session. Returns the ElevenLabs conversation ID if started, null otherwise.
  */
 export async function startRealtimeSession(sessionId: string, initialContext?: string): Promise<string | null> {
     currentVoiceConversationId = null;
+    currentVoiceSessionStartedAt = null;
 
     if (!voiceSession) {
         console.warn('No voice session registered');
@@ -49,6 +51,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
                 agentId: voiceCustomAgentId,
             });
             currentVoiceConversationId = conversationId;
+            currentVoiceSessionStartedAt = Date.now();
             voiceSessionStarted = true;
             return conversationId;
         }
@@ -104,6 +107,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             userId: response.elevenUserId,
         });
         currentVoiceConversationId = response.conversationId ?? startedConversationId;
+        currentVoiceSessionStartedAt = Date.now();
         voiceSessionStarted = true;
         return currentVoiceConversationId;
     } catch (error) {
@@ -111,6 +115,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         storage.getState().setRealtimeStatus('disconnected');
         currentSessionId = null;
         currentVoiceConversationId = null;
+        currentVoiceSessionStartedAt = null;
         voiceSessionStarted = false;
         Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
         return null;
@@ -129,6 +134,7 @@ export async function stopRealtimeSession() {
     } finally {
         currentSessionId = null;
         currentVoiceConversationId = null;
+        currentVoiceSessionStartedAt = null;
         voiceSessionStarted = false;
     }
 }
@@ -154,6 +160,13 @@ export function getCurrentRealtimeSessionId(): string | null {
 
 export function getCurrentVoiceConversationId(): string | null {
     return currentVoiceConversationId;
+}
+
+export function getCurrentVoiceSessionDurationSeconds(): number | undefined {
+    if (currentVoiceSessionStartedAt === null) {
+        return undefined;
+    }
+    return Math.max(0, Math.round((Date.now() - currentVoiceSessionStartedAt) / 1000));
 }
 
 export function setCurrentRealtimeSessionId(sessionId: string) {

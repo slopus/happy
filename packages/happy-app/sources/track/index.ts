@@ -1,4 +1,5 @@
 import { tracking } from './tracking';
+import type { Session } from '@/sync/storageTypes';
 
 // Re-export tracking for direct access
 export { tracking } from './tracking';
@@ -33,6 +34,13 @@ export function trackConnectAttempt() {
     tracking?.capture('connect_attempt');
 }
 
+export function trackSessionSwitched(session: Pick<Session, 'activeAt' | 'updatedAt'>) {
+    tracking?.capture('session_switched', {
+        last_active_at: session.activeAt,
+        last_updated_at: session.updatedAt,
+    });
+}
+
 export function trackMessageSent() {
     tracking?.capture('message_sent');
 }
@@ -48,28 +56,31 @@ export function trackVoicePermissionResponse(allowed: boolean) {
 /**
  * Paywall events
  */
-export function trackPaywallButtonClicked() {
-    tracking?.capture('paywall_button_clicked');
+export function trackPaywallButtonClicked(flow?: string) {
+    tracking?.capture('paywall_button_clicked', { flow });
 }
 
-export function trackPaywallPresented() {
-    tracking?.capture('paywall_presented');
+export function trackPaywallPresented(flow?: string) {
+    tracking?.capture('paywall_presented', { flow });
 }
 
-export function trackPaywallPurchased() {
-    tracking?.capture('paywall_purchased');
+export function trackPaywallPurchased(flow?: string) {
+    tracking?.capture('paywall_purchased', { flow });
 }
 
-export function trackPaywallCancelled() {
-    tracking?.capture('paywall_cancelled');
+export function trackPaywallCancelled(flow?: string) {
+    tracking?.capture('paywall_cancelled', { flow });
 }
 
-export function trackPaywallRestored() {
-    tracking?.capture('paywall_restored');
+export function trackPaywallRestored(flow?: string) {
+    tracking?.capture('paywall_restored', { flow });
 }
 
-export function trackPaywallError(error: string) {
-    tracking?.capture('paywall_error', { error });
+export function trackPaywallError(error: string, flow?: string) {
+    tracking?.capture('paywall_error', {
+        error,
+        flow,
+    });
 }
 
 /**
@@ -127,3 +138,6 @@ export function trackFriendsConnect() {
     tracking?.capture('friends_connect');
 }
 
+export function trackGitHubConnected() {
+    tracking?.capture('github_connected');
+}
