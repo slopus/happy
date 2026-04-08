@@ -9,10 +9,12 @@ const bundleId = {
     preview: "com.slopus.happy.preview",
     production: "com.ex3ndr.happy"
 }[variant];
+// const stagingElevenLabsAgentId = 'agent_7801k2c0r5hjfraa1kdbytpvs6yt';
+const productionElevenLabsAgentId = 'agent_6701k211syvvegba4kt7m68nxjmw';
 const elevenLabsAgentId = {
-    development: 'agent_7801k2c0r5hjfraa1kdbytpvs6yt',
-    preview: 'agent_7801k2c0r5hjfraa1kdbytpvs6yt',
-    production: 'agent_6701k211syvvegba4kt7m68nxjmw',
+    development: productionElevenLabsAgentId,
+    preview: productionElevenLabsAgentId,
+    production: productionElevenLabsAgentId,
 }[variant];
 const consoleLoggingDefault = {
     development: true,

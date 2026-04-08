@@ -30,6 +30,7 @@ import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
+import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
@@ -305,9 +306,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
                 const conversationId = await startRealtimeSession(sessionId, initialPrompt);
                 if (conversationId) {
+                    const hasPro = storage.getState().purchases.entitlements['pro'] ?? false;
                     tracking?.capture('voice_session_started', {
                         session_id: sessionId,
                         elevenlabs_conversation_id: conversationId,
+                        has_pro: hasPro,
+                        onboarding_prompt_load_count: getVoiceOnboardingPromptLoadCount(),
+                        voice_message_count: getVoiceMessageCount(),
                     });
                 }
             } catch (error) {
@@ -326,7 +331,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             tracking?.capture('voice_session_stopped', {
                 session_id: sessionId,
                 elevenlabs_conversation_id: conversationId,
-                duration_seconds: durationSeconds,
+                ...(durationSeconds !== undefined ? { duration_seconds: durationSeconds } : {}),
             });
 
             // Notify voice assistant about voice session stop

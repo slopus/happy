@@ -27,8 +27,13 @@ User taps mic
 │   └─ other → paywall flow="voice_must_pay"
 │
 └─ allowed: true
-    ├─ Free tier + first time on device? → soft paywall flow="voice_trial_eligible"
-    └─ startSession({ conversationToken }) → WebRTC via LiveKit
+    ├─ feature flag voice-upsell == "show-paywall-before-first-voice-chat"?
+    │   └─ first free voice start only → soft paywall flow="voice_trial_eligible"
+    ├─ feature flag voice-upsell == "voice-onboarding-and-upsell"?
+    │   └─ inject onboarding + upsell guidance into voice prompt
+    └─ otherwise
+        └─ control → no soft paywall and no onboarding experiment
+        then startSession({ conversationToken }) → WebRTC via LiveKit
 ```
 
 ## Limits
@@ -59,7 +64,7 @@ Single paywall template, rules driven by custom variable `flow`:
 
 | Flow | When | Behavior |
 |------|------|----------|
-| `voice_trial_eligible` | First voice use, free tier | Soft — dismissable, voice starts anyway |
+| `voice_trial_eligible` | Feature flag variant `show-paywall-before-first-voice-chat`, first free voice use | Soft — dismissable, voice starts anyway |
 | `voice_must_pay` | Server returns `allowed: false` | Hard — must purchase |
 | `voluntary_support` | Settings | User-initiated |
 

@@ -6,8 +6,28 @@ import { TokenStorage } from '@/auth/tokenStorage';
 import { t } from '@/text';
 import { requestMicrophonePermission, showMicrophonePermissionDeniedAlert } from '@/utils/microphonePermissions';
 import { storage } from '@/sync/storage';
-import { config } from '@/config';
-import { getVoiceSoftPaywallShownCount, incrementVoiceSoftPaywallShown } from '@/sync/persistence';
+import {
+    getVoiceMessageCount,
+    getVoiceOnboardingPromptLoadCount,
+    getVoiceSoftPaywallShownCount,
+    incrementVoiceOnboardingPromptLoadCount,
+    incrementVoiceSoftPaywallShown,
+} from '@/sync/persistence';
+import { buildVoiceFirstMessage, buildVoiceSystemPrompt } from './voiceSystemPrompt';
+import { tracking } from '@/track';
+
+type VoiceUpsellVariant =
+    | 'show-paywall-before-first-voice-chat'
+    | 'voice-onboarding-and-upsell'
+    | 'control';
+
+function getVoiceUpsellVariant(): VoiceUpsellVariant {
+    const variant = tracking?.getFeatureFlag('voice-upsell');
+    if (variant === 'show-paywall-before-first-voice-chat' || variant === 'voice-onboarding-and-upsell') {
+        return variant;
+    }
+    return 'control';
+}
 
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
@@ -87,25 +107,48 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             return null;
         }
 
-        // Show soft paywall once per device for free-tier users on first successful voice use
         const hasPro = storage.getState().purchases.entitlements['pro'] ?? false;
-        if (!hasPro && getVoiceSoftPaywallShownCount() < 1) {
+        const voiceUpsellVariant = getVoiceUpsellVariant();
+
+        if (
+            !hasPro &&
+            voiceUpsellVariant === 'show-paywall-before-first-voice-chat' &&
+            getVoiceSoftPaywallShownCount() < 1
+        ) {
             console.log('[Voice] First voice attempt on free tier, showing soft paywall...');
             incrementVoiceSoftPaywallShown();
             const result = await sync.presentPaywall('voice_trial_eligible');
             console.log('[Voice] Soft paywall result:', result);
-            // Dismissed or error — continue anyway, they can still use free tier
+            // Dismissed or error — continue anyway, they can still use free tier.
         }
 
         currentSessionId = sessionId;
+        const onboardingPromptLoadCount = getVoiceOnboardingPromptLoadCount();
+        const voiceMessageCount = getVoiceMessageCount();
+        const systemPrompt = buildVoiceSystemPrompt({
+            initialContext,
+            onboardingPromptLoadCount,
+            voiceMessageCount,
+            includePaidVoiceOnboarding: !hasPro && voiceUpsellVariant === 'voice-onboarding-and-upsell',
+        });
+        const firstMessage = buildVoiceFirstMessage({
+            hasPro,
+            onboardingPromptLoadCount,
+            includePaidVoiceOnboarding: voiceUpsellVariant === 'voice-onboarding-and-upsell',
+        });
 
         const startedConversationId = await voiceSession.startSession({
             sessionId,
             initialContext,
+            systemPrompt,
+            firstMessage,
             conversationToken: response.conversationToken,
             agentId: response.agentId,
             userId: response.elevenUserId,
         });
+        if (!hasPro && voiceUpsellVariant === 'voice-onboarding-and-upsell') {
+            incrementVoiceOnboardingPromptLoadCount();
+        }
         currentVoiceConversationId = response.conversationId ?? startedConversationId;
         currentVoiceSessionStartedAt = Date.now();
         voiceSessionStarted = true;

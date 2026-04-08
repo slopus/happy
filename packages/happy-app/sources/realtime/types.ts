@@ -1,6 +1,8 @@
 export interface VoiceSessionConfig {
     sessionId: string;
     initialContext?: string;
+    systemPrompt?: string;
+    firstMessage?: string;
     conversationToken?: string;
     agentId?: string;
     userId?: string;

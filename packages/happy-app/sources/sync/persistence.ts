@@ -9,6 +9,8 @@ const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
+const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
+const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -246,6 +248,22 @@ export function getVoiceSoftPaywallShownCount(): number {
 
 export function incrementVoiceSoftPaywallShown() {
     mmkv.set(VOICE_SOFT_PAYWALL_SHOWN_KEY, getVoiceSoftPaywallShownCount() + 1);
+}
+
+export function getVoiceOnboardingPromptLoadCount(): number {
+    return mmkv.getNumber(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY) ?? 0;
+}
+
+export function incrementVoiceOnboardingPromptLoadCount() {
+    mmkv.set(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY, getVoiceOnboardingPromptLoadCount() + 1);
+}
+
+export function getVoiceMessageCount(): number {
+    return mmkv.getNumber(VOICE_MESSAGE_COUNT_KEY) ?? 0;
+}
+
+export function incrementVoiceMessageCount() {
+    mmkv.set(VOICE_MESSAGE_COUNT_KEY, getVoiceMessageCount() + 1);
 }
 
 export function clearPersistence() {

@@ -3,6 +3,12 @@ import { sync } from '@/sync/sync';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { trackVoiceMessageSent, trackVoicePermissionResponse } from '@/track';
+import { getVoiceSession, isVoiceSessionStarted } from './RealtimeSession';
+import {
+    getVoiceMessageCount,
+    getVoiceOnboardingPromptLoadCount,
+    incrementVoiceMessageCount,
+} from '@/sync/persistence';
 
 /**
  * Static client tools for the realtime voice interface.
@@ -27,7 +33,19 @@ export const realtimeClientTools = {
         const { sessionId, message } = parsed.data;
         console.log('📤 Sending message to session:', sessionId);
         sync.sendMessage(sessionId, message);
-        trackVoiceMessageSent();
+        incrementVoiceMessageCount();
+        const voiceMessageCount = getVoiceMessageCount();
+        if (isVoiceSessionStarted()) {
+            getVoiceSession()?.sendContextualUpdate([
+                '# Runtime counters updated',
+                `- voice_message_count: ${voiceMessageCount}`,
+            ].join('\n'));
+        }
+        trackVoiceMessageSent({
+            has_pro: storage.getState().purchases.entitlements['pro'] ?? false,
+            onboarding_prompt_load_count: getVoiceOnboardingPromptLoadCount(),
+            voice_message_count: voiceMessageCount,
+        });
         return "sent [DO NOT say anything else, simply say 'sent']";
     },
 

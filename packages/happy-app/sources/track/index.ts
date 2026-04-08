@@ -4,6 +4,12 @@ import type { Session } from '@/sync/storageTypes';
 // Re-export tracking for direct access
 export { tracking } from './tracking';
 
+function definedProperties<T extends Record<string, string | number | boolean | null | undefined>>(properties: T) {
+    return Object.fromEntries(
+        Object.entries(properties).filter(([, value]) => value !== undefined),
+    ) as Record<string, string | number | boolean | null>;
+}
+
 /**
  * Initialize tracking with an anonymous user ID.
  * Should be called once during auth initialization.
@@ -42,13 +48,17 @@ export function trackSessionSwitched(session: Pick<Session, 'activeAt' | 'update
 }
 
 export function trackMessageSent(cliVersion?: string) {
-    tracking?.capture('message_sent', {
+    tracking?.capture('message_sent', definedProperties({
         happy_cli_version: cliVersion,
-    });
+    }));
 }
 
-export function trackVoiceMessageSent() {
-    tracking?.capture('voice_message_sent');
+export function trackVoiceMessageSent(properties?: {
+    has_pro?: boolean;
+    onboarding_prompt_load_count?: number;
+    voice_message_count?: number;
+}) {
+    tracking?.capture('voice_message_sent', definedProperties(properties ?? {}));
 }
 
 export function trackVoicePermissionResponse(allowed: boolean) {
@@ -59,30 +69,30 @@ export function trackVoicePermissionResponse(allowed: boolean) {
  * Paywall events
  */
 export function trackPaywallButtonClicked(flow?: string) {
-    tracking?.capture('paywall_button_clicked', { flow });
+    tracking?.capture('paywall_button_clicked', definedProperties({ flow }));
 }
 
 export function trackPaywallPresented(flow?: string) {
-    tracking?.capture('paywall_presented', { flow });
+    tracking?.capture('paywall_presented', definedProperties({ flow }));
 }
 
 export function trackPaywallPurchased(flow?: string) {
-    tracking?.capture('paywall_purchased', { flow });
+    tracking?.capture('paywall_purchased', definedProperties({ flow }));
 }
 
 export function trackPaywallCancelled(flow?: string) {
-    tracking?.capture('paywall_cancelled', { flow });
+    tracking?.capture('paywall_cancelled', definedProperties({ flow }));
 }
 
 export function trackPaywallRestored(flow?: string) {
-    tracking?.capture('paywall_restored', { flow });
+    tracking?.capture('paywall_restored', definedProperties({ flow }));
 }
 
 export function trackPaywallError(error: string, flow?: string) {
-    tracking?.capture('paywall_error', {
+    tracking?.capture('paywall_error', definedProperties({
         error,
         flow,
-    });
+    }));
 }
 
 /**

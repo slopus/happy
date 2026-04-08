@@ -47,6 +47,8 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                 },
                 overrides: {
                     agent: {
+                        ...(config.systemPrompt ? { prompt: { prompt: config.systemPrompt } } : {}),
+                        ...(config.firstMessage ? { firstMessage: config.firstMessage } : {}),
                         language: elevenLabsLanguage
                     }
                 },
