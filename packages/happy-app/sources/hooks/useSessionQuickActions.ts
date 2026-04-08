@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionKill } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionKill } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -172,9 +172,10 @@ export function useSessionQuickActions(
     const [archivingSession, performArchive] = useHappyAction(async () => {
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+        // Try to kill the CLI process; if it's already dead, force-archive via server
+        const killResult = await sessionKill(session.id);
+        if (!killResult.success) {
+            await sessionArchive(session.id);
         }
         onAfterArchive?.();
     });
@@ -190,7 +191,7 @@ export function useSessionQuickActions(
     return {
         archiveSession,
         archivingSession,
-        canArchive: sessionStatus.isConnected,
+        canArchive: true,
         canCopySessionMetadata: __DEV__ || devModeEnabled,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
