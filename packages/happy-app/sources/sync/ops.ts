@@ -502,6 +502,31 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
     }
 }
 
+// Resume session types
+interface SessionResumeResponse {
+    success: boolean;
+    message: string;
+}
+
+/**
+ * Resume the current Claude session in-place (fork with full history)
+ */
+export async function sessionResume(sessionId: string): Promise<SessionResumeResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<SessionResumeResponse, {}>(
+            sessionId,
+            'resumeSession',
+            {}
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
 /**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)

@@ -298,6 +298,8 @@ export const ru: TranslationStructure = {
         viewMachine: 'Посмотреть машину',
         viewMachineSubtitle: 'Посмотреть детали машины и сессии',
         resumeSession: 'Resume Session',
+        resumeInPlace: 'Перезапустить сессию',
+        resumeInPlaceSubtitle: 'Начать заново с полной историей разговора',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',

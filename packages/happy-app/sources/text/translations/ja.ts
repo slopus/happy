@@ -328,6 +328,8 @@ export const ja: TranslationStructure = {
         viewMachine: 'マシンを表示',
         viewMachineSubtitle: 'マシンの詳細とセッションを表示',
         resumeSession: 'Resume Session',
+        resumeInPlace: 'セッションを再起動',
+        resumeInPlaceSubtitle: '会話履歴を保持したまま再開',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',

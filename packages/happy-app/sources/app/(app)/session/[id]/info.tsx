@@ -130,7 +130,10 @@ function SessionInfoContent({ session }: { session: Session }) {
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
     const {
+        canResumeInPlace,
         canShowResume,
+        resumeInPlace,
+        resumingInPlace,
         resumeSession,
         resumeSessionSubtitle,
     } = useSessionQuickActions(session);
@@ -353,6 +356,15 @@ function SessionInfoContent({ session }: { session: Session }) {
                             subtitle={resumeSessionSubtitle}
                             icon={<Ionicons name="play-circle-outline" size={29} color="#007AFF" />}
                             onPress={resumeSession}
+                        />
+                    )}
+                    {canResumeInPlace && (
+                        <Item
+                            title={t('sessionInfo.resumeInPlace')}
+                            subtitle={t('sessionInfo.resumeInPlaceSubtitle')}
+                            icon={<Ionicons name="refresh-circle-outline" size={29} color="#007AFF" />}
+                            onPress={resumeInPlace}
+                            loading={resumingInPlace}
                         />
                     )}
                     {sessionStatus.isConnected && (

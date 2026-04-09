@@ -324,6 +324,8 @@ export const en = {
         quickActions: 'Quick Actions',
         viewMachine: 'View Machine',
         viewMachineSubtitle: 'View machine details and sessions',
+        resumeInPlace: 'Restart Session',
+        resumeInPlaceSubtitle: 'Start fresh with full conversation history',
         resumeSession: 'Resume Session',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
