@@ -453,6 +453,8 @@ export const ja: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'アーカイブを表示',
+        hideArchived: 'アーカイブを非表示',
     },
 
     toolView: {

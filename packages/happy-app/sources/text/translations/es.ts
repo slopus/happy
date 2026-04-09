@@ -452,6 +452,8 @@ export const es: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Mostrar archivadas',
+        hideArchived: 'Ocultar archivadas',
     },
 
     toolView: {

@@ -450,6 +450,8 @@ export const en = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Show archived',
+        hideArchived: 'Hide archived',
     },
 
     toolView: {

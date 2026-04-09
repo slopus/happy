@@ -450,6 +450,8 @@ export const it: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Mostra archiviate',
+        hideArchived: 'Nascondi archiviate',
     },
 
     toolView: {

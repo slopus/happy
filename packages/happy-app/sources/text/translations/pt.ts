@@ -451,6 +451,8 @@ export const pt: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Mostrar arquivadas',
+        hideArchived: 'Ocultar arquivadas',
     },
 
     toolView: {

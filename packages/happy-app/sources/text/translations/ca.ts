@@ -452,6 +452,8 @@ export const ca: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Mostra arxivades',
+        hideArchived: 'Amaga arxivades',
     },
 
     toolView: {

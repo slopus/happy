@@ -453,6 +453,8 @@ export const zhHans: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: '显示已归档',
+        hideArchived: '隐藏已归档',
     },
 
     toolView: {
