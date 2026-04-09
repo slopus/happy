@@ -82,32 +82,41 @@ export class PushNotificationClient {
     }
 
     /**
-     * Fetch all push tokens for the authenticated user
+     * Fetch all push tokens for the authenticated user.
+     * Retries up to 3 times with exponential backoff on transient errors.
      */
     async fetchPushTokens(): Promise<PushToken[]> {
-        try {
-            const response = await axios.get<{ tokens: PushToken[] }>(
-                `${this.baseUrl}/v1/push-tokens`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.token}`,
-                        'Content-Type': 'application/json'
+        const maxAttempts = 3
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const response = await axios.get<{ tokens: PushToken[] }>(
+                    `${this.baseUrl}/v1/push-tokens`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Content-Type': 'application/json'
+                        }
                     }
-                }
-            )
+                )
 
-            logger.debug(`Fetched ${response.data.tokens.length} push tokens`)
-            
-            // Log token information
-            response.data.tokens.forEach((token, index) => {
-                logger.debug(`[PUSH] Token ${index + 1}: id=${token.id}, created=${new Date(token.createdAt).toISOString()}, updated=${new Date(token.updatedAt).toISOString()}`)
-            })
-            
-            return response.data.tokens
-        } catch (error) {
-            logger.debug('[PUSH] [ERROR] Failed to fetch push tokens:', error)
-            throw new Error(`Failed to fetch push tokens: ${error instanceof Error ? error.message : 'Unknown error'}`)
+                logger.debug(`Fetched ${response.data.tokens.length} push tokens`)
+
+                // Log token information
+                response.data.tokens.forEach((token, index) => {
+                    logger.debug(`[PUSH] Token ${index + 1}: id=${token.id}, created=${new Date(token.createdAt).toISOString()}, updated=${new Date(token.updatedAt).toISOString()}`)
+                })
+
+                return response.data.tokens
+            } catch (error) {
+                logger.debug(`[PUSH] [ERROR] Failed to fetch push tokens (attempt ${attempt}/${maxAttempts}):`, error)
+                if (attempt < maxAttempts) {
+                    const delay = 1000 * Math.pow(2, attempt - 1) // 1s, 2s
+                    await new Promise(resolve => setTimeout(resolve, delay))
+                }
+            }
         }
+        logger.debug('[PUSH] [ERROR] All push token fetch attempts failed')
+        return []
     }
 
     /**
