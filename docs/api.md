@@ -83,6 +83,8 @@ Auth flows:
 ### Connect (GitHub + vendor tokens)
 - `GET /v1/connect/github/params`
 - `GET /v1/connect/github/callback`
+  - The GitHub OAuth App must register this exact callback URL in production: `https://api.huppy.ai/v1/connect/github/callback`.
+  - If the OAuth App is configured with `https://app.huppy.ai` instead, GitHub redirects users to the app directly and the backend never receives the OAuth `code`.
 - `POST /v1/connect/github/webhook`
 - `DELETE /v1/connect/github`
 - `POST /v1/connect/:vendor/register` (`vendor` in `openai | anthropic | gemini`)

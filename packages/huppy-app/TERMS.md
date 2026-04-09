@@ -1,18 +1,18 @@
 # Terms of Use
 
-Last updated: January 2025
+Last updated: April 6, 2026
 
 ## Acceptance of Terms
 
-By downloading, installing, or using Happy, you agree to be bound by these Terms of Use. If you do not agree to these terms, do not use Happy.
+By downloading, installing, or using Huppy, you agree to be bound by these Terms of Use. If you do not agree to these terms, do not use Huppy.
 
-## About Happy
+## About Huppy
 
-Happy is a free, open-source mobile client for AI code assistance, released under the MIT License. The software is provided as-is by the open-source community without any warranties or guarantees.
+Huppy is a mobile client for desktop coding agents and related services, released under the MIT License. Some features may be free, and some may require a paid subscription or third-party provider account. The software is provided as-is without warranties or guarantees.
 
 ## License
 
-Happy is licensed under the MIT License. This means you are free to:
+Huppy is licensed under the MIT License. This means you are free to:
 
 - Use the software for any purpose, including commercial use
 - Modify the source code
@@ -23,39 +23,39 @@ The full MIT License text is available in the source code repository.
 
 ## Acceptable Use
 
-You agree to use Happy responsibly and in compliance with all applicable laws. You must not:
+You agree to use Huppy responsibly and in compliance with all applicable laws. You must not:
 
-- Use Happy for any illegal or unauthorized purpose
-- Attempt to harm, disable, or impair the functionality of Happy
-- Use Happy to generate harmful, offensive, or inappropriate content
-- Violate the terms of service of any AI services you connect to through Happy
+- Use Huppy for any illegal or unauthorized purpose
+- Attempt to harm, disable, or impair the functionality of Huppy
+- Use Huppy to generate harmful, offensive, or inappropriate content
+- Violate the terms of service of any AI services you connect to through Huppy
 - Attempt to reverse engineer security features or encryption protocols
 
 ## Third-Party Services
 
-Happy may connect to third-party AI services (such as Claude, OpenAI, etc.). You acknowledge that:
+Huppy may connect to third-party AI services (such as Claude, OpenAI, Google, or ElevenLabs). You acknowledge that:
 
 - You are responsible for complying with their terms of service
 - You need valid API keys and accounts with these services
-- Happy is not responsible for the availability or performance of third-party services
+- Huppy is not responsible for the availability or performance of third-party services
 - Costs associated with API usage are your responsibility
 
 ## Independence and Disclaimers
 
-**Happy is an independent, community-driven project.** We are not affiliated with, endorsed by, or connected to Anthropic, Claude, OpenAI, or any other AI service providers. Happy is a third-party client that works with publicly available APIs.
+**Huppy is an independent project.** We are not affiliated with, endorsed by, or connected to Anthropic, Claude, OpenAI, Google, ElevenLabs, or any other AI service providers. Huppy is a third-party client that works with publicly available APIs.
 
 ## Limitation of Liability
 
-**IMPORTANT:** Happy is provided "AS IS" without warranty of any kind. The developers, contributors, and distributors of Happy shall not be liable for:
+**IMPORTANT:** Huppy is provided "AS IS" without warranty of any kind. The developers, contributors, and distributors of Huppy shall not be liable for:
 
 - Any direct, indirect, incidental, or consequential damages
 - Data loss or corruption
 - Lost profits or business interruption
-- Any claims arising from your use of Happy
+- Any claims arising from your use of Huppy
 
 ## Privacy
 
-Happy respects your privacy. The app:
+Huppy respects your privacy. The app:
 
 - Does not collect personal information without your consent
 - Stores API keys locally on your device
@@ -64,7 +64,7 @@ Happy respects your privacy. The app:
 
 ## Changes to Terms
 
-We reserve the right to update these Terms of Use at any time. Continued use of Happy after changes constitutes acceptance of the new terms.
+We reserve the right to update these Terms of Use at any time. Continued use of Huppy after changes constitutes acceptance of the new terms.
 
 ## Governing Law
 
@@ -72,7 +72,7 @@ These terms shall be governed by and construed in accordance with applicable law
 
 ## Contact
 
-For questions about these Terms of Use, please visit our GitHub repository or contact the maintainers through the project's official channels.
+For questions about these Terms of Use, please visit https://huppy.ai or contact us through our official support channels.
 
 ## Severability
 
@@ -80,4 +80,4 @@ If any provision of these Terms is found to be unenforceable or invalid, that pr
 
 ## Entire Agreement
 
-These Terms of Use constitute the entire agreement between you and the Happy project regarding the use of the software, superseding any prior agreements or understandings.
+These Terms of Use constitute the entire agreement between you and the Huppy project regarding the use of the software, superseding any prior agreements or understandings.

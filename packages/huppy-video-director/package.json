@@ -13,7 +13,7 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc --noEmit && pkgroll",
     "dev": "tsx src/index.ts",
-    "test": "vitest run",
+    "test": "yarn build && vitest run",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "yarn build && yarn test"
   },

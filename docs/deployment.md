@@ -41,6 +41,8 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
   - Login flow: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and one redirect URL env var.
   - `GITHUB_REDIRECT_URI` is preferred.
   - `GITHUB_REDIRECT_URL` is accepted as a fallback for older deployments.
+  - For production, the GitHub OAuth App's `Authorization callback URL` must be `https://api.huppy.ai/v1/connect/github/callback`.
+  - Do not point the GitHub callback at `https://app.huppy.ai`; if you do, GitHub will bypass the backend callback route and send the user straight to the marketing app.
   - `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY` are only needed if you want GitHub App / installation features.
   - `GITHUB_WEBHOOK_SECRET` is only needed if you enable GitHub webhooks.
   - The GitHub App login flow does not use OAuth scopes; the callback URL must match exactly.

@@ -1,22 +1,22 @@
-# Privacy Policy for Happy Coder
+# Privacy Policy for Huppy
 
-**Last Updated: January 2025**
+**Last Updated: April 6, 2026**
 
 ## Overview
 
-Happy Coder is committed to protecting your privacy. This policy explains how we handle your data with our zero-knowledge encryption architecture.
+Huppy is committed to protecting your privacy. This policy explains how we handle your data with our zero-knowledge encryption architecture.
 
 ## What We Collect
 
 ### Encrypted Data
-- **Messages and Code**: All your Claude Code conversations and code snippets are end-to-end encrypted on your device before transmission. We store this encrypted data but have no ability to decrypt or read it.
+- **Messages and Code**: Your session content and code snippets are end-to-end encrypted on your device before transmission. We store this encrypted data but have no ability to decrypt or read it.
 - **Encryption Keys**: When you pair devices, encryption keys are transmitted between your devices in encrypted form. We cannot access or decrypt these keys.
 
 ### Metadata (Not Encrypted)
 - **Message IDs**: Unique identifiers for message ordering and synchronization
 - **Timestamps**: When messages were created and synced
 - **Device IDs**: Anonymous identifiers for device pairing
-- **Session IDs**: Identifiers for your Claude Code terminal sessions
+- **Session IDs**: Identifiers for your desktop coding sessions
 - **Push Notification Tokens**: Device tokens for sending push notifications via Expo's push notification service
 
 ### Analytics (PostHog)
@@ -25,10 +25,10 @@ Happy Coder is committed to protecting your privacy. This policy explains how we
 - **No Content Tracking**: We only track basic app usage events, never any message content, code, or personal information
 - **Opt-Out Available**: You can disable analytics collection at any time in the app settings
 
-### Subscription Management (Revenue Cat)
-- **Account ID**: Revenue Cat uses your account ID to manage subscriptions and enable premium features
+### Subscription Management (RevenueCat)
+- **Account ID**: RevenueCat uses your account ID to manage subscriptions and enable premium features
 - **Backend Integration**: This ID allows us to provide additional features from our backend while maintaining end-to-end encryption for your content
-- **Data Separation**: Purchase analytics sent to PostHog use the anonymized ID instead - we cannot match Revenue Cat data with PostHog analytics
+- **Data Separation**: Purchase analytics sent to PostHog use the anonymized ID instead - we cannot match RevenueCat data with PostHog analytics
 
 ## What We Don't Collect
 - Your actual code or conversation content (we can't decrypt it)
@@ -46,7 +46,7 @@ Happy Coder is committed to protecting your privacy. This policy explains how we
 ### Metadata
 - Message IDs and timestamps are used to maintain proper message ordering
 - Device IDs enable secure pairing between your devices
-- Session IDs track your Claude Code terminal sessions for synchronization
+- Session IDs track your desktop coding sessions for synchronization
 - Push notification tokens are stored to enable notifications through Expo's service
 
 ### Push Notifications
@@ -58,7 +58,7 @@ Push notifications are sent directly from your devices to each other, not from o
 
 ## Data Security
 
-- **End-to-End Encryption**: Using TweetNaCl (same as Signal) for all sensitive data
+- **End-to-End Encryption**: Using TweetNaCl for all sensitive data
 - **Zero-Knowledge**: We cannot decrypt your data even if compelled
 - **Secure Key Exchange**: Encryption keys are transmitted between your devices only in encrypted form that we cannot access
 - **Open Source**: Our encryption implementation is publicly auditable
@@ -93,7 +93,7 @@ For privacy concerns or questions:
 
 ## Compliance
 
-Happy Coder is designed with privacy by default and complies with:
+Huppy is designed with privacy by default and complies with:
 - GDPR (General Data Protection Regulation)
 - CCPA (California Consumer Privacy Act)
 - Privacy by Design principles

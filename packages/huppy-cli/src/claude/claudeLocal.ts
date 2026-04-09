@@ -374,8 +374,9 @@ export async function claudeLocal(opts: {
                         }
                     }
 
-                    if (signal === 'SIGTERM' && opts.abort.aborted) {
+                    if ((signal === 'SIGTERM' || code === 143) && opts.abort.aborted) {
                         // Normal termination due to abort signal
+                        // Note: macOS sometimes reports SIGTERM as exit code 143 instead of signal='SIGTERM'
                         r();
                     } else if (signal) {
                         reject(new Error(`Process terminated with signal: ${signal}`));

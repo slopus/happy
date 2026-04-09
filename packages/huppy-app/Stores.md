@@ -1,10 +1,10 @@
 # App Store & Google Play Store Information
 
 ## App Name
-Happy Coder
+Huppy AI
 
 ## Subtitle / Short Description
-Claude Code on the go
+Control coding agents anywhere
 
 ## Categories
 - **App Store Primary**: Developer Tools
@@ -12,63 +12,57 @@ Claude Code on the go
 - **Google Play**: Productivity > Developer Tools
 
 ## Keywords
-claude, code, ai, programming, developer, tools, encrypted, secure, coding, assistant, mobile, sync, offline, notifications, privacy
+ai,coding,agent,claude,codex,gemini,developer,terminal,remote,secure,mobile,encryption
 
 ## App Description / Full Description
 
-Happy Coder is the secure mobile companion for Claude Code that lets you continue your AI coding sessions anywhere (not affiliated with Anthropic). Built by developers who needed to check on Claude's progress during coffee breaks, this app brings the full Claude Code experience to your phone with military-grade encryption.
+Huppy is the mobile companion for desktop coding agents. It lets you view live sessions, step in when your AI needs a decision, and stay connected to work in progress without staying at your desk.
 
-**Important**: This app requires Claude Code to be installed on your computer. Happy Coder is a companion app that connects to your existing Claude Code setup.
+**Important**: Huppy is a companion app. Install the Huppy CLI on your Mac or computer, then pair your phone with a QR code to connect.
 
 **Key Features:**
 
-• Continue Claude Code sessions seamlessly between desktop and mobile
-• Push notifications for permission requests and task completion
-• Access conversation history even when your terminal is offline
-• End-to-end encryption - your code stays private
-• Real-time streaming of Claude's responses
-• Zero-knowledge architecture - we can't read your data
+• View live output from Codex, Claude Code, Gemini, and other supported agents
+• Approve sensitive actions remotely before a session gets stuck
+• Send follow-up instructions from your phone when context changes
+• Push notifications when a session finishes or needs your attention
+• End-to-end encrypted session flow for work in progress
+• Works with your existing desktop setup instead of replacing your editor or terminal
 
 **How It Works:**
-1. Install the happy CLI on your computer
+1. Install the Huppy CLI on your computer
 2. Scan a QR code to securely pair your devices
-3. Use 'happy' instead of 'claude' to start encrypted sessions
+3. Start your coding sessions on desktop as usual
 4. Switch between desktop and mobile instantly
 
 Perfect for developers who:
 - Want to monitor long-running tasks on the go
-- Need secure access to proprietary code discussions
-- Value privacy and open-source transparency
-- Work from coffee shops, trains, or anywhere
+- Need fast approval loops when an agent hits a sensitive action
+- Want their sessions to stay on their own machine
+- Work from coffee shops, trains, meetings, or anywhere away from the desk
 
-Happy Coder uses the same encryption as Signal (TweetNaCl) and is completely open source. Your encryption keys never leave your device, and all data is encrypted before transmission.
-
-Built by Bay Area engineers who believe the best tools come from scratching your own itch. We needed a way to securely check on our AI coding assistant while away from our desks - so we built it and shared it with the community.
-
-Your code. Your privacy. Your Claude Code companion.
+Huppy is built for developers who want a calm, reliable mobile control layer for work already running on their own machine. It keeps you close to the sessions that matter while you step away from your desk.
 
 ## Promotional Text
-**App Store (170 chars)**: Securely continue your Claude Code sessions on mobile. End-to-end encrypted, open source, with push notifications for completed tasks. Your AI coding assistant, anywhere.
+**App Store (170 chars)**: Keep Codex, Claude Code, and Gemini within reach. View live sessions, approve sensitive actions, and jump back in from your phone with encrypted sync.
 
-**Google Play (80 chars)**: Secure mobile Claude Code companion. Encrypted, open source, with notifications.
+**Google Play (80 chars)**: Stay close to coding agents with mobile live view, approvals, and encryption.
 
 ## What's New (for updates)
-- Initial release
-- End-to-end encryption for all messages
-- Push notifications for permissions and task completion
-- Offline access to conversation history
-- Real-time sync with desktop sessions
+- New web marketing homepage and clearer first-run product introduction
+- Improved session creation with better machine selection and worktree handling
+- Faster ways to jump back into active sessions, plus sync and UI polish
 
 ## URLs
 
 ### Privacy Policy
-https://github.com/slopus/happy/blob/main/PRIVACY.md
+https://huppy.ai/privacy
 
 ### Support / Contact
-https://github.com/slopus/happy/issues
+https://huppy.ai/support
 
 ### Website / Marketing
-https://github.com/slopus/happy
+https://huppy.ai
 
 ## Additional Google Play Requirements
 
@@ -82,4 +76,4 @@ Developers and software engineers
 No
 
 ### In-App Purchases
-No
+Yes - optional Huppy Plus subscription

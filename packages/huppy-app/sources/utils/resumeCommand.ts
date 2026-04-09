@@ -25,10 +25,10 @@ function isWindows(metadata: ResumeCommandMetadata): boolean {
 
 function buildResumeInvocation(metadata: ResumeCommandMetadata): string | null {
     if ((metadata.flavor === 'codex' || metadata.flavor === 'openai' || metadata.flavor === 'gpt') && metadata.codexThreadId) {
-        return `happy codex --resume ${metadata.codexThreadId}`;
+        return `huppy codex --resume ${metadata.codexThreadId}`;
     }
     if (metadata.claudeSessionId) {
-        return `happy claude --resume ${metadata.claudeSessionId}`;
+        return `huppy --resume ${metadata.claudeSessionId}`;
     }
     return null;
 }

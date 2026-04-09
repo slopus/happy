@@ -57,7 +57,10 @@
       "ios": {
         "appleId": "178272907@qq.com",
         "ascAppId": "6761417736",
-        "appleTeamId": "Q5A3FVX59D"
+        "appleTeamId": "Q5A3FVX59D",
+        "ascApiKeyIssuerId": "885b3214-65b5-4fd7-a0d2-5445f0b6ef4e",
+        "ascApiKeyId": "22J7B4D6UC",
+        "ascApiKeyPath": "./AuthKey_22J7B4D6UC.p8"
       }
     }
   }
