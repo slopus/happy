@@ -55,6 +55,7 @@ import {
     type ModelMode,
     type EffortLevel,
 } from '@/components/modelModeOptions';
+import { isRunningOnMac } from '@/utils/platform';
 
 // Agent icon assets
 const agentIcons = {
@@ -675,9 +676,18 @@ function NewSessionScreen() {
 
     const hasText = prompt.trim().length > 0;
 
-    // Auto collapse config once when user starts typing, never auto-expand again
+    // Auto collapse config once when user starts typing (mobile only)
+    // On desktop (web / Mac Catalyst) the panel stays expanded
+    // Also skip collapsing on the initial render when draft text is restored
     const hasCollapsedOnceRef = React.useRef(false);
+    const isInitialRef = React.useRef(true);
+    const isDesktop = Platform.OS === 'web' || isRunningOnMac();
     React.useEffect(() => {
+        if (isInitialRef.current) {
+            isInitialRef.current = false;
+            return;
+        }
+        if (isDesktop) return;
         if (hasText && !hasCollapsedOnceRef.current) {
             hasCollapsedOnceRef.current = true;
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
