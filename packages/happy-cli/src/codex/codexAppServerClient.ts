@@ -1203,6 +1203,13 @@ export class CodexAppServerClient {
             return;
         }
 
+        // MCP server lifecycle: log payload so we can diagnose failed launches
+        // (e.g. happy-mcp bridge failing on Windows due to shebang execution).
+        if (method === 'mcpServer/startupStatus/updated') {
+            logger.debug(`[CodexAppServer] mcpServer startup status:`, params);
+            return;
+        }
+
         logger.debug(`[CodexAppServer] Notification: ${method}`);
     }
 }
