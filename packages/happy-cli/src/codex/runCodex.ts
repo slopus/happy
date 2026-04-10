@@ -71,7 +71,7 @@ export async function runCodex(opts: {
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
-        execSync('codex --version', { encoding: 'utf8', stdio: 'pipe' });
+        execSync('codex --version', { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
     } catch {
         console.error('\n\x1b[1m\x1b[33mCodex CLI is not installed\x1b[0m\n');
         console.error('Please install Codex CLI using one of these methods:\n');
@@ -550,11 +550,15 @@ export async function runCodex(opts: {
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
     const happyServer = await startHappyServer(session);
-    const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
+    // Launch the bridge via `node <path>` (rather than relying on the .mjs shebang)
+    // so it works on Windows, where Windows can't execute shebang scripts directly.
+    // codex would otherwise fail to start the MCP server, the change_title tool would
+    // not be visible to the model, and the model would improvise with shell echoes.
+    const bridgeEntrypoint = join(projectPath(), 'bin', 'happy-mcp.mjs');
     const mcpServers = {
         happy: {
-            command: bridgeCommand,
-            args: ['--url', happyServer.url]
+            command: process.execPath,
+            args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url]
         }
     } as const;
     let first = true;

@@ -28,8 +28,12 @@ import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { resolveHappySession } from '@/resume/resolveHappySession';
 
 // Prepare initial metadata
+// Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
+// is visually distinct from the stable one in the machine list (they otherwise
+// share the same hostname and look identical).
+const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
 export const initialMachineMetadata: MachineMetadata = {
-  host: os.hostname(),
+  host: os.hostname() + hostSuffix,
   platform: os.platform(),
   happyCliVersion: packageJson.version,
   homeDir: os.homedir(),

@@ -13,10 +13,10 @@
  * app-server wrapper or approval callbacks. See docs/plans/codex-app-server-migration.md.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execSync, type ChildProcess } from 'node:child_process';
+import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import { logger } from '@/ui/logger';
-import { execSync } from 'child_process';
 import type {
     InitializeParams,
     NewConversationParams,
@@ -427,7 +427,9 @@ export class CodexAppServerClient {
         logger.debug(`[CodexAppServer] Spawning: ${command} ${args.join(' ')}`);
 
         const epoch = ++this.processEpoch;
-        const proc = spawn(command, args, {
+        // Use cross-spawn so npm-installed wrappers (codex.cmd / codex.ps1) resolve on Windows.
+        // Native child_process.spawn fails with ENOENT for .cmd shims (issues #980, #1016).
+        const proc = crossSpawn(command, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             env,
             windowsHide: true,
@@ -1198,6 +1200,13 @@ export class CodexAppServerClient {
                     method,
                 );
             }
+            return;
+        }
+
+        // MCP server lifecycle: log payload so we can diagnose failed launches
+        // (e.g. happy-mcp bridge failing on Windows due to shebang execution).
+        if (method === 'mcpServer/startupStatus/updated') {
+            logger.debug(`[CodexAppServer] mcpServer startup status:`, params);
             return;
         }
 

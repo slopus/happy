@@ -23,6 +23,7 @@ export function getEnvironmentInfo(): Record<string, any> {
     return {
         PWD: process.env.PWD,
         HAPPY_HOME_DIR: process.env.HAPPY_HOME_DIR,
+        HAPPY_VARIANT: process.env.HAPPY_VARIANT,
         HAPPY_SERVER_URL: process.env.HAPPY_SERVER_URL,
         HAPPY_PROJECT_ROOT: process.env.HAPPY_PROJECT_ROOT,
         DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING,
