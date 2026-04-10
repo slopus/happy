@@ -71,7 +71,7 @@ export async function runCodex(opts: {
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
-        execSync('codex --version', { encoding: 'utf8', stdio: 'pipe' });
+        execSync('codex --version', { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
     } catch {
         console.error('\n\x1b[1m\x1b[33mCodex CLI is not installed\x1b[0m\n');
         console.error('Please install Codex CLI using one of these methods:\n');

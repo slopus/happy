@@ -52,7 +52,7 @@ export interface RunOpenClawOptions {
  */
 function openclawExec(...args: string[]): string | null {
   try {
-    return execFileSync('openclaw', args, { timeout: 10_000, encoding: 'utf-8' }).trim();
+    return execFileSync('openclaw', args, { timeout: 10_000, encoding: 'utf-8', windowsHide: true }).trim();
   } catch {
     return null;
   }
