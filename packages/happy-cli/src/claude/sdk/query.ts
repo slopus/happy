@@ -23,6 +23,7 @@ import {
     AbortError
 } from './types'
 import { getDefaultClaudeCodePath, getCleanEnv, logDebug, streamToStdin } from './utils'
+import { ensureLocalProxyBypass } from '../utils/proxyBypass'
 import type { Writable } from 'node:stream'
 import { logger } from '@/ui/logger'
 
@@ -340,7 +341,13 @@ export function query(config: {
 
     // Spawn Claude Code process
     // Use clean env for global claude to avoid local node_modules/.bin taking precedence
-    const spawnEnv = isCommandOnly ? getCleanEnv() : process.env
+    let spawnEnv = isCommandOnly ? getCleanEnv() : process.env
+
+    if (mcpServers && Object.keys(mcpServers).length > 0) {
+        spawnEnv = { ...spawnEnv }
+        ensureLocalProxyBypass(spawnEnv)
+    }
+
     logDebug(`Spawning Claude Code process: ${spawnCommand} ${spawnArgs.join(' ')} (using ${isCommandOnly ? 'clean' : 'normal'} env)`)
 
     const child = spawn(spawnCommand, spawnArgs, {
