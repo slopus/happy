@@ -1301,6 +1301,8 @@ class Sync {
         if (Object.keys(this.pendingSettings).length > 0) {
 
             while (retryCount < maxRetries) {
+                // Snapshot what we're about to send so we can detect concurrent changes
+                const sentPending = { ...this.pendingSettings };
                 let version = storage.getState().settingsVersion;
                 let settings = applySettings(storage.getState().settings, this.pendingSettings);
                 const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
@@ -1323,8 +1325,16 @@ class Sync {
                     success: true
                 };
                 if (data.success) {
-                    this.pendingSettings = {};
-                    savePendingSettings({});
+                    // Only clear keys we actually sent — preserve any settings
+                    // added by applySettings() calls during the POST roundtrip
+                    const newPending: Partial<Settings> = {};
+                    for (const key of Object.keys(this.pendingSettings) as (keyof Settings)[]) {
+                        if (!(key in sentPending) || this.pendingSettings[key] !== sentPending[key]) {
+                            (newPending as any)[key] = this.pendingSettings[key];
+                        }
+                    }
+                    this.pendingSettings = newPending;
+                    savePendingSettings(this.pendingSettings);
                     break;
                 }
                 if (data.error === 'version-mismatch') {
@@ -1394,6 +1404,13 @@ class Sync {
 
         // Apply settings to storage
         storage.getState().applySettings(parsedSettings, data.settingsVersion);
+
+        // Re-apply any pending settings that accumulated during this sync cycle
+        // so that the local store reflects the user's latest changes even before
+        // the next POST sends them to the server.
+        if (Object.keys(this.pendingSettings).length > 0) {
+            storage.getState().applySettingsLocal(this.pendingSettings);
+        }
 
         // Sync PostHog opt-out state with settings
         if (tracking) {
