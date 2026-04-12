@@ -8,6 +8,7 @@ export interface CLIAvailability {
   codex: boolean;
   gemini: boolean;
   openclaw: boolean;
+  copilot: boolean;
   detectedAt: number;
 }
 
@@ -44,7 +45,10 @@ function detectPosix(): CLIAvailability {
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
 
-  return { claude, codex, gemini, openclaw, detectedAt: Date.now() };
+  // Copilot: gh CLI must be installed and have the copilot extension
+  const copilot = detectCopilotPosix();
+
+  return { claude, codex, gemini, openclaw, copilot, detectedAt: Date.now() };
 }
 
 function detectWindows(): CLIAvailability {
@@ -67,5 +71,30 @@ function detectWindows(): CLIAvailability {
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
 
-  return { claude, codex, gemini, openclaw, detectedAt: Date.now() };
+  // Copilot: gh CLI must be installed and have the copilot extension
+  const copilot = checkCommand('gh') && detectCopilotWindows(checkCommand);
+
+  return { claude, codex, gemini, openclaw, copilot, detectedAt: Date.now() };
+}
+
+/** Check for `gh copilot` extension on POSIX systems */
+function detectCopilotPosix(): boolean {
+  if (!commandExists('gh')) return false;
+  try {
+    execSync('gh copilot --version >/dev/null 2>&1', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Check for `gh copilot` extension on Windows */
+function detectCopilotWindows(checkCommand: (name: string) => boolean): boolean {
+  if (!checkCommand('gh')) return false;
+  try {
+    execSync('gh copilot --version', { stdio: 'ignore', windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
