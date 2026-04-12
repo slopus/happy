@@ -89,7 +89,6 @@ export const SettingsView = React.memo(function SettingsView() {
     // Connection status
     const isGitHubConnected = !!profile.github;
     const isAnthropicConnected = profile.connectedServices?.includes('anthropic') || false;
-    const isCopilotConnected = profile.connectedServices?.includes('copilot') || false;
 
     // GitHub connection
     const [connectingGitHub, connectGitHub] = useHappyAction(async () => {
@@ -123,24 +122,6 @@ export const SettingsView = React.memo(function SettingsView() {
         );
         if (confirmed) {
             await disconnectService(auth.credentials!, 'anthropic');
-            await sync.refreshProfile();
-        }
-    });
-
-    // Copilot connection
-    const [connectingCopilot, connectCopilot] = useHappyAction(async () => {
-        router.push('/settings/connect/copilot');
-    });
-
-    // Copilot disconnection
-    const [disconnectingCopilot, handleDisconnectCopilot] = useHappyAction(async () => {
-        const confirmed = await Modal.confirm(
-            t('modals.disconnectService', { service: 'Copilot' }),
-            t('modals.disconnectServiceConfirm', { service: 'Copilot' }),
-            { confirmText: t('modals.disconnect'), destructive: true }
-        );
-        if (confirmed) {
-            await disconnectService(auth.credentials!, 'copilot');
             await sync.refreshProfile();
         }
     });
@@ -243,23 +224,6 @@ export const SettingsView = React.memo(function SettingsView() {
                     }
                     onPress={isAnthropicConnected ? handleDisconnectAnthropic : connectAnthropic}
                     loading={connectingAnthropic || disconnectingAnthropic}
-                    showChevron={false}
-                />
-                <Item
-                    title="GitHub Copilot"
-                    subtitle={isCopilotConnected
-                        ? t('settingsAccount.statusActive')
-                        : t('settings.connectAccount')
-                    }
-                    icon={
-                        <Image
-                            source={require('@/assets/images/icon-copilot.png')}
-                            style={{ width: 29, height: 29 }}
-                            contentFit="contain"
-                        />
-                    }
-                    onPress={isCopilotConnected ? handleDisconnectCopilot : connectCopilot}
-                    loading={connectingCopilot || disconnectingCopilot}
                     showChevron={false}
                 />
                 <Item

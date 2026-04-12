@@ -28,9 +28,3 @@ export interface ClaudeAuthTokens {
     token: string;
     expires: number;
 }
-
-export interface CopilotAuthTokens {
-    access_token: string;
-    token_type: string;
-    scope: string;
-}

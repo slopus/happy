@@ -252,7 +252,7 @@ export function connectRoutes(app: Fastify) {
                 token: z.string()
             }),
             params: z.object({
-                vendor: z.enum(['openai', 'anthropic', 'gemini', 'copilot'])
+                vendor: z.enum(['openai', 'anthropic', 'gemini'])
             })
         }
     }, async (request, reply) => {
@@ -270,7 +270,7 @@ export function connectRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                vendor: z.enum(['openai', 'anthropic', 'gemini', 'copilot'])
+                vendor: z.enum(['openai', 'anthropic', 'gemini'])
             }),
             response: {
                 200: z.object({
@@ -295,7 +295,7 @@ export function connectRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                vendor: z.enum(['openai', 'anthropic', 'gemini', 'copilot'])
+                vendor: z.enum(['openai', 'anthropic', 'gemini'])
             }),
             response: {
                 200: z.object({

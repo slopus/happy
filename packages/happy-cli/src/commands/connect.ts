@@ -7,7 +7,6 @@ import { ApiClient } from '@/api/api';
 import { authenticateCodex } from './connect/authenticateCodex';
 import { authenticateClaude } from './connect/authenticateClaude';
 import { authenticateGemini } from './connect/authenticateGemini';
-import { authenticateCopilot } from './connect/authenticateCopilot';
 import { decodeJwtPayload } from './connect/utils';
 
 /**
@@ -17,7 +16,6 @@ import { decodeJwtPayload } from './connect/utils';
  * - connect codex: Store OpenAI API key in Happy cloud
  * - connect claude: Store Anthropic API key in Happy cloud
  * - connect gemini: Store Gemini API key in Happy cloud
- * - connect copilot: Store GitHub Copilot token in Happy cloud
  * - connect help: Show help for connect command
  */
 export async function handleConnectCommand(args: string[]): Promise<void> {
@@ -38,9 +36,6 @@ export async function handleConnectCommand(args: string[]): Promise<void> {
         case 'gemini':
             await handleConnectVendor('gemini', 'Gemini');
             break;
-        case 'copilot':
-            await handleConnectVendor('copilot', 'GitHub Copilot');
-            break;
         case 'status':
             await handleConnectStatus();
             break;
@@ -59,7 +54,6 @@ ${chalk.bold('Usage:')}
   happy connect codex        Store your Codex API key in Happy cloud
   happy connect claude       Store your Anthropic API key in Happy cloud
   happy connect gemini       Store your Gemini API key in Happy cloud
-  happy connect copilot      Store your GitHub Copilot token in Happy cloud
   happy connect status       Show connection status for all vendors
   happy connect help         Show this help message
 
@@ -72,7 +66,6 @@ ${chalk.bold('Examples:')}
   happy connect codex
   happy connect claude
   happy connect gemini
-  happy connect copilot
   happy connect status
 
 ${chalk.bold('Notes:')} 
@@ -82,7 +75,7 @@ ${chalk.bold('Notes:')}
 `);
 }
 
-async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini' | 'copilot', displayName: string): Promise<void> {
+async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displayName: string): Promise<void> {
     console.log(chalk.bold(`\n🔌 Connecting ${displayName} to Happy cloud\n`));
 
     // Check if authenticated
@@ -119,12 +112,6 @@ async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini' | 'copi
         updateLocalGeminiCredentials(geminiAuthTokens);
         
         process.exit(0);
-    } else if (vendor === 'copilot') {
-        console.log('🚀 Registering GitHub Copilot token with server');
-        const copilotAuthTokens = await authenticateCopilot();
-        await api.registerVendorToken('copilot', { oauth: copilotAuthTokens });
-        console.log('✅ GitHub Copilot token registered with server');
-        process.exit(0);
     } else {
         throw new Error(`Unsupported vendor: ${vendor}`);
     }
@@ -148,11 +135,10 @@ async function handleConnectStatus(): Promise<void> {
     const api = await ApiClient.create(credentials);
 
     // Check each vendor
-    const vendors: Array<{ key: 'openai' | 'anthropic' | 'gemini' | 'copilot'; name: string; display: string }> = [
+    const vendors: Array<{ key: 'openai' | 'anthropic' | 'gemini'; name: string; display: string }> = [
         { key: 'gemini', name: 'Gemini', display: 'Google Gemini' },
         { key: 'openai', name: 'Codex', display: 'OpenAI Codex' },
         { key: 'anthropic', name: 'Claude', display: 'Anthropic Claude' },
-        { key: 'copilot', name: 'Copilot', display: 'GitHub Copilot' },
     ];
 
     for (const vendor of vendors) {

@@ -289,7 +289,7 @@ export class ApiClient {
    * Register a vendor API token with the server
    * The token is sent as a JSON string - server handles encryption
    */
-  async registerVendorToken(vendor: 'openai' | 'anthropic' | 'gemini' | 'copilot', apiKey: any): Promise<void> {
+  async registerVendorToken(vendor: 'openai' | 'anthropic' | 'gemini', apiKey: any): Promise<void> {
     try {
       const response = await axios.post(
         `${configuration.serverUrl}/v1/connect/${vendor}/register`,
@@ -320,7 +320,7 @@ export class ApiClient {
    * Get vendor API token from the server
    * Returns the token if it exists, null otherwise
    */
-  async getVendorToken(vendor: 'openai' | 'anthropic' | 'gemini' | 'copilot'): Promise<any | null> {
+  async getVendorToken(vendor: 'openai' | 'anthropic' | 'gemini'): Promise<any | null> {
     try {
       const response = await axios.get(
         `${configuration.serverUrl}/v1/connect/${vendor}/token`,
