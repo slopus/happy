@@ -15,6 +15,7 @@ import { fetchVoiceUsage, type VoiceUsageResponse } from '@/sync/apiVoice';
 import { t } from '@/text';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
+import { trackPaywallButtonClicked } from '@/track';
 import { getVoiceExperimentStatus, getVoiceUpsellVariantLabel } from '@/realtime/voiceExperiment';
 import { getVoiceLocalCounters, resetVoiceLocalCounters } from '@/sync/persistence';
 
@@ -52,6 +53,7 @@ export default React.memo(function VoiceSettingsScreen() {
     const currentLanguage = findLanguageByCode(voiceAssistantLanguage) || LANGUAGES[0];
 
     const handleSupportUs = React.useCallback(async () => {
+        trackPaywallButtonClicked('voluntary_support');
         await sync.presentPaywall('voluntary_support');
     }, []);
 
