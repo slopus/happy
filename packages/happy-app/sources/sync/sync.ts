@@ -534,6 +534,14 @@ class Sync {
         this.maybeStartBackgroundSendWatchdog();
     }
 
+    /** Server sent us settings — merge any pending local changes on top, then apply as one update. */
+    private applyServerSettings = (serverSettings: Settings, version: number) => {
+        const merged = Object.keys(this.pendingSettings).length > 0
+            ? applySettings(serverSettings, this.pendingSettings)
+            : serverSettings;
+        storage.getState().applySettings(merged, version);
+    }
+
     applySettings = (delta: Partial<Settings>) => {
         storage.getState().applySettingsLocal(delta);
 
@@ -1347,7 +1355,7 @@ class Sync {
                     const mergedSettings = applySettings(serverSettings, this.pendingSettings);
 
                     // Update local storage with merged result at server's version
-                    storage.getState().applySettings(mergedSettings, data.currentVersion);
+                    this.applyServerSettings(mergedSettings, data.currentVersion);
 
                     // Sync tracking state with merged settings
                     if (tracking) {
@@ -1402,15 +1410,8 @@ class Sync {
             version: data.settingsVersion
         }));
 
-        // Apply settings to storage
-        storage.getState().applySettings(parsedSettings, data.settingsVersion);
-
-        // Re-apply any pending settings that accumulated during this sync cycle
-        // so that the local store reflects the user's latest changes even before
-        // the next POST sends them to the server.
-        if (Object.keys(this.pendingSettings).length > 0) {
-            storage.getState().applySettingsLocal(this.pendingSettings);
-        }
+        // Apply settings to storage, re-layering any pending local changes on top
+        this.applyServerSettings(parsedSettings, data.settingsVersion);
 
         // Sync PostHog opt-out state with settings
         if (tracking) {
@@ -1943,7 +1944,7 @@ class Sync {
                         );
                     }
 
-                    storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
+                    this.applyServerSettings(parsedSettings, accountUpdate.settings.version);
                     log.log(`📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`);
                 } catch (error) {
                     console.error('❌ Failed to process settings update:', error);
