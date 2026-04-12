@@ -21,6 +21,8 @@ import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { useSettingMutable } from '@/sync/storage';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -170,6 +172,24 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingBottom: 12,
         backgroundColor: theme.colors.groupped.background,
     },
+    archiveToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+        paddingVertical: 16,
+    },
+    archiveToggleLine: {
+        flex: 1,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.groupped.sectionTitle,
+        opacity: 0.3,
+    },
+    archiveToggleText: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        paddingHorizontal: 12,
+        ...Typography.default('semiBold'),
+    },
 }));
 
 export function SessionsList() {
@@ -179,6 +199,10 @@ export function SessionsList() {
     const pathname = usePathname();
     const isTablet = useIsTablet();
     const compactSessionView = useSetting('compactSessionView');
+    const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
+    const toggleArchived = React.useCallback(() => {
+        setHideInactiveSessions(!hideInactiveSessions);
+    }, [hideInactiveSessions, setHideInactiveSessions]);
     const selectable = isTablet;
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
@@ -205,6 +229,7 @@ export function SessionsList() {
         switch (item.type) {
             case 'header': return `header-${item.title}-${index}`;
             case 'active-sessions': return 'active-sessions';
+            case 'archive-toggle': return 'archive-toggle';
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
             case 'session': return `session-${item.session.id}`;
         }
@@ -219,6 +244,17 @@ export function SessionsList() {
                             {item.title}
                         </Text>
                     </View>
+                );
+
+            case 'archive-toggle':
+                return (
+                    <Pressable style={styles.archiveToggle} onPress={toggleArchived}>
+                        <View style={styles.archiveToggleLine} />
+                        <Text style={styles.archiveToggleText}>
+                            {item.hidden ? t('sidebar.showArchived') : t('sidebar.hideArchived')}
+                        </Text>
+                        <View style={styles.archiveToggleLine} />
+                    </Pressable>
                 );
 
             case 'active-sessions':
@@ -268,7 +304,7 @@ export function SessionsList() {
                     />
                 );
         }
-    }, [pathname, dataWithSelected, compactSessionView]);
+    }, [pathname, dataWithSelected, compactSessionView, toggleArchived]);
 
 
     // Remove this section as we'll use FlatList for all items now

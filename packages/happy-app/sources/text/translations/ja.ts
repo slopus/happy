@@ -453,6 +453,8 @@ export const ja: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'アーカイブを表示',
+        hideArchived: 'アーカイブを非表示',
     },
 
     toolView: {
@@ -780,6 +782,7 @@ export const ja: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'はい、このセッション中のすべての編集を許可',
+            yesAllowEverything: 'はい、このセッション中のすべてを許可',
             yesForTool: "はい、このツールについては確認しない",
             noTellClaude: 'いいえ、フィードバックを提供',
         }

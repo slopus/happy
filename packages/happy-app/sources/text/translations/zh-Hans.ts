@@ -453,6 +453,8 @@ export const zhHans: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: '显示已归档',
+        hideArchived: '隐藏已归档',
     },
 
     toolView: {
@@ -780,6 +782,7 @@ export const zhHans: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: '是，允许本次会话的所有编辑',
+            yesAllowEverything: '是，允许本次会话的所有操作',
             yesForTool: '是，不再询问此工具',
             noTellClaude: '否，提供反馈',
         }

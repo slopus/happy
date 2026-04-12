@@ -450,6 +450,8 @@ export const it: TranslationStructure = {
 
     sidebar: {
         sessionsTitle: 'Happy',
+        showArchived: 'Mostra archiviate',
+        hideArchived: 'Nascondi archiviate',
     },
 
     toolView: {
@@ -777,6 +779,7 @@ export const it: TranslationStructure = {
         // Claude permission dialog buttons
         permissions: {
             yesAllowAllEdits: 'Sì, consenti tutte le modifiche durante questa sessione',
+            yesAllowEverything: 'Sì, consenti tutto durante questa sessione',
             yesForTool: 'Sì, non chiedere più per questo strumento',
             noTellClaude: 'No, fornisci feedback',
         }

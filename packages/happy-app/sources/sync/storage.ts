@@ -64,6 +64,7 @@ interface SessionMessages {
 export type SessionListViewItem =
     | { type: 'header'; title: string }
     | { type: 'active-sessions'; sessions: Session[] }
+    | { type: 'archive-toggle'; hidden: boolean }
     | { type: 'project-group'; displayPath: string; machine: Machine }
     | { type: 'session'; session: Session; variant?: 'default' | 'no-path' };
 
