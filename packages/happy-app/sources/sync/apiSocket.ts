@@ -126,7 +126,7 @@ class ApiSocket {
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error(result.error || 'RPC call failed');
+        throw new Error('RPC call failed');
     }
 
     /**

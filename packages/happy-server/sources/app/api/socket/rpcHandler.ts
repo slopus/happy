@@ -1,44 +1,61 @@
+import { eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
-import { Server, Socket } from "socket.io";
-import { Redis } from "ioredis";
+import { Socket } from "socket.io";
 
-const RPC_KEY_PREFIX = 'rpc:user:';
-const RPC_TTL_SECONDS = 60;
-
-function rpcKey(userId: string, method: string): string {
-    return `${RPC_KEY_PREFIX}${userId}:method:${method}`;
-}
-
-/**
- * In-memory fallback for standalone mode (no Redis).
- */
-function inMemoryRpcHandler(userId: string, socket: Socket, io: Server, rpcListeners: Map<string, Socket>) {
-
+export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
+    
+    // RPC register - Register this socket as a listener for an RPC method
     socket.on('rpc-register', async (data: any) => {
         try {
             const { method } = data;
+
             if (!method || typeof method !== 'string') {
                 socket.emit('rpc-error', { type: 'register', error: 'Invalid method name' });
                 return;
             }
+
+            // Check if method was already registered
+            const previousSocket = rpcListeners.get(method);
+            if (previousSocket && previousSocket !== socket) {
+                // log({ module: 'websocket-rpc' }, `RPC method ${method} re-registered: ${previousSocket.id} -> ${socket.id}`);
+            }
+
+            // Register this socket as the listener for this method
             rpcListeners.set(method, socket);
+
             socket.emit('rpc-registered', { method });
+            // log({ module: 'websocket-rpc' }, `RPC method registered: ${method} on socket ${socket.id} (user: ${userId})`);
+            // log({ module: 'websocket-rpc' }, `Active RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in rpc-register: ${error}`);
             socket.emit('rpc-error', { type: 'register', error: 'Internal error' });
         }
     });
 
+    // RPC unregister - Remove this socket as a listener for an RPC method
     socket.on('rpc-unregister', async (data: any) => {
         try {
             const { method } = data;
+
             if (!method || typeof method !== 'string') {
                 socket.emit('rpc-error', { type: 'unregister', error: 'Invalid method name' });
                 return;
             }
+
             if (rpcListeners.get(method) === socket) {
                 rpcListeners.delete(method);
+                // log({ module: 'websocket-rpc' }, `RPC method unregistered: ${method} from socket ${socket.id} (user: ${userId})`);
+
+                if (rpcListeners.size === 0) {
+                    rpcListeners.delete(userId);
+                    // log({ module: 'websocket-rpc' }, `All RPC methods unregistered for user ${userId}`);
+                } else {
+                    // log({ module: 'websocket-rpc' }, `Remaining RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
+                }
+            } else {
+                // log({ module: 'websocket-rpc' }, `RPC unregister ignored: ${method} not registered on socket ${socket.id}`);
             }
+
             socket.emit('rpc-unregistered', { method });
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in rpc-unregister: ${error}`);
@@ -46,184 +63,108 @@ function inMemoryRpcHandler(userId: string, socket: Socket, io: Server, rpcListe
         }
     });
 
+    // RPC call - Call an RPC method on another socket of the same user
     socket.on('rpc-call', async (data: any, callback: (response: any) => void) => {
         try {
             const { method, params } = data;
+
             if (!method || typeof method !== 'string') {
-                callback?.({ ok: false, error: 'Invalid parameters: method is required' });
+                if (callback) {
+                    callback({
+                        ok: false,
+                        error: 'Invalid parameters: method is required'
+                    });
+                }
                 return;
             }
+
             const targetSocket = rpcListeners.get(method);
             if (!targetSocket || !targetSocket.connected) {
-                callback?.({ ok: false, error: 'RPC method not available' });
+                // log({ module: 'websocket-rpc' }, `RPC call failed: Method ${method} not available (disconnected or not registered)`);
+                if (callback) {
+                    callback({
+                        ok: false,
+                        error: 'RPC method not available'
+                    });
+                }
                 return;
             }
+
+            // Don't allow calling your own socket
             if (targetSocket === socket) {
-                callback?.({ ok: false, error: 'Cannot call RPC on the same socket' });
+                // log({ module: 'websocket-rpc' }, `RPC call failed: Attempted self-call on method ${method}`);
+                if (callback) {
+                    callback({
+                        ok: false,
+                        error: 'Cannot call RPC on the same socket'
+                    });
+                }
                 return;
             }
+
+            // Log RPC call initiation
+            const startTime = Date.now();
+            // log({ module: 'websocket-rpc' }, `RPC call initiated: ${socket.id} -> ${method} (target: ${targetSocket.id})`);
+
+            // Forward the RPC request to the target socket using emitWithAck
             try {
-                const response = await targetSocket.timeout(30000).emitWithAck('rpc-request', { method, params });
-                callback?.({ ok: true, result: response });
+                const response = await targetSocket.timeout(30000).emitWithAck('rpc-request', {
+                    method,
+                    params
+                });
+
+                const duration = Date.now() - startTime;
+                // log({ module: 'websocket-rpc' }, `RPC call succeeded: ${method} (${duration}ms)`);
+
+                // Forward the response back to the caller via callback
+                if (callback) {
+                    callback({
+                        ok: true,
+                        result: response
+                    });
+                }
+
             } catch (error) {
+                const duration = Date.now() - startTime;
                 const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
-                callback?.({ ok: false, error: errorMsg });
+                // log({ module: 'websocket-rpc' }, `RPC call failed: ${method} - ${errorMsg} (${duration}ms)`);
+
+                // Timeout or error occurred
+                if (callback) {
+                    callback({
+                        ok: false,
+                        error: errorMsg
+                    });
+                }
             }
         } catch (error) {
-            callback?.({ ok: false, error: 'Internal error' });
+            // log({ module: 'websocket', level: 'error' }, `Error in rpc-call: ${error}`);
+            if (callback) {
+                callback({
+                    ok: false,
+                    error: 'Internal error'
+                });
+            }
         }
     });
 
     socket.on('disconnect', () => {
+
         const methodsToRemove: string[] = [];
         for (const [method, registeredSocket] of rpcListeners.entries()) {
             if (registeredSocket === socket) {
                 methodsToRemove.push(method);
             }
         }
-        methodsToRemove.forEach(method => rpcListeners.delete(method));
-    });
-}
 
-/**
- * Redis-backed RPC handler for multi-replica deployments.
- * Registrations stored in Redis with TTL. Calls routed cross-replica
- * via io.to(socketId).emitWithAck() through the Redis adapter.
- *
- * Keys are NEVER deleted on call failure — the 60s TTL handles cleanup.
- * Deleting on failure causes cascading permanent breakage because
- * refreshRpcRegistrations can't refresh a key that doesn't exist.
- */
-function redisRpcHandler(userId: string, socket: Socket, io: Server, redis: Redis) {
-    const registeredMethods: Set<string> = new Set();
+        if (methodsToRemove.length > 0) {
+            // log({ module: 'websocket-rpc' }, `Cleaning up RPC methods on disconnect for socket ${socket.id}: ${methodsToRemove.join(', ')}`);
+            methodsToRemove.forEach(method => rpcListeners.delete(method));
+        }
 
-    socket.on('rpc-register', async (data: any) => {
-        try {
-            const { method } = data;
-            if (!method || typeof method !== 'string') {
-                socket.emit('rpc-error', { type: 'register', error: 'Invalid method name' });
-                return;
-            }
-            const key = rpcKey(userId, method);
-            await redis.set(key, socket.id, 'EX', RPC_TTL_SECONDS);
-            registeredMethods.add(method);
-            socket.emit('rpc-registered', { method });
-        } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in rpc-register: ${error}`);
-            socket.emit('rpc-error', { type: 'register', error: 'Internal error' });
+        if (rpcListeners.size === 0) {
+            rpcListeners.delete(userId);
+            // log({ module: 'websocket-rpc' }, `All RPC listeners removed for user ${userId}`);
         }
     });
-
-    socket.on('rpc-unregister', async (data: any) => {
-        try {
-            const { method } = data;
-            if (!method || typeof method !== 'string') {
-                socket.emit('rpc-error', { type: 'unregister', error: 'Invalid method name' });
-                return;
-            }
-            const key = rpcKey(userId, method);
-            const currentSocketId = await redis.get(key);
-            if (currentSocketId === socket.id) {
-                await redis.del(key);
-            }
-            registeredMethods.delete(method);
-            socket.emit('rpc-unregistered', { method });
-        } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in rpc-unregister: ${error}`);
-            socket.emit('rpc-error', { type: 'unregister', error: 'Internal error' });
-        }
-    });
-
-    socket.on('rpc-call', async (data: any, callback: (response: any) => void) => {
-        try {
-            const { method, params } = data;
-            if (!method || typeof method !== 'string') {
-                callback?.({ ok: false, error: 'Invalid parameters: method is required' });
-                return;
-            }
-
-            const key = rpcKey(userId, method);
-            const targetSocketId = await redis.get(key);
-
-            if (!targetSocketId) {
-                callback?.({ ok: false, error: 'RPC method not available' });
-                return;
-            }
-
-            if (targetSocketId === socket.id) {
-                callback?.({ ok: false, error: 'Cannot call RPC on the same socket' });
-                return;
-            }
-
-            try {
-                const responses = await io.to(targetSocketId).timeout(30000).emitWithAck('rpc-request', {
-                    method,
-                    params
-                });
-
-                if (!responses || responses.length === 0) {
-                    callback?.({ ok: false, error: 'RPC target not reachable' });
-                    return;
-                }
-
-                callback?.({ ok: true, result: responses[0] });
-            } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
-                callback?.({ ok: false, error: errorMsg });
-            }
-        } catch (error) {
-            callback?.({ ok: false, error: 'Internal error' });
-        }
-    });
-
-    socket.on('disconnect', async () => {
-        try {
-            const pipeline = redis.pipeline();
-            for (const method of registeredMethods) {
-                const key = rpcKey(userId, method);
-                pipeline.eval(
-                    `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`,
-                    1, key, socket.id
-                );
-            }
-            await pipeline.exec();
-        } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error cleaning up RPC registrations on disconnect: ${error}`);
-        }
-        registeredMethods.clear();
-    });
-}
-
-/**
- * Refresh TTLs for all RPC registrations owned by this socket.
- */
-export async function refreshRpcRegistrations(userId: string, socketId: string, redis: Redis) {
-    try {
-        const pattern = rpcKey(userId, '*');
-        let cursor = '0';
-        do {
-            const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
-            cursor = nextCursor;
-            if (keys.length > 0) {
-                const pipeline = redis.pipeline();
-                for (const key of keys) {
-                    pipeline.eval(
-                        `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end`,
-                        1, key, socketId, RPC_TTL_SECONDS
-                    );
-                }
-                await pipeline.exec();
-            }
-        } while (cursor !== '0');
-    } catch (error) {
-        log({ module: 'websocket', level: 'error' }, `Error refreshing RPC TTLs: ${error}`);
-    }
-}
-
-export function rpcHandler(userId: string, socket: Socket, io: Server, rpcStore: { type: 'redis', redis: Redis } | { type: 'memory', map: Map<string, Socket> }) {
-    if (rpcStore.type === 'redis') {
-        redisRpcHandler(userId, socket, io, rpcStore.redis);
-    } else {
-        inMemoryRpcHandler(userId, socket, io, rpcStore.map);
-    }
 }

@@ -1,4 +1,4 @@
-import { Server, Socket } from "socket.io";
+import { Socket } from "socket.io";
 import { log } from "@/utils/log";
 import { GitHubProfile } from "@/app/api/types";
 import { AccountProfile } from "@/types";
@@ -202,35 +202,29 @@ export interface EphemeralPayload {
 // === EVENT ROUTER CLASS ===
 
 class EventRouter {
-    private io!: Server;
+    private userConnections = new Map<string, Set<ClientConnection>>();
 
-    // === INITIALIZATION ===
-
-    init(io: Server): void {
-        this.io = io;
-    }
-
-    // === CONNECTION MANAGEMENT (via Socket.IO rooms) ===
+    // === CONNECTION MANAGEMENT ===
 
     addConnection(userId: string, connection: ClientConnection): void {
-        const socket = connection.socket;
-        socket.join(`user:${userId}`);
-
-        switch (connection.connectionType) {
-            case 'user-scoped':
-                socket.join(`user:${userId}:user-scoped`);
-                break;
-            case 'session-scoped':
-                socket.join(`user:${userId}:session:${connection.sessionId}`);
-                break;
-            case 'machine-scoped':
-                socket.join(`user:${userId}:machine:${connection.machineId}`);
-                break;
+        if (!this.userConnections.has(userId)) {
+            this.userConnections.set(userId, new Set());
         }
+        this.userConnections.get(userId)!.add(connection);
     }
 
     removeConnection(userId: string, connection: ClientConnection): void {
-        // Socket.IO automatically removes sockets from all rooms on disconnect
+        const connections = this.userConnections.get(userId);
+        if (connections) {
+            connections.delete(connection);
+            if (connections.size === 0) {
+                this.userConnections.delete(userId);
+            }
+        }
+    }
+
+    getConnections(userId: string): Set<ClientConnection> | undefined {
+        return this.userConnections.get(userId);
     }
 
     // === EVENT EMISSION METHODS ===
@@ -267,18 +261,42 @@ class EventRouter {
 
     // === PRIVATE ROUTING LOGIC ===
 
-    private getRoomsForFilter(userId: string, filter: RecipientFilter): string[] {
+    private shouldSendToConnection(
+        connection: ClientConnection,
+        filter: RecipientFilter
+    ): boolean {
         switch (filter.type) {
-            case 'all-user-authenticated-connections':
-                return [`user:${userId}`];
-            case 'user-scoped-only':
-                return [`user:${userId}:user-scoped`];
             case 'all-interested-in-session':
-                // Union: session watchers + user-scoped (Socket.IO deduplicates)
-                return [`user:${userId}:session:${filter.sessionId}`, `user:${userId}:user-scoped`];
+                // Send to session-scoped with matching session + all user-scoped
+                if (connection.connectionType === 'session-scoped') {
+                    if (connection.sessionId !== filter.sessionId) {
+                        return false;  // Wrong session
+                    }
+                } else if (connection.connectionType === 'machine-scoped') {
+                    return false;  // Machines don't need session updates
+                }
+                // user-scoped always gets it
+                return true;
+
+            case 'user-scoped-only':
+                return connection.connectionType === 'user-scoped';
+
             case 'machine-scoped-only':
-                // Union: specific machine + user-scoped
-                return [`user:${userId}:machine:${filter.machineId}`, `user:${userId}:user-scoped`];
+                // Send to user-scoped (mobile/web needs all machine updates) + only the specific machine
+                if (connection.connectionType === 'user-scoped') {
+                    return true;
+                }
+                if (connection.connectionType === 'machine-scoped') {
+                    return connection.machineId === filter.machineId;
+                }
+                return false;  // session-scoped doesn't need machine updates
+
+            case 'all-user-authenticated-connections':
+                // Send to all connection types (default behavior)
+                return true;
+
+            default:
+                return false;
         }
     }
 
@@ -289,12 +307,24 @@ class EventRouter {
         recipientFilter: RecipientFilter;
         skipSenderConnection?: ClientConnection;
     }): void {
-        const rooms = this.getRoomsForFilter(params.userId, params.recipientFilter);
+        const connections = this.userConnections.get(params.userId);
+        if (!connections) {
+            log({ module: 'websocket', level: 'warn' }, `No connections found for user ${params.userId}`);
+            return;
+        }
 
-        if (params.skipSenderConnection) {
-            params.skipSenderConnection.socket.broadcast.to(rooms).emit(params.eventName, params.payload);
-        } else {
-            this.io.to(rooms).emit(params.eventName, params.payload);
+        for (const connection of connections) {
+            // Skip message echo
+            if (params.skipSenderConnection && connection === params.skipSenderConnection) {
+                continue;
+            }
+
+            // Apply recipient filter
+            if (!this.shouldSendToConnection(connection, params.recipientFilter)) {
+                continue;
+            }
+
+            connection.socket.emit(params.eventName, params.payload);
         }
     }
 }

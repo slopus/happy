@@ -2,8 +2,6 @@ import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { Server, Socket } from "socket.io";
-import { createAdapter } from "@socket.io/redis-streams-adapter";
-import { Redis } from "ioredis";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
 import { decrementWebSocketConnection, incrementWebSocketConnection, websocketEventsCounter } from "../monitoring/metrics2";
@@ -32,18 +30,6 @@ export function startSocket(app: Fastify) {
         connectTimeout: 20000,
         serveClient: false // Don't serve the client files
     });
-
-    // Multi-process support: attach Redis streams adapter when REDIS_URL is set
-    let rpcRedis: Redis | null = null;
-    if (process.env.REDIS_URL) {
-        const streamClient = new Redis(process.env.REDIS_URL);
-        io.adapter(createAdapter(streamClient, { maxLen: 50000 }));
-        rpcRedis = new Redis(process.env.REDIS_URL);
-        log({ module: 'websocket' }, 'Redis streams adapter enabled for multi-process support');
-    }
-
-    // Initialize event router with Socket.IO server instance
-    eventRouter.init(io);
 
     let rpcListeners = new Map<string, Map<string, Socket>>();
     io.on("connection", async (socket) => {
@@ -146,21 +132,16 @@ export function startSocket(app: Fastify) {
         });
 
         // Handlers
-        const rpcStore = rpcRedis
-            ? { type: 'redis' as const, redis: rpcRedis }
-            : (() => {
-                let userRpcListeners = rpcListeners.get(userId);
-                if (!userRpcListeners) {
-                    userRpcListeners = new Map<string, Socket>();
-                    rpcListeners.set(userId, userRpcListeners);
-                }
-                return { type: 'memory' as const, map: userRpcListeners };
-            })();
-        rpcHandler(userId, socket, io, rpcStore);
+        let userRpcListeners = rpcListeners.get(userId);
+        if (!userRpcListeners) {
+            userRpcListeners = new Map<string, Socket>();
+            rpcListeners.set(userId, userRpcListeners);
+        }
+        rpcHandler(userId, socket, userRpcListeners);
         usageHandler(userId, socket);
-        sessionUpdateHandler(userId, socket, connection, rpcRedis);
+        sessionUpdateHandler(userId, socket, connection);
         pingHandler(socket);
-        machineUpdateHandler(userId, socket, rpcRedis);
+        machineUpdateHandler(userId, socket);
         artifactUpdateHandler(userId, socket);
         accessKeyHandler(userId, socket);
 

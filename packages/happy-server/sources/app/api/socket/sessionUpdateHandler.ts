@@ -7,10 +7,8 @@ import { AsyncLock } from "@/utils/lock";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { Socket } from "socket.io";
-import { refreshRpcRegistrations } from "./rpcHandler";
-import { Redis } from "ioredis";
 
-export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection, rpcRedis?: Redis | null) {
+export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
     socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
         try {
             const { sid, metadata, expectedVersion } = data;
@@ -179,11 +177,6 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 payload: sessionActivity,
                 recipientFilter: { type: 'user-scoped-only' }
             });
-
-            // Refresh RPC registration TTLs so they don't expire while session is alive
-            if (rpcRedis) {
-                refreshRpcRegistrations(userId, socket.id, rpcRedis).catch(() => {});
-            }
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in session-alive: ${error}`);
         }
