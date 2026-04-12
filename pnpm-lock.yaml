@@ -675,12 +675,6 @@ importers:
       '@slopus/happy-wire':
         specifier: workspace:*
         version: link:../happy-wire
-      '@socket.io/redis-adapter':
-        specifier: ^8.3.0
-        version: 8.3.0(socket.io-adapter@2.5.6)
-      '@socket.io/redis-streams-adapter':
-        specifier: ^0.2.2
-        version: 0.2.3(socket.io-adapter@2.5.6)
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10
@@ -2707,10 +2701,6 @@ packages:
       react: '*'
       react-native: '*'
 
-  '@msgpack/msgpack@2.8.0':
-    resolution: {integrity: sha512-h9u4u/jiIRKbq25PM+zymTyW6bhTzELvOoUd+AvYriWOAKpLGnIamaET3pnHYoI5iYphAHBI4ayx0MehR+VVPQ==}
-    engines: {node: '>= 10'}
-
   '@noble/curves@1.5.0':
     resolution: {integrity: sha512-J5EKamIHnKPyClwVrzmaf5wSdQXgdHcPZIZLu3bwnbeCx8/7NPK5q2ZBWF+5FvYGByjiQQsJYX6jfgB2wDPn3A==}
 
@@ -3633,18 +3623,6 @@ packages:
 
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
-
-  '@socket.io/redis-adapter@8.3.0':
-    resolution: {integrity: sha512-ly0cra+48hDmChxmIpnESKrc94LjRL80TEmZVscuQ/WWkRP81nNj8W8cCGMqbI4L6NCuAaPRSzZF1a9GlAxxnA==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      socket.io-adapter: ^2.5.4
-
-  '@socket.io/redis-streams-adapter@0.2.3':
-    resolution: {integrity: sha512-c8b+ZO6L10TQx7HbVwbupJQ3yj4aZOzxN1u8paIM8tFxJBJUiujdm0SryWC0xv7gIG8LbPsXIHiBHGi7TEVVqQ==}
-    engines: {node: '>=14.0.0'}
-    peerDependencies:
-      socket.io-adapter: ^2.5.4
 
   '@stablelib/base64@2.0.1':
     resolution: {integrity: sha512-P2z89A7N1ETt6RxgpVdDT2xlg8cnm3n6td0lY9gyK7EiWK3wdq388yFX/hLknkCC0we05OZAD1rfxlQJUbl5VQ==}
@@ -5062,15 +5040,6 @@ packages:
 
   debug@4.3.4:
     resolution: {integrity: sha512-PRWFHuSU3eDtQJPvnNY7Jcket1j0t5OuOsFzPPzsekD52Zl8qUfFIPEiswXqIvHWGVHOgX+7G/vCNNhehwxfkQ==}
-    engines: {node: '>=6.0'}
-    peerDependencies:
-      supports-color: '*'
-    peerDependenciesMeta:
-      supports-color:
-        optional: true
-
-  debug@4.3.7:
-    resolution: {integrity: sha512-Er2nc/H7RrMXZBFCEim6TCmMk02Z8vLC2Rbi1KEBggpo0fS6l0S1nnapwmIi3yW/+GOJap1Krg4w0Hg80oCqgQ==}
     engines: {node: '>=6.0'}
     peerDependencies:
       supports-color: '*'
@@ -7462,9 +7431,6 @@ packages:
     resolution: {integrity: sha512-DlL+XwOy3NxAQ8xuC0okPgK46iuVNAK01YN7RueYBqqFeGsBjV9XmCAzAdgt+667bCl5kPh9EqKKDwnaPG1I7A==}
     engines: {node: '>=10'}
 
-  notepack.io@3.0.1:
-    resolution: {integrity: sha512-TKC/8zH5pXIAMVQio2TvVDTtPRX+DJPHDqjRbxogtFiByHyzKmy96RA0JtCQJ+WouyyL4A10xomQzgbUT+1jCg==}
-
   npm-package-arg@11.0.3:
     resolution: {integrity: sha512-sHGJy8sOC1YraBywpzQlIKBE4pBbGbiF95U6Auspzyem956E0+FtDtsx1ZxlOJkQCZ1AFXAY/yuvtFYrOxF+Bw==}
     engines: {node: ^16.14.0 || >=18.0.0}
@@ -9221,10 +9187,6 @@ packages:
 
   ufo@1.6.3:
     resolution: {integrity: sha512-yDJTmhydvl5lJzBmy/hyOAA0d+aqCBuwl818haVdYCRrWV84o7YyeVm4QlVHStqNrrJSTb6jKuFAVqAFsr+K3Q==}
-
-  uid2@1.0.0:
-    resolution: {integrity: sha512-+I6aJUv63YAcY9n4mQreLUt0d4lvwkkopDNmpomkAUz0fAkEMV9pRWxN0EjhW1YfRhcuyHg2v3mwddCDW1+LFQ==}
-    engines: {node: '>= 4.0.0'}
 
   unbox-primitive@1.1.0:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
@@ -11812,8 +11774,6 @@ snapshots:
       react: 19.2.0
       react-native: 0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0)
 
-  '@msgpack/msgpack@2.8.0': {}
-
   '@noble/curves@1.5.0':
     dependencies:
       '@noble/hashes': 1.4.0
@@ -12824,23 +12784,6 @@ snapshots:
       '@sinonjs/commons': 3.0.1
 
   '@socket.io/component-emitter@3.1.2': {}
-
-  '@socket.io/redis-adapter@8.3.0(socket.io-adapter@2.5.6)':
-    dependencies:
-      debug: 4.3.7
-      notepack.io: 3.0.1
-      socket.io-adapter: 2.5.6
-      uid2: 1.0.0
-    transitivePeerDependencies:
-      - supports-color
-
-  '@socket.io/redis-streams-adapter@0.2.3(socket.io-adapter@2.5.6)':
-    dependencies:
-      '@msgpack/msgpack': 2.8.0
-      debug: 4.3.7
-      socket.io-adapter: 2.5.6
-    transitivePeerDependencies:
-      - supports-color
 
   '@stablelib/base64@2.0.1': {}
 
@@ -14396,10 +14339,6 @@ snapshots:
   debug@4.3.4:
     dependencies:
       ms: 2.1.2
-
-  debug@4.3.7:
-    dependencies:
-      ms: 2.1.3
 
   debug@4.4.3:
     dependencies:
@@ -17249,8 +17188,6 @@ snapshots:
 
   normalize-url@6.1.0: {}
 
-  notepack.io@3.0.1: {}
-
   npm-package-arg@11.0.3:
     dependencies:
       hosted-git-info: 7.0.2
@@ -19236,8 +19173,6 @@ snapshots:
   ua-parser-js@1.0.41: {}
 
   ufo@1.6.3: {}
-
-  uid2@1.0.0: {}
 
   unbox-primitive@1.1.0:
     dependencies:
