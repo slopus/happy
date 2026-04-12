@@ -477,3 +477,56 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
         ]
     }
 ];
+
+// ============================================================================
+// Turn Navigation Demo Data
+// ============================================================================
+
+/** Helper to build a quick turn: user → agent → tool → agent */
+function buildTurn(turnNum: number, baseTime: number): Message[] {
+    const t = baseTime - turnNum * 30000;
+    return [
+        {
+            id: `turn-nav-user-${turnNum}`,
+            localId: null,
+            createdAt: t,
+            kind: 'user-text' as const,
+            text: `Turn ${turnNum}: Can you check file #${turnNum}?`,
+        },
+        {
+            id: `turn-nav-agent-${turnNum}-1`,
+            localId: null,
+            createdAt: t + 1000,
+            kind: 'agent-text' as const,
+            text: `Sure, let me read file #${turnNum} for you.`,
+        },
+        {
+            id: `turn-nav-tool-${turnNum}`,
+            localId: null,
+            createdAt: t + 2000,
+            kind: 'tool-call' as const,
+            tool: createToolCall('Read', 'completed', {
+                file_path: `/src/file${turnNum}.ts`,
+            }, `// content of file${turnNum}.ts\nexport const value = ${turnNum};`),
+            children: [],
+        },
+        {
+            id: `turn-nav-agent-${turnNum}-2`,
+            localId: null,
+            createdAt: t + 3000,
+            kind: 'agent-text' as const,
+            text: `File #${turnNum} contains a simple export with value \`${turnNum}\`. ${turnNum % 3 === 0 ? 'This file also imports from a shared utility module.' : 'Looks straightforward.'}`,
+        },
+    ];
+}
+
+const NAV_BASE_TIME = Date.now();
+
+/** 15 turns of conversation data for testing turn navigation including page-skip */
+export const turnNavigationMessages: Message[] = Array.from(
+    { length: 15 },
+    (_, i) => buildTurn(i + 1, NAV_BASE_TIME),
+).flat();
+
+/** Single turn — TurnNavigator should be hidden */
+export const singleTurnMessages: Message[] = buildTurn(1, NAV_BASE_TIME);

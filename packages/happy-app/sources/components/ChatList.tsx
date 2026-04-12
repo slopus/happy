@@ -10,19 +10,32 @@ import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useTurnIndices, navigateTurn, NavigateAction, TurnInfo } from '@/hooks/useTurnIndices';
 
 const SCROLL_THRESHOLD = 300;
 
-export const ChatList = React.memo((props: { session: Session }) => {
+export interface ChatListHandle {
+    prevTurn: () => void;
+    nextTurn: () => void;
+    prevPage: () => void;
+    nextPage: () => void;
+    goToEnd: () => void;
+    goToTurn: (turnNumber: number) => void;
+    getTurnInfo: () => { current: number | null; total: number; turns: TurnInfo[] };
+}
+
+export const ChatList = React.memo(React.forwardRef<ChatListHandle, { session: Session; onTurnChange?: (current: number | null, total: number, turns: TurnInfo[]) => void }>((props, ref) => {
     const { messages } = useSessionMessages(props.session.id);
     return (
         <ChatListInternal
+            ref={ref}
             metadata={props.session.metadata}
             sessionId={props.session.id}
             messages={messages}
+            onTurnChange={props.onTurnChange}
         />
     )
-});
+}));
 
 const ListHeader = React.memo(() => {
     const headerHeight = useHeaderHeight();
@@ -37,17 +50,91 @@ const ListFooter = React.memo((props: { sessionId: string }) => {
     )
 });
 
-const ChatListInternal = React.memo((props: {
-    metadata: Metadata | null,
-    sessionId: string,
-    messages: Message[],
-}) => {
+interface ChatListInternalProps {
+    metadata: Metadata | null;
+    sessionId: string;
+    messages: Message[];
+    onTurnChange?: (current: number | null, total: number, turns: TurnInfo[]) => void;
+}
+
+const ChatListInternal = React.memo(React.forwardRef<ChatListHandle, ChatListInternalProps>((props, ref) => {
     const { theme } = useUnistyles();
     const flatListRef = React.useRef<FlatList>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
+    const turns = useTurnIndices(props.messages);
+    // Track selection by turnNumber (stable across array rebuilds)
+    // instead of array index (shifts when new turns are added).
+    const selectedTurnNumberRef = React.useRef<number | null>(null);
 
-    const keyExtractor = useCallback((item: any) => item.id, []);
-    const renderItem = useCallback(({ item }: { item: any }) => (
+    // Resolve the current turnNumber to a turns-array index
+    const resolveIdx = useCallback((): number | null => {
+        const num = selectedTurnNumberRef.current;
+        if (num === null) return null;
+        const idx = turns.findIndex(t => t.turnNumber === num);
+        return idx !== -1 ? idx : null;
+    }, [turns]);
+
+    // Push turn info to parent whenever messages change
+    React.useEffect(() => {
+        // If selected turn no longer exists (e.g. messages cleared), reset
+        if (selectedTurnNumberRef.current !== null) {
+            const exists = turns.some(t => t.turnNumber === selectedTurnNumberRef.current);
+            if (!exists) {
+                selectedTurnNumberRef.current = null;
+            }
+        }
+        props.onTurnChange?.(selectedTurnNumberRef.current, turns.length, turns);
+    }, [turns.length]);
+
+    const scrollToTurnIdx = useCallback((idx: number | null) => {
+        if (idx === null) {
+            selectedTurnNumberRef.current = null;
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        } else {
+            const turn = turns[idx];
+            if (turn) {
+                selectedTurnNumberRef.current = turn.turnNumber;
+                flatListRef.current?.scrollToIndex({
+                    index: turn.index,
+                    animated: true,
+                    viewPosition: 0.3,
+                });
+            }
+        }
+        const currentNum = idx !== null ? turns[idx]?.turnNumber ?? null : null;
+        props.onTurnChange?.(currentNum, turns.length, turns);
+    }, [turns, props.onTurnChange]);
+
+    const doNavigate = useCallback((action: NavigateAction) => {
+        if (turns.length === 0) return;
+        const currentIdx = resolveIdx();
+        const nextIdx = navigateTurn(turns, currentIdx, action);
+        scrollToTurnIdx(nextIdx);
+    }, [turns, resolveIdx, scrollToTurnIdx]);
+
+    const goToTurn = useCallback((turnNumber: number) => {
+        const idx = turns.findIndex(t => t.turnNumber === turnNumber);
+        if (idx !== -1) {
+            scrollToTurnIdx(idx);
+        }
+    }, [turns, scrollToTurnIdx]);
+
+    React.useImperativeHandle(ref, () => ({
+        prevTurn: () => doNavigate('prev'),
+        nextTurn: () => doNavigate('next'),
+        prevPage: () => doNavigate('prevPage'),
+        nextPage: () => doNavigate('nextPage'),
+        goToEnd: () => doNavigate('end'),
+        goToTurn,
+        getTurnInfo: () => ({
+            current: selectedTurnNumberRef.current,
+            total: turns.length,
+            turns,
+        }),
+    }), [doNavigate, goToTurn, turns]);
+
+    const keyExtractor = useCallback((item: Message) => item.id, []);
+    const renderItem = useCallback(({ item }: { item: Message }) => (
         <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
     ), [props.metadata, props.sessionId]);
 
@@ -60,6 +147,55 @@ const ChatListInternal = React.memo((props: {
 
     const scrollToBottom = useCallback(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, []);
+
+    // scrollToIndex fails for unmeasured variable-height items — this is the
+    // normal path for long conversations. Use progressive scrolling: jump to
+    // the farthest measured item toward the target, wait for new items to
+    // render, then retry. Up to MAX_SCROLL_RETRIES attempts.
+    const scrollRetryState = React.useRef<{ targetIndex: number; attempts: number } | null>(null);
+    const MAX_SCROLL_RETRIES = 5;
+
+    const handleScrollToIndexFailed = useCallback((info: {
+        index: number;
+        highestMeasuredFrameIndex: number;
+        averageItemLength: number;
+    }) => {
+        const state = scrollRetryState.current;
+
+        // First failure for this target — start progressive scroll
+        if (!state || state.targetIndex !== info.index) {
+            scrollRetryState.current = { targetIndex: info.index, attempts: 1 };
+        } else {
+            state.attempts++;
+            if (state.attempts > MAX_SCROLL_RETRIES) {
+                // Give up — best-effort offset jump
+                flatListRef.current?.scrollToOffset({
+                    offset: info.averageItemLength * info.index,
+                    animated: false,
+                });
+                scrollRetryState.current = null;
+                return;
+            }
+        }
+
+        // Jump to the farthest measured item toward the target.
+        // This renders new items closer to the target each time.
+        const intermediateIndex = Math.min(info.index, info.highestMeasuredFrameIndex);
+        flatListRef.current?.scrollToIndex({
+            index: intermediateIndex,
+            animated: false,
+            viewPosition: 0.5,
+        });
+
+        // Wait for newly-visible items to render and get measured, then retry
+        setTimeout(() => {
+            flatListRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+                viewPosition: 0.3,
+            });
+        }, 200);
     }, []);
 
     return (
@@ -78,6 +214,7 @@ const ChatListInternal = React.memo((props: {
                 renderItem={renderItem}
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
+                onScrollToIndexFailed={handleScrollToIndexFailed}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
                 ListFooterComponent={<ListHeader />}
             />
@@ -96,7 +233,7 @@ const ChatListInternal = React.memo((props: {
             )}
         </View>
     )
-});
+}));
 
 const styles = StyleSheet.create((theme) => ({
     scrollButtonContainer: {

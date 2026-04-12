@@ -244,6 +244,12 @@ export default function DevScreen() {
                     onPress={() => router.push('/dev/inverted-list')}
                 />
                 <Item
+                    title="Turn Navigation"
+                    subtitle="Turn-level navigation with skip and jump"
+                    icon={<Ionicons name="navigate-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/turn-navigation-demo')}
+                />
+                <Item
                     title="Tool Views"
                     subtitle="Tool call visualization components"
                     icon={<Ionicons name="construct-outline" size={28} color="#007AFF" />}
