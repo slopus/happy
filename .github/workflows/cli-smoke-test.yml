@@ -40,7 +40,7 @@ jobs:
       run: pnpm --filter happy build
 
     - name: Pack package
-      run: pnpm --filter happy pack
+      run: pnpm --filter happy pack --pack-destination packages/happy-cli
 
     - name: Install packed package globally
       run: |
@@ -102,7 +102,7 @@ jobs:
       run: pnpm --filter happy build
 
     - name: Pack package
-      run: pnpm --filter happy pack
+      run: pnpm --filter happy pack --pack-destination packages/happy-cli
 
     - name: Install packed package globally
       shell: cmd
