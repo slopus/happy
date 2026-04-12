@@ -4,6 +4,7 @@ import { createInterface } from "node:readline";
 import { mkdirSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
+import { ensureLocalProxyBypass } from "./utils/proxyBypass";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
@@ -240,6 +241,10 @@ export async function claudeLocal(opts: {
             const env = {
                 ...process.env,
                 ...opts.claudeEnvVars
+            }
+
+            if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
+                ensureLocalProxyBypass(env);
             }
 
             logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);

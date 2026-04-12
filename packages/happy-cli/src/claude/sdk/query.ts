@@ -6,6 +6,7 @@
 import { query as sdkQuery, type Options, type Query } from '@anthropic-ai/claude-agent-sdk'
 import type { QueryOptions, QueryPrompt, SDKMessage } from './types'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { ensureLocalProxyBypass } from '../utils/proxyBypass'
 
 /**
  * Wraps the official SDK query() with our QueryOptions adapter
@@ -48,6 +49,13 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         const controller = new AbortController()
         opts.abort.addEventListener('abort', () => controller.abort(), { once: true })
         sdkOptions.abortController = controller
+    }
+
+    // Ensure local MCP servers bypass HTTP proxy
+    if (opts?.mcpServers && Object.keys(opts.mcpServers).length > 0) {
+        const env = { ...process.env }
+        ensureLocalProxyBypass(env)
+        sdkOptions.env = env as Record<string, string>
     }
 
     // Map canCallTool -> canUseTool
