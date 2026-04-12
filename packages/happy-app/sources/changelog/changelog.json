@@ -1,6 +1,17 @@
 {
   "entries": [
     {
+      "version": 8,
+      "date": "2026-04-12",
+      "summary": "This update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.",
+      "changes": [
+        "Migrated package manager from Yarn 1 to pnpm 10 for ~11x faster installs",
+        "Updated all CI workflows, Dockerfiles, and build scripts for pnpm compatibility",
+        "Improved dependency resolution with workspace protocol for internal packages"
+      ],
+      "rawMarkdown": "## Version 8 - 2026-04-12\n\n\nThis update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.\n\n- Migrated package manager from Yarn 1 to pnpm 10 for ~11x faster installs\n- Updated all CI workflows, Dockerfiles, and build scripts for pnpm compatibility\n- Improved dependency resolution with workspace protocol for internal packages"
+    },
+    {
       "version": 7,
       "date": "2026-04-08",
       "summary": "This preview release expands the current update with the latest Gemini models, a smarter voice onboarding flow, and more reliable Happy CLI sessions for plan approvals and Codex turns.",
@@ -97,5 +108,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 7
+  "latestVersion": 8
 }
