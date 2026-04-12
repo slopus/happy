@@ -6,7 +6,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "ios:connected-device": "yarn ios -d",
+    "ios:connected-device": "pnpm ios -d",
     "submit": "eas submit --platform ios",
     "web": "expo start --web",
     "test": "vitest",
@@ -15,10 +15,10 @@
     "release:build:developer:interactive": "eas build --profile development --platform ios --no-wait && eas build --profile development --platform android --no-wait && eas build --profile preview --platform ios --no-wait && eas build --profile preview --platform android --no-wait && eas build --profile development-store --platform ios --auto-submit-with-profile=production --no-wait && eas build --profile preview-store --platform ios --auto-submit-with-profile=production --no-wait",
     "release:build:appstore": "sh ./release-production.sh",
     "release:build:appstore:interactive": "eas build --profile production --platform ios --auto-submit-with-profile=production --no-wait && eas build --profile production --platform android --auto-submit-with-profile=production --no-wait",
-    "release:ota:preview": "yarn ota",
-    "release:ota:release": "yarn ota:production",
+    "release:ota:preview": "pnpm ota",
+    "release:ota:release": "pnpm ota:production",
     "prebuild": "rm -rf android ios && expo prebuild",
-    "ota": "APP_ENV=preview NODE_ENV=preview tsx sources/scripts/parseChangelog.ts && yarn typecheck && eas update --branch preview",
+    "ota": "APP_ENV=preview NODE_ENV=preview tsx sources/scripts/parseChangelog.ts && pnpm typecheck && eas update --branch preview",
     "ota:production": "npx eas-cli@latest workflow:run ota.yaml",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package && npx setup-skia-web public",
@@ -66,7 +66,7 @@
     "@revenuecat/purchases-js": "^1.24.3",
     "@shopify/flash-list": "~2.3.0",
     "@shopify/react-native-skia": "~2.5.3",
-    "@slopus/happy-wire": "^0.1.0",
+    "@slopus/happy-wire": "workspace:*",
     "@tauri-apps/cli": "^2.8.1",
     "@tauri-apps/plugin-http": "^2.5.2",
     "@types/libsodium-wrappers": "^0.7.14",
@@ -189,5 +189,5 @@
     "typescript": "5.9.3"
   },
   "private": true,
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "pnpm@10.11.0"
 }

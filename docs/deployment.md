@@ -63,11 +63,11 @@ The deployment config expects:
 
 ## Local dev helpers
 The server package includes scripts for local infrastructure:
-- `yarn workspace happy-server db` (Postgres in Docker)
-- `yarn workspace happy-server redis`
-- `yarn workspace happy-server s3` + `s3:init`
+- `pnpm --filter happy-server db` (Postgres in Docker)
+- `pnpm --filter happy-server redis`
+- `pnpm --filter happy-server s3` + `s3:init`
 
-Use `.env`/`.env.dev` to load local settings when running `yarn workspace happy-server dev`.
+Use `.env`/`.env.dev` to load local settings when running `pnpm --filter happy-server dev`.
 
 ## Implementation references
 - Entrypoint: `packages/happy-server/sources/main.ts`

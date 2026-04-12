@@ -82,8 +82,8 @@ function printAvailableOptions() {
 }
 
 function runScript(scriptName) {
-  console.log(`> yarn run ${scriptName}`);
-  const result = spawnSync("yarn", ["run", scriptName], {
+  console.log(`> pnpm run ${scriptName}`);
+  const result = spawnSync("pnpm", ["run", scriptName], {
     cwd: workspaceRoot,
     stdio: "inherit",
     env: process.env,
@@ -101,7 +101,7 @@ async function promptForAction() {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.error("Interactive happy-app release selection requires a TTY.");
     printAvailableOptions();
-    console.error("Run `yarn release -- <option>` in non-interactive mode.");
+    console.error("Run `pnpm release -- <option>` in non-interactive mode.");
     process.exit(1);
   }
 
@@ -111,7 +111,7 @@ async function promptForAction() {
   } catch (error) {
     console.error("Missing interactive prompt dependency: `@inquirer/prompts`.");
     console.error(
-      "Run `yarn install` from repository root, then run `yarn workspace happy-app release` again."
+      "Run `pnpm install` from repository root, then run `pnpm --filter happy-app release` again."
     );
     process.exit(1);
   }
@@ -132,7 +132,7 @@ async function promptForAction() {
 async function main() {
   const input = process.argv[2];
   if (input === "--help" || input === "-h") {
-    console.log("Usage: yarn release -- <option>");
+    console.log("Usage: pnpm release -- <option>");
     printAvailableOptions();
     return;
   }

@@ -2,13 +2,13 @@
 
 This document covers the local environment manager in [`environments/environments.ts`](../environments/environments.ts).
 
-## What `yarn env:*` Does
+## What `pnpm env:*` Does
 
-- `yarn env:new`: create a new isolated environment under `environments/data/envs/<name>`.
-- `yarn env:use <name>`: switch the current environment.
-- `yarn env:server`: run the server inside the current environment.
-- `yarn env:web`: run the web app inside the current environment.
-- `yarn env:cli`: run the CLI inside the current environment.
+- `pnpm env:new`: create a new isolated environment under `environments/data/envs/<name>`.
+- `pnpm env:use <name>`: switch the current environment.
+- `pnpm env:server`: run the server inside the current environment.
+- `pnpm env:web`: run the web app inside the current environment.
+- `pnpm env:cli`: run the CLI inside the current environment.
 
 Each environment injects its own:
 
@@ -26,18 +26,18 @@ Current limitation: the lab-rat project is copied as plain files only. It does
 not include git history yet, so provider tests that depend on realistic repo
 history still need a later fixture upgrade.
 
-## `yarn env:cli` Is A Passthrough
+## `pnpm env:cli` Is A Passthrough
 
-`yarn env:cli` forwards extra arguments directly to `happy`.
+`pnpm env:cli` forwards extra arguments directly to `happy`.
 
 Examples:
 
 ```bash
-yarn env:cli --help
-yarn env:cli codex
-yarn env:cli daemon status
-yarn env:cli daemon stop
-yarn env:cli daemon start
+pnpm env:cli --help
+pnpm env:cli codex
+pnpm env:cli daemon status
+pnpm env:cli daemon stop
+pnpm env:cli daemon start
 ```
 
 This is equivalent to sourcing the environment and running the CLI manually:
@@ -67,8 +67,8 @@ happy
 Either of these now works:
 
 ```bash
-yarn env:cli daemon stop
-yarn env:cli daemon start
+pnpm env:cli daemon stop
+pnpm env:cli daemon start
 ```
 
 Or:

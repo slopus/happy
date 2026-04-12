@@ -5,13 +5,13 @@
  * This script creates a symlink for the happy-dev command pointing to the local
  * development version, while leaving the stable npm version of `happy` untouched.
  *
- * Usage: yarn link:dev
+ * Usage: pnpm link:dev
  *
  * What it does:
  * 1. Finds the global npm bin directory
  * 2. Creates/updates a symlink: happy-dev -> ./bin/happy-dev.mjs
  *
- * To undo: yarn unlink:dev
+ * To undo: pnpm unlink:dev
  */
 
 const { execFileSync } = require('child_process');
@@ -64,7 +64,7 @@ function link() {
     // Check if source exists
     if (!fs.existsSync(binSource)) {
         console.error(`\n❌ Error: ${binSource} does not exist.`);
-        console.error("   Run 'yarn build' first to compile the project.");
+        console.error("   Run 'pnpm build' first to compile the project.");
         process.exit(1);
     }
 
@@ -86,11 +86,11 @@ function link() {
         console.log('\nNow you can use:');
         console.log('  happy      → stable npm version (unchanged)');
         console.log('  happy-dev  → local development version');
-        console.log('\nTo undo: yarn unlink:dev');
+        console.log('\nTo undo: pnpm unlink:dev');
     } catch (e) {
         if (e.code === 'EACCES') {
             console.error('\n❌ Permission denied. Try running with sudo:');
-            console.error('   sudo yarn link:dev');
+            console.error('   sudo pnpm link:dev');
         } else {
             console.error(`\n❌ Error creating symlink: ${e.message}`);
         }
@@ -125,7 +125,7 @@ function unlink() {
             console.log("\n✅ happy-dev symlink doesn't exist (already removed or never created)");
         } else if (e.code === 'EACCES') {
             console.error('\n❌ Permission denied. Try running with sudo:');
-            console.error('   sudo yarn unlink:dev');
+            console.error('   sudo pnpm unlink:dev');
             process.exit(1);
         } else {
             console.error(`\n❌ Error: ${e.message}`);
