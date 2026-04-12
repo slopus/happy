@@ -503,6 +503,24 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
 }
 
 /**
+ * Archive a session by deactivating it on the server.
+ * Use this when the CLI process is already dead and sessionKill can't reach it.
+ */
+export async function sessionArchive(sessionId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+        const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
+            method: 'POST'
+        });
+        if (!response.ok) {
+            return { success: false, message: `Server error: ${response.status}` };
+        }
+        return { success: true };
+    } catch (error) {
+        return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
  * The session should be inactive/archived before deletion
