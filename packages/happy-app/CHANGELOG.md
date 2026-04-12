@@ -1,5 +1,13 @@
 # Changelog
 
+## Version 8 - 2026-04-12
+
+This update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.
+
+- Migrated package manager from Yarn 1 to pnpm 10 for ~11x faster installs
+- Updated all CI workflows, Dockerfiles, and build scripts for pnpm compatibility
+- Improved dependency resolution with workspace protocol for internal packages
+
 ## Version 7 - 2026-04-08
 
 This preview release expands the current update with the latest Gemini models, a smarter voice onboarding flow, and more reliable Happy CLI sessions for plan approvals and Codex turns.

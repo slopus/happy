@@ -48,7 +48,7 @@ Every issue should start with a **one-paragraph summary** of the problem. Don't 
 ### Prerequisites
 
 - Node.js >= 20
-- Yarn (`npm install -g yarn`)
+- pnpm (`npm install -g pnpm`)
 - Git
 
 ### Getting Started
@@ -56,17 +56,17 @@ Every issue should start with a **one-paragraph summary** of the problem. Don't 
 ```bash
 git clone https://github.com/slopus/happy.git
 cd happy
-yarn install
+pnpm install
 ```
 
 ### Happy App (Mobile + Web)
 
 ```bash
-yarn workspace happy-app start          # Expo dev server
-yarn workspace happy-app ios:dev        # iOS simulator
-yarn workspace happy-app android:dev    # Android emulator
-yarn web                                # Browser (shortcut)
-yarn workspace happy-app typecheck      # Run after all changes
+pnpm --filter happy-app start          # Expo dev server
+pnpm --filter happy-app ios:dev        # iOS simulator
+pnpm --filter happy-app android:dev    # Android emulator
+pnpm web                                # Browser (shortcut)
+pnpm --filter happy-app typecheck      # Run after all changes
 ```
 
 The app has three build variants — all can be installed simultaneously on the same device:
@@ -82,16 +82,16 @@ Swap `ios:dev` for `ios:preview` or `ios:production` (same for `android:`).
 #### macOS Desktop (Tauri)
 
 ```bash
-yarn workspace happy-app tauri:dev      # Run with hot reload
-yarn workspace happy-app tauri:build:dev
+pnpm --filter happy-app tauri:dev      # Run with hot reload
+pnpm --filter happy-app tauri:build:dev
 ```
 
 ### Happy CLI
 
 ```bash
-yarn workspace happy build
-yarn workspace happy test
-yarn workspace happy dev                # Run without building (uses tsx)
+pnpm --filter happy build
+pnpm --filter happy test
+pnpm --filter happy dev                # Run without building (uses tsx)
 ```
 
 #### Local `happy-dev` Command
@@ -100,8 +100,8 @@ To test your local build without overwriting the global `happy`:
 
 ```bash
 cd packages/happy-cli
-yarn link:dev       # Creates global happy-dev symlink
-yarn unlink:dev     # Removes it
+pnpm link:dev       # Creates global happy-dev symlink
+pnpm unlink:dev     # Removes it
 ```
 
 Now `happy` runs the stable npm version, `happy-dev` runs your local build.
@@ -120,13 +120,13 @@ First time? Run `npm run setup:dev` to create the dev data directory.
 ### Happy Server
 
 ```bash
-yarn workspace happy-server standalone:dev   # Local server (no Docker needed)
+pnpm --filter happy-server standalone:dev   # Local server (no Docker needed)
 ```
 
 Runs on `localhost:3005` with embedded PGlite. To point the app at your local server:
 
 ```bash
-EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005 yarn workspace happy-app start
+EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005 pnpm --filter happy-app start
 ```
 
 ## Project Structure

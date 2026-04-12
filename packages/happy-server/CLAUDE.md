@@ -22,7 +22,7 @@ This document contains the development guidelines and instructions for the Happy
 - **Real-time**: Socket.io
 - **Cache/Pub-Sub**: Redis (via ioredis)
 - **Testing**: Vitest
-- **Package Manager**: Yarn (not npm)
+- **Package Manager**: pnpm (not npm)
 
 ## Development Environment
 
@@ -31,7 +31,7 @@ This document contains the development guidelines and instructions for the Happy
 Use standalone mode for local development — no Docker, PostgreSQL, or Redis needed:
 
 ```bash
-yarn standalone:dev
+pnpm standalone:dev
 ```
 
 This loads env from `.env.dev`, runs migrations with PGlite (embedded Postgres), and starts the server on port 3005. Data is stored in `./data/pglite/`.
@@ -41,12 +41,12 @@ Only two env vars are required for standalone (both already in `.env.dev`):
 - `PORT` - server port (default: 3005)
 
 ### Commands
-- `yarn build` - TypeScript type checking
-- `yarn standalone:dev` - Start server with PGlite + .env.dev (recommended for local dev)
-- `yarn standalone` - Start server with PGlite (no env file, you provide env vars)
-- `yarn dev` - Start with external Postgres + Redis (requires Docker, see Production section)
-- `yarn test` - Run tests
-- `yarn generate` - Generate Prisma client
+- `pnpm build` - TypeScript type checking
+- `pnpm standalone:dev` - Start server with PGlite + .env.dev (recommended for local dev)
+- `pnpm standalone` - Start server with PGlite (no env file, you provide env vars)
+- `pnpm dev` - Start with external Postgres + Redis (requires Docker, see Production section)
+- `pnpm test` - Run tests
+- `pnpm generate` - Generate Prisma client
 
 ## Code Style and Structure
 
@@ -143,7 +143,7 @@ Only two env vars are required for standalone (both already in `.env.dev`):
 - Use "inTx" to wrap database operations in transactions
 - Do not update schema without absolute necessity
 - For complex fields, use "Json" type
-- NEVER DO MIGRATION YOURSELF. Only run yarn generate when new types needed
+- NEVER DO MIGRATION YOURSELF. Only run pnpm generate when new types needed
 
 ### Current Schema Status
 The project has pending Prisma migrations that need to be applied:
@@ -172,7 +172,7 @@ The project has pending Prisma migrations that need to be applied:
 
 ## Production Deployment (NOT needed for local standalone dev)
 
-The following is only relevant for production or when running with `yarn dev` (external Postgres + Redis mode).
+The following is only relevant for production or when running with `pnpm dev` (external Postgres + Redis mode).
 
 ### External Dependencies (production only)
 - PostgreSQL database (`DATABASE_URL`)
@@ -182,11 +182,11 @@ The following is only relevant for production or when running with `yarn dev` (e
 - Python3
 
 ### Commands (production only)
-- `yarn dev` - Start with .env and .env.dev (requires external Postgres + Redis)
-- `yarn migrate` - Run Prisma migrations against external Postgres
-- `yarn db` - Start local PostgreSQL in Docker
-- `yarn redis` - Start local Redis in Docker
-- `yarn s3` - Start local MinIO in Docker
+- `pnpm dev` - Start with .env and .env.dev (requires external Postgres + Redis)
+- `pnpm migrate` - Run Prisma migrations against external Postgres
+- `pnpm db` - Start local PostgreSQL in Docker
+- `pnpm redis` - Start local Redis in Docker
+- `pnpm s3` - Start local MinIO in Docker
 
 ### Docker Deployment
 
@@ -203,7 +203,7 @@ The project includes a multi-stage Dockerfile:
 3. ALWAYS prefer editing an existing file to creating a new one
 4. NEVER proactively create documentation files (*.md) or README files unless explicitly requested
 5. Use 4 spaces for tabs (not 2 spaces)
-6. Use yarn instead of npm for all package management
+6. Use pnpm instead of npm for all package management
 
 ## Debugging Notes
 
@@ -232,8 +232,8 @@ The project includes a multi-stage Dockerfile:
 - **Tell**: "pathname /" in mobile logs = app stuck at root screen
 
 #### Environment Variables
-- CLI: Use `yarn dev:local-server` (NOT `yarn dev`) to load `.env.dev-local-server`
-- Server: Use `yarn dev` to start with proper env files
+- CLI: Use `pnpm dev:local-server` (NOT `pnpm dev`) to load `.env.dev-local-server`
+- Server: Use `pnpm dev` to start with proper env files
 - **Tell**: Wrong server URL = check `HAPPY_SERVER_URL` env var
 - **Tell**: Wrong home dir = check `HAPPY_HOME_DIR` (should be `~/.happy-dev` for local)
 

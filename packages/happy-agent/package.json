@@ -41,7 +41,7 @@
     "release": "npx --no-install release-it"
   },
   "dependencies": {
-    "@slopus/happy-wire": "^0.1.0",
+    "@slopus/happy-wire": "workspace:*",
     "axios": "^1.13.2",
     "chalk": "^5.6.2",
     "commander": "^13.1.0",
@@ -61,5 +61,5 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org"
   },
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "pnpm@10.11.0"
 }

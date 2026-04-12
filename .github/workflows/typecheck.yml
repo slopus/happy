@@ -20,14 +20,17 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            - name: Install pnpm
+              uses: pnpm/action-setup@v4
+
             - name: Setup Node
               uses: actions/setup-node@v4
               with:
                   node-version: 20
-                  cache: yarn
+                  cache: pnpm
 
             - name: Install dependencies
-              run: yarn install --frozen-lockfile
+              run: pnpm install --frozen-lockfile
 
             - name: TypeScript typecheck
-              run: yarn workspace happy-app typecheck
+              run: pnpm --filter happy-app typecheck

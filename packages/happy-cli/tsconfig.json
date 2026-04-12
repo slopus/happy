@@ -27,8 +27,10 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "typeRoots": [
-      "./node_modules/@types"
+      "./node_modules/@types",
+      "../../node_modules/@types"
     ],
+    "types": ["node"],
     "paths": {
       "@/*": [
         "./src/*"
