@@ -42,6 +42,7 @@ WORKDIR /repo
 
 # Runtime dependencies
 RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 # Set environment to production
 ENV NODE_ENV=production
@@ -55,4 +56,5 @@ COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 EXPOSE 3000
 
 # Command to run the application
+COPY --from=builder /repo/package.json /repo/pnpm-workspace.yaml /repo/
 CMD ["pnpm", "--filter", "happy-server", "start"]

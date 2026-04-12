@@ -2,7 +2,7 @@ import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { Server, Socket } from "socket.io";
-import { createAdapter } from "@socket.io/redis-adapter";
+import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { Redis } from "ioredis";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
@@ -33,14 +33,13 @@ export function startSocket(app: Fastify) {
         serveClient: false // Don't serve the client files
     });
 
-    // Multi-process support: attach Redis adapter when REDIS_URL is set
+    // Multi-process support: attach Redis streams adapter when REDIS_URL is set
     let rpcRedis: Redis | null = null;
     if (process.env.REDIS_URL) {
-        const pubClient = new Redis(process.env.REDIS_URL);
-        const subClient = pubClient.duplicate();
-        io.adapter(createAdapter(pubClient, subClient));
+        const streamClient = new Redis(process.env.REDIS_URL);
+        io.adapter(createAdapter(streamClient, { maxLen: 50000 }));
         rpcRedis = new Redis(process.env.REDIS_URL);
-        log({ module: 'websocket' }, 'Redis adapter enabled for multi-process support');
+        log({ module: 'websocket' }, 'Redis streams adapter enabled for multi-process support');
     }
 
     // Initialize event router with Socket.IO server instance

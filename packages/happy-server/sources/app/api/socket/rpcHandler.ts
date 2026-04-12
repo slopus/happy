@@ -11,7 +11,6 @@ function rpcKey(userId: string, method: string): string {
 
 /**
  * In-memory fallback for standalone mode (no Redis).
- * Behaves identically to the old implementation.
  */
 function inMemoryRpcHandler(userId: string, socket: Socket, io: Server, rpcListeners: Map<string, Socket>) {
 
@@ -88,7 +87,12 @@ function inMemoryRpcHandler(userId: string, socket: Socket, io: Server, rpcListe
 
 /**
  * Redis-backed RPC handler for multi-replica deployments.
- * Stores registrations in Redis with TTL, routes calls cross-replica via io.to(socketId).
+ * Registrations stored in Redis with TTL. Calls routed cross-replica
+ * via io.to(socketId).emitWithAck() through the Redis adapter.
+ *
+ * Keys are NEVER deleted on call failure — the 60s TTL handles cleanup.
+ * Deleting on failure causes cascading permanent breakage because
+ * refreshRpcRegistrations can't refresh a key that doesn't exist.
  */
 function redisRpcHandler(userId: string, socket: Socket, io: Server, redis: Redis) {
     const registeredMethods: Set<string> = new Set();
@@ -158,16 +162,12 @@ function redisRpcHandler(userId: string, socket: Socket, io: Server, redis: Redi
                 });
 
                 if (!responses || responses.length === 0) {
-                    // Target socket is gone — evict stale registration
-                    await redis.del(key);
-                    callback?.({ ok: false, error: 'RPC method not available' });
+                    callback?.({ ok: false, error: 'RPC target not reachable' });
                     return;
                 }
 
                 callback?.({ ok: true, result: responses[0] });
             } catch (error) {
-                // Timeout or delivery failure — evict stale registration
-                await redis.del(key);
                 const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
                 callback?.({ ok: false, error: errorMsg });
             }
@@ -181,7 +181,6 @@ function redisRpcHandler(userId: string, socket: Socket, io: Server, redis: Redi
             const pipeline = redis.pipeline();
             for (const method of registeredMethods) {
                 const key = rpcKey(userId, method);
-                // Only delete if this socket still owns the registration
                 pipeline.eval(
                     `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`,
                     1, key, socket.id
@@ -197,7 +196,6 @@ function redisRpcHandler(userId: string, socket: Socket, io: Server, redis: Redi
 
 /**
  * Refresh TTLs for all RPC registrations owned by this socket.
- * Call this from the machine-alive / session-alive handler.
  */
 export async function refreshRpcRegistrations(userId: string, socketId: string, redis: Redis) {
     try {
@@ -209,7 +207,6 @@ export async function refreshRpcRegistrations(userId: string, socketId: string, 
             if (keys.length > 0) {
                 const pipeline = redis.pipeline();
                 for (const key of keys) {
-                    // Only refresh if this socket owns the key
                     pipeline.eval(
                         `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end`,
                         1, key, socketId, RPC_TTL_SECONDS

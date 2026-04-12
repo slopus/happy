@@ -1719,9 +1719,10 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
-            // Messages are fetched lazily per-session via onSessionVisible (called by SessionView
-            // when realtimeStatus changes). Session metadata + agentState (including permission
-            // requests) are already refreshed by sessionsSync.invalidate() above.
+            // Re-fetch messages for any sessions with active message syncs (currently visible)
+            for (const sync of this.messagesSync.values()) {
+                sync.invalidate();
+            }
             for (const sync of this.sendSync.values()) {
                 sync.invalidate();
             }
