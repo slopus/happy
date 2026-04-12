@@ -37,8 +37,6 @@ export class PermissionHandler {
     private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
     private onPermissionRequestCallback?: (toolCallId: string) => void;
-    /** Track tool names by ID for isAborted() lookups */
-    private toolNames = new Map<string, string>();
     /** Callback to change permission mode on the active query (set by claudeRemote) */
     private setPermissionModeCallback?: (mode: PermissionMode) => Promise<void>;
 
@@ -62,7 +60,7 @@ export class PermissionHandler {
      * Set callback to dynamically change permission mode on the active query.
      * Called by claudeRemote after the Query object is created.
      */
-    setSetPermissionMode(callback: (mode: PermissionMode) => Promise<void>) {
+    setPermissionModeUpdater(callback: (mode: PermissionMode) => Promise<void>) {
         this.setPermissionModeCallback = callback;
     }
 
@@ -129,8 +127,11 @@ export class PermissionHandler {
     handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; toolUseID: string }): Promise<PermissionResult> => {
         const toolCallId = options.toolUseID;
 
-        // Track tool name for isAborted() lookups
-        this.toolNames.set(toolCallId, toolName);
+        // AskUserQuestion requires user interaction — never auto-approve, even in bypassPermissions mode.
+        // This mirrors Claude SDK's internal requiresUserInteraction() check.
+        if (toolName === 'AskUserQuestion') {
+            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+        }
 
         // Check if tool is explicitly allowed
         if (toolName === 'Bash') {
@@ -292,7 +293,6 @@ export class PermissionHandler {
      */
     reset(): void {
         this.responses.clear();
-        this.toolNames.clear();
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();

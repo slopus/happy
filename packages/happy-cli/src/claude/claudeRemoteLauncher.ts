@@ -350,7 +350,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         }));
                     },
                     onQueryReady: (q) => {
-                        permissionHandler.setSetPermissionMode(async (mode) => {
+                        permissionHandler.setPermissionModeUpdater(async (mode) => {
                             await q.setPermissionMode(mode);
                         });
                     },
