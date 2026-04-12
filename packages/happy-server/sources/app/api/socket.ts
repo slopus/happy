@@ -2,6 +2,8 @@ import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { Server, Socket } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { Redis } from "ioredis";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
 import { decrementWebSocketConnection, incrementWebSocketConnection, websocketEventsCounter } from "../monitoring/metrics2";
@@ -30,6 +32,17 @@ export function startSocket(app: Fastify) {
         connectTimeout: 20000,
         serveClient: false // Don't serve the client files
     });
+
+    // Multi-process support: attach Redis adapter when REDIS_URL is set
+    if (process.env.REDIS_URL) {
+        const pubClient = new Redis(process.env.REDIS_URL);
+        const subClient = pubClient.duplicate();
+        io.adapter(createAdapter(pubClient, subClient));
+        log({ module: 'websocket' }, 'Redis adapter enabled for multi-process support');
+    }
+
+    // Initialize event router with Socket.IO server instance
+    eventRouter.init(io);
 
     let rpcListeners = new Map<string, Map<string, Socket>>();
     io.on("connection", async (socket) => {
