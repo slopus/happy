@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../packages/happy-server/deploy/handy.yaml
+  - ../../packages/happy-server/deploy/happy-redis.yaml
