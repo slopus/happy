@@ -499,7 +499,7 @@ export function handleToolCallUpdate(
       startToolCall(toolCallId, toolKind, update, ctx, 'tool_call_update');
     } else {
       // Emit intermediate tool output (terminal text, file content, etc.)
-      const outputText = extractToolUpdateText(update.content);
+      const outputText = extractToolUpdateText(update.content) ?? extractToolUpdateText(update.rawOutput);
       if (outputText) {
         ctx.emit({
           type: 'terminal-output',

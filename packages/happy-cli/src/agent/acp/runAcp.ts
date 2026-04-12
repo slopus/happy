@@ -842,17 +842,13 @@ export async function runAcp(opts: {
     }
 
     if (!message.content.text) {
-      // Mode/model change only (no text prompt) — apply immediately without queuing
-      if (currentPermissionMode) {
-        switchPermissionModeIfRequested(currentPermissionMode).catch((err) => {
-          logger.debug(`[${opts.agentName}] Failed to switch permission mode: ${err}`);
-        });
-      }
-      if (typeof currentModel === 'string' && currentModel.length > 0) {
-        switchModelIfRequested(currentModel).catch((err) => {
-          logger.debug(`[${opts.agentName}] Failed to switch model: ${err}`);
-        });
-      }
+      // Mode/model change only (no text prompt) — enqueue a config-only item so
+      // the main loop applies the change serially, after any in-flight turn and
+      // after startSession completes, preventing races.
+      messageQueue.push('', {
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+      });
       return;
     }
 
@@ -931,8 +927,10 @@ export async function runAcp(opts: {
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
         }
-        await backend.sendPrompt(acpSessionId, batch.message);
-        await turnEnded;
+        if (batch.message) {
+          await backend.sendPrompt(acpSessionId, batch.message);
+          await turnEnded;
+        }
         sendEnvelopes(sessionManager.endTurn('completed'));
         session.sendSessionEvent({ type: 'ready' });
         if (verbose) {

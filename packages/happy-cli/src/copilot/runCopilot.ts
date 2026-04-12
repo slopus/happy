@@ -17,7 +17,7 @@ import { runAcp } from '@/agent/acp/runAcp';
  * Verify that the standalone `copilot` CLI is installed.
  * Exits the process with a helpful message if not.
  */
-function assertCopilotInstalled(): void {
+export function assertCopilotInstalled(): void {
     try {
         execSync('copilot --version', { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
     } catch {

@@ -199,6 +199,16 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
+    function resolveAgentCommand(agent: SpawnSessionOptions['agent']): string {
+      switch (agent) {
+        case 'codex': return 'codex';
+        case 'gemini': return 'gemini';
+        case 'openclaw': return 'openclaw';
+        case 'copilot': return 'copilot';
+        default: return 'claude';
+      }
+    }
+
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
@@ -342,8 +352,7 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : (options.agent === 'copilot' ? 'copilot' : 'claude')));
+          const agent = resolveAgentCommand(options.agent);
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
 
           // Spawn in tmux with environment variables
@@ -426,31 +435,7 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
-          let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            case 'openclaw':
-              agentCommand = 'openclaw';
-              break;
-            case 'copilot':
-              agentCommand = 'copilot';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-              };
-          }
+          const agentCommand = resolveAgentCommand(options.agent);
           const args = [
             agentCommand,
             '--happy-starting-mode', 'remote',

@@ -71,8 +71,8 @@ function detectWindows(): CLIAvailability {
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
 
-  // Copilot: gh CLI must be installed and have the copilot extension
-  const copilot = checkCommand('gh') && detectCopilotWindows(checkCommand);
+  // Copilot: check for standalone copilot binary
+  const copilot = detectCopilotWindows(checkCommand);
 
   return { claude, codex, gemini, openclaw, copilot, detectedAt: Date.now() };
 }

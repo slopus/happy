@@ -127,7 +127,7 @@ import { handleCodexCommand } from './commands/codexCommand'
   } else if (subcommand === 'copilot') {
     // Handle copilot command
     try {
-      const { runCopilot } = await import('@/copilot/runCopilot');
+      const { runCopilot, assertCopilotInstalled } = await import('@/copilot/runCopilot');
 
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
@@ -135,6 +135,9 @@ import { handleCodexCommand } from './commands/codexCommand'
           startedBy = args[++i] as 'daemon' | 'terminal';
         }
       }
+
+      // Preflight: verify copilot binary before paying the cost of auth + daemon startup
+      assertCopilotInstalled();
 
       const { credentials } = await authAndSetupMachineIfNeeded();
       await ensureDaemonRunning();
