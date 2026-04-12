@@ -115,6 +115,22 @@ export class PermissionHandler {
      */
     handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
 
+        // AskUserQuestion requires user interaction — never auto-approve, even in bypassPermissions mode.
+        // This mirrors Claude SDK's internal requiresUserInteraction() check.
+        // upstream: slopus/happy 2a44395 (PR #1018 base used options.toolUseID;
+        // this aplus fork still resolves via toolCalls list).
+        if (toolName === 'AskUserQuestion') {
+            let id = this.resolveToolCallId(toolName, input);
+            if (!id) {
+                await delay(1000);
+                id = this.resolveToolCallId(toolName, input);
+                if (!id) {
+                    throw new Error(`Could not resolve tool call ID for ${toolName}`);
+                }
+            }
+            return this.handlePermissionRequest(id, toolName, input, options.signal);
+        }
+
         // Check if tool is explicitly allowed
         if (toolName === 'Bash') {
             const inputObj = input as { command?: string };
