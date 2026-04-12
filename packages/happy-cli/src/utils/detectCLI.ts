@@ -77,24 +77,12 @@ function detectWindows(): CLIAvailability {
   return { claude, codex, gemini, openclaw, copilot, detectedAt: Date.now() };
 }
 
-/** Check for `gh copilot` extension on POSIX systems */
+/** Check for standalone `copilot` CLI on POSIX systems */
 function detectCopilotPosix(): boolean {
-  if (!commandExists('gh')) return false;
-  try {
-    execSync('gh copilot --version >/dev/null 2>&1', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+  return commandExists('copilot');
 }
 
-/** Check for `gh copilot` extension on Windows */
+/** Check for standalone `copilot` CLI on Windows */
 function detectCopilotWindows(checkCommand: (name: string) => boolean): boolean {
-  if (!checkCommand('gh')) return false;
-  try {
-    execSync('gh copilot --version', { stdio: 'ignore', windowsHide: true });
-    return true;
-  } catch {
-    return false;
-  }
+  return checkCommand('copilot');
 }

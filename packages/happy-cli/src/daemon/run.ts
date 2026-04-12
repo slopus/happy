@@ -267,7 +267,7 @@ export async function startDaemon(): Promise<void> {
             // Set the environment variable for Codex
             authEnv.CODEX_HOME = codexHomeDir.name;
           } else if (options.agent === 'copilot') {
-            authEnv.GH_TOKEN = options.token;
+            // copilot CLI manages its own auth — no token injection needed
           } else { // Assuming claude
             authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
           }

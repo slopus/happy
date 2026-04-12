@@ -6,7 +6,7 @@ export type AcpAgentConfig = {
 export const KNOWN_ACP_AGENTS: Record<string, AcpAgentConfig> = {
   gemini: { command: 'gemini', args: ['--experimental-acp'] },
   opencode: { command: 'opencode', args: ['acp'] },
-  copilot: { command: 'gh', args: ['copilot', '--acp'] },
+  copilot: { command: 'copilot', args: ['--acp'] },
 };
 
 export type ResolvedAcpAgentConfig = {
