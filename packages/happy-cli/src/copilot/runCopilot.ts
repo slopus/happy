@@ -2,7 +2,7 @@
  * Copilot CLI Entry Point
  *
  * Runs the Copilot coding agent (`copilot --acp`) as a Happy session.
- * The `copilot` binary manages its own authentication (run `copilot auth login`
+ * The `copilot` binary manages its own authentication (run `copilot login`
  * to sign in), just like `claude` handles its own auth.
  *
  * The daemon spawns this as:
@@ -24,7 +24,7 @@ export function assertCopilotInstalled(): void {
         console.error('\n\x1b[1m\x1b[33mCopilot CLI is not installed or not in PATH\x1b[0m\n');
         console.error('Install it from: https://github.com/github/copilot-cli\n');
         console.error('Then authenticate:');
-        console.error('  \x1b[36mcopilot auth login\x1b[0m\n');
+        console.error('  \x1b[36mcopilot login\x1b[0m\n');
         console.error('Alternatively, use Claude Code or Codex:');
         console.error('  \x1b[36mhappy claude\x1b[0m  or  \x1b[36mhappy codex\x1b[0m\n');
         process.exit(1);

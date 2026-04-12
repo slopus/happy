@@ -201,11 +201,13 @@ export async function startDaemon(): Promise<void> {
     // Spawn a new session (sessionId reserved for future --resume functionality)
     function resolveAgentCommand(agent: SpawnSessionOptions['agent']): string {
       switch (agent) {
+        case undefined: return 'claude';
+        case 'claude': return 'claude';
         case 'codex': return 'codex';
         case 'gemini': return 'gemini';
         case 'openclaw': return 'openclaw';
         case 'copilot': return 'copilot';
-        default: return 'claude';
+        default: throw new Error(`Unsupported agent type: '${agent}'. Please update your CLI to the latest version.`);
       }
     }
 
