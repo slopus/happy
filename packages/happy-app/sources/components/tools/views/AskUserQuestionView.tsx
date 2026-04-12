@@ -4,7 +4,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
 import { sessionAllow } from '@/sync/ops';
-import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -224,8 +223,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         // captured the values above. TODO: Revisit this logic.
         setIsSubmitted(true);
 
-        // Format answers as readable text
-        const responseLines: string[] = [];
+        const answers: Record<string, string> = {};
         questions.forEach((q, qIndex) => {
             const selected = selections.get(qIndex);
             if (selected && selected.size > 0) {
@@ -233,19 +231,16 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                     .map(optIndex => q.options[optIndex]?.label)
                     .filter(Boolean)
                     .join(', ');
-                responseLines.push(`${q.header}: ${selectedLabels}`);
+                answers[q.question] = selectedLabels;
             }
         });
 
-        const responseText = responseLines.join('\n');
-
         try {
-            // 1. Approve the permission (like PermissionFooter.handleApprove does)
+            // AskUserQuestion expects answers to be returned as part of the tool input,
+            // not as a follow-up plain text message.
             if (tool.permission?.id) {
-                await sessionAllow(sessionId, tool.permission.id);
+                await sessionAllow(sessionId, tool.permission.id, undefined, undefined, 'approved', { answers });
             }
-            // 2. Send the answer as a message
-            await sync.sendMessage(sessionId, responseText, { source: 'question' });
         } catch (error) {
             console.error('Failed to submit answer:', error);
         } finally {
