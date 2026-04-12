@@ -489,10 +489,11 @@ function NewSessionScreen() {
     const selectedPath = draft.selectedPath;
     const setSelectedPath = draft.setPath;
     const [worktreeKey, setWorktreeKey] = React.useState<string>(
-        draft.sessionType === 'worktree' ? '__new__' : '__none__'
+        draft.worktreeKey ?? (draft.sessionType === 'worktree' ? '__new__' : '__none__')
     );
     React.useEffect(() => {
         draft.setSessionType(worktreeKey !== '__none__' ? 'worktree' : 'simple');
+        draft.setWorktreeKey(worktreeKey === '__none__' || worktreeKey === '__new__' ? null : worktreeKey);
     }, [worktreeKey]);
 
     // Local-only UI state (not persisted)

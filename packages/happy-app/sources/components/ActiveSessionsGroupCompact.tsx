@@ -77,8 +77,9 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: Session; 
         const pathToSet = formatPathRelativeToHome(repoPath, session.metadata?.homeDir);
         draft.setPath(pathToSet);
         draft.setSessionType(isWorktree ? 'worktree' : 'simple');
+        draft.setWorktreeKey(isWorktree ? sessionPath : null);
         router.navigate('/new');
-    }, [session.metadata, repoPath, isWorktree, draft, router]);
+    }, [session.metadata, repoPath, isWorktree, sessionPath, draft, router]);
 
     return (
         <View style={hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine}>

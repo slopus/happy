@@ -23,6 +23,7 @@ export interface NewSessionDraft {
     permissionMode: PermissionModeKey;
     modelMode: string;
     sessionType: NewSessionSessionType;
+    worktreeKey: string | null;
     updatedAt: number;
 }
 
@@ -152,6 +153,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             : 'default';
         const modelMode: string = typeof parsed.modelMode === 'string' ? parsed.modelMode : 'default';
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
+        const worktreeKey = typeof parsed.worktreeKey === 'string' ? parsed.worktreeKey : null;
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
 
         return {
@@ -162,6 +164,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             permissionMode,
             modelMode,
             sessionType,
+            worktreeKey,
             updatedAt,
         };
     } catch (e) {
