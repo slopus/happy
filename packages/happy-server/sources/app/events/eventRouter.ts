@@ -202,7 +202,7 @@ export interface EphemeralPayload {
 // === EVENT ROUTER CLASS ===
 
 class EventRouter {
-    private io: Server | null = null;
+    private io!: Server;
 
     // === INITIALIZATION ===
 
@@ -289,11 +289,6 @@ class EventRouter {
         recipientFilter: RecipientFilter;
         skipSenderConnection?: ClientConnection;
     }): void {
-        if (!this.io) {
-            log({ module: 'websocket', level: 'warn' }, 'EventRouter not initialized');
-            return;
-        }
-
         const rooms = this.getRoomsForFilter(params.userId, params.recipientFilter);
 
         if (params.skipSenderConnection) {
