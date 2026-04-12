@@ -7,6 +7,7 @@
  */
 
 export { GeminiTransport, geminiTransport } from './GeminiTransport';
+export { CopilotTransport, copilotTransport } from './CopilotTransport';
 
 // Future handlers:
 // export { CodexTransport, codexTransport } from './CodexTransport';

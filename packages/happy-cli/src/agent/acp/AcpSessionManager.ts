@@ -14,6 +14,69 @@ function buildToolDescription(toolName: string): string {
   return `Running ${toolName}`;
 }
 
+/**
+ * Map ACP tool names to Claude-compatible names so the app's knownTools renders them properly.
+ * Copilot sends "execute" for terminal, "edit_file"/"write" for file edits, etc.
+ * The app expects "Bash", "Edit", "Write", "Read", etc.
+ */
+function mapToolName(toolName: string): string {
+  switch (toolName) {
+    case 'execute':
+    case 'shell':
+    case 'terminal':
+    case 'run_command':
+    case 'powershell':
+      return 'Bash';
+    case 'edit_file':
+    case 'edit':
+      return 'Edit';
+    case 'write_file':
+    case 'write':
+    case 'create_file':
+    case 'create':
+      return 'Write';
+    case 'read_file':
+    case 'read':
+    case 'view':
+      return 'Read';
+    case 'search':
+    case 'grep':
+    case 'glob':
+    case 'find':
+      return 'Search';
+    case 'web_search':
+    case 'web_fetch':
+      return 'WebSearch';
+    case 'task':
+    case 'general-purpose':
+    case 'delegate':
+      return 'Task';
+    default:
+      return toolName;
+  }
+}
+
+/**
+ * Build args compatible with what the app's knownTools expects.
+ * E.g., Bash expects {command: "..."}, Edit expects {file_path: "...", ...}
+ */
+function buildMappedArgs(
+  mappedName: string,
+  originalArgs: Record<string, unknown>,
+  rawInput?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (mappedName === 'Bash' && rawInput?.command) {
+    return { command: rawInput.command, ...originalArgs };
+  }
+  if ((mappedName === 'Edit' || mappedName === 'Write') && rawInput?.file_path) {
+    return { file_path: rawInput.file_path, ...originalArgs };
+  }
+  if (rawInput) {
+    return { ...rawInput, ...originalArgs };
+  }
+  return originalArgs;
+}
+
 function parseThinkingPayload(payload: unknown): { text: string; streaming: boolean } {
   if (typeof payload === 'string') {
     return { text: payload, streaming: false };
@@ -145,15 +208,22 @@ export class AcpSessionManager {
     if (msg.type === 'tool-call') {
       const flushed = this.flush();
       const call = this.ensureSessionCallId(msg.callId);
+      const rawInput = msg.args.rawInput as Record<string, unknown> | undefined;
+      const title = (msg.args.title as string) ?? rawInput?.description as string ?? buildToolTitle(msg.toolName);
+      const description = rawInput?.command as string ?? buildToolDescription(msg.toolName);
+
+      const mappedName = mapToolName(msg.toolName);
+      const mappedArgs = buildMappedArgs(mappedName, msg.args, rawInput);
+
       return [
         ...flushed,
         createEnvelope('agent', {
           t: 'tool-call-start',
           call,
-          name: msg.toolName,
-          title: buildToolTitle(msg.toolName),
-          description: buildToolDescription(msg.toolName),
-          args: msg.args,
+          name: mappedName,
+          title,
+          description,
+          args: mappedArgs,
         }, turnOptions(this.currentTurnId, this.nextTime())),
       ];
     }
@@ -165,6 +235,16 @@ export class AcpSessionManager {
         ...flushed,
         createEnvelope('agent', { t: 'tool-call-end', call }, turnOptions(this.currentTurnId, this.nextTime())),
       ];
+    }
+
+    if (msg.type === 'terminal-output') {
+      const text = msg.data?.replace(/^\n+|\n+$/g, '');
+      if (text) {
+        return [
+          createEnvelope('agent', { t: 'text', text }, turnOptions(this.currentTurnId, this.nextTime())),
+        ];
+      }
+      return [];
     }
 
     return [];
