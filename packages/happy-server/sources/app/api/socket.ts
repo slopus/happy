@@ -34,10 +34,12 @@ export function startSocket(app: Fastify) {
     });
 
     // Multi-process support: attach Redis adapter when REDIS_URL is set
+    let rpcRedis: Redis | null = null;
     if (process.env.REDIS_URL) {
         const pubClient = new Redis(process.env.REDIS_URL);
         const subClient = pubClient.duplicate();
         io.adapter(createAdapter(pubClient, subClient));
+        rpcRedis = new Redis(process.env.REDIS_URL);
         log({ module: 'websocket' }, 'Redis adapter enabled for multi-process support');
     }
 
@@ -145,16 +147,21 @@ export function startSocket(app: Fastify) {
         });
 
         // Handlers
-        let userRpcListeners = rpcListeners.get(userId);
-        if (!userRpcListeners) {
-            userRpcListeners = new Map<string, Socket>();
-            rpcListeners.set(userId, userRpcListeners);
-        }
-        rpcHandler(userId, socket, userRpcListeners);
+        const rpcStore = rpcRedis
+            ? { type: 'redis' as const, redis: rpcRedis }
+            : (() => {
+                let userRpcListeners = rpcListeners.get(userId);
+                if (!userRpcListeners) {
+                    userRpcListeners = new Map<string, Socket>();
+                    rpcListeners.set(userId, userRpcListeners);
+                }
+                return { type: 'memory' as const, map: userRpcListeners };
+            })();
+        rpcHandler(userId, socket, io, rpcStore);
         usageHandler(userId, socket);
-        sessionUpdateHandler(userId, socket, connection);
+        sessionUpdateHandler(userId, socket, connection, rpcRedis);
         pingHandler(socket);
-        machineUpdateHandler(userId, socket);
+        machineUpdateHandler(userId, socket, rpcRedis);
         artifactUpdateHandler(userId, socket);
         accessKeyHandler(userId, socket);
 

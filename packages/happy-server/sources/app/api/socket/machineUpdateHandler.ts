@@ -6,8 +6,10 @@ import { db } from "@/storage/db";
 import { Socket } from "socket.io";
 import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
+import { refreshRpcRegistrations } from "./rpcHandler";
+import { Redis } from "ioredis";
 
-export function machineUpdateHandler(userId: string, socket: Socket) {
+export function machineUpdateHandler(userId: string, socket: Socket, rpcRedis?: Redis | null) {
     socket.on('machine-alive', async (data: {
         machineId: string;
         time: number;
@@ -45,6 +47,11 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
                 payload: machineActivity,
                 recipientFilter: { type: 'user-scoped-only' }
             });
+
+            // Refresh RPC registration TTLs so they don't expire while daemon is alive
+            if (rpcRedis) {
+                refreshRpcRegistrations(userId, socket.id, rpcRedis).catch(() => {});
+            }
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in machine-alive: ${error}`);
         }
