@@ -25,6 +25,7 @@ import { getLogServerUrl } from '@/sync/serverConfig';
 import { loadLocalSettings } from '@/sync/persistence';
 import { loadAppConfig } from '@/sync/appConfig';
 import { Platform } from 'react-native';
+import { serializeForLogs } from '@/utils/truncateForLogs';
 
 let logBuffer: any[] = []
 const MAX_BUFFER_SIZE = MAX_APP_LOG_ENTRIES
@@ -74,8 +75,9 @@ export function initConsoleLogging() {
 
   function formatArgs(args: any[]): string {
     return args.map(a => {
-      if (typeof a !== 'object' || a === null) return String(a)
-      try { return JSON.stringify(a, null, 2) } catch { return String(a) }
+      if (a === null || a === undefined) return String(a)
+      if (typeof a !== 'object') return serializeForLogs(a)
+      try { return serializeForLogs(a) } catch { return String(a) }
     }).join(' ')
   }
 
