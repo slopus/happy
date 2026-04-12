@@ -651,7 +651,7 @@ class Sync {
                     trackPaywallCancelled(flow);
                     return { success: true, purchased: false };
                 case PaywallResult.NOT_PRESENTED:
-                    trackPaywallError('Paywall not presented', flow);
+                    // Don't track error for NOT_PRESENTED as it's a platform limitation
                     return { success: false, error: 'Paywall not available on this platform' };
                 case PaywallResult.ERROR:
                 default:

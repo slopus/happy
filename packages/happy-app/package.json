@@ -63,7 +63,7 @@
     "@react-native-picker/picker": "2.11.4",
     "@react-navigation/drawer": "^7.7.13",
     "@react-navigation/native": "^7.2.0",
-    "@revenuecat/purchases-js": "^1.24.3",
+    "@revenuecat/purchases-js": "^1.11.1",
     "@shopify/flash-list": "~2.3.0",
     "@shopify/react-native-skia": "~2.5.3",
     "@slopus/happy-wire": "^0.1.0",
