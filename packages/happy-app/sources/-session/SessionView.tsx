@@ -397,7 +397,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing
             }}
-            blockSend={isDisconnected}
+            blockSend={false}
             onSend={() => {
                 if (message.trim()) {
                     setMessage('');
