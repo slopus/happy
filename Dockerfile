@@ -42,7 +42,7 @@ FROM node:20-slim AS runner
 
 WORKDIR /repo
 
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ffmpeg curl && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
