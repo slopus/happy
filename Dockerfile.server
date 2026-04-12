@@ -1,8 +1,13 @@
 # Stage 1: install dependencies with workspace context
-FROM node:20 AS deps
+#
+# We stub out non-server workspaces with empty package.json files so that
+# yarn only installs dependencies for happy-server and happy-wire. This avoids
+# pulling in happy-app's 140+ React Native / Expo dependencies, which would
+# exhaust memory on typical VPS deployments (yarn 1 has no `workspaces focus`).
+FROM node:20-slim AS deps
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 make g++ build-essential && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /repo
 
@@ -10,20 +15,24 @@ COPY package.json yarn.lock ./
 COPY scripts ./scripts
 COPY patches ./patches
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
+RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire packages/happy-agent packages/happy-app-logs
 
-COPY packages/happy-app/package.json packages/happy-app/
+# Stub out non-server workspaces so yarn skips their dependencies
+RUN echo '{"name":"happy-app","version":"0.0.0","private":true}' > packages/happy-app/package.json
+RUN echo '{"name":"happy-cli","version":"0.0.0","private":true}' > packages/happy-cli/package.json
+RUN echo '{"name":"happy-agent","version":"0.0.0","private":true}' > packages/happy-agent/package.json
+RUN echo '{"name":"happy-app-logs","version":"0.0.0","private":true}' > packages/happy-app-logs/package.json
+
+# Copy only the packages we actually need
 COPY packages/happy-server/package.json packages/happy-server/
-COPY packages/happy-cli/package.json packages/happy-cli/
 COPY packages/happy-wire/package.json packages/happy-wire/
 
 # Workspace postinstall requirements
-COPY packages/happy-app/patches packages/happy-app/patches
 COPY packages/happy-server/prisma packages/happy-server/prisma
-COPY packages/happy-cli/scripts packages/happy-cli/scripts
-COPY packages/happy-cli/tools packages/happy-cli/tools
 
-RUN SKIP_HAPPY_WIRE_BUILD=1 yarn install --frozen-lockfile --ignore-engines
+# --frozen-lockfile is intentionally omitted: the stubs above alter the
+# effective dependency set, which would cause a lockfile mismatch check to fail.
+RUN SKIP_HAPPY_WIRE_BUILD=1 yarn install --ignore-engines
 
 # Stage 2: build the server
 FROM deps AS builder
@@ -35,12 +44,12 @@ RUN yarn workspace @slopus/happy-wire build
 RUN yarn workspace happy-server build
 
 # Stage 3: runtime
-FROM node:20 AS runner
+FROM node:20-slim AS runner
 
 WORKDIR /repo
 
 # Runtime dependencies
-RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ffmpeg curl && rm -rf /var/lib/apt/lists/*
 
 # Set environment to production
 ENV NODE_ENV=production
