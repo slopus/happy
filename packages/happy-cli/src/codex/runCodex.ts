@@ -24,7 +24,6 @@ import { trimIdent } from "@/utils/trimIdent";
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
-import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -329,9 +328,6 @@ export async function runCodex(opts: {
             } catch (e) {
                 logger.debug('[Codex] Error disconnecting Codex during termination', e);
             }
-
-            // Stop caffeinate
-            stopCaffeinate();
 
             // Stop Happy MCP server
             happyServer.stop();
