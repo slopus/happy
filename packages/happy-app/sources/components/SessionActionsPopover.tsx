@@ -5,7 +5,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { useSessionQuickActions, SessionActionItem } from '@/hooks/useSessionQuickActions';
-import { Session } from '@/sync/storageTypes';
+import { useSession } from '@/sync/storage';
 
 export type SessionActionsAnchor =
     | {
@@ -26,7 +26,7 @@ interface SessionActionsPopoverProps {
     onAfterArchive?: () => void;
     onAfterDelete?: () => void;
     onClose: () => void;
-    session: Session;
+    sessionId: string;
     visible: boolean;
 }
 
@@ -108,14 +108,15 @@ export function SessionActionsPopover({
     onAfterArchive,
     onAfterDelete,
     onClose,
-    session,
+    sessionId,
     visible,
 }: SessionActionsPopoverProps) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
-    const { actionItems: actions } = useSessionQuickActions(session, {
+    const session = useSession(sessionId);
+    const { actionItems: actions } = useSessionQuickActions(session!, {
         onAfterArchive,
         onAfterDelete,
     });
@@ -149,7 +150,7 @@ export function SessionActionsPopover({
         action.onPress();
     }, [onClose]);
 
-    if (!visible || !anchor) {
+    if (!visible || !anchor || !session) {
         return null;
     }
 

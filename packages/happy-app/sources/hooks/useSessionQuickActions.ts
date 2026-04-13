@@ -13,6 +13,7 @@ import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard }
 import { useSessionStatus } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useRouter } from 'expo-router';
+import { useSession } from '@/sync/storage';
 
 export interface SessionActionItem {
     id: string;
@@ -234,8 +235,19 @@ export function useSessionQuickActions(
         resumeSession,
     ]);
 
+    const showActionAlert = React.useCallback(() => {
+        const buttons: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' | 'default' }> = actionItems.map(item => ({
+            text: item.label,
+            onPress: item.onPress,
+            style: item.destructive ? 'destructive' as const : undefined,
+        }));
+        buttons.push({ text: t('common.cancel'), style: 'cancel' });
+        Modal.alert('Session', undefined, buttons);
+    }, [actionItems]);
+
     return {
         actionItems,
+        showActionAlert,
         archiveSession,
         archivingSession,
         canArchive: true,
@@ -249,4 +261,14 @@ export function useSessionQuickActions(
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,
     };
+}
+
+/**
+ * Lightweight hook for list items that only have a sessionId.
+ * Returns a long-press handler that shows the action alert on mobile.
+ */
+export function useSessionActionAlert(sessionId: string) {
+    const session = useSession(sessionId);
+    const { showActionAlert } = useSessionQuickActions(session!, {});
+    return session ? showActionAlert : undefined;
 }

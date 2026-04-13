@@ -15,6 +15,7 @@ import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
+import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
@@ -69,13 +70,67 @@ interface SessionMessages {
 
 // Machine type is now imported from storageTypes - represents persisted machine data
 
+// Display-only row data — all primitives, cheap to deep-equal
+export interface SessionRowData {
+    id: string;
+    name: string;
+    subtitle: string;
+    avatarId: string;
+    flavor: string | null;
+    state: SessionState;
+    // Only present on inactive sessions — active sessions never show "last seen"
+    // and activeAt updates on every heartbeat, causing needless deep-equal diffs
+    activeAt?: number;
+    createdAt?: number;
+    hasDraft: boolean;
+    active: boolean;
+    machineId: string | null;
+    path: string | null;
+    homeDir: string | null;
+    completedTodosCount: number;
+    totalTodosCount: number;
+}
+
+function buildSessionRowData(session: Session): SessionRowData {
+    const isOnline = session.presence === "online";
+    const hasPermissions = !!(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
+
+    let state: SessionState;
+    if (!isOnline) {
+        state = 'disconnected';
+    } else if (hasPermissions) {
+        state = 'permission_required';
+    } else if (session.thinking) {
+        state = 'thinking';
+    } else {
+        state = 'waiting';
+    }
+
+    return {
+        id: session.id,
+        name: getSessionName(session),
+        subtitle: getSessionSubtitle(session),
+        avatarId: getSessionAvatarId(session),
+        flavor: session.metadata?.flavor ?? null,
+        state,
+        ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
+        hasDraft: !!session.draft,
+        active: session.active,
+        machineId: session.metadata?.machineId ?? null,
+        path: session.metadata?.path ?? null,
+        homeDir: session.metadata?.homeDir ?? null,
+        completedTodosCount: session.todos?.filter(todo => todo.status === 'completed').length ?? 0,
+        totalTodosCount: session.todos?.length ?? 0,
+    };
+}
+
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
     | { type: 'header'; title: string }
-    | { type: 'active-sessions'; sessions: Session[] }
+    | { type: 'active-sessions'; sessions: SessionRowData[] }
     | { type: 'archive-toggle'; hidden: boolean }
     | { type: 'project-group'; displayPath: string; machine: Machine }
-    | { type: 'session'; session: Session; variant?: 'default' | 'no-path' };
+    | { type: 'session'; session: SessionRowData };
 
 // Legacy type for backward compatibility - to be removed
 export type SessionListItem = string | Session;
@@ -189,7 +244,7 @@ function buildSessionListViewData(
 
     // Add active sessions as a single item at the top (if any)
     if (activeSessions.length > 0) {
-        listData.push({ type: 'active-sessions', sessions: activeSessions });
+        listData.push({ type: 'active-sessions', sessions: activeSessions.map(buildSessionRowData) });
     }
 
     // Group inactive sessions by date
@@ -223,7 +278,7 @@ function buildSessionListViewData(
 
                 listData.push({ type: 'header', title: headerTitle });
                 currentDateGroup.forEach(sess => {
-                    listData.push({ type: 'session', session: sess });
+                    listData.push({ type: 'session', session: buildSessionRowData(sess) });
                 });
             }
 
@@ -253,7 +308,7 @@ function buildSessionListViewData(
 
         listData.push({ type: 'header', title: headerTitle });
         currentDateGroup.forEach(sess => {
-            listData.push({ type: 'session', session: sess });
+            listData.push({ type: 'session', session: buildSessionRowData(sess) });
         });
     }
 
@@ -836,15 +891,10 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
-            // Rebuild sessionListViewData to update the UI immediately
-            const sessionListViewData = buildSessionListViewData(
-                updatedSessions
-            );
-
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData
+                sessionListViewData: buildSessionListViewData(updatedSessions)
             };
         }),
         updateSessionPermissionMode: (sessionId: string, mode: string) => set((state) => {
