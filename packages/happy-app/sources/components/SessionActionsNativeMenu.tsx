@@ -10,8 +10,8 @@ export interface SessionActionsNativeMenuProps {
 }
 
 const SessionActionsNativeMenuImpl = Platform.select<React.ComponentType<SessionActionsNativeMenuProps>>({
-    ios: require('./SessionActionsNativeMenu.native').SessionActionsNativeMenu,
-    android: require('./SessionActionsNativeMenu.native').SessionActionsNativeMenu,
+    ios: require('./SessionActionsNativeMenu.ios').SessionActionsNativeMenu,
+    android: require('./SessionActionsNativeMenu.android').SessionActionsNativeMenu,
     default: require('./SessionActionsNativeMenu.web').SessionActionsNativeMenu,
 }) ?? require('./SessionActionsNativeMenu.web').SessionActionsNativeMenu;
 
