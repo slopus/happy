@@ -31,7 +31,13 @@ Present these as options. Wait for the user to pick.
     Package:     packages/happy-cli
     npm name:    happy
     Registry:    https://registry.npmjs.org
-    Git tags:    v{version}
+    Git tags:    cli-{version}
+
+Tag namespace note:
+- CLI releases use `cli-X.Y.Z`
+- Native releases use `native-<runtime-version>`
+- OTA releases use `ota-<ota-version>`
+- Do not use a bare `vX.Y.Z` tag for Happy releases because multiple release streams coexist in this repo
 
 ### Step 2: Gather state
 
@@ -111,7 +117,7 @@ If `latest` doesn't move immediately, wait 10-15 seconds and check again; npm ta
 
 For `latest` releases only:
 1. Commit the version bump: `Release version X.Y.Z`
-2. Tag: `git tag vX.Y.Z`
+2. Tag: `git tag cli-X.Y.Z`
 3. Push: `git push && git push --tags`
 
 For `beta` releases: ask the user if they want to commit the version bump or leave it uncommitted.
@@ -120,7 +126,7 @@ If `git push` is rejected because `origin/main` advanced while releasing, fetch 
 ```bash
 git fetch origin main
 git rebase --autostash origin/main
-git tag -f vX.Y.Z
+git tag -f cli-X.Y.Z
 git push && git push --tags
 ```
 
@@ -130,7 +136,7 @@ Use `--autostash` when the worktree is dirty from unrelated local changes so tho
 
 For `latest` releases, create a GitHub release:
 ```bash
-gh release create vX.Y.Z --generate-notes --title "vX.Y.Z"
+gh release create cli-X.Y.Z --generate-notes --title "cli-X.Y.Z"
 ```
 
 ### Step 11: Install + verify locally
