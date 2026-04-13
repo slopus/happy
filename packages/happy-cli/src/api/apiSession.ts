@@ -321,7 +321,8 @@ export class ApiSessionClient extends EventEmitter {
         // then backfill older messages in subsequent batches.
         while (this.pendingOutbox.length > 0) {
             const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
-            const batch = this.pendingOutbox.splice(-batchSize, batchSize);
+            const batchStart = this.pendingOutbox.length - batchSize;
+            const batch = this.pendingOutbox.slice(batchStart);
 
             const response = await axios.post<V3PostSessionMessagesResponse>(
                 `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
@@ -339,6 +340,7 @@ export class ApiSessionClient extends EventEmitter {
                 message.seq > acc ? message.seq : acc
             ), this.lastSeq);
             this.lastSeq = maxSeq;
+            this.pendingOutbox.splice(batchStart, batch.length);
         }
     }
 

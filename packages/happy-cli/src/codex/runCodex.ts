@@ -31,34 +31,7 @@ import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
-
-type ReadyEventOptions = {
-    pending: unknown;
-    queueSize: () => number;
-    shouldExit: boolean;
-    sendReady: () => void;
-    notify?: () => void;
-};
-
-/**
- * Notify connected clients when Codex finishes processing and the queue is idle.
- * Returns true when a ready event was emitted.
- */
-export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, notify }: ReadyEventOptions): boolean {
-    if (shouldExit) {
-        return false;
-    }
-    if (pending) {
-        return false;
-    }
-    if (queueSize() > 0) {
-        return false;
-    }
-
-    sendReady();
-    notify?.();
-    return true;
-}
+import { emitReadyIfIdle } from './emitReadyIfIdle';
 
 /**
  * Main entry point for the codex command with ink UI
