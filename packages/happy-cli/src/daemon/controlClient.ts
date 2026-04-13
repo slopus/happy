@@ -121,15 +121,37 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
     return false;
   }
 
-  // Check if the daemon is running
+  // Check if the PID is alive
   try {
     process.kill(state.pid, 0);
-    return true;
   } catch {
     logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up state');
     await cleanupDaemonState();
     return false;
   }
+
+  // PID is alive, but on Windows PIDs get reused after reboot.
+  // Verify it's actually our daemon by HTTP pinging its control server.
+  if (state.httpPort) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${state.httpPort}/list`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: AbortSignal.timeout(2000)
+      });
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      // HTTP check failed - the PID is not our daemon (likely reused by OS after reboot)
+      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}, cleaning up stale state`);
+      await cleanupDaemonState();
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
