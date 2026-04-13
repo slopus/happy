@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { TurnPicker } from './TurnPicker';
 import { TurnInfo } from '@/hooks/useTurnIndices';
+import { TURN_NAVIGATION_SHORTCUTS } from '@/hooks/turnNavigationKeyboard';
 
 interface TurnNavigatorProps {
     currentTurnNumber: number | null;
@@ -22,6 +23,7 @@ interface TurnNavigatorProps {
 export const TurnNavigator = React.memo((props: TurnNavigatorProps) => {
     const { theme } = useUnistyles();
     const [pickerOpen, setPickerOpen] = React.useState(false);
+    const [hoveredTooltip, setHoveredTooltip] = React.useState<string | null>(null);
 
     if (props.totalTurns <= 1) return null;
 
@@ -47,6 +49,8 @@ export const TurnNavigator = React.memo((props: TurnNavigatorProps) => {
                 disabled={!props.hasPrev}
                 color={iconColor}
                 rotate="90deg"
+                tooltip={TURN_NAVIGATION_SHORTCUTS.prevPage}
+                onHoverChange={setHoveredTooltip}
             />
 
             {/* 1 turn older */}
@@ -55,10 +59,18 @@ export const TurnNavigator = React.memo((props: TurnNavigatorProps) => {
                 onPress={props.onPrev}
                 disabled={!props.hasPrev}
                 color={iconColor}
+                tooltip={TURN_NAVIGATION_SHORTCUTS.prev}
+                onHoverChange={setHoveredTooltip}
             />
 
             {/* Tappable turn counter — opens picker */}
-            <Pressable onPress={handleLabelPress} hitSlop={8}>
+            <Pressable
+                onPress={handleLabelPress}
+                hitSlop={8}
+                accessibilityLabel={TURN_NAVIGATION_SHORTCUTS.picker}
+                onHoverIn={() => setHoveredTooltip(TURN_NAVIGATION_SHORTCUTS.picker)}
+                onHoverOut={() => setHoveredTooltip((current) => current === TURN_NAVIGATION_SHORTCUTS.picker ? null : current)}
+            >
                 <Text style={[styles.label, { color: iconColor }]}>
                     {label}
                 </Text>
@@ -70,6 +82,8 @@ export const TurnNavigator = React.memo((props: TurnNavigatorProps) => {
                 onPress={props.onNext}
                 disabled={!props.hasNext}
                 color={iconColor}
+                tooltip={TURN_NAVIGATION_SHORTCUTS.next}
+                onHoverChange={setHoveredTooltip}
             />
 
             {/* Skip 5 turns newer — rotated skip icon */}
@@ -79,6 +93,8 @@ export const TurnNavigator = React.memo((props: TurnNavigatorProps) => {
                 disabled={!props.hasNext}
                 color={iconColor}
                 rotate="90deg"
+                tooltip={TURN_NAVIGATION_SHORTCUTS.nextPage}
+                onHoverChange={setHoveredTooltip}
             />
 
             {/* Jump to latest — always visible */}
@@ -87,7 +103,26 @@ export const TurnNavigator = React.memo((props: TurnNavigatorProps) => {
                 onPress={props.onEnd}
                 disabled={false}
                 color={iconColor}
+                tooltip={TURN_NAVIGATION_SHORTCUTS.end}
+                onHoverChange={setHoveredTooltip}
             />
+
+            {hoveredTooltip && (
+                <View
+                    pointerEvents="none"
+                    style={[
+                        styles.tooltip,
+                        {
+                            backgroundColor: theme.colors.header.background,
+                            borderColor: theme.colors.divider,
+                        },
+                    ]}
+                >
+                    <Text style={[styles.tooltipText, { color: theme.colors.text }]}>
+                        {hoveredTooltip}
+                    </Text>
+                </View>
+            )}
 
             {/* Turn picker overlay */}
             {pickerOpen && (
@@ -108,10 +143,15 @@ const NavButton = React.memo((props: {
     disabled: boolean;
     color: string;
     rotate?: string;
+    tooltip: string;
+    onHoverChange: (tooltip: string | null) => void;
 }) => (
     <Pressable
         onPress={props.onPress}
         disabled={props.disabled}
+        accessibilityLabel={props.tooltip}
+        onHoverIn={() => props.onHoverChange(props.tooltip)}
+        onHoverOut={() => props.onHoverChange(null)}
         style={({ pressed }) => [
             styles.button,
             props.disabled && styles.disabled,
@@ -165,6 +205,26 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 4,
         shadowOpacity: theme.colors.shadow.opacity,
         elevation: 4,
+    },
+    tooltip: {
+        position: 'absolute',
+        right: '100%',
+        top: '50%',
+        transform: [{ translateY: -16 }],
+        marginRight: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: StyleSheet.hairlineWidth,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 6,
+        shadowOpacity: theme.colors.shadow.opacity,
+        elevation: 6,
+    },
+    tooltipText: {
+        fontSize: 12,
+        fontVariant: ['tabular-nums'],
     },
     button: {
         padding: 6,

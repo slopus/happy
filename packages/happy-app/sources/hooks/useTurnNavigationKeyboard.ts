@@ -12,6 +12,7 @@
 
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { getTurnNavigationAction } from './turnNavigationKeyboard';
 
 interface Handlers {
     onPrev: () => void;
@@ -34,23 +35,21 @@ export function useTurnNavigationKeyboard(handlers: Handlers) {
         if (Platform.OS !== 'web') return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (!e.altKey) return;
             if (isEditableElement(document.activeElement)) return;
+            const action = getTurnNavigationAction(e);
+            if (!action) return;
 
-            if (e.key === 'ArrowUp' && !e.shiftKey) {
-                e.preventDefault();
+            e.preventDefault();
+
+            if (action === 'prev') {
                 handlers.onPrev();
-            } else if (e.key === 'ArrowDown' && !e.shiftKey) {
-                e.preventDefault();
+            } else if (action === 'next') {
                 handlers.onNext();
-            } else if (e.key === 'ArrowUp' && e.shiftKey) {
-                e.preventDefault();
+            } else if (action === 'prevPage') {
                 handlers.onPrevPage();
-            } else if (e.key === 'ArrowDown' && e.shiftKey) {
-                e.preventDefault();
+            } else if (action === 'nextPage') {
                 handlers.onNextPage();
-            } else if ((e.key === 'End' && e.shiftKey) || e.key === '.') {
-                e.preventDefault();
+            } else if (action === 'end') {
                 handlers.onEnd();
             }
         };
