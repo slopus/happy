@@ -208,24 +208,6 @@ export function useSessionQuickActions(
 
     const canCopySessionMetadata = __DEV__ || devModeEnabled;
 
-    const showActionAlert = React.useCallback(() => {
-        const buttons: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' | 'default' }> = [];
-
-        buttons.push({ text: t('profile.details'), onPress: openDetails });
-
-        if (resumeAvailability.canShowResume) {
-            buttons.push({ text: t('sessionInfo.resumeSession'), onPress: resumeSession });
-        }
-
-        if (canCopySessionMetadata) {
-            buttons.push({ text: t('sessionInfo.copyMetadata'), onPress: copySessionMetadata });
-        }
-
-        buttons.push({ text: 'Archive', onPress: archiveSession, style: 'destructive' });
-        buttons.push({ text: t('common.cancel'), style: 'cancel' });
-        Modal.alert('Session', undefined, buttons);
-    }, [archiveSession, canCopySessionMetadata, copySessionMetadata, openDetails, resumeAvailability.canShowResume, resumeSession]);
-
     const actionItems = React.useMemo<SessionActionItem[]>(() => {
         const items: SessionActionItem[] = [
             { id: 'details', icon: 'information-circle-outline', label: t('profile.details'), onPress: openDetails },
