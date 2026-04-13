@@ -34,27 +34,34 @@ function rpcRoom(userId: string, method: string): string {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+type RoomSockets = RemoteSocket<DefaultEventsMap, any>[];
+
 /**
- * Poll io.in(room).fetchSockets() until it returns at least one socket OR
- * `maxMs` elapses. Used to give a daemon a brief window to reconnect when an
+ * fetchSockets(room) wrapped with our short cross-replica timeout. Returns
+ * `[]` and logs on failure (cluster-adapter request timeout, peer replica
+ * unresponsive). Cluster-adapter default timeout is 5s; we cap at 500ms so a
+ * single dead peer doesn't stall the caller for the entire grace window.
+ */
+async function fetchRoomSockets(io: Server, room: string): Promise<RoomSockets> {
+    try {
+        return await io.in(room)
+            .timeout(RPC_PRESENCE_FETCH_TIMEOUT_MS)
+            .fetchSockets();
+    } catch (error) {
+        log({ module: 'websocket' }, `fetchSockets failed for ${room}: ${error}`);
+        return [];
+    }
+}
+
+/**
+ * Poll fetchRoomSockets until it returns at least one socket OR `maxMs`
+ * elapses. Used to give a daemon a brief window to reconnect when an
  * rpc-call arrives during a transient disconnect.
  */
-async function waitForRoomMember(io: Server, room: string, maxMs: number): Promise<RemoteSocket<DefaultEventsMap, any>[]> {
+async function waitForRoomMember(io: Server, room: string, maxMs: number): Promise<RoomSockets> {
     const deadline = Date.now() + maxMs;
     while (true) {
-        let sockets: RemoteSocket<DefaultEventsMap, any>[] = [];
-        try {
-            sockets = await io.in(room)
-                .timeout(RPC_PRESENCE_FETCH_TIMEOUT_MS)
-                .fetchSockets();
-        } catch (error) {
-            // Cross-replica fetchSockets timed out — a peer replica didn't
-            // respond within RPC_PRESENCE_FETCH_TIMEOUT_MS. Expected during
-            // pod cycling / brief partitions. Treat as "nobody here" and
-            // keep polling until the grace window elapses.
-            log({ module: 'websocket' }, `waitForRoomMember fetchSockets failed for ${room}: ${error}`);
-            sockets = [];
-        }
+        const sockets = await fetchRoomSockets(io, room);
         if (sockets.length > 0) return sockets;
         if (Date.now() >= deadline) return sockets;
         await sleep(RPC_RECONNECT_POLL_MS);
@@ -102,20 +109,11 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             }
 
             // 1. Find the daemon socket(s) cross-replica via the adapter.
-            // If the room is empty OR fetchSockets times out (an unresponsive
-            // replica blocks the cross-replica request) fall through to the
-            // wait-for-reconnect grace window.
+            // If the room is empty OR fetchSockets fails (peer replica
+            // unresponsive — fetchRoomSockets logs and returns []) fall
+            // through to the wait-for-reconnect grace window.
             const room = rpcRoom(userId, method);
-            let targets: Awaited<ReturnType<typeof waitForRoomMember>> = [];
-            try {
-                targets = await io.in(room)
-                    .timeout(RPC_PRESENCE_FETCH_TIMEOUT_MS)
-                    .fetchSockets();
-            } catch (error) {
-                log({ module: 'websocket' }, `rpc-call initial fetchSockets failed for ${room}: ${error}`);
-                targets = [];
-            }
-
+            let targets = await fetchRoomSockets(io, room);
             if (targets.length === 0) {
                 targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS);
             }
@@ -136,29 +134,25 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             }
 
             // 2. Single-target emit with timeout — works cross-replica via adapter.
+            //
             // Race against a presence poll that aborts fast if the target leaves
-            // the room (pod death, daemon disconnect). Without this, emitWithAck
-            // sits on a dead socketId for the full RPC_CALL_TIMEOUT_MS.
+            // the room. WHY: emitWithAck has no idea the target socket is dead;
+            // when the daemon's pod gets killed mid-call, the cluster adapter's
+            // outgoing BROADCAST request is queued waiting for a BROADCAST_ACK
+            // that will never come, and the request only times out at the user-
+            // set RPC_CALL_TIMEOUT_MS (30s). Heartbeat-based pod liveness
+            // detection in the adapter takes ~10s and doesn't proactively
+            // cancel pending broadcasts. Polling fetchSockets is the only way
+            // to detect "the target socket is gone" and abort fast (~1s).
             const ackPromise = target.timeout(RPC_CALL_TIMEOUT_MS)
                 .emitWithAck('rpc-request', { method, params });
 
             let presenceAlive = true;
             const presencePoll = (async () => {
                 while (presenceAlive) {
-                    await new Promise((r) => setTimeout(r, RPC_PRESENCE_POLL_MS));
+                    await sleep(RPC_PRESENCE_POLL_MS);
                     if (!presenceAlive) return;
-                    let stillThere;
-                    try {
-                        stillThere = await io.in(room)
-                            .timeout(RPC_PRESENCE_FETCH_TIMEOUT_MS)
-                            .fetchSockets();
-                    } catch (error) {
-                        // Adapter cross-replica request timed out: a replica is
-                        // unresponsive. Treat as disconnect for the purpose of
-                        // fast-failing this RPC.
-                        log({ module: 'websocket' }, `presence-poll fetchSockets failed for ${room}: ${error}`);
-                        throw new Error('RPC target disconnected');
-                    }
+                    const stillThere = await fetchRoomSockets(io, room);
                     if (!stillThere.some(s => s.id === target.id)) {
                         throw new Error('RPC target disconnected');
                     }
