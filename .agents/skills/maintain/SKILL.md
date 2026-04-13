@@ -21,9 +21,38 @@ is a relationship with a user. Every close is a chance to build trust.
 
 ## Golden rule
 
-NEVER close, comment on, or modify issues without showing the exact
-text to the maintainer first and getting explicit approval. Even when
-told "close all" or "do X" - show the plan, get sign-off.
+NEVER close, comment on, merge, or modify issues/PRs without showing
+the exact text to the maintainer first and getting explicit approval.
+Even when told "close all" or "do X" - show the plan, get sign-off.
+
+### Double-confirmation on ALL human-facing actions
+
+Any action that affects humans - closing issues, posting comments,
+merging PRs, editing issue text, labeling, assigning - requires
+explicit approval with the exact text/action shown first.
+
+**Feedback = still iterating.** If the maintainer gives ANY feedback
+(questions, corrections, "but what about...", mixed responses), that
+means we are still thinking. Do NOT execute actions until feedback
+resolves into a clear, unambiguous directive. Specifically:
+
+1. Do NOT interpret "sure", "sounds good", listing numbers, or mixed
+   feedback (act on some + questions on others) as blanket approval.
+2. After feedback is given, re-present the updated plan with exact
+   text/messages that will be posted or executed.
+3. Wait for an explicit directive ("merge", "close these", "post it").
+4. If ambiguous, ask: "ready to execute?" - never assume.
+
+### PR merge rules
+
+- **CI must pass** before merging. Never use `--admin` to bypass
+  branch protections. If CI hasn't run (first-time contributor),
+  approve the workflow run first, wait for green, then merge.
+- **Always show merge commit messages** before merging. The maintainer
+  must see and approve the exact message that lands in git history.
+- **Never batch-merge across feedback boundaries.** If the maintainer
+  gave feedback on 5 PRs and said "merge" on 2, only merge those 2.
+  Re-present the others separately.
 
 ## Comment voice
 
@@ -53,6 +82,26 @@ Bad milestone: "fix redis streams" (too specific, that's just a bug)
 
 ## Workflow
 
+### Phase 0: Check for items needing my response
+
+Before triaging anything new, scan for issues and PRs where the
+maintainer was mentioned or commented but hasn't responded to the
+latest reply. Run:
+
+```bash
+# Issues/PRs where @bra1nDump was mentioned but hasn't replied last
+gh search issues --repo slopus/happy --state open --mentions bra1nDump \
+  --sort updated --limit 50 --json number,title,updatedAt,comments
+
+# PRs with review requests for bra1nDump
+gh pr list --repo slopus/happy --search "review-requested:bra1nDump" \
+  --json number,title,updatedAt,author
+```
+
+For each result, check if the last comment is from someone other than
+bra1nDump. Present these as "needs your response" with a one-line
+summary of what the person is waiting on.
+
 ### Phase 1: Fetch and cluster
 
 1. Pull all open issues from the project board
@@ -63,7 +112,9 @@ Bad milestone: "fix redis streams" (too specific, that's just a bug)
 
 For each cluster, spawn a subagent (opus) that:
 
-1. Reads every issue body + comments
+1. Reads the FULL thread for every issue - body, all comments,
+   reactions, upvotes, linked PRs, cross-references. Not just
+   the opening body. The real context is often in the replies.
 2. Identifies duplicate groups with a canonical for each
 3. Notes who filed each issue - repeat contributor? filed a PR?
    detailed report? This matters for how we respond.
