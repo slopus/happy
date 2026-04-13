@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
+import { useStoreWithEqualityFn } from 'zustand/traditional'
+import equal from 'fast-deep-equal'
 import { Session, Machine, GitStatus } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
@@ -1218,7 +1220,7 @@ export function useMachine(machineId: string): Machine | null {
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {
-    return storage((state) => state.isDataReady ? state.sessionListViewData : null);
+    return useStoreWithEqualityFn(storage, (state) => state.isDataReady ? state.sessionListViewData : null, equal);
 }
 
 export function useAllSessions(): Session[] {
