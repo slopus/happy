@@ -723,6 +723,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 if (c.type === 'tool-call') {
                     // Skip internal tool calls that should not appear in UI
                     if (c.name === 'mcp__happy__change_title') continue;
+                    if (c.name === 'EnterPlanMode' || c.name === 'enter_plan_mode') continue;
 
                     // Direct lookup by tool ID (since permission ID = tool ID now)
                     const existingMessageId = state.toolIdToMessageId.get(c.id);
@@ -938,6 +939,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     state.messages.set(mid, textMsg);
                     existingSidechain.push(textMsg);
                 } else if (c.type === 'tool-call') {
+                    // Skip internal tool calls that should not appear in UI
+                    if (c.name === 'mcp__happy__change_title') continue;
+                    if (c.name === 'EnterPlanMode' || c.name === 'enter_plan_mode') continue;
+
                     // Check if there's already a permission message for this tool
                     const existingPermissionMessageId = state.toolIdToMessageId.get(c.id);
 
