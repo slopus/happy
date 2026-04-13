@@ -4,9 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
-import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { useSessionQuickActions, SessionActionItem } from '@/hooks/useSessionQuickActions';
 import { Session } from '@/sync/storageTypes';
-import { t } from '@/text';
 
 export type SessionActionsAnchor =
     | {
@@ -31,13 +30,6 @@ interface SessionActionsPopoverProps {
     visible: boolean;
 }
 
-interface SessionActionItem {
-    destructive?: boolean;
-    icon: keyof typeof Ionicons.glyphMap;
-    id: string;
-    label: string;
-    onPress: () => void;
-}
 
 const WEB_MENU_WIDTH = 232;
 const WEB_MENU_ITEM_HEIGHT = 48;
@@ -123,66 +115,10 @@ export function SessionActionsPopover({
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
-    const {
-        archiveSession,
-        canArchive,
-        canCopySessionMetadata,
-        canShowResume,
-        copySessionMetadata,
-        openDetails,
-        resumeSession,
-    } = useSessionQuickActions(session, {
+    const { actionItems: actions } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterDelete,
     });
-
-    const actions = React.useMemo<SessionActionItem[]>(() => {
-        const items: SessionActionItem[] = [
-            {
-                id: 'details',
-                icon: 'information-circle-outline',
-                label: t('profile.details'),
-                onPress: openDetails,
-            },
-        ];
-
-        if (canArchive) {
-            items.push({
-                id: 'archive',
-                icon: 'archive-outline',
-                label: 'Archive',
-                onPress: archiveSession,
-            });
-        }
-
-        if (canShowResume) {
-            items.push({
-                id: 'resume',
-                icon: 'play-circle-outline',
-                label: t('sessionInfo.resumeSession'),
-                onPress: resumeSession,
-            });
-        }
-
-        if (canCopySessionMetadata) {
-            items.push({
-                id: 'copy-session-metadata',
-                icon: 'bug-outline',
-                label: t('sessionInfo.copyMetadata'),
-                onPress: copySessionMetadata,
-            });
-        }
-
-        return items;
-    }, [
-        archiveSession,
-        canArchive,
-        canCopySessionMetadata,
-        canShowResume,
-        copySessionMetadata,
-        openDetails,
-        resumeSession,
-    ]);
 
     const position = React.useMemo(() => {
         if (!anchor) {
@@ -239,7 +175,7 @@ export function SessionActionsPopover({
                     >
                         <Ionicons
                             color={color}
-                            name={action.icon}
+                            name={action.icon as keyof typeof Ionicons.glyphMap}
                             size={18}
                         />
                         <Text numberOfLines={1} style={[styles.menuItemLabel, { color }]}>

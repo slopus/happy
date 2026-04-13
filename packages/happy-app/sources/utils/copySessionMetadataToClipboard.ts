@@ -11,6 +11,22 @@ export async function copySessionMetadataToClipboard(session: Session): Promise<
     }
 
     try {
+        await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
+        Modal.alert(t('common.success'), t('sessionInfo.metadataCopied'));
+        return true;
+    } catch {
+        Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
+        return false;
+    }
+}
+
+export async function copySessionMetadataAndLogsToClipboard(session: Session): Promise<boolean> {
+    if (!session.metadata) {
+        Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
+        return false;
+    }
+
+    try {
         const metadata = JSON.stringify(session.metadata, null, 2);
         const logs = log.getLogs();
 

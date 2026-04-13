@@ -1,7 +1,14 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { useStoreWithEqualityFn } from 'zustand/traditional'
 import equal from 'fast-deep-equal'
+
+function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageState) => T {
+    const prev = React.useRef<T>(undefined);
+    return (state: StorageState) => {
+        const next = selector(state);
+        return equal(prev.current, next) ? prev.current! : (prev.current = next);
+    };
+}
 import { Session, Machine, GitStatus } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
@@ -1220,7 +1227,7 @@ export function useMachine(machineId: string): Machine | null {
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {
-    return useStoreWithEqualityFn(storage, (state) => state.isDataReady ? state.sessionListViewData : null, equal);
+    return storage(useDeepEqual((state) => state.isDataReady ? state.sessionListViewData : null));
 }
 
 export function useAllSessions(): Session[] {
