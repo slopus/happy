@@ -1,7 +1,9 @@
 import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
-import { Server, Socket } from "socket.io";
+import { Server } from "socket.io";
+import { createAdapter } from "@socket.io/redis-streams-adapter";
+import { Redis } from "ioredis";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
 import { decrementWebSocketConnection, incrementWebSocketConnection, websocketEventsCounter } from "../monitoring/metrics2";
@@ -28,10 +30,32 @@ export function startSocket(app: Fastify) {
         allowUpgrades: true,
         upgradeTimeout: 10000,
         connectTimeout: 20000,
-        serveClient: false // Don't serve the client files
+        serveClient: false, // Don't serve the client files
+        // Brief-disconnect event replay. Currently OFF to preserve parity with
+        // pre-multi-process prod behavior — clients fall through to the full
+        // REST re-fetch path on every reconnect (apiSocket.ts onReconnected
+        // listener). Enabling this lets socket.io replay missed events from
+        // the streams adapter (which implements restoreSession via the Redis
+        // stream) so the client can skip the heavy refetch when
+        // socket.recovered === true. Verified working cross-replica via
+        // deploy/integration-tests/missed-events.mjs (event #2 fired during a
+        // forced engine.close() arrived after auto-reconnect, recovered=true).
+        // Ship parity first; turn this on as a follow-up.
+        // connectionStateRecovery: {
+        //     maxDisconnectionDuration: 2 * 60 * 1000,
+        // },
     });
 
-    let rpcListeners = new Map<string, Map<string, Socket>>();
+    // Multi-process support: attach Redis streams adapter when REDIS_URL is set
+    if (process.env.REDIS_URL) {
+        const streamClient = new Redis(process.env.REDIS_URL);
+        io.adapter(createAdapter(streamClient, { maxLen: 50000 }));
+        log({ module: 'websocket' }, 'Redis streams adapter enabled for multi-process support');
+    }
+
+    // Initialize event router with Socket.IO server instance
+    eventRouter.init(io);
+
     io.on("connection", async (socket) => {
         log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;
@@ -132,12 +156,7 @@ export function startSocket(app: Fastify) {
         });
 
         // Handlers
-        let userRpcListeners = rpcListeners.get(userId);
-        if (!userRpcListeners) {
-            userRpcListeners = new Map<string, Socket>();
-            rpcListeners.set(userId, userRpcListeners);
-        }
-        rpcHandler(userId, socket, userRpcListeners);
+        rpcHandler(userId, socket, io);
         usageHandler(userId, socket);
         sessionUpdateHandler(userId, socket, connection);
         pingHandler(socket);
