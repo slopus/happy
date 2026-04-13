@@ -327,6 +327,82 @@ gh stack view --json
 
 If `sync` hits a conflict during this process, it restores all branches to their pre-rebase state and exits with code 3. See [Handle rebase conflicts](#handle-rebase-conflicts-agent-workflow) for the resolution workflow.
 
+### Merging a stack (the manual dance)
+
+`gh stack merge` is a stub in the current extension — it just prints a URL and tells you to merge in the browser. To actually land a stack you merge PRs one at a time with `gh pr merge`, and you have to work around two gotchas that will bite an agent the first time.
+
+**Gotcha 1 — NEVER use `--delete-branch` when merging the bottom of a stack.**
+GitHub auto-closes a PR the instant its base branch is deleted. If you run
+`gh pr merge <bottom> --squash --delete-branch`, the next PR up in the stack
+gets closed by GitHub and **cannot be reopened** ("cannot reopen PR with
+missing base"). You'll have to create a replacement PR from scratch.
+
+**Gotcha 2 — `gh stack sync` does NOT re-rebase upstack branches onto the
+new trunk after a squash-merge if the merged branch still exists locally.**
+It reports "Skipping 1 merged branch" and leaves `multi-process/tests` still
+sitting on top of `multi-process/core`'s old commits. You have to manually
+`git rebase --onto main <old-base-sha>` to drop the already-merged commits
+before the follow-up PR will cleanly diff against main.
+
+The safe recipe:
+
+```bash
+# For each PR from bottom to top:
+
+# 1. Retarget the NEXT-UP PR's base to main BEFORE merging the bottom.
+#    (Retargeting after the merge fails — GraphQL rejects "Cannot
+#    change the base branch of a closed pull request" once GitHub has
+#    closed it for you.)
+gh pr edit <next-pr-number> --base main
+
+# 2. Merge the current bottom PR. Do NOT pass --delete-branch — wait
+#    until the whole stack is landed, then clean up at the end.
+gh pr merge <bottom-pr> --squash
+
+# 3. Rebase the next branch onto new main manually. gh stack sync will
+#    NOT do this for you reliably.
+git checkout <next-branch>
+git fetch origin main
+git rebase --onto origin/main <old-base-sha-before-merge>
+git push --force-with-lease origin <next-branch>
+
+# 4. Verify the diff is clean (just that branch's own changes, no
+#    leftover merged commits).
+git diff --name-only origin/main...<next-branch>
+gh pr view <next-pr-number> --json mergeable,mergeStateStatus
+
+# 5. Merge the next one. Repeat from step 1 until the stack is empty.
+
+# 6. At the very end, clean up remote branches:
+git push origin --delete <branch-1> <branch-2> ...
+git remote prune origin
+```
+
+**If you forget and GitHub already closed a PR**, the only recovery is to
+create a replacement PR with a new number from the same branch:
+
+```bash
+git checkout <orphaned-branch>
+git rebase --onto origin/main <old-base-sha>     # clean the history
+git push --force-with-lease origin <orphaned-branch>
+# Copy the body from the closed PR before creating the replacement:
+gh pr view <closed-pr> --json body | jq -r '.body' > /tmp/body.md
+gh pr create --base main --head <orphaned-branch> \
+    --title "<same title>" --body "$(cat /tmp/body.md)"
+```
+
+**One-step alternative if the repo has GitHub's "Auto-merge" enabled and
+the reviewers approve in order:** pass `--auto` to `gh pr merge` on each
+PR in the stack. GitHub's auto-merge kicks in once each PR's base is
+updated by the previous merge, and it retargets upstream PRs automatically
+without closing them. But this only works if:
+- The repo has auto-merge enabled
+- Each PR meets all branch-protection requirements (reviews, CI)
+- You're willing to let GitHub pick the merge order
+
+For agent workflows where you want deterministic control, stick with the
+manual recipe above.
+
 ### Handle rebase conflicts (agent workflow)
 
 ```bash
@@ -790,6 +866,6 @@ gh stack unstack feature-auth
 1. **Stacks are strictly linear.** Branching stacks (multiple children on a single parent) are not supported. Each branch has exactly one parent and at most one child. If you need parallel workstreams, use separate stacks.
 2. **Stack disambiguation cannot be bypassed.** If the current branch is the trunk of multiple stacks, commands error with code 6. Check out a non-shared branch first.
 3. **Multiple remotes require `--remote` or config.** If more than one remote is configured, pass `--remote <name>` or set `remote.pushDefault` in git config before running `push`, `sync`, or `rebase`.
-4. **Merging PRs:** Merging Stacked PRs from the CLI is not supported yet. Direct users to open the PR URL in a browser to merge PRs.
+4. **Merging a stack is a manual dance.** `gh stack merge` is a stub that prints a URL. Use `gh pr merge` per PR, and follow the recipe in [Merging a stack](#merging-a-stack-the-manual-dance). Two gotchas to know: (a) `--delete-branch` on the bottom PR auto-closes downstream PRs and they **cannot be reopened**; (b) `gh stack sync` skips upstack rebase after a squash-merge when the merged branch still exists locally — you must `git rebase --onto` manually.
 5. **Remote stack checkout requires a PR number.** `checkout` with a branch name only works with locally tracked stacks. Use a PR number (e.g. `gh stack checkout 123`) to pull stacks from GitHub.
 6. **PR title and body are auto-generated.** There is no flag to set a custom PR title or body during `submit`. The title and body are generated from commit messages plus a footer. Use `gh pr edit` to modify PR title and body after creation.
