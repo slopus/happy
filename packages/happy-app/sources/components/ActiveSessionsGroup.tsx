@@ -3,9 +3,10 @@ import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
-import { Session, Machine } from '@/sync/storageTypes';
+import { Machine } from '@/sync/storageTypes';
+import { SessionRowData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { type SessionState, formatLastSeen, formatPathRelativeToHome, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -21,6 +22,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -192,8 +194,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
+const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
+    disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
+    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
+    waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
+    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+};
+
 interface ActiveSessionsGroupProps {
-    sessions: Session[];
+    sessions: SessionRowData[];
     selectedSessionId?: string;
 }
 
@@ -217,13 +226,13 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
             machines: Map<string, {
                 machine: Machine | null;
                 machineName: string;
-                sessions: Session[];
+                sessions: SessionRowData[];
             }>;
         }>();
 
         sessions.forEach(session => {
-            const projectPath = session.metadata?.path || '';
-            const machineId = session.metadata?.machineId || 'unknown';
+            const projectPath = session.path || '';
+            const machineId = session.machineId || 'unknown';
 
             // Get machine info
             const machine = machineId !== 'unknown' ? machinesMap[machineId] : null;
@@ -234,7 +243,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
             // Get or create project group
             let projectGroup = groups.get(projectPath);
             if (!projectGroup) {
-                const displayPath = formatPathRelativeToHome(projectPath, session.metadata?.homeDir);
+                const displayPath = formatPathRelativeToHome(projectPath, session.homeDir ?? undefined);
                 projectGroup = {
                     path: projectPath,
                     displayPath,
@@ -261,7 +270,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         // Sort sessions within each machine group by creation time (newest first)
         groups.forEach(projectGroup => {
             projectGroup.machines.forEach(machineGroup => {
-                machineGroup.sessions.sort((a, b) => b.createdAt - a.createdAt);
+                machineGroup.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
             });
         });
 
@@ -334,14 +343,25 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 }
 
 // Compact session row component with status line
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
+const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
-    const sessionStatus = useSessionStatus(session);
-    const sessionName = getSessionName(session);
+    const status = STATUS_CONFIG[session.state];
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+
+    const vibingMessage = React.useMemo(() => {
+        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
+    }, [session.state]);
+
+    const statusText = session.state === 'thinking'
+        ? vibingMessage
+        : session.state === 'disconnected'
+            ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+            : session.state === 'permission_required'
+                ? t('status.permissionRequired')
+                : t('status.online');
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(session.id);
@@ -354,10 +374,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         swipeableRef.current?.close();
         performArchive();
     }, [performArchive]);
-
-    const avatarId = React.useMemo(() => {
-        return getSessionAvatarId(session);
-    }, [session]);
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);
@@ -373,9 +389,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         });
     }, []);
 
-    const webMenuProps = Platform.OS === 'web' ? {
+    const showActionAlert = useSessionActionAlert(session.id);
+    const menuProps = Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
-    } as any : {};
+    } as any : {
+        onLongPress: showActionAlert,
+    };
 
     const itemContent = (
         <Pressable
@@ -385,43 +404,39 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 selected && styles.sessionRowSelected
             ]}
             onPress={handlePress}
-            {...webMenuProps}
+            {...menuProps}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} />
             </View>
             <View style={styles.sessionContent}>
-                {/* Title line */}
                 <View style={styles.sessionTitleRow}>
                     <Text
                         style={[
                             styles.sessionTitle,
-                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                            status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                         ]}
                         numberOfLines={2}
                     >
-                        {sessionName}
+                        {session.name}
                     </Text>
                 </View>
 
-                {/* Status line with dot */}
                 <View style={styles.statusRow}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <View style={styles.statusDotContainer}>
-                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                            <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />
                         </View>
                         <Text style={[
                             styles.statusText,
-                            { color: sessionStatus.statusColor }
+                            { color: status.color }
                         ]}>
-                            {sessionStatus.statusText}
+                            {statusText}
                         </Text>
                     </View>
 
-                    {/* Status indicators on the right side */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
-                        {/* Draft status indicator */}
-                        {session.draft && (
+                        {session.hasDraft && (
                             <View style={styles.taskStatusContainer}>
                                 <Ionicons
                                     name="create-outline"
@@ -431,32 +446,19 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             </View>
                         )}
 
-                        {/* No longer showing git status per item - it's in the header */}
-
-                        {/* Task status indicator */}
-                        {session.todos && session.todos.length > 0 && (() => {
-                            const totalTasks = session.todos.length;
-                            const completedTasks = session.todos.filter(t => t.status === 'completed').length;
-
-                            // Don't show if all tasks are completed
-                            if (completedTasks === totalTasks) {
-                                return null;
-                            }
-
-                            return (
-                                <View style={styles.taskStatusContainer}>
-                                    <Ionicons
-                                        name="bulb-outline"
-                                        size={10}
-                                        color={styles.taskStatusText.color}
-                                        style={{ marginRight: 2 }}
-                                    />
-                                    <Text style={styles.taskStatusText}>
-                                        {completedTasks}/{totalTasks}
-                                    </Text>
-                                </View>
-                            );
-                        })()}
+                        {session.totalTodosCount > 0 && session.completedTodosCount < session.totalTodosCount && (
+                            <View style={styles.taskStatusContainer}>
+                                <Ionicons
+                                    name="bulb-outline"
+                                    size={10}
+                                    color={styles.taskStatusText.color}
+                                    style={{ marginRight: 2 }}
+                                />
+                                <Text style={styles.taskStatusText}>
+                                    {session.completedTodosCount}/{session.totalTodosCount}
+                                </Text>
+                            </View>
+                        )}
                     </View>
                 </View>
             </View>
@@ -470,7 +472,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 <SessionActionsPopover
                     anchor={actionsAnchor}
                     onClose={() => setActionsAnchor(null)}
-                    session={session}
+                    sessionId={session.id}
                     visible={!!actionsAnchor}
                 />
             </>

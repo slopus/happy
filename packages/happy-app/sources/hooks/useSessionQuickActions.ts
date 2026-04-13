@@ -9,10 +9,19 @@ import { Machine, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
-import { copySessionMetadataToClipboard } from '@/utils/copySessionMetadataToClipboard';
+import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { useSessionStatus } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useRouter } from 'expo-router';
+import { useSession } from '@/sync/storage';
+
+export interface SessionActionItem {
+    id: string;
+    label: string;
+    icon: string;
+    onPress: () => void;
+    destructive?: boolean;
+}
 
 interface UseSessionQuickActionsOptions {
     onAfterArchive?: () => void;
@@ -128,6 +137,15 @@ export function useSessionQuickActions(
         })();
     }, [onAfterCopySessionMetadata, session]);
 
+    const copySessionMetadataAndLogs = React.useCallback(() => {
+        void (async () => {
+            const copied = await copySessionMetadataAndLogsToClipboard(session);
+            if (copied) {
+                onAfterCopySessionMetadata?.();
+            }
+        })();
+    }, [onAfterCopySessionMetadata, session]);
+
     const [resumingSession, performResume] = useHappyAction(async () => {
         if (!resumeAvailability.canResume) {
             throw new HappyError(resumeAvailability.message, false);
@@ -188,17 +206,87 @@ export function useSessionQuickActions(
         performResume();
     }, [performResume]);
 
+    const canCopySessionMetadata = __DEV__ || devModeEnabled;
+
+    const showActionAlert = React.useCallback(() => {
+        const buttons: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' | 'default' }> = [];
+
+        buttons.push({ text: t('profile.details'), onPress: openDetails });
+
+        if (resumeAvailability.canShowResume) {
+            buttons.push({ text: t('sessionInfo.resumeSession'), onPress: resumeSession });
+        }
+
+        if (canCopySessionMetadata) {
+            buttons.push({ text: t('sessionInfo.copyMetadata'), onPress: copySessionMetadata });
+        }
+
+        buttons.push({ text: 'Archive', onPress: archiveSession, style: 'destructive' });
+        buttons.push({ text: t('common.cancel'), style: 'cancel' });
+        Modal.alert('Session', undefined, buttons);
+    }, [archiveSession, canCopySessionMetadata, copySessionMetadata, openDetails, resumeAvailability.canShowResume, resumeSession]);
+
+    const actionItems = React.useMemo<SessionActionItem[]>(() => {
+        const items: SessionActionItem[] = [
+            { id: 'details', icon: 'information-circle-outline', label: t('profile.details'), onPress: openDetails },
+        ];
+
+        if (resumeAvailability.canShowResume) {
+            items.push({ id: 'resume', icon: 'play-circle-outline', label: t('sessionInfo.resumeSession'), onPress: resumeSession });
+        }
+
+        if (canCopySessionMetadata) {
+            items.push({ id: 'copy-metadata', icon: 'bug-outline', label: t('sessionInfo.copyMetadata'), onPress: copySessionMetadata });
+            items.push({ id: 'copy-metadata-and-logs', icon: 'document-text-outline', label: t('sessionInfo.copyMetadata') + ' & Client Logs', onPress: copySessionMetadataAndLogs });
+        }
+
+        items.push({ id: 'archive', icon: 'archive-outline', label: 'Archive', onPress: archiveSession, destructive: true });
+
+        return items;
+    }, [
+        archiveSession,
+        canCopySessionMetadata,
+        copySessionMetadata,
+        copySessionMetadataAndLogs,
+        openDetails,
+        resumeAvailability.canShowResume,
+        resumeSession,
+    ]);
+
+    const showActionAlert = React.useCallback(() => {
+        const buttons: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' | 'default' }> = actionItems.map(item => ({
+            text: item.label,
+            onPress: item.onPress,
+            style: item.destructive ? 'destructive' as const : undefined,
+        }));
+        buttons.push({ text: t('common.cancel'), style: 'cancel' });
+        Modal.alert('Session', undefined, buttons);
+    }, [actionItems]);
+
     return {
+        actionItems,
+        showActionAlert,
         archiveSession,
         archivingSession,
         canArchive: true,
-        canCopySessionMetadata: __DEV__ || devModeEnabled,
+        canCopySessionMetadata,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
         copySessionMetadata,
+        copySessionMetadataAndLogs,
         openDetails,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,
     };
+}
+
+/**
+ * Lightweight hook for list items that only have a sessionId.
+ * Returns a long-press handler that shows the action alert on mobile.
+ */
+export function useSessionActionAlert(sessionId: string) {
+    const session = useSession(sessionId);
+    const { showActionAlert } = useSessionQuickActions(session!, {});
+    return session ? showActionAlert : undefined;
 }

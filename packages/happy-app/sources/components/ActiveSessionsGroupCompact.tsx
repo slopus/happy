@@ -2,9 +2,10 @@ import React from 'react';
 import { View, Pressable, Platform } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
-import { Session, Machine } from '@/sync/storageTypes';
+import { Machine } from '@/sync/storageTypes';
+import { SessionRowData } from '@/sync/storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -15,13 +16,21 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { sessionKill } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
 
+const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
+    disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
+    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
+    waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
+    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+};
+
 interface ActiveSessionsGroupProps {
-    sessions: Session[];
+    sessions: SessionRowData[];
     selectedSessionId?: string;
 }
 
@@ -48,17 +57,17 @@ function useSectionGitInfo(sessionId: string) {
 }
 
 // Section header: avatar | path + branch + tree icon + line changes | + button
-const SectionHeader = React.memo(({ session, displayPath }: { session: Session; displayPath: string }) => {
+const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRowData; displayPath: string }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
     const draft = useNewSessionDraft();
 
-    const sessionPath = session.metadata?.path || '';
+    const sessionPath = session.path || '';
     const isWorktree = isWorktreePath(sessionPath);
     const repoPath = isWorktree ? getRepoPath(sessionPath) : sessionPath;
     const repoDisplayPath = isWorktree
-        ? formatPathRelativeToHome(repoPath, session.metadata?.homeDir)
+        ? formatPathRelativeToHome(repoPath, session.homeDir ?? undefined)
         : displayPath;
     const worktreeName = isWorktree ? getWorktreeName(sessionPath) : null;
 
@@ -66,26 +75,23 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: Session; 
     const branchName = worktreeName || gitInfo.branch;
     const hasBranch = !!branchName;
 
-    const avatarId = React.useMemo(() => getSessionAvatarId(session), [session]);
-
     const handleAdd = React.useCallback(() => {
-        const machineId = session.metadata?.machineId;
+        const machineId = session.machineId;
         if (machineId) {
             draft.setMachineId(machineId);
         }
-        // setMachineId resets path, so set path after
-        const pathToSet = formatPathRelativeToHome(repoPath, session.metadata?.homeDir);
+        const pathToSet = formatPathRelativeToHome(repoPath, session.homeDir ?? undefined);
         draft.setPath(pathToSet);
         draft.setSessionType(isWorktree ? 'worktree' : 'simple');
         draft.setWorktreeKey(isWorktree ? sessionPath : null);
         router.navigate('/new');
-    }, [session.metadata, repoPath, isWorktree, sessionPath, draft, router]);
+    }, [session.machineId, session.homeDir, repoPath, isWorktree, sessionPath, draft, router]);
 
     return (
         <View style={hasBranch ? styles.sectionHeader : styles.sectionHeaderSingleLine}>
             {/* Avatar — vertically centered */}
             <View style={styles.sectionHeaderAvatar}>
-                <Avatar id={avatarId} size={24} flavor={null} />
+                <Avatar id={session.avatarId} size={24} flavor={null} />
             </View>
 
             {/* Path + branch */}
@@ -170,12 +176,12 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
             machineName: string;
             projects: Map<string, {
                 displayPath: string;
-                sessions: Session[];
+                sessions: SessionRowData[];
             }>;
         }>();
 
         sessions.forEach(session => {
-            const machineId = session.metadata?.machineId || unknownText;
+            const machineId = session.machineId || unknownText;
             const machine = machineId !== unknownText ? machinesMap[machineId] : null;
             const machineName = machine?.metadata?.displayName ||
                 machine?.metadata?.host ||
@@ -187,10 +193,10 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                 byMachine.set(machineId, machineGroup);
             }
 
-            const projectPath = session.metadata?.path || '';
+            const projectPath = session.path || '';
             let projectGroup = machineGroup.projects.get(projectPath);
             if (!projectGroup) {
-                const displayPath = formatPathRelativeToHome(projectPath, session.metadata?.homeDir);
+                const displayPath = formatPathRelativeToHome(projectPath, session.homeDir ?? undefined);
                 projectGroup = { displayPath, sessions: [] };
                 machineGroup.projects.set(projectPath, projectGroup);
             }
@@ -201,7 +207,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
         // Sort sessions within each project group
         byMachine.forEach(mg => {
             mg.projects.forEach(pg => {
-                pg.sessions.sort((a, b) => b.createdAt - a.createdAt);
+                pg.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
             });
         });
 
@@ -258,11 +264,10 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 }
 
 // Compact session row with status dot indicator
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
+const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const sessionStatus = useSessionStatus(session);
-    const sessionName = getSessionName(session);
+    const status = STATUS_CONFIG[session.state];
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
@@ -294,9 +299,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         });
     }, []);
 
-    const webMenuProps = Platform.OS === 'web' ? {
+    const showActionAlert = useSessionActionAlert(session.id);
+    const menuProps = Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
-    } as any : {};
+    } as any : {
+        onLongPress: showActionAlert,
+    };
 
     const itemContent = (
         <Pressable
@@ -306,14 +314,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 selected && styles.sessionRowSelected
             ]}
             onPress={handlePress}
-            {...webMenuProps}
+            {...menuProps}
         >
             <View style={styles.sessionContent}>
                 <View style={styles.sessionTitleRow}>
-                    {/* Left indicator: status dot or draft icon */}
                     {(() => {
-                        // Show draft icon when online with draft
-                        if (sessionStatus.state === 'waiting' && session.draft) {
+                        if (session.state === 'waiting' && session.hasDraft) {
                             return (
                                 <Ionicons
                                     name="create-outline"
@@ -324,17 +330,15 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             );
                         }
 
-                        // Show status dot for permission_required/thinking states
-                        if (sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking') {
+                        if (session.state === 'permission_required' || session.state === 'thinking') {
                             return (
                                 <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                                    <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                                    <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />
                                 </View>
                             );
                         }
 
-                        // Show grey dot for online without draft
-                        if (sessionStatus.state === 'waiting') {
+                        if (session.state === 'waiting') {
                             return (
                                 <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
                                     <StatusDot color={theme.colors.textSecondary} isPulsing={false} />
@@ -348,11 +352,11 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     <Text
                         style={[
                             styles.sessionTitle,
-                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                            status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                         ]}
                         numberOfLines={2}
                     >
-                        {sessionName}
+                        {session.name}
                     </Text>
                 </View>
             </View>
@@ -366,7 +370,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 <SessionActionsPopover
                     anchor={actionsAnchor}
                     onClose={() => setActionsAnchor(null)}
-                    session={session}
+                    sessionId={session.id}
                     visible={!!actionsAnchor}
                 />
             </>

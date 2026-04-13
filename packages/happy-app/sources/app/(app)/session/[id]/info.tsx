@@ -21,7 +21,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
-import { copySessionMetadataToClipboard } from '@/utils/copySessionMetadataToClipboard';
+import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { HappyError } from '@/utils/errors';
 
 // Animated status dot component
@@ -150,6 +150,10 @@ function SessionInfoContent({ session }: { session: Session }) {
 
     const handleCopyMetadata = useCallback(() => {
         void copySessionMetadataToClipboard(session);
+    }, [session]);
+
+    const handleCopyMetadataAndLogs = useCallback(() => {
+        void copySessionMetadataAndLogsToClipboard(session);
     }, [session]);
 
     // Use HappyAction for archiving - it handles errors automatically
@@ -452,6 +456,11 @@ function SessionInfoContent({ session }: { session: Session }) {
                             title={t('sessionInfo.copyMetadata')}
                             icon={<Ionicons name="copy-outline" size={29} color="#007AFF" />}
                             onPress={handleCopyMetadata}
+                        />
+                        <Item
+                            title={t('sessionInfo.copyMetadata') + '\n& Client Logs'}
+                            icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
+                            onPress={handleCopyMetadataAndLogs}
                         />
                     </ItemGroup>
                 )}

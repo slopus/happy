@@ -167,7 +167,6 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                                 >
                                     <Pressable
                                         hitSlop={15}
-                                        onLongPress={Platform.OS === 'web' && onAvatarMenuRequest ? requestAvatarMenuFromTrigger : undefined}
                                         onPress={handleAvatarPress}
                                         style={styles.avatarButton}
                                         {...webAvatarMenuProps}
@@ -183,7 +182,6 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             ) : (
                                 <Pressable
                                     hitSlop={15}
-                                    onLongPress={Platform.OS === 'web' && onAvatarMenuRequest ? requestAvatarMenuFromTrigger : undefined}
                                     onPress={handleAvatarPress}
                                     style={styles.avatarButton}
                                     {...webAvatarMenuProps}

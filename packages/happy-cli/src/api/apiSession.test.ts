@@ -293,6 +293,9 @@ describe('ApiSessionClient v3 messages API migration', () => {
             expect(mockAxiosPost).toHaveBeenCalledTimes(2);
         });
 
+        const firstPayload = mockAxiosPost.mock.calls[0][1];
+        const secondPayload = mockAxiosPost.mock.calls[1][1];
+        expect(secondPayload).toEqual(firstPayload);
         expect((client as any).pendingOutbox).toHaveLength(0);
         expect((client as any).lastSeq).toBe(1);
     });

@@ -183,7 +183,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         router.replace('/');
                     }}
                     onClose={() => setSessionActionsAnchor(null)}
-                    session={session}
+                    sessionId={session.id}
                     visible={!!sessionActionsAnchor}
                 />
             )}

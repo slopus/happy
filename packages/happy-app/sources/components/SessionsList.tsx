@@ -2,9 +2,9 @@ import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
-import { SessionListViewItem } from '@/sync/storage';
+import { SessionListViewItem, SessionRowData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
@@ -12,7 +12,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSetting } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
-import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
 import { StyleSheet } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
@@ -21,6 +20,7 @@ import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
 
@@ -336,24 +336,36 @@ export function SessionsList() {
     );
 }
 
-// Sub-component that handles session message logic
+const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
+    disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
+    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
+    waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
+    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+};
+
 const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: {
-    session: Session;
+    session: SessionRowData;
     selected?: boolean;
     isFirst?: boolean;
     isLast?: boolean;
     isSingle?: boolean;
 }) => {
     const styles = stylesheet;
-    const sessionStatus = useSessionStatus(session);
-    const sessionName = getSessionName(session);
-    const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+    const status = STATUS_CONFIG[session.state];
 
-    const avatarId = React.useMemo(() => {
-        return getSessionAvatarId(session);
-    }, [session]);
+    const vibingMessage = React.useMemo(() => {
+        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
+    }, [session.state]);
+
+    const statusText = session.state === 'thinking'
+        ? vibingMessage
+        : session.state === 'disconnected'
+            ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+            : session.state === 'permission_required'
+                ? t('status.permissionRequired')
+                : t('status.online');
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);
@@ -369,9 +381,12 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         });
     }, []);
 
-    const webMenuProps = Platform.OS === 'web' ? {
+    const showActionAlert = useSessionActionAlert(session.id);
+    const menuProps = Platform.OS === 'web' ? {
         onContextMenu: handleContextMenu,
-    } as any : {};
+    } as any : {
+        onLongPress: showActionAlert,
+    };
 
     return (
         <View style={[
@@ -389,11 +404,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         isLast ? styles.sessionItemLast : {}
             ]}
             onPress={handlePress}
-            {...webMenuProps}
+            {...menuProps}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-                {session.draft && (
+                <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} />
+                {session.hasDraft && (
                     <View style={styles.draftIconContainer}>
                         <Ionicons
                             name="create-outline"
@@ -404,31 +419,28 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 )}
             </View>
             <View style={styles.sessionContent}>
-                {/* Title line */}
                 <View style={styles.sessionTitleRow}>
                     <Text style={[
                         styles.sessionTitle,
-                        sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                    ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
-                        {sessionName}
+                        status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                    ]} numberOfLines={1}>
+                        {session.name}
                     </Text>
                 </View>
 
-                {/* Subtitle line */}
                 <Text style={styles.sessionSubtitle} numberOfLines={1}>
-                    {sessionSubtitle}
+                    {session.subtitle}
                 </Text>
 
-                {/* Status line with dot */}
                 <View style={styles.statusRow}>
                     <View style={styles.statusDotContainer}>
-                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                        <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />
                     </View>
                     <Text style={[
                         styles.statusText,
-                        { color: sessionStatus.statusColor }
+                        { color: status.color }
                     ]}>
-                        {sessionStatus.statusText}
+                        {statusText}
                     </Text>
                 </View>
             </View>
@@ -437,7 +449,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             <SessionActionsPopover
                 anchor={actionsAnchor}
                 onClose={() => setActionsAnchor(null)}
-                session={session}
+                sessionId={session.id}
                 visible={!!actionsAnchor}
             />
         )}
