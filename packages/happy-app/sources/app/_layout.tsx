@@ -242,7 +242,6 @@ export default function RootLayout() {
                     }
                 }
 
-                console.log('credentials', credentials);
                 if (credentials) {
                     await syncRestore(credentials);
                 }
