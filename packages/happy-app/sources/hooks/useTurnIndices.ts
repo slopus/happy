@@ -8,6 +8,8 @@ export interface TurnInfo {
     index: number;
     /** Turn number, 1-based, oldest = 1 */
     turnNumber: number;
+    /** Message ID of the user-text message that starts this turn */
+    messageId: string;
     /** First ~60 chars of the user-text message for preview in turn picker */
     preview: string;
 }
@@ -51,6 +53,7 @@ export function extractTurnIndices(messages: Message[]): TurnInfo[] {
         return {
             index,
             turnNumber: total - i,
+            messageId: msg.id,
             preview,
         };
     });

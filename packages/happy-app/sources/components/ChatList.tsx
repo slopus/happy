@@ -62,38 +62,44 @@ const ChatListInternal = React.memo(React.forwardRef<ChatListHandle, ChatListInt
     const flatListRef = React.useRef<FlatList>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     const turns = useTurnIndices(props.messages);
-    // Track selection by turnNumber (stable across array rebuilds)
-    // instead of array index (shifts when new turns are added).
-    const selectedTurnNumberRef = React.useRef<number | null>(null);
+    // Track selection by message ID (stable across rewinds/reorders)
+    // instead of turnNumber (shifts when earlier turns are removed).
+    const selectedMessageIdRef = React.useRef<string | null>(null);
+    // Keep a stable ref to onTurnChange to avoid stale closures in effects
+    const onTurnChangeRef = React.useRef(props.onTurnChange);
+    onTurnChangeRef.current = props.onTurnChange;
 
-    // Resolve the current turnNumber to a turns-array index
+    // Resolve the selected message ID to a turns-array index
     const resolveIdx = useCallback((): number | null => {
-        const num = selectedTurnNumberRef.current;
-        if (num === null) return null;
-        const idx = turns.findIndex(t => t.turnNumber === num);
+        const id = selectedMessageIdRef.current;
+        if (id === null) return null;
+        const idx = turns.findIndex(t => t.messageId === id);
         return idx !== -1 ? idx : null;
     }, [turns]);
 
-    // Push turn info to parent whenever messages change
+    // Push turn info to parent whenever turns change
     React.useEffect(() => {
-        // If selected turn no longer exists (e.g. messages cleared), reset
-        if (selectedTurnNumberRef.current !== null) {
-            const exists = turns.some(t => t.turnNumber === selectedTurnNumberRef.current);
+        // If selected turn no longer exists (e.g. messages cleared/rewound), reset
+        if (selectedMessageIdRef.current !== null) {
+            const exists = turns.some(t => t.messageId === selectedMessageIdRef.current);
             if (!exists) {
-                selectedTurnNumberRef.current = null;
+                selectedMessageIdRef.current = null;
             }
         }
-        props.onTurnChange?.(selectedTurnNumberRef.current, turns.length, turns);
-    }, [turns.length]);
+        const currentNum = selectedMessageIdRef.current !== null
+            ? turns.find(t => t.messageId === selectedMessageIdRef.current)?.turnNumber ?? null
+            : null;
+        onTurnChangeRef.current?.(currentNum, turns.length, turns);
+    }, [turns]);
 
     const scrollToTurnIdx = useCallback((idx: number | null) => {
         if (idx === null) {
-            selectedTurnNumberRef.current = null;
+            selectedMessageIdRef.current = null;
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         } else {
             const turn = turns[idx];
             if (turn) {
-                selectedTurnNumberRef.current = turn.turnNumber;
+                selectedMessageIdRef.current = turn.messageId;
                 flatListRef.current?.scrollToIndex({
                     index: turn.index,
                     animated: true,
@@ -102,8 +108,8 @@ const ChatListInternal = React.memo(React.forwardRef<ChatListHandle, ChatListInt
             }
         }
         const currentNum = idx !== null ? turns[idx]?.turnNumber ?? null : null;
-        props.onTurnChange?.(currentNum, turns.length, turns);
-    }, [turns, props.onTurnChange]);
+        onTurnChangeRef.current?.(currentNum, turns.length, turns);
+    }, [turns]);
 
     const doNavigate = useCallback((action: NavigateAction) => {
         if (turns.length === 0) return;
@@ -126,11 +132,17 @@ const ChatListInternal = React.memo(React.forwardRef<ChatListHandle, ChatListInt
         nextPage: () => doNavigate('nextPage'),
         goToEnd: () => doNavigate('end'),
         goToTurn,
-        getTurnInfo: () => ({
-            current: selectedTurnNumberRef.current,
-            total: turns.length,
-            turns,
-        }),
+        getTurnInfo: () => {
+            const id = selectedMessageIdRef.current;
+            const currentNum = id !== null
+                ? turns.find(t => t.messageId === id)?.turnNumber ?? null
+                : null;
+            return {
+                current: currentNum,
+                total: turns.length,
+                turns,
+            };
+        },
     }), [doNavigate, goToTurn, turns]);
 
     const keyExtractor = useCallback((item: Message) => item.id, []);

@@ -40,6 +40,7 @@ function makeTurns(count: number): TurnInfo[] {
     return Array.from({ length: count }, (_, i) => ({
         index: i * 3,
         turnNumber: count - i,
+        messageId: `msg-${i * 3}`,
         preview: `Turn ${count - i}`,
     }));
 }
@@ -73,11 +74,11 @@ describe('extractTurnIndices', () => {
 
         expect(turns).toHaveLength(3);
         // turns[0] is the newest user-text (index 0), gets turnNumber 3
-        expect(turns[0]).toMatchObject({ index: 0, turnNumber: 3 });
+        expect(turns[0]).toMatchObject({ index: 0, turnNumber: 3, messageId: 'msg-0' });
         // turns[1] is the second newest (index 2), gets turnNumber 2
-        expect(turns[1]).toMatchObject({ index: 2, turnNumber: 2 });
+        expect(turns[1]).toMatchObject({ index: 2, turnNumber: 2, messageId: 'msg-2' });
         // turns[2] is the oldest (index 4), gets turnNumber 1
-        expect(turns[2]).toMatchObject({ index: 4, turnNumber: 1 });
+        expect(turns[2]).toMatchObject({ index: 4, turnNumber: 1, messageId: 'msg-4' });
     });
 
     it('skips agent-text and tool-call messages', () => {
