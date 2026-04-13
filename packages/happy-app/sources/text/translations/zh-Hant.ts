@@ -214,6 +214,8 @@ export const zhHant: TranslationStructure = {
         disableAnalytics: '停用分析',
         analyticsDisabled: '所有追蹤和遙測已停用',
         analyticsEnabled: '匿名使用分析已啟用',
+        imageUpload: '圖片上傳',
+        imageUploadSubtitle: '將圖片附加到訊息中讓 Claude 分析',
     },
 
     errors: {

@@ -213,6 +213,8 @@ export const pt: TranslationStructure = {
         disableAnalytics: 'Desativar análises',
         analyticsDisabled: 'Todo rastreamento e telemetria desativados',
         analyticsEnabled: 'Análises anônimas de uso ativas',
+        imageUpload: 'Upload de imagens',
+        imageUploadSubtitle: 'Anexe imagens às mensagens para Claude analisar',
     },
 
     errors: {

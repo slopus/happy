@@ -202,6 +202,8 @@ export const ru: TranslationStructure = {
         disableAnalytics: 'Отключить аналитику',
         analyticsDisabled: 'Вся аналитика и телеметрия отключены',
         analyticsEnabled: 'Анонимная аналитика использования активна',
+        imageUpload: 'Загрузка изображений',
+        imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа Claude',
     },
 
     errors: {

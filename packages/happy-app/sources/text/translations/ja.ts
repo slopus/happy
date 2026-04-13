@@ -215,6 +215,8 @@ export const ja: TranslationStructure = {
         disableAnalytics: '分析を無効化',
         analyticsDisabled: 'すべてのトラッキングとテレメトリが無効',
         analyticsEnabled: '匿名の使用状況分析がアクティブ',
+        imageUpload: '画像アップロード',
+        imageUploadSubtitle: 'メッセージに画像を添付してClaudeに分析させる',
     },
 
     errors: {

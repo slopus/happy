@@ -215,6 +215,8 @@ export const zhHans: TranslationStructure = {
         disableAnalytics: '禁用分析',
         analyticsDisabled: '所有跟踪和遥测已禁用',
         analyticsEnabled: '匿名使用分析已启用',
+        imageUpload: '图片上传',
+        imageUploadSubtitle: '将图片附加到消息中让 Claude 分析',
     },
 
     errors: {
