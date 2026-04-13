@@ -721,6 +721,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         if (msg.role === 'agent') {
             for (let c of msg.content) {
                 if (c.type === 'tool-call') {
+                    // Skip internal tool calls that should not appear in UI
+                    if (c.name === 'mcp__happy__change_title') continue;
+
                     // Direct lookup by tool ID (since permission ID = tool ID now)
                     const existingMessageId = state.toolIdToMessageId.get(c.id);
 
