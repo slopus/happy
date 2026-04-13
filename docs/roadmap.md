@@ -12,8 +12,8 @@
 - Bundled distribution (needed to make my own daily driver)
 - Forking a session - for example a session with triaging -> fork into multiple where we fix the specific groups of issues
 
-- File preview / editing in session — see [context panel & diff viewer spec](plans/context-panel-and-diff-viewer.md)
-- Better diff viewer — see [context panel & diff viewer spec](plans/context-panel-and-diff-viewer.md)
+- File preview / editing in session — see [layout-core.md](layout-core.md)
+- Better diff viewer — see [layout-core.md](layout-core.md)
 
 ## Navigation Bugs
 
