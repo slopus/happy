@@ -585,10 +585,13 @@ const style = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         borderRadius: 8,
         overflow: 'hidden',
-        alignSelf: 'flex-start',
+        maxWidth: '100%',
+        flexGrow: 0,
+        flexShrink: 1,
     },
     tableScrollView: {
         flexGrow: 0,
+        flexShrink: 1,
     },
     tableContent: {
         flexDirection: 'row',
