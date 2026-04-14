@@ -15,22 +15,12 @@ import { Platform } from 'react-native';
 import { Modal } from '@/modal';
 import { generateThumbhash } from '@/utils/thumbhash';
 import { t } from '@/text';
+import type { AttachmentPreview } from '@/sync/attachmentTypes';
 
 export const MAX_IMAGES_PER_MESSAGE = 20;
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-export type AttachmentPreview = {
-    /** Stable unique identifier for use as React key and for removal. */
-    id: string;
-    uri: string;
-    width: number;
-    height: number;
-    mimeType: string;
-    /** May be 0 if the system did not provide the file size. */
-    size: number;
-    name: string;
-    thumbhash?: string;
-};
+export type { AttachmentPreview };
 
 type UseImagePickerResult = {
     selectedImages: AttachmentPreview[];
