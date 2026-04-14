@@ -1,0 +1,13 @@
+diff --git a/dist/livekit-client.esm.mjs b/dist/livekit-client.esm.mjs
+index e086c55942af6bedb99d385bc7c0ed1efce18ab1..2ca7c87b4089851f56af0ec92fd8c885387b6f88 100644
+--- a/dist/livekit-client.esm.mjs
++++ b/dist/livekit-client.esm.mjs
+@@ -19779,7 +19779,7 @@ class RTCEngine extends eventsExports.EventEmitter {
+   join(url_1, token_1, opts_1, abortSignal_1) {
+     return __awaiter(this, arguments, void 0, function (url, token, opts, abortSignal) {
+       var _this2 = this;
+-      let useV0Path = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
++      let useV0Path = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : true;
+       return function* () {
+         _this2.url = url;
+         _this2.token = token;

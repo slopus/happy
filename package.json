@@ -47,7 +47,10 @@
             "esbuild",
             "prisma",
             "sharp"
-        ]
+        ],
+        "patchedDependencies": {
+            "livekit-client@2.17.0": "patches/livekit-client@2.17.0.patch"
+        }
     },
     "packageManager": "pnpm@10.11.0"
 }
