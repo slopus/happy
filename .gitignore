@@ -47,6 +47,8 @@ yarn-error.*
 .plan
 
 CLAUDE.local.md
+CLAUDE.md
+.claude/CLAUDE.md
 
 .dev/worktree/*
 
