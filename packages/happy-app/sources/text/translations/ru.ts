@@ -537,6 +537,7 @@ export const ru: TranslationStructure = {
     },
 
     files: {
+        changes: 'Изменения',
         searchPlaceholder: 'Поиск файлов...',
         detachedHead: 'отделённый HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} подготовлено • ${unstaged} не подготовлено`,

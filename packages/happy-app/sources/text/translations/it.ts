@@ -526,6 +526,7 @@ export const it: TranslationStructure = {
     },
 
     files: {
+        changes: 'Modifiche',
         searchPlaceholder: 'Cerca file...',
         detachedHead: 'HEAD scollegato',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} in stage • ${unstaged} non in stage`,

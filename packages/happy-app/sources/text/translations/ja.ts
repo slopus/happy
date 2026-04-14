@@ -529,6 +529,7 @@ export const ja: TranslationStructure = {
     },
 
     files: {
+        changes: '変更',
         searchPlaceholder: 'ファイルを検索...',
         detachedHead: 'detached HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `ステージ済み ${staged} • 未ステージ ${unstaged}`,

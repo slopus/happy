@@ -526,6 +526,7 @@ export const en = {
     },
 
     files: {
+        changes: 'Changes',
         searchPlaceholder: 'Search files...',
         detachedHead: 'detached HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} staged • ${unstaged} unstaged`,

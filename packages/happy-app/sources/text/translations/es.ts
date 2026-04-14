@@ -528,6 +528,7 @@ export const es: TranslationStructure = {
     },
 
     files: {
+        changes: 'Cambios',
         searchPlaceholder: 'Buscar archivos...',
         detachedHead: 'HEAD separado',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} preparados • ${unstaged} sin preparar`,

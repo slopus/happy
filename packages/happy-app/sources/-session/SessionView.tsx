@@ -33,6 +33,7 @@ import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
+import { FilesSidebar } from '@/components/FilesSidebar';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Clipboard from 'expo-clipboard';
@@ -40,7 +41,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
@@ -57,12 +58,19 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+    const { width: windowWidth } = useWindowDimensions();
     const [sessionActionsAnchor, setSessionActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+
+    const showSidebar = (isRunningOnMac() || Platform.OS === 'web')
+        && windowWidth >= SIDEBAR_MIN_WINDOW_WIDTH
+        && isDataReady && !!session;
+
+    // Match left sidebar width: 30% of window, clamped to 250–360px
+    const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
         if (!isDataReady) {
-            // Loading state - show empty header
             return {
                 title: '',
                 subtitle: undefined,
@@ -74,7 +82,6 @@ export const SessionView = React.memo((props: { id: string }) => {
         }
 
         if (!session) {
-            // Deleted state - show deleted message in header
             return {
                 title: t('errors.sessionDeleted'),
                 subtitle: undefined,
@@ -85,7 +92,6 @@ export const SessionView = React.memo((props: { id: string }) => {
             };
         }
 
-        // Normal state - show session info
         const isConnected = session.presence === 'online';
         return {
             title: getSessionName(session),
@@ -98,7 +104,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         };
     }, [session, isDataReady, sessionId, router]);
 
-    return (
+    const mainContent = (
         <>
             {/* Status bar shadow for landscape mode */}
             {isLandscape && deviceType === 'phone' && (
@@ -155,19 +161,16 @@ export const SessionView = React.memo((props: { id: string }) => {
             {/* Content based on state */}
             <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 32 : 0) : 0 }}>
                 {!isDataReady ? (
-                    // Loading state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 ) : !session ? (
-                    // Deleted state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
                         <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    // Normal session view
                     <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
                 )}
             </View>
@@ -189,8 +192,26 @@ export const SessionView = React.memo((props: { id: string }) => {
             )}
         </>
     );
+
+    if (!showSidebar) {
+        return mainContent;
+    }
+
+    // Desktop layout: chat + sidebar at the same level (full height)
+    return (
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+            <View style={{ flex: 1 }}>
+                {mainContent}
+            </View>
+            <View style={{ width: sidebarWidth }}>
+                <FilesSidebar sessionId={sessionId} />
+            </View>
+        </View>
+    );
 });
 
+
+const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
 
 function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
     const { theme } = useUnistyles();

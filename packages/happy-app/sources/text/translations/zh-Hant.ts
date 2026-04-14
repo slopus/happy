@@ -528,6 +528,7 @@ export const zhHant: TranslationStructure = {
     },
 
     files: {
+        changes: '變更',
         searchPlaceholder: '搜尋檔案...',
         detachedHead: '游離 HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} 已暫存 • ${unstaged} 未暫存`,

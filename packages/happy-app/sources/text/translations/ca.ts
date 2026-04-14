@@ -528,6 +528,7 @@ export const ca: TranslationStructure = {
     },
 
     files: {
+        changes: 'Canvis',
         searchPlaceholder: 'Cerca fitxers...',
         detachedHead: 'HEAD separat',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} preparats • ${unstaged} sense preparar`,
