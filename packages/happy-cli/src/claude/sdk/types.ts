@@ -44,6 +44,8 @@ export interface QueryOptions {
     canCallTool?: CanCallToolCallback
     /** Path to a settings JSON file to pass to Claude via --settings */
     settingsPath?: string
+    /** Reasoning effort level: low, medium, high, or max (Opus 4.6 only) */
+    effort?: 'low' | 'medium' | 'high' | 'max'
 }
 
 /**

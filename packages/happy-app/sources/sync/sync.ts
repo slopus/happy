@@ -470,7 +470,7 @@ class Sync {
             return;
         }
 
-        const { permissionMode, model } = resolveMessageModeMeta(session);
+        const { permissionMode, model, effortLevel } = resolveMessageModeMeta(session);
         const { displayText, source = 'chat' } = options ?? {};
 
         // Generate local ID
@@ -508,6 +508,7 @@ class Sync {
                 model,
                 fallbackModel,
                 appendSystemPrompt: systemPrompt,
+                ...(effortLevel && { effortLevel }), // Include effortLevel if set
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
