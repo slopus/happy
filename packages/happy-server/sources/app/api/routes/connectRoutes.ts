@@ -99,7 +99,8 @@ export function connectRoutes(app: Fastify) {
         const tokenData = await auth.verifyGithubToken(state);
         if (!tokenData) {
             log({ module: 'github-oauth' }, `Invalid state token: ${state}`);
-            return reply.redirect('https://app.happy.engineering?error=invalid_state');
+            const appUrl = process.env.PUBLIC_APP_URL || 'https://app.happy.engineering';
+            return reply.redirect(`${appUrl}?error=invalid_state`);
         }
 
         const userId = tokenData.userId;
@@ -107,7 +108,8 @@ export function connectRoutes(app: Fastify) {
         const clientSecret = process.env.GITHUB_CLIENT_SECRET;
 
         if (!clientId || !clientSecret) {
-            return reply.redirect('https://app.happy.engineering?error=server_config');
+            const appUrl = process.env.PUBLIC_APP_URL || 'https://app.happy.engineering';
+            return reply.redirect(`${appUrl}?error=server_config`);
         }
 
         try {
@@ -132,7 +134,8 @@ export function connectRoutes(app: Fastify) {
             };
 
             if (tokenResponseData.error) {
-                return reply.redirect(`https://app.happy.engineering?error=${encodeURIComponent(tokenResponseData.error)}`);
+                const appUrl = process.env.PUBLIC_APP_URL || 'https://app.happy.engineering';
+                return reply.redirect(`${appUrl}?error=${encodeURIComponent(tokenResponseData.error)}`);
             }
 
             const accessToken = tokenResponseData.access_token;
@@ -148,7 +151,8 @@ export function connectRoutes(app: Fastify) {
             const userData = await userResponse.json() as GitHubProfile;
 
             if (!userResponse.ok) {
-                return reply.redirect('https://app.happy.engineering?error=github_user_fetch_failed');
+                const appUrl = process.env.PUBLIC_APP_URL || 'https://app.happy.engineering';
+                return reply.redirect(`${appUrl}?error=github_user_fetch_failed`);
             }
 
             // Use the new githubConnect operation
@@ -156,11 +160,13 @@ export function connectRoutes(app: Fastify) {
             await githubConnect(ctx, userData, accessToken!);
 
             // Redirect to app with success
-            return reply.redirect(`https://app.happy.engineering?github=connected&user=${encodeURIComponent(userData.login)}`);
+            const appUrl = process.env.PUBLIC_APP_URL || 'https://app.happy.engineering';
+            return reply.redirect(`${appUrl}?github=connected&user=${encodeURIComponent(userData.login)}`);
 
         } catch (error) {
             log({ module: 'github-oauth' }, `Error in GitHub GET callback: ${error}`);
-            return reply.redirect('https://app.happy.engineering?error=server_error');
+            const appUrl = process.env.PUBLIC_APP_URL || 'https://app.happy.engineering';
+            return reply.redirect(`${appUrl}?error=server_error`);
         }
     });
 
