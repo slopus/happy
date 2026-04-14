@@ -920,6 +920,15 @@ export const zhHans: TranslationStructure = {
         noData: '暂无使用数据',
     },
 
+    imageUpload: {
+        permissionTitle: '访问照片库',
+        permissionMessage: '允许访问您的照片库以在消息中附加图片。',
+        limitTitle: '已达到图片限制',
+        limitMessage: ({ max }: { max: number }) => `每条消息最多可附加 ${max} 张图片。`,
+        fileTooLargeTitle: '文件过大',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"超过了 ${maxMb}MB 的限制，未能添加。`,
+    },
+
     feed: {
         // Feed notifications for friend requests and acceptances
         friendRequestFrom: ({ name }: { name: string }) => `${name} 向您发送了好友请求`,

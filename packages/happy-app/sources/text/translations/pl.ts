@@ -949,6 +949,15 @@ export const pl: TranslationStructure = {
         noData: 'Brak danych o użyciu',
     },
 
+    imageUpload: {
+        permissionTitle: 'Dostęp do biblioteki zdjęć',
+        permissionMessage: 'Zezwól na dostęp do biblioteki zdjęć, aby załączać obrazy do wiadomości.',
+        limitTitle: 'Osiągnięto limit obrazów',
+        limitMessage: ({ max }: { max: number }) => `Możesz dołączyć maksymalnie ${max} obrazów na wiadomość.`,
+        fileTooLargeTitle: 'Plik zbyt duży',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" przekracza limit ${maxMb}MB i nie został dodany.`,
+    },
+
     feed: {
         // Feed notifications for friend requests and acceptances
         friendRequestFrom: ({ name }: { name: string }) => `${name} wysłał Ci zaproszenie do znajomych`,

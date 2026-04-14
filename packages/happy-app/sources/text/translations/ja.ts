@@ -921,6 +921,15 @@ export const ja: TranslationStructure = {
         noData: '使用データがありません',
     },
 
+    imageUpload: {
+        permissionTitle: 'フォトライブラリへのアクセス',
+        permissionMessage: 'メッセージに画像を添付するには、フォトライブラリへのアクセスを許可してください。',
+        limitTitle: '画像の上限に達しました',
+        limitMessage: ({ max }: { max: number }) => `1メッセージに添付できる画像は最大${max}枚です。`,
+        fileTooLargeTitle: 'ファイルが大きすぎます',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"は${maxMb}MBの制限を超えているため追加されませんでした。`,
+    },
+
     feed: {
         // Feed notifications for friend requests and acceptances
         friendRequestFrom: ({ name }: { name: string }) => `${name}さんから友達リクエストが届きました`,

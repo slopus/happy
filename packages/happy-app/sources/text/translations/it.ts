@@ -918,6 +918,15 @@ export const it: TranslationStructure = {
         noData: 'Nessun dato di utilizzo disponibile',
     },
 
+    imageUpload: {
+        permissionTitle: 'Accesso alla libreria foto',
+        permissionMessage: "Consenti l'accesso alla tua libreria foto per allegare immagini ai messaggi.",
+        limitTitle: 'Limite immagini raggiunto',
+        limitMessage: ({ max }: { max: number }) => `Puoi allegare fino a ${max} immagini per messaggio.`,
+        fileTooLargeTitle: 'File troppo grande',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" supera il limite di ${maxMb}MB e non è stato aggiunto.`,
+    },
+
     feed: {
         // Feed notifications for friend requests and acceptances
         friendRequestFrom: ({ name }: { name: string }) => `${name} ti ha inviato una richiesta di amicizia`,

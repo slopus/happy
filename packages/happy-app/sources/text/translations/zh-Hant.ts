@@ -919,6 +919,15 @@ export const zhHant: TranslationStructure = {
         noData: '暫無使用資料',
     },
 
+    imageUpload: {
+        permissionTitle: '存取照片圖庫',
+        permissionMessage: '允許存取您的照片圖庫以在訊息中附加圖片。',
+        limitTitle: '已達到圖片限制',
+        limitMessage: ({ max }: { max: number }) => `每則訊息最多可附加 ${max} 張圖片。`,
+        fileTooLargeTitle: '檔案太大',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"超過了 ${maxMb}MB 的限制，未能新增。`,
+    },
+
     feed: {
         // Feed notifications for friend requests and acceptances
         friendRequestFrom: ({ name }: { name: string }) => `${name} 向您傳送了好友請求`,
