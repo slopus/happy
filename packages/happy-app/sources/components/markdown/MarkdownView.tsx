@@ -1,6 +1,27 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import * as React from 'react';
-import { Image, Pressable, ScrollView, View, Platform } from 'react-native';
+import { Image, Pressable, ScrollView, View, Platform, ScrollView as ScrollViewType } from 'react-native';
+
+// Converts vertical wheel events to horizontal scroll on web, blocks page scroll
+function useHorizontalWheelScroll() {
+    const ref = React.useRef<ScrollViewType>(null);
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !ref.current) return;
+        const node = (ref.current as any)?.getScrollableNode?.() ?? (ref.current as any);
+        if (!node || !node.addEventListener) return;
+        const handler = (e: WheelEvent) => {
+            const el = node as HTMLElement;
+            const maxScroll = el.scrollWidth - el.clientWidth;
+            if (maxScroll <= 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            el.scrollLeft += e.deltaY || e.deltaX;
+        };
+        node.addEventListener('wheel', handler, { passive: false });
+        return () => node.removeEventListener('wheel', handler);
+    });
+    return ref;
+}
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
@@ -160,6 +181,7 @@ function RenderNumberedListBlock(props: { items: { number: number, spans: Markdo
 
 function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean }) {
     const [isHovered, setIsHovered] = React.useState(false);
+    const wheelRef = useHorizontalWheelScroll();
 
     const copyCode = React.useCallback(async () => {
         try {
@@ -181,10 +203,10 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
         >
             {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
             <ScrollView
-                style={{ flexGrow: 0, flexShrink: 0 }}
+                ref={wheelRef}
                 horizontal={true}
                 contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
-                showsHorizontalScrollIndicator={false}
+                showsHorizontalScrollIndicator={true}
             >
                 <SimpleSyntaxHighlighter
                     code={props.content}
@@ -301,16 +323,18 @@ function RenderTableBlock(props: {
     const rowCount = props.rows.length;
     const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
 
+    const wheelRef = useHorizontalWheelScroll();
+
     return (
         <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
             <ScrollView
+                ref={wheelRef}
                 horizontal
-                showsHorizontalScrollIndicator={Platform.OS !== 'web'}
+                showsHorizontalScrollIndicator={true}
                 nestedScrollEnabled={true}
                 style={style.tableScrollView}
             >
                 <View style={style.tableContent}>
-                    {/* Render each column as a vertical container */}
                     {props.headers.map((header, colIndex) => (
                         <View
                             key={`column-${colIndex}`}
@@ -319,11 +343,9 @@ function RenderTableBlock(props: {
                                 colIndex === columnCount - 1 && style.tableColumnLast
                             ]}
                         >
-                            {/* Header cell for this column */}
                             <View style={[style.tableCell, style.tableHeaderCell, style.tableCellFirst]}>
                                 <Text style={style.tableHeaderText}><RenderSpans spans={header} baseStyle={style.tableHeaderText} onLinkPress={props.onLinkPress} selectable={props.selectable} /></Text>
                             </View>
-                            {/* Data cells for this column */}
                             {props.rows.map((row, rowIndex) => (
                                 <View
                                     key={`cell-${rowIndex}-${colIndex}`}
@@ -458,6 +480,7 @@ const style = StyleSheet.create((theme) => ({
         marginVertical: 8,
         position: 'relative',
         zIndex: 1,
+        width: '100%',
     },
     copyButtonWrapper: {
         position: 'absolute',
@@ -585,9 +608,7 @@ const style = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         borderRadius: 8,
         overflow: 'hidden',
-        maxWidth: '100%',
-        flexGrow: 0,
-        flexShrink: 1,
+        width: '100%',
     },
     tableScrollView: {
         flexGrow: 0,
