@@ -27,6 +27,7 @@ type UseImagePickerResult = {
     pickImages: () => Promise<void>;
     removeImage: (id: string) => void;
     clearImages: () => void;
+    addImages: (images: AttachmentPreview[]) => void;
 };
 
 export function useImagePicker(): UseImagePickerResult {
@@ -122,5 +123,13 @@ export function useImagePicker(): UseImagePickerResult {
         setSelectedImages([]);
     }, []);
 
-    return { selectedImages, pickImages, removeImage, clearImages };
+    const addImages = useCallback((images: AttachmentPreview[]) => {
+        setSelectedImages(prev => {
+            const remaining = MAX_IMAGES_PER_MESSAGE - prev.length;
+            if (remaining <= 0) return prev;
+            return [...prev, ...images.slice(0, remaining)];
+        });
+    }, []);
+
+    return { selectedImages, pickImages, removeImage, clearImages, addImages };
 }
