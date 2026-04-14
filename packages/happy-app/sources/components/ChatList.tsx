@@ -45,7 +45,7 @@ const ChatListInternal = React.memo((props: {
     const { theme } = useUnistyles();
     const flatListRef = React.useRef<FlatList>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
-
+    const isNearBottom = React.useRef(true);
     const keyExtractor = useCallback((item: any) => item.id, []);
     const renderItem = useCallback(({ item }: { item: any }) => (
         <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
@@ -56,10 +56,33 @@ const ChatListInternal = React.memo((props: {
     const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetY = e.nativeEvent.contentOffset.y;
         setShowScrollButton(offsetY > SCROLL_THRESHOLD);
+        // Track near-bottom state for auto-scroll on new content
+        isNearBottom.current = offsetY < 100;
+    }, []);
+
+    const onContentSizeChange = useCallback(() => {
+        if (isNearBottom.current) {
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }
     }, []);
 
     const scrollToBottom = useCallback(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, []);
+
+    // On macOS/web, Shift+wheel swaps deltaX/deltaY — restore vertical scrolling
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
+        if (!node) return;
+        const handler = (e: WheelEvent) => {
+            if (e.shiftKey && Math.abs(e.deltaX) > 0 && Math.abs(e.deltaY) < 1) {
+                node.scrollTop += e.deltaX;
+                e.preventDefault();
+            }
+        };
+        node.addEventListener('wheel', handler, { passive: false });
+        return () => node.removeEventListener('wheel', handler);
     }, []);
 
     return (
@@ -77,6 +100,7 @@ const ChatListInternal = React.memo((props: {
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
                 renderItem={renderItem}
                 onScroll={handleScroll}
+                onContentSizeChange={onContentSizeChange}
                 scrollEventThrottle={16}
                 ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
                 ListFooterComponent={<ListHeader />}
