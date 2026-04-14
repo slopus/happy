@@ -120,8 +120,9 @@ export const RealtimeVoiceSession: React.FC = () => {
         onDisconnect: () => {
             console.log('Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
-            storage.getState().setRealtimeMode('idle', true); // immediate mode change
+            storage.getState().setRealtimeMode('idle', true);
             storage.getState().clearRealtimeModeDebounce();
+            storage.getState().incrementVoiceSessionGeneration();
         },
         onMessage: (data) => {
             console.log('Realtime message:', data);
