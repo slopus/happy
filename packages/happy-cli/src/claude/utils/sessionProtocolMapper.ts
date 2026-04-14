@@ -538,6 +538,15 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'user') {
+        // Skip meta messages (e.g. Skill tool content injections) — they are internal
+        // context for the model, not user-visible content
+        if (message.isMeta) {
+            return {
+                currentTurnId: state.currentTurnId,
+                envelopes,
+            };
+        }
+
         if (typeof message.message.content === 'string') {
             if (message.isSidechain) {
                 const turnId = ensureTurn(state, envelopes);
