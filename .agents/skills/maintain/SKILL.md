@@ -15,8 +15,9 @@ is a relationship with a user. Every close is a chance to build trust.
 
 ## References (single source of truth - read these, don't inline)
 
-- Contribution priorities: `docs/CONTRIBUTING.md`
+- Contribution priorities: `docs/contributing.md`
 - Roadmap themes: `docs/roadmap.md`
+- Triage checkpoint (last session state, pending items): `checkpoint.md`
 - GitHub Project board: https://github.com/orgs/slopus/projects/1
 
 ## Golden rule
