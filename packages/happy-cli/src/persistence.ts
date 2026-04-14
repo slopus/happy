@@ -72,6 +72,7 @@ export interface DaemonLocallyPersistedState {
   httpPort: number;
   startTime: string;
   startedWithCliVersion: string;
+  startedFromCwd?: string;
   lastHeartbeat?: string;
   daemonLogPath?: string;
 }
@@ -392,4 +393,3 @@ export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
     }
   } catch { }
 }
-
