@@ -329,11 +329,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
 
+                            // Wait for any in-flight attachment downloads before checking
+                            await session.client.waitForPendingDownloads();
+
                             // Combine pending image attachments with text into multi-modal content
                             const attachments = session.client.pendingAttachments;
+                            const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
                             if (attachments.length > 0) {
                                 const contentBlocks: ContentBlockParam[] = [];
                                 for (const att of attachments) {
+                                    if (!SUPPORTED_IMAGE_TYPES.has(att.mimeType)) {
+                                        logger.debug(`[remote] Skipping unsupported attachment type: ${att.mimeType} (${att.name})`);
+                                        continue;
+                                    }
                                     contentBlocks.push({
                                         type: 'image' as const,
                                         source: {

@@ -88,6 +88,8 @@ export class ApiSessionClient extends EventEmitter {
     private blobKey: Uint8Array | null = null;
     /** Buffered decoded image attachments awaiting the next text message */
     readonly pendingAttachments: Array<{ data: Uint8Array; mimeType: string; name: string }> = [];
+    /** Tracks in-flight attachment downloads so text messages can wait for them */
+    private attachmentDownloads: Promise<void>[] = [];
     readonly rpcHandlerManager: RpcHandlerManager;
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
@@ -284,12 +286,16 @@ export class ApiSessionClient extends EventEmitter {
         // ref format: "sessions/{sessionId}/attachments/{file}"
         const parts = ref.split('/');
         const attachmentFile = parts[parts.length - 1];
-        const url = `${configuration.serverUrl}/v1/sessions/${this.sessionId}/attachments/${attachmentFile}`;
+        if (!attachmentFile || /[^a-zA-Z0-9._-]/.test(attachmentFile)) {
+            throw new Error(`Invalid attachment reference: ${ref}`);
+        }
+        const url = `${configuration.serverUrl}/v1/sessions/${this.sessionId}/attachments/${encodeURIComponent(attachmentFile)}`;
         const response = await axios.get(url, {
             headers: { 'Authorization': `Bearer ${this.token}` },
             responseType: 'arraybuffer',
             timeout: 60000,
             maxRedirects: 5,
+            maxContentLength: 10 * 1024 * 1024, // 10MB limit matching server
         });
         return new Uint8Array(response.data);
     }
@@ -302,6 +308,24 @@ export class ApiSessionClient extends EventEmitter {
         const encrypted = await this.downloadAttachment(ref);
         const key = await this.getBlobKey();
         return decryptBlob(encrypted, key);
+    }
+
+    /**
+     * Track an in-flight attachment download so text messages can wait for it.
+     */
+    trackAttachmentDownload(promise: Promise<void>): void {
+        this.attachmentDownloads.push(promise);
+    }
+
+    /**
+     * Wait for all in-flight attachment downloads to complete.
+     * Called before consuming a text message to avoid race conditions.
+     */
+    async waitForPendingDownloads(): Promise<void> {
+        if (this.attachmentDownloads.length > 0) {
+            await Promise.allSettled(this.attachmentDownloads);
+            this.attachmentDownloads = [];
+        }
     }
 
     private authHeaders() {

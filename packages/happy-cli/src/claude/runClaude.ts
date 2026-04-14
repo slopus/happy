@@ -292,24 +292,27 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     // Handle file events — download and decrypt attachment blobs, buffer on session
-    session.onFileEvent(async (fileEvent) => {
+    session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
         logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
-        try {
-            const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
-            if (decrypted) {
-                session.pendingAttachments.push({
-                    data: decrypted,
-                    mimeType: ev.mimeType ?? 'image/jpeg',
-                    name: ev.name,
-                });
-                logger.debug(`[loop] Attachment decrypted and buffered: ${ev.name} (${decrypted.length} bytes)`);
-            } else {
-                logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
+        const downloadPromise = (async () => {
+            try {
+                const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
+                if (decrypted) {
+                    session.pendingAttachments.push({
+                        data: decrypted,
+                        mimeType: ev.mimeType ?? 'image/jpeg',
+                        name: ev.name,
+                    });
+                    logger.debug(`[loop] Attachment decrypted and buffered: ${ev.name} (${decrypted.length} bytes)`);
+                } else {
+                    logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
+                }
+            } catch (error) {
+                logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
             }
-        } catch (error) {
-            logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
-        }
+        })();
+        session.trackAttachmentDownload(downloadPromise);
     });
 
     session.onUserMessage((message) => {
