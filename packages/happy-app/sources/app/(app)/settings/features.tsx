@@ -61,7 +61,7 @@ export default function FeaturesSettingsScreen() {
                 />
                 <Item
                     title="Resume Session"
-                    subtitle="Allow resuming disconnected sessions via the machine daemon"
+                    subtitle="Resume disconnected Claude Code and Codex sessions via the machine daemon"
                     icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
                     rightElement={
                         <Switch

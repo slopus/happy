@@ -35,6 +35,7 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { FilesSidebar } from '@/components/FilesSidebar';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
@@ -337,6 +338,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
+    const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
     const isArchivedSession = session.metadata?.lifecycleState === 'archived';
     const isDisconnected = !sessionStatus.isConnected;
     const isInactiveArchivedSession = isArchivedSession && isDisconnected;
@@ -518,6 +520,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
                 resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
+                canResume={canResume}
+                resuming={resumingSession}
+                onResume={resumeSession}
             />
         </CenteredInputWidth>
     ) : null;
@@ -648,6 +653,9 @@ function ResumeCommandHint({ resumeCommandBlock }: {
 
 function InactiveArchivedHint(props: {
     resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>> | null;
+    canResume: boolean;
+    resuming: boolean;
+    onResume: () => void;
 }) {
     const { theme } = useUnistyles();
     const hintTextStyle = {
@@ -668,13 +676,35 @@ function InactiveArchivedHint(props: {
                 <Text style={hintTextStyle}>
                     {t('session.inactiveArchived')}
                 </Text>
-                {props.resumeCommandBlock && (
+                {props.canResume ? null : props.resumeCommandBlock && (
                     <Text style={hintTextStyle}>
                         {t('session.resumeFromTerminal')}
                     </Text>
                 )}
             </View>
-            {props.resumeCommandBlock && (
+            {props.canResume ? (
+                <Pressable
+                    onPress={props.onResume}
+                    disabled={props.resuming}
+                    style={({ pressed }) => ({
+                        height: 40,
+                        borderRadius: 10,
+                        backgroundColor: theme.colors.button.primary.background,
+                        opacity: props.resuming ? 0.6 : pressed ? 0.8 : 1,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginHorizontal: 8,
+                    })}
+                >
+                    {props.resuming ? (
+                        <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
+                    ) : (
+                        <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
+                            {t('sessionInfo.resumeSession')}
+                        </Text>
+                    )}
+                </Pressable>
+            ) : props.resumeCommandBlock && (
                 <ResumeCommandCopyBlock resumeCommandBlock={props.resumeCommandBlock} />
             )}
         </View>
