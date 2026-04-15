@@ -1,7 +1,7 @@
 /**
  * MiniMax Constants
  *
- * Centralized constants for MiniMax M2.5 integration including
+ * Centralized constants for MiniMax M2.7 integration including
  * environment variable names and default values.
  */
 
@@ -15,7 +15,7 @@ export const MINIMAX_BASE_URL_ENV = 'MINIMAX_BASE_URL';
 export const DEFAULT_MINIMAX_BASE_URL = 'https://api.minimax.io';
 
 /** Default MiniMax model */
-export const DEFAULT_MINIMAX_MODEL = 'MiniMax-M2.5';
+export const DEFAULT_MINIMAX_MODEL = 'MiniMax-M2.7';
 
 /** Alternative high-speed model */
 export const MINIMAX_HIGHSPEED_MODEL = 'MiniMax-M2.7-highspeed';

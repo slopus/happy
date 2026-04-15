@@ -1,7 +1,7 @@
 /**
  * MiniMax Integration Tests
  *
- * Tests for MiniMax M2.5 integration via OpenCode ACP.
+ * Tests for MiniMax M2.7 integration via OpenCode ACP.
  *
  * Layer 1 rules (see agents.md):
  * - One primary integration test file per agent
@@ -25,14 +25,14 @@ describe.skipIf(!process.env[MINIMAX_API_KEY_ENV])(
     });
 
     it(
-      'basic turn: MiniMax M2.5 responds to a simple prompt',
+      'basic turn: MiniMax M2.7 responds to a simple prompt',
       { timeout: 60000 },
       async () => {
         // Integration test verifying that happy minimax produces a working session.
         // Full implementation is validated by running `happy minimax` end-to-end.
         // This test documents the requirement and is skipped without credentials.
         expect(process.env[MINIMAX_API_KEY_ENV]).toBeTruthy();
-        expect(DEFAULT_MINIMAX_MODEL).toBe('MiniMax-M2.5');
+        expect(DEFAULT_MINIMAX_MODEL).toBe('MiniMax-M2.7');
       }
     );
 

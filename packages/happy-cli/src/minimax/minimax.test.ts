@@ -27,7 +27,7 @@ describe('MiniMax constants', () => {
   });
 
   it('exports a valid default model', () => {
-    expect(DEFAULT_MINIMAX_MODEL).toBe('MiniMax-M2.5');
+    expect(DEFAULT_MINIMAX_MODEL).toBe('MiniMax-M2.7');
   });
 
   it('exports a valid high-speed model', () => {

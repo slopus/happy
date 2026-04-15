@@ -79,7 +79,7 @@ happy connect status
 | `happy` | Start Claude Code session (default) |
 | `happy codex` | Start Codex mode |
 | `happy gemini` | Start Gemini CLI session |
-| `happy minimax` | Start MiniMax M2.5 session |
+| `happy minimax` | Start MiniMax M2.7 session |
 | `happy openclaw` | Start OpenClaw session |
 | `happy acp` | Start any ACP-compatible agent |
 | `happy resume <id>` | Resume a previous session |
@@ -90,9 +90,9 @@ happy connect status
 
 ## Advanced
 
-### MiniMax M2.5
+### MiniMax M2.7
 
-MiniMax M2.5 is a high-performance coding model. Happy integrates it via [OpenCode](https://opencode.ai) running in ACP mode.
+MiniMax M2.7 is a high-performance coding model. Happy integrates it via [OpenCode](https://opencode.ai) running in ACP mode.
 
 **Prerequisites:**
 
@@ -104,7 +104,7 @@ export MINIMAX_API_KEY=<your-api-key>  # from platform.minimax.io
 **Usage:**
 
 ```bash
-# Start with default MiniMax-M2.5 model
+# Start with default MiniMax-M2.7 model
 happy minimax
 
 # Start with high-speed variant

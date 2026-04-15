@@ -417,7 +417,7 @@ import { MINIMAX_API_KEY_ENV, MINIMAX_BASE_URL_ENV, DEFAULT_MINIMAX_BASE_URL, DE
     }
     return;
   } else if (subcommand === 'minimax') {
-    // Handle minimax command — runs OpenCode in ACP mode with MiniMax M2.5
+    // Handle minimax command — runs OpenCode in ACP mode with MiniMax M2.7
     try {
       const { runAcp } = await import('@/agent/acp/runAcp');
 
@@ -707,7 +707,7 @@ ${chalk.bold('Usage:')}
   happy resume            Resume a previous Happy session by Happy session ID
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
-  happy minimax           Start MiniMax M2.5 mode (via OpenCode ACP)
+  happy minimax           Start MiniMax M2.7 mode (via OpenCode ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
@@ -732,7 +732,7 @@ ${chalk.bold('Examples:')}
                            Start a custom ACP command
   happy acp opencode --verbose
                            Print raw ACP backend/envelope events
-  happy minimax            Start MiniMax M2.5 (requires MINIMAX_API_KEY + opencode)
+  happy minimax            Start MiniMax M2.7 (requires MINIMAX_API_KEY + opencode)
   happy minimax --model MiniMax-M2.7-highspeed
                            Start with MiniMax M2.7 high-speed model
   happy auth login --force Authenticate
