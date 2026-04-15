@@ -21,7 +21,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels, loadStarredSessions, saveStarredSessions } from "./persistence";
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -83,6 +83,7 @@ export interface SessionRowData {
     activeAt?: number;
     createdAt?: number;
     hasDraft: boolean;
+    starred: boolean;
     active: boolean;
     machineId: string | null;
     path: string | null;
@@ -115,6 +116,7 @@ function buildSessionRowData(session: Session): SessionRowData {
         state,
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
+        starred: !!session.starred,
         active: session.active,
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
@@ -193,6 +195,7 @@ interface StorageState {
     updateSessionPermissionMode: (sessionId: string, mode: string) => void;
     updateSessionModelMode: (sessionId: string, mode: string) => void;
     updateSessionEffortLevel: (sessionId: string, level: string) => void;
+    toggleSessionStarred: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -238,9 +241,15 @@ function buildSessionListViewData(
         }
     });
 
-    // Sort by creation date (newest first) — matches applySessions behavior
-    activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-    inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
+    // Sort by starred first, then by creation date (newest first)
+    activeSessions.sort((a, b) => {
+        if (!!a.starred !== !!b.starred) return a.starred ? -1 : 1;
+        return b.createdAt - a.createdAt;
+    });
+    inactiveSessions.sort((a, b) => {
+        if (!!a.starred !== !!b.starred) return a.starred ? -1 : 1;
+        return b.createdAt - a.createdAt;
+    });
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
@@ -250,7 +259,18 @@ function buildSessionListViewData(
         listData.push({ type: 'active-sessions', sessions: activeSessions.map(buildSessionRowData) });
     }
 
-    // Group inactive sessions by date
+    // Show starred inactive sessions in a dedicated "Starred" section at the top
+    const starredInactive = inactiveSessions.filter(s => s.starred);
+    const unstarredInactive = inactiveSessions.filter(s => !s.starred);
+
+    if (starredInactive.length > 0) {
+        listData.push({ type: 'header', title: 'Starred' });
+        starredInactive.forEach(sess => {
+            listData.push({ type: 'session', session: buildSessionRowData(sess) });
+        });
+    }
+
+    // Group remaining inactive sessions by date
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -258,7 +278,7 @@ function buildSessionListViewData(
     let currentDateGroup: Session[] = [];
     let currentDateString: string | null = null;
 
-    for (const session of inactiveSessions) {
+    for (const session of unstarredInactive) {
         const sessionDate = new Date(session.createdAt);
         const dateString = sessionDate.toDateString();
 
@@ -327,6 +347,7 @@ export const storage = create<StorageState>()((set, get) => {
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
     let sessionEffortLevels = loadSessionEffortLevels();
+    let starredSessions = loadStarredSessions();
     return {
         settings,
         settingsVersion: version,
@@ -378,7 +399,7 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
-            // Load drafts and permission modes if sessions are empty (initial load)
+            // Load drafts, permission modes, model/effort modes, and starred state if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
             const savedPermissionModes = isInitialLoad ? sessionPermissionModes : {};
@@ -411,6 +432,7 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = existingModelMode ?? savedModelModes[session.id] ?? session.modelMode ?? null;
                 const existingEffortLevel = state.sessions[session.id]?.effortLevel;
                 const resolvedEffortLevel = existingEffortLevel ?? savedEffortLevels[session.id] ?? session.effortLevel ?? null;
+                const existingStarred = state.sessions[session.id]?.starred;
 
                 mergedSessions[session.id] = {
                     ...session,
@@ -419,6 +441,7 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: resolvedPermissionMode,
                     modelMode: resolvedModelMode,
                     effortLevel: resolvedEffortLevel,
+                    starred: existingStarred ?? starredSessions.has(session.id),
                 };
             });
 
@@ -1002,6 +1025,30 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions
+            };
+        }),
+        toggleSessionStarred: (sessionId: string) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const newStarred = !session.starred;
+
+            // Persist starred set
+            newStarred ? starredSessions.add(sessionId) : starredSessions.delete(sessionId);
+            saveStarredSessions(starredSessions);
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    starred: newStarred,
+                }
+            };
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData: buildSessionListViewData(updatedSessions),
             };
         }),
         // Project management methods
