@@ -40,6 +40,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, sessionSetAgentModes, type SessionAgentModesPatch } from '@/sync/ops';
 import { createWorktree, listWorktrees } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { useDirSuggestions } from '@/hooks/useDirSuggestions';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
@@ -479,6 +480,7 @@ function PathPickerContent({
     items,
     value,
     homeDir,
+    machineId,
     onChangeValue,
     onDone,
     embedded = false,
@@ -487,6 +489,7 @@ function PathPickerContent({
     items: PickerItem[];
     value: string | null;
     homeDir?: string;
+    machineId?: string | null;
     onChangeValue: (value: string) => void;
     onDone?: () => void;
     embedded?: boolean;
@@ -495,6 +498,8 @@ function PathPickerContent({
     const inputRef = React.useRef<TextInput>(null);
     const currentValue = value ?? '';
     const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
+
+    const dirSuggestions = useDirSuggestions(machineId, currentValue, homeDir);
 
     React.useEffect(() => {
         // Embedded mobile pickers are positioned next to their trigger. Opening
@@ -617,6 +622,37 @@ function PathPickerContent({
                 <Text style={[pickerStyles.pathMetaText, { color: theme.colors.textSecondary }]}>
                     using custom path above
                 </Text>
+            )}
+
+            {dirSuggestions.length > 0 && (
+                <>
+                    <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
+                        Suggestions
+                    </Text>
+                    <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+                        {dirSuggestions.map((suggestion) => (
+                            <Pressable
+                                key={suggestion.fullPath}
+                                style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                                onPress={() => {
+                                    const nextValue = suggestion.fullPath + '/';
+                                    onChangeValue(nextValue);
+                                    setSelection({ start: nextValue.length, end: nextValue.length });
+                                    setTimeout(() => inputRef.current?.focus(), 0);
+                                }}
+                            >
+                                <Ionicons
+                                    name="folder-outline"
+                                    size={16}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>
+                                    {suggestion.fullPath}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </ScrollView>
+                </>
             )}
 
             <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
@@ -1491,6 +1527,7 @@ function NewSessionScreen() {
                 items={pathItems}
                 value={selectedPath}
                 homeDir={selectedHomeDir}
+                machineId={selectedMachineId}
                 onChangeValue={setSelectedPath}
                 onDone={closePicker}
                 embedded={sidebarLayout.showSidebar}
@@ -1520,6 +1557,7 @@ function NewSessionScreen() {
         pathItems,
         pickerData,
         selectedHomeDir,
+        selectedMachineId,
         selectedPath,
         setSelectedPath,
         sidebarLayout.showSidebar,
@@ -2195,6 +2233,7 @@ function NewSessionScreen() {
                             items={pathItems}
                             value={selectedPath}
                             homeDir={selectedHomeDir}
+                            machineId={selectedMachineId}
                             onChangeValue={setSelectedPath}
                             onDone={closePicker}
                         />
