@@ -4,6 +4,8 @@
     "scripts": {
         "e2e": "pnpm --filter happy-e2e test",
         "e2e:headed": "pnpm --filter happy-e2e test:headed",
+        "e2e:trace": "pnpm --filter happy-e2e exec playwright test --trace=on",
+        "e2e:report": "pnpm --filter happy-e2e exec playwright show-report",
         "cli": "pnpm --filter happy cli",
         "release": "node ./scripts/release.cjs",
         "web": "pnpm --filter happy-app web",
