@@ -296,6 +296,7 @@ export interface Session {
     modelMode?: string | null; // Model pick; local mirror of synced metadata.modelMode (#1492)
     effortLevel?: string | null; // Effort pick; local mirror of synced metadata.effortLevel (#1492)
     lastMessageSentAt?: number; // Local timestamp of last user-sent message, not synced to server; used for activity-based sort
+    starred?: boolean; // Local starred/bookmarked flag, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

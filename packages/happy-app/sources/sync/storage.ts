@@ -22,7 +22,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadStarredSessions, saveStarredSessions } from "./persistence";
 import { isAgentModePushPending } from "./agentModesPending";
 import { loadSessionLastMessageSentAt, saveSessionLastMessageSentAt } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
@@ -95,6 +95,7 @@ export interface SessionRowData {
     activeAt?: number;
     createdAt?: number;
     hasDraft: boolean;
+    starred: boolean;
     active: boolean;
     machineId: string | null;
     path: string | null;
@@ -137,6 +138,7 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         state,
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
+        starred: !!session.starred,
         active: session.active,
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
@@ -220,6 +222,7 @@ interface StorageState {
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionAgentModes: (sessionId: string, patch: SessionAgentModesPatch) => void;
     markSessionMessageSent: (sessionId: string) => void;
+    toggleSessionStarred: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -251,9 +254,11 @@ function buildSessionListViewData(
     sessions: Record<string, Session>,
     unreadSessionIds?: Set<string>,
 ): SessionListViewItem[] {
-    // Separate active and inactive sessions
+    // Partition: starred sessions go to a dedicated "Starred" section regardless
+    // of active/inactive status so users can find pinned conversations in one place.
+    const starredSessions: Session[] = [];
     const activeSessions: Session[] = [];
-    const inactiveSessions: Session[] = [];
+    const unstarredInactive: Session[] = [];
 
     Object.values(sessions).forEach(session => {
         // Side chats are hidden children of another session — they render only
@@ -261,32 +266,43 @@ function buildSessionListViewData(
         if (session.metadata?.isSideChat) {
             return;
         }
-        if (isSessionActive(session)) {
+        if (session.starred) {
+            starredSessions.push(session);
+        } else if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {
-            inactiveSessions.push(session);
+            unstarredInactive.push(session);
         }
     });
 
-    // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
+    // Sort each bucket by last activity or creation date (newest first), per user setting — matches applySessions behavior
     // Activity sort keys off the last user-sent message, not updatedAt: updatedAt
     // bumps on every background agent update, which would make the list jump while
     // several sessions stream at once. lastMessageSentAt only moves when the user acts.
     const sortKey = storage.getState().settings.sortSessionsByActivity
         ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
         : (s: Session) => s.createdAt;
+    starredSessions.sort((a, b) => sortKey(b) - sortKey(a));
     activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
-    inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
+    unstarredInactive.sort((a, b) => sortKey(b) - sortKey(a));
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
 
-    // Add active sessions as a single item at the top (if any)
+    // Starred section at the very top
+    if (starredSessions.length > 0) {
+        listData.push({ type: 'header', title: 'Starred' });
+        starredSessions.forEach(sess => {
+            listData.push({ type: 'session', session: buildSessionRowData(sess, unreadSessionIds) });
+        });
+    }
+
+    // Add remaining active sessions as a single item (if any)
     if (activeSessions.length > 0) {
         listData.push({ type: 'active-sessions', sessions: activeSessions.map(s => buildSessionRowData(s, unreadSessionIds)) });
     }
 
-    // Group inactive sessions by date
+    // Group remaining inactive sessions by date
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -294,7 +310,7 @@ function buildSessionListViewData(
     let currentDateGroup: Session[] = [];
     let currentDateString: string | null = null;
 
-    for (const session of inactiveSessions) {
+    for (const session of unstarredInactive) {
         const sessionDate = new Date(sortKey(session));
         const dateString = sessionDate.toDateString();
 
@@ -361,6 +377,7 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionLastMessageSentAt = loadSessionLastMessageSentAt();
+    let starredSessions = loadStarredSessions();
     return {
         settings,
         settingsVersion: version,
@@ -415,7 +432,7 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
-            // Load drafts if sessions are empty (initial load)
+            // Load drafts and starred state if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
             const savedLastMessageSentAt = isInitialLoad ? sessionLastMessageSentAt : {};
@@ -451,6 +468,7 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedPermissionMode = resolveModePick('permissionMode');
                 const resolvedModelMode = resolveModePick('modelMode');
                 const resolvedEffortLevel = resolveModePick('effortLevel');
+                const existingStarred = state.sessions[session.id]?.starred;
 
                 // Local activity timestamp — preserve in-memory value, else restore from MMKV.
                 const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
@@ -463,6 +481,7 @@ export const storage = create<StorageState>()((set, get) => {
                     modelMode: resolvedModelMode,
                     effortLevel: resolvedEffortLevel,
                     lastMessageSentAt: resolvedLastMessageSentAt,
+                    starred: existingStarred ?? starredSessions.has(session.id),
                 };
             });
 
@@ -1082,6 +1101,30 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 sessions: updatedSessions,
                 sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds)
+            };
+        }),
+        toggleSessionStarred: (sessionId: string) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const newStarred = !session.starred;
+
+            // Persist starred set
+            newStarred ? starredSessions.add(sessionId) : starredSessions.delete(sessionId);
+            saveStarredSessions(starredSessions);
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    starred: newStarred,
+                }
+            };
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData: buildSessionListViewData(updatedSessions),
             };
         }),
         getSessionPathKey: (sessionId: string): string | null => {

@@ -180,6 +180,9 @@ const stylesheet = StyleSheet.create((theme) => ({
     draftIconOverlay: {
         color: theme.colors.textSecondary,
     },
+    starIconOverlay: {
+        color: '#FBBF24', // amber-400 — matches the "dontAsk" permission style
+    },
     artifactsSection: {
         paddingHorizontal: 16,
         paddingBottom: 12,
@@ -383,7 +386,7 @@ export function SessionsList({
     // Footer removed - all sessions now shown inline
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} testID="session-list">
             <View style={styles.contentContainer}>
                 <FlatList
                     data={data}
@@ -496,6 +499,15 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                             name="create-outline"
                             size={12}
                             style={styles.draftIconOverlay}
+                        />
+                    </View>
+                )}
+                {session.starred && !session.hasDraft && (
+                    <View style={styles.draftIconContainer}>
+                        <Ionicons
+                            name="star"
+                            size={11}
+                            style={styles.starIconOverlay}
                         />
                     </View>
                 )}
