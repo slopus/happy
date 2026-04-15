@@ -33,6 +33,7 @@ This will:
 ```
 happy codex
 happy gemini
+happy minimax
 happy openclaw
 
 # or any ACP-compatible CLI
@@ -78,6 +79,7 @@ happy connect status
 | `happy` | Start Claude Code session (default) |
 | `happy codex` | Start Codex mode |
 | `happy gemini` | Start Gemini CLI session |
+| `happy minimax` | Start MiniMax M2.5 session |
 | `happy openclaw` | Start OpenClaw session |
 | `happy acp` | Start any ACP-compatible agent |
 | `happy resume <id>` | Resume a previous session |
@@ -88,6 +90,31 @@ happy connect status
 
 ## Advanced
 
+### MiniMax M2.5
+
+MiniMax M2.5 is a high-performance coding model. Happy integrates it via [OpenCode](https://opencode.ai) running in ACP mode.
+
+**Prerequisites:**
+
+```bash
+npm install -g opencode-ai
+export MINIMAX_API_KEY=<your-api-key>  # from platform.minimax.io
+```
+
+**Usage:**
+
+```bash
+# Start with default MiniMax-M2.5 model
+happy minimax
+
+# Start with high-speed variant
+happy minimax --model MiniMax-M2.7-highspeed
+
+# CN region users
+export MINIMAX_BASE_URL=https://api.minimaxi.com
+happy minimax
+```
+
 ### Environment Variables
 
 | Variable | Description |
@@ -97,6 +124,8 @@ happy connect status
 | `HAPPY_HOME_DIR` | Custom home directory for Happy data (default: `~/.happy`) |
 | `HAPPY_DISABLE_CAFFEINATE` | Disable macOS sleep prevention |
 | `HAPPY_EXPERIMENTAL` | Enable experimental features |
+| `MINIMAX_API_KEY` | MiniMax API key for `happy minimax` |
+| `MINIMAX_BASE_URL` | MiniMax base URL (CN region: `https://api.minimaxi.com`) |
 
 ### Sandbox (experimental)
 
@@ -123,6 +152,7 @@ yarn workspace happy cli --help
 - For Claude: `claude` CLI installed & logged in
 - For Codex: `codex` CLI installed & logged in
 - For Gemini: `npm install -g @google/gemini-cli` + `happy connect gemini`
+- For MiniMax: `npm install -g opencode-ai` + `MINIMAX_API_KEY` set
 
 ## License
 

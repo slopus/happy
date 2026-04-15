@@ -435,9 +435,12 @@ type PendingTurn = {
   timeout: NodeJS.Timeout;
 };
 
-function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
+function resolveSessionFlavor(agentName: string): 'gemini' | 'minimax' | 'opencode' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
+  }
+  if (agentName === 'minimax') {
+    return 'minimax';
   }
   if (agentName === 'opencode') {
     return 'opencode';
@@ -450,6 +453,7 @@ export async function runAcp(opts: {
   agentName: string;
   command: string;
   args: string[];
+  env?: Record<string, string>;
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
 }): Promise<void> {
@@ -530,6 +534,7 @@ export async function runAcp(opts: {
     cwd: process.cwd(),
     command: opts.command,
     args: opts.args,
+    env: opts.env,
     mcpServers,
     permissionHandler,
     transportHandler: new DefaultTransport(opts.agentName),

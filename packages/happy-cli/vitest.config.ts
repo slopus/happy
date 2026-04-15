@@ -66,6 +66,7 @@ export default defineConfig({
                     testTimeout: 60_000,
                     include: [
                         'src/daemon/daemon.integration.test.ts',
+                        'src/minimax/minimax.integration.test.ts',
                         'src/openclaw/openclaw.integration.test.ts',
                     ],
                     setupFiles: ['./src/testing/integration.setup.authenticated.ts'],
