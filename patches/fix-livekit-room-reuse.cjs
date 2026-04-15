@@ -1,17 +1,21 @@
 /**
- * Patches @livekit/components-react useLiveKitRoom to fix stale Room reuse.
+ * Patches @livekit/components-react and @elevenlabs/react-native for two bugs:
  *
- * The Room creation effect's dependency array omits `token`, so the same Room
- * instance is reused across sessions. After disconnect(), reconnecting the
- * same Room silently fails. Adding `token` to deps forces a fresh Room per
- * session; the existing cleanup effect automatically disconnects the old one.
+ * 1. Stale Room reuse: useLiveKitRoom's Room creation effect omits `token`
+ *    from deps, so the same Room instance is reused across sessions. After
+ *    disconnect(), reconnecting silently fails. Fix: add `token` to deps.
  *
- * Upstream: @livekit/components-react useLiveKitRoom.ts line 62-64
+ * 2. v1 RTC 404: ElevenLabs' LiveKit server doesn't support the /rtc/v1 path.
+ *    LiveKit tries v1 first (when singlePeerConnection is true, the default),
+ *    gets 404, then retries on v0 — slow and unreliable. Fix: add
+ *    singlePeerConnection: false to LiveKitRoom options so v0 is used directly.
  */
 const fs = require('fs');
 const path = require('path');
 
 let patched = 0;
+
+// --- Fix 1: Stale Room reuse in @livekit/components-react ---
 
 // ESM bundle: room-Bb6uLxS5.mjs
 // Variables: e=token, r=passedRoom, t=options, T=roomOptionsStringifyReplacer
@@ -72,6 +76,50 @@ if (fs.existsSync(srcFile)) {
     }
 }
 
+// --- Fix 2: Force v0 RTC path in @elevenlabs/react-native LiveKitRoomWrapper ---
+// Add singlePeerConnection: false to options so LiveKit skips the /rtc/v1 path
+// that returns 404 on ElevenLabs' server.
+
+const elNativeFiles = [
+    'node_modules/@elevenlabs/react-native/dist/lib.js',
+    'node_modules/@elevenlabs/react-native/dist/lib.module.js',
+];
+
+for (const file of elNativeFiles) {
+    const filePath = path.resolve(__dirname, '..', file);
+    if (!fs.existsSync(filePath)) continue;
+
+    let content = fs.readFileSync(filePath, 'utf8');
+    const original = content;
+    content = content.replace(
+        /options:\{adaptiveStream:\{pixelDensity:"screen"\}\}/g,
+        'options:{adaptiveStream:{pixelDensity:"screen"},singlePeerConnection:false}'
+    );
+    if (content !== original) {
+        fs.writeFileSync(filePath, content, 'utf8');
+        patched++;
+    }
+}
+
+// Also patch the source file
+const elNativeSrc = path.resolve(
+    __dirname,
+    '..',
+    'node_modules/@elevenlabs/react-native/src/components/LiveKitRoomWrapper.tsx'
+);
+if (fs.existsSync(elNativeSrc)) {
+    let content = fs.readFileSync(elNativeSrc, 'utf8');
+    const original = content;
+    content = content.replace(
+        "adaptiveStream: { pixelDensity: 'screen' },",
+        "adaptiveStream: { pixelDensity: 'screen' },\n        singlePeerConnection: false,"
+    );
+    if (content !== original) {
+        fs.writeFileSync(elNativeSrc, content, 'utf8');
+        patched++;
+    }
+}
+
 if (patched > 0) {
-    console.log(`[patch] Fixed @livekit/components-react stale Room reuse (${patched} file(s))`);
+    console.log(`[patch] Fixed LiveKit stale Room + v1 RTC 404 (${patched} file(s))`);
 }
