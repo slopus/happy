@@ -91,7 +91,7 @@ export function EmptyMainScreen() {
     const styles = stylesheet;
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} testID="empty-main-screen">
             {/* Terminal-style code block */}
             <Text style={styles.title}>{t('components.emptyMainScreen.readyToCode')}</Text>
             <View style={styles.terminalBlock}>

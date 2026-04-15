@@ -2,6 +2,8 @@
     "name": "monorepo",
     "private": true,
     "scripts": {
+        "e2e": "pnpm --filter happy-e2e test",
+        "e2e:headed": "pnpm --filter happy-e2e test:headed",
         "cli": "pnpm --filter happy cli",
         "release": "node ./scripts/release.cjs",
         "web": "pnpm --filter happy-app web",
@@ -32,7 +34,8 @@
             "packages/happy-server",
             "packages/happy-wire",
             "packages/happy-app-logs",
-            "packages/codium"
+            "packages/codium",
+            "packages/happy-e2e"
         ]
     },
     "pnpm": {

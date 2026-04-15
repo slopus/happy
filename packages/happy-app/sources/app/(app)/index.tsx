@@ -79,6 +79,7 @@ function NotAuthenticated() {
                             title={t('welcome.createAccount')}
                             action={createAccount}
                             display="inverted"
+                            testID="create-account-button"
                         />
                     </View>
                 </>
@@ -140,6 +141,7 @@ function NotAuthenticated() {
                                     title={t('welcome.createAccount')}
                                     action={createAccount}
                                     display="inverted"
+                                    testID="create-account-button"
                                 />
                             </View>
                         </>)

@@ -37,7 +37,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?: RoundButtonDisplay, title?: any, style?: StyleProp<ViewStyle>, textStyle?: StyleProp<TextStyle>, disabled?: boolean, loading?: boolean, onPress?: () => void, action?: () => Promise<any> }) => {
+export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?: RoundButtonDisplay, title?: any, style?: StyleProp<ViewStyle>, textStyle?: StyleProp<TextStyle>, disabled?: boolean, loading?: boolean, onPress?: () => void, action?: () => Promise<any>, testID?: string }) => {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const [loading, setLoading] = React.useState(false);
@@ -80,6 +80,7 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
 
     return (
         <Pressable
+            testID={props.testID}
             disabled={doLoading || props.disabled}
             hitSlop={size.hitSlop}
             style={(p) => ([

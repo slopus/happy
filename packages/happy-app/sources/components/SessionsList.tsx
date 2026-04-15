@@ -315,7 +315,7 @@ export function SessionsList() {
     // Footer removed - all sessions now shown inline
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} testID="session-list">
             <View style={styles.contentContainer}>
                 <FlatList
                     data={dataWithSelected}

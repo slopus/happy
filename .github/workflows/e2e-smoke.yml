@@ -1,0 +1,65 @@
+name: E2E Smoke Tests
+
+on:
+    pull_request:
+        paths:
+            - 'packages/happy-app/**'
+            - 'packages/happy-server/**'
+            - 'packages/happy-e2e/**'
+            - '.github/workflows/e2e-smoke.yml'
+    push:
+        branches:
+            - main
+        paths:
+            - 'packages/happy-app/**'
+            - 'packages/happy-server/**'
+            - 'packages/happy-e2e/**'
+            - '.github/workflows/e2e-smoke.yml'
+    workflow_dispatch:
+
+jobs:
+    e2e:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 10
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Install Playwright browsers
+              run: pnpm --filter happy-e2e exec playwright install --with-deps chromium
+
+            - name: Run E2E smoke tests
+              run: pnpm e2e
+              env:
+                  CI: true
+
+            - name: Upload Playwright report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: playwright-report
+                  path: packages/happy-e2e/playwright-report/
+                  retention-days: 7
+
+            - name: Upload test traces on failure
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: playwright-traces
+                  path: packages/happy-e2e/test-results/
+                  retention-days: 3
