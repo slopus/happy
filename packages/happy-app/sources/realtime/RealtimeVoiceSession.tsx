@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { useConversation } from '@elevenlabs/react-native';
+import '@elevenlabs/react-native'; // registerGlobals() — WebRTC polyfills for native
+import { useConversation } from '@elevenlabs/react';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
@@ -118,7 +119,6 @@ export const RealtimeVoiceSession: React.FC = () => {
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true);
             storage.getState().clearRealtimeModeDebounce();
-            storage.getState().incrementVoiceSessionGeneration();
         },
         onMessage: (data) => {
             console.log('Realtime message:', data);
