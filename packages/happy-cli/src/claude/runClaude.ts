@@ -26,6 +26,8 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
+import { decodeBase64 } from '@/api/encryption';
+import type { Session as ApiSession } from '@/api/types';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -114,7 +116,31 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
     };
-    const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+    // Check for session reconnection env vars (set by daemon for resume-in-place)
+    const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
+    const reconnectKeyBase64 = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
+    const reconnectVariant = process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT as 'legacy' | 'dataKey' | undefined;
+    const reconnectSeq = process.env.HAPPY_RECONNECT_SEQ;
+    const reconnectMetadataVersion = process.env.HAPPY_RECONNECT_METADATA_VERSION;
+    const reconnectAgentStateVersion = process.env.HAPPY_RECONNECT_AGENT_STATE_VERSION;
+
+    let response: ApiSession | null;
+    if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {
+        logger.debug(`[START] Reconnecting to existing session ${reconnectSessionId}`);
+        response = {
+            id: reconnectSessionId,
+            seq: parseInt(reconnectSeq || '0', 10),
+            encryptionKey: decodeBase64(reconnectKeyBase64),
+            encryptionVariant: reconnectVariant,
+            metadata,
+            metadataVersion: parseInt(reconnectMetadataVersion || '0', 10),
+            agentState: state,
+            agentStateVersion: parseInt(reconnectAgentStateVersion || '0', 10),
+        };
+    } else {
+        response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+    }
 
     // Handle server unreachable case - run Claude locally with hot reconnection
     // Note: connectionState.notifyOffline() was already called by api.ts with error details

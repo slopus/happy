@@ -87,15 +87,6 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
         };
     }
 
-    if (!machine.metadata?.resumeSupport?.rpcAvailable) {
-        return {
-            canResume: false,
-            canShowResume: true,
-            subtitle: t('sessionInfo.resumeSessionNeedsHappyAgent'),
-            message: t('sessionInfo.resumeSessionNeedsHappyAgent'),
-        };
-    }
-
     return {
         canResume: true,
         canShowResume: true,
@@ -158,17 +149,15 @@ export function useSessionQuickActions(
         const result = await machineResumeSession({
             machineId,
             sessionId: session.id,
+            model: session.modelMode ?? undefined,
+            permissionMode: session.permissionMode ?? undefined,
         });
 
         switch (result.type) {
             case 'success': {
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    await sync.refreshSessions();
-                    if (storage.getState().sessions[result.sessionId]) {
-                        break;
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, 150));
-                }
+                // Session reconnects to the same ID, so messages are preserved.
+                // Refresh to pick up the updated session state.
+                await sync.refreshSessions();
 
                 if (session.permissionMode) {
                     storage.getState().updateSessionPermissionMode(result.sessionId, session.permissionMode);

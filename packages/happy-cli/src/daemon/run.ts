@@ -25,7 +25,8 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
-import { resolveHappySession } from '@/resume/resolveHappySession';
+import { resolveReconnectableSession } from '@/resume/resolveHappySession';
+import { encodeBase64 } from '@/api/encryption';
 
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
@@ -558,20 +559,35 @@ export async function startDaemon(): Promise<void> {
       });
     };
 
-    const resumeSession = async (happySessionId: string): Promise<SpawnSessionResult> => {
+    const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
       try {
-        const previousSession = await resolveHappySession(happySessionId);
+        const previousSession = await resolveReconnectableSession(happySessionId);
         const launch = buildResumeLaunch(previousSession, {
           startedBy: 'daemon',
           claudeStartingMode: 'remote',
         });
+
+        if (options?.model) {
+          launch.args.push('--model', options.model);
+        }
+        if (options?.permissionMode) {
+          launch.args.push('--permission-mode', options.permissionMode);
+        }
 
         await fs.access(launch.cwd);
 
         return spawnTrackedHappyProcess({
           args: launch.args,
           cwd: launch.cwd,
-          env: { ...process.env },
+          env: {
+            ...process.env,
+            HAPPY_RECONNECT_SESSION_ID: previousSession.id,
+            HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(previousSession.encryptionKey),
+            HAPPY_RECONNECT_ENCRYPTION_VARIANT: previousSession.encryptionVariant,
+            HAPPY_RECONNECT_SEQ: String(previousSession.seq),
+            HAPPY_RECONNECT_METADATA_VERSION: String(previousSession.metadataVersion),
+            HAPPY_RECONNECT_AGENT_STATE_VERSION: String(previousSession.agentStateVersion),
+          },
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

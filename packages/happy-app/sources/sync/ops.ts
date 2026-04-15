@@ -178,14 +178,14 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
     }
 }
 
-export async function machineResumeSession(options: ResumeSessionOptions): Promise<SpawnSessionResult> {
-    const { machineId, sessionId } = options;
+export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> {
+    const { machineId, sessionId, model, permissionMode } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string }>(
+        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
             machineId,
             'resume-happy-session',
-            { sessionId },
+            { sessionId, model, permissionMode },
         );
         return result;
     } catch (error) {
