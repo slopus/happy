@@ -14,7 +14,8 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
+import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -151,8 +152,28 @@ export async function startDaemon(): Promise<void> {
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
 
-    // Retain session data after process exits so resume can still find it
+    // Retain session data after process exits so resume can still find it.
+    // Pre-populate from disk so sessions survive daemon restarts.
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
+    const persisted = readPersistedSessions();
+    for (const [id, s] of Object.entries(persisted)) {
+      sessionIdToFinishedSession.set(id, {
+        startedBy: 'persisted',
+        happySessionId: id,
+        happySessionMetadataFromLocalWebhook: s.metadata,
+        encryption: {
+          encryptionKey: decodeBase64(s.encryptionKey),
+          encryptionVariant: s.encryptionVariant,
+          seq: s.seq,
+          metadataVersion: s.metadataVersion,
+          agentStateVersion: s.agentStateVersion,
+        },
+        pid: 0,
+      });
+    }
+    if (Object.keys(persisted).length > 0) {
+      logger.debug(`[DAEMON RUN] Loaded ${Object.keys(persisted).length} persisted sessions from disk`);
+    }
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
@@ -172,6 +193,19 @@ export async function startDaemon(): Promise<void> {
 
       logger.debug(`[DAEMON RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}, hasEncryption: ${!!encryption}`);
       logger.debug(`[DAEMON RUN] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`);
+
+      // Persist encryption data to disk so it survives daemon restarts
+      if (encryption) {
+        persistSession(sessionId, {
+          encryptionKey: encodeBase64(encryption.encryptionKey),
+          encryptionVariant: encryption.encryptionVariant,
+          seq: encryption.seq,
+          metadataVersion: encryption.metadataVersion,
+          agentStateVersion: encryption.agentStateVersion,
+          metadata: sessionMetadata,
+          savedAt: Date.now(),
+        });
+      }
 
       // Check if we already have this PID (daemon-spawned)
       const existingSession = pidToTrackedSession.get(pid);

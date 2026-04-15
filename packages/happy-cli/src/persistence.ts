@@ -10,7 +10,8 @@ import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
 import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
-import { encodeBase64 } from '@/api/encryption';
+import { encodeBase64, decodeBase64 } from '@/api/encryption';
+import type { Metadata } from '@/api/types';
 import { logger } from '@/ui/logger';
 
 export const SandboxConfigSchema = z.object({
@@ -391,5 +392,52 @@ export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
       unlinkSync(configuration.daemonLockFile);
     }
   } catch { }
+}
+
+// ─── Session persistence (survives daemon restarts) ───
+
+export type PersistedSession = {
+  encryptionKey: string;
+  encryptionVariant: 'legacy' | 'dataKey';
+  seq: number;
+  metadataVersion: number;
+  agentStateVersion: number;
+  metadata: Metadata;
+  savedAt: number;
+};
+
+type SessionsFile = {
+  sessions: Record<string, PersistedSession>;
+};
+
+const SESSION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+
+export function readPersistedSessions(): Record<string, PersistedSession> {
+  try {
+    if (!existsSync(configuration.sessionsFile)) return {};
+    const data = JSON.parse(readFileSync(configuration.sessionsFile, 'utf-8')) as SessionsFile;
+    if (!data?.sessions || typeof data.sessions !== 'object') return {};
+
+    const now = Date.now();
+    const sessions: Record<string, PersistedSession> = {};
+    for (const [id, session] of Object.entries(data.sessions)) {
+      if (now - session.savedAt < SESSION_MAX_AGE_MS) {
+        sessions[id] = session;
+      }
+    }
+    return sessions;
+  } catch {
+    return {};
+  }
+}
+
+export function persistSession(sessionId: string, session: PersistedSession): void {
+  try {
+    const existing = readPersistedSessions();
+    existing[sessionId] = session;
+    writeFileSync(configuration.sessionsFile, JSON.stringify({ sessions: existing }, null, 2), 'utf-8');
+  } catch (error) {
+    logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);
+  }
 }
 
