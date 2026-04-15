@@ -24,7 +24,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -41,7 +41,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
@@ -67,6 +68,30 @@ export const SessionView = React.memo((props: { id: string }) => {
 
     // Match left sidebar width: 30% of window, clamped to 250–360px
     const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+
+    const [sidebarCollapsed, setSidebarCollapsed] = useLocalSettingMutable('sidebarCollapsed');
+    const sidebarAnim = useSharedValue(sidebarCollapsed ? 0 : 1);
+
+    React.useEffect(() => {
+        sidebarAnim.value = withTiming(sidebarCollapsed ? 0 : 1, {
+            duration: 250,
+            easing: Easing.out(Easing.cubic),
+        });
+    }, [sidebarCollapsed]);
+
+    const animatedSidebarStyle = useAnimatedStyle(() => ({
+        width: sidebarAnim.value * sidebarWidth,
+        opacity: sidebarAnim.value,
+        overflow: 'hidden' as const,
+    }));
+
+    const animatedArrowStyle = useAnimatedStyle(() => ({
+        transform: [{ rotate: `${(1 - sidebarAnim.value) * 180}deg` }],
+    }));
+
+    const toggleSidebar = React.useCallback(() => {
+        setSidebarCollapsed(!sidebarCollapsed);
+    }, [sidebarCollapsed, setSidebarCollapsed]);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -203,12 +228,51 @@ export const SessionView = React.memo((props: { id: string }) => {
             <View style={{ flex: 1 }}>
                 {mainContent}
             </View>
-            <View style={{ width: sidebarWidth }}>
-                <FilesSidebar sessionId={sessionId} />
-            </View>
+            <SidebarToggleButton
+                onPress={toggleSidebar}
+                animatedArrowStyle={animatedArrowStyle}
+                theme={theme}
+            />
+            <Animated.View style={[{ minWidth: 0, alignSelf: 'stretch' }, animatedSidebarStyle]}>
+                <View style={{ width: sidebarWidth, flex: 1 }}>
+                    <FilesSidebar sessionId={sessionId} />
+                </View>
+            </Animated.View>
         </View>
     );
 });
+
+const SidebarToggleButton = React.memo(({ onPress, animatedArrowStyle, theme }: {
+    onPress: () => void;
+    animatedArrowStyle: any;
+    theme: any;
+}) => (
+    <View style={{
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+    }}>
+        <Pressable
+            onPress={onPress}
+            style={({ pressed }) => ({
+                width: 20,
+                height: 48,
+                borderRadius: 6,
+                backgroundColor: pressed ? theme.colors.surfaceSelected : theme.colors.groupped.background,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.colors.divider,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginHorizontal: -10,
+                cursor: 'pointer' as any,
+            })}
+        >
+            <Animated.View style={animatedArrowStyle}>
+                <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />
+            </Animated.View>
+        </Pressable>
+    </View>
+));
 
 
 const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
