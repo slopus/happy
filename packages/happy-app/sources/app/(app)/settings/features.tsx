@@ -9,6 +9,7 @@ import { t } from '@/text';
 
 export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
+    const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
@@ -66,6 +67,25 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expResumeSession}
                             onValueChange={setExpResumeSession}
+                        />
+                    }
+                    showChevron={false}
+                />
+            </ItemGroup>
+
+            {/* Privacy */}
+            <ItemGroup
+                title={t('settingsFeatures.privacy')}
+                footer={t('settingsFeatures.privacyDescription')}
+            >
+                <Item
+                    title={t('settingsFeatures.disableAnalytics')}
+                    subtitle={analyticsOptOut ? t('settingsFeatures.analyticsDisabled') : t('settingsFeatures.analyticsEnabled')}
+                    icon={<Ionicons name="analytics-outline" size={29} color="#FF3B30" />}
+                    rightElement={
+                        <Switch
+                            value={analyticsOptOut}
+                            onValueChange={setAnalyticsOptOut}
                         />
                     }
                     showChevron={false}

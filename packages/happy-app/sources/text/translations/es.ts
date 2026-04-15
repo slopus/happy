@@ -203,6 +203,11 @@ export const es: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsación larga abre modal de copiado',
         hideInactiveSessions: 'Ocultar sesiones inactivas',
         hideInactiveSessionsSubtitle: 'Muestra solo los chats activos en tu lista',
+        privacy: 'Privacidad',
+        privacyDescription: 'Desactiva completamente toda la analítica y telemetría. No se enviarán datos a PostHog ni a ningún otro servicio de seguimiento.',
+        disableAnalytics: 'Desactivar analítica',
+        analyticsDisabled: 'Todo el seguimiento y telemetría desactivados',
+        analyticsEnabled: 'Analítica anónima de uso activa',
     },
 
     errors: {

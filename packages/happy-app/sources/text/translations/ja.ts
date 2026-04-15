@@ -204,6 +204,11 @@ export const ja: TranslationStructure = {
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
         hideInactiveSessions: '非アクティブセッションを非表示',
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
+        privacy: 'プライバシー',
+        privacyDescription: 'すべての分析とテレメトリを完全に無効にします。PostHogやその他のトラッキングサービスにデータは送信されません。',
+        disableAnalytics: '分析を無効化',
+        analyticsDisabled: 'すべてのトラッキングとテレメトリが無効',
+        analyticsEnabled: '匿名の使用状況分析がアクティブ',
     },
 
     errors: {

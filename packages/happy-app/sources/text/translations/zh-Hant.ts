@@ -203,6 +203,11 @@ export const zhHant: TranslationStructure = {
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
         hideInactiveSessions: '隱藏非活躍工作階段',
         hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
+        privacy: '隱私',
+        privacyDescription: '完全停用所有分析和遙測。不會向 PostHog 或任何其他追蹤服務傳送資料。',
+        disableAnalytics: '停用分析',
+        analyticsDisabled: '所有追蹤和遙測已停用',
+        analyticsEnabled: '匿名使用分析已啟用',
     },
 
     errors: {

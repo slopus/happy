@@ -203,6 +203,11 @@ export const ca: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
         hideInactiveSessions: 'Amaga les sessions inactives',
         hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
+        privacy: 'Privadesa',
+        privacyDescription: 'Desactiva completament tota l\'analítica i telemetria. No s\'enviaran dades a PostHog ni a cap altre servei de seguiment.',
+        disableAnalytics: 'Desactivar analítica',
+        analyticsDisabled: 'Tot el seguiment i telemetria desactivats',
+        analyticsEnabled: 'Analítica anònima d\'ús activa',
     },
 
     errors: {

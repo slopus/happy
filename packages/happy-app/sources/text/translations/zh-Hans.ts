@@ -204,6 +204,11 @@ export const zhHans: TranslationStructure = {
         markdownCopyV2Subtitle: '长按打开复制模态框',
         hideInactiveSessions: '隐藏非活跃会话',
         hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
+        privacy: '隐私',
+        privacyDescription: '完全禁用所有分析和遥测。不会向 PostHog 或任何其他跟踪服务发送数据。',
+        disableAnalytics: '禁用分析',
+        analyticsDisabled: '所有跟踪和遥测已禁用',
+        analyticsEnabled: '匿名使用分析已启用',
     },
 
     errors: {
