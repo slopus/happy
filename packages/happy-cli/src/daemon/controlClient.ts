@@ -61,11 +61,19 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
 
 export async function notifyDaemonSessionStarted(
   sessionId: string,
-  metadata: Metadata
+  metadata: Metadata,
+  encryption?: {
+    encryptionKey: string;
+    encryptionVariant: 'legacy' | 'dataKey';
+    seq: number;
+    metadataVersion: number;
+    agentStateVersion: number;
+  }
 ): Promise<{ error?: string } | any> {
   return await daemonPost('/session-started', {
     sessionId,
-    metadata
+    metadata,
+    encryption
   });
 }
 

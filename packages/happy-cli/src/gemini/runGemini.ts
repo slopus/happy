@@ -25,6 +25,7 @@ import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { encodeBase64 } from '@/api/encryption';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -185,7 +186,13 @@ export async function runGemini(opts: {
   if (response) {
     try {
       logger.debug(`[START] Reporting session ${response.id} to daemon`);
-      const result = await notifyDaemonSessionStarted(response.id, metadata);
+      const result = await notifyDaemonSessionStarted(response.id, metadata, {
+        encryptionKey: encodeBase64(response.encryptionKey),
+        encryptionVariant: response.encryptionVariant,
+        seq: response.seq,
+        metadataVersion: response.metadataVersion,
+        agentStateVersion: response.agentStateVersion,
+      });
       if (result.error) {
         logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
       } else {

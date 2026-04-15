@@ -88,6 +88,8 @@ export class ApiSessionClient extends EventEmitter {
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
     private reconnectInterval: NodeJS.Timeout | null = null;
+    private ignoreArchiveSignal = false;
+    private skipInitialMessages = false;
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
         uuidToProviderSubagent: new Map<string, string>(),
@@ -204,8 +206,13 @@ export class ApiSessionClient extends EventEmitter {
                         // Check if session was archived from web/mobile
                         const meta = this.metadata as any;
                         if (meta?.lifecycleState === 'archiveRequested' || meta?.lifecycleState === 'archived') {
-                            logger.debug(`[SOCKET] Session archived (${meta.lifecycleState}), exiting...`);
-                            this.emit('archived');
+                            if (this.ignoreArchiveSignal) {
+                                logger.debug(`[SOCKET] Session archived (${meta.lifecycleState}) but suppressed for reconnect`);
+                                this.ignoreArchiveSignal = false;
+                            } else {
+                                logger.debug(`[SOCKET] Session archived (${meta.lifecycleState}), exiting...`);
+                                this.emit('archived');
+                            }
                         }
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
@@ -264,6 +271,13 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private async fetchMessages() {
+        // On reconnect, skip processing existing messages — just advance lastSeq
+        const skipRouting = this.skipInitialMessages;
+        if (skipRouting) {
+            this.skipInitialMessages = false;
+            logger.debug('[API] Reconnect mode: skipping existing messages, advancing lastSeq');
+        }
+
         let afterSeq = this.lastSeq;
         while (true) {
             const response = await axios.get<V3GetSessionMessagesResponse>(
@@ -285,6 +299,8 @@ export class ApiSessionClient extends EventEmitter {
                 if (message.seq > maxSeq) {
                     maxSeq = message.seq;
                 }
+
+                if (skipRouting) continue;
 
                 if (message.content?.t !== 'encrypted') {
                     continue;
@@ -546,6 +562,14 @@ export class ApiSessionClient extends EventEmitter {
      * Update session metadata
      * @param handler - Handler function that returns the updated metadata
      */
+    suppressNextArchiveSignal() {
+        this.ignoreArchiveSignal = true;
+    }
+
+    skipExistingMessages() {
+        this.skipInitialMessages = true;
+    }
+
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
         this.metadataLock.inLock(async () => {
             await backoff(async () => {

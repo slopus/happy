@@ -1,9 +1,10 @@
 import fs from 'fs/promises';
 import os from 'os';
 import * as tmp from 'tmp';
+import axios from 'axios';
 
 import { ApiClient } from '@/api/api';
-import { TrackedSession } from './types';
+import { TrackedSession, SessionEncryptionData } from './types';
 import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
@@ -25,8 +26,7 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
-import { resolveReconnectableSession } from '@/resume/resolveHappySession';
-import { encodeBase64 } from '@/api/encryption';
+import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
@@ -41,7 +41,7 @@ export const initialMachineMetadata: MachineMetadata = {
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath(),
   cliAvailability: detectCLIAvailability(),
-  resumeSupport: detectResumeSupport(),
+  resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
 };
 
 export async function startDaemon(): Promise<void> {
@@ -151,6 +151,9 @@ export async function startDaemon(): Promise<void> {
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
 
+    // Retain session data after process exits so resume can still find it
+    const sessionIdToFinishedSession = new Map<string, TrackedSession>();
+
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
 
@@ -158,7 +161,7 @@ export async function startDaemon(): Promise<void> {
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
 
     // Handle webhook from happy session reporting itself
-    const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
+    const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata, encryption?: SessionEncryptionData) => {
       logger.debugLargeJson(`[DAEMON RUN] Session reported`, sessionMetadata);
 
       const pid = sessionMetadata.hostPid;
@@ -167,7 +170,7 @@ export async function startDaemon(): Promise<void> {
         return;
       }
 
-      logger.debug(`[DAEMON RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}`);
+      logger.debug(`[DAEMON RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}, hasEncryption: ${!!encryption}`);
       logger.debug(`[DAEMON RUN] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`);
 
       // Check if we already have this PID (daemon-spawned)
@@ -177,6 +180,7 @@ export async function startDaemon(): Promise<void> {
         // Update daemon-spawned session with reported data
         existingSession.happySessionId = sessionId;
         existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
+        existingSession.encryption = encryption;
         logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
 
         // Resolve any awaiter for this PID
@@ -192,6 +196,7 @@ export async function startDaemon(): Promise<void> {
           startedBy: 'happy directly - likely by user from terminal',
           happySessionId: sessionId,
           happySessionMetadataFromLocalWebhook: sessionMetadata,
+          encryption,
           pid
         };
         pidToTrackedSession.set(pid, trackedSession);
@@ -559,13 +564,59 @@ export async function startDaemon(): Promise<void> {
       });
     };
 
+    const findTrackedSessionById = (happySessionId: string): TrackedSession | undefined => {
+      for (const session of pidToTrackedSession.values()) {
+        if (session.happySessionId === happySessionId) return session;
+      }
+      return sessionIdToFinishedSession.get(happySessionId);
+    };
+
+    const fetchServerSessionMetadata = async (sessionId: string, encryptionKey: Uint8Array, encryptionVariant: 'legacy' | 'dataKey'): Promise<Metadata | null> => {
+      try {
+        const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
+          headers: { Authorization: `Bearer ${credentials.token}` },
+          timeout: 10_000,
+        });
+        const sessions = (response.data as { sessions: { id: string; metadata: string }[] }).sessions;
+        const matched = sessions.find(s => s.id === sessionId);
+        if (!matched) return null;
+        const decrypted = decrypt(encryptionKey, encryptionVariant, decodeBase64(matched.metadata));
+        return decrypted as Metadata | null;
+      } catch (error) {
+        logger.debug(`[DAEMON RUN] Failed to fetch session metadata from server: ${error instanceof Error ? error.message : error}`);
+        return null;
+      }
+    };
+
     const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
       try {
-        const previousSession = await resolveReconnectableSession(happySessionId);
-        const launch = buildResumeLaunch(previousSession, {
-          startedBy: 'daemon',
-          claudeStartingMode: 'remote',
-        });
+        const tracked = findTrackedSessionById(happySessionId);
+        if (!tracked) {
+          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon or on another machine.` };
+        }
+        if (!tracked.happySessionMetadataFromLocalWebhook) {
+          return { type: 'error', errorMessage: `Session ${happySessionId} has no metadata. Cannot resume.` };
+        }
+        if (!tracked.encryption) {
+          return { type: 'error', errorMessage: `Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
+        }
+
+        // Webhook metadata may be stale (missing claudeSessionId which is set after startup).
+        // Fetch fresh metadata from server if needed.
+        let metadata = tracked.happySessionMetadataFromLocalWebhook;
+        if (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude')) {
+          logger.debug(`[DAEMON RUN] Session ${happySessionId} missing claudeSessionId in webhook metadata, fetching from server`);
+          const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);
+          if (serverMetadata) {
+            metadata = serverMetadata;
+            tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
+          }
+        }
+
+        const launch = buildResumeLaunch(
+          { id: happySessionId, active: true, metadata },
+          { startedBy: 'daemon', claudeStartingMode: 'remote' },
+        );
 
         if (options?.model) {
           launch.args.push('--model', options.model);
@@ -581,17 +632,17 @@ export async function startDaemon(): Promise<void> {
           cwd: launch.cwd,
           env: {
             ...process.env,
-            HAPPY_RECONNECT_SESSION_ID: previousSession.id,
-            HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(previousSession.encryptionKey),
-            HAPPY_RECONNECT_ENCRYPTION_VARIANT: previousSession.encryptionVariant,
-            HAPPY_RECONNECT_SEQ: String(previousSession.seq),
-            HAPPY_RECONNECT_METADATA_VERSION: String(previousSession.metadataVersion),
-            HAPPY_RECONNECT_AGENT_STATE_VERSION: String(previousSession.agentStateVersion),
+            HAPPY_RECONNECT_SESSION_ID: happySessionId,
+            HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
+            HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
+            HAPPY_RECONNECT_SEQ: String(tracked.encryption.seq),
+            HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
+            HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
           },
         });
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.debug('[DAEMON RUN] Failed to resume session:', error);
+        const errorMessage = error instanceof Error ? error.message : (error && typeof error === 'object' ? JSON.stringify(error) : String(error));
+        logger.debug(`[DAEMON RUN] Failed to resume session: ${errorMessage}`, error instanceof Error ? error.stack : undefined);
         return {
           type: 'error',
           errorMessage: `Failed to resume session: ${errorMessage}`,
@@ -635,9 +686,15 @@ export async function startDaemon(): Promise<void> {
       return false;
     };
 
-    // Handle child process exit
+    // Handle child process exit — preserve session data for resume
     const onChildExited = (pid: number) => {
-      logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
+      const session = pidToTrackedSession.get(pid);
+      if (session?.happySessionId && session.encryption) {
+        sessionIdToFinishedSession.set(session.happySessionId, session);
+        logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${session.happySessionId} for resume`);
+      } else {
+        logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
+      }
       pidToTrackedSession.delete(pid);
     };
 

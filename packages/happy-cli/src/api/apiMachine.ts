@@ -136,9 +136,9 @@ export class ApiMachineClient {
             }
         });
 
-        this.syncResumeSessionRpcRegistration(detectResumeSupport().rpcAvailable);
+        this.syncResumeSessionRpcRegistration();
 
-        // Register stop session handler  
+        // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
             const { sessionId } = params || {};
 
@@ -169,10 +169,10 @@ export class ApiMachineClient {
         });
     }
 
-    private syncResumeSessionRpcRegistration(rpcAvailable: boolean): void {
+    private syncResumeSessionRpcRegistration(): void {
         const method = 'resume-happy-session';
 
-        if (rpcAvailable && this.resumeSessionHandler) {
+        if (this.resumeSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
                     const { sessionId, model, permissionMode } = params || {};
@@ -294,7 +294,7 @@ export class ApiMachineClient {
             }));
 
             this.rpcHandlerManager.onSocketConnect(this.socket);
-            this.syncResumeSessionRpcRegistration(detectResumeSupport().rpcAvailable);
+            this.syncResumeSessionRpcRegistration();
             this.startKeepAlive();
         });
 
@@ -365,15 +365,13 @@ export class ApiMachineClient {
                 || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
                 || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
 
-            this.syncResumeSessionRpcRegistration(newResumeSupport.rpcAvailable);
-
             if (cliAvailabilityChanged || resumeSupportChanged) {
                 this.lastKnownCLIAvailability = newAvailability;
                 this.lastKnownResumeSupport = newResumeSupport;
                 this.updateMachineMetadata((metadata) => ({
                     ...(metadata || {} as any),
                     cliAvailability: newAvailability,
-                    resumeSupport: newResumeSupport,
+                    resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
                 })).catch((err) => {
                     logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
                 });

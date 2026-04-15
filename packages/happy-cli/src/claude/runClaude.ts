@@ -26,7 +26,7 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
-import { decodeBase64 } from '@/api/encryption';
+import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 
 /** JavaScript runtime to use for spawning Claude Code */
@@ -191,7 +191,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Always report to daemon if it exists
     try {
         logger.debug(`[START] Reporting session ${response.id} to daemon`);
-        const result = await notifyDaemonSessionStarted(response.id, metadata);
+        const result = await notifyDaemonSessionStarted(response.id, metadata, {
+            encryptionKey: encodeBase64(response.encryptionKey),
+            encryptionVariant: response.encryptionVariant,
+            seq: response.seq,
+            metadataVersion: response.metadataVersion,
+            agentStateVersion: response.agentStateVersion,
+        });
         if (result.error) {
             logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
         } else {
@@ -206,6 +212,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
+
+    // On reconnect, un-archive the session and skip replaying old messages.
+    if (reconnectSessionId) {
+        session.suppressNextArchiveSignal();
+        session.skipExistingMessages();
+        session.updateMetadata((meta) => ({
+            ...meta,
+            lifecycleState: 'running',
+            archivedBy: undefined,
+        }));
+    }
 
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
