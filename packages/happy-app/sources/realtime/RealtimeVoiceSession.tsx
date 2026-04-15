@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import '@elevenlabs/react-native'; // registerGlobals() — WebRTC polyfills for native
-import { useConversation } from '@elevenlabs/react';
+import { useConversation } from '@elevenlabs/react-native';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
